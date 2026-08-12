@@ -51,12 +51,12 @@ test("switches locale from hydrated stable selectors with native activation", as
       .filter(({ args }) => args.includes("focus"))
       .map(({ args }) => args[3])
   ).toEqual([
-    'nav[aria-label="Language switcher"] a[href^="/cs-CZ"]',
-    'nav[aria-label="Language switcher"] a[href^="/en-US"]',
-    'nav[aria-label="Language switcher"] a[href^="/cs-CZ"]',
-    'nav[aria-label="Language switcher"] a[href^="/en-US"]',
-    'nav[aria-label="Language switcher"] a[href^="/cs-CZ"]',
-    'nav[aria-label="Language switcher"] a[href^="/en-US"]',
+    '[data-locale-switcher] a[href^="/cs-CZ"]',
+    '[data-locale-switcher] a[href^="/en-US"]',
+    '[data-locale-switcher] a[href^="/cs-CZ"]',
+    '[data-locale-switcher] a[href^="/en-US"]',
+    '[data-locale-switcher] a[href^="/cs-CZ"]',
+    '[data-locale-switcher] a[href^="/en-US"]',
   ]);
   expect(
     calls

@@ -69,7 +69,10 @@ export {
   AdministrationResponsiveTable,
   AdministrationTableFrame,
 } from "./table-frame";
-export { AdministrationTableToolbar } from "./table-toolbar";
+export {
+  AdministrationTableCount,
+  AdministrationTableToolbar,
+} from "./table-toolbar";
 
 export const getBookingTableLabel = (
   booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null
@@ -88,6 +91,8 @@ export function AdministrationPage({
 }) {
   return (
     <main
+      id="main-content"
+      tabIndex={-1}
       className={cn(
         "mx-auto w-full max-w-[92rem] px-4 py-7 sm:px-6 lg:px-8 lg:py-9",
         className

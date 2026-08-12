@@ -307,8 +307,13 @@ export class PaymentAdministrationService extends Context.Service<
           const localOrders = toLocalOrderRows(localRows);
           const providerItems =
             providerResult.kind === "available" ? providerResult.items : [];
+          const localOrderIds = new Set(
+            localOrders.map(({ providerOrderId }) => providerOrderId)
+          );
           const links = yield* loadLinksByOrderIds(
-            providerItems.map((provider) => provider.orderId)
+            providerItems.flatMap((provider) =>
+              localOrderIds.has(provider.orderId) ? [] : [provider.orderId]
+            )
           );
           for (const row of localOrders) {
             links.set(row.providerOrderId, toOrderLink(row));

@@ -1,4 +1,4 @@
-import { expect, type BrowserContext, type Page } from "@playwright/test";
+import { type BrowserContext, expect, type Page } from "@playwright/test";
 
 export async function enablePreviewAccess(
   context: BrowserContext,
@@ -22,7 +22,9 @@ export async function enablePreviewAccess(
 
 export async function expectPublicSiteShell(page: Page) {
   await expect(page.getByRole("banner")).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Primary navigation" })
+  ).toBeVisible();
   await expect(page.getByRole("contentinfo")).toBeVisible();
 }
 
@@ -30,7 +32,9 @@ export async function hasLoadedResource(page: Page, pathname: string) {
   return page.evaluate((targetPathname) => {
     return performance.getEntriesByType("resource").some((entry) => {
       try {
-        return new URL(entry.name, window.location.href).pathname === targetPathname;
+        return (
+          new URL(entry.name, window.location.href).pathname === targetPathname
+        );
       } catch {
         return false;
       }

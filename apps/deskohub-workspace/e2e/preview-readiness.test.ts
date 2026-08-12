@@ -6,6 +6,7 @@ import {
   assertPreviewEndpointReady,
   assertPreviewEndpointsReady,
   assertPreviewJpegReady,
+  isPreviewPageAvailable,
 } from "./preview-readiness";
 import { workspaceE2ETimeouts } from "./timeouts";
 
@@ -92,6 +93,80 @@ test("starts all preview readiness requests before any request completes", async
   );
 
   expect(startedRequestCount).toBe(5);
+});
+
+test("recognizes a rendered feature-gated preview page", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response(
+        '<main data-office-base-price>Office reservation</main><script>self.__next_f.push(["This page could not be found."])</script>',
+        { status: 200 }
+      )
+  );
+
+  await expect(
+    Effect.runPromise(
+      isPreviewPageAvailable(
+        makeConfig(),
+        "/en-US/reservation/office",
+        "data-office-base-price"
+      ).pipe(Effect.provide(makeFetchHttpClientLayer(fetchMock)))
+    )
+  ).resolves.toBe(true);
+});
+
+test("recognizes a rendered not-found response for a disabled preview page", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response('<h1 class="next-error-h1">404</h1>', {
+        status: 200,
+      })
+  );
+
+  await expect(
+    Effect.runPromise(
+      isPreviewPageAvailable(
+        makeConfig(),
+        "/en-US/reservation/office",
+        "data-office-base-price"
+      ).pipe(Effect.provide(makeFetchHttpClientLayer(fetchMock)))
+    )
+  ).resolves.toBe(false);
+});
+
+test("rejects a streamed Next server error instead of disabling E2E coverage", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response('<h1 class="next-error-h1">500</h1>', {
+        status: 200,
+      })
+  );
+
+  await expect(
+    Effect.runPromise(
+      isPreviewPageAvailable(
+        makeConfig(),
+        "/en-US/reservation/office",
+        "data-office-base-price"
+      ).pipe(Effect.provide(makeFetchHttpClientLayer(fetchMock)))
+    )
+  ).rejects.toThrow("did not render its expected content");
+});
+
+test("rejects a preview page without expected content or a rendered not-found boundary", async () => {
+  const fetchMock = mock(
+    async () => new Response("<main>Unexpected page</main>", { status: 200 })
+  );
+
+  await expect(
+    Effect.runPromise(
+      isPreviewPageAvailable(
+        makeConfig(),
+        "/en-US/reservation/office",
+        "data-office-base-price"
+      ).pipe(Effect.provide(makeFetchHttpClientLayer(fetchMock)))
+    )
+  ).rejects.toThrow("did not render its expected content");
 });
 
 test("rejects an HTML error document returned by the generated map endpoint", async () => {

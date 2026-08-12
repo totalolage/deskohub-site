@@ -10,7 +10,7 @@ import {
   NexiService,
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   type AccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,

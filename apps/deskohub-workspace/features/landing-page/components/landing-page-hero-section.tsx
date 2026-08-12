@@ -140,7 +140,7 @@ export function LandingPageHeroSection({
     <LandingPageHeroScrollScene
       ariaBusy={isPending}
       ariaLabelledBy="landing-page-heading"
-      background={<Background />}
+      background={<Background locale={locale} />}
       bottomSection={orangeMaskSection}
       className={
         saleBanner
@@ -155,12 +155,12 @@ export function LandingPageHeroSection({
   );
 }
 
-function Background() {
+function Background({ locale }: { readonly locale: Locale }) {
   return (
     <div className="absolute inset-0">
       <Image
         src={heroImage}
-        alt="Deskohub workspace interior"
+        alt={m.landingHeroImageAlt({}, { locale })}
         fill
         priority
         className="object-cover object-right"

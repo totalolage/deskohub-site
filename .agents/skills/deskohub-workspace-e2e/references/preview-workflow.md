@@ -509,6 +509,12 @@ configuration and must not read ambient environment variables. Application-only
 variables are not projected into the E2E configuration, and E2E telemetry uses
 only the dedicated `WORKSPACE_E2E_POSTHOG_*` variables.
 
+In-process database assertions may reuse application repositories only through
+their injectable service contracts. Keep environment-backed live layers and
+resource initialization in separate server modules; importing an application
+contract from the E2E runner must not initialize the production database pool,
+load the application keyring, or validate unrelated application variables.
+
 Invoke a real run from the repository root with
 `bun turbo test:e2e --filter=deskohub-workspace`. Turbo invokes the Workspace
 package's E2E script directly. The runner does not import generated translations,

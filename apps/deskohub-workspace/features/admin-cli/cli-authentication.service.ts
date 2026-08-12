@@ -32,10 +32,8 @@ import {
   Schema,
 } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
-import {
-  WorkspaceDatabase,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   type CliAuthenticationRequestRow,
   type CliSessionRow,

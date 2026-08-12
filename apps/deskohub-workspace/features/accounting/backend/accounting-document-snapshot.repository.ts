@@ -1,12 +1,12 @@
 import type { NexiOrderId } from "@deskohub/nexi";
 import { eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { accountingDocumentSnapshots } from "@/db/schema";
 import {
   type AccountingDocumentSnapshot,
-  accountingDocumentSnapshotSchema,
+  decodeStoredAccountingDocumentSnapshot,
 } from "@/features/accounting/accounting-document-snapshot";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -127,10 +127,7 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
               }),
           });
 
-          return yield* Schema.decodeUnknownEffect(
-            accountingDocumentSnapshotSchema,
-            { onExcessProperty: "error" }
-          )(encoded).pipe(
+          return yield* decodeStoredAccountingDocumentSnapshot(encoded).pipe(
             Effect.mapError(
               () =>
                 new AccountingDocumentSnapshotStorageError({
@@ -148,8 +145,3 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
     })
   );
 }
-
-export const AccountingDocumentSnapshotRepositoryLive =
-  AccountingDocumentSnapshotRepository.Live.pipe(
-    Layer.provide(AccountingSnapshotKeyService.Live)
-  );

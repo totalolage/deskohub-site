@@ -71,11 +71,13 @@ export type LogoStyling = {
 
 export default function Logo({
   styling,
+  alt = "Deskohub logo",
   width: passedWidth,
   height: passedHeight,
   ...props
 }: {
   styling: LogoStyling;
+  alt?: string;
 } & Omit<ComponentProps<typeof Image>, "src" | "alt">) {
   const {
     image: { src, width: imageWidth, height: imageHeight },
@@ -92,7 +94,5 @@ export default function Logo({
     passedHeight ||
     (passedWidth ? Number(passedWidth) / aspectRatio : imageHeight);
 
-  return (
-    <Image src={src} alt="logo" {...props} width={width} height={height} />
-  );
+  return <Image src={src} alt={alt} {...props} width={width} height={height} />;
 }

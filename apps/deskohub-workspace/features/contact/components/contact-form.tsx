@@ -93,7 +93,7 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/70 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
-        <CardTitle className="text-3xl sm:text-[2.2rem]">
+        <CardTitle as="h2" className="text-3xl sm:text-[2.2rem]">
           {m.contactFormTitle({}, { locale })}
         </CardTitle>
         <CardDescription className="max-w-xl text-base leading-7 text-navy-blue/72">
@@ -163,7 +163,7 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
                 prefetch={false}
                 target="_blank"
                 rel="noreferrer"
-                className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
+                className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-burned-orange-ink"
               >
                 {m.contactPrivacyNoteLinkLabel({}, { locale })}
               </Link>{" "}
@@ -252,6 +252,7 @@ function Field({
           variant={error ? "error" : "default"}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${name}-error` : undefined}
+          required={required}
         />
       ) : (
         <Input
@@ -265,10 +266,15 @@ function Field({
           variant={error ? "error" : "default"}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${name}-error` : undefined}
+          required={required}
         />
       )}
       {!!error && (
-        <span id={`${name}-error`} className="text-sm text-burned-orange">
+        <span
+          id={`${name}-error`}
+          role="alert"
+          className="text-sm text-burned-orange"
+        >
           {error}
         </span>
       )}

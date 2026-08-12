@@ -15,6 +15,10 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
   accountingDocumentSnapshots: {
+    invoice: r.one.invoices({
+      from: r.accountingDocumentSnapshots.paymentAttemptId,
+      to: r.invoices.paymentAttemptId,
+    }),
     paymentAttempt: r.one.paymentAttempts({
       from: r.accountingDocumentSnapshots.paymentAttemptId,
       to: r.paymentAttempts.id,
@@ -22,6 +26,18 @@ export const relations = defineRelations(schema, (r) => ({
     }),
     workspaceReservation: r.one.workspaceReservations({
       from: r.accountingDocumentSnapshots.workspaceReservationId,
+      to: r.workspaceReservations.id,
+      optional: false,
+    }),
+  },
+  invoices: {
+    accountingDocumentSnapshot: r.one.accountingDocumentSnapshots({
+      from: r.invoices.paymentAttemptId,
+      to: r.accountingDocumentSnapshots.paymentAttemptId,
+      optional: false,
+    }),
+    workspaceReservation: r.one.workspaceReservations({
+      from: r.invoices.workspaceReservationId,
       to: r.workspaceReservations.id,
       optional: false,
     }),
@@ -90,6 +106,10 @@ export const relations = defineRelations(schema, (r) => ({
     accountingDocumentSnapshot: r.one.accountingDocumentSnapshots({
       from: r.paymentAttempts.id,
       to: r.accountingDocumentSnapshots.paymentAttemptId,
+    }),
+    invoice: r.one.invoices({
+      from: r.paymentAttempts.id,
+      to: r.invoices.paymentAttemptId,
     }),
     workspaceReservation: r.one.workspaceReservations({
       from: r.paymentAttempts.workspaceReservationId,

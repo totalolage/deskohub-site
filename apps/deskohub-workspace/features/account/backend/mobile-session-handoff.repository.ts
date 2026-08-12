@@ -4,10 +4,8 @@ import { and, eq, gt, lte } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
-import {
-  WorkspaceDatabase,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { mobileSessionHandoffCodes } from "@/db/schema/mobile-session-handoffs";
 
 type PersistenceError = EffectDrizzleQueryError | SqlError;

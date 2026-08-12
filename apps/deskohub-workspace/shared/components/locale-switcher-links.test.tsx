@@ -95,11 +95,16 @@ test("uses document navigation for every alternate-locale full-header link", asy
       <SiteHeader
         accountHref={`/${currentLocale}/account`}
         accountLabel="Account"
+        closeNavigationMenuLabel="Close navigation menu"
         contactHref={contactHref}
         contactLabel="Contact"
         currentLocale={currentLocale}
+        languageSwitcherLabel="Language switcher"
         languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
         links={[]}
+        mobilePrimaryNavigationLabel="Mobile primary navigation"
+        openNavigationMenuLabel="Open navigation menu"
+        primaryNavigationLabel="Primary navigation"
       />
     );
 
@@ -120,9 +125,11 @@ test("renders only the configured full-header items without reserved slots", asy
     <SiteHeader
       accountHref="/en-US/account"
       accountLabel="Account"
+      closeNavigationMenuLabel="Close navigation menu"
       contactHref="/en-US/reservation/cowork"
       contactLabel="Book"
       currentLocale="en-US"
+      languageSwitcherLabel="Language switcher"
       languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
       links={[
         {
@@ -131,11 +138,14 @@ test("renders only the configured full-header items without reserved slots", asy
           label: "Gallery",
         },
       ]}
+      mobilePrimaryNavigationLabel="Mobile primary navigation"
+      openNavigationMenuLabel="Open navigation menu"
+      primaryNavigationLabel="Primary navigation"
     />
   );
 
   const desktopNavigation = view.container.querySelector(
-    'nav[aria-label="Primary"]'
+    'nav[aria-label="Primary navigation"]'
   );
   expect(desktopNavigation?.getAttribute("class")).toContain("gap-6");
   expect(desktopNavigation?.getAttribute("class")).toContain("xl:flex");
@@ -168,6 +178,7 @@ test("uses document navigation for the alternate-locale minimal-header link", as
       <MinimalSiteHeader
         currentLocale={currentLocale}
         languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
+        languageSwitcherLabel="Language switcher"
       />
     );
 

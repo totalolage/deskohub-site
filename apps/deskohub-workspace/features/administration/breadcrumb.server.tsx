@@ -1,10 +1,9 @@
 import "server-only";
 
 import { AdministrationBreadcrumbs } from "@/features/administration/admin-shell";
-import { formatAdministrationDateTime } from "@/features/administration/components";
 import {
-  loadAdministrationBooking,
-  loadAdministrationReservation,
+  loadAdministrationBookingBreadcrumbLabel,
+  loadAdministrationReservationBreadcrumbLabel,
 } from "@/features/administration/page-data.server";
 import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { loadDiscountAdminCustomerBreadcrumbLabel } from "@/features/discounts/admin/page-data.server";
@@ -20,24 +19,16 @@ export async function AdministrationBreadcrumb({
     entityLabel = await loadDiscountAdminCustomerBreadcrumbLabel(
       requireDotyposCustomerRouteId(segments[1])
     );
-  }
-
-  if (segments[0] === "reservations" && segments[1]) {
-    const detail = await loadAdministrationReservation(segments[1]);
-    entityLabel = detail.reservation.typeLabel;
-  }
-
-  if (segments[0] === "bookings" && segments[1]) {
-    const detail = await loadAdministrationBooking(segments[1]);
+  } else if (segments[0] === "reservations" && segments[1]) {
     entityLabel =
-      detail.booking.tableName ??
-      formatAdministrationDateTime(detail.booking.startsAt);
+      (await loadAdministrationReservationBreadcrumbLabel(segments[1])) ??
+      undefined;
+  } else if (segments[0] === "bookings" && segments[1]) {
+    entityLabel = await loadAdministrationBookingBreadcrumbLabel(segments[1]);
   }
 
-  const segmentLabels: Record<string, string> = {};
-  if (entityLabel && segments[1]) {
-    segmentLabels[segments[1]] = entityLabel;
-  }
+  const segmentLabels =
+    entityLabel && segments[1] ? { [segments[1]]: entityLabel } : undefined;
 
   return (
     <AdministrationBreadcrumbs

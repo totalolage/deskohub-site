@@ -51,7 +51,7 @@ export function LandingPageTeambuildingsSection({
               <Badge>
                 {m.landingTeambuildingsSectionLabel({}, { locale })}
               </Badge>
-              <CardTitle className="text-4xl leading-tight sm:text-5xl">
+              <CardTitle as="h2" className="text-4xl leading-tight sm:text-5xl">
                 {m.landingTeambuildingsTitle({}, { locale })}
               </CardTitle>
               <CardDescription className="max-w-2xl text-base leading-8 text-navy-blue/76">
@@ -94,7 +94,10 @@ export function LandingPageTeambuildingsSection({
               <Badge className="border-white/12 bg-white/8">
                 {m.landingUiTeamPerksTitle({}, { locale })}
               </Badge>
-              <CardTitle className="text-3xl leading-tight sm:text-[2.4rem]">
+              <CardTitle
+                as="h2"
+                className="text-3xl leading-tight sm:text-[2.4rem]"
+              >
                 {m.landingTeambuildingsSideTitle({}, { locale })}
               </CardTitle>
               <CardDescription className="leading-8 text-base">

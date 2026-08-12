@@ -71,7 +71,7 @@ export function LandingPageExperiencesSection({
             <Card className="rounded-[2rem] border-burned-orange/16 bg-[linear-gradient(160deg,#fff4e8_0%,#ffffff_50%,#f3f2ef_100%)] shadow-[0_32px_80px_-54px_rgba(0,2,79,0.4)]">
               <CardHeader>
                 <Badge>{m.landingEventsSectionLabel({}, { locale })}</Badge>
-                <CardTitle className="text-4xl sm:text-5xl">
+                <CardTitle as="h2" className="text-4xl sm:text-5xl">
                   {m.landingEventsTitle({}, { locale })}
                 </CardTitle>
                 <CardDescription className="max-w-2xl text-base leading-8 text-navy-blue/76">

@@ -60,7 +60,10 @@ export function LandingPageFaqContactSection({
               <Badge className="border-white/12 bg-white/8 text-white">
                 {m.landingFaqTitle({}, { locale })}
               </Badge>
-              <CardTitle className="text-4xl leading-tight text-white sm:text-[2.8rem]">
+              <CardTitle
+                as="h2"
+                className="text-4xl leading-tight text-white sm:text-[2.8rem]"
+              >
                 {m.landingFooterContactTitle({}, { locale })}
               </CardTitle>
               <CardDescription className="text-base leading-8 text-white/74">

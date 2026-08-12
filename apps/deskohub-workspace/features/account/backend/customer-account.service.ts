@@ -9,10 +9,8 @@ import { DotyposService } from "@deskohub/dotypos";
 import { desc, eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
-import {
-  WorkspaceDatabase,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { customerAccountLinks, workspaceReservations } from "@/db/schema";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import type {

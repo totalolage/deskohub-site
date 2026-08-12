@@ -107,7 +107,7 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
   };
 
   if (value('input[name="startDateTime"]', 'start date') !== expected.date) fail('start date');
-  const time = document.querySelector('input[aria-label="Meeting room start time"]');
+  const time = document.querySelector('input[aria-label^="Meeting room start time"]');
   if (expected.wholeDay) {
     if (time !== null) fail('hidden start time');
   } else if (!(time instanceof HTMLInputElement) || time.value !== expected.time) {
@@ -437,7 +437,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
 
   let dateTrigger;
   await waitUntil(() => {
-    const candidate = document.querySelector('button[aria-label="Meeting room start date"]');
+    const candidate = document.querySelector('button[aria-label^="Meeting room start date"]');
     if (candidate instanceof HTMLButtonElement) {
       dateTrigger = candidate;
       return true;
@@ -503,7 +503,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   }
   if (!duration.checked) (duration.closest('label') ?? duration).click();
   if (!expected.wholeDay) {
-    setField('input[aria-label="Meeting room start time"]', expected.time);
+    setField('input[aria-label^="Meeting room start time"]', expected.time);
   }
   setField('input[name="email"]', expected.email);
   setField('input[name="phone"]', expected.phone);
@@ -513,7 +513,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   let priceRetryAttempted = false;
   await waitUntil(() => {
     const hiddenStart = document.querySelector('input[name="startDateTime"]');
-    const time = document.querySelector('input[aria-label="Meeting room start time"]');
+    const time = document.querySelector('input[aria-label^="Meeting room start time"]');
     const selectedDuration = document.querySelector(
       '[id="meeting-room-duration-' + expected.durationKey + '"]'
     );
@@ -610,7 +610,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
 
     let trigger;
     await waitUntil(() => {
-      const candidate = document.querySelector('button[aria-label="' + ariaLabel + '"]');
+      const candidate = document.querySelector('button[aria-label^="' + ariaLabel + '"]');
       if (candidate instanceof HTMLButtonElement) {
         trigger = candidate;
         return true;

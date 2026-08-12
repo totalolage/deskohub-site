@@ -1,7 +1,7 @@
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   MobileShopNexiWebhookError,
   MobileShopNexiWebhookService,

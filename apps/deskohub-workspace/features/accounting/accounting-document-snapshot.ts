@@ -99,8 +99,7 @@ const accountingSupplierSchema = Schema.Struct({
   contactEmail: Schema.NonEmptyString,
 });
 
-const accountingSnapshotIdentitySchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
+export const accountingDocumentIdentitySchema = Schema.Struct({
   workspaceReservationId: workspaceReservationIdSchema,
   dotyposReservationId: DotyposReservationIdSchema,
   dotyposCustomerId: DotyposCustomerIdSchema,
@@ -109,8 +108,8 @@ const accountingSnapshotIdentitySchema = Schema.Struct({
   buyer: accountingBuyerSchema,
 });
 
-const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
-  ...accountingSnapshotIdentitySchema.fields,
+export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...accountingDocumentIdentitySchema.fields,
   reservation: Schema.Struct({
     kind: Schema.Literal("cowork"),
     date: plainDateStringSchema,
@@ -118,8 +117,8 @@ const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
   quote: coworkReservationQuoteSchema,
 });
 
-const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
-  ...accountingSnapshotIdentitySchema.fields,
+export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...accountingDocumentIdentitySchema.fields,
   reservation: Schema.Struct({
     kind: Schema.Literal("meeting-room"),
     startsAt: instantStringSchema,
@@ -128,8 +127,8 @@ const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
   quote: meetingRoomReservationQuoteSchema,
 });
 
-const officeAccountingDocumentSnapshotSchema = Schema.Struct({
-  ...accountingSnapshotIdentitySchema.fields,
+export const officeAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...accountingDocumentIdentitySchema.fields,
   reservation: officeReservationDetailsSchema,
   quote: officeReservationQuoteSchema,
 });
@@ -146,6 +145,15 @@ export const accountingDocumentSnapshotSchema = Schema.Union([
 
 export type AccountingDocumentSnapshot =
   typeof accountingDocumentSnapshotSchema.Type;
+
+export const encodeStoredAccountingDocumentSnapshot = Schema.encodeSync(
+  accountingDocumentSnapshotSchema
+);
+
+export const decodeStoredAccountingDocumentSnapshot =
+  Schema.decodeUnknownEffect(accountingDocumentSnapshotSchema, {
+    onExcessProperty: "error",
+  });
 
 const supplier: typeof accountingSupplierSchema.Type = {
   legalName: workspaceSiteConstants.brand.legalName,
@@ -169,7 +177,6 @@ export const makeAccountingDocumentSnapshot = (input: {
   readonly buyer?: AccountingBuyer;
 }): AccountingDocumentSnapshot => {
   const identity = {
-    schemaVersion: 1 as const,
     workspaceReservationId: input.workspaceReservationId,
     dotyposReservationId: input.dotyposReservationId,
     dotyposCustomerId: input.dotyposCustomerId,

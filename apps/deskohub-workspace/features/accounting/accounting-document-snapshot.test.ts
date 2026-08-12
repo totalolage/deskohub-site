@@ -17,6 +17,8 @@ import {
 } from "@/shared/backend/logging/censorship";
 import {
   accountingDocumentSnapshotSchema,
+  decodeStoredAccountingDocumentSnapshot,
+  encodeStoredAccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import { AccountingSnapshotKeyService } from "./backend/accounting-snapshot-key.service";
@@ -71,7 +73,6 @@ const officePrepared: PreparedCustomerQuote = {
 describe("accounting document snapshot", () => {
   test("freezes supplier, buyer, reservation, and accepted quote facts", () => {
     expect(makeSnapshot()).toMatchObject({
-      schemaVersion: 1,
       workspaceReservationId: "reservation-id",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
@@ -167,7 +168,7 @@ describe("accounting document snapshot", () => {
     });
   });
 
-  test("round-trips strictly through the versioned schema", async () => {
+  test("round-trips strictly through the schema", async () => {
     const snapshot = makeSnapshot();
     const decode = Schema.decodeUnknownEffect(
       accountingDocumentSnapshotSchema,
@@ -182,6 +183,44 @@ describe("accounting document snapshot", () => {
     await expect(
       Effect.runPromise(decode({ ...snapshot, unexpected: true }))
     ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(decode({ ...snapshot, schemaVersion: 1 }))
+    ).rejects.toBeDefined();
+  });
+
+  test("rejects schema-version metadata from stored snapshots", async () => {
+    const snapshot = makeSnapshot();
+
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          schemaVersion: 1,
+        })
+      )
+    ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          unexpected: true,
+        })
+      )
+    ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          schemaVersion: 2,
+        })
+      )
+    ).rejects.toBeDefined();
+  });
+
+  test("writes versionless snapshots", () => {
+    const snapshot = makeSnapshot();
+
+    expect(encodeStoredAccountingDocumentSnapshot(snapshot)).toEqual(snapshot);
   });
 
   test("parameterizes both plaintext and key in pgcrypto SQL", () => {
@@ -227,11 +266,14 @@ describe("accounting document snapshot", () => {
   });
 
   test("resolves a nonempty environment passphrase by key ID", async () => {
+    const { AccountingSnapshotKeyServiceLive } = await import(
+      "./backend/accounting-snapshot-key-live.server"
+    );
     const key = await Effect.gen(function* () {
       const keys = yield* AccountingSnapshotKeyService;
       return yield* keys.getActive;
     }).pipe(
-      Effect.provide(AccountingSnapshotKeyService.Live),
+      Effect.provide(AccountingSnapshotKeyServiceLive),
       Effect.runPromise
     );
 

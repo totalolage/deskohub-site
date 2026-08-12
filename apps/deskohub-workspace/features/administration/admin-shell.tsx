@@ -12,7 +12,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ComponentType, ReactNode, SVGProps } from "react";
+import {
+  type ComponentType,
+  type ReactNode,
+  Suspense,
+  type SVGProps,
+} from "react";
+import { SkipLink } from "@/shared/components/skip-link";
 import { Button } from "@/shared/components/ui/button";
 import {
   Sheet,
@@ -24,6 +30,7 @@ import {
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
 import { cn } from "@/shared/utils";
+import { AdministrationBreadcrumbLoading } from "./loading";
 
 type NavItem = {
   readonly href: string;
@@ -56,8 +63,18 @@ const navigation = [
 const isActive = (pathname: string, href: string) =>
   href === "/admin" ? pathname === href : pathname.startsWith(href);
 
-function Navigation({ mobile = false }: { readonly mobile?: boolean }) {
+function ActiveNavigation({ mobile = false }: { readonly mobile?: boolean }) {
   const pathname = usePathname();
+  return <Navigation mobile={mobile} pathname={pathname} />;
+}
+
+function Navigation({
+  mobile = false,
+  pathname,
+}: {
+  readonly mobile?: boolean;
+  readonly pathname?: string;
+}) {
   return (
     <nav aria-label="Administration" className="space-y-7">
       {navigation.map((section) => (
@@ -91,9 +108,9 @@ function NavigationLink({
 }: {
   readonly item: NavItem;
   readonly mobile: boolean;
-  readonly pathname: string;
+  readonly pathname?: string;
 }) {
-  const active = isActive(pathname, item.href);
+  const active = pathname ? isActive(pathname, item.href) : false;
   const Icon = item.icon;
   const link = (
     <Link
@@ -209,10 +226,13 @@ export function AdminShell({
 }) {
   return (
     <div className="min-h-screen bg-[#f6f6f3] text-navy-blue lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <SkipLink label="Skip to main content" />
       <aside className="hidden border-r border-navy-blue/10 bg-white px-4 py-5 lg:sticky lg:top-0 lg:block lg:h-screen">
         <Brand />
         <div className="mt-9">
-          <Navigation />
+          <Suspense fallback={<Navigation />}>
+            <ActiveNavigation />
+          </Suspense>
         </div>
       </aside>
 
@@ -239,18 +259,26 @@ export function AdminShell({
                 </SheetHeader>
                 <Brand />
                 <div className="mt-9">
-                  <Navigation mobile />
+                  <Suspense fallback={<Navigation mobile />}>
+                    <ActiveNavigation mobile />
+                  </Suspense>
                 </div>
               </SheetContent>
             </Sheet>
             <div className="lg:hidden">
               <Brand />
             </div>
-            <div className="hidden min-w-0 lg:block">{breadcrumb}</div>
+            <div className="hidden min-w-0 lg:block">
+              <Suspense fallback={<AdministrationBreadcrumbLoading />}>
+                {breadcrumb}
+              </Suspense>
+            </div>
           </div>
         </header>
         <div className="border-b border-navy-blue/10 bg-white px-4 py-3 lg:hidden">
-          {breadcrumb}
+          <Suspense fallback={<AdministrationBreadcrumbLoading />}>
+            {breadcrumb}
+          </Suspense>
         </div>
         {children}
       </div>

@@ -6,7 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   type WorkspaceReservation,

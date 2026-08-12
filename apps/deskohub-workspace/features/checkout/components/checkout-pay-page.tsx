@@ -270,7 +270,9 @@ function CheckoutPayCard({
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
-        <CardTitle className="text-3xl sm:text-[2.35rem]">{title}</CardTitle>
+        <CardTitle as="h1" className="text-3xl sm:text-[2.35rem]">
+          {title}
+        </CardTitle>
         {!!lead && (
           <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
             {lead}

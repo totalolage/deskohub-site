@@ -11,11 +11,15 @@ type WorkspaceAlbumPhoto = Photo & GalleryPhoto;
 
 type WorkspaceGalleryAlbumProps = {
   photos: readonly GalleryPhoto[];
+  openLabel: string;
 };
 
 const eagerGalleryImageCount = 3;
 
-export function WorkspaceGalleryAlbum({ photos }: WorkspaceGalleryAlbumProps) {
+export function WorkspaceGalleryAlbum({
+  photos,
+  openLabel,
+}: WorkspaceGalleryAlbumProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
 
   const albumPhotos: readonly WorkspaceAlbumPhoto[] = useMemo(
@@ -23,10 +27,10 @@ export function WorkspaceGalleryAlbum({ photos }: WorkspaceGalleryAlbumProps) {
       photos.map((photo) => ({
         ...photo,
         key: photo.id,
-        label: `Open ${photo.caption ?? photo.alt} in lightbox`,
+        label: `${openLabel}: ${photo.caption ?? photo.alt}`,
         title: photo.caption,
       })),
-    [photos]
+    [openLabel, photos]
   );
 
   const lightboxSlides: SlideImage[] = useMemo(

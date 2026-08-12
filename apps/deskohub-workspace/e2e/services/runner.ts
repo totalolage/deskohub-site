@@ -12,6 +12,7 @@ import {
 } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { E2EDatabase } from "../integrations/database.service";
+import { assertInvoicePersistence } from "../integrations/invoice-persistence";
 import { addDatabaseUrlRedactions } from "../runtime";
 import type { CheckoutFlowState } from "../types";
 import { WorkspaceE2ECaseService } from "./cases";
@@ -68,6 +69,11 @@ export class WorkspaceE2ERunnerService extends Context.Service<
                 yield* telemetry.tracePhase({
                   effect: previewReadiness.assertEndpoints(config),
                   phaseId: "preview-readiness",
+                });
+
+                yield* telemetry.tracePhase({
+                  effect: assertInvoicePersistence,
+                  phaseId: "invoice-persistence",
                 });
 
                 const e2eCases = yield* cases.makeCases({

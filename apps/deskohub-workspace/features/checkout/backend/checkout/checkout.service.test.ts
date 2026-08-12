@@ -905,7 +905,6 @@ describe("CheckoutService", () => {
       commitment: fullyDiscountedCommitment,
       locale: "en-US",
       accountingSnapshot: expect.objectContaining({
-        schemaVersion: 1,
         workspaceReservationId: "reservation-zero-total",
         buyer: { kind: "person", legalName: "Ada Lovelace" },
       }),

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   AdministrationDetailSection,
   AdministrationFact,
@@ -7,9 +8,26 @@ import {
   BookingStatusBadge,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationBooking } from "@/features/administration/page-data.server";
 
-export default async function BookingAdministrationDetailPage({
+export default function BookingAdministrationDetailPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly bookingId: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="booking details" />}
+      >
+        <BookingAdministrationDetail params={params} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+export async function BookingAdministrationDetail({
   params,
 }: {
   readonly params: Promise<{ readonly bookingId: string }>;
@@ -17,7 +35,7 @@ export default async function BookingAdministrationDetailPage({
   const { bookingId } = await params;
   const { booking, references } = await loadAdministrationBooking(bookingId);
   return (
-    <AdministrationPage>
+    <>
       <AdministrationPageHeader
         actions={<BookingStatusBadge booking={booking} />}
         description={`${formatAdministrationDateTime(booking.startsAt)} · ${booking.seats} ${booking.seats === "1" ? "guest" : "guests"}`}
@@ -134,7 +152,7 @@ export default async function BookingAdministrationDetailPage({
           </RelatedBookingEntity>
         </aside>
       </div>
-    </AdministrationPage>
+    </>
   );
 }
 

@@ -8,7 +8,7 @@
 - [Logging and tracing requirements](#logging-and-tracing-requirements)
 - [Preview validation gate](#preview-validation-gate)
 
-This is the first implementation stage for reservation invoices. It freezes the accepted price, supplier identity, buyer identity, and reservation facts alongside the payment attempt. PostgreSQL encrypts the serialized, versioned JSON with `pgcrypto`; the database stores only a `bytea` ciphertext plus non-PII lookup metadata.
+This is the first implementation stage for reservation invoices. It freezes the accepted price, supplier identity, buyer identity, and reservation facts alongside the payment attempt. PostgreSQL encrypts the serialized JSON with `pgcrypto`; the database stores only a `bytea` ciphertext plus non-PII lookup metadata.
 
 PDF generation, email attachments, invoice issuance/numbering, and administration views are intentionally later stages. Issuance must derive transaction facts from this snapshot rather than mutable Dotypos customer or product data; rendering must then read the immutable issued-document snapshot described below.
 
@@ -18,10 +18,14 @@ PDF generation, email attachments, invoice issuance/numbering, and administratio
 
 - `payment_attempt_id`
 - `workspace_reservation_id`
-- `schema_version`
 - `key_id`
 - `encrypted_snapshot bytea`
 - `created_at`
+
+The encrypted JSON is versionless and decoded strictly. Do not add schema-version
+metadata to the document or a schema-version column to the relational metadata.
+Previously written versioned ciphertext is intentionally rejected rather than
+normalized through a compatibility path.
 
 The snapshot is inserted inside the same transaction that creates either a Nexi attempt or a zero-total internal attempt. PostgreSQL rejects every update. Deletion is permitted only after the owning payment attempt has reached `failed`, `cancelled`, or `expired`, and the terminal payment transaction removes that no-longer-needed snapshot. Paid snapshots cannot be deleted. Existing historical payment attempts are intentionally not backfilled from current customer or catalog data.
 
@@ -61,18 +65,31 @@ separately from the accounting document.
 
 At issuance, build the document JSON once by copying transaction facts from the
 payment-time source snapshot and combining them with the billing identity from
-the invoice request. Never update the source snapshot or rebuild historical
-buyer facts from the mutable Dotypos customer. Enforce one invoice per
-successful reservation payment and make concurrent/repeated issuance return
-the existing document. Allocate `WS-FV-YYYY-NNNNNN` and insert the issued
+the invoice request. Issuance requires that identity explicitly; never fall
+back to the source snapshot's default name-only buyer. Every issued personal
+invoice must include a legal name, address line 1, city, postal code, and
+country. Every issued business invoice must additionally satisfy the business
+identity contract, including its company ID; address line 2 and VAT ID remain
+optional. Enforce this in the issued-document schema and repository boundary,
+not only in the PDF renderer or customer-facing form. Never update the source
+snapshot or rebuild historical buyer facts from the mutable Dotypos customer.
+Enforce one invoice per successful reservation payment and make
+concurrent/repeated issuance return the existing document. Allocate
+`WS-FV-YYYY-NNNNNN` and insert the issued
 record in one PostgreSQL transaction.
+
+Do not issue before access-code delivery completes. Freeze
+`workspace_reservations.fulfilled_at` into the issued document and use its
+Prague calendar date as the invoice fulfilment date. In production this is the
+timestamp recorded after the Resend delivery webhook confirms the customer
+access email; it is not the cowork, meeting-room, or office reservation date.
 
 Generate the PDF dynamically from the issued document JSON. Do not persist the
 rendered PDF. Keep rendering free of current catalog, supplier, customer, or
 reservation reads so the same issued snapshot always produces the same invoice
 content.
 
-Validate numbering, idempotency, schema-version decoding, Czech and English
+Validate numbering, idempotency, strict schema decoding, Czech and English
 rendering, all reservation families, and repeat generation after mutable
 Dotypos customer data has changed. Visually inspect representative PDFs and
 verify that neither plaintext billing data nor rendered documents appear in
@@ -104,8 +121,8 @@ form. Address line 1, city, postal code, and country are required; address line
 unchecked, omit the billing fields and invoice-request intent from submission
 rather than sending hidden or stale values.
 
-Add an explicit optional invoice-request discriminant and billing identity to a
-new version of the encrypted payment-time source snapshot. Never infer invoice
+Add an explicit optional invoice-request discriminant and billing identity to
+the encrypted payment-time source snapshot. Never infer invoice
 intent from its existing required `buyer`: the current snapshot always creates
 a personal buyer from the reservation name even when no invoice was requested.
 The issued-document row remains the sole signal that an invoice actually
@@ -113,8 +130,8 @@ exists.
 
 Because post-order delivery must go to the email submitted for that specific
 reservation rather than whatever email a mutable Dotypos customer has later,
-the new source-snapshot version must also retain that reservation delivery
-email inside the encrypted blob. Existing snapshots deliberately exclude email
+the extended source snapshot must also retain that reservation delivery email
+inside the encrypted blob. Existing snapshots deliberately exclude email
 and are not automatically eligible for self-service post-order issuance unless
 the original recipient can be established through a separately verified flow.
 
@@ -215,7 +232,7 @@ decrypt the immutable issued snapshot only inside the authorized document
 boundary and generate PDFs dynamically on demand.
 
 Validate reservation and customer grouping, authorization, missing historical
-keys, schema-version failures, download filenames, and the absence of decrypted
+keys, schema-decoding failures, download filenames, and the absence of decrypted
 PII from logs, traces, caches, and client payloads that do not render it.
 
 ## Key deployment and rotation

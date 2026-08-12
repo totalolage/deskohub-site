@@ -2,7 +2,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Match, Option, Schema } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import type { FulfillmentState, PaymentState } from "@/db/schema";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {

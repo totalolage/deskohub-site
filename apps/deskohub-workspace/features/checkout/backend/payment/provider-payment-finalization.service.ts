@@ -6,7 +6,7 @@ import {
   type NexiWebhookEventId,
 } from "@deskohub/nexi";
 import { Context, Effect, Layer, Schema } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
   WorkspaceReservationRepository,

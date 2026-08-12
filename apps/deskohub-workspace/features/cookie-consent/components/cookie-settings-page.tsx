@@ -124,14 +124,17 @@ function CookieCategoryCard({
 }: CookieCategoryCardProps) {
   const messages = categoryMessageGetters[category];
   const checkboxId = `cookie-category-${category}`;
+  const descriptionId = `${checkboxId}-description`;
+  const stateId = `${checkboxId}-state`;
+  const titleId = `${checkboxId}-title`;
 
   return (
     <article className="flex flex-col gap-5 rounded-[1.5rem] border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
       <div className="max-w-2xl space-y-2">
-        <h2 className="text-2xl leading-tight">
+        <h2 id={titleId} className="text-2xl leading-tight">
           {messages.title({}, { locale })}
         </h2>
-        <p className="text-base leading-7 text-navy-blue/70">
+        <p id={descriptionId} className="text-base leading-7 text-navy-blue/70">
           {messages.description({}, { locale })}
         </p>
       </div>
@@ -142,8 +145,10 @@ function CookieCategoryCard({
           checked={checked}
           onCheckedChange={onToggle}
           disabled={category === "necessary"}
+          aria-describedby={descriptionId}
+          aria-labelledby={`${titleId} ${stateId}`}
         />
-        <label htmlFor={checkboxId} className="cursor-pointer">
+        <label id={stateId} htmlFor={checkboxId} className="cursor-pointer">
           {checked
             ? m.cookieSettingsToggleEnabled({}, { locale })
             : m.cookieSettingsToggleDisabled({}, { locale })}

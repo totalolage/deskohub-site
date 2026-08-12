@@ -73,7 +73,7 @@ test.describe("client navigation", () => {
       await page.goto(sourcePath);
 
       const destinationLink = page
-        .getByRole("navigation", { name: "Primary" })
+        .getByRole("navigation", { name: "Primary navigation" })
         .getByRole("link", { name: navigation.linkName });
       await destinationLink.hover();
       await expect
@@ -112,7 +112,7 @@ test.describe("client navigation", () => {
     await page.goto(galleryPath);
 
     const locationLink = page
-      .getByRole("navigation", { name: "Primary" })
+      .getByRole("navigation", { name: "Primary navigation" })
       .getByRole("link", { name: "Location" });
     await locationLink.hover();
     await expect.poll(() => hasLoadedResource(page, homePath)).toBe(true);
@@ -192,7 +192,7 @@ test.describe("client navigation", () => {
 });
 
 const homeHeading = "The first self-service workspace on Palmovka.";
-const carouselName = "Deskohub workspace photo carousel";
+const carouselName = "Deskohub Workspace photo carousel";
 
 async function expectHomeShell(page: Page) {
   await expect(
@@ -259,7 +259,7 @@ async function expectTtrpgRoomPage(page: Page) {
 
 async function getPrimaryNavigationLinks(page: Page) {
   return page
-    .getByRole("navigation", { name: "Primary" })
+    .getByRole("navigation", { name: "Primary navigation" })
     .getByRole("link")
     .evaluateAll((links) =>
       links.map((link) => {

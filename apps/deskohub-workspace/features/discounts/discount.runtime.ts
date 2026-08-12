@@ -1,6 +1,6 @@
 import "server-only";
 import { Layer, Scope } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";

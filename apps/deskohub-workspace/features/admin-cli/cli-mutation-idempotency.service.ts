@@ -8,10 +8,8 @@ import {
 import { and, eq, isNull } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Schema } from "effect";
-import {
-  WorkspaceDatabase,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { cliMutationRequests } from "@/db/schema";
 
 export type CliMutationClaim =
