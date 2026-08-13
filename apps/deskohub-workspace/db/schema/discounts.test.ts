@@ -70,6 +70,17 @@ describe("discount persistence contracts", () => {
     );
     expect(migration).toContain('ADD COLUMN "max_uses_per_customer" integer');
     expect(migration).toContain(
+      'UPDATE "discount_codes" SET "max_uses_per_customer" = 1 WHERE "max_uses" IS NOT NULL'
+    );
+    expect(
+      migration.indexOf('ADD COLUMN "max_uses_per_customer"')
+    ).toBeLessThan(migration.indexOf('UPDATE "discount_codes"'));
+    expect(migration.indexOf('UPDATE "discount_codes"')).toBeLessThan(
+      migration.indexOf(
+        'DROP INDEX "discount_code_redemptions_active_customer_unique_idx"'
+      )
+    );
+    expect(migration).toContain(
       'CONSTRAINT "discount_codes_max_uses_per_customer_check"'
     );
   });
