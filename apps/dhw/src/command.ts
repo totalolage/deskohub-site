@@ -244,12 +244,19 @@ const reservationsCancelCommand = Command.make(
   "cancel",
   {
     reservationId: Argument.string("reservation-id"),
+    providerCredentialRemoved: Flag.boolean(
+      "confirm-access-credential-removed"
+    ).pipe(
+      Flag.withDescription(
+        "Confirm any active door PIN was removed in Igloohome"
+      )
+    ),
     sendCancellationEmail: Flag.boolean("send-cancellation-email").pipe(
       Flag.withDescription("Email the customer after cancellation")
     ),
     yes: confirmationFlag,
   },
-  ({ reservationId, sendCancellationEmail, yes }) =>
+  ({ providerCredentialRemoved, reservationId, sendCancellationEmail, yes }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const decodedReservationId = yield* Schema.decodeUnknownEffect(
@@ -258,16 +265,24 @@ const reservationsCancelCommand = Command.make(
         const confirmed = yield* confirmChange(
           yes,
           json,
-          "Cancel this reservation? Any payment is unaffected and is not refunded automatically."
+          "Cancel this reservation? Paid online payments will be marked as needing a refund; no refund is issued automatically."
         );
         if (!confirmed) {
           yield* reportCancellation(json);
           return;
         }
+        const accessGrantUpdatedAt = providerCredentialRemoved
+          ? ((yield* api.getReservation(accessToken, decodedReservationId))
+              .accessGrant?.updatedAt ?? null)
+          : null;
         const result = yield* api.cancelReservation(
           accessToken,
           decodedReservationId,
-          { sendCancellationEmail }
+          {
+            accessGrantUpdatedAt,
+            providerCredentialRemoved,
+            sendCancellationEmail,
+          }
         );
         yield* Console.log(
           json

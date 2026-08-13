@@ -21,6 +21,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   latePaymentRecoveries,
   paymentAttempts,
+  reservationAccessGrants,
   type WorkspaceReservation as WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
@@ -36,6 +37,7 @@ import {
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
 import type { ReservationPurpose } from "@/features/reservation/reservation-billing";
+import { reservationAccessProvisioningStaleAfterMilliseconds } from "@/features/reservation-access";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
 
 const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
@@ -148,11 +150,15 @@ export interface WorkspaceReservationRepository {
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
   readonly claimAdministrationCancellation: (input: {
+    readonly accessGrantUpdatedAt: string | null;
     readonly id: WorkspaceReservationId;
+    readonly providerCredentialRemoved: boolean;
     readonly staleCancellingBefore: Temporal.Instant;
   }) => Effect.Effect<
     WorkspaceReservation | null,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError
   >;
   readonly markCancelled: (input: {
     readonly id: WorkspaceReservationId;
@@ -574,36 +580,95 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       claimAdministrationCancellation: Effect.fn(
         "workspaceReservations.claimAdministrationCancellation"
       )(function* (input) {
-        const [claimed] = yield* db
-          .update(workspaceReservations)
-          .set({
-            reservationState: "cancelling",
-            updatedAt: Temporal.Now.instant(),
-          })
-          .where(
-            and(
-              eq(workspaceReservations.id, input.id),
-              or(
-                inArray(workspaceReservations.reservationState, [
-                  "held",
-                  "hold_expired",
-                  "confirmed",
-                  "cancellation_failed",
-                ]),
+        const transaction = db.transaction((tx) =>
+          Effect.gen(function* () {
+            const now = Temporal.Now.instant();
+            const [grant] = yield* tx
+              .select({
+                id: reservationAccessGrants.id,
+                state: reservationAccessGrants.state,
+                accessEndsAt: reservationAccessGrants.accessEndsAt,
+                provisioningStartedAt:
+                  reservationAccessGrants.provisioningStartedAt,
+                updatedAt: reservationAccessGrants.updatedAt,
+              })
+              .from(reservationAccessGrants)
+              .where(
+                eq(reservationAccessGrants.workspaceReservationId, input.id)
+              )
+              .limit(1)
+              .for("update");
+            const credentialMayBeLive =
+              grant !== undefined &&
+              ["issued", "uncertain", "provisioning"].includes(grant.state) &&
+              Temporal.Instant.compare(grant.accessEndsAt, now) > 0;
+            const provisioningIsLive =
+              grant?.state === "provisioning" &&
+              grant.provisioningStartedAt !== null &&
+              Temporal.Instant.compare(
+                grant.provisioningStartedAt,
+                now.subtract({
+                  milliseconds:
+                    reservationAccessProvisioningStaleAfterMilliseconds,
+                })
+              ) > 0;
+            if (
+              credentialMayBeLive &&
+              (!input.providerCredentialRemoved ||
+                input.accessGrantUpdatedAt !== grant.updatedAt.toString() ||
+                provisioningIsLive)
+            ) {
+              return null;
+            }
+
+            const [claimed] = yield* tx
+              .update(workspaceReservations)
+              .set({
+                reservationState: "cancelling",
+                updatedAt: now,
+              })
+              .where(
                 and(
-                  eq(workspaceReservations.reservationState, "cancelling"),
-                  lte(
-                    workspaceReservations.updatedAt,
-                    input.staleCancellingBefore
-                  )
+                  eq(workspaceReservations.id, input.id),
+                  or(
+                    inArray(workspaceReservations.reservationState, [
+                      "held",
+                      "hold_expired",
+                      "confirmed",
+                      "cancellation_failed",
+                    ]),
+                    and(
+                      eq(workspaceReservations.reservationState, "cancelling"),
+                      lte(
+                        workspaceReservations.updatedAt,
+                        input.staleCancellingBefore
+                      )
+                    )
+                  ),
+                  sql`${workspaceReservations.paymentState} <> 'pending'`,
+                  sql`${workspaceReservations.fulfillmentState} <> 'processing'`
                 )
-              ),
-              sql`${workspaceReservations.paymentState} <> 'pending'`,
-              sql`${workspaceReservations.fulfillmentState} <> 'processing'`
-            )
-          )
-          .returning();
-        return yield* decodeOptionalWorkspaceReservation(claimed);
+              )
+              .returning();
+            if (!claimed) return null;
+
+            if (
+              grant &&
+              ["issued", "uncertain", "provisioning"].includes(grant.state)
+            ) {
+              yield* tx
+                .update(reservationAccessGrants)
+                .set({
+                  state: "expired",
+                  accessCode: null,
+                  updatedAt: now,
+                })
+                .where(eq(reservationAccessGrants.id, grant.id));
+            }
+            return yield* decodeWorkspaceReservation(claimed);
+          })
+        );
+        return yield* transaction;
       }),
       markCancelled: Effect.fn("workspaceReservations.markCancelled")(
         function* (input) {

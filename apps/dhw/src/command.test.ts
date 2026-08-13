@@ -68,6 +68,7 @@ describe("dhw mutation commands", () => {
         "reservations",
         "cancel",
         reservationId,
+        "--confirm-access-credential-removed",
         "--send-cancellation-email",
         "--yes",
       ],
@@ -75,7 +76,14 @@ describe("dhw mutation commands", () => {
     ).pipe(Effect.runPromise);
 
     expect(cancellations).toEqual([
-      { id: reservationId, input: { sendCancellationEmail: true } },
+      {
+        id: reservationId,
+        input: {
+          accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+          providerCredentialRemoved: true,
+          sendCancellationEmail: true,
+        },
+      },
     ]);
   });
 
@@ -257,6 +265,10 @@ const makeCommandLayer = ({
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
     cancelReservation,
+    getReservation: () =>
+      Effect.succeed({
+        accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
+      } as never),
     mutateDiscounts: (_accessToken, _requestId, mutation) =>
       Effect.sync(() => {
         mutations.push(mutation);

@@ -34,6 +34,8 @@ export class ReservationAdministrationError extends Data.TaggedError(
 
 interface IReservationAdministrationService {
   readonly cancel: (input: {
+    readonly accessGrantUpdatedAt: string | null;
+    readonly providerCredentialRemoved: boolean;
     readonly reservationId: WorkspaceReservationId;
     readonly sendCancellationEmail: boolean;
   }) => Effect.Effect<
@@ -113,7 +115,9 @@ export class ReservationAdministrationService extends Context.Service<
             }
             const claimed = yield* reservations
               .claimAdministrationCancellation({
+                accessGrantUpdatedAt: input.accessGrantUpdatedAt,
                 id: current.id,
+                providerCredentialRemoved: input.providerCredentialRemoved,
                 staleCancellingBefore: Temporal.Now.instant().subtract({
                   milliseconds: ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
                 }),
@@ -130,7 +134,7 @@ export class ReservationAdministrationService extends Context.Service<
               return yield* new ReservationAdministrationError({
                 code: "not_cancellable",
                 message:
-                  "The reservation changed while cancellation was starting. Refresh and try again.",
+                  "The reservation changed while cancellation was starting, or an active door PIN still needs removal. Refresh and try again.",
               });
             }
 

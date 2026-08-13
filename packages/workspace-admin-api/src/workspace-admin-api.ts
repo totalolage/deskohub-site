@@ -741,11 +741,14 @@ export const AdministrationReservationDetail = Schema.Struct({
     customerId: AdministrationDotyposCustomerId,
   }),
   canCancel: Schema.Boolean,
+  requiresProviderCredentialRemoval: Schema.Boolean,
 });
 export type AdministrationReservationDetail =
   typeof AdministrationReservationDetail.Type;
 
 export const AdministrationReservationCancellationInput = Schema.Struct({
+  accessGrantUpdatedAt: Schema.NullOr(Schema.String),
+  providerCredentialRemoved: Schema.Boolean,
   sendCancellationEmail: Schema.Boolean,
 }).annotate({
   parseOptions: { errors: "all", onExcessProperty: "error" },

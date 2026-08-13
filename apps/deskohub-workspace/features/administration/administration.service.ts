@@ -284,6 +284,7 @@ export type AdministrationTimelineItem = {
 
 export type AdministrationReservationDetail = {
   readonly canCancel: boolean;
+  readonly requiresProviderCredentialRemoval: boolean;
   readonly reservation: AdministrationReservationSummary;
   readonly booking: AdministrationBookingSummary | null;
   readonly lifecycle: ReturnType<typeof getAdministrationReservationLifecycle>;
@@ -1749,6 +1750,16 @@ export class AdministrationService extends Context.Service<
             customerId: row.dotyposCustomerId,
           },
           canCancel: canCancelReservation(row),
+          requiresProviderCredentialRemoval: Boolean(
+            accessRows[0] &&
+              ["issued", "uncertain", "provisioning"].includes(
+                accessRows[0].state
+              ) &&
+              Temporal.Instant.compare(
+                accessRows[0].endsAt,
+                Temporal.Now.instant()
+              ) > 0
+          ),
         } satisfies AdministrationReservationDetail;
       });
 
