@@ -120,6 +120,7 @@
         "@deskohub/email": "workspace:*",
         "@deskohub/google-calendar": "workspace:*",
         "@deskohub/i18n": "workspace:*",
+        "@deskohub/igloohome": "workspace:*",
         "@deskohub/nexi": "workspace:*",
         "@deskohub/next-effect": "workspace:*",
         "@deskohub/posthog": "workspace:*",
@@ -305,6 +306,16 @@
       "peerDependencies": {
         "next": "^16.3.0",
         "next-safe-action": "^8.0.7",
+      },
+    },
+    "packages/igloohome": {
+      "name": "@deskohub/igloohome",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "4.0.0-beta.85",
+      },
+      "devDependencies": {
+        "typescript": "^5",
       },
     },
     "packages/nexi": {
@@ -518,6 +529,8 @@
     "@deskohub/google-calendar": ["@deskohub/google-calendar@workspace:packages/google-calendar"],
 
     "@deskohub/i18n": ["@deskohub/i18n@workspace:packages/i18n"],
+
+    "@deskohub/igloohome": ["@deskohub/igloohome@workspace:packages/igloohome"],
 
     "@deskohub/nexi": ["@deskohub/nexi@workspace:packages/nexi"],
 
@@ -2842,6 +2855,8 @@
     "@deskohub/dotypos/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@deskohub/google-calendar/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@deskohub/igloohome/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@deskohub/nexi/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

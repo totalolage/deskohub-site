@@ -344,16 +344,43 @@ reservation-and-category idempotency keys, and an abandoned `processing` claim
 becomes retryable after one minute.
 
 The customer confirmation contains a protected reservation-access link and
-never contains the door PIN. The dedicated access page resolves the current PIN on every
-authorized request and returns it only while the reservation is paid, locally
-confirmed, live-confirmed in Dotypos, and inside `[reservedFrom - 30 minutes,
-reservedUntil + 30 minutes)`. Calculate this window from the Dotypos-projected
-instants for every reservation family. The grace period controls disclosure and
-does not extend booked use or imply that the current static PIN is revoked.
-Keep this boundary stateless; it does not require a new database field.
-The signed access capability is bound to the reservation and locale, not to a
-copied reservation interval; the live provider timing remains authoritative
-when a confirmed reservation is moved or extended.
+never contains the door PIN. The dedicated access page resolves the current PIN
+on every authorized request and returns it only while the reservation is paid,
+locally confirmed, live-confirmed in Dotypos, and inside
+`[reservedFrom - 30 minutes, reservedUntil + 30 minutes)`. Calculate this
+disclosure window from the Dotypos-projected instants for every reservation
+family. The signed access capability is bound to the reservation and locale,
+not to a copied reservation interval; live provider timing remains authoritative
+when a confirmed reservation is moved or extended. The grace period controls
+disclosure and does not extend booked use or the PIN's provider validity.
+
+### Reservation access issuance
+
+The first authorized access-page request in the disclosure window provisions an
+hourly Igloohome algoPIN. Later requests reuse that credential. For
+the installed Retrofit Lock (OE1) linked to a Keypad (EK1),
+`IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID` must be the EK1 device ID; Igloohome
+designates EK1 as the algoPIN-generation target.
+
+The `reservation_access_grants` ledger has one row per Workspace reservation and
+uses `pending`, `provisioning`, `issued`, `failed`, and `uncertain` states. The
+issued PIN is stored as short-lived non-PII retry state rather than an archival
+record. Never annotate, log, or return it except in the authorized access
+response; mark it as a sensitive database query parameter so SQL diagnostics
+cannot expose it.
+
+Provider 400, 401, 403, 404, and 415 responses are definitive rejections and
+may leave a retryable `failed` grant. Timeouts, transport failures, 5xx,
+undocumented statuses, malformed successes, and failures persisting a successful
+response are ambiguous. Record those as `uncertain` and require reconciliation;
+never automatically issue a second credential. Igloohome does not document an
+idempotency key or retrieval by `accessName`.
+
+The provider interval must use whole Prague hours, start in the current or a
+future hour, and span 1–672 elapsed hours. When a still-active meeting-room
+reservation is first opened after its start, use the current Prague hour
+through the original end. Preview uses a fixture credential and may never call
+live Igloohome; Production requires live mode.
 
 ## Checkout Session And Attempt HMACs
 

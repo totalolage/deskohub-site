@@ -1,0 +1,20 @@
+{
+  "name": "@deskohub/igloohome",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./backend/service.mock": "./src/backend/service.mock.ts"
+  },
+  "scripts": {
+    "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/igloohome-api.yaml --name IgloohomeClient --output ./src/generated/effect.gen.ts",
+    "typecheck": "bun run generate && tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.85"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

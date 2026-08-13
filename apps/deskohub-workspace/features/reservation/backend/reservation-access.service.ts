@@ -3,7 +3,7 @@ import { Clock, Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLive,
+  WorkspaceCheckoutAccessCodeServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation/access-code.service";
 import type { Locale } from "@/features/i18n";
 import { openReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
@@ -157,7 +157,7 @@ export class ReservationAccessService extends Context.Service<
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(DotyposServiceLive),
-    Layer.provide(WorkspaceCheckoutAccessCodeServiceLive)
+    Layer.provide(WorkspaceCheckoutAccessCodeServiceLiveWithDependencies)
   );
 }
 

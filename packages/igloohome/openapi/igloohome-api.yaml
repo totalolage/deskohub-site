@@ -1,0 +1,127 @@
+openapi: 3.1.0
+info:
+  title: igloohome API
+  version: 2.0.0
+  description: Checked-in contract for the reservation credential operations used by Deskohub.
+servers:
+  - url: https://api.igloodeveloper.co/igloohome
+security:
+  - OAuth: [igloohomeapi/algopin-hourly]
+paths:
+  /devices/{deviceId}/algopin/hourly:
+    post:
+      operationId: createHourlyAlgoPin
+      summary: Create a duration hourly AlgoPIN
+      description: Supports a duration from 1 through 672 elapsed hours at whole-hour resolution.
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          description: Bluetooth ID of the algoPIN target device; for an OE1 Retrofit linked to an EK1 Keypad, use the EK1 ID.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHourlyAlgoPinRequest"
+      responses:
+        "200":
+          description: AlgoPIN created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAlgoPinResponse"
+        "400":
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid or expired access token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Missing igloohomeapi/algopin-hourly scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Device not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: Unsupported media type.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Igloohome internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    OAuth:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.igloohome.co/oauth2/token
+          scopes:
+            igloohomeapi/algopin-hourly: Generate hourly AlgoPINs.
+  schemas:
+    CreateHourlyAlgoPinRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - variance
+        - startDate
+        - endDate
+        - accessName
+      properties:
+        variance:
+          type: integer
+          enum: [1, 2, 3]
+        startDate:
+          type: string
+          format: date-time
+          description: Inclusive whole-hour start with the lock's UTC offset.
+        endDate:
+          type: string
+          format: date-time
+          description: Exclusive whole-hour end, no more than 672 elapsed hours after start.
+        accessName:
+          type: string
+          minLength: 1
+          maxLength: 60
+    CreateAlgoPinResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - pin
+        - pinId
+      properties:
+        pin:
+          type: string
+          pattern: "^[0-9]{7,9}$"
+        pinId:
+          type: string
+          minLength: 1
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+        error:
+          type: string

@@ -125,6 +125,13 @@ export const relations = defineRelations(schema, (r) => ({
       optional: false,
     }),
   },
+  reservationAccessGrants: {
+    workspaceReservation: r.one.workspaceReservations({
+      from: r.reservationAccessGrants.workspaceReservationId,
+      to: r.workspaceReservations.id,
+      optional: false,
+    }),
+  },
   webhookEvents: {
     paymentAttempt: r.one.paymentAttempts({
       from: r.webhookEvents.paymentAttemptId,

@@ -34,7 +34,7 @@ import {
   createWorkspaceDotyposReservation,
   splitCustomerName,
   WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLive,
+  WorkspaceCheckoutAccessCodeServiceLiveWithDependencies,
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
 import {
@@ -1005,7 +1005,7 @@ const PreparePayStateLive = Layer.mergeAll(
     ),
     Layer.provide(DotyposServiceLive)
   ),
-  WorkspaceCheckoutAccessCodeServiceLive,
+  WorkspaceCheckoutAccessCodeServiceLiveWithDependencies,
   ReservationHoldCleanupScheduleService.Live,
   PostHogEventServiceLive,
   DotyposServiceLive,

@@ -31,6 +31,7 @@ type MutableLogAnnotations = {
 const sensitiveLogKeyFragments = [
   "password",
   "passwd",
+  "pin",
   "pwd",
   "token",
   "access token",

@@ -39,6 +39,8 @@ Workspace has additional database and E2E tasks. Read the Workspace operations o
 
 Each application owns its `.env.example`. Copy it to the app-local ignored environment file and keep developer-only values in app-local ignored overrides.
 
+Keep Vercel-synced values in the matching ignored `.env.<environment>.local` file rather than the generic `.env.local`.
+
 Never commit real environment files or print credential values. Read the Workspace operations skill before using production integration access.
 
 ## Generated assets

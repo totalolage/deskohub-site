@@ -32,6 +32,7 @@ process.env.GOOGLE_CALENDAR_SALES_ID ??= "sales-calendar";
 process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL ??= "calendar@example.test";
 process.env.GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID ??=
   "workspace-limitations-calendar";
+process.env.IGLOOHOME_ACCESS_MODE ??= "fixture";
 process.env.NEXI_API_KEY ??= "nexi";
 process.env.NEXI_API_ORIGIN ??= "https://xpaysandbox.nexigroup.com";
 process.env.NEXI_CHECKOUT_CURRENCY_OVERRIDE ??= "EUR";
