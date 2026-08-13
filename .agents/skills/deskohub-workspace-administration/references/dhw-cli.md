@@ -54,7 +54,7 @@ dhw reservations list
 dhw reservations list --date 2026-08-10 --status complete --page 2
 dhw reservations get <reservation-id>
 dhw reservations find <reservation-or-payment-id>
-dhw reservations cancel <reservation-id> --send-cancellation-email
+dhw reservations cancel <reservation-id> --confirm-access-credential-removed --send-cancellation-email
 dhw bookings list --date 2026-08-10
 dhw bookings get <booking-id>
 dhw orders list --from 2026-08-01 --to 2026-08-10
@@ -133,7 +133,7 @@ customer's discount group, or add a code-audience member ask for confirmation.
 Pass `--yes` to approve explicitly; non-interactive and `--json` invocations
 require it.
 
-Reservation cancellation preserves successful settlement facts, marks a paid Nexi attempt as requiring a refund, and does not issue the refund automatically. Zero-total internal payments remain refund-free. Add `--send-cancellation-email` to send the localized customer message after cancellation succeeds; email failure is reported separately from the completed cancellation.
+Reservation cancellation preserves successful settlement facts, marks a paid Nexi attempt as requiring a refund, and does not issue the refund automatically. Zero-total internal payments remain refund-free. If the reservation has a live or ambiguous AlgoPIN, remove it at the lock first and pass `--confirm-access-credential-removed`; Igloohome cannot revoke it remotely. Add `--send-cancellation-email` to send the localized customer message after cancellation succeeds; email failure is reported separately from the completed cancellation.
 
 Each discount mutation carries a client-generated request identifier. The
 server persists the request and result per CLI session, so an ambiguous

@@ -152,9 +152,15 @@ describe("administration contract", () => {
     ).toEqual({ page: 2, status: "complete" });
     expect(
       Schema.decodeUnknownSync(AdministrationReservationCancellationInput)({
+        accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+        providerCredentialRemoved: true,
         sendCancellationEmail: true,
       })
-    ).toEqual({ sendCancellationEmail: true });
+    ).toEqual({
+      accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+      providerCredentialRemoved: true,
+      sendCancellationEmail: true,
+    });
   });
 
   test("exposes refund work without changing successful payment state", () => {

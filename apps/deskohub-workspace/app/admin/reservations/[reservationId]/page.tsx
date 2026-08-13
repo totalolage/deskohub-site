@@ -72,7 +72,11 @@ export async function ReservationAdministrationDetail({
                   </span>
                 )}
                 <ReservationCancellation
+                  accessGrantUpdatedAt={detail.accessGrant?.updatedAt ?? null}
                   canCancel={detail.canCancel}
+                  requiresProviderCredentialRemoval={
+                    detail.requiresProviderCredentialRemoval
+                  }
                   reservationId={reservation.id}
                 />
               </div>

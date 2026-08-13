@@ -132,4 +132,23 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain("workspaceReservations.paymentState");
     expect(section).toContain("<> 'pending'");
   });
+
+  test("does not cancel while a live access credential remains", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "claimAdministrationCancellation: Effect.fn(",
+      'markCancelled: Effect.fn("workspaceReservations.markCancelled")'
+    );
+
+    expect(section).toContain("db.transaction");
+    expect(section).toContain("reservationAccessGrants");
+    expect(section).toContain("input.providerCredentialRemoved");
+    expect(section).toContain("input.accessGrantUpdatedAt");
+    expect(section).toContain('state: "expired"');
+    expect(section).toContain("accessCode: null");
+    expect(section).toContain(
+      "reservationAccessProvisioningStaleAfterMilliseconds"
+    );
+  });
 });

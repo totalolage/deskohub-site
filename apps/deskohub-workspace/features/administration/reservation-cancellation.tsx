@@ -21,14 +21,21 @@ import { AdministrationAlert } from "./notice";
 
 export function ReservationCancellation({
   canCancel,
+  accessGrantUpdatedAt,
+  requiresProviderCredentialRemoval,
   reservationId,
 }: {
   readonly canCancel: boolean;
+  readonly accessGrantUpdatedAt: string | null;
+  readonly requiresProviderCredentialRemoval: boolean;
   readonly reservationId: AdministrationWorkspaceReservationIdType;
 }) {
+  const accessCheckboxId = useId();
   const checkboxId = useId();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [providerCredentialRemoved, setProviderCredentialRemoved] =
+    useState(false);
   const [sendCancellationEmail, setSendCancellationEmail] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,6 +94,23 @@ export function ReservationCancellation({
                 refund is issued automatically.
               </DialogDescription>
             </DialogHeader>
+            {requiresProviderCredentialRemoval && (
+              <label
+                className="flex cursor-pointer items-start gap-3 rounded-xl border border-burned-orange/25 bg-burned-orange/5 p-4"
+                htmlFor={accessCheckboxId}
+              >
+                <Checkbox
+                  checked={providerCredentialRemoved}
+                  id={accessCheckboxId}
+                  onCheckedChange={(checked) =>
+                    setProviderCredentialRemoved(Boolean(checked))
+                  }
+                />
+                <span className="text-sm leading-6 text-navy-blue/70">
+                  I removed the active door PIN from the lock in Igloohome
+                </span>
+              </label>
+            )}
             <label
               className="flex cursor-pointer items-start gap-3 rounded-xl border border-navy-blue/10 bg-navy-blue/2.5 p-4"
               htmlFor={checkboxId}
@@ -119,10 +143,16 @@ export function ReservationCancellation({
               </DialogClose>
               <Button
                 className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
-                disabled={isExecuting}
+                disabled={
+                  isExecuting ||
+                  (requiresProviderCredentialRemoval &&
+                    !providerCredentialRemoved)
+                }
                 onClick={() => {
                   setError(null);
                   execute({
+                    accessGrantUpdatedAt,
+                    providerCredentialRemoved,
                     reservationId,
                     sendCancellationEmail,
                   });

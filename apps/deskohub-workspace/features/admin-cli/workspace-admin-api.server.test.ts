@@ -286,6 +286,7 @@ describe("Workspace Admin API", () => {
             ? {
                 reservation,
                 canCancel: true,
+                requiresProviderCredentialRemoval: false,
                 booking,
                 lifecycle: {
                   currentStage: "complete" as const,
@@ -439,7 +440,11 @@ describe("Workspace Admin API", () => {
       });
       const cancellation = yield* client.administration.cancelReservation({
         params: { reservationId: reservation.id },
-        payload: { sendCancellationEmail: true },
+        payload: {
+          accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+          providerCredentialRemoved: true,
+          sendCancellationEmail: true,
+        },
       });
       const reservationLookup = yield* client.administration.findReservation({
         query: { identifier: "payment-1" },
@@ -533,7 +538,12 @@ describe("Workspace Admin API", () => {
       email: "sent",
     });
     expect(reservationCancellations).toEqual([
-      { reservationId: reservation.id, sendCancellationEmail: true },
+      {
+        accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+        providerCredentialRemoved: true,
+        reservationId: reservation.id,
+        sendCancellationEmail: true,
+      },
     ]);
     expect(result.reservationLookup.reservationId).toBe(reservation.id);
     expect(result.bookings.page).toBe(4);
