@@ -586,6 +586,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   )
                 )
               ),
+              sql`${workspaceReservations.paymentState} <> 'pending'`,
               sql`${workspaceReservations.fulfillmentState} <> 'processing'`
             )
           )

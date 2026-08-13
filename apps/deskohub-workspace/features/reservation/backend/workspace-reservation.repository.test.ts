@@ -120,4 +120,16 @@ describe("WorkspaceReservationRepository", () => {
       "eq(workspaceReservations.updatedAt, input.claimedAt)"
     );
   });
+
+  test("does not claim an admin cancellation while payment is pending", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "claimAdministrationCancellation: Effect.fn(",
+      'markCancelled: Effect.fn("workspaceReservations.markCancelled")'
+    );
+
+    expect(section).toContain("workspaceReservations.paymentState");
+    expect(section).toContain("<> 'pending'");
+  });
 });

@@ -31,7 +31,7 @@ Workspace access codes, payment security values, payment redirect addresses, fre
 
 A reservation presents an actual-state journey through Started, Held, Paid, and Complete, or an exact cancellation condition such as Hold expired, Cancelling, Cancellation issue, or Cancelled.
 
-Operator cancellation is available for a held, confirmed, or retryable failed-cancellation reservation while fulfillment is not actively processing. It cancels the current Dotypos booking and records the local reservation as cancelled while preserving payment, fulfillment, discount, legal, and accounting history. Customer email delivery happens only after cancellation succeeds; an email failure is reported separately and never misrepresents the booking as active.
+Operator cancellation is available for a held, confirmed, or retryable failed-cancellation reservation while payment is not pending and fulfillment is not actively processing. It cancels the current Dotypos booking and records the local reservation as cancelled while preserving payment, fulfillment, discount, legal, and accounting history. Customer email delivery happens only after cancellation succeeds; an email failure is reported separately and never misrepresents the booking as active.
 
 Payment failure alone does not make a still-held reservation cancelled. A paid reservation with incomplete or failed fulfillment is not shown as complete. If the reservation system reports cancellation while Workspace is stale, administration may show a separate attention warning without rewriting Workspace history or claiming that recovery completed.
 

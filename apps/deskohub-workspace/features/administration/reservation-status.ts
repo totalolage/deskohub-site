@@ -12,6 +12,7 @@ export const canCancelReservation = (
     WorkspaceReservation,
     | "dotyposReservationId"
     | "fulfillmentState"
+    | "paymentState"
     | "reservationState"
     | "updatedAt"
   >,
@@ -19,6 +20,7 @@ export const canCancelReservation = (
 ) =>
   Boolean(reservation.dotyposReservationId?.trim()) &&
   reservation.fulfillmentState !== "processing" &&
+  reservation.paymentState !== "pending" &&
   (["held", "hold_expired", "confirmed", "cancellation_failed"].includes(
     reservation.reservationState
   ) ||

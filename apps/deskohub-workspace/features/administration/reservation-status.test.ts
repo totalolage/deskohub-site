@@ -29,6 +29,7 @@ describe("administration reservation status", () => {
         {
           dotyposReservationId: "dotypos-reservation",
           fulfillmentState: "processing",
+          paymentState: "paid",
           reservationState: "confirmed",
           updatedAt: now,
         },
@@ -40,6 +41,7 @@ describe("administration reservation status", () => {
         {
           dotyposReservationId: "dotypos-reservation",
           fulfillmentState: "fulfilled",
+          paymentState: "paid",
           reservationState: "cancelling",
           updatedAt: now,
         },
@@ -51,12 +53,25 @@ describe("administration reservation status", () => {
         {
           dotyposReservationId: "dotypos-reservation",
           fulfillmentState: "fulfilled",
+          paymentState: "paid",
           reservationState: "cancelling",
           updatedAt: now.subtract({ minutes: 2 }),
         },
         now
       )
     ).toBe(true);
+    expect(
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "not_started",
+          paymentState: "pending",
+          reservationState: "held",
+          updatedAt: now,
+        },
+        now
+      )
+    ).toBe(false);
   });
 
   test.each([
