@@ -197,6 +197,9 @@ describe("CheckoutPayPage payment navigation", () => {
     );
 
     expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    expect(
+      view.getByRole("checkbox", { name: /statutory withdrawal period/ })
+    ).toBeDefined();
     fireEvent.click(view.getByRole("checkbox"));
     fireEvent.click(
       view.getByRole("button", {
@@ -271,70 +274,14 @@ describe("CheckoutPayPage payment navigation", () => {
     expect(
       view.queryByRole("checkbox", { name: /statutory withdrawal period/ })
     ).toBeNull();
-  });
-
-  test("adds the early-performance request to the unchecked legal choice when it becomes applicable", async () => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date("2026-08-12T21:59:59Z"));
-    const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildCoworkReservationQuote({
-      entryTier: "basic",
-      coffee: false,
-    });
-    const view = render(
-      <CheckoutPayPage
-        earlyPerformanceRequestRequired={false}
-        earlyPerformanceRequestRequiredAt="2026-08-12T22:00:00Z"
-        locale="en-US"
-        payStateToken="signed-summary"
-        summary={quote.summary}
-        variant="pay"
-      />
-    );
-
-    const checkbox = view.getByRole("checkbox") as HTMLButtonElement;
-    fireEvent.click(checkbox);
-    expect(checkbox.getAttribute("data-state")).toBe("checked");
     expect(
-      view.queryByRole("checkbox", { name: /statutory withdrawal period/ })
-    ).toBeNull();
-    act(() => jest.advanceTimersByTime(1000));
-    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+      view
+        .getByRole("link", { name: "General Terms and Conditions" })
+        .getAttribute("href")
+    ).toBe("/en-US/terms-and-conditions");
     expect(
-      view.getByRole("checkbox", { name: /statutory withdrawal period/ })
-    ).toBe(checkbox);
-    expect(checkbox.getAttribute("data-state")).toBe("unchecked");
-    view.unmount();
-  });
-
-  test("schedules bounded checks for a distant early-performance boundary", async () => {
-    const now = Date.now();
-    const setTimeoutSpy = spyOn(globalThis, "setTimeout");
-    const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildCoworkReservationQuote({
-      entryTier: "basic",
-      coffee: false,
-    });
-    const view = render(
-      <CheckoutPayPage
-        earlyPerformanceRequestRequired={false}
-        earlyPerformanceRequestRequiredAt={new Date(
-          now + 50 * 24 * 60 * 60 * 1000
-        ).toISOString()}
-        locale="en-US"
-        payStateToken="signed-summary"
-        summary={quote.summary}
-        variant="pay"
-      />
-    );
-
-    expect(view.getByRole("checkbox")).toBeDefined();
-    expect(
-      setTimeoutSpy.mock.calls.some(
-        ([, delay]) => delay === 24 * 60 * 60 * 1000
-      )
-    ).toBe(true);
-    view.unmount();
+      view.getByRole("link", { name: "Operating Rules" }).getAttribute("href")
+    ).toBe("/en-US/operating-rules");
   });
 
   test("closes the pre-opened payment tab when checkout unmounts", async () => {

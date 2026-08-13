@@ -1,5 +1,6 @@
 "use client";
 
+import Interpolate from "@doist/react-interpolate";
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -36,7 +37,6 @@ type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly discountCodeForm?: ReactNode;
   readonly earlyPerformanceRequestRequired?: boolean;
-  readonly earlyPerformanceRequestRequiredAt?: string;
   readonly freshPayUrl?: string;
   readonly locale: Locale;
   readonly payStateToken?: string;
@@ -46,13 +46,11 @@ type CheckoutPayPageProps = {
 };
 
 type CheckoutPayActionVariant = "pay" | "retry";
-const CONSENT_CUTOFF_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function CheckoutPayPage({
   changedKeys,
   discountCodeForm,
-  earlyPerformanceRequestRequired: initiallyEarlyPerformanceRequired = true,
-  earlyPerformanceRequestRequiredAt,
+  earlyPerformanceRequestRequired = true,
   freshPayUrl,
   locale,
   payStateToken,
@@ -63,8 +61,6 @@ export function CheckoutPayPage({
   const router = useRouter();
   const paymentWindowRef = useRef<Window | null>(null);
   const [legalConsent, setLegalConsent] = useState(false);
-  const [earlyPerformanceRequestRequired, setEarlyPerformanceRequestRequired] =
-    useState(initiallyEarlyPerformanceRequired);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const closePaymentWindow = () => {
     paymentWindowRef.current?.close();
@@ -77,49 +73,6 @@ export function CheckoutPayPage({
     },
     []
   );
-  useEffect(() => {
-    if (earlyPerformanceRequestRequired) return;
-    if (initiallyEarlyPerformanceRequired) {
-      const timeoutId = globalThis.setTimeout(() => {
-        setLegalConsent(false);
-        setEarlyPerformanceRequestRequired(true);
-      }, 0);
-      return () => globalThis.clearTimeout(timeoutId);
-    }
-    if (!earlyPerformanceRequestRequiredAt) return;
-
-    const requiredAtMs = Date.parse(earlyPerformanceRequestRequiredAt);
-    if (!Number.isFinite(requiredAtMs)) return;
-
-    let timeoutId: ReturnType<typeof globalThis.setTimeout> | undefined;
-    let cancelled = false;
-    const scheduleCheck = () => {
-      if (cancelled) return;
-      const remainingMs = requiredAtMs - Date.now();
-      const isFinalCheck = remainingMs <= CONSENT_CUTOFF_CHECK_INTERVAL_MS;
-      timeoutId = globalThis.setTimeout(
-        () => {
-          if (cancelled) return;
-          if (isFinalCheck) {
-            setLegalConsent(false);
-            setEarlyPerformanceRequestRequired(true);
-            return;
-          }
-          scheduleCheck();
-        },
-        Math.max(0, Math.min(remainingMs, CONSENT_CUTOFF_CHECK_INTERVAL_MS))
-      );
-    };
-    scheduleCheck();
-    return () => {
-      cancelled = true;
-      if (timeoutId !== undefined) globalThis.clearTimeout(timeoutId);
-    };
-  }, [
-    initiallyEarlyPerformanceRequired,
-    earlyPerformanceRequestRequired,
-    earlyPerformanceRequestRequiredAt,
-  ]);
   const {
     execute,
     isExecuting,
@@ -397,25 +350,27 @@ function CheckoutPayConsent({
         }
       />
       <span className="text-sm leading-6 text-navy-blue/66">
-        {
-          {
-            pay: m.checkoutPayConsentBefore({}, { locale }),
-            retry: m.checkoutPaymentRetryConsentBefore({}, { locale }),
-          }[variant]
-        }{" "}
-        <LegalLink
-          href={`/${locale}/terms-and-conditions`}
-          label={m.reservationLegalConsentTermsLink({}, { locale })}
+        <Interpolate
+          string={
+            {
+              pay: m.checkoutPayConsent({}, { locale }),
+              retry: m.checkoutPaymentRetryConsent({}, { locale }),
+            }[variant]
+          }
+          mapping={{
+            terms: (label) => (
+              <LegalLink
+                href={`/${locale}/terms-and-conditions`}
+                label={label}
+              />
+            ),
+            operatingRules: (label) => (
+              <LegalLink href={`/${locale}/operating-rules`} label={label} />
+            ),
+            earlyPerformance: (text) =>
+              showEarlyPerformanceRequest ? text : null,
+          }}
         />
-        {", "}
-        <LegalLink
-          href={`/${locale}/operating-rules`}
-          label={m.reservationLegalConsentOperatingRulesLink({}, { locale })}
-        />
-        {"."}
-        {showEarlyPerformanceRequest && (
-          <> {m.checkoutPayEarlyPerformanceConsent({}, { locale })}</>
-        )}
       </span>
     </label>
   );
@@ -478,7 +433,7 @@ function LegalLink({
   label,
 }: {
   readonly href: string;
-  readonly label: string;
+  readonly label: ReactNode;
 }) {
   return (
     <Link

@@ -1,5 +1,6 @@
 import { Match } from "effect";
 import { KeyRound } from "lucide-react";
+import Link from "next/link";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
@@ -19,7 +20,7 @@ export function ReservationAccessPage({
   const copy = Match.value(access).pipe(
     Match.discriminatorsExhaustive("state")({
       upcoming: ({ availableAt }) => ({
-        title: m.reservationAccessUpcomingTitle({}, { locale }),
+        title: m.reservationAccessTitle({}, { locale }),
         lead: m.reservationAccessUpcomingLead(
           {
             availableAt: formatReservationDisplayDateTime(availableAt, locale),
@@ -27,8 +28,8 @@ export function ReservationAccessPage({
           { locale }
         ),
       }),
-      available: ({ code, unavailableAt }) => ({
-        title: m.reservationAccessAvailableTitle({}, { locale }),
+      available: ({ unavailableAt }) => ({
+        title: m.reservationAccessTitle({}, { locale }),
         lead: m.reservationAccessAvailableLead(
           {
             unavailableAt: formatReservationDisplayDateTime(
@@ -38,11 +39,11 @@ export function ReservationAccessPage({
           },
           { locale }
         ),
-        code,
       }),
       ended: () => ({
         title: m.reservationAccessEndedTitle({}, { locale }),
         lead: m.reservationAccessEndedLead({}, { locale }),
+        contactLink: m.reservationAccessEndedContactLink({}, { locale }),
       }),
       unavailable: () => ({
         title: m.reservationAccessUnavailableTitle({}, { locale }),
@@ -57,41 +58,75 @@ export function ReservationAccessPage({
         className="overflow-hidden rounded-[2.25rem] border border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm"
         data-reservation-access=""
       >
-        <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-start sm:p-10">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-aquamarine-green/14 text-aquamarine-ink ring-8 ring-aquamarine-green/8">
-            <KeyRound className="h-9 w-9" aria-hidden="true" />
+        <div className="p-6 sm:p-10">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-full bg-aquamarine-green/14 text-aquamarine-ink ring-8 ring-aquamarine-green/8 sm:h-16 sm:w-16">
+              <KeyRound className="h-8 w-8 sm:h-9 sm:w-9" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-balance text-[1.75rem] leading-none sm:text-5xl">
+                {copy.title}
+              </h1>
+              {access.state !== "upcoming" && access.state !== "available" && (
+                <p className="mt-5 text-lg leading-8 text-navy-blue/70">
+                  {copy.lead}
+                  {"contactLink" in copy && (
+                    <>
+                      {" "}
+                      <Link
+                        className="underline decoration-navy-blue/30 underline-offset-4 transition-colors hover:text-burned-orange hover:decoration-burned-orange focus-visible:text-burned-orange focus-visible:decoration-burned-orange"
+                        href={`/${locale}/contact`}
+                      >
+                        {copy.contactLink}
+                      </Link>
+                      {"."}
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-balance text-4xl leading-none sm:text-5xl">
-              {copy.title}
-            </h1>
-            <p className="mt-5 text-lg leading-8 text-navy-blue/70">
-              {copy.lead}
-            </p>
-            {access.state === "upcoming" && (
+
+          {access.state === "upcoming" && (
+            <>
+              <noscript>
+                <p className="mt-6 text-center text-lg leading-8 text-navy-blue/70">
+                  {copy.lead}
+                </p>
+              </noscript>
               <ReservationAccessCountdown
                 availableAt={access.availableAt.toString()}
                 locale={locale}
               />
-            )}
-          </div>
-        </div>
+            </>
+          )}
 
-        {"code" in copy && copy.code && (
-          <div className="border-t border-navy-blue/10 bg-navy-blue px-6 py-8 text-center text-white sm:px-10 sm:py-10">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-aquamarine-green">
-              {m.reservationAccessPinLabel({}, { locale })}
-            </p>
-            <output
-              className="mt-3 block font-mono text-5xl font-bold tracking-[0.16em] text-white sm:text-6xl"
-              data-ph-mask=""
-              data-ph-no-capture=""
-              data-reservation-access-code=""
-            >
-              {copy.code}
-            </output>
-          </div>
-        )}
+          {access.state === "available" && (
+            <div className="mt-10 sm:mt-12">
+              <output
+                aria-label={Array.from(access.code).join(" ")}
+                className="flex flex-wrap justify-center gap-[clamp(0.25rem,1.5vw,0.75rem)]"
+                data-ph-mask=""
+                data-ph-no-capture=""
+                data-reservation-access-code=""
+              >
+                {Array.from(access.code).map((character, index) => (
+                  <span
+                    aria-hidden="true"
+                    className="grid h-[clamp(3.75rem,16vw,5.75rem)] w-[clamp(1.5rem,7.5vw,4rem)] place-items-center rounded-xl bg-navy-blue/5 font-mono text-[clamp(1.35rem,6vw,2.6rem)] font-medium tabular-nums text-navy-blue"
+                    key={`${index}-${character}`}
+                  >
+                    {character}
+                  </span>
+                ))}
+              </output>
+
+              <p className="mt-10 text-center font-mono text-sm text-navy-blue/60 sm:mt-14">
+                {copy.lead}
+              </p>
+            </div>
+          )}
+        </div>
       </section>
     </CheckoutFlowLayout>
   );

@@ -14,7 +14,15 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { countdownFill } from "./reservation-access-countdown";
 import { ReservationAccessPage } from "./reservation-access-page";
+
+test("maps remaining duration to countdown fill", () => {
+  expect(countdownFill(-1)).toBe(0);
+  expect(countdownFill(0)).toBe(0);
+  expect(countdownFill(60 * 60 * 1000)).toBeCloseTo(0.5);
+  expect(countdownFill(Number.MAX_VALUE)).toBe(1);
+});
 
 describe("ReservationAccessPage", () => {
   beforeAll(() => {
@@ -35,18 +43,27 @@ describe("ReservationAccessPage", () => {
       <ReservationAccessPage
         access={{
           state: "available",
-          code: "SYNTHETIC",
+          code: "2468",
           unavailableAt: Temporal.Instant.from("2026-06-20T11:30:00Z"),
         }}
         locale="en-US"
       />
     );
 
-    const code = view.getByText("SYNTHETIC");
+    const code = view.container.querySelector("[data-reservation-access-code]");
+    if (!code) throw new Error("Access code output missing");
     expect(code.getAttribute("data-ph-mask")).toBe("");
     expect(code.getAttribute("data-ph-no-capture")).toBe("");
     expect(code.getAttribute("data-reservation-access-code")).toBe("");
-    expect(view.getByText("Your current access PIN")).toBeDefined();
+    expect(code.getAttribute("aria-label")).toBe("2 4 6 8");
+    expect(Array.from(code.children, (child) => child.textContent)).toEqual([
+      "2",
+      "4",
+      "6",
+      "8",
+    ]);
+    expect(view.getByText("Your access PIN")).toBeDefined();
+    expect(view.getByText(/Available until/)).toBeDefined();
     expect(view.container.querySelector("[data-reservation-access]")).toBe(
       code.closest("[data-reservation-access]")
     );
@@ -67,13 +84,18 @@ describe("ReservationAccessPage", () => {
       />
     );
 
-    expect(view.getByText("Your access PIN will appear here")).toBeDefined();
-    expect(view.getByRole("timer").textContent).toBe(
+    expect(view.getByText("Your access PIN")).toBeDefined();
+    expect(view.getByRole("timer").textContent).toBe("available in 00:01:05");
+    expect(view.getByRole("timer").getAttribute("aria-label")).toBe(
       "Access code available in 1 minute and 5 seconds"
     );
+    expect(
+      view.getByRole("timer").querySelector("svg[aria-hidden='true']")
+    ).not.toBeNull();
 
     act(() => jest.advanceTimersByTime(1000));
-    expect(view.getByRole("timer").textContent).toBe(
+    expect(view.getByRole("timer").textContent).toBe("available in 00:01:04");
+    expect(view.getByRole("timer").getAttribute("aria-label")).toBe(
       "Access code available in 1 minute and 4 seconds"
     );
 
@@ -84,12 +106,18 @@ describe("ReservationAccessPage", () => {
     ).toBeNull();
   });
 
-  test("explains when the PIN display window has ended", () => {
+  test("shows a farewell and contact link after the reservation", () => {
     const view = render(
       <ReservationAccessPage access={{ state: "ended" }} locale="en-US" />
     );
 
-    expect(view.getByText("The PIN display window has ended")).toBeDefined();
+    expect(
+      view.getByText("We're looking forward to seeing you again!")
+    ).toBeDefined();
+    expect(
+      view.getByRole("link", { name: "contact us" }).getAttribute("href")
+    ).toBe("/en-US/contact");
+    expect(view.queryByText(/PIN display window/)).toBeNull();
     expect(
       view.container.querySelector("[data-reservation-access-code]")
     ).toBeNull();

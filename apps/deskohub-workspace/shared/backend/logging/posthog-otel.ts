@@ -19,12 +19,11 @@ type PostHogLoggerProviderOptions = {
 type PostHogLogsFlushProvider = Pick<LoggerProvider, "forceFlush">;
 
 type PostHogLogsFlushOptions = {
-  readonly provider?: PostHogLogsFlushProvider;
+  readonly provider: PostHogLogsFlushProvider | undefined;
   readonly timeoutMs?: number;
 };
 
 const postHogLogsFlushTimeoutMs = 2_000;
-let registeredPostHogLoggerProvider: LoggerProvider | undefined;
 
 export function getPostHogLogsEndpoint(posthogHost = DEFAULT_POSTHOG_HOST) {
   return new URL(POSTHOG_LOGS_PATH, posthogHost).toString();
@@ -64,18 +63,8 @@ export function createPostHogLoggerProvider({
   });
 }
 
-export function registerPostHogLoggerProvider(
-  provider: LoggerProvider | undefined
-) {
-  registeredPostHogLoggerProvider = provider;
-}
-
-export function getRegisteredPostHogLoggerProvider() {
-  return registeredPostHogLoggerProvider;
-}
-
-export async function flushPostHogLogs(options: PostHogLogsFlushOptions = {}) {
-  const provider = options.provider ?? registeredPostHogLoggerProvider;
+export async function flushPostHogLogs(options: PostHogLogsFlushOptions) {
+  const provider = options.provider;
   if (!provider) return;
 
   const timeoutMs = options.timeoutMs ?? postHogLogsFlushTimeoutMs;

@@ -76,14 +76,30 @@ describe("ReservationTypeInput", () => {
     expect(oneHour.name).toBe("duration");
     expect(inputRef).toHaveBeenCalled();
 
-    fireEvent.click(fourHours);
+    fireEvent.click(
+      view.container.querySelector(
+        '[data-reservation-type-title="hour:4"]'
+      ) as HTMLElement
+    );
     expect(onChange).toHaveBeenCalledWith("hour:4");
+
+    fireEvent.click(
+      view.container.querySelector(
+        '[data-reservation-type-price="hour:4"]'
+      ) as HTMLElement
+    );
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith("hour:4");
 
     fireEvent.blur(fourHours);
     expect(onBlur).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(oneDay);
-    expect(onChange).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      view.container.querySelector(
+        '[data-reservation-type-title="day:1"]'
+      ) as HTMLElement
+    );
+    expect(onChange).toHaveBeenCalledTimes(2);
     expect(oneDay.disabled).toBe(true);
     expect(
       view.container.querySelector('[data-reservation-type-option="day:1"]')

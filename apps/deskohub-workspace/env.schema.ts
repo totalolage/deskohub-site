@@ -97,6 +97,9 @@ export const workspaceServerEnvSchema = Schema.Struct({
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
   ),
+  RESERVATION_ACCESS_TOKEN_SECRET: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isMinLength(32)))
+  ),
   CRON_SECRET: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
   NEXI_API_KEY: nonEmptyStringSchema,
   NEXI_API_ORIGIN: urlEnvSchema,

@@ -32,7 +32,7 @@ const getPreviewAccess = (
     })),
     Match.when("available", () => ({
       state: "available" as const,
-      code: "SYNTHETIC",
+      code: "24681357",
       unavailableAt: now.add({ hours: 5 }),
     })),
     Match.when("ended", () => ({ state: "ended" as const })),

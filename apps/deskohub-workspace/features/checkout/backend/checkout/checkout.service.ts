@@ -307,8 +307,7 @@ const getCheckoutLegalEvidence = (input: {
       document: documents.termsAndConditions,
       acknowledgements: input.earlyPerformanceRequested
         ? {
-            performanceBeforeWithdrawalPeriodEndRequested: true,
-            withdrawalRightLossAfterFullPerformanceAcknowledged: true,
+            earlyPerformanceConsent: true,
           }
         : undefined,
     },
