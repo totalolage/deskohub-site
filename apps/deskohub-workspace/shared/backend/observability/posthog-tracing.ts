@@ -38,9 +38,9 @@ export function createPostHogTracerProvider({
     resource: resourceFromAttributes({
       "deployment.environment.name": deploymentEnvironment,
       ...workspaceServiceResourceAttributes,
-      ...(serviceName ? { "service.name": serviceName } : {}),
-      ...(serviceNamespace ? { "service.namespace": serviceNamespace } : {}),
-      ...(serviceVersion ? { "service.version": serviceVersion } : {}),
+      "service.name": serviceName,
+      "service.namespace": serviceNamespace,
+      "service.version": serviceVersion,
     }),
     spanProcessors: [
       new BatchSpanProcessor(

@@ -37,9 +37,7 @@ const paymentProperties = (
   reservation_id: attempt.workspaceReservationId,
   payment_attempt_id: attempt.id,
   provider: attempt.provider,
-  ...(attempt.providerOrderId
-    ? { provider_order_id: attempt.providerOrderId }
-    : {}),
+  provider_order_id: attempt.providerOrderId ?? undefined,
 });
 
 const captureLifecycleEvent = (input: {
@@ -73,9 +71,8 @@ export const captureReservationStarted = (input: {
     id: input.reservation.id,
     properties: {
       ...reservationProperties(input.reservation),
-      ...(input.reservation.dotyposReservationId
-        ? { dotypos_reservation_id: input.reservation.dotyposReservationId }
-        : {}),
+      dotypos_reservation_id:
+        input.reservation.dotyposReservationId ?? undefined,
     },
     timestamp: input.timestamp,
   });
@@ -108,9 +105,8 @@ export const captureReservationCompleted = (input: {
     id: input.reservation.id,
     properties: {
       ...reservationProperties(input.reservation),
-      ...(input.reservation.dotyposReservationId
-        ? { dotypos_reservation_id: input.reservation.dotyposReservationId }
-        : {}),
+      dotypos_reservation_id:
+        input.reservation.dotyposReservationId ?? undefined,
     },
     timestamp: input.timestamp,
   });
@@ -129,9 +125,8 @@ export const captureReservationFulfilled = (input: {
     properties: {
       ...reservationProperties(input.reservation),
       dotypos_customer_id: input.reservation.dotyposCustomerId,
-      ...(input.reservation.dotyposReservationId
-        ? { dotypos_reservation_id: input.reservation.dotyposReservationId }
-        : {}),
+      dotypos_reservation_id:
+        input.reservation.dotyposReservationId ?? undefined,
     },
     timestamp: input.timestamp,
   });

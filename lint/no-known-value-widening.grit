@@ -1,0 +1,44 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      `$known as $broad` as $widening,
+      `<$broad>$known` as $widening,
+      `const $binding: $broad = $known` as $widening,
+      `let $binding: $broad = $known` as $widening,
+      `var $binding: $broad = $known` as $widening,
+      `($parameters): $broad => $known` as $widening
+    } where {
+      or {
+        $broad <: r"(?s)^(?:unknown|object|\{[^}]+\})$",
+        and {
+          $broad <: r"(?s)^Record\s*<.*>$",
+          not $known <: `{}`
+        }
+      },
+      $known <: or {
+        JsObjectExpression(),
+        JsArrayExpression(),
+        JsArrowFunctionExpression(),
+        JsClassExpression(),
+        JsFunctionExpression(),
+        JsNewExpression(),
+        JsStringLiteralExpression(),
+        JsNumberLiteralExpression(),
+        JsBooleanLiteralExpression(),
+        JsNullLiteralExpression(),
+        JsTemplateExpression(),
+        JsUnaryExpression()
+      },
+      register_diagnostic(
+        span = $widening,
+        message = "[anti-slop/no-known-value-widening] Preserve inference or use satisfies instead of widening a known value.",
+        severity = "error"
+      )
+    }
+  }
+}

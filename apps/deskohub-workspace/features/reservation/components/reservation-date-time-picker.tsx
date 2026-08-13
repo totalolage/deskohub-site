@@ -1,6 +1,6 @@
 "use client";
 
-import { Option, Schema } from "effect";
+import { Option, Predicate, Schema } from "effect";
 import { Clock } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { isLocale, m } from "@/features/i18n";
@@ -43,7 +43,7 @@ const parsePlainDateTime = (value: string | undefined) =>
 
 const resolveMinimumDateTime = (
   minimum: ReservationDateTimePickerProps["minimum"]
-) => parsePlainDateTime(typeof minimum === "function" ? minimum() : minimum);
+) => parsePlainDateTime(Predicate.isFunction(minimum) ? minimum() : minimum);
 
 const getMinimumTimeForDate = (
   date: Temporal.PlainDate | undefined,

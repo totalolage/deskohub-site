@@ -1,4 +1,5 @@
 import { createEnv } from "@t3-oss/env-nextjs";
+import { Predicate } from "effect";
 import {
   createEnvironmentSchema,
   workspaceClientEnvSchema,
@@ -79,7 +80,7 @@ export const env = createEnv({
     const sanitizedError = error.map((issue) => {
       const hasPath = (key: string) =>
         issue.path?.some((segment) =>
-          typeof segment === "object" ? segment.key === key : segment === key
+          Predicate.isObject(segment) ? segment.key === key : segment === key
         );
 
       if (hasPath("POSTHOG_FEATURE_FLAG_OVERRIDES")) {

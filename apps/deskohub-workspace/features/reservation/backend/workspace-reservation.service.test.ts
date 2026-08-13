@@ -9,7 +9,6 @@ import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backe
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
-  type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
 } from "./workspace-reservation.repository";
 import {
   WorkspaceReservationDetailsError,
@@ -90,7 +89,7 @@ const detailsEffect = (input: {
           : input.workspaceReservation) as WorkspaceReservation | null
       )
     ),
-  } as unknown as WorkspaceReservationRepositoryType;
+  };
   const dotypos = {
     getReservation: mock(() =>
       Effect.succeed({
@@ -99,7 +98,7 @@ const detailsEffect = (input: {
       })
     ),
     getTables: mock(() => Effect.succeed(input.tables ?? [makeTable()])),
-  } as unknown as typeof DotyposService.Service;
+  };
 
   return Effect.gen(function* () {
     const service = yield* WorkspaceReservationService;
@@ -109,8 +108,8 @@ const detailsEffect = (input: {
       WorkspaceReservationService.Live.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(WorkspaceReservationRepository, repository),
-            Layer.succeed(DotyposService, dotypos),
+            Layer.mock(WorkspaceReservationRepository, repository),
+            Layer.mock(DotyposService, dotypos),
             SeatingMapFeatureFlagServiceMock({
               isEnabled: Effect.succeed(input.seatingMapEnabled ?? true),
             })

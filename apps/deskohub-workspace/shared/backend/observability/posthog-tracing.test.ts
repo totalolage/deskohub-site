@@ -28,7 +28,7 @@ describe("PostHog OTel traces", () => {
       posthogProjectToken: "phc_test",
     });
 
-    expect(typeof provider?.forceFlush).toBe("function");
+    expect(provider?.forceFlush).toEqual(expect.any(Function));
     await provider?.shutdown();
   });
 });

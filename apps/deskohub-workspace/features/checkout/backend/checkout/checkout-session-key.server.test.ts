@@ -7,7 +7,7 @@ import { reservationOrderSchema } from "@/features/reservation/reservation-order
 
 mock.module("server-only", () => ({}));
 
-const decodeReservation = (input: unknown) =>
+const decodeReservation = <T>(input: T) =>
   Schema.decodeUnknownEffect(reservationOrderSchema)(input).pipe(
     Effect.runSync
   );

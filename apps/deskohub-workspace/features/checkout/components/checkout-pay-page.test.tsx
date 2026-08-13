@@ -174,7 +174,7 @@ describe("CheckoutPayPage payment navigation", () => {
     };
     spyOn(window, "open").mockImplementation(() => {
       events.push("open");
-      return paymentWindow as unknown as Window;
+      return paymentWindow as Window;
     });
     workspaceUseAction.mockReturnValue({
       execute,
@@ -343,7 +343,7 @@ describe("CheckoutPayPage payment navigation", () => {
       closed: false,
       opener: window,
     };
-    spyOn(window, "open").mockReturnValue(paymentWindow as unknown as Window);
+    spyOn(window, "open").mockReturnValue(paymentWindow as Window);
     workspaceUseAction.mockReturnValue({
       execute: mock(),
       isExecuting: false,

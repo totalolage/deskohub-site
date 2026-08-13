@@ -1,5 +1,6 @@
 "use client";
 
+import { Predicate } from "effect";
 import { CalendarIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { isLocale, m } from "@/features/i18n";
@@ -82,10 +83,10 @@ export function ReservationDatePicker({
     : ariaLabel;
   const selectedDate = parsePlainDate(value);
   const maximumDate = parsePlainDate(
-    typeof maximum === "function" ? maximum() : maximum
+    Predicate.isFunction(maximum) ? maximum() : maximum
   );
   const minimumDate = parsePlainDate(
-    typeof minimum === "function" ? minimum() : minimum
+    Predicate.isFunction(minimum) ? minimum() : minimum
   );
   const dateFormatter = useMemo(
     () =>

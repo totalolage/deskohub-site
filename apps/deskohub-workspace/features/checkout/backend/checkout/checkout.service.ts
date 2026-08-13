@@ -305,14 +305,12 @@ const getCheckoutLegalEvidence = (input: {
       locale: input.locale,
       source: paymentSubmitLegalEvidenceSource,
       document: documents.termsAndConditions,
-      ...(input.earlyPerformanceRequested
+      acknowledgements: input.earlyPerformanceRequested
         ? {
-            acknowledgements: {
-              performanceBeforeWithdrawalPeriodEndRequested: true,
-              withdrawalRightLossAfterFullPerformanceAcknowledged: true,
-            },
+            performanceBeforeWithdrawalPeriodEndRequested: true,
+            withdrawalRightLossAfterFullPerformanceAcknowledged: true,
           }
-        : {}),
+        : undefined,
     },
     [documents.operatingRules.hash]: {
       documentKey: "operatingRules",

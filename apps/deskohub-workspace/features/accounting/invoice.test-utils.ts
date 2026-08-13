@@ -74,7 +74,7 @@ export const makeCoworkInvoiceDocument = (
     locale,
     prepared,
     sequence: 1,
-    ...(options.businessBuyer ? { buyer: businessBuyer } : {}),
+    buyer: options.businessBuyer ? businessBuyer : undefined,
   });
 };
 
@@ -146,7 +146,7 @@ const issueTestInvoice = (input: {
     ),
     locale: input.locale,
     prepared: input.prepared,
-    ...(input.buyer ? { buyer: input.buyer } : {}),
+    buyer: input.buyer,
   });
   const buyer =
     input.buyer ??

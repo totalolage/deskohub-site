@@ -39,12 +39,12 @@ export function CookieSettingsPage() {
   const locale = getLocale();
   const { acceptAll, rejectAll, acceptCategory, rejectCategory, isAccepted } =
     useCookieConsent();
-  const preferences: Record<ConsentCategory, boolean> = {
+  const preferences = {
     necessary: true,
     analytics: isAccepted("analytics"),
     marketing: isAccepted("marketing"),
     preferences: isAccepted("preferences"),
-  };
+  } satisfies Record<ConsentCategory, boolean>;
 
   const handleToggle = (category: ConsentCategory) => {
     if (category === "necessary") return;

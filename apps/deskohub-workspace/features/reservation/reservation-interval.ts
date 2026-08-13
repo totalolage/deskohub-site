@@ -149,7 +149,7 @@ export const getReservationDate = ({
   }).toString();
 
 const toSchemaIssue = (
-  input: unknown,
+  input: ReservationIntervalInput,
   cause: { readonly path: keyof ReservationInterval; readonly message: string }
 ) => {
   return new SchemaIssue.Pointer(

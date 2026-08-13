@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { Data, Effect } from "effect";
+import { Data, Effect, Predicate } from "effect";
 import { Children, isValidElement, type ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { getWorkspaceCanonicalUrl } from "@/shared/utils";
@@ -36,11 +36,11 @@ export class LegalAcceptanceSnapshotError extends Data.TaggedError(
 }> {}
 
 function reactNodeToCanonicalText(node: ReactNode): string {
-  if (node === null || node === undefined || typeof node === "boolean") {
+  if (node === null || node === undefined || Predicate.isBoolean(node)) {
     return "";
   }
 
-  if (typeof node === "string" || typeof node === "number") {
+  if (Predicate.isString(node) || Predicate.isNumber(node)) {
     return String(node);
   }
 

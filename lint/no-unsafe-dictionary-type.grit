@@ -1,0 +1,55 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      TsReferenceType() as $unsafe_dictionary,
+      TsIndexSignatureTypeMember() as $unsafe_dictionary,
+      TsIndexSignatureClassMember() as $unsafe_dictionary,
+      TsMappedType() as $unsafe_dictionary
+    } where {
+      or {
+        $unsafe_dictionary <: or {
+          r"(?s)^Record\s*<.*,\s*(?:unknown|any|object|\{\})\s*>$",
+          r"(?s).*\]\s*:\s*(?:unknown|any|object|\{\})\s*;?$"
+        },
+        and {
+          $unsafe_dictionary <: or {
+            r"(?s)^Record\s*<.*>$",
+            TsIndexSignatureTypeMember(),
+            TsIndexSignatureClassMember(),
+            TsMappedType()
+          },
+          $unsafe_dictionary <: contains (TsUnionType() as $union) where {
+            $union <: contains (or {
+              TsUnknownType(),
+              TsAnyType(),
+              TsNonPrimitiveType(),
+              TsObjectType()
+            } as $unsafe_member) where {
+              not $unsafe_member <: within (or {
+                TsReferenceType(),
+                TsObjectType(),
+                TsMappedType(),
+                TsArrayType(),
+                TsTupleType(),
+                TsFunctionType()
+              } as $wrapper) where {
+                $wrapper <: not $unsafe_dictionary,
+                $wrapper <: not $unsafe_member
+              }
+            }
+          }
+        }
+      },
+      register_diagnostic(
+        span = $unsafe_dictionary,
+        message = "[anti-slop/no-unsafe-dictionary-type] Use a concrete owner/schema-derived dictionary value type.",
+        severity = "error"
+      )
+    }
+  }
+}

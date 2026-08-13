@@ -24,11 +24,20 @@
     "indentStyle": "space"
   },
   "plugins": [
+    "./lint/no-chained-type-assertions.grit",
+    "./lint/no-conditional-empty-object-spread.grit",
     "./lint/no-direct-effect-runs.grit",
     "./lint/no-direct-next-effect-imports.grit",
     "./lint/no-direct-process-env.grit",
-    "./lint/no-double-type-assertions.grit",
-    "./lint/no-throw-in-workspace-effect-modules.grit"
+    "./lint/no-known-value-widening.grit",
+    "./lint/no-object-parameters.grit",
+    "./lint/no-runtime-typeof.grit",
+    "./lint/no-shape-in-symbol-names.grit",
+    "./lint/no-throw-in-workspace-effect-modules.grit",
+    "./lint/no-unknown-parameters.grit",
+    "./lint/no-unknown-type-aliases.grit",
+    "./lint/no-unsafe-dictionary-type.grit",
+    "./lint/no-widen-then-assert.grit"
   ],
   "linter": {
     "rules": {

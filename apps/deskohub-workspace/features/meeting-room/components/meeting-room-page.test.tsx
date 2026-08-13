@@ -68,7 +68,7 @@ const createCloudinaryAsset = (
     secure_url: `https://example.test/${publicId}.jpg`,
     url: `http://example.test/${publicId}.jpg`,
     width: 1600,
-    ...(custom ? { context: { custom } } : {}),
+    context: custom ? { custom } : undefined,
   });
 
 describe("MeetingRoomPage", () => {

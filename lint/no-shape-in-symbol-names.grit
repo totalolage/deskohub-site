@@ -1,0 +1,23 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      JsIdentifierBinding() as $symbol,
+      JsReferenceIdentifier() as $symbol,
+      JsName() as $symbol,
+      JsPrivateName() as $symbol,
+      TsIdentifierBinding() as $symbol
+    } where {
+      $symbol <: r"(?i)^#?[A-Za-z_$][A-Za-z0-9_$]*shape[A-Za-z0-9_$]*$",
+      register_diagnostic(
+        span = $symbol,
+        message = "[anti-slop/no-shape-in-symbol-names] Do not use shape in symbol names.",
+        severity = "error"
+      )
+    }
+  }
+}

@@ -6,8 +6,8 @@ const consentCategories = [
   "marketing",
   "preferences",
 ] as const;
-export const isConsentCategory = (value: unknown): value is ConsentCategory =>
-  typeof value === "string" && consentCategories.includes(value);
+export const isConsentCategory = <T>(value: T): value is T & ConsentCategory =>
+  Predicate.isString(value) && consentCategories.includes(value);
 export type ConsentCategory = (typeof consentCategories)[number];
 
 export type UnexpectedConsentCookieReason =
@@ -47,7 +47,7 @@ export function getAcceptedConsentCategoriesFromCookieValue(
     diagnostics?.onUnexpectedValue?.("invalid_json");
     return [];
   }
-  if (typeof value !== "object" || value === null) {
+  if (!Predicate.isObject(value)) {
     diagnostics?.onUnexpectedValue?.("invalid_value_type");
     return [];
   }
@@ -61,7 +61,7 @@ export function getAcceptedConsentCategoriesFromCookieValue(
   const acceptedCategories: ConsentCategory[] = [];
 
   for (const category of categories) {
-    if (typeof category !== "string") {
+    if (!Predicate.isString(category)) {
       diagnostics?.onUnexpectedValue?.("invalid_category_type");
       continue;
     }
@@ -87,3 +87,5 @@ function parseConsentCookieValue(cookieValue: string) {
     }
   }
 }
+
+import { Predicate } from "effect";

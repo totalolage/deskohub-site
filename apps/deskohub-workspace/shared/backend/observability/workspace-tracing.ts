@@ -11,11 +11,9 @@ export const createWorkspaceTracingLive = (provider?: TracerProvider) =>
     attributes: {
       "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
     },
-    ...(provider ? { provider } : {}),
+    provider,
     serviceName: WORKSPACE_SERVICE_NAME,
-    ...(env.VERCEL_GIT_COMMIT_SHA
-      ? { serviceVersion: env.VERCEL_GIT_COMMIT_SHA }
-      : {}),
+    serviceVersion: env.VERCEL_GIT_COMMIT_SHA,
   });
 
 export const WorkspaceTracingLive = createWorkspaceTracingLive();

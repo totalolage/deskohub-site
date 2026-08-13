@@ -9,7 +9,11 @@ import { authorizeDiscountAdminPage } from "@/features/discounts/admin/page-data
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CliAuthentication } from "./cli-authentication.service";
 
-export const loadCliAuthenticationApproval = async (code: unknown) => {
+type CliAuthenticationCodeInput = FormDataEntryValue | null | undefined;
+
+export const loadCliAuthenticationApproval = async (
+  code: CliAuthenticationCodeInput
+) => {
   await authorizeDiscountAdminPage();
   const decoded = Schema.decodeUnknownOption(CliAuthenticationCode)(code);
   if (Option.isNone(decoded)) return null;
@@ -36,7 +40,7 @@ export const loadCliSessions = async () => {
   );
 };
 
-export const decodeCliAuthenticationCode = (code: unknown) =>
+export const decodeCliAuthenticationCode = (code: CliAuthenticationCodeInput) =>
   Schema.decodeUnknownEffect(CliAuthenticationCode)(code) as Effect.Effect<
     CliAuthenticationCodeType,
     Schema.SchemaError

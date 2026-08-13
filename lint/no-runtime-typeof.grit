@@ -1,0 +1,17 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    JsUnaryExpression() as $runtime_typeof where {
+      $runtime_typeof <: r"^typeof\b.*",
+      register_diagnostic(
+        span = $runtime_typeof,
+        message = "[anti-slop/no-runtime-typeof] Parse external input at its I/O boundary instead of narrowing it with typeof.",
+        severity = "error"
+      )
+    }
+  }
+}

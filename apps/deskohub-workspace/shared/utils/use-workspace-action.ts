@@ -28,7 +28,8 @@ type UseWorkspaceActionOptions<
   }) => void;
 };
 
-const getTransportErrorDetails = (error: unknown) => {
+const getTransportErrorDetails = (cause: unknown) => {
+  const error = cause;
   if (error instanceof Error) {
     return {
       name: error.name,
@@ -37,7 +38,7 @@ const getTransportErrorDetails = (error: unknown) => {
   }
 
   return {
-    name: typeof error,
+    name: Object.prototype.toString.call(error),
     message: String(error),
   };
 };
@@ -74,12 +75,12 @@ export function useWorkspaceAction<
   const action = useAction(safeActionFn, hookOptions);
 
   const handleTransportError = (
-    error: unknown,
+    cause: unknown,
     input: WorkspaceActionTransportErrorInput<Schema>
   ) => {
-    captureTransportError({ actionName, error });
+    captureTransportError({ actionName, error: cause });
     try {
-      onTransportError?.({ error, input });
+      onTransportError?.({ error: cause, input });
     } catch {}
   };
 

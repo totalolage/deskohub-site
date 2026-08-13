@@ -3,7 +3,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
@@ -72,25 +71,25 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, {
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment,
                 markReservationConfirmed,
                 markFulfilled,
                 markFulfillmentFailed: mock(() => Effect.void),
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(DotyposService, {
+              }),
+              Layer.mock(DotyposService, {
                 confirmReservation,
-              } as unknown as typeof DotyposService.Service),
-              Layer.succeed(WorkspaceReservationService, {
+              }),
+              Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.succeed(emailReservation as never)
                 ),
               } satisfies IWorkspaceReservationService),
-              Layer.succeed(WorkspaceReservationEmailService, {
+              Layer.mock(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(PostHogEventService, {
+              Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })
             )
@@ -171,7 +170,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, {
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
@@ -179,19 +178,19 @@ describe("WorkspacePaidFulfillmentService", () => {
                 markReservationConfirmed,
                 markFulfilled,
                 markFulfillmentFailed: mock(() => Effect.void),
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(DotyposService, {
+              }),
+              Layer.mock(DotyposService, {
                 confirmReservation,
-              } as unknown as typeof DotyposService.Service),
-              Layer.succeed(WorkspaceReservationService, {
+              }),
+              Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.succeed(emailReservation as never)
                 ),
               } satisfies IWorkspaceReservationService),
-              Layer.succeed(WorkspaceReservationEmailService, {
+              Layer.mock(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(PostHogEventService, {
+              Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })
             )
@@ -256,7 +255,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, {
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
@@ -266,21 +265,21 @@ describe("WorkspacePaidFulfillmentService", () => {
                 ),
                 markFulfilled: mock(() => Effect.void),
                 markFulfillmentFailed,
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(DotyposService, {
+              }),
+              Layer.mock(DotyposService, {
                 confirmReservation: mock(() => Effect.void),
-              } as unknown as typeof DotyposService.Service),
-              Layer.succeed(WorkspaceReservationService, {
+              }),
+              Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.die("email flow should not start")
                 ),
               } satisfies IWorkspaceReservationService),
-              Layer.succeed(WorkspaceReservationEmailService, {
+              Layer.mock(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails: mock(() =>
                   Effect.die("email flow should not start")
                 ),
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(PostHogEventService, {
+              Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })
             )

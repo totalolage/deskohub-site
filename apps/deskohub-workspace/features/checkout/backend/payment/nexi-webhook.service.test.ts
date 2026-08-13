@@ -11,7 +11,6 @@ import {
   WorkspacePaidFulfillmentError,
   type WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType,
 } from "../fulfillment/paid-fulfillment.service";
-import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import type { WebhookEventRepository as WebhookEventRepositoryType } from "../repositories/webhook-event.repository";
@@ -128,26 +127,17 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
       NexiWebhookServiceLive.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(WebhookEventRepository, services.webhookEvents),
-            Layer.succeed(PaymentAttemptRepository, services.paymentAttempts),
-            Layer.succeed(
-              PaymentLifecycleRepository,
-              services.paymentLifecycle
-            ),
-            Layer.succeed(
-              WorkspaceReservationRepository,
-              services.reservations
-            ),
-            Layer.succeed(ReservationHoldCleanupService, {
+            Layer.mock(WebhookEventRepository, services.webhookEvents),
+            Layer.mock(PaymentAttemptRepository, services.paymentAttempts),
+            Layer.mock(PaymentLifecycleRepository, services.paymentLifecycle),
+            Layer.mock(WorkspaceReservationRepository, services.reservations),
+            Layer.mock(ReservationHoldCleanupService, {
               cancelOrderHold: mock(() => Effect.die("unused")),
               sweepExpiredHolds: mock(() => Effect.die("unused")),
-            } as unknown as ReservationHoldCleanupServiceType),
-            Layer.succeed(NexiService, services.nexi),
-            Layer.succeed(
-              WorkspacePaidFulfillmentService,
-              services.fulfillment
-            ),
-            Layer.succeed(PostHogEventService, {
+            }),
+            Layer.mock(NexiService, services.nexi),
+            Layer.mock(WorkspacePaidFulfillmentService, services.fulfillment),
+            Layer.mock(PostHogEventService, {
               capture: mock(() => Effect.void),
             })
           )
@@ -182,10 +172,10 @@ describe("NexiWebhookService", () => {
           markProcessed,
           markFailed,
           claimRetry: mock(() => Effect.die("unused")),
-        } as unknown as WebhookEventRepositoryType,
+        },
         paymentAttempts: {
           findByProviderOrderId: mock(() => Effect.succeed(attempt)),
-        } as unknown as PaymentAttemptRepositoryType,
+        },
         paymentLifecycle: {
           createPendingNexiAttempt: mock(() => Effect.die("unused")),
           attachProviderSession: mock(() => Effect.die("unused")),
@@ -194,10 +184,10 @@ describe("NexiWebhookService", () => {
         },
         reservations: {
           findById: mock(() => Effect.succeed(reservation as never)),
-        } as unknown as WorkspaceReservationRepositoryType,
+        },
         nexi: {
           verifyPaymentOutcome,
-        } as unknown as NexiServiceType,
+        },
         fulfillment: {
           fulfillPaidOrder,
         } satisfies WorkspacePaidFulfillmentServiceType,
@@ -252,10 +242,10 @@ describe("NexiWebhookService", () => {
             markProcessed,
             markFailed,
             claimRetry: mock(() => Effect.die("unused")),
-          } as unknown as WebhookEventRepositoryType,
+          },
           paymentAttempts: {
             findByProviderOrderId: mock(() => Effect.succeed(attempt)),
-          } as unknown as PaymentAttemptRepositoryType,
+          },
           paymentLifecycle: {
             createPendingNexiAttempt: mock(() => Effect.die("unused")),
             attachProviderSession: mock(() => Effect.die("unused")),
@@ -270,10 +260,10 @@ describe("NexiWebhookService", () => {
           },
           reservations: {
             findById: mock(() => Effect.succeed(reservation as never)),
-          } as unknown as WorkspaceReservationRepositoryType,
+          },
           nexi: {
             verifyPaymentOutcome: mock(() => Effect.succeed(verification)),
-          } as unknown as NexiServiceType,
+          },
           fulfillment: {
             fulfillPaidOrder: mock(() =>
               Effect.fail(

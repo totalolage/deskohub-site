@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit, Logger } from "effect";
+import { Cause, Effect, Exit, Logger, Predicate } from "effect";
 import { recoverReplacementOccupancyExclusion } from "./workspace-availability-replacement";
 
 const runWithWarnings = async <A, E>(effect: Effect.Effect<A, E>) => {
   const warnings: string[] = [];
   const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
     const text = Array.isArray(message) ? message[0] : message;
-    if (logLevel === "Warn" && typeof text === "string") warnings.push(text);
+    if (logLevel === "Warn" && Predicate.isString(text)) warnings.push(text);
   });
   const result = await Effect.runPromise(
     effect.pipe(Effect.withLogger(logger))

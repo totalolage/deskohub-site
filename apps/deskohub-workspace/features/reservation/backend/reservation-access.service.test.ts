@@ -2,7 +2,7 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { DotyposService } from "@deskohub/dotypos";
+import { type DotyposReservation, DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import {
@@ -12,8 +12,8 @@ import {
 import type { Locale } from "@/features/i18n";
 import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
 import {
+  type WorkspaceReservation,
   WorkspaceReservationRepository,
-  type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
@@ -23,7 +23,14 @@ const now = Temporal.Instant.from("2026-06-20T08:00:00Z");
 const orderId = workspaceReservationIdSchema.make("reservation-access-test");
 const resolvedCode = ["fixture", "access"].join("-");
 
-const makeReservation = (overrides: Record<string, unknown> = {}) => ({
+type ReservationOverrides = Partial<
+  Pick<
+    WorkspaceReservation,
+    "dotyposReservationId" | "locale" | "paymentState" | "reservationState"
+  >
+>;
+
+const makeReservation = (overrides: ReservationOverrides = {}) => ({
   id: orderId,
   checkoutSessionKey: "session-key",
   checkoutAttemptKey: "attempt-key",
@@ -59,7 +66,13 @@ const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const makeProviderReservation = (overrides: Record<string, unknown> = {}) => ({
+type ProviderReservationOverrides = Partial<
+  Pick<DotyposReservation, "endDate" | "startDate" | "status">
+>;
+
+const makeProviderReservation = (
+  overrides: ProviderReservationOverrides = {}
+) => ({
   reservation: {
     id: "provider-reservation-id",
     _customerId: "customer-id",
@@ -105,12 +118,6 @@ const runAccess = async (options: HarnessOptions = {}) => {
   const resolveCustomerAccessCode = mock(
     options.resolver ?? (() => Effect.succeed(resolvedCode))
   );
-  const reservations = {
-    findById,
-  } as unknown as WorkspaceReservationRepositoryType;
-  const dotypos = {
-    getReservation,
-  } as unknown as typeof DotyposService.Service;
   const accessCodes: WorkspaceCheckoutAccessCodeServiceType = {
     generateCustomerAccessCode: Effect.succeed(resolvedCode),
     resolveCustomerAccessCode,
@@ -122,14 +129,14 @@ const runAccess = async (options: HarnessOptions = {}) => {
     return yield* service.getAccess({
       orderId,
       locale: options.inputLocale ?? "en-US",
-      ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+      accessToken: options.accessToken,
     });
   }).pipe(
     Effect.provide(ReservationAccessService.Live),
     Effect.provide(
       Layer.mergeAll(
-        Layer.succeed(WorkspaceReservationRepository, reservations),
-        Layer.succeed(DotyposService, dotypos),
+        Layer.mock(WorkspaceReservationRepository, { findById }),
+        Layer.mock(DotyposService, { getReservation }),
         Layer.succeed(WorkspaceCheckoutAccessCodeService, accessCodes),
         TestClock.layer()
       )

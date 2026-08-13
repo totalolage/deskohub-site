@@ -4,7 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
-import type { DiscountCommitment } from "@/features/discounts";
+import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
   canonicalDiscountCodeSchema,
@@ -23,6 +23,8 @@ const meetingRoomProduct = {
   kind: "meeting-room",
   duration: meetingRoomDuration,
 } as const;
+const emptyCommitment = () =>
+  makeDiscountCommitment({ product: meetingRoomProduct, applications: [] });
 const money = getWorkspaceMeetingRoomPriceForDuration(meetingRoomDuration);
 const discountId = Schema.decodeUnknownSync(discountIdSchema)("summer-sale");
 const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
@@ -174,7 +176,7 @@ describe("meeting-room checkout pricing", () => {
   });
 
   test("affirms the displayed payment discounts and preserves commitment", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
@@ -217,7 +219,7 @@ describe("meeting-room checkout pricing", () => {
   });
 
   test("affirms the displayed price before appending a submitted code", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
@@ -316,7 +318,7 @@ describe("meeting-room checkout pricing", () => {
   });
 
   test("returns pricing_changed before resolving a submitted code", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmedWithoutDiscounts = discountQuoteCodec.make({
       product: meetingRoomProduct,
       discountableSubtotal: money,

@@ -1,7 +1,14 @@
 "use server";
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect, Layer, Schema, SchemaGetter, SchemaParser } from "effect";
+import {
+  Effect,
+  Layer,
+  Predicate,
+  Schema,
+  SchemaGetter,
+  SchemaParser,
+} from "effect";
 import {
   type ContactFormValues,
   processContactSubmission,
@@ -16,7 +23,7 @@ const getSubmittedString = (
   name: keyof ContactFormValues | "locale"
 ) => {
   const value = formData.get(name);
-  return typeof value === "string" ? value : "";
+  return Predicate.isString(value) ? value : "";
 };
 
 const contactFormValuesSchema = Schema.Struct({

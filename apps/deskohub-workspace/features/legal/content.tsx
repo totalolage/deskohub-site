@@ -606,10 +606,7 @@ const operatingRulesSectionsEn: LegalSection[] = [
   },
 ];
 
-const legalDocuments: Record<
-  Locale,
-  Record<LegalDocumentKey, LegalDocumentContent>
-> = {
+const legalDocuments = {
   "en-US": {
     "privacy-policy": {
       title: "Privacy Policy",
@@ -1337,7 +1334,7 @@ const legalDocuments: Record<
       sections: operatingRulesSections,
     },
   },
-};
+} satisfies Record<Locale, Record<LegalDocumentKey, LegalDocumentContent>>;
 
 export function getLegalDocument(
   locale: Locale,

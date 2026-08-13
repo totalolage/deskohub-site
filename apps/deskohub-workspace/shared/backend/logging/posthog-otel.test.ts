@@ -30,7 +30,7 @@ describe("PostHog OTel logs", () => {
       vercelEnv: "development",
     });
 
-    expect(typeof provider?.forceFlush).toBe("function");
+    expect(provider?.forceFlush).toEqual(expect.any(Function));
     await provider?.shutdown();
   });
 

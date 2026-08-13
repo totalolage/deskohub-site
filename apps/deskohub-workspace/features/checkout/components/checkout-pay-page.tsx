@@ -263,14 +263,16 @@ export function CheckoutPayPage({
               }
               paymentWindowRef.current = paymentWindow;
 
-              execute({
+              const input = {
                 locale,
                 payStateToken,
                 legalConsent,
-                ...(earlyPerformanceRequestRequired
-                  ? { earlyPerformanceConsent: legalConsent }
-                  : {}),
-              });
+              };
+              execute(
+                earlyPerformanceRequestRequired
+                  ? { ...input, earlyPerformanceConsent: legalConsent }
+                  : input
+              );
             }}
             pending={isSubmitPending}
             variant={actionVariant}

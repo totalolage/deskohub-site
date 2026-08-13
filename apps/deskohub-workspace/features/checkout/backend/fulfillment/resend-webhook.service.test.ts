@@ -186,8 +186,8 @@ const processWebhookEffect = async (input: {
       ResendWebhookServiceLive.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(WorkspaceReservationRepository, input.reservations),
-            Layer.succeed(PostHogEventService, {
+            Layer.mock(WorkspaceReservationRepository, input.reservations),
+            Layer.mock(PostHogEventService, {
               capture: () => Effect.void,
             }),
             Layer.succeed(ResendWebhookRuntimeConfig, config)
@@ -224,7 +224,7 @@ describe("ResendWebhookService", () => {
       ),
       markFulfilled,
       markFulfillmentDeliveryFailed,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({
       reservations,
@@ -244,7 +244,7 @@ describe("ResendWebhookService", () => {
     verifiedPayload = customerDeliveredPayload;
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const error = await processWebhookError({
       reservations,
@@ -268,7 +268,7 @@ describe("ResendWebhookService", () => {
     verifiedPayload = { data: { tags: [] }, type: 42 };
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const error = await processWebhookError({
       reservations,
@@ -286,7 +286,7 @@ describe("ResendWebhookService", () => {
   test("rejects an empty raw webhook event ID at the header boundary", async () => {
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const error = await processWebhookError({
       reservations,
@@ -307,7 +307,7 @@ describe("ResendWebhookService", () => {
   test("rejects an empty raw webhook body at the payload boundary", async () => {
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const error = await processWebhookError({
       reservations,
@@ -330,7 +330,7 @@ describe("ResendWebhookService", () => {
     };
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const error = await processWebhookError({ reservations });
 
@@ -355,7 +355,7 @@ describe("ResendWebhookService", () => {
         } as never)
       ),
       markFulfillmentDeliveryFailed,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({
       reservations,
@@ -393,7 +393,7 @@ describe("ResendWebhookService", () => {
         } as never)
       ),
       markFulfillmentDeliveryFailed,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({
       reservations,
@@ -415,7 +415,7 @@ describe("ResendWebhookService", () => {
       markFulfillmentDeliveryFailed: mock(() =>
         Effect.die("should not update")
       ),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({ reservations });
 
@@ -442,7 +442,7 @@ describe("ResendWebhookService", () => {
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
       markFulfilled: mock(() => Effect.die("should not update")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({ reservations });
 
@@ -550,8 +550,8 @@ describe("ResendWebhookService", () => {
         WorkspaceReservationEmailService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(EmailServiceTag, emailService),
-              Layer.succeed(EmailConfigTag, emailConfig),
+              Layer.mock(EmailServiceTag, emailService),
+              Layer.mock(EmailConfigTag, emailConfig),
               WorkspaceCheckoutNetworkDetailsService.Live
             )
           )
@@ -811,12 +811,12 @@ describe("ResendWebhookService", () => {
         Effect.succeed(claimedReservation as never)
       ),
       markFulfilled,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const dotypos = {
       confirmReservation: mock(() =>
         Effect.die("reservation is already confirmed")
       ),
-    } as unknown as typeof DotyposService.Service;
+    };
     const reservationEmails = {
       sendPaidReservationEmails,
     };
@@ -829,14 +829,11 @@ describe("ResendWebhookService", () => {
         WorkspacePaidFulfillmentServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(DotyposService, dotypos),
-              Layer.succeed(WorkspaceReservationService, workspaceReservations),
-              Layer.succeed(
-                WorkspaceReservationEmailService,
-                reservationEmails
-              ),
-              Layer.succeed(PostHogEventService, {
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(DotyposService, dotypos),
+              Layer.mock(WorkspaceReservationService, workspaceReservations),
+              Layer.mock(WorkspaceReservationEmailService, reservationEmails),
+              Layer.mock(PostHogEventService, {
                 capture: () => Effect.void,
               })
             )
@@ -877,7 +874,7 @@ describe("ResendWebhookService", () => {
     const provider = await EmailProviderTag.pipe(
       Effect.provide(
         ResendEmailProviderLive.pipe(
-          Layer.provide(Layer.succeed(EmailConfigTag, emailConfig))
+          Layer.provide(Layer.mock(EmailConfigTag, emailConfig))
         )
       ),
       Effect.runPromise

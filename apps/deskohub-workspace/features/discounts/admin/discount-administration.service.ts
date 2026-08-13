@@ -18,7 +18,16 @@ import {
 } from "@deskohub/google-calendar";
 import { and, eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
+import {
+  Context,
+  Data,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Predicate,
+  Schema,
+} from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -1084,17 +1093,13 @@ const findConstraintName = (
   cause: unknown,
   visited: Set<unknown> = new Set()
 ): string | undefined => {
-  if (
-    !cause ||
-    visited.has(cause) ||
-    (typeof cause !== "object" && typeof cause !== "function")
-  ) {
+  if (!cause || visited.has(cause) || !Predicate.isObjectKeyword(cause)) {
     return undefined;
   }
   visited.add(cause);
   if (
     "constraint" in cause &&
-    typeof cause.constraint === "string" &&
+    Predicate.isString(cause.constraint) &&
     cause.constraint.length > 0
   ) {
     return cause.constraint;
@@ -1397,9 +1402,7 @@ const toAdminCalendarSale = (input: {
   }
 
   return {
-    ...(input.event.id || input.event.iCalUID
-      ? { eventReference: input.event.id ?? input.event.iCalUID }
-      : {}),
+    eventReference: input.event.id ?? input.event.iCalUID ?? undefined,
     title: input.event.summary?.trim() || "Untitled event",
     description,
     start:

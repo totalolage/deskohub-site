@@ -2,7 +2,7 @@ import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Effect, Layer } from "effect";
 import { censorDatabaseQueryParams } from "./censorship";
 
-const stringifyDatabaseQueryParameter = (value: unknown): string => {
+const stringifyDatabaseQueryParameter = <T>(value: T): string => {
   try {
     return JSON.stringify(value) ?? String(value);
   } catch {

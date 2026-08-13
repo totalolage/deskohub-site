@@ -127,7 +127,7 @@ export const appliedDiscountCodec = Schema.Struct({
     "An immutable discount application and its before, applied, and after amounts.",
 });
 
-export const isAppliedDiscount = (value: unknown): value is AppliedDiscount =>
+export const isAppliedDiscount = <T>(value: T): value is T & AppliedDiscount =>
   Option.isSome(
     Schema.decodeUnknownOption(appliedDiscountCodec, {
       onExcessProperty: "error",

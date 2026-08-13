@@ -26,14 +26,14 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 const defaultMaxRecords = 50;
 const maximumRecords = 100;
 
-const paymentAttemptStateLabels: Record<PaymentAttemptState, string> = {
+const paymentAttemptStateLabels = {
   created: "Started",
   pending: "Pending",
   paid: "Paid",
   failed: "Unsuccessful",
   cancelled: "Unsuccessful",
   expired: "Unsuccessful",
-};
+} satisfies Record<PaymentAttemptState, string>;
 
 export type AdministrationOrderLink = {
   readonly paymentAttemptId: PaymentAttemptId;
