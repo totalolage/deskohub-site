@@ -5,18 +5,22 @@ import {
 } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
+import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -27,7 +31,8 @@ export class WorkspaceReservationDetailsError extends Data.TaggedError(
     | "dotypos_reservation_missing"
     | "dotypos_reservation_load_failed"
     | "dotypos_reservation_date_invalid"
-    | "dotypos_reservation_seats_invalid";
+    | "dotypos_reservation_seats_invalid"
+    | "reservation_access_unavailable";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -50,6 +55,13 @@ export interface IWorkspaceReservationService {
     id: WorkspaceReservationId
   ) => Effect.Effect<
     WorkspaceReservationDetails,
+    WorkspaceReservationDetailsError
+  >;
+  readonly getAccessTarget: (id: WorkspaceReservationId) => Effect.Effect<
+    {
+      readonly reservedFrom: Temporal.Instant;
+      readonly reservedUntil: Temporal.Instant;
+    },
     WorkspaceReservationDetailsError
   >;
 }
@@ -81,8 +93,8 @@ export class WorkspaceReservationService extends Context.Service<
         );
       });
 
-      const loadDotyposReservation = Effect.fn(
-        "workspaceReservation.loadDotyposReservation"
+      const getDotyposReservationId = Effect.fn(
+        "workspaceReservation.getDotyposReservationId"
       )(function* (reservation: WorkspaceReservation) {
         const rawDotyposReservationId =
           reservation.dotyposReservationId?.trim();
@@ -93,9 +105,16 @@ export class WorkspaceReservationService extends Context.Service<
             message: "Workspace reservation has no Dotypos reservation ID.",
           });
         }
-        const dotyposReservationId = Schema.decodeUnknownSync(
-          DotyposReservationIdSchema
-        )(rawDotyposReservationId);
+        return Schema.decodeUnknownSync(DotyposReservationIdSchema)(
+          rawDotyposReservationId
+        );
+      });
+
+      const loadDotyposReservation = Effect.fn(
+        "workspaceReservation.loadDotyposReservation"
+      )(function* (reservation: WorkspaceReservation) {
+        const dotyposReservationId =
+          yield* getDotyposReservationId(reservation);
 
         return yield* Effect.all(
           [dotypos.getReservation(dotyposReservationId), dotypos.getTables()],
@@ -170,6 +189,41 @@ export class WorkspaceReservationService extends Context.Service<
       );
 
       return {
+        getAccessTarget: Effect.fn("workspaceReservation.getAccessTarget")(
+          function* (id) {
+            const reservation = yield* loadReservation(id);
+            if (
+              !reservation ||
+              reservation.paymentState !== "paid" ||
+              reservation.reservationState !== "confirmed"
+            ) {
+              return yield* accessUnavailable(id);
+            }
+            const dotyposReservationId =
+              yield* getDotyposReservationId(reservation);
+            const dotyposReservationDetails = yield* dotypos
+              .getReservation(dotyposReservationId)
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new WorkspaceReservationDetailsError({
+                      reservationId: id,
+                      errorCode: "dotypos_reservation_load_failed",
+                      message:
+                        "Workspace Dotypos reservation could not be loaded.",
+                      cause,
+                    })
+                )
+              );
+            if (dotyposReservationDetails.reservation.status !== "CONFIRMED") {
+              return yield* accessUnavailable(id);
+            }
+            return yield* getDotyposReservationTiming({
+              reservationId: id,
+              reservation: dotyposReservationDetails.reservation,
+            });
+          }
+        ),
         getReservation: Effect.fn("workspaceReservation.getReservation")(
           function* (id) {
             const reservation = yield* loadReservation(id);
@@ -186,7 +240,27 @@ export class WorkspaceReservationService extends Context.Service<
       };
     })
   );
+
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(WorkspaceReservationRepositoryLive),
+    Layer.provide(WorkspaceDatabaseLive),
+    Layer.provide(DotyposServiceLive),
+    Layer.provide(
+      SeatingMapFeatureFlagService.Live.pipe(
+        Layer.provide(WorkspaceFeatureFlagServiceLive)
+      )
+    )
+  );
 }
+
+const accessUnavailable = (reservationId: WorkspaceReservationId) =>
+  Effect.fail(
+    new WorkspaceReservationDetailsError({
+      reservationId,
+      errorCode: "reservation_access_unavailable",
+      message: "Reservation access is not available for recovery.",
+    })
+  );
 
 export const getDotyposReservationTiming = Effect.fn(
   "dotyposReservation.getTiming"

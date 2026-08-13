@@ -19,6 +19,7 @@ import {
 import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationReservation } from "@/features/administration/page-data.server";
 import { ReservationOrderList } from "@/features/administration/payment-components";
+import { ReservationAccessAdministration } from "@/features/administration/reservation-access-administration";
 import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
 
 export default function ReservationAdministrationDetailPage({
@@ -116,6 +117,11 @@ export async function ReservationAdministrationDetail({
               />
             </dl>
           </section>
+
+          <ReservationAccessAdministration
+            grant={detail.accessGrant}
+            reservationId={reservation.id}
+          />
 
           <div className="grid gap-4 md:grid-cols-3">
             <SummarySection title="Customer">

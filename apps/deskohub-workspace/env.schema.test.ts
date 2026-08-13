@@ -27,6 +27,7 @@ const validateFeatureFlagOverrideEnvironment = (
   });
 
 const validateMissingIgloohomeEnvironment = (
+  missing: "credentials" | "target-device",
   vercelEnvironment: "production" | "preview"
 ) =>
   Bun.spawnSync({
@@ -35,7 +36,9 @@ const validateMissingIgloohomeEnvironment = (
       "--preload",
       "./shared/testing/workspace-test-env.ts",
       "-e",
-      'delete process.env.IGLOOHOME_CLIENT_ID; delete process.env.IGLOOHOME_CLIENT_SECRET; delete process.env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID; await import("./env.ts");',
+      missing === "credentials"
+        ? 'delete process.env.IGLOOHOME_CLIENT_ID; delete process.env.IGLOOHOME_CLIENT_SECRET; await import("./env.ts");'
+        : 'delete process.env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID; await import("./env.ts");',
     ],
     cwd: import.meta.dir,
     env: { ...process.env, VERCEL_ENV: vercelEnvironment },
@@ -69,15 +72,28 @@ describe("workspace environment schemas", () => {
     expect(() => decodeTimeout("0")).toThrow();
   });
 
-  test("requires Igloohome provisioning configuration only in production", () => {
-    const previewValidation = validateMissingIgloohomeEnvironment("preview");
-    const productionValidation =
-      validateMissingIgloohomeEnvironment("production");
+  test("always requires the Igloohome target device and requires credentials only in production", () => {
+    const previewCredentials = validateMissingIgloohomeEnvironment(
+      "credentials",
+      "preview"
+    );
+    const productionCredentials = validateMissingIgloohomeEnvironment(
+      "credentials",
+      "production"
+    );
+    const previewTarget = validateMissingIgloohomeEnvironment(
+      "target-device",
+      "preview"
+    );
 
-    expect(previewValidation.exitCode).toBe(0);
-    expect(productionValidation.exitCode).toBe(1);
-    expect(productionValidation.stderr.toString()).toContain(
+    expect(previewCredentials.exitCode).toBe(0);
+    expect(productionCredentials.exitCode).toBe(1);
+    expect(productionCredentials.stderr.toString()).toContain(
       "Invalid Igloohome client credential configuration."
+    );
+    expect(previewTarget.exitCode).toBe(1);
+    expect(previewTarget.stderr.toString()).toContain(
+      "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID"
     );
   });
 

@@ -12,7 +12,6 @@ import { ReservationAccessPageSkeleton } from "@/features/reservation/components
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { RouteAutoRefresh } from "@/shared/components/route-auto-refresh";
 import {
   getSearchParamsDecoder,
   getWorkspaceLocalizedCanonicalUrl,
@@ -115,24 +114,7 @@ async function ReservationAccessContent({
       runWorkspaceEffect("reservation.access.load")
     );
 
-    let refreshAt: string | undefined;
-    if (access.state === "upcoming") {
-      refreshAt = access.availableAt.toString();
-    } else if (access.state === "available") {
-      refreshAt = access.unavailableAt.toString();
-    }
-
-    return (
-      <>
-        <RouteAutoRefresh
-          enabled={access.state === "available"}
-          intervalMs={60_000}
-          refreshAt={refreshAt}
-          refreshOnFocus={access.state !== "ended"}
-        />
-        <ReservationAccessPage access={access} locale={locale} />
-      </>
-    );
+    return <ReservationAccessPage access={access} locale={locale} />;
   });
 }
 
