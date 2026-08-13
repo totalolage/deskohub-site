@@ -6,7 +6,6 @@ import { AccountingSnapshotKeyServiceLive } from "@/features/accounting/backend/
 import { WorkspacePaidFulfillmentServiceLiveWithDependencies } from "@/features/checkout/backend/fulfillment";
 import {
   LatePaymentRecoveryServiceLive,
-  latePaymentRecoveryMaxExecutionSeconds,
   processLatePaymentRecoveryMessage,
 } from "@/features/checkout/backend/payment";
 import { LatePaymentRecoveryRepository } from "@/features/checkout/backend/repositories";
@@ -16,7 +15,7 @@ import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backe
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
 
-export const maxDuration = latePaymentRecoveryMaxExecutionSeconds;
+export const maxDuration = 300;
 
 const databaseRepositories = Layer.mergeAll(
   LatePaymentRecoveryRepository.Live,
