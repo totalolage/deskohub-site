@@ -94,7 +94,11 @@ const emptyPendingVerification: PaymentVerificationResult = {
 };
 
 describe("ProviderPaymentFinalizationService", () => {
-  for (const fulfillmentState of ["not_started", "processing"] as const) {
+  for (const fulfillmentState of [
+    "not_started",
+    "processing",
+    "fulfilled",
+  ] as const) {
     test(`starts fulfillment for already-paid ${fulfillmentState} provider returns`, async () => {
       const {
         ProviderPaymentFinalizationService,

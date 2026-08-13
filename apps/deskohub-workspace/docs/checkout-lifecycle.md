@@ -73,6 +73,8 @@ Payment uses one affirmative checkout choice to accept the current terms and ope
 
 The paths and hashes of the terms and operating rules accepted for payment are preserved as immutable evidence without storing rendered legal-document copies or customer contact details alongside that evidence. When applicable, one early-performance consent fact records the combined request and acknowledgement behind the single checkout choice, without adding a new database document store.
 
+Every new reservation declares personal or business purpose. A business reservation always includes an invoice; a personal reservation includes one only when requested. Purpose remains fixed with the reservation so later customer-profile changes cannot reclassify the transaction.
+
 ## Privacy and accounting
 
 Workspace stores only the identifiers, states, amounts, timestamps, and immutable evidence needed to operate and recover checkout. Customer contact details, free-form notes, payment-instrument data, raw provider payloads, and access codes are excluded from ordinary local checkout records.

@@ -168,6 +168,36 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     }
   });
 
+  test("reservation purpose is the only plaintext billing classification", async () => {
+    const [schema, migration] = await Promise.all([
+      readAppFile("db/schema/workspace-reservations.ts"),
+      readAppFile(
+        "db/migrations/20260813150734_optimal_sugar_man/migration.sql"
+      ),
+    ]);
+
+    expect(schema).toContain('text("reservation_purpose")');
+    expect(migration).toContain(
+      'ADD COLUMN IF NOT EXISTS "reservation_purpose"'
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "workspace_reservations_purpose_check"'
+    );
+    expect(migration).toContain(
+      "CHECK (\"reservation_purpose\" is null or \"reservation_purpose\" in ('personal', 'business'))"
+    );
+    for (const forbiddenColumn of [
+      "billing_address",
+      "company_id",
+      "company_name",
+      "postal_code",
+      "vat_id",
+    ]) {
+      expect(schema).not.toContain(`"${forbiddenColumn}"`);
+      expect(migration).not.toContain(`"${forbiddenColumn}"`);
+    }
+  });
+
   test("reconciles the previously deployed preview invoice schema", async () => {
     const migration = await readAppFile(
       "db/migrations/20260811173859_issued_invoices/migration.sql"
@@ -196,12 +226,13 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
-  test("reconciles the access and late-payment migration heads", async () => {
+  test("follows the corrected migration heads through late-payment recovery", async () => {
     const [
       discountJson,
       invoiceJson,
       deliveryJson,
       accessJson,
+      purposeJson,
       reconciliationJson,
       reconciliationSql,
     ] = await Promise.all([
@@ -214,6 +245,9 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
         "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
       ),
       readAppFile(
+        "db/migrations/20260813150734_optimal_sugar_man/snapshot.json"
+      ),
+      readAppFile(
         "db/migrations/20260813153209_reconcile_late_payment_recovery/snapshot.json"
       ),
       readAppFile(
@@ -224,12 +258,14 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
     const deliverySnapshot = parseMigrationSnapshot(deliveryJson);
     const accessSnapshot = parseMigrationSnapshot(accessJson);
+    const purposeSnapshot = parseMigrationSnapshot(purposeJson);
     const reconciliationSnapshot = parseMigrationSnapshot(reconciliationJson);
 
     expect(invoiceSnapshot.prevIds).toEqual([discountSnapshot.id]);
     expect(deliverySnapshot.prevIds).toEqual([invoiceSnapshot.id]);
     expect(accessSnapshot.prevIds).toEqual([deliverySnapshot.id]);
-    expect(reconciliationSnapshot.prevIds).toEqual([accessSnapshot.id]);
+    expect(purposeSnapshot.prevIds).toEqual([accessSnapshot.id]);
+    expect(reconciliationSnapshot.prevIds).toEqual([purposeSnapshot.id]);
     expect(reconciliationSql).toContain(
       'CREATE TABLE IF NOT EXISTS "late_payment_recoveries"'
     );
