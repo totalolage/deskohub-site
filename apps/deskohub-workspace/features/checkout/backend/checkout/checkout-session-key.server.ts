@@ -50,6 +50,7 @@ export const deriveCheckoutAttemptKey = (input: {
         name: input.reservation.name,
         email: input.reservation.email,
         phone: input.reservation.phone,
+        billing: input.reservation.billing,
         ...reservationDetails,
       },
     })

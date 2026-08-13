@@ -74,6 +74,15 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("subject")).toBe(true);
     expect(isSensitiveLogKey("db.namespace")).toBe(true);
     expect(isSensitiveLogKey("server.address")).toBe(true);
+    expect(isSensitiveLogKey("billingDetails")).toBe(true);
+    expect(isSensitiveLogKey("addressLine1")).toBe(true);
+    expect(isSensitiveLogKey("addressLine2")).toBe(true);
+    expect(isSensitiveLogKey("companyId")).toBe(true);
+    expect(isSensitiveLogKey("vatId")).toBe(true);
+    expect(isSensitiveLogKey("postalCode")).toBe(true);
+    expect(isSensitiveLogKey("city")).toBe(true);
+    expect(isSensitiveLogKey("zip")).toBe(true);
+    expect(isSensitiveLogKey("country")).toBe(true);
   });
 
   test("matches common prefixed camelCase credential key shapes", () => {
@@ -110,6 +119,54 @@ describe("isSensitiveLogKey", () => {
 });
 
 describe("censorLogValue", () => {
+  test("censors billing identities without hiding operational metadata", () => {
+    const value = censorLogValue({
+      operation: "updateCustomerBillingDetails",
+      customerId: "safe-customer-id",
+      request: {
+        body: {
+          addressLine1: "Private street 1",
+          addressLine2: "Private unit",
+          city: "Private city",
+          zip: "12345",
+          country: "CZ",
+          companyName: "Private company",
+          companyId: "12345678",
+          vatId: "CZ12345678",
+        },
+      },
+      cause: {
+        billingDetails: {
+          address: {
+            line1: "Private street 1",
+            city: "Private city",
+            postalCode: "12345",
+            country: "CZ",
+          },
+        },
+        safeStatus: 412,
+      },
+    });
+
+    expect(value).toEqual({
+      operation: "updateCustomerBillingDetails",
+      customerId: "safe-customer-id",
+      request: {
+        body: {
+          addressLine1: CENSORED_LOG_VALUE,
+          addressLine2: CENSORED_LOG_VALUE,
+          city: CENSORED_LOG_VALUE,
+          zip: CENSORED_LOG_VALUE,
+          country: CENSORED_LOG_VALUE,
+          companyName: CENSORED_LOG_VALUE,
+          companyId: CENSORED_LOG_VALUE,
+          vatId: CENSORED_LOG_VALUE,
+        },
+      },
+      cause: { billingDetails: CENSORED_LOG_VALUE, safeStatus: 412 },
+    });
+  });
+
   test("censors email attachment payloads without hiding safe metadata", () => {
     const value = censorLogValue({
       attachments: [
@@ -142,8 +199,8 @@ describe("censorLogValue", () => {
         stripeApiKey: "secret-stripe-api-key",
         githubAccessToken: "secret-github-access-token",
         userRefreshToken: "secret-user-refresh-token",
-        customerAccessCode: "123456",
         accessCode: "654321",
+        pin: "987654321",
         oauthClientSecret: "secret-oauth-client-secret",
         requestAuthorization: "Bearer secret",
         discountCode: "SUMMER50",
@@ -175,8 +232,8 @@ describe("censorLogValue", () => {
         stripeApiKey: CENSORED_LOG_VALUE,
         githubAccessToken: CENSORED_LOG_VALUE,
         userRefreshToken: CENSORED_LOG_VALUE,
-        customerAccessCode: CENSORED_LOG_VALUE,
         accessCode: CENSORED_LOG_VALUE,
+        pin: CENSORED_LOG_VALUE,
         oauthClientSecret: CENSORED_LOG_VALUE,
         requestAuthorization: CENSORED_LOG_VALUE,
         discountCode: CENSORED_LOG_VALUE,

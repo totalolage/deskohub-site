@@ -13,6 +13,7 @@ import {
   getOfficeReservationOrder,
   getStoredOfficeReservationDetails,
   getWorkspaceOfficeProductKey,
+  isOfficeReservationWithinMaximumDuration,
   officeReservationDetailsSchema,
   officeReservationOrderSchema,
   officeReservationSchema,
@@ -98,6 +99,37 @@ describe("office reservation", () => {
     ).toBe("2026-08-22");
   });
 
+  test("caps office stays by exact elapsed hours across Prague DST", () => {
+    const maximumEndsOn = Temporal.PlainDate.from("2026-11-01");
+
+    for (const [startsOn, expectedMaximumDayCount] of [
+      ["2026-08-10", 28],
+      ["2026-03-10", 28],
+      ["2026-10-01", 27],
+    ] as const) {
+      expect(
+        getOfficeReservationMaximumDayCount({
+          startsOn,
+          maximumEndsOn,
+          unavailableDates: [],
+        })
+      ).toBe(expectedMaximumDayCount);
+    }
+
+    expect(
+      isOfficeReservationWithinMaximumDuration({
+        startsOn: "2026-08-10",
+        endsOn: "2026-09-06",
+      })
+    ).toBe(true);
+    expect(
+      isOfficeReservationWithinMaximumDuration({
+        startsOn: "2026-10-01",
+        endsOn: "2026-10-28",
+      })
+    ).toBe(false);
+  });
+
   test("keeps marketing consent in form state and resets it on restoration", () => {
     const startsOn = Temporal.Now.plainDateISO().add({ days: 1 }).toString();
     const result = formParser.safeParse({
@@ -171,6 +203,37 @@ describe("office reservation", () => {
     ).toBe(true);
   });
 
+  test("rejects form and order ranges longer than 672 elapsed hours", () => {
+    const today = getCurrentWorkspaceDate();
+    const startsOn = today.toString();
+    const endsOn = today.add({ days: 28 }).toString();
+
+    expect(
+      Result.isFailure(
+        formParser.safeParse({
+          ...validCustomer,
+          startsOn,
+          dayCount: 29,
+          seats: 1,
+        })
+      )
+    ).toBe(true);
+    expect(
+      Result.isFailure(
+        orderParser.safeParse({
+          kind: "office",
+          name: validCustomer.name,
+          email: validCustomer.email,
+          phone: validCustomer.phone,
+          message: validCustomer.message,
+          startsOn,
+          endsOn,
+          seats: 1,
+        })
+      )
+    ).toBe(true);
+  });
+
   test("rejects an order that starts before the current Prague date", () => {
     const today = getCurrentWorkspaceDate();
 
@@ -199,6 +262,16 @@ describe("office reservation", () => {
     });
 
     expect(Result.isSuccess(result)).toBe(true);
+    expect(
+      Result.isSuccess(
+        detailsParser.safeParse({
+          kind: "office",
+          startsOn: "2020-06-01",
+          endsOn: "2020-07-01",
+          seats: 3,
+        })
+      )
+    ).toBe(true);
     expect(
       Result.isFailure(
         detailsParser.safeParse({

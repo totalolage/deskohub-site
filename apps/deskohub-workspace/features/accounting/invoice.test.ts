@@ -126,6 +126,7 @@ describe("invoice", () => {
       },
     });
     expect(document).not.toHaveProperty("schemaVersion");
+    expect(document).not.toHaveProperty("billing");
     expect(document).not.toHaveProperty("delivery");
     expect(source.buyer).toEqual({
       kind: "person",
@@ -174,6 +175,33 @@ describe("invoice", () => {
     const { commercialRegister: _commercialRegister, ...legacySupplier } =
       supplier;
     const legacyDocument = { ...identity, supplier: legacySupplier };
+
+    await expect(
+      Effect.runPromise(decodeInvoiceDocument(legacyDocument))
+    ).resolves.toEqual(legacyDocument);
+  });
+
+  test("decodes invoices issued before stricter billing input validation", async () => {
+    const document = makeInvoiceDocument({
+      source,
+      buyer: personalInvoiceBuyer,
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
+      issuedAt,
+      fulfilledAt,
+      paidAt,
+    });
+    const legacyDocument = {
+      ...document,
+      buyer: {
+        ...document.buyer,
+        address: {
+          ...document.buyer.address,
+          postalCode: "legacy-postcode",
+          country: "Czech Republic",
+        },
+      },
+    };
 
     await expect(
       Effect.runPromise(decodeInvoiceDocument(legacyDocument))

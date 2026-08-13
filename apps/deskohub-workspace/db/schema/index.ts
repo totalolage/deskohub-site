@@ -8,5 +8,6 @@ export * from "./invoice-number-counters";
 export * from "./invoices";
 export * from "./legal-evidence-events";
 export * from "./payment-attempts";
+export * from "./reservation-access-grants";
 export * from "./webhook-events";
 export * from "./workspace-reservations";

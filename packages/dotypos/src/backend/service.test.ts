@@ -1206,6 +1206,149 @@ describe("DotyposService customer discounts", () => {
     expect(result._discountGroupId).toBe(dotyposDiscountGroupId("group-id"));
   });
 
+  test("updates customer billing details with the current ETag", async () => {
+    const requests: Request[] = [];
+    const fetchMock = mockDotyposFetch(async (request) => {
+      requests.push(request.clone());
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(customer(), {
+          headers: { ETag: '"customer-version"' },
+        });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PATCH"
+      ) {
+        return Response.json(customer({ addressLine1: "Private street 1" }));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+    const billingDetails = {
+      addressLine1: "Private street 1",
+      addressLine2: "",
+      city: "Private city",
+      zip: "12345",
+      country: "CZ",
+      companyName: "",
+      companyId: "",
+      vatId: "",
+    };
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.updateCustomerBillingDetails(
+          dotyposCustomerId("customer-id"),
+          billingDetails
+        );
+      }),
+      fetchMock
+    );
+
+    const patchRequest = requests.find(({ method }) => method === "PATCH");
+    expect(patchRequest).toBeDefined();
+    expect(patchRequest?.headers.get("if-match")).toBe('"customer-version"');
+    expect(await patchRequest?.json()).toEqual(billingDetails);
+    expect(result.addressLine1).toBe("Private street 1");
+  });
+
+  test("does not patch customer billing details without an ETag", async () => {
+    const requests: Request[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      requests.push(request.clone());
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        return Response.json(customer());
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .updateCustomerBillingDetails(dotyposCustomerId("customer-id"), {
+            addressLine1: "Private street 1",
+            addressLine2: "",
+            city: "Private city",
+            zip: "12345",
+            country: "CZ",
+            companyName: "",
+            companyId: "",
+            vatId: "",
+          })
+          .pipe(Effect.flip);
+      }),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "ExternalAPIError",
+      operation: "getCustomer",
+      message: "Customer ETag header was missing.",
+    });
+    expect(requests.some(({ method }) => method === "PATCH")).toBe(false);
+  });
+
+  test("does not swallow a stale customer billing patch", async () => {
+    const requests: Request[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      requests.push(request.clone());
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(customer(), {
+          headers: { ETag: '"customer-version"' },
+        });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PATCH"
+      ) {
+        return Response.json(
+          { error: "precondition_failed", error_description: "Stale ETag" },
+          { status: 412 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .updateCustomerBillingDetails(dotyposCustomerId("customer-id"), {
+            addressLine1: "Private street 1",
+            addressLine2: "",
+            city: "Private city",
+            zip: "12345",
+            country: "CZ",
+            companyName: "",
+            companyId: "",
+            vatId: "",
+          })
+          .pipe(Effect.flip);
+      }),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "ExternalAPIError",
+      operation: "patchCustomer",
+      statusCode: 412,
+    });
+    expect(requests.filter(({ method }) => method === "PATCH")).toHaveLength(1);
+  });
+
   test("loads a customer's generated discount group by customer ID", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);

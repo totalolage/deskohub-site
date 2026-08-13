@@ -384,7 +384,6 @@ const makeReservation = <Overrides extends object>(
   correlationId: "correlation-id",
   dotyposCustomerId: "stored-dotypos-customer-id",
   dotyposReservationId: "dotypos-reservation-id",
-  customerAccessCode: "test-access-code",
   productTier: reservationData.entryTier,
   productCoffee: reservationData.coffee,
   productMonitorOption: reservationData.monitorOption,
@@ -1003,6 +1002,8 @@ describe("CheckoutService", () => {
       accountingSnapshot: expect.objectContaining({
         workspaceReservationId: "reservation-zero-total",
         buyer: { kind: "person", legalName: "Ada Lovelace" },
+        billing: { purpose: "personal", invoice: "none" },
+        delivery: { email: "ada@example.com" },
       }),
     });
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();

@@ -64,6 +64,9 @@ describe("Workspace React Email templates", () => {
     expect(customerReservation).toContain(
       "padding-right:8px;padding-left:8px;padding-bottom:16px;padding-top:16px"
     );
+    expect(customerReservation).toContain(
+      "@media (min-width:40rem){.sm_w-auto{width:auto!important}}"
+    );
     expect(customerReservation).not.toContain("Where to sit");
     expect(customerReservation).not.toContain("customer@example.com");
     expect(staffNotification).toContain("customer@example.com");

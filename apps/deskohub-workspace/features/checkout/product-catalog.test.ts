@@ -13,13 +13,34 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "./product-catalog";
-import { getWorkspaceMeetingRoomDurationTitle } from "./product-catalog.i18n";
+import {
+  getWorkspaceMeetingRoomDurationTitle,
+  getWorkspaceProductMessage,
+  workspaceProductTierCardMessages,
+  workspaceProductTierMessages,
+} from "./product-catalog.i18n";
 
 describe("workspace product catalog", () => {
   test("exposes static tier-card prices explicitly", () => {
     expect(getWorkspaceProductByTier("basic").price.value).toBe(35_000);
     expect(getWorkspaceProductByTier("plus").price.value).toBe(49_000);
     expect(getWorkspaceProductByTier("profi").price.value).toBe(55_000);
+  });
+
+  test("does not advertise post-mix water", () => {
+    for (const locale of ["en-US", "cs-CZ"] as const) {
+      const basicCopy = [
+        getWorkspaceProductMessage(
+          workspaceProductTierMessages.basic.description,
+          locale
+        ),
+        ...workspaceProductTierCardMessages.basic.perks.map(({ message }) =>
+          getWorkspaceProductMessage(message, locale)
+        ),
+      ].join(" ");
+
+      expect(basicCopy.toLocaleLowerCase(locale)).not.toMatch(/post.?mix/);
+    }
   });
 
   test("keeps cowork-only catalog consumers separate from meeting room", () => {

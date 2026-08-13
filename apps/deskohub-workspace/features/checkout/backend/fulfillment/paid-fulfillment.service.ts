@@ -3,9 +3,16 @@ import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { env } from "@/env";
+import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice";
+import { ReservationInvoiceServiceLiveWithDependencies } from "@/features/accounting/backend/reservation-invoice-live.server";
+import {
+  WorkspaceCheckoutAccessCodeService,
+  WorkspaceCheckoutAccessCodeServiceLiveWithDependencies,
+} from "@/features/checkout/backend/reservation/access-code.service";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import {
+  type WorkspaceReservation,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
   type WorkspaceReservationStateError,
@@ -25,10 +32,12 @@ import { WorkspaceReservationEmailService } from "./workspace-reservation-email.
 export type WorkspacePaidFulfillmentFailureCode =
   | "dotypos_reservation_failed"
   | "dotypos_reservation_unfulfillable"
+  | "fulfillment_access_failed"
   | "fulfillment_email_failed"
   | "fulfillment_order_load_failed"
   | "fulfillment_claim_failed"
-  | "fulfillment_completion_failed";
+  | "fulfillment_completion_failed"
+  | "invoice_processing_failed";
 
 export class WorkspacePaidFulfillmentError extends Data.TaggedError(
   "WorkspacePaidFulfillmentError"
@@ -62,7 +71,45 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
     const dotypos = yield* DotyposService;
     const reservationEmails = yield* WorkspaceReservationEmailService;
     const workspaceReservations = yield* WorkspaceReservationService;
+    const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
     const posthogEvents = yield* PostHogEventService;
+    const reservationInvoices = yield* ReservationInvoiceService;
+
+    const processReservationInvoice = Effect.fn(
+      "workspacePaidFulfillment.processReservationInvoice"
+    )(function* (
+      reservation: Pick<WorkspaceReservation, "activePaymentAttemptId" | "id">
+    ) {
+      if (!reservation.activePaymentAttemptId) {
+        yield* Effect.logWarning(
+          "Reservation invoice processing skipped: payment attempt missing",
+          { orderId: reservation.id }
+        );
+        return;
+      }
+
+      yield* reservationInvoices
+        .processByPaymentAttemptId({
+          paymentAttemptId: reservation.activePaymentAttemptId,
+        })
+        .pipe(
+          Effect.tapError((cause) =>
+            Effect.logFatal("Reservation invoice processing failed", {
+              orderId: reservation.id,
+              cause,
+            })
+          ),
+          Effect.mapError(
+            (cause) =>
+              new WorkspacePaidFulfillmentError({
+                orderId: reservation.id,
+                failureCode: "invoice_processing_failed",
+                message: "Paid reservation invoice processing failed.",
+                cause,
+              })
+          )
+        );
+    });
 
     const failFulfillment = Effect.fn("workspacePaidFulfillment.fail")(
       function* (input: {
@@ -144,11 +191,12 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
 
           if (reservation.fulfillmentState === "fulfilled") {
             yield* Effect.logInfo(
-              "Paid fulfillment skipped: already fulfilled",
+              "Paid access fulfillment already completed; retrying invoice processing",
               {
                 reason: "already_fulfilled",
               }
             );
+            yield* processReservationInvoice(reservation);
             return;
           }
 
@@ -286,25 +334,56 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           }
 
           yield* Effect.logInfo("Paid reservation email flow started");
-          yield* workspaceReservations.getReservation(claimed.id).pipe(
-            Effect.flatMap((reservation) =>
-              reservationEmails.sendPaidReservationEmails({ reservation })
-            ),
-            Effect.tapError((cause) =>
-              Effect.logError("Workspace paid reservation email flow failed", {
-                workspaceReservationId: claimed.id,
-                dotyposCustomerId: claimed.dotyposCustomerId,
-                cause,
-              })
-            ),
-            Effect.catch((cause) =>
-              failFulfillment({
-                orderId: input.orderId,
-                failureCode: "fulfillment_email_failed",
-                cause,
-              })
-            )
-          );
+          const reservationForDelivery = yield* workspaceReservations
+            .getReservation(claimed.id)
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logError(
+                  "Workspace paid reservation email flow failed",
+                  {
+                    workspaceReservationId: claimed.id,
+                    dotyposCustomerId: claimed.dotyposCustomerId,
+                    cause,
+                  }
+                )
+              ),
+              Effect.catch((cause) =>
+                failFulfillment({
+                  orderId: input.orderId,
+                  failureCode: "fulfillment_email_failed",
+                  cause,
+                })
+              )
+            );
+          yield* accessCodes
+            .resolveCustomerAccessCode({
+              reservationId: reservationForDelivery.id,
+              dotyposReservationId: reservationForDelivery.dotyposReservationId,
+              reservedFrom: reservationForDelivery.reservedFrom,
+              reservedUntil: reservationForDelivery.reservedUntil,
+            })
+            .pipe(
+              Effect.catch((cause) =>
+                failFulfillment({
+                  orderId: input.orderId,
+                  failureCode: "fulfillment_access_failed",
+                  cause,
+                })
+              )
+            );
+          yield* reservationEmails
+            .sendPaidReservationEmails({
+              reservation: reservationForDelivery,
+            })
+            .pipe(
+              Effect.catch((cause) =>
+                failFulfillment({
+                  orderId: input.orderId,
+                  failureCode: "fulfillment_email_failed",
+                  cause,
+                })
+              )
+            );
           yield* Effect.logInfo("Paid reservation email flow succeeded");
 
           if (env.VERCEL_ENV !== "production") {
@@ -312,6 +391,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
               id: claimed.id,
               fulfilledAt: Temporal.Now.instant(),
             });
+            yield* processReservationInvoice(claimed);
             yield* Effect.logInfo(
               "Non-production paid fulfillment completed after email provider acceptance"
             );
@@ -353,7 +433,9 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
       )
     ),
     Layer.provide(PostHogEventServiceLive),
+    Layer.provide(ReservationInvoiceServiceLiveWithDependencies),
     Layer.provide(WorkspaceReservationService.Live),
+    Layer.provide(WorkspaceCheckoutAccessCodeServiceLiveWithDependencies),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(DotyposServiceLive),

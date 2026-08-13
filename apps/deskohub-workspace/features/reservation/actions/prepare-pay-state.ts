@@ -33,8 +33,6 @@ import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backe
 import {
   createWorkspaceDotyposReservation,
   splitCustomerName,
-  WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLive,
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
 import {
@@ -69,6 +67,7 @@ import {
   getStoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
+import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
@@ -688,6 +687,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.annotateLogsScoped({ dotyposCustomerId });
     yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
 
+    const billing = reservation.billing ?? defaultReservationBillingSelection;
     if (input.marketingConsent === true) {
       yield* Effect.gen(function* () {
         const documents = yield* getLegalAcceptanceSnapshot(input.locale);
@@ -716,8 +716,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.logDebug("Workspace reservation quote built");
 
     const holdExpiresAt = getReservationHoldExpiresAt(Temporal.Now.instant());
-    const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
-    const customerAccessCode = yield* accessCodes.generateCustomerAccessCode;
 
     const preparedDraft = yield* prepareReservationDraft({
       checkoutSessionId: input.checkoutSessionId,
@@ -725,7 +723,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservation,
       draft: {
         dotyposCustomerId,
-        customerAccessCode,
+        reservationPurpose: billing.purpose,
         reservationDetails: getStoredWorkspaceReservationDetails(reservation),
         locale: input.locale,
         reservationHoldExpiresAt: holdExpiresAt,
@@ -1005,7 +1003,6 @@ const PreparePayStateLive = Layer.mergeAll(
     ),
     Layer.provide(DotyposServiceLive)
   ),
-  WorkspaceCheckoutAccessCodeServiceLive,
   ReservationHoldCleanupScheduleService.Live,
   PostHogEventServiceLive,
   DotyposServiceLive,

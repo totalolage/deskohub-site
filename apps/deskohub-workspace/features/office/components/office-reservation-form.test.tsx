@@ -263,11 +263,14 @@ describe("OfficeReservationForm", () => {
     expect(
       view.container.querySelector('input[name="seats"][type="number"]')
     ).toBeNull();
-    expect(view.getAllByRole("radio").map(({ value }) => value)).toEqual([
-      "1",
-      "2",
-      "3",
-    ]);
+    expect(
+      Array.from(
+        view.container.querySelectorAll<HTMLInputElement>(
+          'input[name="seats"][type="radio"]'
+        ),
+        ({ value }) => value
+      )
+    ).toEqual(["1", "2", "3"]);
     expect(view.getByText("How many office seats do you need?")).toBeDefined();
     expect(view.getByText("1 seat")).toBeDefined();
     expect(view.getByText("2 seats")).toBeDefined();

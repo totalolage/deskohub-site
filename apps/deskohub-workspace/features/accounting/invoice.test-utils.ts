@@ -49,6 +49,13 @@ const businessBuyer = {
   },
 } satisfies InvoiceBuyer;
 
+const personalAddress = {
+  line1: "Synthetic 1",
+  city: "Praha",
+  postalCode: "100 00",
+  country: "CZ",
+};
+
 export const makeCoworkInvoiceDocument = (
   locale: Locale,
   options: { readonly businessBuyer?: boolean } = {}
@@ -66,6 +73,13 @@ export const makeCoworkInvoiceDocument = (
       name: "Ada Lovelace",
       email: "synthetic@example.test",
       phone: "+420 700 000 000",
+      billing: options.businessBuyer
+        ? { purpose: "business", invoice: "required", buyer: businessBuyer }
+        : {
+            purpose: "personal",
+            invoice: "requested",
+            address: personalAddress,
+          },
     },
     quote: buildCoworkReservationQuote(order),
   } as PreparedCustomerQuote;
@@ -90,6 +104,11 @@ export const makeMeetingRoomInvoiceDocument = (
     name: "Grace Hopper",
     email: "synthetic@example.test",
     phone: "+420 700 000 000",
+    billing: {
+      purpose: "personal",
+      invoice: "requested",
+      address: personalAddress,
+    },
   });
   const quoteWithoutFingerprint = Effect.runSync(
     getMeetingRoomReservationQuote(reservation)
@@ -118,6 +137,11 @@ export const makeOfficeInvoiceDocument = (locale: Locale): InvoiceDocument => {
     name: "Katherine Johnson",
     email: "synthetic@example.test",
     phone: "+420 700 000 000",
+    billing: {
+      purpose: "personal",
+      invoice: "requested",
+      address: personalAddress,
+    },
   });
   const prepared: PreparedCustomerQuote = {
     kind: "office",
@@ -146,19 +170,13 @@ const issueTestInvoice = (input: {
     ),
     locale: input.locale,
     prepared: input.prepared,
-    buyer: input.buyer,
   });
   const buyer =
     input.buyer ??
     ({
       kind: "person",
       legalName: input.prepared.reservation.name,
-      address: {
-        line1: "Synthetic 1",
-        city: "Praha",
-        postalCode: "100 00",
-        country: "CZ",
-      },
+      address: personalAddress,
     } satisfies InvoiceBuyer);
 
   return makeInvoiceDocument({

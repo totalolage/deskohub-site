@@ -10,7 +10,7 @@ Each payment attempt receives one protected, immutable source snapshot at the sa
 
 An unsuccessful terminal payment no longer needs accounting evidence and may discard its snapshot. A paid snapshot is retained and cannot be rewritten. Historical payments are not reconstructed from current customer or catalog data.
 
-The current reservation experience does not yet collect a complete reservation-specific business billing identity or issue customer invoices. Until that experience is introduced, a source snapshot must not be presented as an invoice.
+The reservation experience records personal or business purpose and collects complete billing details whenever an invoice is required or requested. The encrypted source snapshot freezes that instruction, while the separate issued record remains the only proof that an invoice exists.
 
 ## Invoice requirements
 
@@ -33,7 +33,7 @@ A personal reservation may optionally request an invoice. When requested, it req
 
 Switching purpose or disabling a personal invoice request removes billing values that are no longer applicable from the submission. Billing details do not affect price, but a change to the purpose, invoice request, or billing identity must not reuse checkout state or an accounting snapshot created for different values.
 
-The newest explicitly submitted billing identity may update the customer's current operational profile. Earlier issued invoices remain unchanged.
+After payment and access-code fulfilment, the frozen billing identity may update the customer's current operational profile. An abandoned checkout never updates it, and earlier issued invoices remain unchanged.
 
 ## Delivery and later requests
 

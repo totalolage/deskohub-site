@@ -18,7 +18,6 @@ const makeReservation = <Overrides extends object>(overrides?: Overrides) => ({
   correlationId: "correlation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: "dotypos-reservation-id",
-  customerAccessCode: "customer-access-code",
   reservationDetails: {
     kind: "cowork",
     entryTier: "profi",
