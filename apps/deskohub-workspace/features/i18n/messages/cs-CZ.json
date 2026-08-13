@@ -359,6 +359,7 @@
   "reservationBillingPostalCodeInvalid": "Zadejte platné PSČ pro vybranou zemi.",
   "reservationBillingCountryLabel": "Země",
   "reservationBillingCountryInvalid": "Vyberte platnou zemi.",
+  "reservationBillingFieldRequired": "Toto pole je povinné.",
   "reservationSubmitButton": "Pokračovat k bezpečné platbě",
   "reservationLegalConsentLabel": "Souhlasím s platebními a workspace podmínkami",
   "reservationLegalConsentBefore": "Pokračováním k platbě souhlasím s dokumenty",

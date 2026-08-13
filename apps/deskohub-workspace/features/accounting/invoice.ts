@@ -11,7 +11,7 @@ import {
   meetingRoomAccountingDocumentSnapshotSchema,
   officeAccountingDocumentSnapshotSchema,
 } from "./accounting-document-snapshot";
-import { type InvoiceBuyer, invoiceBuyerSchema } from "./billing-identity";
+import type { InvoiceBuyer } from "./billing-identity";
 
 export {
   type BusinessInvoiceBuyer,
@@ -31,9 +31,36 @@ export const invoiceNumberSchema = Schema.String.pipe(
 
 export type InvoiceNumber = typeof invoiceNumberSchema.Type;
 
+const storedInvoiceBillingTextSchema = Schema.Trim.check(Schema.isNonEmpty());
+const storedInvoiceBuyerAddressSchema = Schema.Struct({
+  line1: storedInvoiceBillingTextSchema,
+  line2: Schema.optionalKey(storedInvoiceBillingTextSchema),
+  city: storedInvoiceBillingTextSchema,
+  postalCode: storedInvoiceBillingTextSchema,
+  country: storedInvoiceBillingTextSchema,
+});
+const storedInvoiceBuyerSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("person"),
+    legalName: storedInvoiceBillingTextSchema,
+    address: storedInvoiceBuyerAddressSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("business"),
+    legalName: storedInvoiceBillingTextSchema,
+    companyId: storedInvoiceBillingTextSchema.pipe(
+      Schema.brand("CompanyRegistrationId")
+    ),
+    vatId: Schema.optionalKey(
+      storedInvoiceBillingTextSchema.pipe(Schema.brand("VatRegistrationId"))
+    ),
+    address: storedInvoiceBuyerAddressSchema,
+  }),
+]);
+
 const invoiceIdentitySchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
-  buyer: invoiceBuyerSchema,
+  buyer: storedInvoiceBuyerSchema,
   supplier: Schema.Struct({
     ...accountingDocumentIdentitySchema.fields.supplier.fields,
     commercialRegister: Schema.optional(

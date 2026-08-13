@@ -135,7 +135,6 @@ export function ReservationBillingFields({
                 </label>
               </div>
             </fieldset>
-            <FormMessage />
 
             {invoiceRequested && (
               <section

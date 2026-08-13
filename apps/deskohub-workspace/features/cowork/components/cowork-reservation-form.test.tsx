@@ -313,6 +313,33 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  test("shows billing validation without errors for empty optional fields", async () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=basic&date=2099-07-30&coffee=true")
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+    const continueButton = view.getByRole("button", { name: "Continue" });
+    await waitFor(() => {
+      expect(continueButton.hasAttribute("disabled")).toBe(false);
+    });
+
+    fireEvent.click(view.getByRole("checkbox", { name: "Create invoice" }));
+    fireEvent.click(continueButton);
+
+    expect(await view.findAllByText("This field is required.")).toHaveLength(3);
+    expect(view.queryByText("undefined")).toBeNull();
+    expect(view.queryByText("Expected string, got undefined")).toBeNull();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   test("does not render catalog prices before a backend quote is available", () => {
     workspaceUseSearchParams.mockReturnValue(
       new URLSearchParams("entryTier=basic")
