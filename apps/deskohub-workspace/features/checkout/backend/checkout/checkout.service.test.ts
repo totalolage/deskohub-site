@@ -728,8 +728,7 @@ describe("CheckoutService", () => {
         evidence: expect.objectContaining({
           documentKey: "termsAndConditions",
           acknowledgements: {
-            performanceBeforeWithdrawalPeriodEndRequested: true,
-            withdrawalRightLossAfterFullPerformanceAcknowledged: true,
+            earlyPerformanceConsent: true,
           },
         }),
       }),
