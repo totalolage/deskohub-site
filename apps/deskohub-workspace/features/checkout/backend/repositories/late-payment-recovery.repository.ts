@@ -191,27 +191,32 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 );
               }
 
-              const [newer] = yield* tx
-                .select({ id: workspaceReservations.id })
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(
-                      workspaceReservations.checkoutSessionKey,
-                      reservation.checkoutSessionKey
-                    ),
-                    ne(workspaceReservations.id, reservation.id),
-                    gt(workspaceReservations.createdAt, reservation.createdAt),
-                    ne(workspaceReservations.reservationState, "cancelled")
+              if (input.state === "recovered") {
+                const [newer] = yield* tx
+                  .select({ id: workspaceReservations.id })
+                  .from(workspaceReservations)
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.checkoutSessionKey,
+                        reservation.checkoutSessionKey
+                      ),
+                      ne(workspaceReservations.id, reservation.id),
+                      gt(
+                        workspaceReservations.createdAt,
+                        reservation.createdAt
+                      ),
+                      ne(workspaceReservations.reservationState, "cancelled")
+                    )
                   )
-                )
-                .limit(1);
-              if (newer) {
-                return yield* recoveryStateError(
-                  "settle",
-                  input.paymentAttemptId,
-                  "A newer active checkout-session reservation prevents recovery."
-                );
+                  .limit(1);
+                if (newer) {
+                  return yield* recoveryStateError(
+                    "settle",
+                    input.paymentAttemptId,
+                    "A newer active checkout-session reservation prevents recovery."
+                  );
+                }
               }
 
               const [attempt] = yield* tx

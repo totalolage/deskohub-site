@@ -36,6 +36,16 @@ test("rechecks supersession when settling with the original reservation", async 
   );
 });
 
+test("allows refund settlement for a superseded late payment", async () => {
+  const source = await Bun.file(
+    new URL("./late-payment-recovery.repository.ts", import.meta.url)
+  ).text();
+
+  expect(source).toContain(
+    'if (input.state === "recovered") {\n                const [newer]'
+  );
+});
+
 test("redeems the attempt's discount claim in recovered settlements", async () => {
   const source = await Bun.file(
     new URL("./late-payment-recovery.repository.ts", import.meta.url)
