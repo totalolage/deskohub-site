@@ -760,6 +760,7 @@ export class DiscountAdministration extends Context.Service<
               const codeRows = yield* tx
                 .insert(discountCodes)
                 .values({
+                  ...toPromotionCodeValues(input.code),
                   promotionCodeId: promotion.id,
                   discountId,
                   maxUses: input.code.maxUses,
@@ -835,6 +836,7 @@ export class DiscountAdministration extends Context.Service<
             const codeRows = yield* tx
               .insert(discountCodes)
               .values({
+                ...toPromotionCodeValues(input.code),
                 promotionCodeId: promotion.id,
                 discountId,
                 maxUses: input.code.maxUses,
@@ -875,6 +877,7 @@ export class DiscountAdministration extends Context.Service<
               yield* tx
                 .update(discountCodes)
                 .set({
+                  ...toPromotionCodeValues(input),
                   discountId: input.discountId,
                   maxUses: input.maxUses,
                   updatedAt: Temporal.Now.instant(),

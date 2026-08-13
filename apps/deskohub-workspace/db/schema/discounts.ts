@@ -153,6 +153,10 @@ export const discountCodes = pgTable(
   "discount_codes",
   {
     id: text("id").primaryKey().default(postgresUuidV7).$type<DiscountCodeId>(),
+    code: text("code").notNull().$type<CanonicalPromotionCode>(),
+    enabled: boolean("enabled").notNull(),
+    validFrom: instant("valid_from"),
+    validUntil: instant("valid_until"),
     promotionCodeId: text("promotion_code_id")
       .notNull()
       .unique()
@@ -170,6 +174,7 @@ export const discountCodes = pgTable(
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
+    uniqueIndex("discount_codes_code_unique_idx").on(t.code),
     index("discount_codes_discount_idx").on(t.discountId),
     foreignKey({
       name: "discount_codes_promotion_fk",
@@ -181,8 +186,39 @@ export const discountCodes = pgTable(
       sql`${t.promotionKind} = 'discount'`
     ),
     check(
+      "discount_codes_code_check",
+      sql`${t.code} ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$'`
+    ),
+    check(
+      "discount_codes_valid_window_check",
+      sql`${t.validFrom} is null or ${t.validUntil} is null or ${t.validUntil} > ${t.validFrom}`
+    ),
+    check(
       "discount_codes_max_uses_check",
       sql`${t.maxUses} is null or ${t.maxUses} > 0`
+    ),
+  ]
+);
+
+export const discountCodeCustomers = pgTable(
+  "discount_code_customers",
+  {
+    codeId: text("code_id")
+      .notNull()
+      .$type<DiscountCodeId>()
+      .references(() => discountCodes.id, { onDelete: "cascade" }),
+    dotyposCustomerId: text("dotypos_customer_id")
+      .notNull()
+      .$type<DotyposCustomerId>(),
+  },
+  (t) => [
+    primaryKey({
+      name: "discount_code_customers_pk",
+      columns: [t.codeId, t.dotyposCustomerId],
+    }),
+    check(
+      "discount_code_customers_customer_check",
+      sql`btrim(${t.dotyposCustomerId}) <> ''`
     ),
   ]
 );
@@ -226,6 +262,8 @@ export type NewDiscountProductTarget =
   typeof discountProductTargets.$inferInsert;
 export type DiscountCode = typeof discountCodes.$inferSelect;
 export type NewDiscountCode = typeof discountCodes.$inferInsert;
+export type DiscountCodeCustomer = typeof discountCodeCustomers.$inferSelect;
+export type NewDiscountCodeCustomer = typeof discountCodeCustomers.$inferInsert;
 export type PromotionCode = typeof promotionCodes.$inferSelect;
 export type NewPromotionCode = typeof promotionCodes.$inferInsert;
 export type PromotionCodeCustomer = typeof promotionCodeCustomers.$inferSelect;

@@ -63,7 +63,7 @@ describe("discount persistence contracts", () => {
   test("introduces vouchers separately without discarding discount codes", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260813185209_many_lilith/migration.sql",
+        "../migrations/20260813190657_overjoyed_saracen/migration.sql",
         import.meta.url
       )
     ).text();
@@ -73,10 +73,30 @@ describe("discount persistence contracts", () => {
     expect(migration).toContain('CREATE TABLE "voucher_redemptions"');
     expect(migration).toContain('SELECT "id", \'discount\', "code", "enabled"');
     expect(migration.indexOf('INSERT INTO "promotion_codes"')).toBeLessThan(
-      migration.indexOf('ALTER TABLE "discount_codes" DROP COLUMN "code"')
+      migration.indexOf(
+        'ALTER TABLE "discount_codes" ADD COLUMN "promotion_code_id"'
+      )
     );
     expect(migration).toContain(
       'UPDATE "discount_codes" SET "promotion_code_id" = "id"'
+    );
+    expect(migration).toContain(
+      'CREATE FUNCTION "sync_discount_code_to_promotion"'
+    );
+    expect(migration).toContain(
+      'CREATE FUNCTION "sync_promotion_to_discount_code"'
+    );
+    expect(migration).toContain(
+      'CREATE FUNCTION "sync_legacy_discount_code_customer"'
+    );
+    expect(migration).toContain(
+      'CREATE FUNCTION "sync_promotion_discount_code_customer"'
+    );
+    expect(migration).not.toContain(
+      'ALTER TABLE "discount_codes" DROP COLUMN "code"'
+    );
+    expect(migration).not.toContain(
+      'ALTER TABLE "discount_code_customers" RENAME TO'
     );
     expect(migration).not.toContain('ALTER COLUMN "discount_id" DROP NOT NULL');
   });
@@ -225,7 +245,7 @@ describe("discount persistence contracts", () => {
     );
   });
 
-  test("enforces separate promotion, discount-code, and voucher aggregates", () => {
+  test("enforces separate aggregates with rollout-compatible code mirrors", () => {
     const promotionConfig = configOf(promotionCodes);
     const codeConfig = configOf(discountCodes);
     const voucherConfig = configOf(vouchers);
@@ -241,6 +261,8 @@ describe("discount persistence contracts", () => {
     ]);
     expect(namesOf(codeConfig.checks)).toEqual([
       "discount_codes_promotion_kind_check",
+      "discount_codes_code_check",
+      "discount_codes_valid_window_check",
       "discount_codes_max_uses_check",
     ]);
     expect(namesOf(voucherConfig.checks)).toEqual([
@@ -253,7 +275,9 @@ describe("discount persistence contracts", () => {
         index.unique,
       ])
     ).toContainEqual(["promotion_codes_code_unique_idx", true]);
-    expect(codeConfig.columns.map(({ name }) => name)).not.toContain("code");
+    expect(codeConfig.columns.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(["code", "enabled", "valid_from", "valid_until"])
+    );
     expect(voucherConfig.columns.map(({ name }) => name)).not.toContain(
       "discount_id"
     );

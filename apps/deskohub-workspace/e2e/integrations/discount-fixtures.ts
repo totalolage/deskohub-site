@@ -408,18 +408,26 @@ const seedDiscountCode = (
     yield* tx
       .insert(discountCodes)
       .values({
+        code: fixture.code,
         discountId: fixture.discountId,
+        enabled: fixture.enabled,
         id: fixture.id,
         maxUses: fixture.maxUses ?? null,
         promotionCodeId,
+        validFrom: fixture.validFrom ?? null,
+        validUntil: fixture.validUntil ?? null,
       })
       .onConflictDoUpdate({
         target: discountCodes.id,
         set: {
+          code: fixture.code,
           discountId: fixture.discountId,
+          enabled: fixture.enabled,
           maxUses: fixture.maxUses ?? null,
           promotionCodeId,
           updatedAt: Temporal.Now.instant(),
+          validFrom: fixture.validFrom ?? null,
+          validUntil: fixture.validUntil ?? null,
         },
       });
     yield* tx
