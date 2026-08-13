@@ -3,6 +3,7 @@ import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import type { ReservationAccessViewModel } from "@/features/reservation/backend/reservation-access.service";
+import { formatReservationDisplayDateTime } from "@/features/reservation/reservation-date";
 
 type ReservationAccessPageProps = {
   readonly access: ReservationAccessViewModel;
@@ -13,15 +14,9 @@ export function ReservationAccessPage({
   access,
   locale,
 }: ReservationAccessPageProps) {
-  const copy = {
-    available: {
-      title: m.reservationAccessTitle({}, { locale }),
-      lead: m.reservationAccessLead({}, { locale }),
-    },
-    unavailable: {
-      title: m.reservationAccessUnavailableTitle({}, { locale }),
-      lead: m.reservationAccessUnavailableLead({}, { locale }),
-    },
+  const title = {
+    available: m.reservationAccessTitle({}, { locale }),
+    unavailable: m.reservationAccessUnavailableTitle({}, { locale }),
   }[access.state];
 
   return (
@@ -37,11 +32,11 @@ export function ReservationAccessPage({
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-balance text-[1.75rem] leading-none sm:text-5xl">
-                {copy.title}
+                {title}
               </h1>
               {access.state === "unavailable" && (
                 <p className="mt-5 text-lg leading-8 text-navy-blue/70">
-                  {copy.lead}
+                  {m.reservationAccessUnavailableLead({}, { locale })}
                 </p>
               )}
             </div>
@@ -68,7 +63,19 @@ export function ReservationAccessPage({
               </output>
 
               <p className="mt-10 text-center font-mono text-sm text-navy-blue/60 sm:mt-14">
-                {copy.lead}
+                {m.reservationAccessLead(
+                  {
+                    startsAt: formatReservationDisplayDateTime(
+                      access.accessStartsAt,
+                      locale
+                    ),
+                    endsAt: formatReservationDisplayDateTime(
+                      access.accessEndsAt,
+                      locale
+                    ),
+                  },
+                  { locale }
+                )}
               </p>
             </div>
           )}

@@ -534,7 +534,7 @@
   "reservationAccessMetadataTitle": "Reservation access | Deskohub Workspace",
   "reservationAccessMetadataDescription": "Open your secure reservation access page to see the current door PIN.",
   "reservationAccessTitle": "Your access PIN",
-  "reservationAccessLead": "The lock accepts this PIN only during its programmed access period.",
+  "reservationAccessLead": "The lock accepts this PIN from {startsAt} until {endsAt}.",
   "reservationAccessUnavailableTitle": "The access PIN is unavailable",
   "reservationAccessUnavailableLead": "We cannot safely show a PIN for the current reservation status. Contact us if your confirmed reservation should be active.",
   "checkoutStatusFulfillmentFailedContactButton": "Send support request",

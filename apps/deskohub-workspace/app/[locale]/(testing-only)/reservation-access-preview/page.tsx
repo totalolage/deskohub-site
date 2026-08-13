@@ -22,7 +22,12 @@ const getPreviewAccess = (
   state: "available" | "unavailable"
 ): ReservationAccessViewModel =>
   state === "available"
-    ? { state: "available", code: "24681357" }
+    ? {
+        state: "available",
+        code: "24681357",
+        accessStartsAt: Temporal.Instant.from("2026-08-13T08:00:00Z"),
+        accessEndsAt: Temporal.Instant.from("2026-08-13T16:00:00Z"),
+      }
     : { state: "unavailable" };
 
 export default async function ReservationAccessPreviewPage({

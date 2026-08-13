@@ -16,7 +16,12 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 
 export type ReservationAccessViewModel =
-  | { readonly state: "available"; readonly code: string }
+  | {
+      readonly state: "available";
+      readonly code: string;
+      readonly accessStartsAt: Temporal.Instant;
+      readonly accessEndsAt: Temporal.Instant;
+    }
   | { readonly state: "unavailable" };
 
 export interface IReservationAccessService {
@@ -94,9 +99,17 @@ const implementation = Effect.gen(function* () {
           ...timing,
         })
         .pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.NonEmptyString)),
-          Effect.map(
-            (code): ReservationAccessViewModel => ({ state: "available", code })
+          Effect.flatMap((access) =>
+            Schema.decodeUnknownEffect(Schema.NonEmptyString)(access.code).pipe(
+              Effect.map(
+                (code): ReservationAccessViewModel => ({
+                  state: "available",
+                  code,
+                  accessStartsAt: access.accessStartsAt,
+                  accessEndsAt: access.accessEndsAt,
+                })
+              )
+            )
           ),
           Effect.tapError(() =>
             Effect.logError("Reservation access code resolution failed")

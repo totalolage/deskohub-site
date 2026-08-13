@@ -32,6 +32,8 @@ describe("ReservationAccessPage", () => {
         access={{
           state: "available",
           code: "2468",
+          accessStartsAt: Temporal.Instant.from("2026-08-13T08:00:00Z"),
+          accessEndsAt: Temporal.Instant.from("2026-08-13T16:00:00Z"),
         }}
         locale="en-US"
       />
@@ -50,7 +52,11 @@ describe("ReservationAccessPage", () => {
       "8",
     ]);
     expect(view.getByText("Your access PIN")).toBeDefined();
-    expect(view.getByText(/programmed access period/)).toBeDefined();
+    expect(
+      view.getByText(
+        "The lock accepts this PIN from Aug 13, 2026, 10:00 AM until Aug 13, 2026, 6:00 PM."
+      )
+    ).toBeDefined();
     expect(view.container.querySelector("[data-reservation-access]")).toBe(
       code.closest("[data-reservation-access]")
     );

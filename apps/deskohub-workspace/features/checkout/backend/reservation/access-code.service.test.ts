@@ -46,7 +46,11 @@ test("resolves the reservation AlgoPIN through the dynamic access provider", asy
     Effect.runPromise
   );
 
-  expect(result).toBe(accessCode);
+  expect(result).toEqual({
+    code: accessCode,
+    accessStartsAt: reservedFrom,
+    accessEndsAt: reservedUntil,
+  });
   expect(issueForReservation).toHaveBeenCalledWith({
     reservationId,
     reservedFrom,

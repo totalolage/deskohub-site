@@ -11,7 +11,14 @@ export interface WorkspaceCheckoutAccessCodeService {
     readonly dotyposReservationId: string;
     readonly reservedFrom: Temporal.Instant;
     readonly reservedUntil: Temporal.Instant;
-  }) => Effect.Effect<string, ReservationAccessIssuanceError>;
+  }) => Effect.Effect<
+    {
+      readonly code: string;
+      readonly accessStartsAt: Temporal.Instant;
+      readonly accessEndsAt: Temporal.Instant;
+    },
+    ReservationAccessIssuanceError
+  >;
 }
 
 export const WorkspaceCheckoutAccessCodeService =
@@ -33,7 +40,11 @@ export const WorkspaceCheckoutAccessCodeServiceLive = Layer.effect(
           reservedFrom: input.reservedFrom,
           reservedUntil: input.reservedUntil,
         });
-        return issued.accessCode;
+        return {
+          code: issued.accessCode,
+          accessStartsAt: issued.accessStartsAt,
+          accessEndsAt: issued.accessEndsAt,
+        };
       }),
     });
   })

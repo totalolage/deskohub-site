@@ -540,7 +540,7 @@
   "reservationAccessMetadataTitle": "Přístup k rezervaci | Deskohub Workspace",
   "reservationAccessMetadataDescription": "Otevřete bezpečnou stránku přístupu k rezervaci a zobrazte aktuální PIN ke dveřím.",
   "reservationAccessTitle": "Váš přístupový PIN",
-  "reservationAccessLead": "Zámek přijme tento PIN pouze během naprogramované doby přístupu.",
+  "reservationAccessLead": "Zámek přijme tento PIN od {startsAt} do {endsAt}.",
   "reservationAccessUnavailableTitle": "Přístupový PIN není dostupný",
   "reservationAccessUnavailableLead": "Pro aktuální stav rezervace nemůžeme PIN bezpečně zobrazit. Pokud má být potvrzená rezervace právě aktivní, kontaktuj nás.",
   "checkoutStatusFulfillmentFailedContactButton": "Zaslat žádost o podporu",

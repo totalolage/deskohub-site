@@ -21,6 +21,11 @@ mock.module("server-only", () => ({}));
 const now = Temporal.Instant.from("2026-06-20T08:00:00Z");
 const orderId = workspaceReservationIdSchema.make("reservation-access-test");
 const resolvedCode = ["fixture", "access"].join("-");
+const resolvedAccess = {
+  code: resolvedCode,
+  accessStartsAt: Temporal.Instant.from("2026-06-20T08:00:00Z"),
+  accessEndsAt: Temporal.Instant.from("2026-06-20T09:00:00Z"),
+};
 
 type ReservationOverrides = Partial<
   Pick<
@@ -114,7 +119,7 @@ const runAccess = async (options: HarnessOptions = {}) => {
       : Effect.succeed(options.providerReservation ?? makeProviderReservation())
   );
   const resolveCustomerAccessCode = mock(
-    options.resolver ?? (() => Effect.succeed(resolvedCode))
+    options.resolver ?? (() => Effect.succeed(resolvedAccess))
   );
   const accessCodes: WorkspaceCheckoutAccessCodeServiceType = {
     resolveCustomerAccessCode,
@@ -209,7 +214,7 @@ describe("ReservationAccessService", () => {
       }),
     });
 
-    expect(result.access).toEqual({ state: "available", code: resolvedCode });
+    expect(result.access).toEqual({ state: "available", ...resolvedAccess });
     expect(result.getReservation).toHaveBeenCalledTimes(1);
     expect(result.resolveCustomerAccessCode).toHaveBeenCalledWith({
       reservationId: orderId,
@@ -264,7 +269,7 @@ describe("ReservationAccessService", () => {
 
     expect(result.access).toEqual({
       state: "available",
-      code: resolvedCode,
+      ...resolvedAccess,
     });
     expect(result.resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
     expect(result.resolveCustomerAccessCode).toHaveBeenCalledWith({
@@ -285,7 +290,7 @@ describe("ReservationAccessService", () => {
       }),
     });
 
-    expect(result.access).toEqual({ state: "available", code: resolvedCode });
+    expect(result.access).toEqual({ state: "available", ...resolvedAccess });
     expect(result.resolveCustomerAccessCode).toHaveBeenCalledWith({
       reservationId: orderId,
       dotyposReservationId: "provider-reservation-id",
@@ -298,7 +303,7 @@ describe("ReservationAccessService", () => {
     const accessToken = await createAccessToken();
     const resolvers = [
       () => Effect.fail(new Error("resolver unavailable")),
-      () => Effect.succeed(""),
+      () => Effect.succeed({ ...resolvedAccess, code: "" }),
     ];
 
     for (const resolver of resolvers) {
