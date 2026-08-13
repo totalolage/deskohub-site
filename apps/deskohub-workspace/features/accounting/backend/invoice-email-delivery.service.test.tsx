@@ -169,6 +169,16 @@ describe("invoice email delivery", () => {
     expect(harness.claimResend).toHaveBeenCalledTimes(1);
   });
 
+  test("does not report a resend while another resend owns the claim", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const harness = makeHarness({ sentMessages, resendClaimed: false });
+
+    await expect(runCustomerResend(harness)).rejects.toMatchObject({
+      code: "delivery_in_progress",
+    });
+    expect(sentMessages).toEqual([]);
+  });
+
   test("rejects legacy snapshots without a frozen recipient", async () => {
     const sentMessages: EmailMessage[] = [];
     const { delivery: _delivery, ...legacySource } = source;
@@ -244,6 +254,7 @@ const makeHarness = (options: {
   readonly invoice?: typeof invoice | null;
   readonly source?: AccountingDocumentSnapshot;
   readonly send?: EmailService["send"];
+  readonly resendClaimed?: boolean;
 }) => {
   const states = new Map<InvoiceEmailDeliveryAudience, "accepted" | "failed">();
   const attempts = new Map<InvoiceEmailDeliveryAudience, number>();
@@ -262,6 +273,7 @@ const makeHarness = (options: {
     }
   );
   const claimResend = mock(() => {
+    if (options.resendClaimed === false) return Effect.succeed(null);
     const attemptNumber = (attempts.get("customer") ?? 0) + 1;
     attempts.set("customer", attemptNumber);
     return Effect.succeed({ attemptNumber });

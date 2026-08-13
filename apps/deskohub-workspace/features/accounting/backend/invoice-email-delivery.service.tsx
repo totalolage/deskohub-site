@@ -35,6 +35,7 @@ export class InvoiceEmailDeliveryError extends Data.TaggedError(
 )<{
   readonly code:
     | "delivery_recipient_unavailable"
+    | "delivery_in_progress"
     | "email_delivery_failed"
     | "invoice_load_failed"
     | "pdf_render_failed"
@@ -320,6 +321,13 @@ export class InvoiceEmailDeliveryService extends Context.Service<
             pdf: delivery.pdf,
             resend: true,
           });
+          if (!changed) {
+            return yield* deliveryError({
+              code: "delivery_in_progress",
+              paymentAttemptId,
+              message: "Another invoice email delivery is already in progress.",
+            });
+          }
           return { status: "delivered", changed } as const;
         }),
       } satisfies IInvoiceEmailDeliveryService;
