@@ -381,6 +381,10 @@ describe("discount administration pages", () => {
     const view = render(<VouchersAdministrationActions />);
 
     fireEvent.click(view.getByRole("button", { name: "Create a voucher" }));
+    expect(
+      view.getByLabelText("Valid from").closest("label")?.parentElement
+        ?.className
+    ).toContain("md:grid-cols-2");
     fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
       target: { value: "gift100" },
     });

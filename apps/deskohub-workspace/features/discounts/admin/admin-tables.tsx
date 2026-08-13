@@ -1269,7 +1269,9 @@ export function DiscountCodeConfigurationFields({
           Enabled
         </label>
       </div>
-      <div className="grid gap-4 md:grid-cols-4">
+      <div
+        className={`grid gap-4 ${showMaxUses ? "md:grid-cols-4" : "md:grid-cols-2"}`}
+      >
         <FormField label="Valid from">
           <Input
             defaultValue={toDateTimeInputValue(code?.validFrom)}
