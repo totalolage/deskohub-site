@@ -795,14 +795,6 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              if (attempt.provider !== "nexi") {
-                yield* tx
-                  .delete(accountingDocumentSnapshots)
-                  .where(
-                    eq(accountingDocumentSnapshots.paymentAttemptId, input.id)
-                  );
-              }
-
               const [reservation] = yield* tx
                 .update(workspaceReservations)
                 .set({
