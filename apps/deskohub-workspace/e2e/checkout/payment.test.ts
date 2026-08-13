@@ -8,12 +8,129 @@ import type { CheckoutData } from "../types";
 import {
   completeNexiHostedPayment,
   startCheckoutPaymentAttempt,
+  submitCheckoutPayment,
+  submitPaymentAndWaitForHostedPage,
   submitReservationForPayPage,
 } from "./payment";
 
 const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
 const checkoutUrl =
   "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/cowork";
+
+test("submits a non-provider checkout without waiting for a hosted-payment link", async () => {
+  let focusedRef: string | undefined;
+  let snapshotReads = 0;
+  const activatedRefs: string[] = [];
+  const run = mock<Runner>(async (_command, args) => {
+    const browserArgs = args.slice(2);
+    const commandIndex = browserArgs.findIndex((arg) =>
+      ["focus", "press", "snapshot", "tab", "wait"].includes(arg)
+    );
+    const commandArgs = browserArgs.slice(commandIndex);
+
+    if (commandArgs[0] === "tab") {
+      return success(
+        JSON.stringify({
+          data: { tabs: [{ active: true, tabId: "checkout" }] },
+          success: true,
+        })
+      );
+    }
+    if (commandArgs[0] === "wait") return success();
+    if (commandArgs[0] === "snapshot") {
+      snapshotReads += 1;
+      if (snapshotReads > 2) {
+        throw new Error("non-provider checkout requested a provider link");
+      }
+      return success(
+        [
+          '- checkbox "I agree to the terms" [checked=false, ref=e2]',
+          '- button "ORDER AND PAY" [ref=e5]',
+        ].join("\n")
+      );
+    }
+    if (commandArgs[0] === "focus") {
+      focusedRef = commandArgs[1];
+      return success();
+    }
+    if (commandArgs[0] === "press") {
+      activatedRefs.push(focusedRef ?? "");
+      return success();
+    }
+
+    throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
+  });
+
+  expect(
+    await Effect.runPromise(submitCheckoutPayment(run, "non-provider"))
+  ).toBe("checkout");
+  expect(activatedRefs).toEqual(["@e2", "@e5"]);
+});
+
+test("supports hosted payment in the checkout tab when the popup is blocked", async () => {
+  let focusedRef: string | undefined;
+  let hostedPaymentStarted = false;
+  const run = mock<Runner>(async (_command, args) => {
+    const browserArgs = args.slice(2);
+    const commandIndex = browserArgs.findIndex((arg) =>
+      ["eval", "focus", "get", "press", "snapshot", "tab", "wait"].includes(arg)
+    );
+    const commandArgs = browserArgs.slice(commandIndex);
+
+    if (commandArgs[0] === "eval") return success("true");
+    if (commandArgs[0] === "wait") return success();
+    if (commandArgs[0] === "tab" && commandArgs[1] === "list") {
+      return success(
+        JSON.stringify({
+          data: { tabs: [{ active: true, tabId: "checkout" }] },
+          success: true,
+        })
+      );
+    }
+    if (commandArgs[0] === "tab") {
+      throw new Error("single-tab payment must not switch tabs");
+    }
+    if (commandArgs[0] === "snapshot") {
+      return success(
+        [
+          '- checkbox "I agree to the terms" [checked=false, ref=e2]',
+          '- button "ORDER AND PAY" [ref=e5]',
+        ].join("\n")
+      );
+    }
+    if (commandArgs[0] === "focus") {
+      focusedRef = commandArgs[1];
+      return success();
+    }
+    if (commandArgs[0] === "press") {
+      if (focusedRef === "@e5") hostedPaymentStarted = true;
+      return success();
+    }
+    if (commandArgs[0] === "get" && commandArgs[1] === "url") {
+      return success(
+        hostedPaymentStarted
+          ? "https://xpay.nexigroup.com/hpp/nexi/test"
+          : "https://workspace.example/en-US/checkout/pay"
+      );
+    }
+
+    throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
+  });
+
+  expect(
+    await Effect.runPromise(
+      submitPaymentAndWaitForHostedPage({
+        run,
+        session: "single-tab",
+        timeouts: workspaceE2ETimeouts,
+      })
+    )
+  ).toEqual({
+    checkoutTabId: "checkout",
+    hostedPaymentTabId: "checkout",
+    url: "https://xpay.nexigroup.com/hpp/nexi/test",
+  });
+});
 
 test("retries a transient reservation preparation failure without requiring non-applicable consent", async () => {
   let reservationSubmitAttempts = 0;
@@ -24,7 +141,7 @@ test("retries a transient reservation preparation failure without requiring non-
   const switchedTabs: string[] = [];
   let focusedRef: string | undefined;
   const submitReservationScript = "submit-reservation";
-  const run = mock(async (_command, args, options = {}) => {
+  const run = mock<Runner>(async (_command, args, options = {}) => {
     const browserArgs = args.slice(2);
     const commandIndex = browserArgs.findIndex((arg) =>
       [
@@ -145,7 +262,7 @@ test("retries a transient reservation preparation failure without requiring non-
     }
 
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
-  }) as unknown as Runner;
+  });
 
   const result = await Effect.runPromise(
     startCheckoutPaymentAttempt({
@@ -176,7 +293,7 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
   let preparationStateReads = 0;
   let reservationSubmitActivations = 0;
   let reservationSubmitted = false;
-  const run = mock(async (_command, args, options = {}) => {
+  const run = mock<Runner>(async (_command, args, options = {}) => {
     const commandArgs = args.slice(2);
 
     if (commandArgs[0] === "eval") {
@@ -216,7 +333,7 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
     }
 
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
-  }) as unknown as Runner;
+  });
 
   const result = await Effect.runPromise(
     submitReservationForPayPage({
@@ -237,7 +354,7 @@ test("preserves a detached reservation preparation failure without submitting", 
   const submitReservationScript =
     "Promise.reject(new Error('advertised price failed'))";
   let reservationSubmitActivations = 0;
-  const run = mock(async (_command, args, options = {}) => {
+  const run = mock<Runner>(async (_command, args, options = {}) => {
     const commandArgs = args.slice(2);
 
     if (
@@ -260,7 +377,7 @@ test("preserves a detached reservation preparation failure without submitting", 
     }
 
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
-  }) as unknown as Runner;
+  });
 
   const exit = await Effect.runPromiseExit(
     submitReservationForPayPage({
@@ -288,7 +405,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
   let currentFrame = "main";
   let focusedRef: string | undefined;
   let phase: "continue" | "pay" | "status" | "three-d-secure" = "continue";
-  const run = mock(async (_command, args) => {
+  const run = mock<Runner>(async (_command, args) => {
     const commandArgs = args.slice(2);
 
     if (commandArgs[0] === "snapshot") {
@@ -388,7 +505,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
       return success();
     }
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
-  }) as unknown as Runner;
+  });
 
   await Effect.runPromise(
     completeNexiHostedPayment({
