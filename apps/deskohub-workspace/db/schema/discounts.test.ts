@@ -92,6 +92,7 @@ describe("discount persistence contracts", () => {
     expect(migration).toContain(
       'CREATE FUNCTION "sync_promotion_discount_code_customer"'
     );
+    expect(migration.match(/IF pg_trigger_depth\(\) > 1 THEN/g)).toHaveLength(5);
     expect(migration).not.toContain(
       'ALTER TABLE "discount_codes" DROP COLUMN "code"'
     );

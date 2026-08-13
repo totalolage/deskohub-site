@@ -99,6 +99,10 @@ ALTER TABLE "vouchers" ADD CONSTRAINT "vouchers_promotion_fk" FOREIGN KEY ("prom
 ALTER TABLE "discount_codes" ADD CONSTRAINT "discount_codes_promotion_kind_check" CHECK ("promotion_kind" = 'discount');--> statement-breakpoint
 CREATE FUNCTION "sync_discount_code_to_promotion"() RETURNS trigger AS $$
 BEGIN
+	IF pg_trigger_depth() > 1 THEN
+		RETURN NEW;
+	END IF;
+
 	IF NEW."promotion_code_id" IS NULL THEN
 		NEW."promotion_code_id" := NEW."id";
 	END IF;
@@ -138,6 +142,10 @@ ON "discount_codes"
 FOR EACH ROW EXECUTE FUNCTION "sync_discount_code_to_promotion"();--> statement-breakpoint
 CREATE FUNCTION "sync_promotion_to_discount_code"() RETURNS trigger AS $$
 BEGIN
+	IF pg_trigger_depth() > 1 THEN
+		RETURN NEW;
+	END IF;
+
 	IF NEW."kind" = 'discount' THEN
 		UPDATE "discount_codes"
 		SET
@@ -160,6 +168,10 @@ ON "promotion_codes"
 FOR EACH ROW EXECUTE FUNCTION "sync_promotion_to_discount_code"();--> statement-breakpoint
 CREATE FUNCTION "delete_discount_promotion"() RETURNS trigger AS $$
 BEGIN
+	IF pg_trigger_depth() > 1 THEN
+		RETURN OLD;
+	END IF;
+
 	DELETE FROM "promotion_codes"
 	WHERE "id" = OLD."promotion_code_id" AND "kind" = 'discount';
 	RETURN OLD;
@@ -170,6 +182,13 @@ AFTER DELETE ON "discount_codes"
 FOR EACH ROW EXECUTE FUNCTION "delete_discount_promotion"();--> statement-breakpoint
 CREATE FUNCTION "sync_legacy_discount_code_customer"() RETURNS trigger AS $$
 BEGIN
+	IF pg_trigger_depth() > 1 THEN
+		IF TG_OP = 'DELETE' THEN
+			RETURN OLD;
+		END IF;
+		RETURN NEW;
+	END IF;
+
 	IF TG_OP = 'INSERT' THEN
 		INSERT INTO "promotion_code_customers" ("promotion_code_id", "dotypos_customer_id")
 		SELECT "promotion_code_id", NEW."dotypos_customer_id"
@@ -191,6 +210,13 @@ AFTER INSERT OR DELETE ON "discount_code_customers"
 FOR EACH ROW EXECUTE FUNCTION "sync_legacy_discount_code_customer"();--> statement-breakpoint
 CREATE FUNCTION "sync_promotion_discount_code_customer"() RETURNS trigger AS $$
 BEGIN
+	IF pg_trigger_depth() > 1 THEN
+		IF TG_OP = 'DELETE' THEN
+			RETURN OLD;
+		END IF;
+		RETURN NEW;
+	END IF;
+
 	IF TG_OP = 'INSERT' THEN
 		INSERT INTO "discount_code_customers" ("code_id", "dotypos_customer_id")
 		SELECT "id", NEW."dotypos_customer_id"
