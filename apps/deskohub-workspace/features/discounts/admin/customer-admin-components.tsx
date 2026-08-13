@@ -55,6 +55,13 @@ const getCustomerCodeAvailability = (
   return `${code.audienceSize} selected customers`;
 };
 
+const getDiscountLabel = (code: AdminCustomerProfile["codes"][number]) =>
+  `${code.discountLabel} · ${
+    code.discountAdjustment.kind === "percentage"
+      ? `${code.discountAdjustment.basisPoints / 100}%`
+      : formatAdministrationMoney(code.discountAdjustment.amount)
+  }`;
+
 export function CodeAdministrationDetailPage({
   detail,
   notice,
@@ -188,14 +195,15 @@ export function CustomerAdministrationDetailPage({
     .filter((code) => code.eligible || code.audienceSize === 0)
     .toSorted(
       (left, right) =>
+        Number(right.enabled) - Number(left.enabled) ||
         Number(right.eligible) - Number(left.eligible) ||
         left.code.localeCompare(right.code)
     );
   const targetedCodeCount = profile.codes.filter(
-    (code) => code.eligible && code.audienceSize > 0
+    (code) => code.enabled && code.eligible && code.audienceSize > 0
   ).length;
   const universalCodeCount = profile.codes.filter(
-    (code) => code.audienceSize === 0
+    (code) => code.enabled && code.audienceSize === 0
   ).length;
   const reservationGroups = groupCustomerReservations(activity.reservations);
   return (
@@ -303,12 +311,13 @@ export function CustomerAdministrationDetailPage({
               <AdministrationTableFrame className="overflow-x-auto">
                 <Table
                   aria-label="Customer code eligibility"
-                  className="min-w-[620px]"
+                  className="min-w-[720px]"
                 >
                   <TableHeader>
                     <TableRow>
                       <TableHead>Code</TableHead>
                       <TableHead>Discount</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Availability</TableHead>
                       <TableHead>
                         <span className="sr-only">Manage eligibility</span>
@@ -318,20 +327,29 @@ export function CustomerAdministrationDetailPage({
                   <TableBody>
                     {visibleCodes.map((code) => {
                       return (
-                        <TableRow key={code.id}>
+                        <TableRow className="relative" key={code.id}>
                           <TableCell>
                             <Link
-                              className="font-mono font-semibold underline underline-offset-4"
+                              className="font-mono font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
                               href={`/admin/codes/${code.id}`}
                             >
                               {code.code}
                             </Link>
                           </TableCell>
-                          <TableCell>{code.discountLabel}</TableCell>
+                          <TableCell className="break-words">
+                            {getDiscountLabel(code)}
+                          </TableCell>
+                          <TableCell>
+                            <AdministrationStatusBadge
+                              tone={code.enabled ? "positive" : "neutral"}
+                            >
+                              {code.enabled ? "Enabled" : "Disabled"}
+                            </AdministrationStatusBadge>
+                          </TableCell>
                           <TableCell>
                             {getCustomerCodeAvailability(code)}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="relative z-10 text-right">
                             <CustomerCodeAction
                               audienceSize={code.audienceSize}
                               code={code.code}
