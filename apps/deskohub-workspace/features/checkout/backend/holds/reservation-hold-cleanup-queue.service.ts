@@ -235,7 +235,7 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
   }
 
   const outcome = yield* cleanup
-    .cancelOrderHold({ orderId: payload.orderId, holdExpiredAt: now })
+    .cancelOrderHold({ orderId: payload.orderId, checkedAt: now })
     .pipe(
       Effect.mapError(
         ReservationHoldCleanupScheduleError.fromError(

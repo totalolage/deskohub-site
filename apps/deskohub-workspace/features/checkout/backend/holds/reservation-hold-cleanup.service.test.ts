@@ -123,7 +123,7 @@ describe("ReservationHoldCleanupService", () => {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({
         orderId,
-        holdExpiredAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
+        checkedAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
       });
     }).pipe(
       Effect.provide(
@@ -267,7 +267,7 @@ describe("ReservationHoldCleanupService", () => {
 
     const orderId = "reservation-cleanup-abandoned";
     const attemptId = "attempt-cleanup-abandoned";
-    const holdExpiredAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
+    const checkedAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
     const claimed = {
       id: orderId,
       reservationState: "cancelling",
@@ -287,7 +287,7 @@ describe("ReservationHoldCleanupService", () => {
     );
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.cancelOrderHold({ orderId, holdExpiredAt });
+      return yield* cleanup.cancelOrderHold({ orderId, checkedAt });
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupServiceLive.pipe(
@@ -338,7 +338,7 @@ describe("ReservationHoldCleanupService", () => {
     expect(markCancelled).toHaveBeenCalledWith({
       id: orderId,
       cancelledAt: expect.any(Temporal.Instant),
-      holdExpiredAt,
+      holdExpiredAt: checkedAt,
     });
   });
 

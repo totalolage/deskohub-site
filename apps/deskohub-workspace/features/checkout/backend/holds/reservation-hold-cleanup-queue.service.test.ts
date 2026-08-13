@@ -214,7 +214,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.result).toBe("cancelled");
     expect(cancelOrderHold).toHaveBeenCalledWith({
       orderId: "order-id",
-      holdExpiredAt: dueNow,
+      checkedAt: dueNow,
     });
 
     for (const reservationState of [
@@ -235,7 +235,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
       expect(retryResult.result).toBe("cancelled");
       expect(retryCancelOrderHold).toHaveBeenCalledWith({
         orderId: "order-id",
-        holdExpiredAt: dueNow,
+        checkedAt: dueNow,
       });
     }
   });
@@ -253,18 +253,19 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.result).toBe("skipped");
     expect(cancelOrderHold).toHaveBeenCalledWith({
       orderId: "order-id",
-      holdExpiredAt: dueNow,
+      checkedAt: dueNow,
     });
     expect(findById).toHaveBeenCalledTimes(1);
   });
 
   test("retries cleanup while an empty provider order is inside the cutoff", async () => {
     const cancelOrderHold = mock(() => Effect.succeed("deferred" as const));
+    const retryNow = dueNow.add({ minutes: 20 });
 
     await expect(
       runProcessMessage(duePayload, {
         cancelOrderHold,
-        now: dueNow,
+        now: retryNow,
       })
     ).rejects.toMatchObject({
       _tag: "ReservationHoldCleanupScheduleError",
@@ -273,7 +274,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     });
     expect(cancelOrderHold).toHaveBeenCalledWith({
       orderId: "order-id",
-      holdExpiredAt: dueNow,
+      checkedAt: retryNow,
     });
   });
 
