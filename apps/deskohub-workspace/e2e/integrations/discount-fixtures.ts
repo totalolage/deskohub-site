@@ -2,10 +2,11 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
 } from "@deskohub/dotypos";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import type { DatabaseClient } from "@/db/database-client";
 import {
+  discountApplications,
   discountCodeCustomers,
   discountCodeRedemptions,
   discountCodes,
@@ -75,6 +76,11 @@ export const discountCodeFixtures = {
   onePerCustomer: {
     code: canonicalDiscountCodeSchema.make("E2E_ONE_PER_CUSTOMER"),
     id: discountCodeIdSchema.make("2b89472c-a804-461a-b07d-a2a69e2cc7ec"),
+  },
+  voucherReuse: {
+    code: canonicalDiscountCodeSchema.make("E2E_VOUCHER_REUSE"),
+    creditPerRun: { value: 56_000, exponent: 2, currency: "CZK" },
+    id: discountCodeIdSchema.make("df62e84a-10be-49b4-ae62-6fa30765a6a9"),
   },
 } as const;
 
@@ -184,6 +190,24 @@ export const seedDiscountE2EFixtures: Effect.Effect<
             )
           );
         const capacityLimit = (capacity[0]?.activeUses ?? 0) + 1;
+        const [voucherUsage] = yield* tx
+          .select({
+            usedValue: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+          })
+          .from(discountCodeRedemptions)
+          .innerJoin(
+            discountApplications,
+            eq(discountApplications.id, discountCodeRedemptions.applicationId)
+          )
+          .where(
+            and(
+              eq(
+                discountCodeRedemptions.codeId,
+                discountCodeFixtures.voucherReuse.id
+              ),
+              inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+            )
+          );
         const now = Temporal.Now.instant().epochMilliseconds;
         const codeFixtures: readonly DiscountCodeFixture[] = [
           {
@@ -254,6 +278,11 @@ export const seedDiscountE2EFixtures: Effect.Effect<
         for (const code of codeFixtures) {
           yield* seedDiscountCode(tx, code);
         }
+        yield* seedVoucherCode(
+          tx,
+          (voucherUsage?.usedValue ?? 0) +
+            discountCodeFixtures.voucherReuse.creditPerRun.value
+        );
       })
     )
   );
@@ -384,4 +413,40 @@ const seedDiscountCode = (
         )
         .onConflictDoNothing();
     }
+  });
+
+const seedVoucherCode = (tx: TransactionClient, issuedValue: number) =>
+  Effect.gen(function* () {
+    const fixture = discountCodeFixtures.voucherReuse;
+    yield* tx
+      .insert(discountCodes)
+      .values({
+        code: fixture.code,
+        discountId: null,
+        enabled: true,
+        id: fixture.id,
+        kind: "voucher",
+        maxUses: null,
+        voucherAmountCurrency: fixture.creditPerRun.currency,
+        voucherAmountExponent: fixture.creditPerRun.exponent,
+        voucherAmountValue: issuedValue,
+      })
+      .onConflictDoUpdate({
+        target: discountCodes.code,
+        set: {
+          discountId: null,
+          enabled: true,
+          kind: "voucher",
+          maxUses: null,
+          updatedAt: Temporal.Now.instant(),
+          validFrom: null,
+          validUntil: null,
+          voucherAmountCurrency: fixture.creditPerRun.currency,
+          voucherAmountExponent: fixture.creditPerRun.exponent,
+          voucherAmountValue: issuedValue,
+        },
+      });
+    yield* tx
+      .delete(discountCodeCustomers)
+      .where(eq(discountCodeCustomers.codeId, fixture.id));
   });

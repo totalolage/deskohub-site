@@ -432,6 +432,7 @@ or unreliable to manufacture through shared external systems.
 | Calendar + customer, Calendar + code, or customer + code | Completed payment and applications persisted in source-neutral order |
 | Calendar + customer + code | Completed payment and all three applications persisted in order |
 | Code reduces total to zero | Internal paid attempt, redeemed claim, fulfillment, no Nexi page |
+| Voucher is partially spent, reused, and exhausted | Two internal paid attempts for the same customer, two redeemed claims totaling the issued credit, then the generic unavailable error |
 | Invalid syntax, unknown, inactive, not started, or already expired code | One generic field error; existing summary remains usable; no payment state |
 | Customer-ineligible or product-ineligible code | One generic field error; no application or claim |
 | Capacity exhausted or already redeemed by the same customer | A real first redemption followed by the rejected customer attempt |

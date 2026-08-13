@@ -43,6 +43,7 @@ import {
 import {
   assertNoDiscountPaymentState,
   type ExpectedDiscountApplication,
+  validateVoucherRedemptions,
   waitForCheckoutRow,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -153,7 +154,7 @@ export const makeDiscountE2ECases = ({
     const coworkAutomaticDiscounts = [calendarDiscountExpectation] as const;
     const checkoutDates = yield* selectCoworkDates(
       preparation.availableBasicDates,
-      unavailableCodeScenarios.length + 9,
+      unavailableCodeScenarios.length + 12,
       {
         allocation,
         excludedDates,
@@ -627,6 +628,58 @@ export const makeDiscountE2ECases = ({
         config.timeouts.zeroTotalCheckoutCase + config.timeouts.checkoutCase,
     });
 
+    const voucherOwnerData = makeCoworkCheckoutData(
+      config.baseUrl,
+      yield* requireCheckoutDate(checkoutDates, nextDateIndex),
+      "cowork-voucher-first-redemption"
+    );
+    nextDateIndex += 1;
+    const voucherReuseData = reuseCoworkCheckoutContact(
+      config.baseUrl,
+      yield* requireCheckoutDate(checkoutDates, nextDateIndex),
+      voucherOwnerData
+    );
+    nextDateIndex += 1;
+    const voucherExhaustedData = reuseCoworkCheckoutContact(
+      config.baseUrl,
+      yield* requireCheckoutDate(checkoutDates, nextDateIndex),
+      voucherOwnerData
+    );
+    nextDateIndex += 1;
+    const voucherOwnerState = trackCheckoutState(flowStates, voucherOwnerData);
+    const voucherReuseState = trackCheckoutState(flowStates, voucherReuseData);
+    const voucherExhaustedState = trackCheckoutState(
+      flowStates,
+      voucherExhaustedData
+    );
+    cases.push({
+      checkoutStates: [
+        voucherOwnerState,
+        voucherReuseState,
+        voucherExhaustedState,
+      ],
+      execute: ({ runStep, session }) =>
+        executeVoucherReuse({
+          config,
+          datasourceConfig,
+          exhaustedData: voucherExhaustedData,
+          exhaustedState: voucherExhaustedState,
+          ownerData: voucherOwnerData,
+          ownerState: voucherOwnerState,
+          reuseData: voucherReuseData,
+          reuseState: voucherReuseState,
+          run,
+          runStep,
+          session,
+        }).pipe(
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("run reusable voucher e2e case", cause)
+          )
+        ),
+      id: "voucher-reuse-and-exhaustion",
+      timeoutMs: config.timeouts.checkoutCase * 2,
+    });
+
     return cases;
   });
 
@@ -914,6 +967,88 @@ const executeConsumedDiscountCode = ({
       runStep,
       session,
       state: contenderState,
+    });
+  });
+
+const executeVoucherReuse = ({
+  config,
+  datasourceConfig,
+  exhaustedData,
+  exhaustedState,
+  ownerData,
+  ownerState,
+  reuseData,
+  reuseState,
+  run,
+  runStep,
+  session,
+}: {
+  readonly config: WorkspaceE2EConfig;
+  readonly datasourceConfig: DatasourceConfig;
+  readonly exhaustedData: CheckoutData;
+  readonly exhaustedState: CheckoutFlowState;
+  readonly ownerData: CheckoutData;
+  readonly ownerState: CheckoutFlowState;
+  readonly reuseData: CheckoutData;
+  readonly reuseState: CheckoutFlowState;
+  readonly run: Runner;
+  readonly runStep: WorkspaceE2EStepRunner;
+  readonly session: string;
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const fixture = discountCodeFixtures.voucherReuse;
+    yield* executeZeroTotalCheckout({
+      appliedMessage: "Discount code applied:",
+      config,
+      data: ownerData,
+      datasourceConfig,
+      discountCode: fixture.code,
+      run,
+      runStep,
+      session,
+      state: ownerState,
+      stepIdPrefix: "first-voucher-",
+      submitReservationScript: getSubmitCoworkReservationScript(ownerData),
+    });
+    yield* executeZeroTotalCheckout({
+      appliedMessage: "Discount code applied:",
+      config,
+      data: reuseData,
+      datasourceConfig,
+      discountCode: fixture.code,
+      run,
+      runStep,
+      session,
+      state: reuseState,
+      stepIdPrefix: "reused-voucher-",
+      submitReservationScript: getSubmitCoworkReservationScript(reuseData),
+    });
+    const orderIds = yield* tryWorkspaceE2ESync(
+      "read voucher checkout order IDs",
+      () => {
+        assert(ownerState.orderId, "first voucher checkout order ID missing");
+        assert(reuseState.orderId, "reused voucher checkout order ID missing");
+        return [ownerState.orderId, reuseState.orderId] as const;
+      }
+    );
+    yield* runStep({
+      execute: validateVoucherRedemptions(
+        datasourceConfig,
+        fixture.id,
+        orderIds,
+        fixture.creditPerRun
+      ),
+      id: "validate-voucher-redemptions",
+      timeoutMs: config.timeouts.datasource,
+    });
+    yield* executeUnavailableDiscountCode({
+      code: fixture.code,
+      config,
+      data: exhaustedData,
+      run,
+      runStep,
+      session,
+      state: exhaustedState,
     });
   });
 
