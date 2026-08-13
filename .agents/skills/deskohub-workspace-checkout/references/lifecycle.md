@@ -356,8 +356,8 @@ disclosure and does not extend booked use or the PIN's provider validity.
 
 ### Reservation access issuance
 
-The first authorized access-page request in the disclosure window provisions an
-hourly Igloohome algoPIN. Later requests reuse that credential. For
+Paid fulfillment provisions an hourly Igloohome algoPIN before sending the
+protected access link. Authorized access-page requests reuse that credential. For
 the installed Retrofit Lock (OE1) linked to a Keypad (EK1),
 `IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID` must be the EK1 device ID; Igloohome
 designates EK1 as the algoPIN-generation target.

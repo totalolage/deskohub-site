@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
+import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
@@ -60,7 +61,18 @@ describe("WorkspacePaidFulfillmentService", () => {
     const markReservationConfirmed = mock(() =>
       Effect.die("already confirmed reservations do not update confirmation")
     );
-    const sendPaidReservationEmails = mock(() => Effect.void);
+    const deliverySteps: string[] = [];
+    const sendPaidReservationEmails = mock(() =>
+      Effect.sync(() => {
+        deliverySteps.push("email");
+      })
+    );
+    const resolveCustomerAccessCode = mock(() =>
+      Effect.sync(() => {
+        deliverySteps.push("access");
+        return "access-code";
+      })
+    );
     const markFulfilled = mock(() => Effect.void);
 
     await Effect.gen(function* () {
@@ -89,6 +101,10 @@ describe("WorkspacePaidFulfillmentService", () => {
               Layer.mock(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                generateCustomerAccessCode: Effect.succeed("unused"),
+                resolveCustomerAccessCode,
+              }),
               Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })
@@ -110,6 +126,13 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
     });
+    expect(resolveCustomerAccessCode).toHaveBeenCalledWith({
+      reservationId: emailReservation.id,
+      dotyposReservationId: emailReservation.dotyposReservationId,
+      reservedFrom: emailReservation.reservedFrom,
+      reservedUntil: emailReservation.reservedUntil,
+    });
+    expect(deliverySteps).toEqual(["access", "email"]);
     expect(markFulfilled).toHaveBeenCalledWith(
       expect.objectContaining({ id: "reservation-id" })
     );
@@ -190,6 +213,12 @@ describe("WorkspacePaidFulfillmentService", () => {
               Layer.mock(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                generateCustomerAccessCode: Effect.succeed("unused"),
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
               Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })
@@ -279,6 +308,12 @@ describe("WorkspacePaidFulfillmentService", () => {
                   Effect.die("email flow should not start")
                 ),
               } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                generateCustomerAccessCode: Effect.succeed("unused"),
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.die("access flow should not start")
+                ),
+              }),
               Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })

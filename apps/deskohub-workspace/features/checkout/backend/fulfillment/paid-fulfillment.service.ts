@@ -3,6 +3,10 @@ import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { env } from "@/env";
+import {
+  WorkspaceCheckoutAccessCodeService,
+  WorkspaceCheckoutAccessCodeServiceLiveWithDependencies,
+} from "@/features/checkout/backend/reservation/access-code.service";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import {
@@ -25,6 +29,7 @@ import { WorkspaceReservationEmailService } from "./workspace-reservation-email.
 export type WorkspacePaidFulfillmentFailureCode =
   | "dotypos_reservation_failed"
   | "dotypos_reservation_unfulfillable"
+  | "fulfillment_access_failed"
   | "fulfillment_email_failed"
   | "fulfillment_order_load_failed"
   | "fulfillment_claim_failed"
@@ -62,6 +67,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
     const dotypos = yield* DotyposService;
     const reservationEmails = yield* WorkspaceReservationEmailService;
     const workspaceReservations = yield* WorkspaceReservationService;
+    const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
     const posthogEvents = yield* PostHogEventService;
 
     const failFulfillment = Effect.fn("workspacePaidFulfillment.fail")(
@@ -286,25 +292,56 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           }
 
           yield* Effect.logInfo("Paid reservation email flow started");
-          yield* workspaceReservations.getReservation(claimed.id).pipe(
-            Effect.flatMap((reservation) =>
-              reservationEmails.sendPaidReservationEmails({ reservation })
-            ),
-            Effect.tapError((cause) =>
-              Effect.logError("Workspace paid reservation email flow failed", {
-                workspaceReservationId: claimed.id,
-                dotyposCustomerId: claimed.dotyposCustomerId,
-                cause,
-              })
-            ),
-            Effect.catch((cause) =>
-              failFulfillment({
-                orderId: input.orderId,
-                failureCode: "fulfillment_email_failed",
-                cause,
-              })
-            )
-          );
+          const reservationForDelivery = yield* workspaceReservations
+            .getReservation(claimed.id)
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logError(
+                  "Workspace paid reservation email flow failed",
+                  {
+                    workspaceReservationId: claimed.id,
+                    dotyposCustomerId: claimed.dotyposCustomerId,
+                    cause,
+                  }
+                )
+              ),
+              Effect.catch((cause) =>
+                failFulfillment({
+                  orderId: input.orderId,
+                  failureCode: "fulfillment_email_failed",
+                  cause,
+                })
+              )
+            );
+          yield* accessCodes
+            .resolveCustomerAccessCode({
+              reservationId: reservationForDelivery.id,
+              dotyposReservationId: reservationForDelivery.dotyposReservationId,
+              reservedFrom: reservationForDelivery.reservedFrom,
+              reservedUntil: reservationForDelivery.reservedUntil,
+            })
+            .pipe(
+              Effect.catch((cause) =>
+                failFulfillment({
+                  orderId: input.orderId,
+                  failureCode: "fulfillment_access_failed",
+                  cause,
+                })
+              )
+            );
+          yield* reservationEmails
+            .sendPaidReservationEmails({
+              reservation: reservationForDelivery,
+            })
+            .pipe(
+              Effect.catch((cause) =>
+                failFulfillment({
+                  orderId: input.orderId,
+                  failureCode: "fulfillment_email_failed",
+                  cause,
+                })
+              )
+            );
           yield* Effect.logInfo("Paid reservation email flow succeeded");
 
           if (env.VERCEL_ENV !== "production") {
@@ -354,6 +391,7 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
     ),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationService.Live),
+    Layer.provide(WorkspaceCheckoutAccessCodeServiceLiveWithDependencies),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(DotyposServiceLive),

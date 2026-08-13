@@ -19,7 +19,7 @@ export type ReservationAccessCodeWindowState =
 
 /**
  * Controls when the current door PIN may be disclosed. It does not extend the
- * reservation or assert that today's static PIN is technically time-limited.
+ * reservation or the PIN's provider validity.
  */
 export const getReservationAccessCodeWindowState = (input: {
   readonly reservedFrom: Temporal.Instant;
