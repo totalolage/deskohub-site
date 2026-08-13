@@ -11,9 +11,16 @@ import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-ut
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import { InvoiceRepository } from "./invoice.repository";
-import { InvoiceEmailDeliveryService } from "./invoice-email-delivery.service";
 import { ReservationInvoiceService } from "./reservation-invoice";
-import { ReservationInvoiceServiceLive } from "./reservation-invoice.service";
+
+mock.module("server-only", () => ({}));
+
+const { InvoiceEmailDeliveryService } = await import(
+  "./invoice-email-delivery.service"
+);
+const { ReservationInvoiceServiceLive } = await import(
+  "./reservation-invoice.service"
+);
 
 const paymentAttemptId = paymentAttemptIdSchema.make("payment-attempt-1");
 const personalAddress = {
