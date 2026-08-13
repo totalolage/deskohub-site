@@ -255,6 +255,16 @@ describe("ReservationAccessAdministration", () => {
     expect((await failed.result).state).toBe("issued");
     expect(failed.issueForReservation).toHaveBeenCalledTimes(1);
 
+    const pending = runMutation(
+      { kind: "retry-failed", reservationId },
+      { ...baseGrant, state: "pending" },
+      Effect.void,
+      Effect.succeed(reservation),
+      true
+    );
+    expect((await pending.result).state).toBe("issued");
+    expect(pending.issueForReservation).toHaveBeenCalledTimes(1);
+
     const uncertain = runMutation(
       { kind: "retry-failed", reservationId },
       { ...baseGrant, state: "uncertain" },

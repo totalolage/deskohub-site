@@ -154,7 +154,7 @@ export class ReservationAccessAdministration extends Context.Service<
             });
           }
           if (grant.state === "issued") return grant;
-          if (grant.state !== "failed") {
+          if (grant.state !== "failed" && grant.state !== "pending") {
             return yield* invalidState(
               "Interrupted access recovery requires operator reconciliation."
             );
