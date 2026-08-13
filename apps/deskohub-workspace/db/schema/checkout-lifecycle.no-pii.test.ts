@@ -196,31 +196,49 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
-  test("follows the corrected migration head before issuing invoices", async () => {
-    const [discountJson, invoiceJson, deliveryJson, accessJson, recoveryJson] =
-      await Promise.all([
-        readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
-        readAppFile(
-          "db/migrations/20260811173859_issued_invoices/snapshot.json"
-        ),
-        readAppFile(
-          "db/migrations/20260812144849_married_may_parker/snapshot.json"
-        ),
-        readAppFile(
-          "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
-        ),
-        readAppFile("db/migrations/20260813151512_premium_blur/snapshot.json"),
-      ]);
+  test("reconciles the access and late-payment migration heads", async () => {
+    const [
+      discountJson,
+      invoiceJson,
+      deliveryJson,
+      accessJson,
+      reconciliationJson,
+      reconciliationSql,
+    ] = await Promise.all([
+      readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
+      readAppFile("db/migrations/20260811173859_issued_invoices/snapshot.json"),
+      readAppFile(
+        "db/migrations/20260812144849_married_may_parker/snapshot.json"
+      ),
+      readAppFile(
+        "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
+      ),
+      readAppFile(
+        "db/migrations/20260813153209_reconcile_late_payment_recovery/snapshot.json"
+      ),
+      readAppFile(
+        "db/migrations/20260813153209_reconcile_late_payment_recovery/migration.sql"
+      ),
+    ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
     const deliverySnapshot = parseMigrationSnapshot(deliveryJson);
     const accessSnapshot = parseMigrationSnapshot(accessJson);
-    const recoverySnapshot = parseMigrationSnapshot(recoveryJson);
+    const reconciliationSnapshot = parseMigrationSnapshot(reconciliationJson);
 
     expect(invoiceSnapshot.prevIds).toEqual([discountSnapshot.id]);
     expect(deliverySnapshot.prevIds).toEqual([invoiceSnapshot.id]);
     expect(accessSnapshot.prevIds).toEqual([deliverySnapshot.id]);
-    expect(recoverySnapshot.prevIds).toEqual([accessSnapshot.id]);
+    expect(reconciliationSnapshot.prevIds).toEqual([accessSnapshot.id]);
+    expect(reconciliationSql).toContain(
+      'CREATE TABLE IF NOT EXISTS "late_payment_recoveries"'
+    );
+    expect(reconciliationSql).toContain(
+      'CREATE TABLE IF NOT EXISTS "reservation_access_grants"'
+    );
+    expect(reconciliationSql).toContain(
+      'DROP COLUMN IF EXISTS "customer_access_code"'
+    );
     expect(invoiceJson).not.toContain('"schema_version"');
   });
 
