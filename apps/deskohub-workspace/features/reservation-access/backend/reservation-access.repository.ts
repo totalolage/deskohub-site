@@ -4,7 +4,7 @@ import type {
   IgloohomePinId,
 } from "@deskohub/igloohome";
 import { AlgoPinSchema } from "@deskohub/igloohome";
-import { and, eq, inArray, isNotNull, lte, or } from "drizzle-orm";
+import { and, eq, inArray, lte, or } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -12,7 +12,6 @@ import {
   reservationAccessGrants,
 } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { getReservationAccessCodeRetentionCutoff } from "@/features/reservation/reservation-access-code";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { ReservationAccessGrantId } from "../reservation-access";
 
@@ -21,7 +20,6 @@ export class ReservationAccessStorageError extends Data.TaggedError(
 )<{
   readonly operation:
     | "claim"
-    | "clear_expired"
     | "ensure"
     | "load"
     | "mark_failed"
@@ -74,9 +72,6 @@ export interface IReservationAccessRepository {
     readonly id: ReservationAccessGrantId;
     readonly reservationId: WorkspaceReservationId;
   }) => Effect.Effect<AlgoPin, ReservationAccessStorageError>;
-  readonly clearExpiredAccessCodes: (
-    now: Temporal.Instant
-  ) => Effect.Effect<number, ReservationAccessStorageError>;
   readonly reconcileUncertain: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly reconciledAt: Temporal.Instant;
@@ -374,36 +369,6 @@ export class ReservationAccessRepository extends Context.Service<
             });
           }
           return grant;
-        }),
-        clearExpiredAccessCodes: Effect.fn(
-          "ReservationAccessRepository.clearExpiredAccessCodes"
-        )(function* (now) {
-          const cleared = yield* db
-            .update(reservationAccessGrants)
-            .set({ state: "expired", accessCode: null, updatedAt: now })
-            .where(
-              and(
-                isNotNull(reservationAccessGrants.accessCode),
-                eq(reservationAccessGrants.state, "issued"),
-                lte(
-                  reservationAccessGrants.accessEndsAt,
-                  getReservationAccessCodeRetentionCutoff(now)
-                )
-              )
-            )
-            .returning({ id: reservationAccessGrants.id })
-            .pipe(
-              Effect.withTracerEnabled(false),
-              Effect.mapError(
-                () =>
-                  new ReservationAccessStorageError({
-                    operation: "clear_expired",
-                    message:
-                      "Expired reservation access credentials could not be cleared.",
-                  })
-              )
-            );
-          return cleared.length;
         }),
         loadIssuedCode: Effect.fn("ReservationAccessRepository.loadIssuedCode")(
           function* (input) {

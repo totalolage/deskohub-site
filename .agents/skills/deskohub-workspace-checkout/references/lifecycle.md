@@ -345,14 +345,12 @@ becomes retryable after one minute.
 
 The customer confirmation contains a protected reservation-access link and
 never contains the door PIN. The dedicated access page resolves the current PIN
-on every authorized request and returns it only while the reservation is paid,
-locally confirmed, live-confirmed in Dotypos, and inside
-`[reservedFrom - 30 minutes, reservedUntil + 30 minutes)`. Calculate this
-disclosure window from the Dotypos-projected instants for every reservation
-family. The signed access capability is bound to the reservation and locale,
-not to a copied reservation interval; live provider timing remains authoritative
-when a confirmed reservation is moved or extended. The grace period controls
-disclosure and does not extend booked use or the PIN's provider validity.
+on every authorized request and returns it while the reservation is paid,
+locally confirmed, and live-confirmed in Dotypos. Do not apply a local clock or
+disclosure window. Igloohome's programmed AlgoPIN bounds are the sole authority
+for when the lock accepts the PIN. The signed access capability is bound to the
+reservation and locale, not to a copied reservation interval; live Dotypos
+timing remains authoritative when a confirmed reservation is moved or extended.
 Keep this boundary stateless; it does not require a new database field. Sign
 access capabilities with their dedicated long-lived token secret rather than
 the rotated checkout Pay-state keyring or provider credentials. Retain that
@@ -370,17 +368,15 @@ designates EK1 as the algoPIN-generation target.
 The `reservation_access_grants` ledger has one row per Workspace reservation and
 uses `pending`, `provisioning`, `issued`, `expired`, `failed`, and `uncertain`
 states. The
-issued PIN is stored as short-lived non-PII retry state rather than an archival
-record. Never annotate, log, or return it except in the authorized access
-response; mark it as a sensitive database query parameter so SQL diagnostics
-cannot expose it. The daily cleanup sweep clears stored PIN values after their
-provider validity ends.
+issued PIN is stored as non-PII retry state. Never annotate, log, or return it
+except in the authorized access response; mark it as a sensitive database query
+parameter so SQL diagnostics cannot expose it. Retain it so the protected page
+can redisplay it; do not expire or delete it according to the application clock.
 
 If a Dotypos timing change produces a different rounded provider interval after
 a PIN is issued, move the grant to `uncertain`, clear the stored PIN, and
 withhold access until an operator reconciles the provider credential. Changes
-within the same rounded interval reuse the existing PIN because live Dotypos
-timing still controls disclosure.
+within the same rounded interval reuse the existing PIN.
 
 Provider 400, 401, 403, 404, and 415 responses are definitive rejections and
 may leave a retryable `failed` grant. Timeouts, transport failures, 5xx,

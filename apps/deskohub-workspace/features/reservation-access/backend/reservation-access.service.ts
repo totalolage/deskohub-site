@@ -127,9 +127,6 @@ export interface IReservationAccessService {
     readonly reservedFrom: Temporal.Instant;
     readonly reservedUntil: Temporal.Instant;
   }) => Effect.Effect<IssuedReservationAccess, ReservationAccessIssuanceError>;
-  readonly clearExpiredAccessCodes: (
-    now: Temporal.Instant
-  ) => Effect.Effect<number, ReservationAccessStorageError>;
 }
 
 export class ReservationAccessService extends Context.Service<
@@ -146,7 +143,6 @@ export class ReservationAccessService extends Context.Service<
       );
 
       return ReservationAccessService.of({
-        clearExpiredAccessCodes: repository.clearExpiredAccessCodes,
         loadGrant: (reservationId) =>
           repository.findByReservationId(reservationId).pipe(
             Effect.map((grant) =>

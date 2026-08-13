@@ -4,7 +4,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { type DotyposReservation, DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import { TestClock } from "effect/testing";
 import {
   WorkspaceCheckoutAccessCodeService,
   type WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
@@ -122,7 +121,6 @@ const runAccess = async (options: HarnessOptions = {}) => {
   };
 
   const access = await Effect.gen(function* () {
-    yield* TestClock.setTime(now.epochMilliseconds);
     const service = yield* ReservationAccessService;
     return yield* service.getAccess({
       orderId,
@@ -135,8 +133,7 @@ const runAccess = async (options: HarnessOptions = {}) => {
       Layer.mergeAll(
         Layer.mock(WorkspaceReservationRepository, { findById }),
         Layer.mock(DotyposService, { getReservation }),
-        Layer.succeed(WorkspaceCheckoutAccessCodeService, accessCodes),
-        TestClock.layer()
+        Layer.succeed(WorkspaceCheckoutAccessCodeService, accessCodes)
       )
     ),
     Effect.runPromise
@@ -202,7 +199,7 @@ describe("ReservationAccessService", () => {
     }
   });
 
-  test("uses live provider timing after a reservation moves beyond its emailed timing", async () => {
+  test("uses live provider timing after a reservation moves", async () => {
     const accessToken = await createAccessToken();
     const result = await runAccess({
       accessToken,
@@ -212,13 +209,14 @@ describe("ReservationAccessService", () => {
       }),
     });
 
-    expect(result.access).toEqual({
-      state: "upcoming",
-      availableAt: Temporal.Instant.from("2026-06-20T08:30:00Z"),
-      unavailableAt: Temporal.Instant.from("2026-06-20T10:30:00Z"),
-    });
+    expect(result.access).toEqual({ state: "available", code: resolvedCode });
     expect(result.getReservation).toHaveBeenCalledTimes(1);
-    expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
+    expect(result.resolveCustomerAccessCode).toHaveBeenCalledWith({
+      reservationId: orderId,
+      dotyposReservationId: "provider-reservation-id",
+      reservedFrom: Temporal.Instant.from("2026-06-20T09:00:00Z"),
+      reservedUntil: Temporal.Instant.from("2026-06-20T10:00:00Z"),
+    });
   });
 
   test.each([
@@ -260,32 +258,13 @@ describe("ReservationAccessService", () => {
     }
   });
 
-  test("returns the upcoming display window without resolving a code", async () => {
-    const accessToken = await createAccessToken();
-    const result = await runAccess({
-      accessToken,
-      providerReservation: makeProviderReservation({
-        startDate: "2026-06-20T09:00:00Z",
-        endDate: "2026-06-20T10:00:00Z",
-      }),
-    });
-
-    expect(result.access).toEqual({
-      state: "upcoming",
-      availableAt: Temporal.Instant.from("2026-06-20T08:30:00Z"),
-      unavailableAt: Temporal.Instant.from("2026-06-20T10:30:00Z"),
-    });
-    expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
-  });
-
-  test("resolves the current code only inside the display window", async () => {
+  test("resolves the current code without a local display window", async () => {
     const accessToken = await createAccessToken();
     const result = await runAccess({ accessToken });
 
     expect(result.access).toEqual({
       state: "available",
       code: resolvedCode,
-      unavailableAt: Temporal.Instant.from("2026-06-20T09:30:00Z"),
     });
     expect(result.resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
     expect(result.resolveCustomerAccessCode).toHaveBeenCalledWith({
@@ -296,7 +275,7 @@ describe("ReservationAccessService", () => {
     });
   });
 
-  test("returns ended after the display window without resolving a code", async () => {
+  test("resolves the code after its provider interval", async () => {
     const accessToken = await createAccessToken();
     const result = await runAccess({
       accessToken,
@@ -306,8 +285,13 @@ describe("ReservationAccessService", () => {
       }),
     });
 
-    expect(result.access).toEqual({ state: "ended" });
-    expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
+    expect(result.access).toEqual({ state: "available", code: resolvedCode });
+    expect(result.resolveCustomerAccessCode).toHaveBeenCalledWith({
+      reservationId: orderId,
+      dotyposReservationId: "provider-reservation-id",
+      reservedFrom: Temporal.Instant.from("2026-06-20T06:00:00Z"),
+      reservedUntil: Temporal.Instant.from("2026-06-20T07:00:00Z"),
+    });
   });
 
   test("fails closed when code resolution fails or returns an empty value", async () => {
