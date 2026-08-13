@@ -18,35 +18,37 @@ const consumeCheckoutStatusWindowOwner = (pathname: string) => {
   }
 };
 
-let trackedPaymentWindow:
-  | {
-      readonly paymentWindow: Window;
-      readonly statusPathname: string;
-    }
-  | undefined;
+type CheckoutWindow = Window & {
+  trackedCheckoutPaymentWindow?: {
+    readonly paymentWindow: Window;
+    readonly statusPathname: string;
+  };
+};
 
 export const trackCheckoutPaymentWindow = (
   paymentWindow: Window,
   statusUrl: string
 ) => {
-  trackedPaymentWindow = {
+  (window as CheckoutWindow).trackedCheckoutPaymentWindow = {
     paymentWindow,
     statusPathname: new URL(statusUrl, "https://deskohub.local").pathname,
   };
 };
 
 const closeReturnedCheckoutPaymentWindow = () => {
+  const checkoutWindow = window as CheckoutWindow;
+  const trackedPaymentWindow = checkoutWindow.trackedCheckoutPaymentWindow;
   if (!trackedPaymentWindow) return;
   const { paymentWindow, statusPathname } = trackedPaymentWindow;
   if (paymentWindow.closed) {
-    trackedPaymentWindow = undefined;
+    checkoutWindow.trackedCheckoutPaymentWindow = undefined;
     return;
   }
 
   try {
     if (paymentWindow.location.pathname !== statusPathname) return;
     paymentWindow.close();
-    trackedPaymentWindow = undefined;
+    checkoutWindow.trackedCheckoutPaymentWindow = undefined;
   } catch {
     // The provider page remains cross-origin until it returns to checkout.
   }

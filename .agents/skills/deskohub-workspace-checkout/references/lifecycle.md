@@ -520,7 +520,8 @@ navigating it to status. The owner holds an exclusive browser lock scoped to the
 status path and preempts a returned payment tab that wins the hydration race.
 An unmarked returned tab closes when the lock is unavailable or preempted; if
 the original tab is closed, it keeps the lock and remains open. The tracked
-window reference remains the fallback when Web Locks are unavailable.
+window reference lives on the original browser window so it survives route
+module boundaries and remains the fallback when Web Locks are unavailable.
 
 Starting a new reservation from terminal status or invalid Pay state uses a
 document navigation. Cache Components may retain the previous reservation form

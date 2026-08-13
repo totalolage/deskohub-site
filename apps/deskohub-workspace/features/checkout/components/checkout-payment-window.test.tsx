@@ -134,9 +134,9 @@ describe("CheckoutPaymentWindowCoordinator", () => {
       location: { pathname: statusPathname },
     };
     trackCheckoutPaymentWindow(paymentWindow as Window, statusPathname);
-    installLockManager({
-      name: "checkout-status",
-      mode: "exclusive",
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: undefined,
     });
 
     render(<CheckoutPaymentWindowCoordinator />);
