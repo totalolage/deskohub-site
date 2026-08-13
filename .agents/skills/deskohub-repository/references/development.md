@@ -4,6 +4,8 @@
 
 - Use Bun from the repository's pinned version.
 - Run workspace orchestration through Turborepo from the repository root when task dependencies or generated outputs matter.
+- Declare generated prerequisites with Turbo `dependsOn`; do not call generation from inside a package's typecheck or build script.
+- Every package containing checked-in source must expose a lint task so the root lint graph covers it.
 - Inspect the target package's `package.json` before assuming it exposes a command.
 
 ## Bootstrap and development
@@ -38,6 +40,8 @@ Workspace has additional database and E2E tasks. Read the Workspace operations o
 ## Environment files
 
 Each application owns its `.env.example`. Copy it to the app-local ignored environment file and keep developer-only values in app-local ignored overrides.
+
+Keep Vercel-synced values in the matching ignored `.env.<environment>.local` file rather than the generic `.env.local`.
 
 Never commit real environment files or print credential values. Read the Workspace operations skill before using production integration access.
 

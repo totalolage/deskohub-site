@@ -28,6 +28,8 @@ An office reservation spans an inclusive range of Prague calendar dates. The cus
 
 The latest included date may not be more than one calendar month after the current Prague date. An unavailable date ends the longest range that can be selected from an earlier start.
 
+The complete Prague-midnight interval may not exceed 672 elapsed hours. This is evaluated independently of the calendar-day count: 28 selected days are normally 672 hours, are 671 hours across the spring daylight-saving transition, and are 673 hours across the autumn transition. An autumn-transition reservation is therefore limited to 27 selected days.
+
 Office price is calculated per selected day from the daily office access price plus the daily seat price for every reserved seat. Every visible price comes from the current advertised offer rather than a separate display-only amount.
 
 The office is exclusive for the complete selected date range. Any existing occupancy makes it unavailable, regardless of unused seat capacity.

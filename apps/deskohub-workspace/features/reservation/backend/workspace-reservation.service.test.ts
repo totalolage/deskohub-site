@@ -27,7 +27,6 @@ type TestWorkspaceReservation = Pick<
   | "id"
   | "dotyposCustomerId"
   | "dotyposReservationId"
-  | "customerAccessCode"
   | "reservationDetails"
   | "locale"
 >;
@@ -38,7 +37,6 @@ const makeWorkspaceReservation = (
   id: "reservation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: " dotypos-reservation-id ",
-  customerAccessCode: "1234",
   reservationDetails: {
     kind: "cowork",
     entryTier: "profi",

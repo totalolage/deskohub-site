@@ -41,6 +41,15 @@ before the first unavailable date. The inclusive last reservation day must
 never be later than the current Prague date plus one calendar month; enforce
 that at both the form and untrusted server input boundaries.
 
+The exact elapsed interval between the first Prague midnight and the Prague
+midnight after the last selected day must not exceed 672 hours. Apply this in
+addition to the one-month horizon and unavailable-date cap. Do not reduce the
+rule to `dayCount <= 28`: 28 calendar days spanning the autumn daylight-saving
+transition are 673 hours and must be capped to 27 days, while the corresponding
+spring interval is 671 hours and remains valid. Keep historical/provider-owned
+reservation projections structural so this current purchase policy does not
+make older data undecodable.
+
 Office product identity is `{ kind: "office", seats, dayCount }` with product
 key `office:${seats}:${dayCount}`. Build `dayCount` from the inclusive Prague
 date range. Persist only `{ kind: "office" }` locally because Dotypos owns the

@@ -39,7 +39,6 @@ const makeReservation = (
   id: "reservation-id",
   dotyposCustomerId: "dotypos-customer-id",
   dotyposReservationId: "dotypos-reservation-id",
-  customerAccessCode: "1234",
   reservationDetails: {
     kind: "cowork",
     entryTier: "basic",

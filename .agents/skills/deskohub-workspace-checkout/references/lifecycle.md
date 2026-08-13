@@ -346,20 +346,59 @@ reservation-and-category idempotency keys, and an abandoned `processing` claim
 becomes retryable after one minute.
 
 The customer confirmation contains a protected reservation-access link and
-never contains the door PIN. The dedicated access page resolves the current PIN on every
-authorized request and returns it only while the reservation is paid, locally
-confirmed, live-confirmed in Dotypos, and inside `[reservedFrom - 30 minutes,
-reservedUntil + 30 minutes)`. Calculate this window from the Dotypos-projected
-instants for every reservation family. The grace period controls disclosure and
-does not extend booked use or imply that the current static PIN is revoked.
-Keep this boundary stateless; it does not require a new database field.
-The signed access capability is bound to the reservation and locale, not to a
-copied reservation interval; the live provider timing remains authoritative
-when a confirmed reservation is moved or extended.
-Sign access capabilities with their dedicated long-lived token secret rather
-than the rotated checkout Pay-state keyring or provider credentials. Retain that
+never contains the door PIN. The dedicated access page resolves the current PIN
+on every authorized request and returns it only while the reservation is paid,
+locally confirmed, live-confirmed in Dotypos, and inside
+`[reservedFrom - 30 minutes, reservedUntil + 30 minutes)`. Calculate this
+disclosure window from the Dotypos-projected instants for every reservation
+family. The signed access capability is bound to the reservation and locale,
+not to a copied reservation interval; live provider timing remains authoritative
+when a confirmed reservation is moved or extended. The grace period controls
+disclosure and does not extend booked use or the PIN's provider validity.
+Keep this boundary stateless; it does not require a new database field. Sign
+access capabilities with their dedicated long-lived token secret rather than
+the rotated checkout Pay-state keyring or provider credentials. Retain that
 secret for at least the maximum future reservation lifetime so an emailed
 access link remains valid until its reservation.
+
+### Reservation access issuance
+
+Paid fulfillment provisions an hourly Igloohome algoPIN before sending the
+protected access link. Authorized access-page requests reuse that credential. For
+the installed Retrofit Lock (OE1) linked to a Keypad (EK1),
+`IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID` must be the EK1 device ID; Igloohome
+designates EK1 as the algoPIN-generation target.
+
+The `reservation_access_grants` ledger has one row per Workspace reservation and
+uses `pending`, `provisioning`, `issued`, `expired`, `failed`, and `uncertain`
+states. The
+issued PIN is stored as short-lived non-PII retry state rather than an archival
+record. Never annotate, log, or return it except in the authorized access
+response; mark it as a sensitive database query parameter so SQL diagnostics
+cannot expose it. The daily cleanup sweep clears stored PIN values after their
+provider validity ends.
+
+If a Dotypos timing change produces a different rounded provider interval after
+a PIN is issued, move the grant to `uncertain`, clear the stored PIN, and
+withhold access until an operator reconciles the provider credential. Changes
+within the same rounded interval reuse the existing PIN because live Dotypos
+timing still controls disclosure.
+
+Provider 400, 401, 403, 404, and 415 responses are definitive rejections and
+may leave a retryable `failed` grant. Timeouts, transport failures, 5xx,
+undocumented statuses, malformed successes, and failures persisting a successful
+response are ambiguous. Record those as `uncertain` and require reconciliation;
+never automatically issue a second credential. Igloohome does not document an
+idempotency key or retrieval by `accessName`.
+
+Floor the reservation start to the containing Prague hour and ceil its end to
+the containing or next Prague hour. The provider interval must start in the
+current or a future hour and span 1–672 elapsed hours. When a still-active
+reservation is first provisioned after its rounded start, use the current
+Prague hour through the rounded end. Persist the rounded scheduled start
+separately from that later provider start so subsequent live timing can be
+compared with the credential's original target. Preview uses a fixture
+credential and may never call live Igloohome; Production requires live mode.
 
 ## Checkout Session And Attempt HMACs
 

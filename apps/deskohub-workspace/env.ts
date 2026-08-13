@@ -42,6 +42,13 @@ export const env = createEnv({
     GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID:
       process.env.GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID,
     GITHUB_STEP_SUMMARY: process.env.GITHUB_STEP_SUMMARY,
+    IGLOOHOME_API_TIMEOUT: process.env.IGLOOHOME_API_TIMEOUT,
+    IGLOOHOME_API_URL: process.env.IGLOOHOME_API_URL,
+    IGLOOHOME_AUTH_URL: process.env.IGLOOHOME_AUTH_URL,
+    IGLOOHOME_CLIENT_ID: process.env.IGLOOHOME_CLIENT_ID,
+    IGLOOHOME_CLIENT_SECRET: process.env.IGLOOHOME_CLIENT_SECRET,
+    IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID:
+      process.env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID,
     RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
     CHECKOUT_PAY_STATE_KEYS: process.env.CHECKOUT_PAY_STATE_KEYS,
     CHECKOUT_RETURN_STATE_TOKEN_SECRET:
@@ -96,6 +103,13 @@ export const env = createEnv({
         return {
           ...issue,
           message: "Invalid administration authentication hash.",
+        };
+      }
+
+      if (hasPath("IGLOOHOME_CLIENT_SECRET")) {
+        return {
+          ...issue,
+          message: "Invalid Igloohome client credential configuration.",
         };
       }
 

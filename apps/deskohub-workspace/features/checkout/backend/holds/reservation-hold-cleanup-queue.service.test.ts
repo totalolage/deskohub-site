@@ -20,7 +20,6 @@ const makeReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
-    customerAccessCode: "ACCESS-123",
     reservationState: "held",
     paymentState: "not_started",
     fulfillmentState: "not_started",

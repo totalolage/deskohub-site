@@ -15,7 +15,31 @@ const nonEmptyStringSchema = toEnvSchema(Schema.NonEmptyString);
 const urlEnvSchema = toEnvSchema(urlStringSchema);
 
 const optionalStringSchema = toEnvSchema(Schema.optional(Schema.String));
+const optionalNonEmptyStringSchema = toEnvSchema(
+  Schema.optional(Schema.NonEmptyString)
+);
 const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
+
+const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
+  readonly VERCEL_ENV: "production" | "preview" | "development";
+  readonly IGLOOHOME_CLIENT_ID?: string | undefined;
+  readonly IGLOOHOME_CLIENT_SECRET?: string | undefined;
+  readonly IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID?: string | undefined;
+}>((environment) => {
+  if (environment.VERCEL_ENV !== "production") return undefined;
+
+  return (
+    [
+      "IGLOOHOME_CLIENT_ID",
+      "IGLOOHOME_CLIENT_SECRET",
+      "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID",
+    ] as const
+  ).flatMap((key) =>
+    environment[key] === undefined
+      ? [{ path: [key], issue: `${key} is required in production.` }]
+      : []
+  );
+});
 
 export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
@@ -46,6 +70,28 @@ export const workspaceServerEnvSchema = Schema.Struct({
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
   GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID: nonEmptyStringSchema,
   GITHUB_STEP_SUMMARY: optionalStringSchema,
+  IGLOOHOME_API_TIMEOUT: toEnvSchema(
+    Schema.FiniteFromString.check(Schema.isInt())
+      .check(Schema.isGreaterThan(0))
+      .pipe(Schema.withDecodingDefaultType(Effect.succeed(10_000)))
+  ),
+  IGLOOHOME_API_URL: toEnvSchema(
+    urlStringSchema.pipe(
+      Schema.withDecodingDefaultType(
+        Effect.succeed("https://api.igloodeveloper.co/igloohome")
+      )
+    )
+  ),
+  IGLOOHOME_AUTH_URL: toEnvSchema(
+    urlStringSchema.pipe(
+      Schema.withDecodingDefaultType(
+        Effect.succeed("https://auth.igloohome.co")
+      )
+    )
+  ),
+  IGLOOHOME_CLIENT_ID: optionalNonEmptyStringSchema,
+  IGLOOHOME_CLIENT_SECRET: optionalNonEmptyStringSchema,
+  IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: optionalNonEmptyStringSchema,
   RESEND_WEBHOOK_SECRET: optionalStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
@@ -83,7 +129,10 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
-}).check(postHogFeatureFlagOverridesEnvironmentCheck);
+}).check(
+  postHogFeatureFlagOverridesEnvironmentCheck,
+  igloohomeProductionEnvironmentCheck
+);
 
 export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: stringSchema,
@@ -111,7 +160,10 @@ export const createEnvironmentSchema = (
 
   return Schema.toStandardSchemaV1(
     isServer
-      ? schema.check(postHogFeatureFlagOverridesEnvironmentCheck)
+      ? schema.check(
+          postHogFeatureFlagOverridesEnvironmentCheck,
+          igloohomeProductionEnvironmentCheck
+        )
       : schema
   );
 };

@@ -512,7 +512,6 @@ describe("ResendWebhookService", () => {
           },
           dotyposReservationId: "dotypos-reservation-id",
           dotyposCustomerId: "dotypos-customer-id",
-          customerAccessCode: "ACCESS-123",
           customer: {
             _cloudId: "customer-id",
             email: "customer@example.com",
@@ -764,6 +763,9 @@ describe("ResendWebhookService", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
+    const { WorkspaceCheckoutAccessCodeService } = await import(
+      "@/features/checkout/backend/reservation/access-code.service"
+    );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
     );
@@ -786,6 +788,7 @@ describe("ResendWebhookService", () => {
       dotyposCustomerId: "dotypos-customer-id",
     };
     const sendPaidReservationEmails = mock(() => Effect.void);
+    const resolveCustomerAccessCode = mock(() => Effect.succeed("access-code"));
     const emailReservation = {
       ...claimedReservation,
       reservationDetails: {
@@ -833,6 +836,9 @@ describe("ResendWebhookService", () => {
               Layer.mock(DotyposService, dotypos),
               Layer.mock(WorkspaceReservationService, workspaceReservations),
               Layer.mock(WorkspaceReservationEmailService, reservationEmails),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode,
+              }),
               Layer.mock(PostHogEventService, {
                 capture: () => Effect.void,
               })
@@ -850,6 +856,7 @@ describe("ResendWebhookService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
     });
+    expect(resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
     expect(markFulfilled).toHaveBeenCalledWith(
       expect.objectContaining({ id: "reservation-id" })
     );

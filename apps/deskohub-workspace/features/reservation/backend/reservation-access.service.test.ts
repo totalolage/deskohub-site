@@ -37,7 +37,6 @@ const makeReservation = (overrides: ReservationOverrides = {}) => ({
   correlationId: "correlation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: "provider-reservation-id",
-  customerAccessCode: "legacy-code-not-read",
   reservationDetails: {
     kind: "cowork",
     entryTier: "basic",
@@ -119,7 +118,6 @@ const runAccess = async (options: HarnessOptions = {}) => {
     options.resolver ?? (() => Effect.succeed(resolvedCode))
   );
   const accessCodes: WorkspaceCheckoutAccessCodeServiceType = {
-    generateCustomerAccessCode: Effect.succeed(resolvedCode),
     resolveCustomerAccessCode,
   };
 

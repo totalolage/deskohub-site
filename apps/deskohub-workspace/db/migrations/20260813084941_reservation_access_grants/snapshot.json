@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "a2e52844-155a-44e8-a9e3-e8885d4d3de0",
+  "id": "f487e0bb-dde4-48e9-98d5-b04b70da4abe",
   "prevIds": [
     "17dcf068-9134-4357-8bd0-b9a6b19fb927"
   ],
@@ -92,12 +92,6 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "late_payment_recoveries",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
       "name": "legal_evidence_events",
       "entityType": "tables",
       "schema": "public"
@@ -105,6 +99,12 @@
     {
       "isRlsEnabled": false,
       "name": "payment_attempts",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "reservation_access_grants",
       "entityType": "tables",
       "schema": "public"
     },
@@ -1607,188 +1607,6 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "payment_attempt_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "workspace_reservation_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "webhook_event_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "provider_operation_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "provider_status",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "state",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "original_dotypos_reservation_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "recovered_dotypos_reservation_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "failure_code",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "verified_paid_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "claimed_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "completed_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "updated_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
       "default": "uuid_generate_v7()",
       "generated": null,
       "identity": null,
@@ -2159,6 +1977,227 @@
       "name": "id",
       "entityType": "columns",
       "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "workspace_reservation_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'igloohome'",
+      "generated": null,
+      "identity": null,
+      "name": "provider",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'algopin_hourly'",
+      "generated": null,
+      "identity": null,
+      "name": "credential_type",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "device_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "state",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "provider_credential_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "access_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "reservation_starts_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "access_starts_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "access_ends_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "provisioning_started_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "issued_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "failed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "failure_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuid_generate_v7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
       "table": "webhook_events"
     },
     {
@@ -2365,19 +2404,6 @@
       "generated": null,
       "identity": null,
       "name": "dotypos_reservation_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "workspace_reservations"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "customer_access_code",
       "entityType": "columns",
       "schema": "public",
       "table": "workspace_reservations"
@@ -3152,76 +3178,6 @@
       "nameExplicit": true,
       "columns": [
         {
-          "value": "recovered_dotypos_reservation_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": "\"recovered_dotypos_reservation_id\" is not null",
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "late_payment_recoveries_recovered_reservation_unique_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "workspace_reservation_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "late_payment_recoveries_reservation_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "state",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        },
-        {
-          "value": "updated_at",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "late_payment_recoveries_state_updated_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
           "value": "workspace_reservation_id",
           "isExpression": false,
           "asc": true,
@@ -3308,6 +3264,55 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "payment_attempts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "workspace_reservation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "reservation_access_grants_reservation_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "state",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "updated_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "reservation_access_grants_state_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "reservation_access_grants"
     },
     {
       "nameExplicit": true,
@@ -3805,40 +3810,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "payment_attempt_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "payment_attempts",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
-      "name": "late_payment_recoveries_wdrCKVWtB7tC_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "workspace_reservation_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "workspace_reservations",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
-      "name": "late_payment_recoveries_ChWHYKy6GqHS_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "workspace_reservation_id"
       ],
       "schemaTo": "public",
@@ -3869,6 +3840,23 @@
       "entityType": "fks",
       "schema": "public",
       "table": "payment_attempts"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "workspace_reservation_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workspace_reservations",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "reservation_access_grants_uG6VqspNF3w8_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "reservation_access_grants"
     },
     {
       "nameExplicit": false,
@@ -4032,16 +4020,6 @@
     },
     {
       "columns": [
-        "payment_attempt_id"
-      ],
-      "nameExplicit": false,
-      "name": "late_payment_recoveries_pkey",
-      "schema": "public",
-      "table": "late_payment_recoveries",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -4058,6 +4036,16 @@
       "name": "payment_attempts_pkey",
       "schema": "public",
       "table": "payment_attempts",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "reservation_access_grants_pkey",
+      "schema": "public",
+      "table": "reservation_access_grants",
       "entityType": "pks"
     },
     {
@@ -4425,34 +4413,6 @@
       "table": "invoices"
     },
     {
-      "value": "\"state\" in ('pending', 'processing', 'recovered', 'refund_required', 'review_required')",
-      "name": "late_payment_recoveries_state_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "value": "(\"state\" in ('pending', 'processing') and \"completed_at\" is null) or (\"state\" in ('recovered', 'refund_required', 'review_required') and \"completed_at\" is not null)",
-      "name": "late_payment_recoveries_completion_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "value": "\"state\" <> 'recovered' or \"recovered_dotypos_reservation_id\" is not null",
-      "name": "late_payment_recoveries_recovered_booking_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
-      "value": "\"state\" not in ('refund_required', 'review_required') or (\"failure_code\" is not null and btrim(\"failure_code\") <> '')",
-      "name": "late_payment_recoveries_failure_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "late_payment_recoveries"
-    },
-    {
       "value": "\"hash_algorithm\" = 'sha256'",
       "name": "legal_evidence_events_hash_algorithm_check",
       "entityType": "checks",
@@ -4507,6 +4467,62 @@
       "entityType": "checks",
       "schema": "public",
       "table": "payment_attempts"
+    },
+    {
+      "value": "\"provider\" = 'igloohome' and \"credential_type\" = 'algopin_hourly'",
+      "name": "reservation_access_grants_provider_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "value": "\"state\" in ('pending', 'provisioning', 'issued', 'expired', 'uncertain', 'failed')",
+      "name": "reservation_access_grants_state_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "value": "\"access_ends_at\" > \"access_starts_at\"",
+      "name": "reservation_access_grants_interval_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "value": "\"state\" <> 'issued' or (\n        \"provider_credential_id\" is not null\n        and \"access_code\" is not null\n        and \"issued_at\" is not null\n      )",
+      "name": "reservation_access_grants_issued_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "value": "\"state\" <> 'provisioning' or \"provisioning_started_at\" is not null",
+      "name": "reservation_access_grants_provisioning_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "value": "\"state\" <> 'expired' or \"access_code\" is null",
+      "name": "reservation_access_grants_expired_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "value": "\"state\" <> 'failed' or (\"failed_at\" is not null and \"failure_code\" is not null)",
+      "name": "reservation_access_grants_failure_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "value": "\"state\" <> 'uncertain' or \"failure_code\" is not null",
+      "name": "reservation_access_grants_uncertain_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
     },
     {
       "value": "\"provider\" in ('nexi')",
