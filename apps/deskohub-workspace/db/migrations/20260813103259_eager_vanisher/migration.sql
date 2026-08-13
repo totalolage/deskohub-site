@@ -1,1 +1,0 @@
-ALTER TABLE "workspace_reservations" DROP COLUMN "customer_access_code";
