@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "5fac2b2b-bf7b-4314-ae50-d03e3a38a628",
+  "id": "f487e0bb-dde4-48e9-98d5-b04b70da4abe",
   "prevIds": [
     "17dcf068-9134-4357-8bd0-b9a6b19fb927"
   ],
@@ -2404,19 +2404,6 @@
       "generated": null,
       "identity": null,
       "name": "dotypos_reservation_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "workspace_reservations"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "customer_access_code",
       "entityType": "columns",
       "schema": "public",
       "table": "workspace_reservations"

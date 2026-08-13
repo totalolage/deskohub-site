@@ -30,6 +30,7 @@ CREATE TABLE "reservation_access_grants" (
 	CONSTRAINT "reservation_access_grants_uncertain_check" CHECK ("state" <> 'uncertain' or "failure_code" is not null)
 );
 --> statement-breakpoint
+ALTER TABLE "workspace_reservations" DROP COLUMN "customer_access_code";--> statement-breakpoint
 CREATE UNIQUE INDEX "reservation_access_grants_reservation_unique_idx" ON "reservation_access_grants" ("workspace_reservation_id");--> statement-breakpoint
 CREATE INDEX "reservation_access_grants_state_idx" ON "reservation_access_grants" ("state","updated_at");--> statement-breakpoint
 ALTER TABLE "reservation_access_grants" ADD CONSTRAINT "reservation_access_grants_uG6VqspNF3w8_fkey" FOREIGN KEY ("workspace_reservation_id") REFERENCES "workspace_reservations"("id");
