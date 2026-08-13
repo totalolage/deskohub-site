@@ -4,10 +4,14 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice";
-import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
+
+mock.module("server-only", () => ({}));
+
+const { WorkspaceCheckoutAccessCodeService } = await import(
+  "@/features/checkout/backend/reservation/access-code.service"
+);
 
 describe("WorkspacePaidFulfillmentService", () => {
   test("retries stale processing paid orders and completes non-production fulfillment after send acceptance", async () => {
@@ -301,6 +305,7 @@ describe("WorkspacePaidFulfillmentService", () => {
               Layer.mock(DotyposService, {}),
               Layer.mock(WorkspaceReservationService, {}),
               Layer.mock(WorkspaceReservationEmailService, {}),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {}),
               Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
               }),

@@ -162,11 +162,17 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     const [schema, migration] = await Promise.all([
       readAppFile("db/schema/workspace-reservations.ts"),
       readAppFile(
-        "db/migrations/20260812163505_tiresome_sister_grimm/migration.sql"
+        "db/migrations/20260813150734_optimal_sugar_man/migration.sql"
       ),
     ]);
 
     expect(schema).toContain('text("reservation_purpose")');
+    expect(migration).toContain(
+      'ADD COLUMN IF NOT EXISTS "reservation_purpose"'
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "workspace_reservations_purpose_check"'
+    );
     expect(migration).toContain(
       "CHECK (\"reservation_purpose\" is null or \"reservation_purpose\" in ('personal', 'business'))"
     );
@@ -211,7 +217,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("follows the corrected migration head before issuing invoices", async () => {
-    const [discountJson, invoiceJson, deliveryJson, accessJson] =
+    const [discountJson, invoiceJson, deliveryJson, accessJson, purposeJson] =
       await Promise.all([
         readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
         readAppFile(
@@ -223,15 +229,20 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
         readAppFile(
           "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
         ),
+        readAppFile(
+          "db/migrations/20260813150734_optimal_sugar_man/snapshot.json"
+        ),
       ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
     const deliverySnapshot = parseMigrationSnapshot(deliveryJson);
     const accessSnapshot = parseMigrationSnapshot(accessJson);
+    const purposeSnapshot = parseMigrationSnapshot(purposeJson);
 
     expect(invoiceSnapshot.prevIds).toEqual([discountSnapshot.id]);
     expect(deliverySnapshot.prevIds).toEqual([invoiceSnapshot.id]);
     expect(accessSnapshot.prevIds).toEqual([deliverySnapshot.id]);
+    expect(purposeSnapshot.prevIds).toEqual([accessSnapshot.id]);
     expect(invoiceJson).not.toContain('"schema_version"');
   });
 
