@@ -1,7 +1,7 @@
 "use client";
 
 import { Info } from "lucide-react";
-import { useFormContext } from "react-hook-form";
+import { type FieldPathByValue, useFormContext } from "react-hook-form";
 import { invoiceCountryCodes } from "@/features/accounting/billing-identity";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -32,20 +32,10 @@ type ReservationBillingFormValues = {
   readonly billing: ReservationBillingSelectionInput;
 };
 
-type BillingFieldName =
-  | "billing.address.line1"
-  | "billing.address.line2"
-  | "billing.address.city"
-  | "billing.address.postalCode"
-  | "billing.address.country"
-  | "billing.buyer.legalName"
-  | "billing.buyer.companyId"
-  | "billing.buyer.vatId"
-  | "billing.buyer.address.line1"
-  | "billing.buyer.address.line2"
-  | "billing.buyer.address.city"
-  | "billing.buyer.address.postalCode"
-  | "billing.buyer.address.country";
+type BillingFieldName = FieldPathByValue<
+  ReservationBillingFormValues,
+  string | undefined
+>;
 
 export function ReservationBillingFields({
   locale,

@@ -137,27 +137,44 @@ const validRawWebhookRequest: RawWebhookRequest = {
 
 const processWebhook = async (input: {
   readonly reservations: Partial<WorkspaceReservationRepositoryType>;
-  readonly reservationInvoices?: ReservationInvoiceService;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
 }) => {
   const effect = await processWebhookEffect(input);
-  return Effect.runPromise(effect);
+  return Effect.runPromise(
+    effect.pipe(
+      Effect.provideService(
+        ReservationInvoiceService,
+        ReservationInvoiceService.of({
+          processByPaymentAttemptId: () => Effect.void,
+        })
+      )
+    )
+  );
 };
 
 const processWebhookError = async (input: {
   readonly reservations: Partial<WorkspaceReservationRepositoryType>;
-  readonly reservationInvoices?: ReservationInvoiceService;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
 }) => {
   const effect = await processWebhookEffect(input);
-  return Effect.runPromise(Effect.flip(effect));
+  return Effect.runPromise(
+    Effect.flip(
+      effect.pipe(
+        Effect.provideService(
+          ReservationInvoiceService,
+          ReservationInvoiceService.of({
+            processByPaymentAttemptId: () => Effect.void,
+          })
+        )
+      )
+    )
+  );
 };
 
 const processWebhookEffect = async (input: {
   readonly reservations: Partial<WorkspaceReservationRepositoryType>;
-  readonly reservationInvoices?: ReservationInvoiceService;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
 }) => {
@@ -191,12 +208,6 @@ const processWebhookEffect = async (input: {
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(WorkspaceReservationRepository, input.reservations),
-            Layer.mock(
-              ReservationInvoiceService,
-              input.reservationInvoices ?? {
-                processByPaymentAttemptId: () => Effect.void,
-              }
-            ),
             Layer.mock(PostHogEventService, {
               capture: () => Effect.void,
             }),
@@ -238,12 +249,17 @@ describe("ResendWebhookService", () => {
       markFulfillmentDeliveryFailed,
     };
 
-    const result = await processWebhook({
-      reservations,
-      reservationInvoices: {
-        processByPaymentAttemptId: processInvoice,
-      },
-    });
+    const effect = await processWebhookEffect({ reservations });
+    const result = await Effect.runPromise(
+      effect.pipe(
+        Effect.provideService(
+          ReservationInvoiceService,
+          ReservationInvoiceService.of({
+            processByPaymentAttemptId: processInvoice,
+          })
+        )
+      )
+    );
 
     expect(result).toEqual({ status: "processed" });
     expect(constructResend).toHaveBeenCalledWith("re_test");
@@ -275,12 +291,19 @@ describe("ResendWebhookService", () => {
       markFulfilled,
     };
 
-    const error = await processWebhookError({
-      reservations,
-      reservationInvoices: {
-        processByPaymentAttemptId: processInvoice,
-      },
-    });
+    const effect = await processWebhookEffect({ reservations });
+    const error = await Effect.runPromise(
+      Effect.flip(
+        effect.pipe(
+          Effect.provideService(
+            ReservationInvoiceService,
+            ReservationInvoiceService.of({
+              processByPaymentAttemptId: processInvoice,
+            })
+          )
+        )
+      )
+    );
 
     expect(error).toMatchObject({
       _tag: "ResendWebhookProcessingError",
