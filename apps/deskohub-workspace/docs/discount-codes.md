@@ -27,9 +27,10 @@ Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain 
 - whether it is enabled;
 - an optional inclusive start and exclusive end;
 - an optional positive global-use limit; and
+- an optional positive per-customer-use limit; and
 - an optional customer allowlist.
 
-No global-use limit means unlimited global uses. Every code is still limited to one successful redemption per customer. An empty customer allowlist means the code is open to every customer; adding the first customer makes it restricted.
+Omitting either use limit makes that dimension unlimited. An empty customer allowlist means the code is open to every customer; adding the first customer makes it restricted.
 
 Disabling a code is preferred to deleting it when historical applications or redemptions exist. Removing every customer from an allowlist makes the code unrestricted again, so that change must be deliberate.
 

@@ -1425,8 +1425,8 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       }
     }
 
-    const [customerUse] = yield* input.tx
-      .select({ state: discountCodeRedemptions.state })
+    const [customerUses] = yield* input.tx
+      .select({ count: count() })
       .from(discountCodeRedemptions)
       .where(
         and(
@@ -1437,22 +1437,16 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
           ),
           inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
         )
-      )
-      .limit(1);
-
-    if (customerUse?.state === "redeemed") {
-      return yield* claimError(
-        "reserve",
-        "already_redeemed",
-        "The customer has already redeemed this discount code.",
-        input.claim
       );
-    }
-    if (customerUse) {
+
+    if (
+      code.maxUsesPerCustomer !== null &&
+      (customerUses?.count ?? 0) >= code.maxUsesPerCustomer
+    ) {
       return yield* claimError(
         "reserve",
-        "claim_conflict",
-        "The customer already has an active claim for this discount code.",
+        "usage_limit_reached",
+        "The customer has no remaining uses for this discount code.",
         input.claim
       );
     }
@@ -1581,7 +1575,6 @@ const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
 );
 
 const activeClaimConstraints = new Set([
-  "discount_code_redemptions_active_customer_unique_idx",
   "discount_code_redemptions_application_unique_idx",
   "discount_code_redemptions_attempt_unique_idx",
 ]);

@@ -50,6 +50,7 @@ const validCode = {
   validFrom: "2026-08-01T00:00:00+02:00",
   validUntil: "2026-09-01T00:00:00+02:00",
   maxUses: 100,
+  maxUsesPerCustomer: 2,
 };
 
 describe("discount administration inputs", () => {
@@ -115,6 +116,9 @@ describe("discount administration inputs", () => {
       })
     ).toThrow();
     expect(() => decodeCode({ ...validCode, maxUses: 0 })).toThrow();
+    expect(() => decodeCode({ ...validCode, maxUsesPerCustomer: 0 })).toThrow();
+    const { maxUsesPerCustomer: _, ...legacyCode } = validCode;
+    expect(() => decodeCode(legacyCode)).not.toThrow();
   });
 
   test("accepts audience and Dotypos group operations but no claim mutations", () => {
