@@ -20,8 +20,9 @@ const databaseRepositories = Layer.mergeAll(
   AccountingDocumentSnapshotRepository.Live,
   WorkspaceReservationRepositoryLive
 ).pipe(
-  Layer.provide(WorkspaceDatabaseLive),
-  Layer.provide(AccountingSnapshotKeyServiceLive)
+  Layer.provide(
+    Layer.mergeAll(WorkspaceDatabaseLive, AccountingSnapshotKeyServiceLive)
+  )
 );
 
 const ConsumerLive = LatePaymentRecoveryServiceLive.pipe(

@@ -13,3 +13,5 @@ Read only the references relevant to the change:
 - For discriminated unions, `_tag` construction, and Effect Match, read [references/tagged-unions-and-match.md](references/tagged-unions-and-match.md).
 
 For a broad service or feature refactor, read all relevant references before editing. Update the relevant reference when developer feedback changes a durable convention.
+
+Use the repository's patched `@effect/tsgo` TypeScript installation and shared editor settings so Effect diagnostics run in both typechecks and editors. The `multipleEffectProvide` diagnostic only covers chained `Effect.provide`; compose independent Layer dependencies with one `Layer.provide(Layer.mergeAll(...))` instead of relying on the LSP to reject chained `Layer.provide` calls.
