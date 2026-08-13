@@ -3,11 +3,13 @@ import type { Properties } from "posthog-js";
 
 const SENSITIVE_QUERY_PARAMS = new Set([
   "checkouttoken",
+  "accesstoken",
   "paystate",
   "paystateref",
   "token",
   "state",
   "secret",
+  "statustoken",
   "x-vercel-protection-bypass",
 ]);
 

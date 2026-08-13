@@ -21,12 +21,15 @@ import {
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { isLocale, type Locale, m } from "@/features/i18n";
+import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
+import { getReservationAccessPath } from "@/features/reservation/backend/reservation-access-url";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import {
   formatReservationDisplayDate,
   formatReservationDisplayDateRange,
 } from "@/features/reservation/reservation-date";
+import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import {
   internalWorkspaceEmailRecipient,
@@ -290,6 +293,7 @@ const createInternalReservationDetails = (
 const createCustomerReservationEmail = (input: {
   readonly reservation: WorkspaceReservationDetails;
   readonly locale: Locale;
+  readonly accessUrl: string;
   readonly networkDetails: WorkspaceCheckoutNetworkDetails;
   readonly networkQrImageSrc?: string;
   readonly locationMapImageSrc?: string;
@@ -301,7 +305,13 @@ const createCustomerReservationEmail = (input: {
 
   return (
     <CustomerReservationEmail
-      accessCode={input.reservation.customerAccessCode}
+      access={{
+        button: m.checkoutEmailCustomerAccessButton(
+          {},
+          { locale: input.locale }
+        ),
+        url: input.accessUrl,
+      }}
       details={createReservationRows(input.reservation, input.locale)}
       followUp={m.reservationEmailCustomerFollowUp(
         { email: workspaceSiteConstants.contact.infoEmail },
@@ -309,10 +319,6 @@ const createCustomerReservationEmail = (input: {
       )}
       heading={createCustomerAccessHeading(input.reservation, input.locale)}
       labels={{
-        accessCode: m.checkoutEmailAccessCodeLabel(
-          {},
-          { locale: input.locale }
-        ),
         location: m.checkoutEmailLocationHeading({}, { locale: input.locale }),
         directions: m.checkoutEmailLocationMapLink(
           {},
@@ -374,24 +380,30 @@ const createInternalReservationEmail = (
 
 export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
   "WorkspaceReservationEmailService.renderCustomerPreview"
-)((input: { readonly reservation: WorkspaceReservationDetails }) => {
-  const locale = getReservationLocale(input.reservation.locale);
+)(
+  (input: {
+    readonly accessUrl: string;
+    readonly reservation: WorkspaceReservationDetails;
+  }) => {
+    const locale = getReservationLocale(input.reservation.locale);
 
-  return createPreviewNetworkQrPng().pipe(
-    Effect.flatMap((networkQrPng) =>
-      renderWorkspaceEmail(
-        createCustomerReservationEmail({
-          reservation: input.reservation,
-          locale,
-          networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
-          networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
-          locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
-        })
-      )
-    ),
-    Effect.map(({ html }) => html)
-  );
-});
+    return createPreviewNetworkQrPng().pipe(
+      Effect.flatMap((networkQrPng) =>
+        renderWorkspaceEmail(
+          createCustomerReservationEmail({
+            reservation: input.reservation,
+            locale,
+            accessUrl: input.accessUrl,
+            networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
+            networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
+            locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
+          })
+        )
+      ),
+      Effect.map(({ html }) => html)
+    );
+  }
+);
 
 const createPreviewNetworkQrPng = () =>
   Effect.tryPromise({
@@ -435,6 +447,26 @@ export class WorkspaceReservationEmailService extends Context.Service<
       const networkDetailsService =
         yield* WorkspaceCheckoutNetworkDetailsService;
 
+      const createCustomerAccessUrl = Effect.fn(
+        "WorkspaceReservationEmailService.createCustomerAccessUrl"
+      )(function* (reservation: WorkspaceReservationDetails, locale: Locale) {
+        const accessToken = yield* createReservationAccessToken({
+          orderId: reservation.id,
+          locale,
+        });
+        const origin = yield* getWorkspaceRuntimeCallbackOrigin;
+
+        return new URL(
+          getReservationAccessPath({
+            locale,
+            orderId: reservation.id,
+            accessToken,
+            setBypassCookie: true,
+          }),
+          origin
+        ).toString();
+      });
+
       return {
         sendPaidReservationEmails: Effect.fn(
           "WorkspaceReservationEmailService.sendPaidReservationEmails"
@@ -447,6 +479,18 @@ export class WorkspaceReservationEmailService extends Context.Service<
             yield* networkDetailsService.resolveCustomerNetworkDetails({
               reservation,
             });
+          const accessUrl = yield* createCustomerAccessUrl(
+            reservation,
+            locale
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new EmailServiceError(
+                  "Workspace reservation access URL could not be created.",
+                  cause
+                )
+            )
+          );
           const metadata = {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-paid-fulfillment",
@@ -498,6 +542,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             createCustomerReservationEmail({
               reservation,
               locale,
+              accessUrl,
               networkDetails,
               networkQrImageSrc: networkQrAttachment
                 ? `cid:${networkQrAttachment.contentId}`

@@ -5,6 +5,7 @@
 - Use Effect Schema branding utilities for schema-backed branded values. Do not hand-roll `unique symbol` brands.
 - Annotate branded Effect schemas with a stable identifier and domain description.
 - Use Effect Schema rather than Zod for new schema definitions.
+- Do not add speculative version fields to schemas. Add a discriminator only when multiple live formats actually require decoding different shapes.
 - Validate values at the strongest available layer, in this order: make invalid states structurally impossible, enforce trusted internal construction with TypeScript types, use lint rules, use focused tests, and add runtime decoding only as a last resort. Reserve `decodeUnknown` for untrusted boundary input rather than re-validating trusted internal values.
 - Reuse Effect's built-in schemas, such as `Schema.NonEmptyString`, instead of redeclaring equivalent local helpers.
 - When related struct schemas share fields, declare a base `Schema.Struct` and extend its `fields`. Do not declare a standalone fields object as a schema substitute.

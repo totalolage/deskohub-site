@@ -411,8 +411,10 @@ export const assertFulfilledStatusPage = ({
         );
 
         return (
-          /Your workspace access is ready\./i.test(normalizedText) &&
-          /sent by email/i.test(normalizedText) &&
+          /Your reservation is confirmed\./i.test(normalizedText) &&
+          /secure access link has been sent by email/i.test(
+            normalizedText
+          ) &&
           expectedReservationText.every((expected) =>
             normalizedText.includes(
               normalizeBrowserText(expected).toLocaleLowerCase(data.locale)
@@ -608,7 +610,7 @@ const assertFulfillmentFailedSupportPath = ({
       execute: waitForBrowserText({
         description: "fulfillment failed support link",
         matches: (text) =>
-          /couldn't deliver your access codes/i.test(text) &&
+          /couldn't deliver your confirmation/i.test(text) &&
           /Send support request/i.test(text),
         run,
         session,

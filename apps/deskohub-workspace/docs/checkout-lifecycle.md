@@ -53,7 +53,9 @@ A positive payable amount uses the external payment flow. A total of exactly zer
 
 Payment notifications are triggers, not sole proof. Workspace confirms the current payment facts before changing a reservation to paid. A duplicate notification must not repeat payment, redemption, confirmation, or delivery work.
 
-After payment succeeds, Workspace confirms the reservation and delivers the required customer access information. A paid reservation remains paid if fulfillment is delayed or fails; the outstanding work is retried or surfaced for operator recovery. In production, required customer delivery is complete only after delivery is confirmed.
+After payment succeeds, Workspace confirms the reservation and sends a customer confirmation containing a protected link to the dedicated reservation access page. The email never contains the door PIN. A paid reservation remains paid if confirmation is delayed or fails; the outstanding work is retried or surfaced for operator recovery. In production, required customer delivery is complete only after delivery is confirmed.
+
+The protected access page resolves the current PIN on each authorized request. It discloses the PIN only for a paid reservation that is confirmed both locally and by the reservation provider, during the half-open interval from 30 minutes before the reserved start until 30 minutes after the reserved end. The display grace period does not extend the customer's right to use the space. Today the resolver returns a static PIN; a future resolver implementation may return a time-bound PIN without changing the email or access-page contract. Payment redirects and fulfillment recovery remain on the separate reservation status page.
 
 ## Customer choices and legal evidence
 
@@ -61,7 +63,9 @@ The reservation page always explains the privacy policy. Privacy-policy acknowle
 
 Marketing consent is optional and belongs to the customer rather than one reservation. Checking the option grants consent; leaving it unchecked does not withdraw an earlier grant. A withdrawal is a separate deliberate action.
 
-The exact terms and operating rules accepted for payment are preserved as immutable evidence without storing rendered document copies or customer contact details alongside that evidence.
+Payment uses one affirmative checkout choice to accept the current terms and operating rules. When the service begins inside the statutory withdrawal period, that same visible choice also includes the customer's express request to begin at the reserved time and acknowledgement that the withdrawal right ends after full performance. The terms explain that a proportionate amount may be due after partial performance.
+
+The paths and hashes of the terms and operating rules accepted for payment are preserved as immutable evidence without storing rendered legal-document copies or customer contact details alongside that evidence. When applicable, one early-performance consent fact records the combined request and acknowledgement behind the single checkout choice, without adding a new database document store.
 
 ## Privacy and accounting
 

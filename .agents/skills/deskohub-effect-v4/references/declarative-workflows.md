@@ -45,6 +45,10 @@ use `Effect.orElseSucceed(() => undefined)` instead of converting the result to
 `Option` and immediately unwrapping it. Keep `Option` when absence represents
 the domain or conditional execution rather than error recovery.
 
+When success and failure must both be inspected as data, use `Effect.result`.
+Do not erase the error channel into true/false sentinels and then branch on the
+boolean.
+
 For a Next.js `"use server"` module, do not export the function returned by an
 Effect action factory directly. Export an async bridge declared in that module
 so Next assigns and resolves the Server Action identity. A successful production

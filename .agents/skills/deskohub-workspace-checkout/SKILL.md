@@ -17,6 +17,11 @@ Use document navigation for explicit start-over links from checkout status or in
 
 Inspect the technical [lifecycle reference](references/lifecycle.md), [accounting-document reference](references/accounting-documents.md), [scheduled cleanup queue route](../../../apps/deskohub-workspace/app/api/queues/workspace/reservation-hold-cleanup/route.ts), and [daily recovery cron route](../../../apps/deskohub-workspace/app/api/cron/workspace/reservation-holds/route.ts) as relevant before changing this boundary. Consult the business-facing [checkout specification](../../../apps/deskohub-workspace/docs/checkout-lifecycle.md) for customer and operator policy. Update this skill when developer feedback adds or changes a durable checkout invariant.
 
+When one affirmative control captures the early-performance request and the
+related withdrawal-right acknowledgement together, persist one consent fact.
+Do not duplicate an always-identical boolean under multiple legal labels;
+evidence comes from the recorded action, time, source, and versioned wording.
+
 Preserve the three price boundaries documented in the checkout lifecycle:
 
 - reservation-page advertisement;

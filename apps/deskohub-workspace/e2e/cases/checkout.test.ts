@@ -139,7 +139,7 @@ test("observes fulfillment across server and runner whitespace variants", async 
       stderr: "",
       stdout: readsUrl
         ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
-        : "Your workspace access is ready. Access details were sent by email. Tuesday, August 25, 2026 10:00\u202fAM\u2009–\u20092:00\u202fPM CZK\u00a00",
+        : "Your reservation is confirmed. Your payment is complete and the secure access link has been sent by email. Tuesday, August 25, 2026 10:00\u202fAM\u2009–\u20092:00\u202fPM CZK\u00a00",
     };
   }) as Runner;
 
@@ -194,7 +194,7 @@ test("asserts office range, seats, and price on the fulfilled status page", asyn
       stderr: "",
       stdout: readsUrl
         ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
-        : `Your workspace access is ready. Access details were sent by email. Private office ${expectedDateRange} SEATS 2 ${expectedPrice}`,
+        : `Your reservation is confirmed. Your payment is complete and the secure access link has been sent by email. Private office ${expectedDateRange} SEATS 2 ${expectedPrice}`,
     };
   }) as Runner;
 

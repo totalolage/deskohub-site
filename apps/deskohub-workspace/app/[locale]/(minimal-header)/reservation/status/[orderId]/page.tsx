@@ -10,7 +10,6 @@ import {
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPaymentWindowCoordinator } from "@/features/checkout/components/checkout-payment-window";
-import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
 import { CheckoutStatusPageSkeleton } from "@/features/checkout/components/checkout-status-page-skeleton";
 import { type Locale, locales, m } from "@/features/i18n";
@@ -18,6 +17,7 @@ import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { RouteAutoRefresh } from "@/shared/components/route-auto-refresh";
 import {
   getSearchParamsDecoder,
   getWorkspaceLocalizedCanonicalUrl,
@@ -39,7 +39,7 @@ const decodeCheckoutStatusParams = Schema.decodeUnknownOption(
 
 const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
   Schema.Struct({
-    outcome: Schema.Literals(["success", "cancelled"]),
+    outcome: Schema.optional(Schema.Literals(["success", "cancelled"])),
   })
 );
 
@@ -81,6 +81,7 @@ export async function generateMetadata({
         type: "website",
       },
       robots: { index: false, follow: false },
+      referrer: "no-referrer",
     } satisfies Metadata;
   });
 }
@@ -109,12 +110,16 @@ async function CheckoutStatusContent({
   return runWithRequestLocale(async (locale) => {
     await connection();
     const rawSearchParams = await searchParams;
-    const { outcome: returnOutcome } = Option.getOrElse(
+    const decodedSearchParams = Option.getOrElse(
       decodeCheckoutStatusSearchParams(rawSearchParams),
-      () => ({ outcome: "unknown" as const })
+      () => ({ outcome: undefined })
     );
+    const returnOutcome = decodedSearchParams.outcome ?? "unknown";
     const status = await Effect.flatMap(CheckoutStatusService, (service) =>
-      loadCheckoutStatusPage(service, { orderId, returnOutcome })
+      loadCheckoutStatusPage(service, {
+        orderId,
+        returnOutcome,
+      })
     ).pipe(
       Effect.tapError((cause) =>
         Effect.logError("Checkout status load failed", {
@@ -126,10 +131,9 @@ async function CheckoutStatusContent({
       Effect.provide(CheckoutStatusService.LiveWithDependencies),
       runWorkspaceEffect("checkout.status.load")
     );
-
     return (
       <>
-        <CheckoutStatusAutoRefresh
+        <RouteAutoRefresh
           enabled={shouldAutoRefreshCheckoutStatus(status.status)}
         />
         <CheckoutStatusPage locale={locale} status={status} />

@@ -614,11 +614,10 @@ describe("ResendWebhookService", () => {
         { date: customerAccessHeadingDate },
         { locale }
       );
-      const accessCodeLabel = emailView.getByText(
-        m.checkoutEmailAccessCodeLabel({}, { locale })
-      );
-      const accessCodeTable = accessCodeLabel.closest("table");
-      const accessCode = accessCodeLabel.nextElementSibling;
+      const accessLink = emailView.getByRole("link", {
+        name: m.checkoutEmailCustomerAccessButton({}, { locale }),
+      });
+      const accessCodeTable = accessLink.closest("table");
       const tableLabel = emailView.getByText(
         m.checkoutEmailTableNumberLabel({}, { locale })
       );
@@ -651,14 +650,19 @@ describe("ResendWebhookService", () => {
       ).toBeNull();
       expect(emailView.queryByText("Ada Lovelace")).toBeNull();
       expect(emailView.queryByText("123456789")).toBeNull();
-      expect(accessCode?.textContent).toBe("ACCESS-123");
+      expect(customerHtml).not.toContain("ACCESS-123");
+      expect(customerText).not.toContain("ACCESS-123");
+      expect(accessLink.getAttribute("href")).toContain(
+        "/en-US/reservation/access/reservation-id?accessToken="
+      );
       expect(accessCodeTable?.getAttribute("bgcolor")).toBe("#00024f");
-      expect(accessCodeTable?.contains(accessCode ?? null)).toBe(true);
+      expect(accessCodeTable?.contains(accessLink)).toBe(true);
       expect(accessCodeTable?.getAttribute("style")).toContain(
         "background-color:#00024f"
       );
-      expect(accessCodeLabel.getAttribute("style")).toContain("color:#00df99");
-      expect(accessCode?.getAttribute("style")).toContain("color:#fff");
+      expect(accessCodeTable?.textContent).toBe(
+        m.checkoutEmailCustomerAccessButton({}, { locale })
+      );
       expect(networkHeading).toBeTruthy();
       expect(
         emailView.getByText(workspaceCheckoutPlaceholderNetworkDetails.ssid)
@@ -708,9 +712,6 @@ describe("ResendWebhookService", () => {
       expect(generateStaticMapImage).toHaveBeenCalledWith(
         workspaceLocationMapImageOptions
       );
-      expect(
-        emailView.queryByText(m.checkoutEmailCustomerAccessBody({}, { locale }))
-      ).toBeNull();
     } finally {
       unregisterWorkspaceComponentTestEnv();
     }
@@ -748,12 +749,10 @@ describe("ResendWebhookService", () => {
     expect(internalEmail.text).toContain("customer@example.com");
     expect(internalEmail.html).not.toContain("ACCESS-123");
     expect(internalEmail.text).not.toContain("ACCESS-123");
-    expect(internalEmail.html).not.toContain(
-      m.checkoutEmailAccessCodeLabel({}, { locale: internalLocale })
-    );
-    expect(internalEmail.text).not.toContain(
-      m.checkoutEmailAccessCodeLabel({}, { locale: internalLocale })
-    );
+    expect(internalEmail.html).not.toContain("/reservation/access/");
+    expect(internalEmail.text).not.toContain("/reservation/access/");
+    expect(internalEmail.html).not.toContain("accessToken=");
+    expect(internalEmail.text).not.toContain("accessToken=");
   });
 
   test("completes non-production fulfillment after the email provider accepts delivery", async () => {

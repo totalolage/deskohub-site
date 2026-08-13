@@ -29,6 +29,12 @@ const reservationDisplayTimeFormatOptions: Intl.DateTimeFormatOptions = {
   timeZone: workspaceSiteConstants.location.timeZone,
 };
 
+const reservationDisplayDateTimeFormatOptions: Intl.DateTimeFormatOptions = {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: workspaceSiteConstants.location.timeZone,
+};
+
 const decodePlainDate = Schema.decodeUnknownOption(plainDateStringSchema);
 
 export const parseReservationInputDate = (date: string) =>
@@ -95,3 +101,12 @@ export const formatReservationDisplayTimeRange = (
     locale,
     reservationDisplayTimeFormatOptions
   ).formatRange(temporalInstantToDate(start), temporalInstantToDate(end));
+
+export const formatReservationDisplayDateTime = (
+  instant: Temporal.Instant,
+  locale: Locale
+) =>
+  new Intl.DateTimeFormat(
+    locale,
+    reservationDisplayDateTimeFormatOptions
+  ).format(temporalInstantToDate(instant));

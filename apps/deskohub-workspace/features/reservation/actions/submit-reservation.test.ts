@@ -10,6 +10,7 @@ const input = {
   locale: "en-US" as const,
   payStateToken: "pay-state-token",
   legalConsent: true,
+  earlyPerformanceConsent: true,
 };
 
 const runSubmitReservation = async (options?: {
@@ -92,6 +93,7 @@ describe("submitWorkspaceReservation", () => {
       {
         payStateToken: input.payStateToken,
         legalConsent: true,
+        earlyPerformanceConsent: true,
       },
       "en-US"
     );

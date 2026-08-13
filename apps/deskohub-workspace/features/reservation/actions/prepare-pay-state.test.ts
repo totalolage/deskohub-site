@@ -38,11 +38,13 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
     Effect.succeed({
       privacyPolicy: {
         path: "/legal/privacy.md",
+        content: "Privacy test content",
         hash: "privacy-hash",
         hashAlgorithm: "sha256",
       },
       marketingCommunications: {
         path: "/legal/marketing.md",
+        content: "Marketing test content",
         hash: "marketing-hash",
         hashAlgorithm: "sha256",
       },
@@ -361,6 +363,7 @@ const runReusableReservationScenario = async (input: {
     }),
     Layer.mock(WorkspaceCheckoutAccessCodeService, {
       generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+      resolveCustomerAccessCode: () => Effect.die("not used"),
     } satisfies WorkspaceCheckoutAccessCodeServiceType),
     Layer.mock(CustomerMarketingConsentRepository, {
       grant: grantMarketingConsent,
@@ -532,6 +535,7 @@ const runMeetingRoomNewHoldScenario = async (
     }),
     Layer.mock(WorkspaceCheckoutAccessCodeService, {
       generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+      resolveCustomerAccessCode: () => Effect.die("not used"),
     } satisfies WorkspaceCheckoutAccessCodeServiceType),
     Layer.mock(CustomerMarketingConsentRepository, {
       grant: mock(() => Effect.void),
@@ -894,6 +898,7 @@ describe("prepareWorkspacePayState", () => {
       }),
       Layer.mock(WorkspaceCheckoutAccessCodeService, {
         generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+        resolveCustomerAccessCode: () => Effect.die("not used"),
       } satisfies WorkspaceCheckoutAccessCodeServiceType),
       Layer.mock(CustomerMarketingConsentRepository, {
         grant: grantMarketingConsent,

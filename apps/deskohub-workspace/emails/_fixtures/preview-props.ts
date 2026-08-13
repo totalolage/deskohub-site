@@ -36,11 +36,13 @@ export const contactConfirmationPreviewProps = {
 
 export const customerReservationPreviewProps = {
   locale: "en-US",
-  preview: "Your Deskohub Workspace access code is 4829",
-  heading: "Your workspace access is ready for Friday, June 12",
-  accessCode: "4829",
+  preview: "Your Deskohub Workspace reservation is confirmed",
+  heading: "Your workspace reservation is confirmed for Friday, June 12",
+  access: {
+    button: "Show access code",
+    url: "https://workspace.deskohub.cz/en-US/reservation/access/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
+  },
   labels: {
-    accessCode: "Access code",
     location: "Where to go",
     directions: "Open route in Google Maps",
     table: "Table",
