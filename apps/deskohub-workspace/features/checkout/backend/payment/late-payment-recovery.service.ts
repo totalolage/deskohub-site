@@ -240,13 +240,9 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
         claimed.workspaceReservationId
       );
       if (!reservation) {
-        yield* recoveries.requireReview({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: claimed.workspaceReservationId,
-          failureCode: "late_payment_reservation_missing",
-          completedAt: Temporal.Now.instant(),
-        });
-        return "review_required" as const;
+        return yield* Effect.die(
+          "Late-payment recovery reservation missing despite its foreign key."
+        );
       }
 
       if (reservation.activePaymentAttemptId !== claimed.paymentAttemptId) {
