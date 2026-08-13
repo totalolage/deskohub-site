@@ -197,6 +197,9 @@ describe("CheckoutPayPage payment navigation", () => {
     );
 
     expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    expect(
+      view.getByRole("checkbox", { name: /statutory withdrawal period/ })
+    ).toBeDefined();
     fireEvent.click(view.getByRole("checkbox"));
     fireEvent.click(
       view.getByRole("button", {
@@ -271,6 +274,14 @@ describe("CheckoutPayPage payment navigation", () => {
     expect(
       view.queryByRole("checkbox", { name: /statutory withdrawal period/ })
     ).toBeNull();
+    expect(
+      view
+        .getByRole("link", { name: "General Terms and Conditions" })
+        .getAttribute("href")
+    ).toBe("/en-US/terms-and-conditions");
+    expect(
+      view.getByRole("link", { name: "Operating Rules" }).getAttribute("href")
+    ).toBe("/en-US/operating-rules");
   });
 
   test("closes the pre-opened payment tab when checkout unmounts", async () => {

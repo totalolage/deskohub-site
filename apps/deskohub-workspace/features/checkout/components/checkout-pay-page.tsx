@@ -1,5 +1,6 @@
 "use client";
 
+import Interpolate from "@doist/react-interpolate";
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -349,25 +350,27 @@ function CheckoutPayConsent({
         }
       />
       <span className="text-sm leading-6 text-navy-blue/66">
-        {
-          {
-            pay: m.checkoutPayConsentBefore({}, { locale }),
-            retry: m.checkoutPaymentRetryConsentBefore({}, { locale }),
-          }[variant]
-        }{" "}
-        <LegalLink
-          href={`/${locale}/terms-and-conditions`}
-          label={m.reservationLegalConsentTermsLink({}, { locale })}
+        <Interpolate
+          string={
+            {
+              pay: m.checkoutPayConsent({}, { locale }),
+              retry: m.checkoutPaymentRetryConsent({}, { locale }),
+            }[variant]
+          }
+          mapping={{
+            terms: (label) => (
+              <LegalLink
+                href={`/${locale}/terms-and-conditions`}
+                label={label}
+              />
+            ),
+            operatingRules: (label) => (
+              <LegalLink href={`/${locale}/operating-rules`} label={label} />
+            ),
+            earlyPerformance: (text) =>
+              showEarlyPerformanceRequest ? text : null,
+          }}
         />
-        {", "}
-        <LegalLink
-          href={`/${locale}/operating-rules`}
-          label={m.reservationLegalConsentOperatingRulesLink({}, { locale })}
-        />
-        {"."}
-        {showEarlyPerformanceRequest && (
-          <> {m.checkoutPayEarlyPerformanceConsent({}, { locale })}</>
-        )}
       </span>
     </label>
   );
@@ -430,7 +433,7 @@ function LegalLink({
   label,
 }: {
   readonly href: string;
-  readonly label: string;
+  readonly label: ReactNode;
 }) {
   return (
     <Link
