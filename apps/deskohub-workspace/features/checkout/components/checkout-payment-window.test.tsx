@@ -13,7 +13,10 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { CheckoutPaymentWindowCoordinator } from "./checkout-payment-window";
+import {
+  CheckoutPaymentWindowCoordinator,
+  trackCheckoutPaymentWindow,
+} from "./checkout-payment-window";
 
 type LockRequestCallback = (lock: Lock | null) => Promise<void> | void;
 
@@ -120,6 +123,25 @@ describe("CheckoutPaymentWindowCoordinator", () => {
     render(<CheckoutPaymentWindowCoordinator />);
 
     await waitFor(() => expect(closeCurrentWindow).toHaveBeenCalledTimes(1));
+  });
+
+  test("closes the exact tracked payment window after it returns", async () => {
+    const closePaymentWindow = mock();
+    const statusPathname = "/en-US/reservation/status/reservation-id";
+    const paymentWindow = {
+      close: closePaymentWindow,
+      closed: false,
+      location: { pathname: statusPathname },
+    };
+    trackCheckoutPaymentWindow(paymentWindow as Window, statusPathname);
+    installLockManager({
+      name: "checkout-status",
+      mode: "exclusive",
+    });
+
+    render(<CheckoutPaymentWindowCoordinator />);
+
+    await waitFor(() => expect(closePaymentWindow).toHaveBeenCalledTimes(1));
   });
 
   test("closes a returned tab when the original preempts its lock", async () => {

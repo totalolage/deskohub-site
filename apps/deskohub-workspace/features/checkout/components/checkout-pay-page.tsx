@@ -10,7 +10,10 @@ import type {
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-summary";
 import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
-import { markCheckoutStatusWindowOwner } from "@/features/checkout/components/checkout-payment-window";
+import {
+  markCheckoutStatusWindowOwner,
+  trackCheckoutPaymentWindow,
+} from "@/features/checkout/components/checkout-payment-window";
 import {
   CheckoutSummary,
   CheckoutSummarySection,
@@ -181,6 +184,10 @@ export function CheckoutPayPage({
                 event.preventDefault();
                 paymentWindow.opener = null;
                 paymentWindow.location.replace(hostedPayment.redirectUrl);
+                trackCheckoutPaymentWindow(
+                  paymentWindow,
+                  hostedPayment.statusUrl
+                );
               }
               markCheckoutStatusWindowOwner(hostedPayment.statusUrl);
               router.push(hostedPayment.statusUrl);

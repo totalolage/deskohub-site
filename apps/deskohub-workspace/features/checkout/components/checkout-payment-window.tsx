@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+const paymentWindowCheckIntervalMs = 500;
 const getCheckoutStatusLockName = () =>
   `deskohub:checkout-status:${window.location.pathname}`;
 const getCheckoutStatusOwnerStorageKey = (pathname: string) =>
@@ -14,6 +15,40 @@ const consumeCheckoutStatusWindowOwner = (pathname: string) => {
     return ownsStatusWindow;
   } catch {
     return false;
+  }
+};
+
+let trackedPaymentWindow:
+  | {
+      readonly paymentWindow: Window;
+      readonly statusPathname: string;
+    }
+  | undefined;
+
+export const trackCheckoutPaymentWindow = (
+  paymentWindow: Window,
+  statusUrl: string
+) => {
+  trackedPaymentWindow = {
+    paymentWindow,
+    statusPathname: new URL(statusUrl, "https://deskohub.local").pathname,
+  };
+};
+
+const closeReturnedCheckoutPaymentWindow = () => {
+  if (!trackedPaymentWindow) return;
+  const { paymentWindow, statusPathname } = trackedPaymentWindow;
+  if (paymentWindow.closed) {
+    trackedPaymentWindow = undefined;
+    return;
+  }
+
+  try {
+    if (paymentWindow.location.pathname !== statusPathname) return;
+    paymentWindow.close();
+    trackedPaymentWindow = undefined;
+  } catch {
+    // The provider page remains cross-origin until it returns to checkout.
   }
 };
 
@@ -30,11 +65,18 @@ export function CheckoutPaymentWindowCoordinator() {
   const ownsStatusWindowRef = useRef<boolean | undefined>(undefined);
 
   useEffect(() => {
+    closeReturnedCheckoutPaymentWindow();
+    const paymentWindowInterval = globalThis.setInterval(
+      closeReturnedCheckoutPaymentWindow,
+      paymentWindowCheckIntervalMs
+    );
     const ownsStatusWindow =
       ownsStatusWindowRef.current ??
       consumeCheckoutStatusWindowOwner(window.location.pathname);
     ownsStatusWindowRef.current = ownsStatusWindow;
-    if (!navigator.locks) return;
+    if (!navigator.locks) {
+      return () => globalThis.clearInterval(paymentWindowInterval);
+    }
 
     let active = true;
     let releaseLock: () => void = () => undefined;
@@ -70,6 +112,7 @@ export function CheckoutPaymentWindowCoordinator() {
       });
 
     return () => {
+      globalThis.clearInterval(paymentWindowInterval);
       active = false;
       releaseLock();
     };
