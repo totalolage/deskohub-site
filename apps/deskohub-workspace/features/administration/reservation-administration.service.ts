@@ -14,7 +14,10 @@ import { WorkspaceReservationService } from "@/features/reservation/backend/work
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
-import { canCancelReservation } from "./reservation-status";
+import {
+  ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
+  canCancelReservation,
+} from "./reservation-status";
 
 export type ReservationCancellationResult = {
   readonly outcome: "cancelled" | "already_cancelled";
@@ -97,7 +100,12 @@ export class ReservationAdministrationService extends Context.Service<
                 )
               );
             const claimed = yield* reservations
-              .claimAdministrationCancellation(current.id)
+              .claimAdministrationCancellation({
+                id: current.id,
+                staleCancellingBefore: Temporal.Now.instant().subtract({
+                  milliseconds: ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
+                }),
+              })
               .pipe(
                 Effect.mapError((cause) =>
                   cancellationFailed(

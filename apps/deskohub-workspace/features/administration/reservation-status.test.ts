@@ -22,14 +22,41 @@ const status = (
   });
 
 describe("administration reservation status", () => {
-  test("does not allow cancellation while fulfillment is processing", () => {
+  test("allows retries only after the cancellation lease expires", () => {
+    const now = Temporal.Now.instant();
     expect(
-      canCancelReservation({
-        dotyposReservationId: "dotypos-reservation",
-        fulfillmentState: "processing",
-        reservationState: "confirmed",
-      })
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "processing",
+          reservationState: "confirmed",
+          updatedAt: now,
+        },
+        now
+      )
     ).toBe(false);
+    expect(
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "fulfilled",
+          reservationState: "cancelling",
+          updatedAt: now,
+        },
+        now
+      )
+    ).toBe(false);
+    expect(
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "fulfilled",
+          reservationState: "cancelling",
+          updatedAt: now.subtract({ minutes: 2 }),
+        },
+        now
+      )
+    ).toBe(true);
   });
 
   test.each([

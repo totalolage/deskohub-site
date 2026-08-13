@@ -134,9 +134,10 @@ export interface WorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
-  readonly claimAdministrationCancellation: (
-    id: WorkspaceReservationId
-  ) => Effect.Effect<
+  readonly claimAdministrationCancellation: (input: {
+    readonly id: WorkspaceReservationId;
+    readonly staleCancellingBefore: Temporal.Instant;
+  }) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
@@ -557,7 +558,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       claimAdministrationCancellation: Effect.fn(
         "workspaceReservations.claimAdministrationCancellation"
-      )(function* (id) {
+      )(function* (input) {
         const [claimed] = yield* db
           .update(workspaceReservations)
           .set({
@@ -566,13 +567,22 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           })
           .where(
             and(
-              eq(workspaceReservations.id, id),
-              inArray(workspaceReservations.reservationState, [
-                "held",
-                "hold_expired",
-                "confirmed",
-                "cancellation_failed",
-              ]),
+              eq(workspaceReservations.id, input.id),
+              or(
+                inArray(workspaceReservations.reservationState, [
+                  "held",
+                  "hold_expired",
+                  "confirmed",
+                  "cancellation_failed",
+                ]),
+                and(
+                  eq(workspaceReservations.reservationState, "cancelling"),
+                  lte(
+                    workspaceReservations.updatedAt,
+                    input.staleCancellingBefore
+                  )
+                )
+              ),
               sql`${workspaceReservations.fulfillmentState} <> 'processing'`
             )
           )
