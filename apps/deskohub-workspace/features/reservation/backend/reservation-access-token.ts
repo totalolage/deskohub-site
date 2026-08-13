@@ -12,7 +12,6 @@ export const reservationAccessTokenQueryParam = "accessToken" as const;
 const reservationAccessTokenPurpose = "reservation-access";
 const reservationAccessTokenClaimsSchema = Schema.Struct({
   purpose: Schema.Literal(reservationAccessTokenPurpose),
-  version: Schema.Literal(1),
   orderId: workspaceReservationIdSchema,
   locale: Schema.Literals(locales),
   issuedAtEpochMilliseconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -66,9 +65,6 @@ const getSecret = Effect.fn("reservationAccessToken.getSecret")(function* (
   return secret;
 });
 
-const getNow = (options: ReservationAccessTokenOptions) =>
-  options.now?.() ?? Date.now();
-
 const signClaims = (encodedClaims: string, key: Buffer) =>
   createHmac("sha256", key)
     .update(`${reservationAccessTokenPurpose}.${encodedClaims}`)
@@ -88,10 +84,9 @@ export const createReservationAccessToken = Effect.fn(
     reservationAccessTokenClaimsSchema
   )({
     purpose: reservationAccessTokenPurpose,
-    version: 1,
     orderId: input.orderId,
     locale: input.locale,
-    issuedAtEpochMilliseconds: getNow(options),
+    issuedAtEpochMilliseconds: options.now?.() ?? Date.now(),
   }).pipe(
     Effect.mapError((cause) =>
       invalidToken("Reservation access token claims are invalid.", cause)

@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { Stream } from "effect";
+import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
+import * as Atom from "effect/unstable/reactivity/Atom";
 import { type Locale, m } from "@/features/i18n";
 import { formatDuration } from "@/shared/utils/format-duration";
 
@@ -42,6 +45,25 @@ const formatAccessCountdown = (totalSeconds: number, locale: Locale) => {
   return formatDuration(parts, locale);
 };
 
+const reservationAccessCountdownAtom = Atom.family((availableAt: string) => {
+  const deadline = Date.parse(availableAt);
+
+  return Atom.withServerValue(
+    Atom.map(
+      Atom.make(
+        Stream.tick("1 second").pipe(
+          Stream.map(() =>
+            Math.max(0, Math.ceil((deadline - Date.now()) / 1000))
+          ),
+          Stream.takeUntil((remainingSeconds) => remainingSeconds === 0)
+        )
+      ),
+      (result) => AsyncResult.getOrElse(result, () => undefined)
+    ),
+    () => undefined
+  );
+});
+
 export function ReservationAccessCountdown({
   availableAt,
   locale,
@@ -49,29 +71,9 @@ export function ReservationAccessCountdown({
   readonly availableAt: string;
   readonly locale: Locale;
 }) {
-  const [remainingSeconds, setRemainingSeconds] = useState<number>();
-
-  useEffect(() => {
-    const deadline = Date.parse(availableAt);
-    let intervalId: ReturnType<typeof globalThis.setInterval> | undefined;
-    const update = () => {
-      const nextRemainingSeconds = Math.max(
-        0,
-        Math.ceil((deadline - Date.now()) / 1000)
-      );
-      setRemainingSeconds(nextRemainingSeconds);
-      if (nextRemainingSeconds === 0 && intervalId !== undefined) {
-        globalThis.clearInterval(intervalId);
-      }
-    };
-
-    update();
-    if (deadline > Date.now()) {
-      intervalId = globalThis.setInterval(update, 1000);
-    }
-
-    return () => globalThis.clearInterval(intervalId);
-  }, [availableAt]);
+  const remainingSeconds = useAtomValue(
+    reservationAccessCountdownAtom(availableAt)
+  );
 
   if (remainingSeconds === undefined) return null;
 

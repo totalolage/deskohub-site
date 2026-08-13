@@ -32,7 +32,7 @@ describe("reservation access token", () => {
       )
     );
 
-    expect(claims).toMatchObject({ orderId, locale: "en-US", version: 1 });
+    expect(claims).toMatchObject({ orderId, locale: "en-US" });
   });
 
   test("rejects tampering and reservation or locale mismatches", async () => {

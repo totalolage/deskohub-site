@@ -1,5 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { Clock, Context, Effect, Layer, Schema } from "effect";
+import { Clock, Context, Effect, Layer, Result, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   WorkspaceCheckoutAccessCodeService,
@@ -169,17 +169,16 @@ const authorizeAccess = Effect.fn("ReservationAccessService.authorizeAccess")(
   }) {
     if (!input.accessToken) return false;
 
-    return yield* openReservationAccessToken({
+    const result = yield* openReservationAccessToken({
       token: input.accessToken,
       orderId: input.orderId,
       locale: input.locale,
-    }).pipe(
-      Effect.as(true),
-      Effect.catch((cause) =>
-        Effect.logWarning("Reservation access token rejected", {
-          code: cause.code,
-        }).pipe(Effect.as(false))
-      )
-    );
+    }).pipe(Effect.result);
+    if (Result.isFailure(result)) {
+      yield* Effect.logWarning("Reservation access token rejected", {
+        code: result.failure.code,
+      });
+    }
+    return Result.isSuccess(result);
   }
 );
