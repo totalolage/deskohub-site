@@ -120,7 +120,7 @@ describe("LatePaymentRecoveryService", () => {
     );
   });
 
-  test("recreates a locally held reservation after Dotypos reports it cancelled", async () => {
+  test("recreates a cancellation-failed reservation after Dotypos reports it cancelled", async () => {
     const completeWithReplacement = mock(() => Effect.void);
     const fulfillPaidOrder = mock(() => Effect.void);
     const createReservation = mock(() =>
@@ -134,7 +134,7 @@ describe("LatePaymentRecoveryService", () => {
     } as never;
     const cancelledReservation = {
       id: "reservation-id",
-      reservationState: "held",
+      reservationState: "cancellation_failed",
       dotyposCustomerId: "dotypos-customer-id",
       reservationDetails: {
         kind: "cowork",
