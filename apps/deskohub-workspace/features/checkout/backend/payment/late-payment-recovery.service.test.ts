@@ -9,7 +9,10 @@ import { DiscountClaimError } from "@/features/discounts/errors";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
-import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
+import {
+  LatePaymentRecoveryRepository,
+  LatePaymentRecoveryStateError,
+} from "../repositories/late-payment-recovery.repository";
 import { WorkspaceTableAssignmentService } from "../reservation/workspace-table-assignment.service";
 import {
   LatePaymentRecoveryService,
@@ -343,5 +346,93 @@ describe("LatePaymentRecoveryService", () => {
     expect(fulfillPaidOrder).toHaveBeenCalledWith({
       orderId: "reservation-id",
     });
+  });
+
+  test("cancels a resumed replacement when a newer reservation wins before settlement", async () => {
+    const cancelReservation = mock(() => Effect.void);
+    const requireRefund = mock(() => Effect.void);
+    const snapshot = {
+      ...makeCoworkInvoiceDocument("en-US"),
+      workspaceReservationId: "reservation-id",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    } as never;
+    let findRecoveryCall = 0;
+    let supersessionCheck = 0;
+    const layer = LatePaymentRecoveryServiceLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(LatePaymentRecoveryRepository, {
+            findByPaymentAttemptId: mock(() =>
+              Effect.succeed(
+                (findRecoveryCall++ === 0
+                  ? recovery
+                  : { ...recovery, state: "refund_required" }) as never
+              )
+            ),
+            claim: mock(() =>
+              Effect.succeed({ ...recovery, state: "processing" } as never)
+            ),
+            hasNewerActiveReservation: mock(() =>
+              Effect.succeed(supersessionCheck++ > 0)
+            ),
+            completeWithReplacement: mock(() =>
+              Effect.fail(
+                new LatePaymentRecoveryStateError({
+                  operation: "settle",
+                  paymentAttemptId: "attempt-id" as never,
+                  message: "superseded",
+                })
+              )
+            ),
+            requireRefund,
+          }),
+          Layer.mock(WorkspaceReservationRepository, {
+            findById: mock(() =>
+              Effect.succeed({
+                id: "reservation-id",
+                activePaymentAttemptId: "attempt-id",
+                reservationState: "cancelled",
+                dotyposCustomerId: "dotypos-customer-id",
+                reservationDetails: {
+                  kind: "cowork",
+                  entryTier: "basic",
+                  coffee: true,
+                },
+              } as never)
+            ),
+          }),
+          Layer.mock(AccountingDocumentSnapshotRepository, {
+            findByPaymentAttemptId: mock(() => Effect.succeed(snapshot)),
+          }),
+          Layer.mock(WorkspaceAvailabilityService, {}),
+          Layer.mock(DotyposService, {
+            listActiveReservationsOverlapping: mock(() =>
+              Effect.succeed([
+                {
+                  id: "replacement-id",
+                  status: "CONFIRMED",
+                  note: "Payment order: reservation-id",
+                },
+              ] as never)
+            ),
+            cancelReservation,
+          }),
+          Layer.mock(WorkspaceTableAssignmentService, {}),
+          Layer.mock(WorkspacePaidFulfillmentService, {})
+        )
+      )
+    );
+
+    const outcome = await Effect.gen(function* () {
+      const service = yield* LatePaymentRecoveryService;
+      return yield* service.recover({ paymentAttemptId: "attempt-id" });
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(outcome).toBe("refund_required");
+    expect(cancelReservation).toHaveBeenCalledWith("replacement-id");
+    expect(requireRefund).toHaveBeenCalledWith(
+      expect.objectContaining({ failureCode: "late_payment_newer_reservation" })
+    );
   });
 });

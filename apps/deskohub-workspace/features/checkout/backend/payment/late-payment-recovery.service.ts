@@ -402,7 +402,6 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
         matchingReservations[0]?.status === "CONFIRMED"
           ? ("confirmed" as const)
           : ("held" as const);
-      let replacementCreated = false;
       if (!replacementId) {
         const isAvailable = yield* ensureAvailable(
           availability,
@@ -437,7 +436,6 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
         );
         replacementId = replacement.id;
         replacementState = "confirmed";
-        replacementCreated = true;
       }
 
       if (!replacementId) {
@@ -464,7 +462,7 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
               const superseded = yield* recoveries.hasNewerActiveReservation(
                 reservation.id
               );
-              if (!(replacementCreated && superseded)) return yield* cause;
+              if (!superseded) return yield* cause;
               yield* dotypos.cancelReservation(replacementId);
               yield* settleRefund({
                 paymentAttemptId: claimed.paymentAttemptId,
