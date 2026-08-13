@@ -1,5 +1,9 @@
 export const reservationAccessCodeGraceMinutes = 30;
 
+export const getReservationAccessCodeRetentionCutoff = (
+  now: Temporal.Instant
+) => now.subtract({ minutes: reservationAccessCodeGraceMinutes });
+
 export type ReservationAccessCodeWindowState =
   | {
       readonly state: "before-window";
@@ -19,7 +23,7 @@ export type ReservationAccessCodeWindowState =
 
 /**
  * Controls when the current door PIN may be disclosed. It does not extend the
- * reservation or assert that today's static PIN is technically time-limited.
+ * reservation or the PIN's provider validity.
  */
 export const getReservationAccessCodeWindowState = (input: {
   readonly reservedFrom: Temporal.Instant;

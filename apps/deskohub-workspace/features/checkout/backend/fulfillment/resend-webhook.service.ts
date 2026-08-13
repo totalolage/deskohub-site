@@ -2,7 +2,10 @@ import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { Resend } from "resend";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice";
+import { ReservationInvoiceServiceLiveWithDependencies } from "@/features/accounting/backend/reservation-invoice-live.server";
 import {
+  type WorkspaceReservation,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -113,6 +116,7 @@ export class ResendWebhookProcessingError extends Data.TaggedError(
     | "resend_webhook_verification_failed"
     | "resend_webhook_payload_invalid"
     | "resend_webhook_reservation_load_failed"
+    | "resend_webhook_invoice_processing_failed"
     | "resend_webhook_reservation_update_failed";
   readonly message: string;
   readonly eventId?: ResendWebhookEventId;
@@ -166,6 +170,42 @@ export const ResendWebhookServiceLive = Layer.effect(
     const reservations = yield* WorkspaceReservationRepository;
     const config = yield* ResendWebhookRuntimeConfig;
     const posthogEvents = yield* PostHogEventService;
+    const reservationInvoices = yield* ReservationInvoiceService;
+
+    const processReservationInvoice = Effect.fn(
+      "resendWebhook.processReservationInvoice"
+    )(function* (input: {
+      readonly eventId: ResendWebhookEventId;
+      readonly reservation: Pick<
+        WorkspaceReservation,
+        "activePaymentAttemptId" | "id"
+      >;
+    }) {
+      if (!input.reservation.activePaymentAttemptId) {
+        yield* Effect.logWarning(
+          "Reservation invoice processing skipped: payment attempt missing",
+          { workspaceReservationId: input.reservation.id }
+        );
+        return;
+      }
+
+      yield* reservationInvoices
+        .processByPaymentAttemptId({
+          paymentAttemptId: input.reservation.activePaymentAttemptId,
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new ResendWebhookProcessingError({
+                errorCode: "resend_webhook_invoice_processing_failed",
+                message: "Resend webhook invoice processing failed.",
+                eventId: input.eventId,
+                workspaceReservationId: input.reservation.id,
+                cause,
+              })
+          )
+        );
+    });
 
     const processVerifiedEvent = Effect.fn(
       "resendWebhook.processVerifiedEvent"
@@ -258,6 +298,10 @@ export const ResendWebhookServiceLive = Layer.effect(
 
         if (isDeliverySuccessEvent(event)) {
           if (reservation.fulfillmentState === "fulfilled") {
+            yield* processReservationInvoice({
+              eventId: input.eventId,
+              reservation,
+            });
             return ignored("reservation_already_fulfilled");
           }
 
@@ -306,6 +350,10 @@ export const ResendWebhookServiceLive = Layer.effect(
             reservation,
             timestamp: fulfilledAt,
           }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
+          yield* processReservationInvoice({
+            eventId: input.eventId,
+            reservation,
+          });
 
           return {
             status: "processed",
@@ -440,6 +488,7 @@ export const ResendWebhookServiceLiveWithDependencies =
   ResendWebhookServiceLive.pipe(
     Layer.provide(ResendWebhookRuntimeConfigLive),
     Layer.provide(PostHogEventServiceLive),
+    Layer.provide(ReservationInvoiceServiceLiveWithDependencies),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive)
   );

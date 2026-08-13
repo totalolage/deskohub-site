@@ -42,8 +42,38 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(schemaIndex).toContain("./invoice-number-counters");
     expect(schemaIndex).toContain("./invoice-email-deliveries");
     expect(schemaIndex).toContain("./invoices");
+    expect(schemaIndex).toContain("./reservation-access-grants");
     expect(schemaIndex).not.toContain("checkout-return-state-tokens");
     expect(schemaIndex).not.toContain("payment-orders");
+  });
+
+  test("reservation access stores its time-bound credential as text", async () => {
+    const schema = await readAppFile("db/schema/reservation-access-grants.ts");
+    const migration = await readAppFile(
+      "db/migrations/20260813084941_reservation_access_grants/migration.sql"
+    );
+
+    expect(schema).toContain('text("access_code")');
+    expect(schema).not.toContain("encryptedAccessCode");
+    expect(schema).not.toContain("bytea(");
+    expect(migration).toContain('CREATE TABLE "reservation_access_grants"');
+    expect(migration).not.toContain('CREATE TABLE "discount_targets"');
+    expect(migration).not.toContain('DROP TABLE "discount_product_targets"');
+  });
+
+  test("the existing cron clears expired reservation access codes", async () => {
+    const [repository, cronRoute] = await Promise.all([
+      readAppFile(
+        "features/reservation-access/backend/reservation-access.repository.ts"
+      ),
+      readAppFile("app/api/cron/workspace/reservation-holds/route.ts"),
+    ]);
+
+    expect(repository).toContain("clearExpiredAccessCodes");
+    expect(repository).toContain('state: "expired"');
+    expect(repository).toContain("accessCode: null");
+    expect(repository).toContain("reservationAccessGrants.accessEndsAt");
+    expect(cronRoute).toContain("clearExpiredAccessCodes");
   });
 
   test("accounting PII exception stores only PostgreSQL ciphertext", async () => {
@@ -128,6 +158,36 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     }
   });
 
+  test("reservation purpose is the only plaintext billing classification", async () => {
+    const [schema, migration] = await Promise.all([
+      readAppFile("db/schema/workspace-reservations.ts"),
+      readAppFile(
+        "db/migrations/20260813150734_optimal_sugar_man/migration.sql"
+      ),
+    ]);
+
+    expect(schema).toContain('text("reservation_purpose")');
+    expect(migration).toContain(
+      'ADD COLUMN IF NOT EXISTS "reservation_purpose"'
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "workspace_reservations_purpose_check"'
+    );
+    expect(migration).toContain(
+      "CHECK (\"reservation_purpose\" is null or \"reservation_purpose\" in ('personal', 'business'))"
+    );
+    for (const forbiddenColumn of [
+      "billing_address",
+      "company_id",
+      "company_name",
+      "postal_code",
+      "vat_id",
+    ]) {
+      expect(schema).not.toContain(`"${forbiddenColumn}"`);
+      expect(migration).not.toContain(`"${forbiddenColumn}"`);
+    }
+  });
+
   test("reconciles the previously deployed preview invoice schema", async () => {
     const migration = await readAppFile(
       "db/migrations/20260811173859_issued_invoices/migration.sql"
@@ -157,19 +217,32 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("follows the corrected migration head before issuing invoices", async () => {
-    const [discountJson, invoiceJson, deliveryJson] = await Promise.all([
-      readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
-      readAppFile("db/migrations/20260811173859_issued_invoices/snapshot.json"),
-      readAppFile(
-        "db/migrations/20260812144849_married_may_parker/snapshot.json"
-      ),
-    ]);
+    const [discountJson, invoiceJson, deliveryJson, accessJson, purposeJson] =
+      await Promise.all([
+        readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
+        readAppFile(
+          "db/migrations/20260811173859_issued_invoices/snapshot.json"
+        ),
+        readAppFile(
+          "db/migrations/20260812144849_married_may_parker/snapshot.json"
+        ),
+        readAppFile(
+          "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
+        ),
+        readAppFile(
+          "db/migrations/20260813150734_optimal_sugar_man/snapshot.json"
+        ),
+      ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
     const deliverySnapshot = parseMigrationSnapshot(deliveryJson);
+    const accessSnapshot = parseMigrationSnapshot(accessJson);
+    const purposeSnapshot = parseMigrationSnapshot(purposeJson);
 
     expect(invoiceSnapshot.prevIds).toEqual([discountSnapshot.id]);
     expect(deliverySnapshot.prevIds).toEqual([invoiceSnapshot.id]);
+    expect(accessSnapshot.prevIds).toEqual([deliverySnapshot.id]);
+    expect(purposeSnapshot.prevIds).toEqual([accessSnapshot.id]);
     expect(invoiceJson).not.toContain('"schema_version"');
   });
 
@@ -212,9 +285,6 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("confidential database scalars are explicitly marked for query censorship", async () => {
-    const reservationRepository = await readAppFile(
-      "features/reservation/backend/workspace-reservation.repository.ts"
-    );
     const paymentLifecycleRepository = await readAppFile(
       "features/checkout/backend/repositories/payment-lifecycle.repository.ts"
     );
@@ -227,10 +297,10 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     const accountingSql = await readAppFile(
       "features/accounting/backend/accounting-snapshot-sql.ts"
     );
-
-    expect(reservationRepository).toContain(
-      "customerAccessCode: sensitiveDatabaseParameter("
+    const reservationAccessRepository = await readAppFile(
+      "features/reservation-access/backend/reservation-access.repository.ts"
     );
+
     expect(paymentLifecycleRepository).toContain(
       "securityToken: sensitiveDatabaseParameter("
     );
@@ -248,6 +318,9 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
     expect(accountingSql).toContain(
       `pgp_sym_decrypt(\${encryptedSnapshot}, \${sensitiveDatabaseParameter(secret)})`
+    );
+    expect(reservationAccessRepository).toContain(
+      "accessCode: sensitiveDatabaseParameter(input.accessCode)"
     );
   });
 

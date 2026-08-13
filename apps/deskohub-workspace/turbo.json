@@ -5,11 +5,16 @@
     "build": {
       "dependsOn": [
         "@deskohub/dotypos#generate",
+        "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
       ],
       "env": [
         "DOTYPOS_API_TIMEOUT",
+        "IGLOOHOME_API_TIMEOUT",
+        "IGLOOHOME_API_URL",
+        "IGLOOHOME_AUTH_URL",
+        "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID",
         "NEXI_API_ORIGIN",
         "NEXI_CHECKOUT_CURRENCY_OVERRIDE",
         "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
@@ -47,6 +52,7 @@
     "dev": {
       "dependsOn": [
         "@deskohub/dotypos#generate",
+        "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
       ]
@@ -55,6 +61,7 @@
       "dependsOn": [
         "$TURBO_EXTENDS$",
         "@deskohub/dotypos#generate",
+        "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
       ]
@@ -68,7 +75,12 @@
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": ["@deskohub/nexi#generate", "i18n:compile", "typegen"]
+      "dependsOn": [
+        "@deskohub/igloohome#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile",
+        "typegen"
+      ]
     },
     "typegen": {
       "outputs": [".next/types/**"]

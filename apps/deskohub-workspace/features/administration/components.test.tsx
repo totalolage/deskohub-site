@@ -260,7 +260,6 @@ describe("administration reservation components", () => {
     expect(detail).not.toBeNull();
     if (!detail) return;
     const serialized = JSON.stringify(detail);
-    expect(serialized).not.toContain("customerAccessCode");
     expect(serialized).not.toContain("securityToken");
     expect(serialized).not.toContain("providerRedirectUrl");
     expect(serialized).not.toContain("rawPayload");

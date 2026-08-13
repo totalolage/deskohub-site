@@ -218,6 +218,17 @@ export type DotyposCustomerDiscountGroup = {
   readonly discountPercent: DotyposDiscountGroup["discountPercent"];
 };
 
+export type DotyposCustomerBillingDetails = {
+  readonly addressLine1: string;
+  readonly addressLine2: string;
+  readonly city: string;
+  readonly zip: string;
+  readonly country: string;
+  readonly companyName: string;
+  readonly companyId: string;
+  readonly vatId: string;
+};
+
 export type FindCustomerOptions = {
   readonly lookupFields?: readonly CustomerLookupField[];
 };
@@ -1235,24 +1246,15 @@ const makeDotyposService = Effect.gen(function* () {
     )
   );
 
-  const setCustomerDiscountGroup = Effect.fn(
-    "DotyposService.setCustomerDiscountGroup"
-  )(function* (
+  const patchCustomer = Effect.fn("DotyposService.patchCustomer")(function* (
     customerId: DotyposCustomerId,
-    discountGroupId: DotyposDiscountGroupId | null
+    payload: UpdateCustomerRequest
   ) {
     const normalizedCustomerId = yield* normalizeIdentifier(
       DotyposCustomerIdSchema,
       customerId,
       "Customer ID"
     );
-    const normalizedDiscountGroupId = discountGroupId
-      ? yield* normalizeIdentifier(
-          DotyposDiscountGroupIdSchema,
-          discountGroupId,
-          "Discount group ID"
-        )
-      : null;
 
     const [, response] = yield* runDotyposRequest(
       client.getCustomer(config.cloudId, normalizedCustomerId, {
@@ -1272,7 +1274,7 @@ const makeDotyposService = Effect.gen(function* () {
     const customer = yield* runDotyposRequest(
       client.patchCustomer(config.cloudId, normalizedCustomerId, {
         params: { "If-Match": etag },
-        payload: { _discountGroupId: normalizedDiscountGroupId },
+        payload,
       }),
       "patchCustomer"
     ).pipe(Effect.retry(retryPolicy));
@@ -1282,6 +1284,31 @@ const makeDotyposService = Effect.gen(function* () {
       "patchCustomer"
     );
   });
+
+  const setCustomerDiscountGroup = Effect.fn(
+    "DotyposService.setCustomerDiscountGroup"
+  )(function* (
+    customerId: DotyposCustomerId,
+    discountGroupId: DotyposDiscountGroupId | null
+  ) {
+    const normalizedDiscountGroupId = discountGroupId
+      ? yield* normalizeIdentifier(
+          DotyposDiscountGroupIdSchema,
+          discountGroupId,
+          "Discount group ID"
+        )
+      : null;
+
+    return yield* patchCustomer(customerId, {
+      _discountGroupId: normalizedDiscountGroupId,
+    });
+  });
+
+  const updateCustomerBillingDetails = Effect.fn(
+    "DotyposService.updateCustomerBillingDetails"
+  )((customerId: DotyposCustomerId, details: DotyposCustomerBillingDetails) =>
+    patchCustomer(customerId, details)
+  );
 
   const getTables = Effect.fn("getTables")(() =>
     loadAllDotyposPages({
@@ -1432,6 +1459,7 @@ const makeDotyposService = Effect.gen(function* () {
     getCustomerDiscount,
     getDiscountGroups,
     setCustomerDiscountGroup,
+    updateCustomerBillingDetails,
     findCustomer,
     findOrCreateCustomer,
     getTables,

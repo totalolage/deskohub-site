@@ -7,7 +7,6 @@ import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
-import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
@@ -65,6 +64,7 @@ const reservation = {
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420 777 777 777",
+  billing: { purpose: "personal" as const, invoice: "none" as const },
 };
 
 const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
@@ -219,7 +219,6 @@ const makeReusableReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
-    customerAccessCode: "ACCESS-123",
     reservationState: "held",
     paymentState: "not_started",
     fulfillmentState: "not_started",
@@ -266,11 +265,12 @@ const runReusableReservationScenario = async (input: {
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
   readonly grantMarketingConsent?: ReturnType<typeof mock>;
+  readonly reservation?:
+    | typeof reservation
+    | (Omit<typeof reservation, "billing"> & { readonly billing: unknown });
+  readonly updateCustomerBillingDetails?: ReturnType<typeof mock>;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
-  const { WorkspaceCheckoutAccessCodeService } = await import(
-    "@/features/checkout/backend/reservation"
-  );
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
@@ -334,6 +334,8 @@ const runReusableReservationScenario = async (input: {
   const findOrCreateCustomer = mock(() =>
     Effect.succeed({ id: "customer-id" })
   );
+  const updateCustomerBillingDetails =
+    input.updateCustomerBillingDetails ?? mock(() => Effect.void);
   const testLayer = Layer.mergeAll(
     CheckoutPricingServiceMock({
       affirmCoworkAdvertisement: affirmAdvertisement,
@@ -361,10 +363,6 @@ const runReusableReservationScenario = async (input: {
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
     }),
-    Layer.mock(WorkspaceCheckoutAccessCodeService, {
-      generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-      resolveCustomerAccessCode: () => Effect.die("not used"),
-    } satisfies WorkspaceCheckoutAccessCodeServiceType),
     Layer.mock(CustomerMarketingConsentRepository, {
       grant: grantMarketingConsent,
     } satisfies ICustomerMarketingConsentRepository),
@@ -379,6 +377,7 @@ const runReusableReservationScenario = async (input: {
     }),
     Layer.mock(DotyposService, {
       findOrCreateCustomer,
+      updateCustomerBillingDetails,
       getReservationStatus,
       cancelReservation,
       createReservation,
@@ -391,7 +390,7 @@ const runReusableReservationScenario = async (input: {
     checkoutAttemptId: "attempt-id",
     advertisedPriceToken:
       input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
-    reservation,
+    reservation: input.reservation ?? reservation,
     marketingConsent: input.marketingConsent,
   }).pipe(Effect.provide(testLayer), Effect.runPromise);
 
@@ -414,6 +413,7 @@ const runReusableReservationScenario = async (input: {
     affirmAdvertisement,
     quoteForCustomer,
     findOrCreateCustomer,
+    updateCustomerBillingDetails,
   };
 };
 
@@ -438,9 +438,6 @@ const runMeetingRoomNewHoldScenario = async (
   );
   const { CustomerMarketingConsentRepository } = await import(
     "@/features/legal/backend/customer-marketing-consent.repository"
-  );
-  const { WorkspaceCheckoutAccessCodeService } = await import(
-    "@/features/checkout/backend/reservation"
   );
   const { DiscountServiceMock } = await import(
     "@/features/discounts/discount.service.mock"
@@ -533,10 +530,6 @@ const runMeetingRoomNewHoldScenario = async (
       markCancelled: mock(() => Effect.void),
       markCancellationFailed: mock(() => Effect.void),
     }),
-    Layer.mock(WorkspaceCheckoutAccessCodeService, {
-      generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-      resolveCustomerAccessCode: () => Effect.die("not used"),
-    } satisfies WorkspaceCheckoutAccessCodeServiceType),
     Layer.mock(CustomerMarketingConsentRepository, {
       grant: mock(() => Effect.void),
     } satisfies ICustomerMarketingConsentRepository),
@@ -775,9 +768,6 @@ describe("prepareWorkspacePayState", () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
-    const { WorkspaceCheckoutAccessCodeService } = await import(
-      "@/features/checkout/backend/reservation"
-    );
     const { CustomerMarketingConsentRepository } = await import(
       "@/features/legal/backend/customer-marketing-consent.repository"
     );
@@ -818,7 +808,6 @@ describe("prepareWorkspacePayState", () => {
         paymentState: "not_started",
         fulfillmentState: "not_started",
         dotyposCustomerId: input.dotyposCustomerId,
-        customerAccessCode: input.customerAccessCode,
         reservationDetails: input.reservationDetails,
         productTier: "basic",
         productCoffee: false,
@@ -896,10 +885,6 @@ describe("prepareWorkspacePayState", () => {
         markCancelled: mock(() => Effect.void),
         markCancellationFailed: mock(() => Effect.void),
       }),
-      Layer.mock(WorkspaceCheckoutAccessCodeService, {
-        generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-        resolveCustomerAccessCode: () => Effect.die("not used"),
-      } satisfies WorkspaceCheckoutAccessCodeServiceType),
       Layer.mock(CustomerMarketingConsentRepository, {
         grant: grantMarketingConsent,
       } satisfies ICustomerMarketingConsentRepository),
@@ -1008,6 +993,33 @@ describe("prepareWorkspacePayState", () => {
         dotyposCustomerId: existingReservation.dotyposCustomerId,
       })
     );
+  });
+
+  test("does not mutate reusable Dotypos billing before payment", async () => {
+    const updateCustomerBillingDetails = mock(() => Effect.void);
+    const address = {
+      line1: "Synthetic street 1",
+      line2: "Unit 2",
+      city: "Prague",
+      postalCode: "100 00",
+      country: "CZ",
+    };
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      reservation: {
+        ...reservation,
+        billing: { purpose: "personal", invoice: "requested", address },
+      },
+      updateCustomerBillingDetails,
+    });
+
+    expect(updateCustomerBillingDetails).not.toHaveBeenCalled();
+    expect(result.updateReservationDetails).toHaveBeenCalled();
+
+    const personalResult = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+    });
+    expect(personalResult.updateCustomerBillingDetails).not.toHaveBeenCalled();
   });
 
   test("records marketing opt-in against the resolved customer", async () => {

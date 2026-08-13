@@ -26,6 +26,23 @@ const validateFeatureFlagOverrideEnvironment = (
     stdout: "pipe",
   });
 
+const validateMissingIgloohomeEnvironment = (
+  vercelEnvironment: "production" | "preview"
+) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      'delete process.env.IGLOOHOME_CLIENT_ID; delete process.env.IGLOOHOME_CLIENT_SECRET; delete process.env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID; await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: { ...process.env, VERCEL_ENV: vercelEnvironment },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
     const decodeTimeout = Schema.decodeUnknownSync(
@@ -34,6 +51,9 @@ describe("workspace environment schemas", () => {
     const decodeServiceName = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.POSTHOG_SERVICE_NAME
     );
+    const decodeIgloohomeTimeout = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.IGLOOHOME_API_TIMEOUT
+    );
     const decodePostHogProjectId = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.POSTHOG_PROJECT_ID
     );
@@ -41,11 +61,24 @@ describe("workspace environment schemas", () => {
     expect(decodeTimeout(undefined)).toBe(5_000);
     expect(decodeTimeout("2500")).toBe(2_500);
     expect(decodeServiceName(undefined)).toBe("deskohub-workspace");
+    expect(decodeIgloohomeTimeout(undefined)).toBe(10_000);
     expect(`${decodePostHogProjectId("42")}`).toBe("42");
     expect(decodePostHogProjectId(undefined)).toBeUndefined();
     expect(() => decodePostHogProjectId("")).toThrow();
     expect(() => decodeTimeout("1.5")).toThrow();
     expect(() => decodeTimeout("0")).toThrow();
+  });
+
+  test("requires Igloohome provisioning configuration only in production", () => {
+    const previewValidation = validateMissingIgloohomeEnvironment("preview");
+    const productionValidation =
+      validateMissingIgloohomeEnvironment("production");
+
+    expect(previewValidation.exitCode).toBe(0);
+    expect(productionValidation.exitCode).toBe(1);
+    expect(productionValidation.stderr.toString()).toContain(
+      "Invalid Igloohome client credential configuration."
+    );
   });
 
   test("validates URLs without changing their string representation", () => {

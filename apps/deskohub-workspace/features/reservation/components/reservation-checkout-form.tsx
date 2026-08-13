@@ -8,6 +8,7 @@ import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { Form } from "@/shared/components/ui/form";
+import { ReservationBillingFields } from "./reservation-billing-fields";
 import { ReservationCustomerFields } from "./reservation-customer-fields";
 import { ReservationFormCard } from "./reservation-form-card";
 import { ReservationFormSale } from "./reservation-form-sale";
@@ -113,12 +114,13 @@ export function ReservationCheckoutForm<
       }
     >
       <Form {...form}>
-        <form className="space-y-7" onSubmit={handleSubmit}>
+        <form className="space-y-7" noValidate onSubmit={handleSubmit}>
           {children}
           <ReservationCustomerFields
             locale={locale}
             messagePlaceholder={messagePlaceholder}
           />
+          <ReservationBillingFields locale={locale} />
           {afterCustomerFields}
           <ReservationPrivacyNotice locale={locale} />
           <ReservationMarketingConsentField locale={locale} />

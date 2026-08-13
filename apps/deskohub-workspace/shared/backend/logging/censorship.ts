@@ -31,6 +31,7 @@ type MutableLogAnnotations = {
 const sensitiveLogKeyFragments = [
   "password",
   "passwd",
+  "pin",
   "pwd",
   "token",
   "access token",
@@ -55,10 +56,20 @@ const sensitiveLogKeyFragments = [
   "phone",
   "first name",
   "last name",
+  "billing",
+  "billing details",
+  "address line 1",
+  "address line 2",
+  "company id",
+  "vat id",
+  "postal code",
 ] as const;
 
 const sensitiveLogExactKeys = new Set([
+  "address",
   "attachments",
+  "city",
+  "country",
   "db.namespace",
   "discountcode",
   "exception.stacktrace",
@@ -66,6 +77,7 @@ const sensitiveLogExactKeys = new Set([
   "server.address",
   "submittedcode",
   "subject",
+  "zip",
   "x-vercel-sc-headers",
 ]);
 

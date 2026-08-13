@@ -1,6 +1,11 @@
 import { Schema, SchemaGetter } from "effect";
 import { m } from "@/features/i18n";
 import {
+  defaultReservationBillingSelection,
+  normalizedReservationBillingSelectionSchema,
+  reservationBillingSelectionInputSchema,
+} from "@/features/reservation/reservation-billing";
+import {
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
@@ -16,6 +21,9 @@ import {
 
 const decodeInstant = Schema.decodeUnknownSync(instantStringSchema);
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
+
+export const officeReservationMaximumDurationHours = 672;
+const millisecondsPerHour = 60 * 60 * 1000;
 
 export const officeSeatsSchema = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(1, {
@@ -125,6 +133,17 @@ const officeReservationOrderInputChecks = [
         issue: m.reservationValidationOfficeMaximumEnd(),
       }
   ),
+  Schema.makeFilter<OfficeReservationRangeInput>(
+    ({ endsOn, startsOn }) =>
+      startsOn === "" ||
+      endsOn === "" ||
+      isOfficeReservationWithinMaximumDuration({ startsOn, endsOn }) || {
+        path: ["endsOn"],
+        issue: m.reservationValidationOfficeMaximumDuration({
+          hours: officeReservationMaximumDurationHours,
+        }),
+      }
+  ),
 ] as const;
 
 const officeReservationOrderSelectionFields = {
@@ -135,6 +154,7 @@ const officeReservationOrderSelectionFields = {
 
 const officeReservationOrderBaseSchema = Schema.Struct({
   ...reservationCustomerSchema.fields,
+  billing: reservationBillingSelectionInputSchema,
   ...officeReservationOrderSelectionFields,
 });
 
@@ -151,6 +171,7 @@ const officeReservationFormSelectionFields = {
 
 export const officeReservationFormInputSchema = Schema.Struct({
   ...reservationCustomerSchema.fields,
+  billing: reservationBillingSelectionInputSchema,
   ...officeReservationFormSelectionFields,
   marketingConsent: Schema.Boolean,
 }).check(
@@ -186,6 +207,19 @@ export const officeReservationFormInputSchema = Schema.Struct({
         path: ["dayCount"],
         issue: m.reservationValidationOfficeMaximumEnd(),
       }
+  ),
+  Schema.makeFilter(
+    ({ dayCount, startsOn }) =>
+      startsOn === "" ||
+      isOfficeReservationWithinMaximumDuration({
+        startsOn,
+        endsOn: getOfficeReservationEndsOn({ startsOn, dayCount }),
+      }) || {
+        path: ["dayCount"],
+        issue: m.reservationValidationOfficeMaximumDuration({
+          hours: officeReservationMaximumDurationHours,
+        }),
+      }
   )
 );
 
@@ -197,6 +231,7 @@ export type OfficeReservationFormInput =
 export const normalizedOfficeReservationOrderSchema = Schema.Struct({
   kind: Schema.Literal(officeReservationKind),
   ...normalizedReservationCustomerSchema.fields,
+  billing: normalizedReservationBillingSelectionSchema,
   startsOn: plainDateStringSchema,
   endsOn: plainDateStringSchema,
   seats: officeSeatsSchema,
@@ -204,6 +239,7 @@ export const normalizedOfficeReservationOrderSchema = Schema.Struct({
 
 export const normalizedOfficeReservationFormSchema = Schema.Struct({
   ...normalizedReservationCustomerSchema.fields,
+  billing: normalizedReservationBillingSelectionSchema,
   startsOn: plainDateStringSchema,
   dayCount: officeReservationDayCountSchema,
   seats: officeSeatsSchema,
@@ -240,6 +276,9 @@ export const officeAdvertisedPriceReservationSchema = Schema.Struct({
   .check(
     Schema.makeFilter(({ details }) =>
       isOfficeReservationWithinBookingHorizon(details)
+    ),
+    Schema.makeFilter(({ details }) =>
+      isOfficeReservationWithinMaximumDuration(details)
     )
   )
   .annotate({
@@ -336,6 +375,18 @@ export const isOfficeReservationWithinBookingHorizon = (
     getOfficeReservationMaximumEndsOn(today)
   ) <= 0;
 
+export const isOfficeReservationWithinMaximumDuration = (
+  reservation: Pick<OfficeReservationRangeInput, "startsOn" | "endsOn">
+) => {
+  const interval = getOfficeReservationIntervalInput(reservation);
+  const elapsedHours =
+    (Temporal.Instant.from(interval.endsAt).epochMilliseconds -
+      Temporal.Instant.from(interval.startsAt).epochMilliseconds) /
+    millisecondsPerHour;
+
+  return elapsedHours <= officeReservationMaximumDurationHours;
+};
+
 export const getOfficeReservationMaximumDayCount = (input: {
   readonly startsOn: string;
   readonly maximumEndsOn: Temporal.PlainDate;
@@ -354,7 +405,23 @@ export const getOfficeReservationMaximumDayCount = (input: {
 
   if (Temporal.PlainDate.compare(availableEndsOn, startsOn) < 0) return 0;
 
-  return startsOn.until(availableEndsOn, { largestUnit: "day" }).days + 1;
+  let maximumDayCount =
+    startsOn.until(availableEndsOn, { largestUnit: "day" }).days + 1;
+
+  while (
+    maximumDayCount > 0 &&
+    !isOfficeReservationWithinMaximumDuration({
+      startsOn: input.startsOn,
+      endsOn: getOfficeReservationEndsOn({
+        startsOn: input.startsOn,
+        dayCount: maximumDayCount,
+      }),
+    })
+  ) {
+    maximumDayCount -= 1;
+  }
+
+  return maximumDayCount;
 };
 
 export const getOfficeReservationProductIdentity = (
@@ -365,9 +432,10 @@ export const getOfficeReservationProductIdentity = (
     dayCount: getOfficeReservationDayCount(reservation),
   });
 
-export const getOfficeReservationIntervalInput = (
-  reservation: Pick<OfficeReservationDetails, "startsOn" | "endsOn">
-): ReservationInterval => ({
+export const getOfficeReservationIntervalInput = (reservation: {
+  readonly startsOn: string;
+  readonly endsOn: string;
+}): ReservationInterval => ({
   startsAt: decodeInstant(
     Temporal.PlainDate.from(reservation.startsOn)
       .toZonedDateTime(workspaceSiteConstants.location.timeZone)
@@ -404,6 +472,7 @@ export const normalizeOfficeReservationOrder = (
     email: reservation.email,
     phone: reservation.phone,
     ...(reservation.message !== undefined && { message: reservation.message }),
+    billing: reservation.billing ?? defaultReservationBillingSelection,
     startsOn: decodePlainDate(reservation.startsOn),
     endsOn: decodePlainDate(reservation.endsOn),
     seats: reservation.seats,
@@ -429,6 +498,7 @@ export const normalizeOfficeReservationForm = (
     email: reservation.email,
     phone: reservation.phone,
     ...(reservation.message !== undefined && { message: reservation.message }),
+    billing: reservation.billing ?? defaultReservationBillingSelection,
     startsOn: decodePlainDate(reservation.startsOn),
     dayCount: reservation.dayCount,
     seats: reservation.seats,
@@ -446,6 +516,7 @@ export const officeReservationSchema = officeReservationFormInputSchema.pipe(
         ...(reservation.message !== undefined && {
           message: reservation.message,
         }),
+        billing: reservation.billing ?? defaultReservationBillingSelection,
         startsOn: reservation.startsOn,
         dayCount: reservation.dayCount,
         seats: reservation.seats,
@@ -466,6 +537,7 @@ export const officeReservationDefaultValues: OfficeReservationInput = {
   email: "",
   phone: "",
   message: "",
+  billing: defaultReservationBillingSelection,
   marketingConsent: false,
 };
 
@@ -478,6 +550,7 @@ export const getOfficeReservationOrder = (
     email: form.email,
     phone: form.phone,
     ...(form.message !== undefined && { message: form.message }),
+    billing: form.billing,
     startsOn: form.startsOn,
     endsOn: decodePlainDate(getOfficeReservationEndsOn(form)),
     seats: form.seats,
@@ -493,5 +566,6 @@ export const getOfficeReservationDefaultValues = (
   email: reservation.email,
   phone: reservation.phone,
   ...(reservation.message !== undefined && { message: reservation.message }),
+  billing: reservation.billing,
   marketingConsent: false,
 });
