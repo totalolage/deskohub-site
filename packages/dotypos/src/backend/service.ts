@@ -73,7 +73,10 @@ const isRetryableDotyposError = (error: DotyposError) =>
   Match.value(error).pipe(
     Match.tag("NetworkError", () => true),
     Match.tag("ExternalAPIError", (apiError) =>
-      Boolean(apiError.statusCode && apiError.statusCode >= 500)
+      Boolean(
+        apiError.statusCode &&
+          (apiError.statusCode === 429 || apiError.statusCode >= 500)
+      )
     ),
     Match.orElse(() => false)
   );

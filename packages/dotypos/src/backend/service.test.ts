@@ -159,6 +159,40 @@ const runWithService = <A, E>(
 };
 
 describe("DotyposService customer lookup", () => {
+  test("retries rate-limited customer reads", async () => {
+    let attempts = 0;
+    const expected = customer();
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        attempts += 1;
+        return attempts === 1
+          ? Response.json(
+              {
+                error: "rate_limited",
+                error_description: "Too many requests",
+                code: 429,
+              },
+              { status: 429 }
+            )
+          : Response.json(expected);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getCustomer(dotyposCustomerId("customer-id"));
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual(expected);
+    expect(attempts).toBe(2);
+  });
+
   test("fuzzily searches customer names and email without duplicates", async () => {
     const ada = customer({
       id: "ada",

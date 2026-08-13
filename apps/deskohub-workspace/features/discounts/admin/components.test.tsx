@@ -529,6 +529,10 @@ describe("discount administration pages", () => {
           ...dashboard.codes[0],
           code: "ONLYME",
           audienceSize: 1,
+          discountAdjustment: {
+            kind: "percentage",
+            basisPoints: 1000,
+          },
           discountLabel: "Only me discount",
           eligible: true,
         },
@@ -537,14 +541,35 @@ describe("discount administration pages", () => {
           id: "019c91dd-c560-7e55-b9d8-c95065efd53d",
           code: "OPEN",
           audienceSize: 0,
+          discountAdjustment: {
+            kind: "fixed",
+            amount: { value: 7500, exponent: 2, currency: "CZK" },
+          },
           discountLabel: "Open discount",
           eligible: false,
+        },
+        {
+          ...dashboard.codes[0],
+          id: "019c91dd-c560-7e55-b9d8-c95065efd55d",
+          code: "AADISABLED",
+          audienceSize: 1,
+          discountAdjustment: {
+            kind: "percentage",
+            basisPoints: 500,
+          },
+          discountLabel: "Disabled discount",
+          eligible: true,
+          enabled: false,
         },
         {
           ...dashboard.codes[0],
           id: "019c91dd-c560-7e55-b9d8-c95065efd54d",
           code: "SOMEONEELSE",
           audienceSize: 3,
+          discountAdjustment: {
+            kind: "percentage",
+            basisPoints: 1000,
+          },
           discountLabel: "Restricted discount",
           eligible: false,
         },
@@ -602,8 +627,29 @@ describe("discount administration pages", () => {
 
     expect(within(table).getByText("ONLYME")).toBeDefined();
     expect(within(table).getByText("OPEN")).toBeDefined();
+    expect(within(table).getByText("AADISABLED")).toBeDefined();
     expect(within(table).queryByText("SOMEONEELSE")).toBeNull();
     expect(view.getByText("1 (+ 1)")).toBeDefined();
+    expect(
+      within(table)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => row.textContent)
+    ).toEqual([
+      expect.stringContaining("ONLYME"),
+      expect.stringContaining("OPEN"),
+      expect.stringContaining("AADISABLED"),
+    ]);
+    expect(within(table).getAllByText("Enabled")).toHaveLength(2);
+    expect(within(table).getByText("Disabled")).toBeDefined();
+    expect(within(table).getByText("Only me discount · 10%")).toBeDefined();
+    expect(within(table).getByText("Open discount · CZK 75.00")).toBeDefined();
+    const onlyMeLink = within(table).getByRole("link", { name: "ONLYME" });
+    expect(onlyMeLink.getAttribute("href")).toBe(
+      `/admin/codes/${dashboard.codes[0].id}`
+    );
+    expect(onlyMeLink.className).toContain("before:absolute");
+    expect(onlyMeLink.closest("tr")?.className).toContain("relative");
     expect(view.getByRole("heading", { name: "Stats" })).toBeDefined();
     expect(view.getByRole("heading", { name: "Consents" })).toBeDefined();
     expect(view.getByText("Granted").className).toContain(
@@ -636,8 +682,8 @@ describe("discount administration pages", () => {
       view.queryByText(/Codes explicitly available to this customer/)
     ).toBeNull();
     expect(
-      within(table).queryByRole("columnheader", { name: "Status" })
-    ).toBeNull();
+      within(table).getByRole("columnheader", { name: "Status" })
+    ).toBeDefined();
     expect(
       within(table).queryByRole("columnheader", { name: "Action" })
     ).toBeNull();
