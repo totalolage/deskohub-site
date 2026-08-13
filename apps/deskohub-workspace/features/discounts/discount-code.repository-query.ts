@@ -19,13 +19,21 @@ export const buildDiscountCodeAvailabilityQueries = (input: {
   activeClaims: input.db
     .select({
       activeUseCount: count(),
-      customerHasRedeemed: sql<boolean>`coalesce(bool_or(${discountCodeRedemptions.dotyposCustomerId} = ${input.dotyposCustomerId} and ${discountCodeRedemptions.state} = 'redeemed'), false)`,
-      customerHasReserved: sql<boolean>`coalesce(bool_or(${discountCodeRedemptions.dotyposCustomerId} = ${input.dotyposCustomerId} and ${discountCodeRedemptions.state} = 'reserved'), false)`,
     })
     .from(discountCodeRedemptions)
     .where(
       and(
         eq(discountCodeRedemptions.codeId, input.codeId),
+        inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+      )
+    ),
+  customerActiveClaims: input.db
+    .select({ customerActiveUseCount: count() })
+    .from(discountCodeRedemptions)
+    .where(
+      and(
+        eq(discountCodeRedemptions.codeId, input.codeId),
+        eq(discountCodeRedemptions.dotyposCustomerId, input.dotyposCustomerId),
         inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
       )
     ),

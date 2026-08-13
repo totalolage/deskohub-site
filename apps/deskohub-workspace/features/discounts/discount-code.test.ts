@@ -32,6 +32,7 @@ const codeRow = (overrides: Partial<DiscountCode> = {}): DiscountCode => ({
   validFrom: null,
   validUntil: null,
   maxUses: null,
+  maxUsesPerCustomer: null,
   createdAt: Temporal.Instant.from("2026-07-15T00:00:00.000Z"),
   updatedAt: Temporal.Instant.from("2026-07-15T00:00:00.000Z"),
   ...overrides,
@@ -116,6 +117,7 @@ describe("stored discount code configuration", () => {
       validFrom: null,
       validUntil: null,
       maxUses: null,
+      maxUsesPerCustomer: null,
     });
     expect(result).not.toHaveProperty("code");
   });
@@ -139,6 +141,11 @@ describe("stored discount code configuration", () => {
   test.each([
     ["zero maximum uses", codeRow({ maxUses: 0 })],
     ["fractional maximum uses", codeRow({ maxUses: 1.5 })],
+    ["zero maximum uses per customer", codeRow({ maxUsesPerCustomer: 0 })],
+    [
+      "fractional maximum uses per customer",
+      codeRow({ maxUsesPerCustomer: 1.5 }),
+    ],
     [
       "inverted validity window",
       codeRow({
@@ -176,8 +183,7 @@ describe("stored discount code configuration", () => {
           allowlistSize: -1,
           customerAllowed: false,
           activeUseCount: 0,
-          customerHasRedeemed: false,
-          customerHasReserved: false,
+          customerActiveUseCount: -1,
         },
       }).pipe(Effect.result)
     );

@@ -430,6 +430,7 @@ describe("WorkspaceAdminApiClient", () => {
                 validFrom: null,
                 validUntil: null,
                 maxUses: null,
+                maxUsesPerCustomer: null,
               },
               discount: { kind: "existing", discountId },
             },
@@ -492,6 +493,7 @@ describe("WorkspaceAdminApiClient", () => {
               validFrom: null,
               validUntil: null,
               maxUses: null,
+              maxUsesPerCustomer: null,
               audienceSize: 0,
               reservedUses: 0,
               redeemedUses: 0,
@@ -612,6 +614,7 @@ describe("WorkspaceAdminApiClient", () => {
               validFrom: null,
               validUntil: null,
               maxUses: null,
+              maxUsesPerCustomer: null,
             },
             discount: { kind: "existing", discountId },
           }

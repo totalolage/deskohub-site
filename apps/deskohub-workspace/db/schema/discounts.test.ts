@@ -57,6 +57,34 @@ describe("discount persistence contracts", () => {
     expect(migration).not.toContain('"raw_payload"');
   });
 
+  test("migrates discount codes to configurable per-customer limits", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260813192416_black_jane_foster/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(migration).toContain(
+      'DROP INDEX "discount_code_redemptions_active_customer_unique_idx"'
+    );
+    expect(migration).toContain('ADD COLUMN "max_uses_per_customer" integer');
+    expect(migration).toContain(
+      'UPDATE "discount_codes" SET "max_uses_per_customer" = 1 WHERE "max_uses" IS NOT NULL'
+    );
+    expect(
+      migration.indexOf('ADD COLUMN "max_uses_per_customer"')
+    ).toBeLessThan(migration.indexOf('UPDATE "discount_codes"'));
+    expect(migration.indexOf('UPDATE "discount_codes"')).toBeLessThan(
+      migration.indexOf(
+        'DROP INDEX "discount_code_redemptions_active_customer_unique_idx"'
+      )
+    );
+    expect(migration).toContain(
+      'CONSTRAINT "discount_codes_max_uses_per_customer_check"'
+    );
+  });
+
   test("accepts only canonical product keys and discount codes", () => {
     const decodeProductKey = Schema.decodeUnknownSync(
       workspaceCoworkProductKeySchema
@@ -208,6 +236,7 @@ describe("discount persistence contracts", () => {
       "discount_codes_code_check",
       "discount_codes_valid_window_check",
       "discount_codes_max_uses_check",
+      "discount_codes_max_uses_per_customer_check",
     ]);
     expect(
       config.indexes.map(({ config: index }) => [index.name, index.unique])
@@ -238,7 +267,7 @@ describe("discount persistence contracts", () => {
     ).not.toContain("discount_applications_public_discount_id_discounts_id_fk");
   });
 
-  test("prevents duplicate active customer claims while retaining releases", () => {
+  test("allows repeated customer claims while retaining claim identities", () => {
     const config = configOf(discountCodeRedemptions);
     const indexes = config.indexes.map(({ config: index }) => ({
       name: index.name,
@@ -246,11 +275,11 @@ describe("discount persistence contracts", () => {
       partial: index.where !== undefined,
     }));
 
-    expect(indexes).toContainEqual({
-      name: "discount_code_redemptions_active_customer_unique_idx",
-      unique: true,
-      partial: true,
-    });
+    expect(indexes).not.toContainEqual(
+      expect.objectContaining({
+        name: "discount_code_redemptions_active_customer_unique_idx",
+      })
+    );
     expect(indexes).toContainEqual({
       name: "discount_code_redemptions_stale_reserved_idx",
       unique: false,

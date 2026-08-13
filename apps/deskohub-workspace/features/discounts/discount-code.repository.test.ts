@@ -27,30 +27,32 @@ describe("discount code availability queries", () => {
     expect(params).toEqual(["customer-1", codeId]);
   });
 
-  test("counts every unreleased claim and detects the current customer's state", () => {
+  test("counts every active claim globally and for the current customer", () => {
     const db = drizzle.mock({ schema });
-    const { sql, params } = buildDiscountCodeAvailabilityQueries({
+    const queries = buildDiscountCodeAvailabilityQueries({
       db,
       codeId,
       dotyposCustomerId: "customer-1",
-    }).activeClaims.toSQL();
+    });
+    const activeClaims = queries.activeClaims.toSQL();
+    const customerActiveClaims = queries.customerActiveClaims.toSQL();
 
-    expect(sql).toContain("count(*)");
-    expect(sql).toContain(
-      `coalesce(bool_or("dotypos_customer_id" = $1 and "state" = 'redeemed'), false)`
+    expect(activeClaims.sql).toContain("count(*)");
+    expect(activeClaims.sql).toContain(
+      '"discount_code_redemptions"."state" in ($2, $3)'
     );
-    expect(sql).toContain(
-      `coalesce(bool_or("dotypos_customer_id" = $2 and "state" = 'reserved'), false)`
+    expect(activeClaims.params).toEqual([codeId, "reserved", "redeemed"]);
+    expect(customerActiveClaims.sql).toContain("count(*)");
+    expect(customerActiveClaims.sql).toContain(
+      '"discount_code_redemptions"."dotypos_customer_id" = $2'
     );
-    expect(sql).toContain('"discount_code_redemptions"."state" in ($4, $5)');
-    expect(sql).not.toContain("reservation_expires_at");
-    expect(sql).not.toContain("released");
-    expect(params).toEqual([
-      "customer-1",
-      "customer-1",
+    expect(customerActiveClaims.params).toEqual([
       codeId,
+      "customer-1",
       "reserved",
       "redeemed",
     ]);
+    expect(customerActiveClaims.sql).not.toContain("reservation_expires_at");
+    expect(customerActiveClaims.sql).not.toContain("released");
   });
 });

@@ -88,6 +88,7 @@ export type AdminDiscountCode = {
   readonly validFrom: Temporal.Instant | null;
   readonly validUntil: Temporal.Instant | null;
   readonly maxUses: number | null;
+  readonly maxUsesPerCustomer: number | null;
   readonly audienceSize: number;
   readonly reservedUses: number;
   readonly redeemedUses: number;
@@ -1141,6 +1142,7 @@ const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
     validFrom: row.validFrom,
     validUntil: row.validUntil,
     maxUses: row.maxUses,
+    maxUsesPerCustomer: row.maxUsesPerCustomer,
     audienceSize: row.customers.length,
     ...usage,
     createdAt: row.createdAt,
@@ -1309,6 +1311,9 @@ const toDiscountCodeValues = (
   validUntil:
     input.validUntil === null ? null : Temporal.Instant.from(input.validUntil),
   maxUses: input.maxUses,
+  ...(input.maxUsesPerCustomer !== undefined && {
+    maxUsesPerCustomer: input.maxUsesPerCustomer,
+  }),
 });
 
 type PersistedDiscountResource = Extract<

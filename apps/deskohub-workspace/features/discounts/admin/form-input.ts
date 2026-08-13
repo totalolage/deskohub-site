@@ -77,6 +77,7 @@ export const readDiscountCodeConfigurationForm = (
     "validUntil"
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
   maxUses: readOptionalNumber(formData, "maxUses"),
+  maxUsesPerCustomer: readOptionalNumber(formData, "maxUsesPerCustomer"),
 });
 
 const readString = (formData: FormData, field: string) => {
