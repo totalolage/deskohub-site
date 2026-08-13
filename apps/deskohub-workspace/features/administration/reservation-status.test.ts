@@ -58,6 +58,17 @@ describe("administration reservation status", () => {
       label: "Cancellation issue",
     });
   });
+
+  test("labels a locally abandoned payment instead of a generic cancellation", () => {
+    expect(
+      getAdministrationReservationStatus({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toEqual({ group: "cancelled", label: "Abandoned" });
+  });
 });
 
 describe("administration reservation lifecycle", () => {
@@ -136,6 +147,53 @@ describe("administration reservation lifecycle", () => {
       currentStage: "held",
       label: "Payment expired",
       reachedStages: ["started", "held"],
+      tone: "attention",
+    });
+  });
+
+  test("flags unconfirmed provider activity while keeping the hold", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        failureCode: "payment_outcome_unconfirmed_before_cleanup",
+        fulfillmentState: "not_started",
+        paymentState: "pending",
+        reservationState: "held",
+      })
+    ).toEqual({
+      currentStage: "held",
+      label: "Payment needs review",
+      reachedStages: ["started", "held"],
+      tone: "attention",
+    });
+  });
+
+  test("shows abandonment as a completed local release", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toMatchObject({
+      currentStage: "cancelled",
+      label: "Payment abandoned; hold released",
+      tone: "neutral",
+    });
+  });
+
+  test("prioritizes a late payment requiring refund over the released hold", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toMatchObject({
+      currentStage: "cancelled",
+      label: "Late payment — refund required",
       tone: "attention",
     });
   });

@@ -214,9 +214,94 @@ describe("AdministrationService", () => {
       Effect.runPromise
     );
 
-    expect(selectCall).toBe(3);
+    expect(selectCall).toBe(4);
     expect(result.dateSortUnavailable).toBe(true);
     expect(result.items).toHaveLength(1);
+  });
+
+  test("flags a late payment ahead of an unconfirmed cleanup outcome", async () => {
+    const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
+    const row = {
+      id: "workspace-reservation",
+      dotyposCustomerId: "dotypos-customer",
+      dotyposReservationId: "dotypos-reservation",
+      reservationState: "held",
+      paymentState: "pending",
+      fulfillmentState: "not_started",
+      failureCode: "payment_outcome_unconfirmed_before_cleanup",
+      reservationDetails: { kind: "meeting-room" },
+      reservationCreatedAt: instant,
+      reservationConfirmedAt: null,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: instant,
+      paidAt: null,
+      fulfilledAt: null,
+      fulfillmentFailedAt: null,
+      createdAt: instant,
+      updatedAt: instant,
+    } as const;
+    const rows = [
+      [{ value: 1 }],
+      [row],
+      [],
+      [
+        {
+          eventId: "late-payment-event",
+          receivedAt: instant,
+          reservationId: row.id,
+        },
+      ],
+    ] as const;
+    let selectCall = 0;
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({});
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: {
+                    select: () => makeQuery(rows[selectCall++] ?? []),
+                  } as never,
+                })
+              ),
+              DotyposServiceMock({
+                getReservation: () =>
+                  Effect.succeed({
+                    customer: { id: "dotypos-customer" },
+                    reservation: {
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "dotypos-customer",
+                      id: "dotypos-reservation",
+                      startDate: "2026-08-10T10:00:00Z",
+                      endDate: "2026-08-10T11:00:00Z",
+                      seats: "1",
+                      status: "CONFIRMED",
+                    },
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.items[0]?.statusNote).toBe("Refund required");
+    expect(result.items[0]?.status.label).toBe("Payment pending");
   });
 
   test("returns no booking when Dotypos reports it missing", async () => {

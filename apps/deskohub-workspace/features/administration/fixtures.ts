@@ -73,6 +73,7 @@ const makeFixturePayment = (
   providerOrderId: fixtureNexiOrderId(`ORDER-${id}`),
   providerLabel: "Online payment",
   stateLabel: "Paid",
+  failureCode: null,
   amount: { value: 27_500, exponent: 2, currency: "CZK" },
   createdAt: Temporal.Instant.from(updatedAt)
     .subtract({ minutes: 5 })
@@ -316,6 +317,7 @@ export const loadFixtureReservation = (
     .toString();
   return {
     reservation,
+    operatorNotice: null,
     timeline: [
       {
         id: "fixture-checkout",
@@ -387,6 +389,7 @@ export const loadFixtureReservation = (
         providerOrderId: fixtureNexiOrderId("DADMINFIXTUREPAYMENT"),
         providerLabel: "Online payment",
         stateLabel: "Paid",
+        failureCode: null,
         amount: { value: 240000, exponent: 2, currency: "CZK" },
         createdAt: Temporal.Instant.from(paidAt)
           .subtract({ minutes: 3 })

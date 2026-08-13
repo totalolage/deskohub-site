@@ -333,6 +333,8 @@ describe("NexiService verifyPaymentOutcome", () => {
         name: "pending",
         order: {
           orderStatus: {
+            authorizedAmount: "0",
+            capturedAmount: "0.00",
             lastOperationType: "PENDING",
             order: {
               orderId: nexiOrderId("order-id"),
@@ -389,6 +391,13 @@ describe("NexiService verifyPaymentOutcome", () => {
 
       expect(result.status).toBe(item.status);
       expect(result.mismatches).toEqual(item.mismatches);
+      expect(result.provider.operationCount).toBe(
+        item.order.operations?.length ?? 0
+      );
+      if (item.name === "pending") {
+        expect(result.provider.authorizedAmount).toBe("0");
+        expect(result.provider.capturedAmount).toBe("0.00");
+      }
     }
   });
 

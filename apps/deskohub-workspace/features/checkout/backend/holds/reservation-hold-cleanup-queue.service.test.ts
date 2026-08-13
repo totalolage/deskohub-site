@@ -258,6 +258,25 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(findById).toHaveBeenCalledTimes(1);
   });
 
+  test("retries cleanup while an empty provider order is inside the cutoff", async () => {
+    const cancelOrderHold = mock(() => Effect.succeed("deferred" as const));
+
+    await expect(
+      runProcessMessage(duePayload, {
+        cancelOrderHold,
+        now: dueNow,
+      })
+    ).rejects.toMatchObject({
+      _tag: "ReservationHoldCleanupScheduleError",
+      message:
+        "Reservation hold cleanup is waiting for the provider abandonment cutoff.",
+    });
+    expect(cancelOrderHold).toHaveBeenCalledWith({
+      orderId: "order-id",
+      holdExpiredAt: dueNow,
+    });
+  });
+
   test("vercel config wires the queue trigger and daily repair cron", async () => {
     const { reservationHoldCleanupQueueTopic } = await import(
       "./reservation-hold-cleanup-queue.service"

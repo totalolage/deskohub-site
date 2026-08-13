@@ -8,6 +8,7 @@ export const nexiWebhookDiagnosticCodes = [
   "nexi_webhook_invalid_currency",
   "nexi_webhook_verification_failed",
   "nexi_webhook_verification_mismatch",
+  "nexi_webhook_late_payment",
   "nexi_webhook_transition_failed",
   "nexi_webhook_fulfillment_failed",
   "nexi_webhook_internal_error",

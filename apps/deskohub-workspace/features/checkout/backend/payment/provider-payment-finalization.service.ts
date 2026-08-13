@@ -18,6 +18,7 @@ import {
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
+import { getProviderOrderAbandonmentState } from "../../provider-order-abandonment";
 import {
   capturePaymentAbandoned,
   capturePaymentCompleted,
@@ -39,6 +40,8 @@ import {
 import { getNexiCurrencyOverride } from "./nexi-currency";
 
 export type ProviderPaymentFinalizationResult =
+  | "abandoned"
+  | "deferred"
   | "not_found"
   | "not_pending"
   | "not_verifiable"
@@ -53,6 +56,7 @@ export interface ProviderPaymentFinalizationService {
     readonly orderId: WorkspaceReservationId;
     readonly paymentAttemptId?: PaymentAttemptId;
     readonly webhookEventId?: NexiWebhookEventId;
+    readonly abandonmentCheckedAt?: Temporal.Instant;
   }) => Effect.Effect<
     ProviderPaymentFinalizationResult,
     PaymentLifecycleRepositoryError
@@ -351,6 +355,19 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             );
 
             return "terminal";
+          }
+
+          const emptyOrderResult = getProviderOrderAbandonmentState({
+            checkedAt: input.abandonmentCheckedAt,
+            providerOrderCreatedAt: attempt.providerOrderCreatedAt,
+            order: verification.provider,
+          });
+          if (emptyOrderResult !== "not_empty") {
+            yield* Effect.logInfo(
+              "Payment finalization resolved empty provider order",
+              { result: emptyOrderResult }
+            );
+            return emptyOrderResult;
           }
 
           yield* Effect.logInfo("Payment finalization returned pending");

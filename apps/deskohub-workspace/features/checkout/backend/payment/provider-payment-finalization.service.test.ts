@@ -53,6 +53,7 @@ const pendingAttempt = {
   },
   securityToken: "security-token",
   providerRedirectUrl: "https://provider.example/pay",
+  providerOrderCreatedAt: Temporal.Instant.from("2026-06-01T10:00:00Z"),
   lastWebhookEventId: null,
   lastProviderOperationId: null,
   lastProviderStatus: null,
@@ -68,6 +69,7 @@ const buildVerification = (
   provider: {
     orderId: "provider-order-id",
     operationId: "operation-id",
+    operationCount: 1,
     amount: "35000",
     currency: "CZK",
     orderStatus: status === "failure" ? "DECLINED" : "EXECUTED",
@@ -75,6 +77,21 @@ const buildVerification = (
   },
   mismatches: [],
 });
+
+const emptyPendingVerification: PaymentVerificationResult = {
+  status: "pending",
+  provider: {
+    orderId: "provider-order-id",
+    operationCount: 0,
+    amount: "35000",
+    currency: "CZK",
+    authorizedAmount: "0",
+    capturedAmount: "0.00",
+    orderStatus: "PENDING",
+    captureExecuted: false,
+  },
+  mismatches: [],
+};
 
 describe("ProviderPaymentFinalizationService", () => {
   for (const fulfillmentState of ["not_started", "processing"] as const) {
@@ -392,6 +409,107 @@ describe("ProviderPaymentFinalizationService", () => {
 
     expect(result).toBe("not_verifiable");
     expect(verifyPaymentOutcome).not.toHaveBeenCalled();
+  });
+
+  test("defers empty orders until the cutoff and abandons only operation-free zero-value orders", async () => {
+    const {
+      ProviderPaymentFinalizationService,
+      ProviderPaymentFinalizationServiceLive,
+    } = await import("./provider-payment-finalization.service");
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { WorkspacePaidFulfillmentService } = await import(
+      "../fulfillment/paid-fulfillment.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { NexiService } = await import("@deskohub/nexi");
+
+    const providerOrderCreatedAt = pendingAttempt.providerOrderCreatedAt;
+    const scenarios = [
+      {
+        name: "before cutoff",
+        checkedAt: providerOrderCreatedAt.add({ minutes: 29, seconds: 59 }),
+        verification: emptyPendingVerification,
+        expected: "deferred",
+      },
+      {
+        name: "at cutoff",
+        checkedAt: providerOrderCreatedAt.add({ minutes: 30 }),
+        verification: emptyPendingVerification,
+        expected: "abandoned",
+      },
+      {
+        name: "with an operation",
+        checkedAt: providerOrderCreatedAt.add({ hours: 1 }),
+        verification: {
+          ...emptyPendingVerification,
+          provider: {
+            ...emptyPendingVerification.provider,
+            operationCount: 1,
+          },
+        },
+        expected: "pending",
+      },
+      {
+        name: "with an authorized amount",
+        checkedAt: providerOrderCreatedAt.add({ hours: 1 }),
+        verification: {
+          ...emptyPendingVerification,
+          provider: {
+            ...emptyPendingVerification.provider,
+            authorizedAmount: "1",
+          },
+        },
+        expected: "pending",
+      },
+    ] as const;
+
+    for (const scenario of scenarios) {
+      const result = await Effect.gen(function* () {
+        const service = yield* ProviderPaymentFinalizationService;
+        return yield* service.finalizePendingProviderPayment({
+          orderId: "reservation-id",
+          paymentAttemptId: "attempt-id",
+          abandonmentCheckedAt: scenario.checkedAt,
+        });
+      }).pipe(
+        Effect.provide(
+          ProviderPaymentFinalizationServiceLive.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.mock(WorkspaceReservationRepository, {
+                  findById: mock(() => Effect.succeed(pendingReservation)),
+                }),
+                Layer.mock(WorkspacePaidFulfillmentService, {
+                  fulfillPaidOrder: mock(() => Effect.die("not used")),
+                }),
+                Layer.mock(PaymentAttemptRepository, {
+                  findById: mock(() => Effect.succeed(pendingAttempt)),
+                }),
+                paymentLifecycleLayer(),
+                Layer.mock(PostHogEventService, {
+                  capture: () => Effect.void,
+                }),
+                Layer.mock(NexiService, {
+                  verifyPaymentOutcome: mock(() =>
+                    Effect.succeed(scenario.verification)
+                  ),
+                })
+              )
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+      expect(result, scenario.name).toBe(scenario.expected);
+    }
   });
 
   test("propagates lifecycle persistence failures instead of returning not_pending", async () => {

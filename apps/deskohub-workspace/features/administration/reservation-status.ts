@@ -17,7 +17,9 @@ export type AdministrationReservationStatus = {
 
 export type ReservationStatusInput = {
   readonly dotyposStatus?: "NEW" | "CONFIRMED" | "CANCELLED";
+  readonly failureCode?: string | null;
   readonly fulfillmentState: FulfillmentState;
+  readonly latePayment?: boolean;
   readonly paymentState: PaymentState;
   readonly reservationState: ReservationState;
 };
@@ -42,6 +44,14 @@ export type AdministrationReservationLifecycle = {
 export const getAdministrationReservationLifecycle = (
   input: ReservationStatusInput
 ): AdministrationReservationLifecycle => {
+  if (input.latePayment) {
+    return {
+      currentStage: "cancelled",
+      label: "Late payment — refund required",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "attention",
+    };
+  }
   if (input.fulfillmentState === "failed") {
     return {
       currentStage: "paid",
@@ -61,7 +71,10 @@ export const getAdministrationReservationLifecycle = (
   if (input.reservationState === "cancelled") {
     return {
       currentStage: "cancelled",
-      label: "Hold released",
+      label:
+        input.failureCode === "payment_abandoned_after_provider_cutoff"
+          ? "Payment abandoned; hold released"
+          : "Hold released",
       reachedStages: ["started", "held", "cancelled"],
       tone: "neutral",
     };
@@ -112,6 +125,14 @@ export const getAdministrationReservationLifecycle = (
     };
   }
   if (input.reservationState === "held") {
+    if (input.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
+      return {
+        currentStage: "held",
+        label: "Payment needs review",
+        reachedStages: ["started", "held"],
+        tone: "attention",
+      };
+    }
     const paymentIssue =
       input.paymentState === "failed" || input.paymentState === "expired";
     return {
@@ -146,7 +167,13 @@ export const getAdministrationReservationStatus = (
     return { group: "attention", label: "Cancellation issue" };
   }
   if (input.reservationState === "cancelled") {
-    return { group: "cancelled", label: "Cancelled" };
+    return {
+      group: "cancelled",
+      label:
+        input.failureCode === "payment_abandoned_after_provider_cutoff"
+          ? "Abandoned"
+          : "Cancelled",
+    };
   }
   if (input.fulfillmentState === "fulfilled") {
     return { group: "complete", label: "Complete" };

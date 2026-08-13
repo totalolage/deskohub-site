@@ -298,8 +298,11 @@ const makeNexiService = Effect.gen(function* () {
         provider: {
           orderId: resolvedProviderOrderId,
           operationId: resolvedProviderOperationId,
+          operationCount: operations.length,
           amount: providerAmount?.amount,
           currency: providerAmount?.currency,
+          authorizedAmount: order.orderStatus?.authorizedAmount,
+          capturedAmount: order.orderStatus?.capturedAmount,
           orderStatus: providerStatus,
           captureExecuted: Boolean(executedPaymentOperation),
         },

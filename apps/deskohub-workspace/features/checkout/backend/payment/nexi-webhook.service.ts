@@ -12,6 +12,7 @@ import {
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import type { PaymentAttemptState } from "@/db/schema";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -49,6 +50,7 @@ type NexiWebhookFailureCode =
   | "nexi_webhook_invalid_currency"
   | "nexi_webhook_verification_failed"
   | "nexi_webhook_verification_mismatch"
+  | "nexi_webhook_late_payment"
   | "nexi_webhook_transition_failed"
   | "nexi_webhook_fulfillment_failed";
 
@@ -432,6 +434,33 @@ export const NexiWebhookServiceLive = Layer.effect(
             webhookEvents,
           });
 
+          if (
+            verification.status === "success" &&
+            isTerminalPaymentAttemptState(attempt.state)
+          ) {
+            yield* Effect.logFatal(
+              "Nexi payment settled after the local payment attempt became terminal",
+              {
+                eventId,
+                paymentAttemptId: attempt.id,
+                paymentAttemptState: attempt.state,
+                providerOrderId,
+                reservationId: reservation.id,
+              }
+            );
+            return yield* failAfterMarkingEvent(
+              webhookEvents,
+              { type: "eventId", eventId },
+              new NexiWebhookProcessingError({
+                errorCode: "nexi_webhook_late_payment",
+                eventId,
+                orderId: providerOrderId,
+                message:
+                  "Nexi reported a successful payment after local expiration; operator refund is required.",
+              })
+            );
+          }
+
           const providerMetadata = getNexiPaymentMetadata(verification);
           const { providerOperationId, providerStatus } = providerMetadata;
           yield* Effect.annotateLogsScoped({ providerMetadata });
@@ -575,6 +604,9 @@ export const NexiWebhookServiceLive = Layer.effect(
     });
   })
 );
+
+const isTerminalPaymentAttemptState = (state: PaymentAttemptState) =>
+  state === "failed" || state === "cancelled" || state === "expired";
 
 export const NexiWebhookServiceLiveWithDependencies =
   NexiWebhookServiceLive.pipe(
