@@ -1,5 +1,6 @@
 import { Match } from "effect";
 import { KeyRound } from "lucide-react";
+import Link from "next/link";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
@@ -43,6 +44,7 @@ export function ReservationAccessPage({
       ended: () => ({
         title: m.reservationAccessEndedTitle({}, { locale }),
         lead: m.reservationAccessEndedLead({}, { locale }),
+        contactLink: m.reservationAccessEndedContactLink({}, { locale }),
       }),
       unavailable: () => ({
         title: m.reservationAccessUnavailableTitle({}, { locale }),
@@ -69,6 +71,18 @@ export function ReservationAccessPage({
               {access.state !== "upcoming" && (
                 <p className="mt-5 text-lg leading-8 text-navy-blue/70">
                   {copy.lead}
+                  {"contactLink" in copy && (
+                    <>
+                      {" "}
+                      <Link
+                        className="underline decoration-navy-blue/30 underline-offset-4 transition-colors hover:text-burned-orange hover:decoration-burned-orange focus-visible:text-burned-orange focus-visible:decoration-burned-orange"
+                        href={`/${locale}/contact`}
+                      >
+                        {copy.contactLink}
+                      </Link>
+                      {"."}
+                    </>
+                  )}
                 </p>
               )}
             </div>

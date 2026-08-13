@@ -1,10 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Data, Effect, Schema } from "effect";
-import {
-  type CheckoutStateKey,
-  checkoutStateKeyIdSchema,
-  getCheckoutStateKeys,
-} from "@/features/checkout/backend/checkout/checkout-state-token";
+import { env } from "@/env";
 import { type Locale, locales } from "@/features/i18n";
 import {
   type WorkspaceReservationId,
@@ -17,7 +13,6 @@ const reservationAccessTokenPurpose = "reservation-access";
 const reservationAccessTokenClaimsSchema = Schema.Struct({
   purpose: Schema.Literal(reservationAccessTokenPurpose),
   version: Schema.Literal(1),
-  kid: checkoutStateKeyIdSchema,
   orderId: workspaceReservationIdSchema,
   locale: Schema.Literals(locales),
   issuedAtEpochMilliseconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
@@ -35,7 +30,7 @@ export class ReservationAccessTokenError extends Data.TaggedError(
 }> {}
 
 type ReservationAccessTokenOptions = {
-  readonly keys?: readonly CheckoutStateKey[];
+  readonly secret?: string | Buffer;
   readonly now?: () => number;
 };
 
@@ -46,22 +41,29 @@ const invalidToken = (message: string, cause?: unknown) =>
     cause,
   });
 
-const getKeys = Effect.fn("reservationAccessToken.getKeys")(function* (
+const getSecret = Effect.fn("reservationAccessToken.getSecret")(function* (
   options: ReservationAccessTokenOptions
 ) {
-  return yield* getCheckoutStateKeys({ keys: options.keys }).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ReservationAccessTokenError({
-          code:
-            cause.code === "missing-secret"
-              ? "missing-secret"
-              : "invalid-secret",
-          message: "Reservation access token keys are unavailable.",
-          cause,
-        })
-    )
-  );
+  const configuredSecret =
+    options.secret ?? env.RESERVATION_ACCESS_TOKEN_SECRET;
+  if (!configuredSecret) {
+    return yield* new ReservationAccessTokenError({
+      code: "missing-secret",
+      message: "Reservation access token secret is unavailable.",
+    });
+  }
+
+  const secret = Buffer.isBuffer(configuredSecret)
+    ? configuredSecret
+    : Buffer.from(configuredSecret);
+  if (secret.byteLength < 32) {
+    return yield* new ReservationAccessTokenError({
+      code: "invalid-secret",
+      message: "Reservation access token secret must be at least 32 bytes.",
+    });
+  }
+
+  return secret;
 });
 
 const getNow = (options: ReservationAccessTokenOptions) =>
@@ -81,13 +83,12 @@ export const createReservationAccessToken = Effect.fn(
   },
   options: ReservationAccessTokenOptions = {}
 ) {
-  const [activeKey] = yield* getKeys(options);
+  const secret = yield* getSecret(options);
   const claims = yield* Schema.decodeUnknownEffect(
     reservationAccessTokenClaimsSchema
   )({
     purpose: reservationAccessTokenPurpose,
     version: 1,
-    kid: activeKey.kid,
     orderId: input.orderId,
     locale: input.locale,
     issuedAtEpochMilliseconds: getNow(options),
@@ -99,9 +100,7 @@ export const createReservationAccessToken = Effect.fn(
   const encodedClaims = Buffer.from(JSON.stringify(claims)).toString(
     "base64url"
   );
-  const signature = signClaims(encodedClaims, activeKey.key).toString(
-    "base64url"
-  );
+  const signature = signClaims(encodedClaims, secret).toString("base64url");
 
   return `${encodedClaims}.${signature}`;
 });
@@ -141,17 +140,13 @@ export const openReservationAccessToken = Effect.fn(
         : invalidToken("Reservation access token is invalid.", cause)
     )
   );
-  const keys = yield* getKeys(options);
-  const verificationKey = keys.find((key) => key.kid === claims.kid);
-  if (!verificationKey) {
-    return yield* invalidToken("Reservation access token used an unknown key.");
-  }
+  const secret = yield* getSecret(options);
   const providedSignature = yield* Effect.try({
     try: () => Buffer.from(encodedSignature, "base64url"),
     catch: (cause) =>
       invalidToken("Reservation access token is invalid.", cause),
   });
-  const expectedSignature = signClaims(encodedClaims, verificationKey.key);
+  const expectedSignature = signClaims(encodedClaims, secret);
   if (
     providedSignature.length !== expectedSignature.length ||
     !timingSafeEqual(providedSignature, expectedSignature)

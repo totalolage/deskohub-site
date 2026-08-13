@@ -97,12 +97,18 @@ describe("ReservationAccessPage", () => {
     ).toBeNull();
   });
 
-  test("explains when the PIN display window has ended", () => {
+  test("shows a farewell and contact link after the reservation", () => {
     const view = render(
       <ReservationAccessPage access={{ state: "ended" }} locale="en-US" />
     );
 
-    expect(view.getByText("The PIN display window has ended")).toBeDefined();
+    expect(
+      view.getByText("We're looking forward to seeing you again!")
+    ).toBeDefined();
+    expect(
+      view.getByRole("link", { name: "contact us" }).getAttribute("href")
+    ).toBe("/en-US/contact");
+    expect(view.queryByText(/PIN display window/)).toBeNull();
     expect(
       view.container.querySelector("[data-reservation-access-code]")
     ).toBeNull();
