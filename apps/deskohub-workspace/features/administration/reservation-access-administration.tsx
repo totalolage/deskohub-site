@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { isReservationAccessProvisioningStale } from "@/features/reservation-access";
+import { isReservationAccessProvisioningStale } from "@/features/reservation-access/reservation-access";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateReservationAccess } from "./actions";
