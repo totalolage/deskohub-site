@@ -153,7 +153,11 @@ export function CheckoutPayPage({
         summary={summary}
       />
 
-      {variant === "pay" && !hostedPayment && discountCodeForm}
+      {variant === "pay" && (
+        <fieldset className="contents" disabled={!!hostedPayment}>
+          {discountCodeForm}
+        </fieldset>
+      )}
 
       {isPricingChanged && (
         <Button
@@ -169,77 +173,76 @@ export function CheckoutPayPage({
         </Button>
       )}
 
-      {!isPricingChanged && hostedPayment && (
-        <Button
-          asChild
-          className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-        >
-          <a
-            href={hostedPayment.redirectUrl}
-            onClick={(event) => {
-              if (hostedPaymentActivatedRef.current) {
-                event.preventDefault();
-                return;
-              }
-              const paymentWindow = window.open("about:blank", "_blank");
-              if (!paymentWindow) return;
-
-              event.preventDefault();
-              hostedPaymentActivatedRef.current = true;
-              markCheckoutStatusWindowOwner(
-                hostedPayment.statusUrl,
-                paymentWindow
-              );
-              paymentWindow.opener = null;
-              paymentWindow.location.replace(hostedPayment.redirectUrl);
-              router.push(hostedPayment.statusUrl);
-            }}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <CreditCard className="h-4 w-4" />
-            {m.checkoutPayContinueToPaymentButton({}, { locale })}
-          </a>
-        </Button>
-      )}
-
-      {!isPricingChanged && !hostedPayment && (
+      {!isPricingChanged && (
         <>
-          <CheckoutPayConsent
-            checked={legalConsent}
-            id="checkout-pay-legal-consent"
-            locale={locale}
-            onCheckedChange={setLegalConsent}
-            showEarlyPerformanceRequest={earlyPerformanceRequestRequired}
-            variant={actionVariant}
-          />
+          <fieldset className="contents" disabled={!!hostedPayment}>
+            <CheckoutPayConsent
+              checked={legalConsent}
+              id="checkout-pay-legal-consent"
+              locale={locale}
+              onCheckedChange={setLegalConsent}
+              showEarlyPerformanceRequest={earlyPerformanceRequestRequired}
+              variant={actionVariant}
+            />
+          </fieldset>
 
-          <CheckoutPaySubmitButton
-            disabled={!legalConsent || isSubmitPending}
-            locale={locale}
-            onClick={() => {
-              if (isSubmitPending) return;
+          {hostedPayment ? (
+            <Button
+              asChild
+              className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
+            >
+              <a
+                href={hostedPayment.redirectUrl}
+                onClick={(event) => {
+                  if (hostedPaymentActivatedRef.current) {
+                    event.preventDefault();
+                    return;
+                  }
+                  const paymentWindow = window.open("about:blank", "_blank");
+                  if (!paymentWindow) return;
 
-              setErrorMessage(null);
-              if (!payStateToken) {
-                setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
-                return;
-              }
+                  event.preventDefault();
+                  hostedPaymentActivatedRef.current = true;
+                  markCheckoutStatusWindowOwner(hostedPayment.statusUrl);
+                  paymentWindow.opener = null;
+                  paymentWindow.location.replace(hostedPayment.redirectUrl);
+                  router.push(hostedPayment.statusUrl);
+                }}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <CreditCard className="h-4 w-4" />
+                {m.checkoutPayContinueToPaymentButton({}, { locale })}
+              </a>
+            </Button>
+          ) : (
+            <CheckoutPaySubmitButton
+              disabled={!legalConsent || isSubmitPending}
+              locale={locale}
+              onClick={() => {
+                if (isSubmitPending) return;
 
-              const input = {
-                locale,
-                payStateToken,
-                legalConsent,
-              };
-              execute(
-                earlyPerformanceRequestRequired
-                  ? { ...input, earlyPerformanceConsent: legalConsent }
-                  : input
-              );
-            }}
-            pending={isSubmitPending}
-            variant={actionVariant}
-          />
+                setErrorMessage(null);
+                if (!payStateToken) {
+                  setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
+                  return;
+                }
+
+                const input = {
+                  locale,
+                  payStateToken,
+                  legalConsent,
+                };
+                execute(
+                  earlyPerformanceRequestRequired
+                    ? { ...input, earlyPerformanceConsent: legalConsent }
+                    : input
+                );
+              }}
+              pending={isSubmitPending}
+              variant={actionVariant}
+            />
+          )}
         </>
       )}
 

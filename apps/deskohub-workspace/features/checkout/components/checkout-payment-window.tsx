@@ -2,90 +2,39 @@
 
 import { useEffect, useRef } from "react";
 
-const paymentWindowCheckIntervalMs = 500;
-const checkoutStatusOwnerAliveMessage = "owner-alive";
 const getCheckoutStatusLockName = () =>
   `deskohub:checkout-status:${window.location.pathname}`;
 const getCheckoutStatusOwnerStorageKey = (pathname: string) =>
   `deskohub:checkout-status-owner:${pathname}`;
-type CheckoutStatusWindowOwnership = {
-  readonly ownsStatusWindow: boolean;
-  readonly token?: string;
-};
-const consumeCheckoutStatusWindowOwner = (
-  pathname: string
-): CheckoutStatusWindowOwnership => {
+const consumeCheckoutStatusWindowOwner = (pathname: string) => {
   try {
     const storageKey = getCheckoutStatusOwnerStorageKey(pathname);
-    const storedOwnership = sessionStorage.getItem(storageKey);
+    const ownsStatusWindow = sessionStorage.getItem(storageKey) === "true";
     sessionStorage.removeItem(storageKey);
-    if (storedOwnership === "true") return { ownsStatusWindow: true };
-    if (!storedOwnership) return { ownsStatusWindow: false };
-
-    const separatorIndex = storedOwnership.indexOf(":");
-    const role = storedOwnership.slice(0, separatorIndex);
-    const token = storedOwnership.slice(separatorIndex + 1);
-    if ((role !== "owner" && role !== "returned") || !token)
-      return { ownsStatusWindow: false };
-    return {
-      ownsStatusWindow: role === "owner",
-      token,
-    };
+    return ownsStatusWindow;
   } catch {
-    return { ownsStatusWindow: false };
+    return false;
   }
 };
 
-export const markCheckoutStatusWindowOwner = (
-  statusUrl: string,
-  paymentWindow: Window
-) => {
+export const markCheckoutStatusWindowOwner = (statusUrl: string) => {
   try {
     const pathname = new URL(statusUrl, "https://deskohub.local").pathname;
-    const storageKey = getCheckoutStatusOwnerStorageKey(pathname);
-    const token = crypto.randomUUID();
-    paymentWindow.sessionStorage.setItem(storageKey, `returned:${token}`);
-    sessionStorage.setItem(storageKey, `owner:${token}`);
+    sessionStorage.setItem(getCheckoutStatusOwnerStorageKey(pathname), "true");
   } catch {
     // Ownership coordination must not block payment navigation.
   }
 };
 
 export function CheckoutPaymentWindowCoordinator() {
-  const ownershipRef = useRef<CheckoutStatusWindowOwnership | undefined>(
-    undefined
-  );
+  const ownsStatusWindowRef = useRef<boolean | undefined>(undefined);
 
   useEffect(() => {
-    const ownership =
-      ownershipRef.current ??
+    const ownsStatusWindow =
+      ownsStatusWindowRef.current ??
       consumeCheckoutStatusWindowOwner(window.location.pathname);
-    ownershipRef.current = ownership;
-    let stopHeartbeat: () => void = () => undefined;
-    if (ownership.token && "BroadcastChannel" in globalThis) {
-      const channel = new BroadcastChannel(
-        `${getCheckoutStatusLockName()}:${ownership.token}`
-      );
-      if (!ownership.ownsStatusWindow) {
-        channel.addEventListener("message", (event) => {
-          if (event.data === checkoutStatusOwnerAliveMessage) window.close();
-        });
-        stopHeartbeat = () => channel.close();
-      } else {
-        const notifyReturnedWindow = () =>
-          channel.postMessage(checkoutStatusOwnerAliveMessage);
-        notifyReturnedWindow();
-        const interval = globalThis.setInterval(
-          notifyReturnedWindow,
-          paymentWindowCheckIntervalMs
-        );
-        stopHeartbeat = () => {
-          globalThis.clearInterval(interval);
-          channel.close();
-        };
-      }
-    }
-    if (!navigator.locks) return stopHeartbeat;
+    ownsStatusWindowRef.current = ownsStatusWindow;
+    if (!navigator.locks) return;
 
     let active = true;
     let releaseLock: () => void = () => undefined;
@@ -96,7 +45,7 @@ export function CheckoutPaymentWindowCoordinator() {
     navigator.locks
       .request(
         getCheckoutStatusLockName(),
-        ownership.ownsStatusWindow
+        ownsStatusWindow
           ? { mode: "exclusive", steal: true }
           : { ifAvailable: true, mode: "exclusive" },
         (lock) => {
@@ -112,7 +61,7 @@ export function CheckoutPaymentWindowCoordinator() {
       .catch((cause) => {
         if (
           active &&
-          !ownership.ownsStatusWindow &&
+          !ownsStatusWindow &&
           cause instanceof DOMException &&
           cause.name === "AbortError"
         ) {
@@ -121,7 +70,6 @@ export function CheckoutPaymentWindowCoordinator() {
       });
 
     return () => {
-      stopHeartbeat();
       active = false;
       releaseLock();
     };

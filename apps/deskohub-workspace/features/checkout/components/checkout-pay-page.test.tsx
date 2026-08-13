@@ -166,7 +166,6 @@ describe("CheckoutPayPage payment navigation", () => {
     const paymentWindow = {
       location: { replace: replacePaymentLocation },
       opener: window,
-      sessionStorage,
     };
     const openPaymentWindow = spyOn(window, "open").mockImplementation(
       () => paymentWindow as Window
@@ -259,7 +258,16 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
-    expect(view.queryByRole("button", { name: "Apply discount" })).toBeNull();
+    const lockedDiscountButton = view.getByRole("button", {
+      name: "Apply discount",
+    });
+    expect(lockedDiscountButton.closest("fieldset")?.disabled).toBe(true);
+    expect(view.getByRole("checkbox").closest("fieldset")?.disabled).toBe(true);
+    expect(
+      view.getAllByRole("heading", {
+        name: m.checkoutPayTitle({}, { locale: "en-US" }),
+      })
+    ).toHaveLength(1);
     const paymentLink = view.getByRole("link", {
       name: m.checkoutPayContinueToPaymentButton({}, { locale: "en-US" }),
     });
@@ -286,7 +294,7 @@ describe("CheckoutPayPage payment navigation", () => {
       sessionStorage.getItem(
         "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
       )
-    ).toContain("owner:");
+    ).toBe("true");
   });
 
   test("omits the early-performance request when the withdrawal period has elapsed", async () => {
