@@ -62,19 +62,19 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(migration).not.toContain('DROP TABLE "discount_product_targets"');
   });
 
-  test("the existing cron clears expired reservation access codes", async () => {
-    const [repository, cronRoute] = await Promise.all([
+  test("only the lock enforces reservation access validity", async () => {
+    const [repository, cronRoute, customerAccess] = await Promise.all([
       readAppFile(
         "features/reservation-access/backend/reservation-access.repository.ts"
       ),
       readAppFile("app/api/cron/workspace/reservation-holds/route.ts"),
+      readAppFile("features/reservation/backend/reservation-access.service.ts"),
     ]);
 
-    expect(repository).toContain("clearExpiredAccessCodes");
-    expect(repository).toContain('state: "expired"');
-    expect(repository).toContain("accessCode: null");
-    expect(repository).toContain("reservationAccessGrants.accessEndsAt");
-    expect(cronRoute).toContain("clearExpiredAccessCodes");
+    expect(repository).not.toContain("clearExpiredAccessCodes");
+    expect(repository).not.toContain('state: "expired"');
+    expect(cronRoute).not.toContain("ReservationAccessService");
+    expect(customerAccess).not.toContain("getReservationAccessCodeWindowState");
   });
 
   test("accounting PII exception stores only PostgreSQL ciphertext", async () => {

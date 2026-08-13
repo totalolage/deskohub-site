@@ -206,6 +206,52 @@ describe("ReservationsAdministrationPage", () => {
     );
   });
 
+  test("places date shortcuts before right-aligned clear and apply actions", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2026-08-12T10:00:00Z");
+    reservationPage = {
+      input: {
+        direction: "asc",
+        from: "2026-08-04",
+        sort: "date",
+        status: "complete",
+        to: "2026-08-10",
+        type: "cowork",
+      },
+      result: defaultReservationPage.result,
+    };
+
+    try {
+      const { ReservationsAdministrationContent } = await import("./page");
+      const view = render(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve({}),
+        })
+      );
+      const shortcuts = view.getByRole("navigation", {
+        name: "Reservation date shortcuts",
+      });
+      const shortcutLinks = within(shortcuts).getAllByRole("link");
+
+      expect(shortcutLinks.map((link) => link.textContent)).toEqual([
+        "Today",
+        "Upcoming",
+        "Past",
+      ]);
+      expect(shortcutLinks.map((link) => link.getAttribute("href"))).toEqual([
+        "/admin/reservations?direction=asc&from=2026-08-12&sort=date&status=complete&to=2026-08-12&type=cowork",
+        "/admin/reservations?direction=asc&from=2026-08-13&sort=date&status=complete&type=cowork",
+        "/admin/reservations?direction=asc&sort=date&status=complete&to=2026-08-11&type=cowork",
+      ]);
+
+      const actions = view.getByRole("group", { name: "Filter actions" });
+      expect(actions.className).toContain("justify-end");
+      expect(actions.textContent).toBe("ClearApply filters");
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
   test("explains the fallback when provider date sorting is unavailable", async () => {
     reservationPage = {
       input: { direction: "asc", sort: "date" },

@@ -1,6 +1,6 @@
 # Workspace administration dashboard
 
-The Workspace administration dashboard is a read-oriented operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Its reservation and customer pages do not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records.
+The Workspace administration dashboard is an operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Loading reservation and customer pages does not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records; reservation access recovery is an explicit operator action.
 
 The visible navigation is intentionally limited to Overview, Reservations, Customers, Codes, and Sales. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
 
@@ -25,7 +25,11 @@ The dashboard composes three sources without creating a second customer or reser
 
 Fuzzy customer search by name or email remains a protected server action. Customer contact data is not placed in URLs or persisted by the dashboard. The selected Dotypos customer ID, status groups, reservation types, dates, and page numbers may be represented in URLs.
 
-The administration projection deliberately excludes Workspace access codes, payment security tokens, provider redirect URLs, Dotypos notes, raw provider responses, and raw PostHog property bags.
+The administration projection deliberately excludes secret Workspace access codes, payment security tokens, provider redirect URLs, Dotypos notes, raw provider responses, and raw PostHog property bags. A reservation detail may expose only the safe access-grant projection: state, deterministic access name, interval, device, provider credential identifier, issuance and failure timestamps, and failure code.
+
+Retry access automatically only from `failed`, which represents a definitive provider rejection. For `uncertain`, tell the operator to use the Igloohome app over Bluetooth at the lock, find `Deskohub <reservation-id>`, and remove it or verify it is absent. Require explicit confirmation before conditionally changing `uncertain` to `failed` and retrying. If the operator cannot confirm provider cleanup, do not retry; wait for the possible credential to expire. Igloohome does not provide an AlgoPIN lookup or revocation operation for this integration.
+
+Treat a `provisioning` claim older than one minute as ambiguous and expose the same confirmed provider-cleanup workflow. Do not offer recovery for a fresh provisioning claim.
 
 ## Reservation lifecycle
 

@@ -69,6 +69,7 @@
     "test:admin-cli": {
       "dependsOn": [
         "@deskohub/dotypos#generate",
+        "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
       ],

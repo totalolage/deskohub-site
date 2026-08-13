@@ -539,6 +539,44 @@ describe("NexiService administration reads", () => {
     );
   });
 
+  test("normalizes provider wall times without fractional seconds", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        orderStatus: {
+          lastOperationTime: "2026-08-06 10:01:00",
+          order: {
+            orderId: nexiOrderId("order-id"),
+            amount: "5000",
+            currency: "CZK",
+          },
+        },
+        operations: [
+          {
+            orderId: nexiOrderId("order-id"),
+            operationId: nexiOperationId("operation-id"),
+            operationTime: "2026-08-06 10:00:00",
+          },
+        ],
+      })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.getOrder({
+          correlationId: nexiCorrelationId("correlation-id"),
+          orderId: nexiOrderId("order-id"),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result.lastOperationTime).toBe("2026-08-06T08:01:00.000Z");
+    expect(result.operations[0]?.operationTime).toBe(
+      "2026-08-06T08:00:00.000Z"
+    );
+  });
+
   test("lists sanitized operations with documented filters", async () => {
     const fetchMock = mockNexiFetch(
       Response.json({

@@ -1,6 +1,9 @@
 import type {
   AdministrationDiscountMutationResultType,
   AdministrationDiscountMutationType,
+  AdministrationReservationAccessGrantType,
+  AdministrationReservationAccessMutationType,
+  AdministrationWorkspaceReservationIdType,
   CliBuildTargetType,
   CliMutationRequestIdType,
   CliSessionIdType,
@@ -148,10 +151,8 @@ export const cliMutationRequests = pgTable(
       .$type<CliSessionIdType>()
       .references(() => cliSessions.id, { onDelete: "cascade" }),
     requestId: text("request_id").notNull().$type<CliMutationRequestIdType>(),
-    mutation: jsonb("mutation")
-      .notNull()
-      .$type<AdministrationDiscountMutationType>(),
-    result: jsonb("result").$type<AdministrationDiscountMutationResultType>(),
+    mutation: jsonb("mutation").notNull().$type<CliStoredMutation>(),
+    result: jsonb("result").$type<CliStoredMutationResult>(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     completedAt: instant("completed_at"),
   },
@@ -178,6 +179,18 @@ export const cliMutationRequests = pgTable(
     ),
   ]
 );
+
+export type CliStoredMutation =
+  | AdministrationDiscountMutationType
+  | {
+      readonly kind: "reservation-access";
+      readonly reservationId: AdministrationWorkspaceReservationIdType;
+      readonly mutation: AdministrationReservationAccessMutationType;
+    };
+
+export type CliStoredMutationResult =
+  | AdministrationDiscountMutationResultType
+  | AdministrationReservationAccessGrantType;
 
 export type CliSessionRow = typeof cliSessions.$inferSelect;
 export type NewCliSessionRow = typeof cliSessions.$inferInsert;

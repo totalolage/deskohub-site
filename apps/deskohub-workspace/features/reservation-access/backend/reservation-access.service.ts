@@ -10,14 +10,17 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { IgloohomeServiceLive } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { ceilToWholeHour, floorToWholeHour } from "@/shared/utils/temporal";
-import type { IssuedReservationAccess } from "../reservation-access";
+import type {
+  IssuedReservationAccess,
+  ReservationAccessGrant,
+} from "../reservation-access";
+import { reservationAccessProvisioningStaleAfterMilliseconds } from "../reservation-access";
 import {
   ReservationAccessRepository,
   ReservationAccessRepositoryLive,
   type ReservationAccessStorageError,
 } from "./reservation-access.repository";
 
-export const RESERVATION_ACCESS_PROVISIONING_STALE_AFTER_MS = 60_000;
 const maximumHourlyAlgoPinDurationHours = 672;
 
 export type ReservationAccessIssuanceOutcome = "rejected" | "uncertain";
@@ -28,6 +31,7 @@ export class ReservationAccessIssuanceError extends Data.TaggedError(
   readonly reservationId: WorkspaceReservationId;
   readonly outcome: ReservationAccessIssuanceOutcome;
   readonly message: string;
+  readonly cause?: unknown;
 }> {}
 
 export interface ReservationAccessInterval {
@@ -108,14 +112,20 @@ const getReservationAccessSchedule = (input: {
 };
 
 export interface IReservationAccessService {
+  readonly loadGrant: (
+    reservationId: WorkspaceReservationId
+  ) => Effect.Effect<
+    ReservationAccessGrant | null,
+    ReservationAccessIssuanceError
+  >;
+  readonly confirmProviderCredentialRemoved: (
+    reservationId: WorkspaceReservationId
+  ) => Effect.Effect<ReservationAccessGrant, ReservationAccessIssuanceError>;
   readonly issueForReservation: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly reservedFrom: Temporal.Instant;
     readonly reservedUntil: Temporal.Instant;
   }) => Effect.Effect<IssuedReservationAccess, ReservationAccessIssuanceError>;
-  readonly clearExpiredAccessCodes: (
-    now: Temporal.Instant
-  ) => Effect.Effect<number, ReservationAccessStorageError>;
 }
 
 export class ReservationAccessService extends Context.Service<
@@ -128,13 +138,44 @@ export class ReservationAccessService extends Context.Service<
       const repository = yield* ReservationAccessRepository;
       const igloohome = yield* IgloohomeService;
       const deviceId = Schema.decodeUnknownSync(IgloohomeDeviceIdSchema)(
-        env.VERCEL_ENV === "production"
-          ? env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID
-          : "fixture-ek1"
+        env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID
       );
 
       return ReservationAccessService.of({
-        clearExpiredAccessCodes: repository.clearExpiredAccessCodes,
+        loadGrant: (reservationId) =>
+          repository.findByReservationId(reservationId).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ReservationAccessIssuanceError({
+                  reservationId,
+                  outcome: "rejected",
+                  message: "Reservation access grant could not be loaded.",
+                  cause,
+                })
+            )
+          ),
+        confirmProviderCredentialRemoved: (reservationId) =>
+          repository
+            .reconcileUncertain({
+              reservationId,
+              reconciledAt: Temporal.Now.instant(),
+              provisioningStaleBefore: Temporal.Now.instant().subtract({
+                milliseconds:
+                  reservationAccessProvisioningStaleAfterMilliseconds,
+              }),
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ReservationAccessIssuanceError({
+                    reservationId,
+                    outcome: "rejected",
+                    message:
+                      "Reservation access is not awaiting provider reconciliation.",
+                    cause,
+                  })
+              )
+            ),
         issueForReservation: Effect.fn(
           "ReservationAccessService.issueForReservation"
         )(function* (input) {
@@ -152,18 +193,12 @@ export class ReservationAccessService extends Context.Service<
               )
             );
           if (existingGrant?.state === "issued") {
-            if (
-              existingGrant.deviceId !== deviceId ||
-              !existingGrant.scheduledAccessStartsAt.equals(
-                schedule.startsAt.toInstant()
-              ) ||
-              !existingGrant.accessEndsAt.equals(schedule.endsAt.toInstant())
-            ) {
+            if (existingGrant.deviceId !== deviceId) {
               yield* repository
                 .markUncertain({
                   id: existingGrant.id,
                   reservationId: input.reservationId,
-                  failureCode: "reservation_access_changed",
+                  failureCode: "reservation_access_device_changed",
                   failedAt: Temporal.Now.instant(),
                 })
                 .pipe(
@@ -180,31 +215,38 @@ export class ReservationAccessService extends Context.Service<
               return yield* new ReservationAccessIssuanceError({
                 reservationId: input.reservationId,
                 outcome: "uncertain",
-                message: "Reservation access changed after AlgoPIN issuance.",
+                message: "Reservation access device changed after issuance.",
               });
             }
-            const accessCode = yield* repository
-              .loadIssuedCode({
-                id: existingGrant.id,
-                reservationId: input.reservationId,
-              })
-              .pipe(
-                Effect.mapError(
-                  () =>
-                    new ReservationAccessIssuanceError({
-                      reservationId: input.reservationId,
-                      outcome: "rejected",
-                      message:
-                        "Issued reservation access could not be recovered.",
-                    })
-                )
-              );
-            return {
-              grantId: existingGrant.id,
-              accessCode,
-              accessStartsAt: existingGrant.accessStartsAt,
-              accessEndsAt: existingGrant.accessEndsAt,
-            };
+            if (
+              existingGrant.scheduledAccessStartsAt.equals(
+                schedule.startsAt.toInstant()
+              ) &&
+              existingGrant.accessEndsAt.equals(schedule.endsAt.toInstant())
+            ) {
+              const accessCode = yield* repository
+                .loadIssuedCode({
+                  id: existingGrant.id,
+                  reservationId: input.reservationId,
+                })
+                .pipe(
+                  Effect.mapError(
+                    () =>
+                      new ReservationAccessIssuanceError({
+                        reservationId: input.reservationId,
+                        outcome: "rejected",
+                        message:
+                          "Issued reservation access could not be recovered.",
+                      })
+                  )
+                );
+              return {
+                grantId: existingGrant.id,
+                accessCode,
+                accessStartsAt: existingGrant.accessStartsAt,
+                accessEndsAt: existingGrant.accessEndsAt,
+              };
+            }
           }
 
           const interval = yield* getReservationAccessInterval(input);
@@ -263,7 +305,7 @@ export class ReservationAccessService extends Context.Service<
 
           if (grant.state === "provisioning") {
             const staleBefore = Temporal.Now.instant().subtract({
-              milliseconds: RESERVATION_ACCESS_PROVISIONING_STALE_AFTER_MS,
+              milliseconds: reservationAccessProvisioningStaleAfterMilliseconds,
             });
             if (
               grant.provisioningStartedAt &&

@@ -453,6 +453,27 @@ export const loadFixtureReservation = (
         amount: { value: 30000, exponent: 2, currency: "CZK" },
       },
     ],
+    accessGrant:
+      reservation.status.group === "attention"
+        ? {
+            id: "fixture-access-grant",
+            state: "failed",
+            provider: "igloohome",
+            credentialType: "algopin_hourly",
+            deviceId: "EK1X16f8898a",
+            providerCredentialId: null,
+            accessName: `Deskohub ${reservation.id}`,
+            scheduledStartsAt: reservation.startsAt ?? startedAt,
+            startsAt: reservation.startsAt ?? startedAt,
+            endsAt: reservation.endsAt ?? reservation.updatedAt,
+            provisioningStartedAt: null,
+            issuedAt: null,
+            failedAt: reservation.updatedAt,
+            failureCode: "provider_request_rejected",
+            createdAt: startedAt,
+            updatedAt: reservation.updatedAt,
+          }
+        : null,
     otherCustomerReservations: reservations.filter(
       (item) => item.customerId === reservation.customerId && item.id !== id
     ),

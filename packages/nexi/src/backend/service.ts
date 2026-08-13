@@ -524,7 +524,7 @@ const toNexiOrderStatus = (status: OrderStatus) =>
 
 // XPay read APIs can omit their documented offset and return Rome wall time.
 const nexiLocalTimestampPattern =
-  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/;
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/;
 
 const normalizeNexiTimestamp = (value: string) => {
   if (!nexiLocalTimestampPattern.test(value)) return value;
