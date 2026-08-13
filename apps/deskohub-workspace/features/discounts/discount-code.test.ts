@@ -149,7 +149,9 @@ describe("stored discount code configuration", () => {
     [
       "invalid instant",
       codeRow({
-        validUntil: "invalid" as unknown as DiscountCode["validUntil"],
+        validUntil: Schema.decodeUnknownSync(Schema.Unknown)(
+          "invalid"
+        ) as DiscountCode["validUntil"],
       }),
     ],
   ])("rejects %s", async (_label, row) => {

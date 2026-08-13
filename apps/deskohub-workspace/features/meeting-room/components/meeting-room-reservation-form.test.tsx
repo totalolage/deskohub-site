@@ -181,7 +181,7 @@ const availabilityResponse = {
   notices: [],
 };
 
-const jsonResponse = (body: unknown) =>
+const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json" },

@@ -1,13 +1,26 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Deferred, Effect, Layer, Logger, References, Schema } from "effect";
+import {
+  type Context,
+  Deferred,
+  Effect,
+  Layer,
+  Logger,
+  References,
+  Schema,
+} from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
 import { getDiscountCommitmentPayload } from "./commitment";
+
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
+
 import {
   type ActiveSale,
   affirmedDiscountAdvertisementQuoteCodec,
@@ -170,7 +183,7 @@ describe("DiscountService", () => {
 
   test("recovers active-sale provider failures without exposing their cause", async () => {
     const logRecords: {
-      readonly annotations: Record<string, unknown>;
+      readonly annotations: LogAnnotations;
       readonly level: string;
     }[] = [];
     const logger = Logger.make((options) => {
@@ -584,7 +597,7 @@ describe("DiscountService", () => {
       cause: new Error("private provider detail"),
     });
     const logRecords: {
-      readonly annotations: Record<string, unknown>;
+      readonly annotations: LogAnnotations;
       readonly level: string;
     }[] = [];
     const logger = Logger.make((options) => {
@@ -1106,7 +1119,7 @@ describe("DiscountService", () => {
       cause: new Error("calendar unavailable"),
     });
     const logRecords: {
-      readonly annotations: Record<string, unknown>;
+      readonly annotations: LogAnnotations;
       readonly level: string;
     }[] = [];
     const logger = Logger.make((options) => {

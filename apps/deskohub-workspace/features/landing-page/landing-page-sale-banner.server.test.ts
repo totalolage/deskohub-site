@@ -1,11 +1,22 @@
 import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Logger, References, Schema } from "effect";
+import {
+  type Context,
+  Effect,
+  Layer,
+  Logger,
+  References,
+  Schema,
+} from "effect";
 import { TestClock } from "effect/testing";
 import { type ActiveSale, discountIdSchema } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
 
 mock.module("server-only", () => ({}));
 
@@ -137,7 +148,7 @@ describe("getActiveLandingPageSaleBanner", () => {
 
   test("fails closed and logs when overlapping sales are ambiguous", async () => {
     const logRecords: {
-      readonly annotations: Record<string, unknown>;
+      readonly annotations: LogAnnotations;
       readonly level: string;
     }[] = [];
     const logger = Logger.make((options) => {

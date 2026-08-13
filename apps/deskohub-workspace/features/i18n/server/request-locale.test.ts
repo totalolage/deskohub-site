@@ -11,8 +11,8 @@ mock.module("next/navigation", () => ({
   notFound: () => {
     throw notFoundError;
   },
-  unstable_rethrow: (error: unknown) => {
-    throw error;
+  unstable_rethrow: (cause: unknown) => {
+    throw cause;
   },
 }));
 

@@ -90,7 +90,7 @@ const normalizeResendTags = (tags: ResendWebhookEventInput["data"]["tags"]) => {
   }));
 };
 
-const decodeResendWebhookEvent = (input: unknown) =>
+const decodeResendWebhookEvent = <T>(input: T) =>
   Schema.decodeUnknownEffect(ResendWebhookEventInputSchema)(input).pipe(
     Effect.map(
       (event): ResendWebhookEvent => ({
@@ -170,9 +170,9 @@ export const ResendWebhookServiceLive = Layer.effect(
     const processVerifiedEvent = Effect.fn(
       "resendWebhook.processVerifiedEvent"
     )(
-      function* (input: {
+      function* <T>(input: {
         readonly eventId: ResendWebhookEventId;
-        readonly event: unknown;
+        readonly event: T;
       }) {
         const event = yield* decodeResendWebhookEvent(input.event).pipe(
           Effect.mapError(

@@ -22,6 +22,7 @@ import {
 import {
   getWorkspaceProductMessage,
   getWorkspaceProductTierTitle,
+  type WorkspaceProductTierCardMessages,
   workspaceProductMonitorMessages,
   workspaceProductTierCardMessages,
   workspaceProductTierMessages,
@@ -550,7 +551,8 @@ function CoworkTierPerks({
   readonly locale: Locale;
   readonly tier: WorkspaceCoworkProductTier;
 }) {
-  const content = workspaceProductTierCardMessages[tier];
+  const content: WorkspaceProductTierCardMessages =
+    workspaceProductTierCardMessages[tier];
 
   return (
     <div

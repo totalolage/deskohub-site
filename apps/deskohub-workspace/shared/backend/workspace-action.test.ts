@@ -123,11 +123,11 @@ describe("Workspace actions", () => {
       "./logging/posthog-otel"
     );
     const { defineWorkspaceAction } = await import("./workspace-action");
-    const provider = {
-      forceFlush: () => Promise.resolve(),
-    } as unknown as NonNullable<
+    const provider: NonNullable<
       Parameters<typeof registerPostHogLoggerProvider>[0]
-    >;
+    > = {
+      forceFlush: () => Promise.resolve(),
+    };
     const action = defineWorkspaceAction(
       {
         operation: "test.validation-flush",

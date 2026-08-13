@@ -19,7 +19,7 @@ const labels = {
   "cs-CZ": " Letní sleva ",
 } as const;
 
-const untrustedLabels = (value: unknown): DiscountDefinitionRow["labels"] =>
+const untrustedLabels = <T>(value: T): DiscountDefinitionRow["labels"] =>
   value as DiscountDefinitionRow["labels"];
 
 const percentageRow = (

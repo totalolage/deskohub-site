@@ -70,7 +70,7 @@ export interface NexiWebhookResult {
 
 export interface NexiWebhookService {
   readonly processNotification: (
-    payload: unknown
+    payload: Parameters<typeof decodeNexiWebhookNotification>[0]
   ) => Effect.Effect<NexiWebhookResult, NexiWebhookProcessingError>;
 }
 

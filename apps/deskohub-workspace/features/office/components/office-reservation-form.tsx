@@ -1,7 +1,7 @@
 "use client";
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Option, Schema } from "effect";
+import { Option, Predicate, Schema } from "effect";
 import { useEffect, useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
@@ -174,8 +174,9 @@ export function OfficeReservationForm({
   );
   const advertisedPriceResult =
     advertisedPriceResults[selectedAdvertisedPriceIndex];
-  const advertisedPrice =
-    typeof seats === "number" ? advertisedPricesBySeats.get(seats) : undefined;
+  const advertisedPrice = Predicate.isNumber(seats)
+    ? advertisedPricesBySeats.get(seats)
+    : undefined;
   const advertisedOfficeQuoteItem = advertisedPrice?.quote.items[0];
   const unavailableDates = useMemo(
     () => new Set(availabilityResult.availability?.unavailableDates ?? []),
@@ -195,7 +196,7 @@ export function OfficeReservationForm({
   useEffect(() => {
     if (
       maximumDayCount > 0 &&
-      typeof dayCount === "number" &&
+      Predicate.isNumber(dayCount) &&
       dayCount > maximumDayCount
     ) {
       form.setValue("dayCount", maximumDayCount, { shouldValidate: true });
@@ -204,7 +205,7 @@ export function OfficeReservationForm({
   const unavailable = Boolean(
     startsOn &&
       (maximumDayCount === 0 ||
-        (typeof dayCount === "number" && dayCount > maximumDayCount))
+        (Predicate.isNumber(dayCount) && dayCount > maximumDayCount))
   );
   const basePriceLabel = selection
     ? m.reservationOfficeBasePriceLabel(

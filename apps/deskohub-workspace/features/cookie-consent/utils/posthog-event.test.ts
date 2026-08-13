@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { preparePostHogEvent } from "./posthog-event";
 
-const createEvent = (event: string, properties: Record<string, unknown>) => ({
+const createEvent = (
+  event: string,
+  properties: Parameters<typeof preparePostHogEvent>[0]["properties"]
+) => ({
   uuid: "019ee060-bc9f-7070-aea9-9440835fe38f",
   event,
   properties,

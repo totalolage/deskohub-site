@@ -1,8 +1,11 @@
-export function formatError(error: unknown): {
+import { Predicate } from "effect";
+
+export function formatError(cause: unknown): {
   code: string;
   message: string;
   details?: unknown;
 } {
+  const error = cause;
   if (error instanceof Error) {
     return {
       code: error.name || "UNKNOWN_ERROR",
@@ -17,29 +20,30 @@ export function formatError(error: unknown): {
   };
 }
 
-const getScalarProperty = (
-  input: object,
+const getScalarProperty = <T extends object>(
+  input: T,
   property: string
 ): string | number | boolean | undefined => {
   const value = Object.getOwnPropertyDescriptor(input, property)?.value;
 
-  return typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
+  return Predicate.isString(value) ||
+    Predicate.isNumber(value) ||
+    Predicate.isBoolean(value)
     ? value
     : undefined;
 };
 
-export const serializeErrorForLog = (error: unknown, depth = 0): unknown => {
+export const serializeErrorForLog = (cause: unknown, depth = 0): unknown => {
+  const error = cause;
   if (depth > 2) {
     return "[truncated]";
   }
 
   if (
     error === null ||
-    typeof error === "string" ||
-    typeof error === "number" ||
-    typeof error === "boolean"
+    Predicate.isString(error) ||
+    Predicate.isNumber(error) ||
+    Predicate.isBoolean(error)
   ) {
     return error;
   }
@@ -75,7 +79,7 @@ export const serializeErrorForLog = (error: unknown, depth = 0): unknown => {
     };
   }
 
-  if (typeof error === "object") {
+  if (Predicate.isObject(error)) {
     const details = {
       name: getScalarProperty(error, "name"),
       message: getScalarProperty(error, "message"),

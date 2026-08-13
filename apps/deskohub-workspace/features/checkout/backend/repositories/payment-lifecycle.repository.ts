@@ -9,7 +9,7 @@ import type {
 } from "@deskohub/nexi";
 import { and, count, eq, inArray } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
   WorkspaceDatabase,
@@ -1587,12 +1587,12 @@ const activeClaimConstraints = new Set([
 ]);
 
 const getUniqueConstraint = (cause: unknown): string | undefined => {
-  if (typeof cause !== "object" || cause === null) return undefined;
+  if (!Predicate.isObject(cause)) return undefined;
   if (
     "_tag" in cause &&
     cause._tag === "UniqueViolation" &&
     "constraint" in cause &&
-    typeof cause.constraint === "string"
+    Predicate.isString(cause.constraint)
   ) {
     return cause.constraint;
   }

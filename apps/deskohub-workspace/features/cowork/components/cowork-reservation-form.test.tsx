@@ -197,7 +197,7 @@ const profiAdvertisedPriceResponse = {
   advertisedPriceToken: "sealed-profi-advertised-price",
 };
 
-const jsonResponse = (body: unknown, status = 200) =>
+const jsonResponse = <T,>(body: T, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },

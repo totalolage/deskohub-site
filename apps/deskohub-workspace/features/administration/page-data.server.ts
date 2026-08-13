@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
@@ -32,7 +32,7 @@ export type AdministrationSearchParams = Promise<
 >;
 
 const firstParam = (value: string | readonly string[] | undefined) =>
-  typeof value === "string" ? value : value?.[0];
+  Predicate.isString(value) ? value : value?.[0];
 
 const parsePage = (value: string | undefined) => {
   const page = Number(value);

@@ -2,9 +2,9 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 
-const overrideFeatureFlags = mock((_overrides: unknown) => undefined);
+const overrideFeatureFlags = mock(<T>(_overrides: T) => undefined);
 
 mock.module("posthog-node", () => ({
   cookieStoreFromHeader: (header: string) => {
@@ -51,8 +51,9 @@ mock.module("posthog-node", () => ({
           enabled: isEnabled(key),
           key,
           payload: undefined,
-          variant:
-            typeof overrides[key] === "string" ? overrides[key] : undefined,
+          variant: Predicate.isString(overrides[key])
+            ? overrides[key]
+            : undefined,
         }),
       overrideFeatureFlags: (
         configuredOverrides: Readonly<Record<string, boolean | string>>

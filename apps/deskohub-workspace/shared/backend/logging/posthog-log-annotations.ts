@@ -28,8 +28,8 @@ export function getPostHogLogAnnotationsFromCookieValues({
   sessionId,
 }: PostHogRequestContext): PostHogLogAnnotations {
   return {
-    ...(distinctId ? { posthogDistinctId: distinctId } : {}),
-    ...(sessionId ? { sessionId } : {}),
+    posthogDistinctId: distinctId,
+    sessionId,
   };
 }
 

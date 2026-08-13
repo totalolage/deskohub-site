@@ -119,8 +119,8 @@ const workspaceAvailabilitySchema = Schema.toStandardSchemaV1(
   workspaceAvailabilityResponseSchema
 );
 
-export const parseWorkspaceAvailabilityResponse = (
-  value: unknown
+export const parseWorkspaceAvailabilityResponse = <T>(
+  value: T
 ): WorkspaceAvailability =>
   parseStandardSchema(
     workspaceAvailabilitySchema,

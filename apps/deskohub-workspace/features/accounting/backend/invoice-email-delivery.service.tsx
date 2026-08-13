@@ -344,9 +344,8 @@ const deliveryError = (
     readonly cause?: unknown;
   }
 ) =>
-  new InvoiceEmailDeliveryError({
-    ...input,
-    ...(input.cause === undefined
-      ? {}
-      : { cause: censorLogValue(input.cause) }),
-  });
+  new InvoiceEmailDeliveryError(
+    input.cause === undefined
+      ? input
+      : { ...input, cause: censorLogValue(input.cause) }
+  );

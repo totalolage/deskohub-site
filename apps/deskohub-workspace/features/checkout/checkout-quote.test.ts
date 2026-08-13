@@ -352,7 +352,7 @@ describe("cowork reservation quotes", () => {
       email: "ada@example.com",
       phone: "+420 777 777 777",
       message: "Please keep this private.",
-    } as unknown as CoworkReservationQuoteOrder;
+    } as const;
 
     const quote = buildCoworkReservationQuote(orderWithRuntimeExtras);
 
@@ -370,7 +370,7 @@ describe("cowork reservation quotes", () => {
       entryTier: "plus",
       coffee: false,
     });
-    const quoteWithRuntimeExtras = buildCoworkReservationQuote({
+    const orderWithRuntimeExtras = {
       entryTier: "plus",
       date: "2026-06-01",
       coffee: false,
@@ -379,7 +379,10 @@ describe("cowork reservation quotes", () => {
       email: "grace@example.com",
       phone: "+420 111 111 111",
       message: "Do not fingerprint this.",
-    } as unknown as CoworkReservationQuoteOrder);
+    } as const;
+    const quoteWithRuntimeExtras = buildCoworkReservationQuote(
+      orderWithRuntimeExtras
+    );
 
     expect(quoteWithRuntimeExtras.fingerprint).toBe(cleanQuote.fingerprint);
   });

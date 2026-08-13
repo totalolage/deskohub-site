@@ -45,7 +45,7 @@ export function createPostHogLoggerProvider({
     resource: resourceFromAttributes({
       "deployment.environment.name": vercelEnv,
       ...workspaceServiceResourceAttributes,
-      ...(vercelGitCommitSha ? { "service.version": vercelGitCommitSha } : {}),
+      "service.version": vercelGitCommitSha,
     }),
     processors: [
       new BatchLogRecordProcessor(

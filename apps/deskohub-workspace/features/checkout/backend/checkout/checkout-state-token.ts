@@ -248,7 +248,7 @@ const parseJson = Effect.fn("checkoutStateToken.parseJson")(
 );
 
 const stringifyJson = Effect.fn("checkoutStateToken.stringifyJson")(
-  (value: unknown) =>
+  <T>(value: T) =>
     Effect.try({
       try: () => JSON.stringify(value),
       catch: (cause) =>
@@ -262,8 +262,8 @@ const decodeProtectedHeader = Schema.decodeUnknownEffect(
 );
 
 export const sealCheckoutState = Effect.fn("checkoutStateToken.seal")(
-  function* (
-    state: unknown,
+  function* <T>(
+    state: T,
     keyId: CheckoutStateKeyId,
     options: CheckoutStateCryptoOptions = {}
   ) {

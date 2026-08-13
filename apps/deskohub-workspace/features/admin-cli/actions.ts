@@ -1,7 +1,7 @@
 "use server";
 
 import { CliSessionId } from "@deskohub/workspace-admin-api";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
@@ -14,7 +14,7 @@ import { decodeCliAuthenticationCode } from "./page-data.server";
 
 export async function approveCliAuthentication(formData: FormData) {
   const rawCode = formData.get("code");
-  const codeForRedirect = typeof rawCode === "string" ? rawCode : "";
+  const codeForRedirect = Predicate.isString(rawCode) ? rawCode : "";
 
   const approved = await Effect.gen(function* () {
     yield* requireDiscountAdminAuthorization();

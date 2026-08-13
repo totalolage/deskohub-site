@@ -17,10 +17,7 @@ type CancellationLifecycleStage = Extract<
   "hold_expired" | "cancelling" | "cancellation_failed" | "cancelled"
 >;
 
-const cancellationStagePresentation: Record<
-  CancellationLifecycleStage,
-  { readonly label: string; readonly note: string }
-> = {
+const cancellationStagePresentation = {
   hold_expired: {
     label: "Hold expired",
     note: "Waiting for the held booking to be released",
@@ -34,7 +31,10 @@ const cancellationStagePresentation: Record<
     note: "The held booking still needs attention",
   },
   cancelled: { label: "Cancelled", note: "The hold was released" },
-};
+} satisfies Record<
+  CancellationLifecycleStage,
+  { readonly label: string; readonly note: string }
+>;
 
 const isCancellationStage = (
   stage: AdministrationLifecycleStage

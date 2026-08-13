@@ -13,8 +13,13 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
-import { Cause, Effect, Layer, Logger, References } from "effect";
+import { Cause, type Context, Effect, Layer, Logger, References } from "effect";
 import { createTracingLive } from "../observability/otel-tracing";
+
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
+
 import {
   CENSORED_LOG_VALUE,
   censorDatabaseQueryParams,
@@ -209,8 +214,14 @@ describe("censorLogValue", () => {
   });
 
   test("handles cycles while preserving the censored cycle shape", () => {
-    const input: { name: string; self?: unknown; token?: string } = {
+    type CyclicLogInput = {
+      readonly name: string;
+      self?: CyclicLogInput;
+      readonly token?: string;
+    };
+    const input = {
       name: "cycle",
+      self: undefined as CyclicLogInput | undefined,
       token: "secret-token",
     };
     input.self = input;
@@ -473,7 +484,7 @@ describe("censorLoggerOptions", () => {
       date: new Date(0),
       fiber: {
         id: 1,
-        getRef: (ref: unknown) =>
+        getRef: <T>(ref: T) =>
           ref === References.CurrentLogAnnotations ? annotations : [],
       },
     } as Logger.Options<unknown>;
@@ -506,7 +517,7 @@ describe("censorLoggerOptions", () => {
       date: new Date(0),
       fiber: {
         id: 1,
-        getRef: (ref: unknown) =>
+        getRef: <T>(ref: T) =>
           ref === References.CurrentLogAnnotations ? annotations : [],
       },
     } as Logger.Options<unknown>;
@@ -521,7 +532,7 @@ describe("censorLoggerOptions", () => {
   });
 
   test("database query logging retains only selectively censored parameters", async () => {
-    let capturedAnnotations: Readonly<Record<string, unknown>> = {};
+    let capturedAnnotations: LogAnnotations = {};
     const captureLogger = Logger.make((options) => {
       capturedAnnotations = options.fiber.getRef(
         References.CurrentLogAnnotations

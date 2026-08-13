@@ -22,7 +22,7 @@ export const createTracingLive = ({
   const resourceLive = OtelResource.layer({
     attributes,
     serviceName,
-    ...(serviceVersion ? { serviceVersion } : {}),
+    serviceVersion,
   });
 
   return OtelTracer.layer.pipe(

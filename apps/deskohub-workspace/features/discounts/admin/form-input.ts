@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import {
   type WorkspaceProductTarget,
   workspaceProductTargets,
@@ -45,7 +46,7 @@ export const readDiscountForm = (
     products: formData
       .getAll("products")
       .flatMap((value) =>
-        typeof value === "string" ? (productTargets[value] ?? []) : []
+        Predicate.isString(value) ? (productTargets[value] ?? []) : []
       ) as [WorkspaceProductTarget, ...WorkspaceProductTarget[]],
   };
 };
@@ -80,7 +81,7 @@ export const readDiscountCodeConfigurationForm = (
 
 const readString = (formData: FormData, field: string) => {
   const value = formData.get(field);
-  return typeof value === "string" ? value : "";
+  return Predicate.isString(value) ? value : "";
 };
 
 const readOptionalString = (formData: FormData, field: string) => {
