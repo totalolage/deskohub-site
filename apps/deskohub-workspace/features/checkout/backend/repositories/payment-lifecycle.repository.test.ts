@@ -197,6 +197,23 @@ describe("PaymentLifecycleRepository", () => {
     );
   });
 
+  test("rechecks released claim capacity before late-payment redemption", async () => {
+    const source = await readRepository();
+    const redeemClaim = sliceFrom(
+      source,
+      'const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")',
+      "const releaseCodeClaim"
+    );
+
+    expect(redeemClaim).toContain(".from(discountCodes)");
+    expect(redeemClaim).toContain('.for("update")');
+    expect(redeemClaim).toContain("discountCodeRedemptions.dotyposCustomerId");
+    expect(redeemClaim).toContain(
+      'inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])'
+    );
+    expect(redeemClaim).toContain('reason: "usage_limit_reached"');
+  });
+
   test("rejects inconsistent committed money before opening a transaction", async () => {
     const discountId =
       Schema.decodeUnknownSync(discountIdSchema)("public-discount");

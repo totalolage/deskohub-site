@@ -306,12 +306,24 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
           claimed.originalDotyposReservationId
         );
         if (status === "NEW" || status === "CONFIRMED") {
-          yield* recoveries.completeUsingOriginalReservation({
-            paymentAttemptId: claimed.paymentAttemptId,
-            workspaceReservationId: reservation.id,
-            reservationState: status === "CONFIRMED" ? "confirmed" : "held",
-            completedAt: Temporal.Now.instant(),
-          });
+          const recovered = yield* recoveries
+            .completeUsingOriginalReservation({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              reservationState: status === "CONFIRMED" ? "confirmed" : "held",
+              completedAt: Temporal.Now.instant(),
+            })
+            .pipe(
+              Effect.as(true),
+              Effect.catchTag("DiscountClaimError", () =>
+                settleRefund({
+                  paymentAttemptId: claimed.paymentAttemptId,
+                  workspaceReservationId: reservation.id,
+                  failureCode: "late_payment_discount_unavailable",
+                }).pipe(Effect.as(false))
+              )
+            );
+          if (!recovered) return "refund_required" as const;
           yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id });
           return "recovered" as const;
         }
@@ -481,6 +493,16 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
                 paymentAttemptId: claimed.paymentAttemptId,
                 workspaceReservationId: reservation.id,
                 failureCode: "late_payment_newer_reservation",
+              });
+            })
+          ),
+          Effect.catchTag("DiscountClaimError", () =>
+            Effect.gen(function* () {
+              yield* dotypos.cancelReservation(replacementId);
+              yield* settleRefund({
+                paymentAttemptId: claimed.paymentAttemptId,
+                workspaceReservationId: reservation.id,
+                failureCode: "late_payment_discount_unavailable",
               });
             })
           )
