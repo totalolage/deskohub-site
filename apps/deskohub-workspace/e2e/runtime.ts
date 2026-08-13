@@ -204,11 +204,14 @@ class PlaywrightRuntime {
           requireArgument(commandArgs[0], "keyboard key")
         );
         return "";
-      case "snapshot":
-        return frame().locator("body").ariaSnapshot({
+      case "snapshot": {
+        const body = frame().locator("body");
+        await body.waitFor({ state: "attached", timeout: timeoutMs });
+        return body.ariaSnapshot({
           mode: "ai",
           timeout: timeoutMs,
         });
+      }
       case "get":
         if (commandArgs[0] === "url") return page().url();
         if (commandArgs[0] === "value")
