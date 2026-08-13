@@ -1,11 +1,18 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { Effect } from "effect";
 import { CENSORED_LOG_VALUE } from "./logging/censorship";
-import {
-  defineWorkspacePage,
-  defineWorkspaceTask,
-  runWorkspaceEffect,
-} from "./workspace-effect";
+
+const emitPostHogLog = mock(() => undefined);
+
+mock.module("@/instrumentation", () => ({
+  postHogLoggerProvider: {
+    forceFlush: () => Promise.resolve(),
+    getLogger: () => ({ emit: emitPostHogLog }),
+  },
+}));
+
+const { defineWorkspacePage, defineWorkspaceTask, runWorkspaceEffect } =
+  await import("./workspace-effect");
 
 describe("Workspace Effect execution", () => {
   test("provides the censored Workspace logger", async () => {
@@ -23,6 +30,16 @@ describe("Workspace Effect execution", () => {
     } finally {
       log.mockRestore();
     }
+  });
+
+  test("emits logs through the provider exported by instrumentation", async () => {
+    emitPostHogLog.mockClear();
+
+    await Effect.logInfo("exported").pipe(
+      runWorkspaceEffect("test.posthog-export")
+    );
+
+    expect(emitPostHogLog).toHaveBeenCalledTimes(1);
   });
 
   test("tasks preserve success and failure results", async () => {
