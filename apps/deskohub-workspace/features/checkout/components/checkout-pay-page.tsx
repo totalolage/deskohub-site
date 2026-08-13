@@ -4,7 +4,7 @@ import Interpolate from "@doist/react-interpolate";
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
@@ -62,6 +62,7 @@ export function CheckoutPayPage({
   variant,
 }: CheckoutPayPageProps) {
   const router = useRouter();
+  const hostedPaymentActivatedRef = useRef(false);
   const [legalConsent, setLegalConsent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const {
@@ -179,6 +180,11 @@ export function CheckoutPayPage({
           <a
             href={hostedPayment.redirectUrl}
             onClick={(event) => {
+              if (hostedPaymentActivatedRef.current) {
+                event.preventDefault();
+                return;
+              }
+              hostedPaymentActivatedRef.current = true;
               const paymentWindow = window.open("about:blank", "_blank");
               if (paymentWindow) {
                 event.preventDefault();

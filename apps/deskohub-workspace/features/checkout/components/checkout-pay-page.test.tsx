@@ -270,7 +270,9 @@ describe("CheckoutPayPage payment navigation", () => {
 
     paymentLink.addEventListener("click", (event) => event.preventDefault());
     fireEvent.click(paymentLink);
+    fireEvent.click(paymentLink);
 
+    expect(openPaymentWindow).toHaveBeenCalledTimes(1);
     expect(openPaymentWindow).toHaveBeenCalledWith("about:blank", "_blank");
     expect(paymentWindow.opener).toBeNull();
     expect(replacePaymentLocation).toHaveBeenCalledWith(
