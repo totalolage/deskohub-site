@@ -175,7 +175,13 @@ export function CheckoutPayPage({
         >
           <a
             href={hostedPayment.redirectUrl}
-            onClick={() => {
+            onClick={(event) => {
+              const paymentWindow = window.open("about:blank", "_blank");
+              if (paymentWindow) {
+                event.preventDefault();
+                paymentWindow.opener = null;
+                paymentWindow.location.replace(hostedPayment.redirectUrl);
+              }
               markCheckoutStatusWindowOwner(hostedPayment.statusUrl);
               router.push(hostedPayment.statusUrl);
             }}

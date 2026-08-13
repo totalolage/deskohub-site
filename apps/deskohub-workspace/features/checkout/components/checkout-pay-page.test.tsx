@@ -162,7 +162,14 @@ describe("CheckoutPayPage payment navigation", () => {
 
   test("opens the payment gateway in a new tab and sends the original tab to status", async () => {
     const execute = mock();
-    const openPaymentWindow = spyOn(window, "open");
+    const replacePaymentLocation = mock();
+    const paymentWindow = {
+      location: { replace: replacePaymentLocation },
+      opener: window,
+    };
+    const openPaymentWindow = spyOn(window, "open").mockImplementation(
+      () => paymentWindow as Window
+    );
     workspaceUseAction.mockReturnValue({
       execute,
       isExecuting: false,
@@ -264,6 +271,11 @@ describe("CheckoutPayPage payment navigation", () => {
     paymentLink.addEventListener("click", (event) => event.preventDefault());
     fireEvent.click(paymentLink);
 
+    expect(openPaymentWindow).toHaveBeenCalledWith("about:blank", "_blank");
+    expect(paymentWindow.opener).toBeNull();
+    expect(replacePaymentLocation).toHaveBeenCalledWith(
+      "https://payments.example.test/checkout"
+    );
     expect(workspaceRouterPush).toHaveBeenCalledWith(
       "/en-US/reservation/status/reservation-id"
     );
