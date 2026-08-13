@@ -14,7 +14,7 @@ import {
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { DiscountClaimError } from "@/features/discounts/errors";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { redeemDiscountCodeClaim } from "./payment-lifecycle.repository";
+import { redeemCodeClaim } from "./payment-lifecycle.repository";
 
 export class LatePaymentRecoveryStateError extends Data.TaggedError(
   "LatePaymentRecoveryStateError"
@@ -260,10 +260,11 @@ export class LatePaymentRecoveryRepository extends Context.Service<
               }
 
               if (input.state === "recovered") {
-                yield* redeemDiscountCodeClaim(
+                yield* redeemCodeClaim(
                   tx,
                   input.paymentAttemptId,
-                  recovery.verifiedPaidAt
+                  recovery.verifiedPaidAt,
+                  true
                 );
               }
 

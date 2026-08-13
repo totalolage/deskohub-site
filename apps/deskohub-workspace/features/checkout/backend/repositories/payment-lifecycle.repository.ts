@@ -1494,7 +1494,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
   }
 );
 
-const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
+export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
   function* (
     tx: TransactionClient,
     paymentAttemptId: PaymentAttemptId,
@@ -1605,12 +1605,6 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       );
   }
 );
-
-export const redeemDiscountCodeClaim = (
-  tx: TransactionClient,
-  paymentAttemptId: PaymentAttemptId,
-  redeemedAt: Temporal.Instant
-) => redeemCodeClaim(tx, paymentAttemptId, redeemedAt, true);
 
 const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
   function* (
