@@ -73,11 +73,7 @@ export class ReservationAdministrationService extends Context.Service<
             if (current.reservationState === "cancelled") {
               return {
                 outcome: "already_cancelled",
-                email: yield* sendCancellationEmail({
-                  input,
-                  reservationDetails,
-                  emails,
-                }),
+                email: "not_requested",
               };
             }
             if (!canCancelReservation(current)) {
@@ -197,30 +193,8 @@ export class ReservationAdministrationService extends Context.Service<
   );
 }
 
-const sendCancellationEmail = ({
-  emails,
-  input,
-  reservationDetails,
-}: {
-  readonly emails: IWorkspaceReservationEmailService;
-  readonly input: {
-    readonly reservationId: WorkspaceReservationId;
-    readonly sendCancellationEmail: boolean;
-  };
-  readonly reservationDetails: IWorkspaceReservationService;
-}) =>
-  input.sendCancellationEmail
-    ? reservationDetails.getReservation(input.reservationId).pipe(
-        Effect.flatMap((details) =>
-          sendLoadedCancellationEmail({ send: true, details, emails })
-        ),
-        Effect.orElseSucceed(() => "failed" as const)
-      )
-    : Effect.succeed("not_requested" as const);
-
 type IWorkspaceReservationEmailService =
   WorkspaceReservationEmailService["Service"];
-type IWorkspaceReservationService = WorkspaceReservationService["Service"];
 
 const sendLoadedCancellationEmail = ({
   details,

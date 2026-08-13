@@ -73,3 +73,57 @@ test("operator cancellation cancels Dotypos, records the result, and optionally 
   expect(markAdministrationCancelled).toHaveBeenCalledTimes(1);
   expect(sendCancellationEmail).toHaveBeenCalledWith({ reservation: details });
 });
+
+test("retrying an already-cancelled reservation does not email again", async () => {
+  const { WorkspaceReservationEmailService } = await import(
+    "@/features/checkout/backend/fulfillment/workspace-reservation-email.service"
+  );
+  const { WorkspaceReservationRepository } = await import(
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const { WorkspaceReservationService } = await import(
+    "@/features/reservation/backend/workspace-reservation.service"
+  );
+  const { ReservationAdministrationService } = await import(
+    "./reservation-administration.service"
+  );
+  const id = Schema.decodeUnknownSync(workspaceReservationIdSchema)(
+    "reservation-cancelled"
+  );
+  const sendCancellationEmail = mock(() => Effect.void);
+
+  const result = await Effect.gen(function* () {
+    const service = yield* ReservationAdministrationService;
+    return yield* service.cancel({
+      reservationId: id,
+      sendCancellationEmail: true,
+    });
+  }).pipe(
+    Effect.provide(
+      ReservationAdministrationService.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(DotyposService, {}),
+            Layer.mock(WorkspaceReservationEmailService, {
+              sendCancellationEmail,
+            }),
+            Layer.mock(WorkspaceReservationRepository, {
+              findById: () =>
+                Effect.succeed({ id, reservationState: "cancelled" } as never),
+            }),
+            Layer.mock(WorkspaceReservationService, {
+              getReservation: () => Effect.die("details must not be loaded"),
+            })
+          )
+        )
+      )
+    ),
+    Effect.runPromise
+  );
+
+  expect(result).toEqual({
+    outcome: "already_cancelled",
+    email: "not_requested",
+  });
+  expect(sendCancellationEmail).not.toHaveBeenCalled();
+});
