@@ -11,10 +11,7 @@ import {
 import { Effect, Layer, Result, Schema } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessGrantIdSchema } from "../reservation-access";
-import {
-  type IReservationAccessRepository,
-  ReservationAccessRepository,
-} from "./reservation-access.repository";
+import { ReservationAccessRepository } from "./reservation-access.repository";
 import {
   getReservationAccessInterval,
   ReservationAccessService,
@@ -153,11 +150,7 @@ describe("ReservationAccessService", () => {
     const issueHourlyAlgoPin = mock(() =>
       Effect.die("Igloohome must not be called")
     );
-    const repository = {
-      findByReservationId: mock(() => Effect.succeed(pastGrant)),
-      ensure: mock(() => Effect.succeed(pastGrant)),
-      loadIssuedCode: mock(() => Effect.succeed(accessCode)),
-    } as unknown as IReservationAccessRepository;
+    const ensure = mock(() => Effect.succeed(pastGrant));
 
     const issued = await Effect.gen(function* () {
       const service = yield* ReservationAccessService;
@@ -167,8 +160,12 @@ describe("ReservationAccessService", () => {
         ReservationAccessService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ReservationAccessRepository, repository),
-              Layer.succeed(IgloohomeService, { issueHourlyAlgoPin })
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(pastGrant)),
+                ensure,
+                loadIssuedCode: mock(() => Effect.succeed(accessCode)),
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
             )
           )
         )
@@ -177,7 +174,7 @@ describe("ReservationAccessService", () => {
     );
 
     expect(issued.accessCode).toBe(accessCode);
-    expect(repository.ensure).not.toHaveBeenCalled();
+    expect(ensure).not.toHaveBeenCalled();
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
@@ -197,13 +194,6 @@ describe("ReservationAccessService", () => {
       const issueHourlyAlgoPin = mock(() =>
         Effect.die("Igloohome must not be called")
       );
-      const repository = {
-        findByReservationId: mock(() => Effect.succeed(existingGrant)),
-        ensure: mock(() => Effect.die("grant must not be replaced")),
-        loadIssuedCode,
-        markUncertain,
-      } as unknown as IReservationAccessRepository;
-
       const result = await Effect.gen(function* () {
         const service = yield* ReservationAccessService;
         return yield* service
@@ -214,8 +204,15 @@ describe("ReservationAccessService", () => {
           ReservationAccessService.Live.pipe(
             Layer.provide(
               Layer.mergeAll(
-                Layer.succeed(ReservationAccessRepository, repository),
-                Layer.succeed(IgloohomeService, { issueHourlyAlgoPin })
+                Layer.mock(ReservationAccessRepository, {
+                  findByReservationId: mock(() =>
+                    Effect.succeed(existingGrant)
+                  ),
+                  ensure: mock(() => Effect.die("grant must not be replaced")),
+                  loadIssuedCode,
+                  markUncertain,
+                }),
+                Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
               )
             )
           )
@@ -245,14 +242,6 @@ describe("ReservationAccessService", () => {
         })
       )
     );
-    const repository = {
-      findByReservationId: mock(() => Effect.succeed(null)),
-      ensure: mock(() => Effect.succeed({ ...grant, state: "pending" })),
-      claim: mock(() => Effect.succeed(true)),
-      markUncertain,
-      markFailed,
-    } as unknown as IReservationAccessRepository;
-
     const result = await Effect.gen(function* () {
       const service = yield* ReservationAccessService;
       return yield* service
@@ -263,8 +252,16 @@ describe("ReservationAccessService", () => {
         ReservationAccessService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ReservationAccessRepository, repository),
-              Layer.succeed(IgloohomeService, { issueHourlyAlgoPin })
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(null)),
+                ensure: mock(() =>
+                  Effect.succeed({ ...grant, state: "pending" })
+                ),
+                claim: mock(() => Effect.succeed(true)),
+                markUncertain,
+                markFailed,
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
             )
           )
         )
