@@ -94,7 +94,6 @@ export const workspaceReservations = pgTable(
     dotyposReservationId: text(
       "dotypos_reservation_id"
     ).$type<DotyposReservationId>(),
-    customerAccessCode: text("customer_access_code").notNull(),
     reservationState: text("reservation_state")
       .notNull()
       .$type<ReservationState>(),

@@ -38,6 +38,7 @@
     "@deskohub/dotypos": "workspace:*",
     "@deskohub/email": "workspace:*",
     "@deskohub/google-calendar": "workspace:*",
+    "@deskohub/igloohome": "workspace:*",
     "@deskohub/i18n": "workspace:*",
     "@deskohub/nexi": "workspace:*",
     "@deskohub/next-effect": "workspace:*",

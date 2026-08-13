@@ -539,7 +539,6 @@ const createPaidFixture = (
           correlationId: NexiCorrelationIdSchema.make(randomUUID()),
           dotyposCustomerId,
           dotyposReservationId,
-          customerAccessCode: randomUUID(),
           reservationState: paid ? "confirmed" : "held",
           paymentState: paid ? "paid" : "pending",
           fulfillmentState: fulfilled
