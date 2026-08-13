@@ -7,6 +7,7 @@ import { WorkspaceReservationService } from "@/features/reservation/backend/work
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   type ReservationAccessGrant,
+  type ReservationAccessIssuanceError,
   ReservationAccessService,
 } from "@/features/reservation-access";
 
@@ -24,7 +25,11 @@ export type ReservationAccessAdministrationMutation =
 export class ReservationAccessAdministrationError extends Data.TaggedError(
   "ReservationAccessAdministrationError"
 )<{
-  readonly reason: "not_found" | "invalid_state" | "recovery_failed";
+  readonly reason:
+    | "not_found"
+    | "invalid_state"
+    | "retryable_failure"
+    | "recovery_failed";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -54,7 +59,7 @@ export class ReservationAccessAdministration extends Context.Service<
           function* (mutation) {
             const grant = yield* access
               .loadGrant(mutation.reservationId)
-              .pipe(mapRecoveryFailure);
+              .pipe(mapRetryableFailure);
             if (!grant) {
               return yield* new ReservationAccessAdministrationError({
                 reason: "not_found",
@@ -72,11 +77,7 @@ export class ReservationAccessAdministration extends Context.Service<
                       ),
                 "confirm-provider-credential-removed": () =>
                   grant.state === "uncertain"
-                    ? access
-                        .confirmProviderCredentialRemoved(
-                          mutation.reservationId
-                        )
-                        .pipe(Effect.asVoid, mapRecoveryFailure)
+                    ? Effect.void
                     : invalidState(
                         "Only uncertain access can be reconciled after provider removal."
                       ),
@@ -85,14 +86,19 @@ export class ReservationAccessAdministration extends Context.Service<
 
             const target = yield* reservations
               .getAccessTarget(mutation.reservationId)
-              .pipe(mapRecoveryFailure);
+              .pipe(mapRetryableFailure);
+            if (mutation.kind === "confirm-provider-credential-removed") {
+              yield* access
+                .confirmProviderCredentialRemoved(mutation.reservationId)
+                .pipe(Effect.asVoid, mapRecoveryFailure);
+            }
             yield* access
               .issueForReservation({
                 reservationId: mutation.reservationId,
                 reservedFrom: target.reservedFrom,
                 reservedUntil: target.reservedUntil,
               })
-              .pipe(Effect.asVoid, mapRecoveryFailure);
+              .pipe(Effect.asVoid, mapIssuanceFailure);
             yield* fulfillment
               .fulfillPaidOrder({ orderId: mutation.reservationId })
               .pipe(
@@ -142,6 +148,33 @@ const mapRecoveryFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         new ReservationAccessAdministrationError({
           reason: "recovery_failed",
           message: "Reservation access recovery failed.",
+          cause,
+        })
+    )
+  );
+
+const mapRetryableFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  effect.pipe(
+    Effect.mapError(
+      (cause) =>
+        new ReservationAccessAdministrationError({
+          reason: "retryable_failure",
+          message: "Reservation access recovery is temporarily unavailable.",
+          cause,
+        })
+    )
+  );
+
+const mapIssuanceFailure = <A, R>(
+  effect: Effect.Effect<A, ReservationAccessIssuanceError, R>
+) =>
+  effect.pipe(
+    Effect.mapError(
+      (cause) =>
+        new ReservationAccessAdministrationError({
+          reason:
+            cause.outcome === "rejected" ? "invalid_state" : "recovery_failed",
+          message: cause.message,
           cause,
         })
     )

@@ -143,15 +143,14 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                     })
                     .pipe(
                       Effect.map(toCliReservationAccessGrant),
-                      Effect.mapError(mapReservationAccessMutationFailure),
                       Effect.tapError((cause) =>
-                        cause instanceof CliResourceNotFound ||
-                        cause instanceof CliMutationRejected
-                          ? mutationIdempotency
+                        cause.reason === "recovery_failed"
+                          ? Effect.void
+                          : mutationIdempotency
                               .release(request)
                               .pipe(Effect.catch(() => Effect.void))
-                          : Effect.void
                       ),
+                      Effect.mapError(mapReservationAccessMutationFailure),
                       Effect.tap((result) =>
                         mutationIdempotency
                           .complete({ ...request, result })
@@ -432,6 +431,7 @@ const mapReservationAccessMutationFailure = (
       "invalid_state",
       () => new CliMutationRejected({ message: cause.message })
     ),
+    Match.when("retryable_failure", makeServiceUnavailable),
     Match.when("recovery_failed", makeServiceUnavailable),
     Match.exhaustive
   );

@@ -12,6 +12,7 @@ import {
   CliMutationRejected,
   CliMutationRequestId,
   CliResourceNotFound,
+  CliServiceUnavailable,
   CliSessionId,
   CurrentCliSession,
   WorkspaceAdminApi,
@@ -698,6 +699,9 @@ describe("Workspace Admin API", () => {
     const rejectedRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
       "01980000-0000-7000-8000-000000000021"
     );
+    const retryableRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000022"
+    );
     const grant = {
       id: "access-1" as ReservationAccessGrant["id"],
       reservationId: "reservation-1",
@@ -717,9 +721,21 @@ describe("Workspace Admin API", () => {
       updatedAt: instant,
     } satisfies ReservationAccessGrant;
     let executions = 0;
+    let retryableExecutions = 0;
     const reservationAccess = Layer.succeed(ReservationAccessAdministration, {
-      mutate: (mutation) =>
-        mutation.kind === "retry-failed"
+      mutate: (mutation) => {
+        if (mutation.reservationId === "transient-reservation") {
+          retryableExecutions += 1;
+          return retryableExecutions === 1
+            ? Effect.fail(
+                new ReservationAccessAdministrationError({
+                  reason: "retryable_failure",
+                  message: "Dotypos is temporarily unavailable.",
+                })
+              )
+            : Effect.succeed(grant);
+        }
+        return mutation.kind === "retry-failed"
           ? Effect.sync(() => {
               executions += 1;
               return grant;
@@ -729,24 +745,34 @@ describe("Workspace Admin API", () => {
                 reason: "invalid_state",
                 message: "Only uncertain access can be reconciled.",
               })
-            ),
+            );
+      },
     });
     const completed = new Map<string, unknown>();
+    const claims = new Set<string>();
     const idempotency = Layer.succeed(CliMutationIdempotency, {
       claim: ({ requestId: claimedRequestId }) =>
-        Effect.succeed(
-          completed.has(claimedRequestId)
-            ? {
-                kind: "completed" as const,
-                result: completed.get(claimedRequestId) as never,
-              }
-            : { kind: "claimed" as const }
-        ),
+        Effect.sync(() => {
+          if (completed.has(claimedRequestId)) {
+            return {
+              kind: "completed" as const,
+              result: completed.get(claimedRequestId) as never,
+            };
+          }
+          if (claims.has(claimedRequestId)) {
+            return { kind: "in-progress" as const };
+          }
+          claims.add(claimedRequestId);
+          return { kind: "claimed" as const };
+        }),
       complete: ({ requestId: completedRequestId, result }) =>
         Effect.sync(() => {
           completed.set(completedRequestId, result);
         }),
-      release: () => Effect.void,
+      release: ({ requestId: releasedRequestId }) =>
+        Effect.sync(() => {
+          claims.delete(releasedRequestId);
+        }),
     });
 
     const result = await Effect.gen(function* () {
@@ -773,7 +799,23 @@ describe("Workspace Admin API", () => {
           },
         })
         .pipe(Effect.flip);
-      return { recovered, rejected, replayed };
+      const retryable = yield* client.administration
+        .mutateReservationAccess({
+          params: { reservationId: "transient-reservation" },
+          payload: {
+            requestId: retryableRequestId,
+            mutation: { kind: "retry-failed" },
+          },
+        })
+        .pipe(Effect.flip);
+      const retried = yield* client.administration.mutateReservationAccess({
+        params: { reservationId: "transient-reservation" },
+        payload: {
+          requestId: retryableRequestId,
+          mutation: { kind: "retry-failed" },
+        },
+      });
+      return { recovered, rejected, replayed, retried, retryable };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
@@ -797,6 +839,9 @@ describe("Workspace Admin API", () => {
     expect(executions).toBe(1);
     expect("accessCode" in result.recovered).toBe(false);
     expect(result.rejected).toBeInstanceOf(CliMutationRejected);
+    expect(result.retryable).toBeInstanceOf(CliServiceUnavailable);
+    expect(result.retried.state).toBe("issued");
+    expect(retryableExecutions).toBe(2);
   });
 
   test("replays completed mutations and preserves deterministic conflicts", async () => {

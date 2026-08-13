@@ -49,7 +49,8 @@ const reservation = {
 const runMutation = (
   mutation: Parameters<ReservationAccessAdministration["Service"]["mutate"]>[0],
   grant: ReservationAccessGrant = baseGrant,
-  fulfillment = Effect.void
+  fulfillment = Effect.void,
+  target = Effect.succeed(reservation)
 ) => {
   const issueForReservation = mock(() =>
     Effect.succeed({
@@ -88,7 +89,7 @@ const runMutation = (
                 confirmProviderCredentialRemoved,
               }),
               Layer.mock(WorkspaceReservationService, {
-                getAccessTarget: mock(() => Effect.succeed(reservation)),
+                getAccessTarget: mock(() => target),
               }),
               Layer.mock(WorkspacePaidFulfillmentService, {
                 fulfillPaidOrder,
@@ -167,5 +168,19 @@ describe("ReservationAccessAdministration", () => {
     expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
       orderId: reservationId,
     });
+  });
+
+  test("classifies failures before issuance as safe to retry", async () => {
+    const harness = runMutation(
+      { kind: "retry-failed", reservationId },
+      baseGrant,
+      Effect.void,
+      Effect.fail(new Error("Dotypos unavailable"))
+    );
+
+    await expect(harness.result).rejects.toMatchObject({
+      reason: "retryable_failure",
+    });
+    expect(harness.issueForReservation).not.toHaveBeenCalled();
   });
 });
