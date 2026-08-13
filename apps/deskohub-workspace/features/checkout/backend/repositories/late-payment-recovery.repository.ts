@@ -12,7 +12,9 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { DiscountClaimError } from "@/features/discounts/errors";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { redeemDiscountCodeClaim } from "./payment-lifecycle.repository";
 
 export class LatePaymentRecoveryStateError extends Data.TaggedError(
   "LatePaymentRecoveryStateError"
@@ -35,6 +37,7 @@ type RecoverySettlementInput = {
 };
 
 type LatePaymentRecoveryRepositoryError =
+  | DiscountClaimError
   | EffectDrizzleQueryError
   | LatePaymentRecoveryStateError
   | SqlError;
@@ -247,6 +250,14 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   "settle",
                   input.paymentAttemptId,
                   "Only a terminal late payment can settle as paid."
+                );
+              }
+
+              if (input.state === "recovered") {
+                yield* redeemDiscountCodeClaim(
+                  tx,
+                  input.paymentAttemptId,
+                  recovery.verifiedPaidAt
                 );
               }
 

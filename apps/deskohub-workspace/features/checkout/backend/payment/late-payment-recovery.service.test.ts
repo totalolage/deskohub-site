@@ -31,6 +31,7 @@ describe("LatePaymentRecoveryService", () => {
   test("restores a still-active original hold and continues paid fulfillment", async () => {
     const completeUsingOriginalReservation = mock(() => Effect.void);
     const fulfillPaidOrder = mock(() => Effect.void);
+    const getReservationStatus = mock(() => Effect.succeed("NEW" as const));
     const layer = LatePaymentRecoveryServiceLive.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -53,7 +54,7 @@ describe("LatePaymentRecoveryService", () => {
           Layer.mock(WorkspaceAvailabilityService, {
             ensureAvailable: mock(() => Effect.die("unused")),
           }),
-          Layer.mock(DotyposService, {}),
+          Layer.mock(DotyposService, { getReservationStatus }),
           Layer.mock(WorkspaceTableAssignmentService, {}),
           Layer.mock(WorkspacePaidFulfillmentService, { fulfillPaidOrder })
         )
@@ -73,6 +74,7 @@ describe("LatePaymentRecoveryService", () => {
         reservationState: "held",
       })
     );
+    expect(getReservationStatus).toHaveBeenCalledWith("dotypos-reservation-id");
     expect(fulfillPaidOrder).toHaveBeenCalledWith({
       orderId: "reservation-id",
     });
@@ -118,7 +120,7 @@ describe("LatePaymentRecoveryService", () => {
     );
   });
 
-  test("recreates an available cancelled reservation and fulfills it", async () => {
+  test("recreates a locally held reservation after Dotypos reports it cancelled", async () => {
     const completeWithReplacement = mock(() => Effect.void);
     const fulfillPaidOrder = mock(() => Effect.void);
     const createReservation = mock(() =>
@@ -132,7 +134,7 @@ describe("LatePaymentRecoveryService", () => {
     } as never;
     const cancelledReservation = {
       id: "reservation-id",
-      reservationState: "cancelled",
+      reservationState: "held",
       dotyposCustomerId: "dotypos-customer-id",
       reservationDetails: {
         kind: "cowork",
@@ -160,6 +162,10 @@ describe("LatePaymentRecoveryService", () => {
           }),
           Layer.mock(WorkspaceReservationRepository, {
             findById: mock(() => Effect.succeed(cancelledReservation as never)),
+            claimCancellation: mock(() =>
+              Effect.succeed(cancelledReservation as never)
+            ),
+            markCancelled: mock(() => Effect.void),
           }),
           Layer.mock(AccountingDocumentSnapshotRepository, {
             findByPaymentAttemptId: mock(() => Effect.succeed(snapshot)),
@@ -168,6 +174,9 @@ describe("LatePaymentRecoveryService", () => {
             ensureAvailable: mock(() => Effect.void),
           }),
           Layer.mock(DotyposService, {
+            getReservationStatus: mock(() =>
+              Effect.succeed("CANCELLED" as const)
+            ),
             listActiveReservationsOverlapping: mock(() => Effect.succeed([])),
             createReservation,
           }),

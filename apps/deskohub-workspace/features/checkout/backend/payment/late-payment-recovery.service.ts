@@ -282,17 +282,6 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
         return "refund_required" as const;
       }
 
-      if (reservation.reservationState === "held") {
-        yield* recoveries.completeUsingOriginalReservation({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          reservationState: "held",
-          completedAt: Temporal.Now.instant(),
-        });
-        yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id });
-        return "recovered" as const;
-      }
-
       if (reservation.reservationState === "cancelling") {
         return yield* new LatePaymentRecoveryError({
           paymentAttemptId: claimed.paymentAttemptId,
@@ -300,7 +289,10 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
         });
       }
 
-      if (reservation.reservationState === "cancellation_failed") {
+      if (
+        reservation.reservationState === "held" ||
+        reservation.reservationState === "cancellation_failed"
+      ) {
         const status = yield* dotypos.getReservationStatus(
           claimed.originalDotyposReservationId
         );
@@ -323,6 +315,21 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
           });
           return "review_required" as const;
         }
+
+        const cancellation = yield* reservations.claimCancellation(
+          reservation.id
+        );
+        if (!cancellation) {
+          return yield* new LatePaymentRecoveryError({
+            paymentAttemptId: claimed.paymentAttemptId,
+            message:
+              "Late-payment recovery could not reconcile the cancelled provider hold.",
+          });
+        }
+        yield* reservations.markCancelled({
+          id: reservation.id,
+          cancelledAt: Temporal.Now.instant(),
+        });
       } else if (reservation.reservationState !== "cancelled") {
         yield* recoveries.requireReview({
           paymentAttemptId: claimed.paymentAttemptId,

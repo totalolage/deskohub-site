@@ -1500,7 +1500,8 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
   function* (
     tx: TransactionClient,
     paymentAttemptId: PaymentAttemptId,
-    redeemedAt: Temporal.Instant
+    redeemedAt: Temporal.Instant,
+    allowReleased = false
   ) {
     const [claim] = yield* tx
       .select({
@@ -1513,7 +1514,7 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       .for("update");
 
     if (!claim) return;
-    if (claim.state === "released") {
+    if (claim.state === "released" && !allowReleased) {
       return yield* new DiscountClaimError({
         operation: "redeem",
         reason: "claim_conflict",
@@ -1528,16 +1529,27 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       .set({
         state: "redeemed",
         redeemedAt,
+        releasedAt: null,
+        releaseReason: null,
         updatedAt: redeemedAt,
       })
       .where(
         and(
           eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
-          eq(discountCodeRedemptions.state, "reserved")
+          inArray(
+            discountCodeRedemptions.state,
+            allowReleased ? ["reserved", "released"] : ["reserved"]
+          )
         )
       );
   }
 );
+
+export const redeemDiscountCodeClaim = (
+  tx: TransactionClient,
+  paymentAttemptId: PaymentAttemptId,
+  redeemedAt: Temporal.Instant
+) => redeemCodeClaim(tx, paymentAttemptId, redeemedAt, true);
 
 const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
   function* (
