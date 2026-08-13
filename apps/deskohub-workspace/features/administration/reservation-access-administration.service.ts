@@ -62,28 +62,26 @@ export class ReservationAccessAdministration extends Context.Service<
               });
             }
 
-            if (grant.state !== "issued") {
-              yield* Match.value(mutation).pipe(
-                Match.discriminatorsExhaustive("kind")({
-                  "retry-failed": () =>
-                    grant.state === "failed"
-                      ? Effect.void
-                      : invalidState(
-                          "Only definitively failed access can be retried."
-                        ),
-                  "confirm-provider-credential-removed": () =>
-                    grant.state === "uncertain"
-                      ? access
-                          .confirmProviderCredentialRemoved(
-                            mutation.reservationId
-                          )
-                          .pipe(Effect.asVoid, mapRecoveryFailure)
-                      : invalidState(
-                          "Only uncertain access can be reconciled after provider removal."
-                        ),
-                })
-              );
-            }
+            yield* Match.value(mutation).pipe(
+              Match.discriminatorsExhaustive("kind")({
+                "retry-failed": () =>
+                  grant.state === "failed"
+                    ? Effect.void
+                    : invalidState(
+                        "Only definitively failed access can be retried."
+                      ),
+                "confirm-provider-credential-removed": () =>
+                  grant.state === "uncertain"
+                    ? access
+                        .confirmProviderCredentialRemoved(
+                          mutation.reservationId
+                        )
+                        .pipe(Effect.asVoid, mapRecoveryFailure)
+                    : invalidState(
+                        "Only uncertain access can be reconciled after provider removal."
+                      ),
+              })
+            );
 
             const target = yield* reservations
               .getAccessTarget(mutation.reservationId)

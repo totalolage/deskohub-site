@@ -142,4 +142,16 @@ describe("ReservationAccessAdministration", () => {
       reservationId
     );
   });
+
+  test("rejects a stale recovery request after access was issued", async () => {
+    const harness = runMutation(
+      { kind: "retry-failed", reservationId },
+      { ...baseGrant, state: "issued" }
+    );
+
+    await expect(harness.result).rejects.toBeInstanceOf(
+      ReservationAccessAdministrationError
+    );
+    expect(harness.issueForReservation).not.toHaveBeenCalled();
+  });
 });
