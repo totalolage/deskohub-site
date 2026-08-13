@@ -161,17 +161,8 @@ describe("CheckoutPayPage payment navigation", () => {
   });
 
   test("opens the payment gateway in a new tab and sends the original tab to status", async () => {
-    const events: string[] = [];
-    const execute = mock(() => {
-      events.push("execute");
-    });
-    const paymentWindow = {
-      opener: window,
-    };
-    spyOn(window, "open").mockImplementation(() => {
-      events.push("open");
-      return paymentWindow as Window;
-    });
+    const execute = mock();
+    const openPaymentWindow = spyOn(window, "open");
     workspaceUseAction.mockReturnValue({
       execute,
       isExecuting: false,
@@ -203,8 +194,7 @@ describe("CheckoutPayPage payment navigation", () => {
       })
     );
 
-    expect(events).toEqual(["execute"]);
-    expect(window.open).not.toHaveBeenCalled();
+    expect(openPaymentWindow).not.toHaveBeenCalled();
     expect(execute).toHaveBeenCalledWith({
       locale: "en-US",
       payStateToken: "signed-summary",
@@ -235,12 +225,41 @@ describe("CheckoutPayPage payment navigation", () => {
       });
     });
 
-    expect(events).toEqual(["execute", "open"]);
-    expect(window.open).toHaveBeenCalledWith(
-      "https://payments.example.test/checkout",
-      "_blank"
+    expect(openPaymentWindow).not.toHaveBeenCalled();
+    expect(workspaceRouterPush).not.toHaveBeenCalled();
+
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {
+        data: {
+          status: "redirect",
+          redirectUrl: "https://payments.example.test/checkout",
+          statusUrl: "/en-US/reservation/status/reservation-id",
+        },
+      },
+    });
+    view.rerender(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
     );
-    expect(paymentWindow.opener).toBeNull();
+
+    const paymentLink = view.getByRole("link", {
+      name: m.checkoutPayContinueToPaymentButton({}, { locale: "en-US" }),
+    });
+    expect(paymentLink.getAttribute("href")).toBe(
+      "https://payments.example.test/checkout"
+    );
+    expect(paymentLink.getAttribute("target")).toBe("_blank");
+    expect(paymentLink.getAttribute("rel")).toBe("noreferrer");
+
+    paymentLink.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(paymentLink);
+
     expect(workspaceRouterPush).toHaveBeenCalledWith(
       "/en-US/reservation/status/reservation-id"
     );

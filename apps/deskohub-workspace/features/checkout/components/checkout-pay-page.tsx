@@ -83,15 +83,7 @@ export function CheckoutPayPage({
         return;
       }
 
-      if (data.statusUrl) {
-        const paymentWindow = window.open(data.redirectUrl, "_blank");
-        if (paymentWindow) {
-          paymentWindow.opener = null;
-          markCheckoutStatusWindowOwner(data.statusUrl);
-          router.push(data.statusUrl);
-          return;
-        }
-      }
+      if (data.statusUrl) return;
 
       router.push(data.redirectUrl);
     },
@@ -107,6 +99,14 @@ export function CheckoutPayPage({
   const hasCheckoutRedirect =
     submitReservationResult.data?.status === "pricing_changed" ||
     submitReservationResult.data?.status === "redirect";
+  const hostedPayment =
+    submitReservationResult.data?.status === "redirect" &&
+    submitReservationResult.data.statusUrl
+      ? {
+          redirectUrl: submitReservationResult.data.redirectUrl,
+          statusUrl: submitReservationResult.data.statusUrl,
+        }
+      : undefined;
   const isPricingChanged = variant === "pricingChanged";
   const title = {
     pay: m.checkoutPayTitle({}, { locale }),
@@ -154,7 +154,7 @@ export function CheckoutPayPage({
 
       {variant === "pay" && discountCodeForm}
 
-      {isPricingChanged ? (
+      {isPricingChanged && (
         <Button
           asChild
           className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
@@ -166,7 +166,29 @@ export function CheckoutPayPage({
             {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
           </Link>
         </Button>
-      ) : (
+      )}
+
+      {!isPricingChanged && hostedPayment && (
+        <Button
+          asChild
+          className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
+        >
+          <a
+            href={hostedPayment.redirectUrl}
+            onClick={() => {
+              markCheckoutStatusWindowOwner(hostedPayment.statusUrl);
+              router.push(hostedPayment.statusUrl);
+            }}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <CreditCard className="h-4 w-4" />
+            {m.checkoutPayContinueToPaymentButton({}, { locale })}
+          </a>
+        </Button>
+      )}
+
+      {!isPricingChanged && !hostedPayment && (
         <>
           <CheckoutPayConsent
             checked={legalConsent}

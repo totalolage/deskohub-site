@@ -459,6 +459,7 @@
   "checkoutSummaryItemTotal": "Total to pay",
   "checkoutPayConsent": "I agree to the <terms>General Terms and Conditions</terms>, <operatingRules>Operating Rules</operatingRules>.<earlyPerformance> Because the service begins during the statutory withdrawal period, I expressly request performance at the reserved time and acknowledge that my withdrawal right ends once the service is fully performed.</earlyPerformance>",
   "checkoutPayOrderAndPayButton": "Order and pay",
+  "checkoutPayContinueToPaymentButton": "Continue to secure payment",
   "checkoutPaySubmitError": "Payment could not be started. Please review the reservation details and try again.",
   "checkoutPayPricingChangedTitle": "Pricing changed.",
   "checkoutPayPricingChangedLead": "The order price changed since it was last shown. Review the updated summary before continuing.",

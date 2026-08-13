@@ -460,6 +460,8 @@ sequenceDiagram
     App->>Nexi: POST /orders/hpp with the exact signed-summary amount
     Nexi-->>App: hostedPage and securityToken
     App->>DB: Store securityToken, redirect URL, attempt pending
+    App-->>Customer: Return hostedPage and pending reservation status
+    Customer->>App: Open hostedPage from the provider-ready link
     App-->>Customer: Open hostedPage in a new tab; navigate the original tab to pending reservation status
   else exactly zero signed price affirmed
     App->>DB: In one transaction insert paid internal attempt, mark reservation paid, persist applications, and admit/redeem code claim
@@ -468,8 +470,10 @@ sequenceDiagram
   end
 ```
 
-After opening the payment tab, the Pay page marks the original tab as owner in
-tab-local session storage before navigating it to status. The owner holds an
+After a provider session is ready, the Pay page exposes its hosted page through
+a native new-tab link so the browser launch remains directly user-activated.
+Clicking that link marks the original tab as owner in tab-local session storage
+before navigating it to status. The owner holds an
 exclusive browser lock scoped to the status path and preempts a returned payment
 tab that wins the hydration race. An unmarked returned tab closes when the lock
 is unavailable or preempted; if the original tab is closed, it keeps the lock

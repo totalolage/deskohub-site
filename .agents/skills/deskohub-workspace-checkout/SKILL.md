@@ -51,7 +51,7 @@ Pass canonical reservation projections through pricing boundaries. Do not repair
 
 Keep catalog currency through advertisement, signed-summary generation, final price affirmation, and local payment attempts. The non-production Nexi sandbox currency override belongs only at Nexi call sites: apply it to HPP creation and verification arguments without feeding it back into customer-visible quotes or locally persisted payment facts.
 
-Keep payment-tab operations inside the hosted-provider result branch. Internal zero-total completion, pricing changes, validation failures, and any other result that creates no provider session must not open or manage a browser tab.
+Keep payment-tab operations inside the hosted-provider result branch. Once a provider session exists, expose its hosted page through a native user-activated new-tab link and navigate the original tab to status from that click. Internal zero-total completion, pricing changes, validation failures, and any other result that creates no provider session must not open or manage a browser tab.
 
 Discount-code submission and price-change metadata are reservation-family-neutral. Keep `submittedCode` and `changedKeys` in the common signed pay-state envelope, and have every reservation family quote and affirm discounts through its own canonical product identity. Exhaustively dispatch family-owned quote, summary, persistence, and checkout-details projections; do not make cowork the implicit default.
 
