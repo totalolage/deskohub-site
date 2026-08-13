@@ -160,6 +160,9 @@ export const getAdministrationReservationLifecycle = (
 export const getAdministrationReservationStatus = (
   input: ReservationStatusInput
 ): AdministrationReservationStatus => {
+  if (input.latePayment) {
+    return { group: "attention", label: "Refund required" };
+  }
   if (input.fulfillmentState === "failed") {
     return { group: "attention", label: "Confirmation issue" };
   }

@@ -69,6 +69,18 @@ describe("administration reservation status", () => {
       })
     ).toEqual({ group: "cancelled", label: "Abandoned" });
   });
+
+  test("prioritizes a late payment requiring refund in the primary status", () => {
+    expect(
+      getAdministrationReservationStatus({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toEqual({ group: "attention", label: "Refund required" });
+  });
 });
 
 describe("administration reservation lifecycle", () => {

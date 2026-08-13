@@ -301,7 +301,7 @@ describe("AdministrationService", () => {
     );
 
     expect(result.items[0]?.statusNote).toBe("Refund required");
-    expect(result.items[0]?.status.label).toBe("Payment pending");
+    expect(result.items[0]?.status.label).toBe("Refund required");
   });
 
   test("returns no booking when Dotypos reports it missing", async () => {
