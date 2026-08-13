@@ -515,6 +515,7 @@ sequenceDiagram
     App->>Nexi: POST /orders/hpp with the exact signed-summary amount
     Nexi-->>App: hostedPage and securityToken
     App->>DB: Store securityToken, redirect URL, attempt pending
+    App-->>Customer: Return hostedPage and pending reservation status
     App-->>Customer: Open hostedPage in a new tab; navigate the original tab to pending reservation status
   else exactly zero signed price affirmed
     App->>DB: In one transaction insert paid internal attempt, mark reservation paid, persist applications, and admit/redeem code claim
@@ -523,12 +524,18 @@ sequenceDiagram
   end
 ```
 
-After opening the payment tab, the Pay page marks the original tab as owner in
-tab-local session storage before navigating it to status. The owner holds an
+The customer's single Order and pay activation starts checkout. Only after the
+action returns a hosted provider session does the Pay page open its hosted page
+in a new tab while browser activation remains, mark the original tab as owner in
+tab-local session storage, and navigate the original tab to status. If the
+browser blocks the new tab or activation expires, checkout navigates the current
+tab to the provider instead. It must not pre-open a placeholder before the
+hosted-provider result. No intermediate summary or second payment activation is
+rendered. The owner holds an
 exclusive browser lock scoped to the status path and preempts a returned payment
 tab that wins the hydration race. An unmarked returned tab closes when the lock
 is unavailable or preempted; if the original tab is closed, it keeps the lock
-and remains open. A browser without Web Locks keeps the returned page open.
+and remains open.
 
 Starting a new reservation from terminal status or invalid Pay state uses a
 document navigation. Cache Components may retain the previous reservation form
