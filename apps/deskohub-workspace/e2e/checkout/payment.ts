@@ -600,15 +600,17 @@ export const submitPaymentAndWaitForHostedPage = ({
       timeoutMs: timeouts.providerTransition,
     });
     const hostedPaymentTabId = yield* readActiveBrowserTabId(run, session);
-    yield* switchToBrowserTab(run, session, checkoutTabId);
-    yield* waitForBrowserUrl({
-      description: "checkout status page in original tab",
-      matches: isCheckoutStatusUrl,
-      run,
-      session,
-      timeoutMs: timeouts.providerTransition,
-    });
-    yield* switchToBrowserTab(run, session, hostedPaymentTabId);
+    if (hostedPaymentTabId !== checkoutTabId) {
+      yield* switchToBrowserTab(run, session, checkoutTabId);
+      yield* waitForBrowserUrl({
+        description: "checkout status page in original tab",
+        matches: isCheckoutStatusUrl,
+        run,
+        session,
+        timeoutMs: timeouts.providerTransition,
+      });
+      yield* switchToBrowserTab(run, session, hostedPaymentTabId);
+    }
     return {
       checkoutTabId,
       hostedPaymentTabId,
@@ -788,24 +790,30 @@ const waitForReturnedPaymentTabToClose = ({
   readonly session: string;
   readonly timeoutMs: number;
 }) =>
-  Effect.gen(function* () {
-    yield* pollUntil(
-      readBrowserTabs(run, session).pipe(
-        Effect.map((tabs) =>
-          tabs.length === 1 &&
-          tabs[0]?.tabId === hostedPaymentPage.checkoutTabId
-            ? tabs[0]
-            : undefined
-        )
-      ),
-      {
-        intervalMs: workspaceE2EPollIntervalMs.browser,
-        label: "returned payment tab to close",
-        timeoutMs,
-      }
-    );
-    yield* switchToBrowserTab(run, session, hostedPaymentPage.checkoutTabId);
-  });
+  hostedPaymentPage.hostedPaymentTabId === hostedPaymentPage.checkoutTabId
+    ? Effect.void
+    : Effect.gen(function* () {
+        yield* pollUntil(
+          readBrowserTabs(run, session).pipe(
+            Effect.map((tabs) =>
+              tabs.length === 1 &&
+              tabs[0]?.tabId === hostedPaymentPage.checkoutTabId
+                ? tabs[0]
+                : undefined
+            )
+          ),
+          {
+            intervalMs: workspaceE2EPollIntervalMs.browser,
+            label: "returned payment tab to close",
+            timeoutMs,
+          }
+        );
+        yield* switchToBrowserTab(
+          run,
+          session,
+          hostedPaymentPage.checkoutTabId
+        );
+      });
 
 const fillHostedPaymentField = (
   run: Runner,
