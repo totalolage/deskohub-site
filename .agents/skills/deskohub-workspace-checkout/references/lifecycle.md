@@ -374,9 +374,10 @@ parameter so SQL diagnostics cannot expose it. Retain it so the protected page
 can redisplay it; do not expire or delete it according to the application clock.
 
 If a Dotypos timing change produces a different rounded provider interval after
-a PIN is issued, move the grant to `uncertain`, clear the stored PIN, and
-withhold access until an operator reconciles the provider credential. Changes
-within the same rounded interval reuse the existing PIN.
+a PIN is issued, atomically reset the known issued grant and issue a replacement
+for the new interval. Changes within the same rounded interval reuse the
+existing PIN. The old PIN remains governed by its original Igloohome bounds;
+do not turn a known schedule move into ambiguous-provider reconciliation.
 
 Provider 400, 401, 403, 404, and 415 responses are definitive rejections and
 may leave a retryable `failed` grant. Timeouts, transport failures, 5xx,

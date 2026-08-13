@@ -129,13 +129,21 @@ export class ReservationAccessRepository extends Context.Service<
                 target: reservationAccessGrants.workspaceReservationId,
                 set: {
                   deviceId: input.deviceId,
+                  state: "pending",
+                  providerCredentialId: null,
+                  accessCode: null,
                   scheduledAccessStartsAt: input.scheduledAccessStartsAt,
                   accessStartsAt: input.accessStartsAt,
                   accessEndsAt: input.accessEndsAt,
+                  provisioningStartedAt: null,
+                  issuedAt: null,
+                  failedAt: null,
+                  failureCode: null,
                 },
                 setWhere: inArray(reservationAccessGrants.state, [
                   "pending",
                   "failed",
+                  "issued",
                 ]),
               })
               .pipe(

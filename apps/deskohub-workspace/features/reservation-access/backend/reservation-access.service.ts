@@ -198,18 +198,12 @@ export class ReservationAccessService extends Context.Service<
               )
             );
           if (existingGrant?.state === "issued") {
-            if (
-              existingGrant.deviceId !== deviceId ||
-              !existingGrant.scheduledAccessStartsAt.equals(
-                schedule.startsAt.toInstant()
-              ) ||
-              !existingGrant.accessEndsAt.equals(schedule.endsAt.toInstant())
-            ) {
+            if (existingGrant.deviceId !== deviceId) {
               yield* repository
                 .markUncertain({
                   id: existingGrant.id,
                   reservationId: input.reservationId,
-                  failureCode: "reservation_access_changed",
+                  failureCode: "reservation_access_device_changed",
                   failedAt: Temporal.Now.instant(),
                 })
                 .pipe(
@@ -226,31 +220,38 @@ export class ReservationAccessService extends Context.Service<
               return yield* new ReservationAccessIssuanceError({
                 reservationId: input.reservationId,
                 outcome: "uncertain",
-                message: "Reservation access changed after AlgoPIN issuance.",
+                message: "Reservation access device changed after issuance.",
               });
             }
-            const accessCode = yield* repository
-              .loadIssuedCode({
-                id: existingGrant.id,
-                reservationId: input.reservationId,
-              })
-              .pipe(
-                Effect.mapError(
-                  () =>
-                    new ReservationAccessIssuanceError({
-                      reservationId: input.reservationId,
-                      outcome: "rejected",
-                      message:
-                        "Issued reservation access could not be recovered.",
-                    })
-                )
-              );
-            return {
-              grantId: existingGrant.id,
-              accessCode,
-              accessStartsAt: existingGrant.accessStartsAt,
-              accessEndsAt: existingGrant.accessEndsAt,
-            };
+            if (
+              existingGrant.scheduledAccessStartsAt.equals(
+                schedule.startsAt.toInstant()
+              ) &&
+              existingGrant.accessEndsAt.equals(schedule.endsAt.toInstant())
+            ) {
+              const accessCode = yield* repository
+                .loadIssuedCode({
+                  id: existingGrant.id,
+                  reservationId: input.reservationId,
+                })
+                .pipe(
+                  Effect.mapError(
+                    () =>
+                      new ReservationAccessIssuanceError({
+                        reservationId: input.reservationId,
+                        outcome: "rejected",
+                        message:
+                          "Issued reservation access could not be recovered.",
+                      })
+                  )
+                );
+              return {
+                grantId: existingGrant.id,
+                accessCode,
+                accessStartsAt: existingGrant.accessStartsAt,
+                accessEndsAt: existingGrant.accessEndsAt,
+              };
+            }
           }
 
           const interval = yield* getReservationAccessInterval(input);

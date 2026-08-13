@@ -31,6 +31,10 @@ const otherDeviceId = Schema.decodeUnknownSync(IgloohomeDeviceIdSchema)(
 );
 const accessCode = Schema.decodeUnknownSync(AlgoPinSchema)("7654321");
 const pinId = Schema.decodeUnknownSync(IgloohomePinIdSchema)("pin-id");
+const replacementAccessCode =
+  Schema.decodeUnknownSync(AlgoPinSchema)("8765432");
+const replacementPinId =
+  Schema.decodeUnknownSync(IgloohomePinIdSchema)("replacement-pin-id");
 
 describe("reservation access interval", () => {
   test("preserves Prague offsets and exact elapsed duration", () => {
@@ -241,56 +245,107 @@ describe("ReservationAccessService", () => {
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
-  test("withholds an issued credential when its reservation or device changed", async () => {
-    for (const [existingGrant, reservationInput] of [
-      [
-        grant,
-        {
-          ...reservation,
-          reservedUntil: reservation.reservedUntil.add({ hours: 1 }),
-        },
-      ],
-      [{ ...grant, deviceId: otherDeviceId }, reservation],
-    ] as const) {
-      const loadIssuedCode = mock(() => Effect.succeed(accessCode));
-      const markUncertain = mock(() => Effect.void);
-      const issueHourlyAlgoPin = mock(() =>
-        Effect.die("Igloohome must not be called")
-      );
-      const result = await Effect.gen(function* () {
-        const service = yield* ReservationAccessService;
-        return yield* service
-          .issueForReservation(reservationInput)
-          .pipe(Effect.result);
-      }).pipe(
-        Effect.provide(
-          ReservationAccessService.Live.pipe(
-            Layer.provide(
-              Layer.mergeAll(
-                Layer.mock(ReservationAccessRepository, {
-                  findByReservationId: mock(() =>
-                    Effect.succeed(existingGrant)
-                  ),
-                  ensure: mock(() => Effect.die("grant must not be replaced")),
-                  loadIssuedCode,
-                  markUncertain,
-                }),
-                Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
-              )
+  test("reissues an issued credential when its rounded reservation schedule changes", async () => {
+    const movedReservation = {
+      ...reservation,
+      reservedUntil: reservation.reservedUntil.add({ hours: 1 }),
+    };
+    const replacementGrant = {
+      ...grant,
+      state: "pending" as const,
+      accessEndsAt: movedReservation.reservedUntil,
+    };
+    const ensure = mock(() => Effect.succeed(replacementGrant));
+    const markIssued = mock(() => Effect.void);
+    const markUncertain = mock(() => Effect.void);
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.succeed({ pin: replacementAccessCode, pinId: replacementPinId })
+    );
+
+    const issued = await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.issueForReservation(movedReservation);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() => Effect.succeed(grant)),
+                ensure,
+                claim: mock(() => Effect.succeed(true)),
+                markIssued,
+                markUncertain,
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
             )
           )
-        ),
-        Effect.runPromise
-      );
+        )
+      ),
+      Effect.runPromise
+    );
 
-      expect(Result.isFailure(result)).toBe(true);
-      if (Result.isFailure(result)) {
-        expect(result.failure.outcome).toBe("uncertain");
-      }
-      expect(loadIssuedCode).not.toHaveBeenCalled();
-      expect(markUncertain).toHaveBeenCalledTimes(1);
-      expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+    expect(issued.accessCode).toBe(replacementAccessCode);
+    expect(ensure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservationId,
+        accessEndsAt: movedReservation.reservedUntil,
+      })
+    );
+    expect(issueHourlyAlgoPin).toHaveBeenCalledWith({
+      deviceId,
+      startsAt: "2099-07-01T10:00:00+02:00",
+      endsAt: "2099-07-01T19:00:00+02:00",
+      accessName: `Deskohub ${reservationId}`,
+    });
+    expect(markIssued).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessCode: replacementAccessCode,
+        pinId: replacementPinId,
+      })
+    );
+    expect(markUncertain).not.toHaveBeenCalled();
+  });
+
+  test("withholds an issued credential when its device changed", async () => {
+    const loadIssuedCode = mock(() => Effect.succeed(accessCode));
+    const markUncertain = mock(() => Effect.void);
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.die("Igloohome must not be called")
+    );
+    const result = await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service
+        .issueForReservation(reservation)
+        .pipe(Effect.result);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, {
+                findByReservationId: mock(() =>
+                  Effect.succeed({ ...grant, deviceId: otherDeviceId })
+                ),
+                ensure: mock(() => Effect.die("grant must not be replaced")),
+                loadIssuedCode,
+                markUncertain,
+              }),
+              Layer.mock(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure.outcome).toBe("uncertain");
     }
+    expect(loadIssuedCode).not.toHaveBeenCalled();
+    expect(markUncertain).toHaveBeenCalledTimes(1);
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
   test("records an ambiguous provider result and never retries it", async () => {
