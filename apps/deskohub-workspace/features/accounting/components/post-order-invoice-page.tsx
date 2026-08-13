@@ -53,6 +53,7 @@ export function PostOrderInvoicePage({
     actionName: "managePostOrderInvoice",
     onSuccess: ({ data }) => {
       if (data?.status === "resent") {
+        setDeliveryFailed(false);
         setNotice(m.postOrderInvoiceResentLead({}, { locale }));
         return;
       }

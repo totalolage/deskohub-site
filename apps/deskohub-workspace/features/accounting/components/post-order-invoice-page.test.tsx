@@ -2,12 +2,14 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   mock,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -21,6 +23,13 @@ const { PostOrderInvoicePage } = await import("./post-order-invoice-page");
 
 describe("PostOrderInvoicePage", () => {
   beforeAll(registerWorkspaceComponentTestEnv);
+  beforeEach(() => {
+    workspaceUseAction.mockReset();
+    workspaceUseAction.mockReturnValue({
+      execute: mock(),
+      isExecuting: false,
+    } as never);
+  });
   afterEach(async () => {
     cleanup();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -84,5 +93,31 @@ describe("PostOrderInvoicePage", () => {
     );
 
     expect(view.getByRole("option", { name: "Česko" })).toBeTruthy();
+  });
+
+  test("clears the delivery warning after a successful resend", () => {
+    let onSuccess:
+      | ((result: { data: { status: "resent" } }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      onSuccess = (options as { onSuccess?: typeof onSuccess }).onSuccess;
+      return { execute: mock(), isExecuting: false } as never;
+    });
+    const view = render(
+      <PostOrderInvoicePage
+        accessToken="signed-capability"
+        initialDeliveryFailed
+        initialState="created"
+        locale="en-US"
+        orderId={"reservation-id" as never}
+      />
+    );
+
+    expect(view.getByText(/could not be sent/)).toBeTruthy();
+    act(() => onSuccess?.({ data: { status: "resent" } }));
+
+    expect(view.queryByText(/could not be sent/)).toBeNull();
+    expect(view.queryByRole("button")).toBeNull();
+    expect(view.getByText("The invoice was resent.")).toBeTruthy();
   });
 });
