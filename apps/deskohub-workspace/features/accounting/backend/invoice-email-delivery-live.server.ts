@@ -1,11 +1,12 @@
+import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Layer } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyServiceLive } from "./accounting-snapshot-key-live.server";
 import { InvoiceRepository } from "./invoice.repository";
-import { InvoiceEmailDeliveryServiceLiveWithDependencies } from "./invoice-email-delivery-live.server";
-import { ReservationInvoiceServiceLive } from "./reservation-invoice.service";
+import { InvoiceEmailDeliveryRepository } from "./invoice-email-delivery.repository";
+import { InvoiceEmailDeliveryService } from "./invoice-email-delivery.service";
 
 const accountingStorageLive = Layer.merge(
   WorkspaceDatabaseLive,
@@ -17,15 +18,17 @@ const accountingSnapshotsLive = AccountingDocumentSnapshotRepository.Live.pipe(
 const invoicesLive = InvoiceRepository.Live.pipe(
   Layer.provide(Layer.merge(accountingStorageLive, accountingSnapshotsLive))
 );
-export const ReservationInvoiceServiceLiveWithDependencies =
-  ReservationInvoiceServiceLive.pipe(
+
+export const InvoiceEmailDeliveryServiceLiveWithDependencies =
+  InvoiceEmailDeliveryService.Live.pipe(
     Layer.provide(
       Layer.mergeAll(
         accountingSnapshotsLive,
-        DotyposServiceLive,
         invoicesLive,
-        InvoiceEmailDeliveryServiceLiveWithDependencies
+        InvoiceEmailDeliveryRepository.Live.pipe(
+          Layer.provide(WorkspaceDatabaseLive)
+        ),
+        Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
       )
-    ),
-    Layer.orDie
+    )
   );
