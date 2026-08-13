@@ -63,9 +63,9 @@ The reservation page always explains the privacy policy. Privacy-policy acknowle
 
 Marketing consent is optional and belongs to the customer rather than one reservation. Checking the option grants consent; leaving it unchecked does not withdraw an earlier grant. A withdrawal is a separate deliberate action.
 
-Payment requires two separate choices: acceptance of the current terms and operating rules, and an express request to begin a service at its scheduled time when that time falls inside the statutory withdrawal period. The second choice records the customer's acknowledgement that the withdrawal right ends after full performance and that a proportionate amount may be due after partial performance.
+Payment uses one affirmative checkout choice to accept the current terms and operating rules. When the service begins inside the statutory withdrawal period, that same visible choice also includes the customer's express request to begin at the reserved time and acknowledgement that the withdrawal right ends after full performance. The terms explain that a proportionate amount may be due after partial performance.
 
-The paths and hashes of the terms and operating rules accepted for payment are preserved as immutable evidence without storing rendered legal-document copies or customer contact details alongside that evidence. The separate early-performance request is carried with the checkout evidence without adding a new database document store.
+The paths and hashes of the terms and operating rules accepted for payment are preserved as immutable evidence without storing rendered legal-document copies or customer contact details alongside that evidence. The early-performance request and withdrawal acknowledgement remain distinct evidence facts behind the single checkout choice, without adding a new database document store.
 
 ## Privacy and accounting
 

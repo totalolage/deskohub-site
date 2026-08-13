@@ -65,7 +65,6 @@ export function CheckoutPayPage({
   const [legalConsent, setLegalConsent] = useState(false);
   const [earlyPerformanceRequestRequired, setEarlyPerformanceRequestRequired] =
     useState(initiallyEarlyPerformanceRequired);
-  const [earlyPerformanceConsent, setEarlyPerformanceConsent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const closePaymentWindow = () => {
     paymentWindowRef.current?.close();
@@ -79,11 +78,12 @@ export function CheckoutPayPage({
     []
   );
   useEffect(() => {
+    if (earlyPerformanceRequestRequired) return;
     if (initiallyEarlyPerformanceRequired) {
-      const timeoutId = globalThis.setTimeout(
-        () => setEarlyPerformanceRequestRequired(true),
-        0
-      );
+      const timeoutId = globalThis.setTimeout(() => {
+        setLegalConsent(false);
+        setEarlyPerformanceRequestRequired(true);
+      }, 0);
       return () => globalThis.clearTimeout(timeoutId);
     }
     if (!earlyPerformanceRequestRequiredAt) return;
@@ -101,6 +101,7 @@ export function CheckoutPayPage({
         () => {
           if (cancelled) return;
           if (isFinalCheck) {
+            setLegalConsent(false);
             setEarlyPerformanceRequestRequired(true);
             return;
           }
@@ -114,7 +115,11 @@ export function CheckoutPayPage({
       cancelled = true;
       if (timeoutId !== undefined) globalThis.clearTimeout(timeoutId);
     };
-  }, [initiallyEarlyPerformanceRequired, earlyPerformanceRequestRequiredAt]);
+  }, [
+    initiallyEarlyPerformanceRequired,
+    earlyPerformanceRequestRequired,
+    earlyPerformanceRequestRequiredAt,
+  ]);
   const {
     execute,
     isExecuting,
@@ -236,24 +241,12 @@ export function CheckoutPayPage({
             id="checkout-pay-legal-consent"
             locale={locale}
             onCheckedChange={setLegalConsent}
+            showEarlyPerformanceRequest={earlyPerformanceRequestRequired}
             variant={actionVariant}
           />
 
-          {earlyPerformanceRequestRequired && (
-            <CheckoutEarlyPerformanceConsent
-              checked={earlyPerformanceConsent}
-              id="checkout-pay-early-performance-consent"
-              locale={locale}
-              onCheckedChange={setEarlyPerformanceConsent}
-            />
-          )}
-
           <CheckoutPaySubmitButton
-            disabled={
-              !legalConsent ||
-              (earlyPerformanceRequestRequired && !earlyPerformanceConsent) ||
-              isSubmitPending
-            }
+            disabled={!legalConsent || isSubmitPending}
             locale={locale}
             onClick={() => {
               if (isSubmitPending) return;
@@ -275,7 +268,7 @@ export function CheckoutPayPage({
                 payStateToken,
                 legalConsent,
                 ...(earlyPerformanceRequestRequired
-                  ? { earlyPerformanceConsent }
+                  ? { earlyPerformanceConsent: legalConsent }
                   : {}),
               });
             }}
@@ -309,11 +302,6 @@ export function CheckoutPayPageSkeleton({
         id="checkout-pay-skeleton-legal-consent"
         locale={locale}
         variant="pay"
-      />
-      <CheckoutEarlyPerformanceConsent
-        disabled
-        id="checkout-pay-skeleton-early-performance-consent"
-        locale={locale}
       />
       <CheckoutPaySubmitButton disabled locale={locale} variant="pay" />
     </CheckoutPayCard>
@@ -376,6 +364,7 @@ function CheckoutPayConsent({
   id,
   locale,
   onCheckedChange,
+  showEarlyPerformanceRequest = false,
   variant,
 }: {
   readonly checked?: boolean;
@@ -383,6 +372,7 @@ function CheckoutPayConsent({
   readonly id: string;
   readonly locale: Locale;
   readonly onCheckedChange?: (checked: boolean) => void;
+  readonly showEarlyPerformanceRequest?: boolean;
   readonly variant: CheckoutPayActionVariant;
 }) {
   return (
@@ -404,64 +394,26 @@ function CheckoutPayConsent({
             : undefined
         }
       />
-      <span className="space-y-2 text-sm leading-6 text-navy-blue/66">
-        <span className="block">
-          {
-            {
-              pay: m.checkoutPayConsentBefore({}, { locale }),
-              retry: m.checkoutPaymentRetryConsentBefore({}, { locale }),
-            }[variant]
-          }{" "}
-          <LegalLink
-            href={`/${locale}/terms-and-conditions`}
-            label={m.reservationLegalConsentTermsLink({}, { locale })}
-          />
-          {", "}
-          <LegalLink
-            href={`/${locale}/operating-rules`}
-            label={m.reservationLegalConsentOperatingRulesLink({}, { locale })}
-          />
-          {"."}
-        </span>
-      </span>
-    </label>
-  );
-}
-
-function CheckoutEarlyPerformanceConsent({
-  checked,
-  disabled,
-  id,
-  locale,
-  onCheckedChange,
-}: {
-  readonly checked?: boolean;
-  readonly disabled?: boolean;
-  readonly id: string;
-  readonly locale: Locale;
-  readonly onCheckedChange?: (checked: boolean) => void;
-}) {
-  return (
-    <label
-      htmlFor={id}
-      className={cn(
-        "flex items-start gap-3 rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4",
-        disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
-      )}
-    >
-      <Checkbox
-        id={id}
-        className="mt-1"
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={
-          onCheckedChange
-            ? (nextChecked) => onCheckedChange(Boolean(nextChecked))
-            : undefined
-        }
-      />
       <span className="text-sm leading-6 text-navy-blue/66">
-        {m.checkoutPayEarlyPerformanceConsent({}, { locale })}
+        {
+          {
+            pay: m.checkoutPayConsentBefore({}, { locale }),
+            retry: m.checkoutPaymentRetryConsentBefore({}, { locale }),
+          }[variant]
+        }{" "}
+        <LegalLink
+          href={`/${locale}/terms-and-conditions`}
+          label={m.reservationLegalConsentTermsLink({}, { locale })}
+        />
+        {", "}
+        <LegalLink
+          href={`/${locale}/operating-rules`}
+          label={m.reservationLegalConsentOperatingRulesLink({}, { locale })}
+        />
+        {"."}
+        {showEarlyPerformanceRequest && (
+          <> {m.checkoutPayEarlyPerformanceConsent({}, { locale })}</>
+        )}
       </span>
     </label>
   );

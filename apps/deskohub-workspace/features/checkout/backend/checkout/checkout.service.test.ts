@@ -670,7 +670,7 @@ describe("CheckoutService", () => {
     ]);
   });
 
-  test("rejects checkout when the separate early-performance request is missing", async () => {
+  test("rejects checkout when the required early-performance request is missing", async () => {
     const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
       ...reservationData,
       date: Temporal.Now.zonedDateTimeISO(

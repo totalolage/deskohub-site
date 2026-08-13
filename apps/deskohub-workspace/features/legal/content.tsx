@@ -135,7 +135,7 @@ const termsAndConditionsSections: LegalSection[] = [
     heading: "9. Právo Spotřebitele odstoupit od smlouvy",
     body: [
       "9.1 Spotřebitel může od smlouvy uzavřené online odstoupit bez uvedení důvodu do 14 dnů od jejího uzavření, ledaže je právo na odstoupení v konkrétním případě zákonem vyloučeno nebo již zaniklo.",
-      "9.2 Má-li Služba začít před uplynutím této lhůty, Spotřebitel samostatným potvrzením při odeslání objednávky výslovně žádá, aby Poskytovatel začal plnit před uplynutím lhůty, a bere na vědomí, že po úplném poskytnutí Služby právo odstoupit zaniká. Odstoupí-li po zahájení, ale před úplným poskytnutím Služby, uhradí poměrnou část ceny za již poskytnuté plnění, jsou-li splněny zákonné podmínky.",
+      "9.2 Má-li Služba začít před uplynutím této lhůty, Spotřebitel v rámci potvrzení objednávky výslovně žádá, aby Poskytovatel začal plnit před uplynutím lhůty, a bere na vědomí, že po úplném poskytnutí Služby právo odstoupit zaniká. Odstoupí-li po zahájení, ale před úplným poskytnutím Služby, uhradí poměrnou část ceny za již poskytnuté plnění, jsou-li splněny zákonné podmínky.",
       <>
         9.3 Odstoupení lze zaslat jednoznačným prohlášením na adresu sídla
         Poskytovatele nebo e-mailem na{" "}
@@ -421,7 +421,7 @@ const termsAndConditionsSectionsEn: LegalSection[] = [
     heading: "9. Consumer Right of Withdrawal",
     body: [
       "9.1 A Consumer may withdraw from a contract concluded online without giving a reason within 14 days after the contract is concluded, unless the right is excluded by law or has already expired in the particular case.",
-      "9.2 If the Service is to begin before the period expires, the Consumer uses a separate confirmation when submitting the order to expressly request that the Provider begin performance before the period ends and acknowledges that the withdrawal right expires after the Service has been fully performed. If the Consumer withdraws after performance begins but before it is complete, the Consumer pays a proportionate part of the price for performance already supplied, provided the statutory conditions are met.",
+      "9.2 If the Service is to begin before the period expires, as part of confirming the order the Consumer expressly requests that the Provider begin performance before the period ends and acknowledges that the withdrawal right expires after the Service has been fully performed. If the Consumer withdraws after performance begins but before it is complete, the Consumer pays a proportionate part of the price for performance already supplied, provided the statutory conditions are met.",
       <>
         9.3 Withdrawal may be sent as an unequivocal statement to the Provider's
         registered-office address or by email to{" "}

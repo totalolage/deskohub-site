@@ -466,7 +466,7 @@
   "checkoutSummaryItemCustomerDiscount": "Zákaznická sleva",
   "checkoutSummaryItemTotal": "Celkem k platbě",
   "checkoutPayConsentBefore": "Souhlasím s dokumenty",
-  "checkoutPayEarlyPerformanceConsent": "Výslovně žádám, aby služba začala v rezervovaném termínu, a beru na vědomí, že po jejím úplném poskytnutí zaniká mé právo odstoupit od smlouvy.",
+  "checkoutPayEarlyPerformanceConsent": "Protože služba začíná během zákonné lhůty pro odstoupení od smlouvy, výslovně žádám o její poskytnutí v rezervovaném termínu a beru na vědomí, že po úplném poskytnutí služby mé právo odstoupit od smlouvy zaniká.",
   "checkoutPayOrderAndPayButton": "Objednat a zaplatit",
   "checkoutPaySubmitError": "Platbu se nepodařilo spustit. Zkontrolujte prosím údaje rezervace a zkuste to znovu.",
   "checkoutPayPricingChangedTitle": "Cena se změnila.",

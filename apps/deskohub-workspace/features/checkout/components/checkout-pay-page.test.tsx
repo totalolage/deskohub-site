@@ -196,9 +196,8 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
-    for (const checkbox of view.getAllByRole("checkbox")) {
-      fireEvent.click(checkbox);
-    }
+    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    fireEvent.click(view.getByRole("checkbox"));
     fireEvent.click(
       view.getByRole("button", {
         name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
@@ -252,7 +251,7 @@ describe("CheckoutPayPage payment navigation", () => {
     expect(paymentWindow.close).not.toHaveBeenCalled();
   });
 
-  test("omits the early-performance choice when the withdrawal period has elapsed", async () => {
+  test("omits the early-performance request when the withdrawal period has elapsed", async () => {
     const { CheckoutPayPage } = await import("./checkout-pay-page");
     const quote = buildCoworkReservationQuote({
       entryTier: "basic",
@@ -270,13 +269,11 @@ describe("CheckoutPayPage payment navigation", () => {
 
     expect(view.getAllByRole("checkbox")).toHaveLength(1);
     expect(
-      view.queryByText(
-        m.checkoutPayEarlyPerformanceConsent({}, { locale: "en-US" })
-      )
+      view.queryByRole("checkbox", { name: /statutory withdrawal period/ })
     ).toBeNull();
   });
 
-  test("reveals the early-performance choice when it becomes applicable", async () => {
+  test("adds the early-performance request to the unchecked legal choice when it becomes applicable", async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-08-12T21:59:59Z"));
     const { CheckoutPayPage } = await import("./checkout-pay-page");
@@ -295,9 +292,18 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
-    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    const checkbox = view.getByRole("checkbox") as HTMLButtonElement;
+    fireEvent.click(checkbox);
+    expect(checkbox.getAttribute("data-state")).toBe("checked");
+    expect(
+      view.queryByRole("checkbox", { name: /statutory withdrawal period/ })
+    ).toBeNull();
     act(() => jest.advanceTimersByTime(1000));
-    expect(view.getAllByRole("checkbox")).toHaveLength(2);
+    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    expect(
+      view.getByRole("checkbox", { name: /statutory withdrawal period/ })
+    ).toBe(checkbox);
+    expect(checkbox.getAttribute("data-state")).toBe("unchecked");
     view.unmount();
   });
 
@@ -322,7 +328,7 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
-    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    expect(view.getByRole("checkbox")).toBeDefined();
     expect(
       setTimeoutSpy.mock.calls.some(
         ([, delay]) => delay === 24 * 60 * 60 * 1000
@@ -358,9 +364,7 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
-    for (const checkbox of view.getAllByRole("checkbox")) {
-      fireEvent.click(checkbox);
-    }
+    fireEvent.click(view.getByRole("checkbox"));
     fireEvent.click(
       view.getByRole("button", {
         name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),

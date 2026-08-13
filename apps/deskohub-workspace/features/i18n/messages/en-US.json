@@ -460,7 +460,7 @@
   "checkoutSummaryItemCustomerDiscount": "Customer discount",
   "checkoutSummaryItemTotal": "Total to pay",
   "checkoutPayConsentBefore": "I agree to the",
-  "checkoutPayEarlyPerformanceConsent": "I expressly request that the service begin at the reserved time and acknowledge that, once fully performed, I lose my right of withdrawal.",
+  "checkoutPayEarlyPerformanceConsent": "Because the service begins during the statutory withdrawal period, I expressly request performance at the reserved time and acknowledge that my withdrawal right ends once the service is fully performed.",
   "checkoutPayOrderAndPayButton": "Order and pay",
   "checkoutPaySubmitError": "Payment could not be started. Please review the reservation details and try again.",
   "checkoutPayPricingChangedTitle": "Pricing changed.",
