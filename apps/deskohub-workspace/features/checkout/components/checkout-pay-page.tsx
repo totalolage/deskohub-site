@@ -152,7 +152,7 @@ export function CheckoutPayPage({
         summary={summary}
       />
 
-      {variant === "pay" && discountCodeForm}
+      {variant === "pay" && !hostedPayment && discountCodeForm}
 
       {isPricingChanged && (
         <Button

@@ -590,6 +590,7 @@ export const submitPaymentAndWaitForHostedPage = ({
 }) =>
   Effect.gen(function* () {
     const checkoutTabId = yield* submitCheckoutPayment(run, session);
+    yield* activateHostedPaymentLink(run, session);
 
     const hostedPaymentUrl = yield* waitForBrowserUrl({
       description: "Nexi hosted payment page",
@@ -621,7 +622,6 @@ export const submitCheckoutPayment = (run: Runner, session: string) =>
     const checkoutTabId = yield* readActiveBrowserTabId(run, session);
     yield* clickCheckoutPayConsent(run, session);
     yield* activateCheckoutPayButton(run, session);
-    yield* activateHostedPaymentLink(run, session);
     return checkoutTabId;
   });
 

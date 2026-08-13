@@ -8,12 +8,63 @@ import type { CheckoutData } from "../types";
 import {
   completeNexiHostedPayment,
   startCheckoutPaymentAttempt,
+  submitCheckoutPayment,
   submitReservationForPayPage,
 } from "./payment";
 
 const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
 const checkoutUrl =
   "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/cowork";
+
+test("submits a non-provider checkout without waiting for a hosted-payment link", async () => {
+  let focusedRef: string | undefined;
+  let snapshotReads = 0;
+  const activatedRefs: string[] = [];
+  const run = mock<Runner>(async (_command, args) => {
+    const browserArgs = args.slice(2);
+    const commandIndex = browserArgs.findIndex((arg) =>
+      ["focus", "press", "snapshot", "tab", "wait"].includes(arg)
+    );
+    const commandArgs = browserArgs.slice(commandIndex);
+
+    if (commandArgs[0] === "tab") {
+      return success(
+        JSON.stringify({
+          data: { tabs: [{ active: true, tabId: "checkout" }] },
+          success: true,
+        })
+      );
+    }
+    if (commandArgs[0] === "wait") return success();
+    if (commandArgs[0] === "snapshot") {
+      snapshotReads += 1;
+      if (snapshotReads > 2) {
+        throw new Error("non-provider checkout requested a provider link");
+      }
+      return success(
+        [
+          '- checkbox "I agree to the terms" [checked=false, ref=e2]',
+          '- button "ORDER AND PAY" [ref=e5]',
+        ].join("\n")
+      );
+    }
+    if (commandArgs[0] === "focus") {
+      focusedRef = commandArgs[1];
+      return success();
+    }
+    if (commandArgs[0] === "press") {
+      activatedRefs.push(focusedRef ?? "");
+      return success();
+    }
+
+    throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
+  });
+
+  expect(
+    await Effect.runPromise(submitCheckoutPayment(run, "non-provider"))
+  ).toBe("checkout");
+  expect(activatedRefs).toEqual(["@e2", "@e5"]);
+});
 
 test("retries a transient reservation preparation failure without requiring non-applicable consent", async () => {
   let reservationSubmitAttempts = 0;

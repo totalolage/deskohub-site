@@ -176,6 +176,7 @@ describe("CheckoutPayPage payment navigation", () => {
     });
     const view = render(
       <CheckoutPayPage
+        discountCodeForm={<button type="button">Apply discount</button>}
         locale="en-US"
         payStateToken="signed-summary"
         summary={quote.summary}
@@ -183,6 +184,7 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
+    expect(view.getByRole("button", { name: "Apply discount" })).toBeDefined();
     expect(view.getAllByRole("checkbox")).toHaveLength(1);
     expect(
       view.getByRole("checkbox", { name: /statutory withdrawal period/ })
@@ -241,6 +243,7 @@ describe("CheckoutPayPage payment navigation", () => {
     });
     view.rerender(
       <CheckoutPayPage
+        discountCodeForm={<button type="button">Apply discount</button>}
         locale="en-US"
         payStateToken="signed-summary"
         summary={quote.summary}
@@ -248,6 +251,7 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
+    expect(view.queryByRole("button", { name: "Apply discount" })).toBeNull();
     const paymentLink = view.getByRole("link", {
       name: m.checkoutPayContinueToPaymentButton({}, { locale: "en-US" }),
     });
