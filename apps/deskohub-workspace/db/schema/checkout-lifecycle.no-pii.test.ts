@@ -50,7 +50,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   test("reservation access stores its time-bound credential as text", async () => {
     const schema = await readAppFile("db/schema/reservation-access-grants.ts");
     const migration = await readAppFile(
-      "db/migrations/20260813142138_reservation_access_grants/migration.sql"
+      "db/migrations/20260813084941_reservation_access_grants/migration.sql"
     );
 
     expect(schema).toContain('text("access_code")');
@@ -197,7 +197,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
           "db/migrations/20260812144849_married_may_parker/snapshot.json"
         ),
         readAppFile(
-          "db/migrations/20260813142138_reservation_access_grants/snapshot.json"
+          "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
         ),
       ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
