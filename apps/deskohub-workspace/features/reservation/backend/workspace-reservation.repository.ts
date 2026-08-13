@@ -699,6 +699,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             and(
               eq(workspaceReservations.id, input.id),
               eq(workspaceReservations.paymentState, "paid"),
+              inArray(workspaceReservations.reservationState, [
+                "held",
+                "confirmed",
+              ]),
               or(
                 inArray(workspaceReservations.fulfillmentState, [
                   "not_started",

@@ -192,6 +192,9 @@ describe("PaymentLifecycleRepository", () => {
     expect(terminal).toContain("db.transaction");
     expect(terminal).toContain("yield* releaseCodeClaim");
     expect(terminal).toContain(".delete(accountingDocumentSnapshots)");
+    expect(terminal).toContain(
+      'input.failureCode !== "payment_abandoned_after_provider_cutoff"'
+    );
   });
 
   test("rejects inconsistent committed money before opening a transaction", async () => {

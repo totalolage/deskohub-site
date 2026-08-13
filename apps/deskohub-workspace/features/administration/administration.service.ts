@@ -40,6 +40,8 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
   discountApplications,
+  type LatePaymentRecoveryState,
+  latePaymentRecoveries,
   legalEvidenceEvents,
   type PaymentAttemptState,
   paymentAttempts,
@@ -282,7 +284,7 @@ export type AdministrationReservationDetail = {
   readonly lifecycle: ReturnType<typeof getAdministrationReservationLifecycle>;
   readonly operatorNotice: {
     readonly message: string;
-    readonly status: "error" | "warning";
+    readonly status: "error" | "success" | "warning";
     readonly title: string;
   } | null;
   readonly timeline: readonly AdministrationTimelineItem[];
@@ -495,8 +497,13 @@ type LiveReservationDetails = {
 const getReservationStatusNote = (
   row: SafeReservationRow,
   live: LiveReservationDetails,
-  latePayment: boolean
+  latePayment: boolean,
+  recoveryState?: LatePaymentRecoveryState
 ) => {
+  if (recoveryState === "pending" || recoveryState === "processing") {
+    return "Recovery in progress";
+  }
+  if (recoveryState === "review_required") return "Recovery needs review";
   if (latePayment) return "Refund required";
   if (row.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
     return "Payment needs review";
@@ -509,11 +516,13 @@ const getReservationStatusNote = (
 
 const toReservationSummary = ({
   latePayment = false,
+  recoveryState,
   latestPayment = null,
   live,
   row,
 }: {
   readonly latePayment?: boolean;
+  readonly recoveryState?: LatePaymentRecoveryState;
   readonly latestPayment?: AdministrationPaymentAttempt | null;
   readonly live: LiveReservationDetails;
   readonly row: SafeReservationRow;
@@ -537,10 +546,11 @@ const toReservationSummary = ({
       failureCode: row.failureCode,
       fulfillmentState: row.fulfillmentState,
       latePayment,
+      latePaymentRecovery: recoveryState,
       paymentState: row.paymentState,
       reservationState: row.reservationState,
     }),
-    statusNote: getReservationStatusNote(row, live, latePayment),
+    statusNote: getReservationStatusNote(row, live, latePayment, recoveryState),
     createdAt: toIsoString(row.createdAt),
     latestPayment,
     updatedAt: toIsoString(row.updatedAt),
@@ -839,6 +849,24 @@ type LatePaymentEventRow = {
   readonly reservationId: WorkspaceReservationId;
 };
 
+type LatePaymentRecoveryRow = {
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly reservationId: WorkspaceReservationId;
+  readonly state: LatePaymentRecoveryState;
+  readonly failureCode: string | null;
+  readonly verifiedPaidAt: Temporal.Instant;
+  readonly completedAt: Temporal.Instant | null;
+};
+
+const latePaymentRecoverySelection = {
+  paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
+  reservationId: latePaymentRecoveries.workspaceReservationId,
+  state: latePaymentRecoveries.state,
+  failureCode: latePaymentRecoveries.failureCode,
+  verifiedPaidAt: latePaymentRecoveries.verifiedPaidAt,
+  completedAt: latePaymentRecoveries.completedAt,
+} as const;
+
 const latePaymentSelection = {
   eventId: webhookEvents.eventId,
   receivedAt: webhookEvents.receivedAt,
@@ -865,10 +893,81 @@ const buildLatePaymentTimeline = (
     tone: "warning",
   }));
 
+const buildLatePaymentRecoveryTimeline = (
+  recoveries: readonly LatePaymentRecoveryRow[]
+): readonly AdministrationTimelineItem[] =>
+  recoveries.flatMap((recovery) => {
+    const detected: AdministrationTimelineItem = {
+      id: `late-payment-recovery-${recovery.paymentAttemptId}-detected`,
+      title: "Late payment recovery started",
+      description:
+        "Nexi reported payment after local expiration. Workspace is checking whether the reservation can still be fulfilled.",
+      occurredAt: toIsoString(recovery.verifiedPaidAt),
+      tone: "warning",
+    };
+    if (!recovery.completedAt) return [detected];
+    return [
+      detected,
+      {
+        id: `late-payment-recovery-${recovery.paymentAttemptId}-${recovery.state}`,
+        title: {
+          recovered: "Late payment recovered",
+          refund_required: "Late payment — refund required",
+          review_required: "Late payment recovery needs review",
+        }[
+          recovery.state as Exclude<
+            LatePaymentRecoveryState,
+            "pending" | "processing"
+          >
+        ],
+        description: {
+          recovered:
+            "Workspace secured a valid booking and continued normal paid fulfillment.",
+          refund_required:
+            "The reservation could not be safely recovered. Refund the payment in Nexi.",
+          review_required:
+            "Workspace could not safely determine or complete recovery. Operator review is required.",
+        }[
+          recovery.state as Exclude<
+            LatePaymentRecoveryState,
+            "pending" | "processing"
+          >
+        ],
+        occurredAt: toIsoString(recovery.completedAt),
+        tone: recovery.state === "recovered" ? "positive" : "warning",
+      },
+    ];
+  });
+
 const getReservationOperatorNotice = (
   row: SafeReservationRow,
-  latePayment: boolean
+  latePayment: boolean,
+  recovery?: LatePaymentRecoveryRow
 ): AdministrationReservationDetail["operatorNotice"] => {
+  if (recovery?.state === "pending" || recovery?.state === "processing") {
+    return {
+      status: "warning",
+      title: "Late payment recovery in progress",
+      message:
+        "Workspace is checking the original booking and current availability. Do not fulfil or refund manually while recovery is running.",
+    };
+  }
+  if (recovery?.state === "recovered") {
+    return {
+      status: "success",
+      title: "Late payment recovered",
+      message:
+        "Workspace secured a valid booking and continued normal paid fulfillment.",
+    };
+  }
+  if (recovery?.state === "review_required") {
+    return {
+      status: "error",
+      title: "Late payment recovery needs review",
+      message:
+        "Workspace could not safely complete recovery. Check the original and replacement Dotypos bookings before fulfilling or refunding.",
+    };
+  }
   if (latePayment) {
     return {
       status: "error",
@@ -1083,39 +1182,52 @@ export class AdministrationService extends Context.Service<
       const enrichRows = Effect.fn("AdministrationService.enrichRows")(
         function* (rows: readonly SafeReservationRow[]) {
           if (rows.length === 0) return [];
-          const { attemptRows, latePaymentRows, liveRows } = yield* Effect.all(
-            {
-              attemptRows: db
-                .select(safePaymentAttemptSelection)
-                .from(paymentAttempts)
-                .where(
-                  inArray(
-                    paymentAttempts.workspaceReservationId,
-                    rows.map(({ id }) => id)
+          const { attemptRows, latePaymentRows, liveRows, recoveryRows } =
+            yield* Effect.all(
+              {
+                attemptRows: db
+                  .select(safePaymentAttemptSelection)
+                  .from(paymentAttempts)
+                  .where(
+                    inArray(
+                      paymentAttempts.workspaceReservationId,
+                      rows.map(({ id }) => id)
+                    )
                   )
-                )
-                .orderBy(desc(paymentAttempts.createdAt)),
-              latePaymentRows: db
-                .select(latePaymentSelection)
-                .from(webhookEvents)
-                .innerJoin(
-                  paymentAttempts,
-                  eq(webhookEvents.paymentAttemptId, paymentAttempts.id)
-                )
-                .where(latePaymentCondition(rows.map(({ id }) => id))),
-              liveRows: Effect.all(
-                rows.map((row) =>
-                  loadLiveReservation(row).pipe(
-                    Effect.map((live) => ({ live, row }))
+                  .orderBy(desc(paymentAttempts.createdAt)),
+                latePaymentRows: db
+                  .select(latePaymentSelection)
+                  .from(webhookEvents)
+                  .innerJoin(
+                    paymentAttempts,
+                    eq(webhookEvents.paymentAttemptId, paymentAttempts.id)
                   )
+                  .where(latePaymentCondition(rows.map(({ id }) => id))),
+                recoveryRows: db
+                  .select(latePaymentRecoverySelection)
+                  .from(latePaymentRecoveries)
+                  .where(
+                    inArray(
+                      latePaymentRecoveries.workspaceReservationId,
+                      rows.map(({ id }) => id)
+                    )
+                  ),
+                liveRows: Effect.all(
+                  rows.map((row) =>
+                    loadLiveReservation(row).pipe(
+                      Effect.map((live) => ({ live, row }))
+                    )
+                  ),
+                  { concurrency: 5 }
                 ),
-                { concurrency: 5 }
-              ),
-            },
-            { concurrency: 3 }
-          );
+              },
+              { concurrency: 3 }
+            );
           const latePaymentReservationIds = new Set(
             latePaymentRows.map(({ reservationId }) => reservationId)
+          );
+          const recoveryByReservation = new Map(
+            recoveryRows.map((recovery) => [recovery.reservationId, recovery])
           );
           const latestPaymentByReservation = new Map<
             string,
@@ -1134,7 +1246,10 @@ export class AdministrationService extends Context.Service<
           return liveRows.map(({ live, row }) =>
             toReservationSummary({
               latestPayment: latestPaymentByReservation.get(row.id) ?? null,
-              latePayment: latePaymentReservationIds.has(row.id),
+              latePayment: recoveryByReservation.has(row.id)
+                ? recoveryByReservation.get(row.id)?.state === "refund_required"
+                : latePaymentReservationIds.has(row.id),
+              recoveryState: recoveryByReservation.get(row.id)?.state,
               live,
               row,
             })
@@ -1381,6 +1496,7 @@ export class AdministrationService extends Context.Service<
           attemptRows,
           history,
           latePaymentRows,
+          recoveryRows,
           live,
           orders,
           otherRows,
@@ -1415,6 +1531,11 @@ export class AdministrationService extends Context.Service<
               )
               .where(latePaymentCondition([row.id]))
               .orderBy(webhookEvents.receivedAt),
+            recoveryRows: db
+              .select(latePaymentRecoverySelection)
+              .from(latePaymentRecoveries)
+              .where(eq(latePaymentRecoveries.workspaceReservationId, row.id))
+              .orderBy(latePaymentRecoveries.createdAt),
             live: loadLiveReservation(row),
             orders: paymentAdministration.loadReservationOrders(row.id),
             tables: loadBookingTables(),
@@ -1473,7 +1594,10 @@ export class AdministrationService extends Context.Service<
           );
 
         const attempts = attemptRows.map(toAdministrationPaymentAttempt);
-        const latePayment = latePaymentRows.length > 0;
+        const recovery = recoveryRows.at(-1);
+        const latePayment = recovery
+          ? recovery.state === "refund_required"
+          : latePaymentRows.length > 0;
         const liveTableId = Option.getOrUndefined(
           decodeDotyposTableId(live.reservation?._tableId)
         );
@@ -1488,6 +1612,7 @@ export class AdministrationService extends Context.Service<
           reservation: toReservationSummary({
             latestPayment: attempts.at(-1) ?? null,
             latePayment,
+            recoveryState: recovery?.state,
             live,
             row,
           }),
@@ -1508,15 +1633,21 @@ export class AdministrationService extends Context.Service<
             failureCode: row.failureCode,
             fulfillmentState: row.fulfillmentState,
             latePayment,
+            latePaymentRecovery: recovery?.state,
             paymentState: row.paymentState,
             reservationState: row.reservationState,
           }),
-          operatorNotice: getReservationOperatorNotice(row, latePayment),
+          operatorNotice: getReservationOperatorNotice(
+            row,
+            latePayment,
+            recovery
+          ),
           timeline: mergeReservationHistory({
             durable: [
               ...buildTimeline(row),
               ...buildPaymentAttemptTimeline(attempts),
               ...buildLatePaymentTimeline(latePaymentRows),
+              ...buildLatePaymentRecoveryTimeline(recoveryRows),
               ...getOrderTimeline(orders),
             ],
             history,

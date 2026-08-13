@@ -20,6 +20,12 @@ export type ReservationStatusInput = {
   readonly failureCode?: string | null;
   readonly fulfillmentState: FulfillmentState;
   readonly latePayment?: boolean;
+  readonly latePaymentRecovery?:
+    | "pending"
+    | "processing"
+    | "recovered"
+    | "refund_required"
+    | "review_required";
   readonly paymentState: PaymentState;
   readonly reservationState: ReservationState;
 };
@@ -44,6 +50,26 @@ export type AdministrationReservationLifecycle = {
 export const getAdministrationReservationLifecycle = (
   input: ReservationStatusInput
 ): AdministrationReservationLifecycle => {
+  if (
+    input.latePaymentRecovery === "pending" ||
+    input.latePaymentRecovery === "processing"
+  ) {
+    return {
+      currentStage:
+        input.reservationState === "cancelled" ? "cancelled" : "held",
+      label: "Late payment recovery in progress",
+      reachedStages: ["started", "held"],
+      tone: "attention",
+    };
+  }
+  if (input.latePaymentRecovery === "review_required") {
+    return {
+      currentStage: "cancelled",
+      label: "Late payment recovery needs review",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "attention",
+    };
+  }
   if (input.latePayment && input.reservationState === "cancelled") {
     return {
       currentStage: "cancelled",
@@ -160,6 +186,15 @@ export const getAdministrationReservationLifecycle = (
 export const getAdministrationReservationStatus = (
   input: ReservationStatusInput
 ): AdministrationReservationStatus => {
+  if (
+    input.latePaymentRecovery === "pending" ||
+    input.latePaymentRecovery === "processing"
+  ) {
+    return { group: "attention", label: "Recovering payment" };
+  }
+  if (input.latePaymentRecovery === "review_required") {
+    return { group: "attention", label: "Recovery review" };
+  }
   if (input.latePayment) {
     return { group: "attention", label: "Refund required" };
   }

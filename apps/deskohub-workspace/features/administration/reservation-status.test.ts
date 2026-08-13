@@ -81,6 +81,21 @@ describe("administration reservation status", () => {
       })
     ).toEqual({ group: "attention", label: "Refund required" });
   });
+
+  test.each([
+    ["pending", "Recovering payment"],
+    ["processing", "Recovering payment"],
+    ["review_required", "Recovery review"],
+  ] as const)("flags %s late-payment recovery", (latePaymentRecovery, label) => {
+    expect(
+      getAdministrationReservationStatus({
+        fulfillmentState: "not_started",
+        latePaymentRecovery,
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toEqual({ group: "attention", label });
+  });
 });
 
 describe("administration reservation lifecycle", () => {
@@ -206,6 +221,20 @@ describe("administration reservation lifecycle", () => {
     ).toMatchObject({
       currentStage: "cancelled",
       label: "Late payment — refund required",
+      tone: "attention",
+    });
+  });
+
+  test("shows queued late-payment recovery before the refund fallback", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePaymentRecovery: "processing",
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toMatchObject({
+      label: "Late payment recovery in progress",
       tone: "attention",
     });
   });

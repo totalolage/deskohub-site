@@ -214,12 +214,12 @@ describe("AdministrationService", () => {
       Effect.runPromise
     );
 
-    expect(selectCall).toBe(4);
+    expect(selectCall).toBe(5);
     expect(result.dateSortUnavailable).toBe(true);
     expect(result.items).toHaveLength(1);
   });
 
-  test("flags a late payment ahead of an unconfirmed cleanup outcome", async () => {
+  test("flags queued late-payment recovery ahead of cleanup state", async () => {
     const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
     const row = {
       id: "workspace-reservation",
@@ -244,11 +244,15 @@ describe("AdministrationService", () => {
       [{ value: 1 }],
       [row],
       [],
+      [],
       [
         {
-          eventId: "late-payment-event",
-          receivedAt: instant,
+          paymentAttemptId: "payment-attempt",
           reservationId: row.id,
+          state: "processing",
+          failureCode: null,
+          verifiedPaidAt: instant,
+          completedAt: null,
         },
       ],
     ] as const;
@@ -300,8 +304,8 @@ describe("AdministrationService", () => {
       Effect.runPromise
     );
 
-    expect(result.items[0]?.statusNote).toBe("Refund required");
-    expect(result.items[0]?.status.label).toBe("Refund required");
+    expect(result.items[0]?.statusNote).toBe("Recovery in progress");
+    expect(result.items[0]?.status.label).toBe("Recovering payment");
   });
 
   test("returns no booking when Dotypos reports it missing", async () => {

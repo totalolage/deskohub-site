@@ -12,6 +12,16 @@
     }
   ],
   "functions": {
+    "app/api/queues/workspace/late-payment-recovery/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "workspace-late-payment-recovery",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0
+        }
+      ]
+    },
     "app/api/queues/workspace/reservation-hold-cleanup/route.ts": {
       "experimentalTriggers": [
         {

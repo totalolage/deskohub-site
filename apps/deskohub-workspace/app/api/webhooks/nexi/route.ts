@@ -19,6 +19,7 @@ const nexiWebhookProcessingErrorStatuses = {
   nexi_webhook_verification_failed: 500,
   nexi_webhook_verification_mismatch: 202,
   nexi_webhook_late_payment: 202,
+  nexi_webhook_late_payment_recovery_failed: 500,
   nexi_webhook_transition_failed: 500,
   nexi_webhook_fulfillment_failed: 500,
 } satisfies Record<NexiWebhookProcessingError["errorCode"], 202 | 400 | 500>;

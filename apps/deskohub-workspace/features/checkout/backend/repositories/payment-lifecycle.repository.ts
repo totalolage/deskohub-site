@@ -795,11 +795,15 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              yield* tx
-                .delete(accountingDocumentSnapshots)
-                .where(
-                  eq(accountingDocumentSnapshots.paymentAttemptId, input.id)
-                );
+              if (
+                input.failureCode !== "payment_abandoned_after_provider_cutoff"
+              ) {
+                yield* tx
+                  .delete(accountingDocumentSnapshots)
+                  .where(
+                    eq(accountingDocumentSnapshots.paymentAttemptId, input.id)
+                  );
+              }
 
               const [reservation] = yield* tx
                 .update(workspaceReservations)
