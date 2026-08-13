@@ -4,7 +4,7 @@ import type {
   IgloohomePinId,
 } from "@deskohub/igloohome";
 import { AlgoPinSchema } from "@deskohub/igloohome";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, lte, or } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -23,18 +23,19 @@ export class ReservationAccessStorageError extends Data.TaggedError(
 )<{
   readonly operation:
     | "claim"
+    | "clear_expired"
     | "ensure"
     | "load"
     | "mark_failed"
     | "mark_issued"
     | "mark_uncertain";
-  readonly reservationId: WorkspaceReservationId;
+  readonly reservationId?: WorkspaceReservationId;
   readonly message: string;
 }> {}
 
 const storageError = (
   operation: ReservationAccessStorageError["operation"],
-  reservationId: WorkspaceReservationId,
+  reservationId: WorkspaceReservationId | undefined,
   message: string
 ) => new ReservationAccessStorageError({ operation, reservationId, message });
 
@@ -44,6 +45,7 @@ const toGrant = (row: ReservationAccessGrantRow): ReservationAccessGrant => ({
   deviceId: row.deviceId,
   state: row.state,
   providerCredentialId: row.providerCredentialId,
+  reservationStartsAt: row.reservationStartsAt,
   accessStartsAt: row.accessStartsAt,
   accessEndsAt: row.accessEndsAt,
   provisioningStartedAt: row.provisioningStartedAt,
@@ -57,6 +59,7 @@ export interface IReservationAccessRepository {
   readonly ensure: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly deviceId: IgloohomeDeviceId;
+    readonly reservationStartsAt: Temporal.Instant;
     readonly accessStartsAt: Temporal.Instant;
     readonly accessEndsAt: Temporal.Instant;
   }) => Effect.Effect<ReservationAccessGrant, ReservationAccessStorageError>;
@@ -94,6 +97,9 @@ export interface IReservationAccessRepository {
     readonly id: ReservationAccessGrantId;
     readonly reservationId: WorkspaceReservationId;
   }) => Effect.Effect<AlgoPin, ReservationAccessStorageError>;
+  readonly clearExpiredAccessCodes: (
+    now: Temporal.Instant
+  ) => Effect.Effect<number, ReservationAccessStorageError>;
 }
 
 export class ReservationAccessRepository extends Context.Service<
@@ -137,6 +143,7 @@ export class ReservationAccessRepository extends Context.Service<
                 workspaceReservationId: input.reservationId,
                 deviceId: input.deviceId,
                 state: "pending",
+                reservationStartsAt: input.reservationStartsAt,
                 accessStartsAt: input.accessStartsAt,
                 accessEndsAt: input.accessEndsAt,
               })
@@ -144,6 +151,7 @@ export class ReservationAccessRepository extends Context.Service<
                 target: reservationAccessGrants.workspaceReservationId,
                 set: {
                   deviceId: input.deviceId,
+                  reservationStartsAt: input.reservationStartsAt,
                   accessStartsAt: input.accessStartsAt,
                   accessEndsAt: input.accessEndsAt,
                 },
@@ -174,6 +182,7 @@ export class ReservationAccessRepository extends Context.Service<
             const retryableGrantHasDifferentTarget =
               (grant.state === "pending" || grant.state === "failed") &&
               (grant.deviceId !== input.deviceId ||
+                !grant.reservationStartsAt.equals(input.reservationStartsAt) ||
                 !grant.accessStartsAt.equals(input.accessStartsAt) ||
                 !grant.accessEndsAt.equals(input.accessEndsAt));
             if (retryableGrantHasDifferentTarget) {
@@ -289,6 +298,7 @@ export class ReservationAccessRepository extends Context.Service<
               .update(reservationAccessGrants)
               .set({
                 state: "uncertain",
+                accessCode: null,
                 failedAt: input.failedAt,
                 failureCode: input.failureCode,
                 updatedAt: input.failedAt,
@@ -296,10 +306,15 @@ export class ReservationAccessRepository extends Context.Service<
               .where(
                 and(
                   eq(reservationAccessGrants.id, input.id),
-                  eq(reservationAccessGrants.state, "provisioning"),
-                  lte(
-                    reservationAccessGrants.provisioningStartedAt,
-                    input.failedAt
+                  or(
+                    eq(reservationAccessGrants.state, "issued"),
+                    and(
+                      eq(reservationAccessGrants.state, "provisioning"),
+                      lte(
+                        reservationAccessGrants.provisioningStartedAt,
+                        input.failedAt
+                      )
+                    )
                   )
                 )
               )
@@ -314,6 +329,32 @@ export class ReservationAccessRepository extends Context.Service<
               );
           }
         ),
+        clearExpiredAccessCodes: Effect.fn(
+          "ReservationAccessRepository.clearExpiredAccessCodes"
+        )(function* (now) {
+          const cleared = yield* db
+            .update(reservationAccessGrants)
+            .set({ state: "expired", accessCode: null, updatedAt: now })
+            .where(
+              and(
+                isNotNull(reservationAccessGrants.accessCode),
+                eq(reservationAccessGrants.state, "issued"),
+                lte(reservationAccessGrants.accessEndsAt, now)
+              )
+            )
+            .returning({ id: reservationAccessGrants.id })
+            .pipe(
+              Effect.withTracerEnabled(false),
+              Effect.mapError(() =>
+                storageError(
+                  "clear_expired",
+                  undefined,
+                  "Expired reservation access credentials could not be cleared."
+                )
+              )
+            );
+          return cleared.length;
+        }),
         loadIssuedCode: Effect.fn("ReservationAccessRepository.loadIssuedCode")(
           function* (input) {
             const [row] = yield* db

@@ -4,12 +4,15 @@ import {
   IgloohomeService,
 } from "@deskohub/igloohome";
 import { Context, Data, Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { IgloohomeServiceLive } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { IssuedReservationAccess } from "../reservation-access";
 import {
   ReservationAccessRepository,
+  ReservationAccessRepositoryLive,
   type ReservationAccessStorageError,
 } from "./reservation-access.repository";
 
@@ -115,6 +118,9 @@ export interface IReservationAccessService {
     readonly reservedFrom: Temporal.Instant;
     readonly reservedUntil: Temporal.Instant;
   }) => Effect.Effect<IssuedReservationAccess, ReservationAccessIssuanceError>;
+  readonly clearExpiredAccessCodes: (
+    now: Temporal.Instant
+  ) => Effect.Effect<number, ReservationAccessStorageError>;
 }
 
 export class ReservationAccessService extends Context.Service<
@@ -131,6 +137,7 @@ export class ReservationAccessService extends Context.Service<
       );
 
       return ReservationAccessService.of({
+        clearExpiredAccessCodes: repository.clearExpiredAccessCodes,
         issueForReservation: Effect.fn(
           "ReservationAccessService.issueForReservation"
         )(function* (input) {
@@ -146,6 +153,32 @@ export class ReservationAccessService extends Context.Service<
               )
             );
           if (existingGrant?.state === "issued") {
+            if (
+              !existingGrant.reservationStartsAt.equals(input.reservedFrom) ||
+              !existingGrant.accessEndsAt.equals(input.reservedUntil)
+            ) {
+              yield* repository
+                .markUncertain({
+                  id: existingGrant.id,
+                  reservationId: input.reservationId,
+                  failureCode: "reservation_timing_changed",
+                  failedAt: Temporal.Now.instant(),
+                })
+                .pipe(
+                  Effect.mapError(() =>
+                    issuanceError(
+                      input.reservationId,
+                      "uncertain",
+                      "Changed reservation access could not be reconciled."
+                    )
+                  )
+                );
+              return yield* issuanceError(
+                input.reservationId,
+                "uncertain",
+                "Reservation timing changed after AlgoPIN issuance."
+              );
+            }
             const accessCode = yield* repository
               .loadIssuedCode({
                 id: existingGrant.id,
@@ -173,6 +206,7 @@ export class ReservationAccessService extends Context.Service<
             .ensure({
               reservationId: input.reservationId,
               deviceId,
+              reservationStartsAt: input.reservedFrom,
               accessStartsAt: interval.startsAt,
               accessEndsAt: interval.endsAt,
             })
@@ -348,5 +382,11 @@ export class ReservationAccessService extends Context.Service<
         }),
       });
     })
+  );
+
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(ReservationAccessRepositoryLive),
+    Layer.provide(WorkspaceDatabaseLive),
+    Layer.provide(IgloohomeServiceLive)
   );
 }

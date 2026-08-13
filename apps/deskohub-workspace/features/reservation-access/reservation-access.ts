@@ -19,6 +19,7 @@ export const reservationAccessGrantStates = [
   "pending",
   "provisioning",
   "issued",
+  "expired",
   "uncertain",
   "failed",
 ] as const;
@@ -31,6 +32,7 @@ export interface ReservationAccessGrant {
   readonly deviceId: IgloohomeDeviceId;
   readonly state: ReservationAccessGrantState;
   readonly providerCredentialId: IgloohomePinId | null;
+  readonly reservationStartsAt: Temporal.Instant;
   readonly accessStartsAt: Temporal.Instant;
   readonly accessEndsAt: Temporal.Instant;
   readonly provisioningStartedAt: Temporal.Instant | null;

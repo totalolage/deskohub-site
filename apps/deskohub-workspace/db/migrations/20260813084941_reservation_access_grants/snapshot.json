@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "79045c8c-e94b-4618-9121-2e8a133f0994",
+  "id": "5fac2b2b-bf7b-4314-ae50-d03e3a38a628",
   "prevIds": [
     "17dcf068-9134-4357-8bd0-b9a6b19fb927"
   ],
@@ -2066,6 +2066,19 @@
       "generated": null,
       "identity": null,
       "name": "access_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "reservation_starts_at",
       "entityType": "columns",
       "schema": "public",
       "table": "reservation_access_grants"
@@ -4476,7 +4489,7 @@
       "table": "reservation_access_grants"
     },
     {
-      "value": "\"state\" in ('pending', 'provisioning', 'issued', 'uncertain', 'failed')",
+      "value": "\"state\" in ('pending', 'provisioning', 'issued', 'expired', 'uncertain', 'failed')",
       "name": "reservation_access_grants_state_check",
       "entityType": "checks",
       "schema": "public",
@@ -4499,6 +4512,13 @@
     {
       "value": "\"state\" <> 'provisioning' or \"provisioning_started_at\" is not null",
       "name": "reservation_access_grants_provisioning_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "reservation_access_grants"
+    },
+    {
+      "value": "\"state\" <> 'expired' or \"access_code\" is null",
+      "name": "reservation_access_grants_expired_check",
       "entityType": "checks",
       "schema": "public",
       "table": "reservation_access_grants"

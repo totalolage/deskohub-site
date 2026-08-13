@@ -125,6 +125,7 @@ describe("ReservationAccessService", () => {
     deviceId,
     state: "issued" as const,
     providerCredentialId: pinId,
+    reservationStartsAt: reservation.reservedFrom,
     accessStartsAt: reservation.reservedFrom,
     accessEndsAt: reservation.reservedUntil,
     provisioningStartedAt: Temporal.Instant.from("2099-07-01T07:00:00Z"),
@@ -142,6 +143,7 @@ describe("ReservationAccessService", () => {
     };
     const pastGrant = {
       ...grant,
+      reservationStartsAt: pastReservation.reservedFrom,
       accessStartsAt: pastReservation.reservedFrom,
       accessEndsAt: pastReservation.reservedUntil,
     };
@@ -173,6 +175,50 @@ describe("ReservationAccessService", () => {
 
     expect(issued.accessCode).toBe(accessCode);
     expect(repository.ensure).not.toHaveBeenCalled();
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
+  });
+
+  test("withholds an issued credential when the reservation interval changed", async () => {
+    const loadIssuedCode = mock(() => Effect.succeed(accessCode));
+    const markUncertain = mock(() => Effect.void);
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.die("Igloohome must not be called")
+    );
+    const repository = {
+      findByReservationId: mock(() => Effect.succeed(grant)),
+      ensure: mock(() => Effect.die("grant must not be replaced")),
+      loadIssuedCode,
+      markUncertain,
+    } as unknown as IReservationAccessRepository;
+
+    const result = await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service
+        .issueForReservation({
+          ...reservation,
+          reservedUntil: reservation.reservedUntil.add({ hours: 1 }),
+        })
+        .pipe(Effect.result);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(ReservationAccessRepository, repository),
+              Layer.succeed(IgloohomeService, { issueHourlyAlgoPin })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure.outcome).toBe("uncertain");
+    }
+    expect(loadIssuedCode).not.toHaveBeenCalled();
+    expect(markUncertain).toHaveBeenCalledTimes(1);
     expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 

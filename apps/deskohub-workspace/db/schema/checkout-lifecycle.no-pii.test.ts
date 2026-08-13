@@ -50,7 +50,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   test("reservation access stores its time-bound credential as text", async () => {
     const schema = await readAppFile("db/schema/reservation-access-grants.ts");
     const migration = await readAppFile(
-      "db/migrations/20260812180024_reservation_access_grants/migration.sql"
+      "db/migrations/20260813084941_reservation_access_grants/migration.sql"
     );
 
     expect(schema).toContain('text("access_code")');
@@ -59,6 +59,21 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(migration).toContain('CREATE TABLE "reservation_access_grants"');
     expect(migration).not.toContain('CREATE TABLE "discount_targets"');
     expect(migration).not.toContain('DROP TABLE "discount_product_targets"');
+  });
+
+  test("the existing cron clears expired reservation access codes", async () => {
+    const [repository, cronRoute] = await Promise.all([
+      readAppFile(
+        "features/reservation-access/backend/reservation-access.repository.ts"
+      ),
+      readAppFile("app/api/cron/workspace/reservation-holds/route.ts"),
+    ]);
+
+    expect(repository).toContain("clearExpiredAccessCodes");
+    expect(repository).toContain('state: "expired"');
+    expect(repository).toContain("accessCode: null");
+    expect(repository).toContain("reservationAccessGrants.accessEndsAt");
+    expect(cronRoute).toContain("clearExpiredAccessCodes");
   });
 
   test("accounting PII exception stores only PostgreSQL ciphertext", async () => {
@@ -182,7 +197,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
           "db/migrations/20260812144849_married_may_parker/snapshot.json"
         ),
         readAppFile(
-          "db/migrations/20260812180024_reservation_access_grants/snapshot.json"
+          "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
         ),
       ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);

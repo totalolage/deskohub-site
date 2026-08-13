@@ -73,7 +73,7 @@ The paths and hashes of the terms and operating rules accepted for payment are p
 
 Workspace stores only the identifiers, states, amounts, timestamps, and immutable evidence needed to operate and recover checkout. Customer contact details, free-form notes, payment-instrument data, raw provider payloads, and access codes are excluded from ordinary local checkout records.
 
-The narrow access exception stores an issued, time-bound algoPIN in a dedicated credential ledger so repeated access-page requests reuse the same code without creating another one. Codes remain excluded from email, logs, analytics, ordinary reservation records, and operator-facing payloads.
+The narrow access exception stores an issued, time-bound algoPIN in a dedicated credential ledger so repeated access-page requests reuse the same code without creating another one. The daily cleanup removes expired PIN values. A reservation timing change after issuance withholds the old PIN for operator reconciliation. Codes remain excluded from email, logs, analytics, ordinary reservation records, and operator-facing payloads.
 
 Accounting evidence is the narrow exception: the accepted transaction and buyer facts may be retained in a protected, immutable snapshot for invoice eligibility. Those facts remain unavailable to unrelated product, analytics, logging, and support surfaces.
 

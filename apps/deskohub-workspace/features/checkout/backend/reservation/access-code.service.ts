@@ -1,12 +1,9 @@
 import { Context, Effect, Layer } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   type ReservationAccessIssuanceError,
   ReservationAccessService as ReservationAccessProvisioningService,
 } from "@/features/reservation-access";
-import { ReservationAccessRepositoryLive } from "@/features/reservation-access/backend/reservation-access.repository";
-import { IgloohomeServiceLive } from "@/shared/backend/config/igloohome.config";
 
 const workspaceCheckoutPlaceholderAccessCode = "7915";
 
@@ -52,8 +49,5 @@ export const WorkspaceCheckoutAccessCodeServiceLive = Layer.effect(
 
 export const WorkspaceCheckoutAccessCodeServiceLiveWithDependencies =
   WorkspaceCheckoutAccessCodeServiceLive.pipe(
-    Layer.provide(ReservationAccessProvisioningService.Live),
-    Layer.provide(ReservationAccessRepositoryLive),
-    Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(IgloohomeServiceLive)
+    Layer.provide(ReservationAccessProvisioningService.LiveWithDependencies)
   );

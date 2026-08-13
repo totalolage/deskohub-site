@@ -35,6 +35,7 @@ export const reservationAccessGrants = pgTable(
       "provider_credential_id"
     ).$type<IgloohomePinId>(),
     accessCode: text("access_code").$type<AlgoPin>(),
+    reservationStartsAt: instant("reservation_starts_at").notNull(),
     accessStartsAt: instant("access_starts_at").notNull(),
     accessEndsAt: instant("access_ends_at").notNull(),
     provisioningStartedAt: instant("provisioning_started_at"),
@@ -72,6 +73,10 @@ export const reservationAccessGrants = pgTable(
     check(
       "reservation_access_grants_provisioning_check",
       sql`${t.state} <> 'provisioning' or ${t.provisioningStartedAt} is not null`
+    ),
+    check(
+      "reservation_access_grants_expired_check",
+      sql`${t.state} <> 'expired' or ${t.accessCode} is null`
     ),
     check(
       "reservation_access_grants_failure_check",

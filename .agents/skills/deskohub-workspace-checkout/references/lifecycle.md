@@ -363,11 +363,18 @@ the installed Retrofit Lock (OE1) linked to a Keypad (EK1),
 designates EK1 as the algoPIN-generation target.
 
 The `reservation_access_grants` ledger has one row per Workspace reservation and
-uses `pending`, `provisioning`, `issued`, `failed`, and `uncertain` states. The
+uses `pending`, `provisioning`, `issued`, `expired`, `failed`, and `uncertain`
+states. The
 issued PIN is stored as short-lived non-PII retry state rather than an archival
 record. Never annotate, log, or return it except in the authorized access
 response; mark it as a sensitive database query parameter so SQL diagnostics
-cannot expose it.
+cannot expose it. The daily cleanup sweep clears stored PIN values after their
+provider validity ends.
+
+If Dotypos timing changes after a PIN is issued, move the grant to `uncertain`,
+clear the stored PIN, and withhold access until an operator reconciles the
+provider credential. Never disclose a PIN issued for a different reservation
+interval.
 
 Provider 400, 401, 403, 404, and 415 responses are definitive rejections and
 may leave a retryable `failed` grant. Timeouts, transport failures, 5xx,
