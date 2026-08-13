@@ -1,4 +1,4 @@
-import { Option, Schema } from "effect";
+import { Match, Option, Schema } from "effect";
 import { connection } from "next/server";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import type { ReservationAccessViewModel } from "@/features/reservation/backend/reservation-access.service";
@@ -18,17 +18,22 @@ const decodePreviewSearchParams = getSearchParamsDecoder(
   })
 );
 
-const getPreviewAccess = (
-  state: "available" | "unavailable"
-): ReservationAccessViewModel =>
-  state === "available"
-    ? {
-        state: "available",
-        code: "24681357",
-        accessStartsAt: Temporal.Instant.from("2026-08-13T08:00:00Z"),
-        accessEndsAt: Temporal.Instant.from("2026-08-13T16:00:00Z"),
-      }
-    : { state: "unavailable" };
+const getPreviewAccess = Match.type<"available" | "unavailable">().pipe(
+  Match.when(
+    "available",
+    (): ReservationAccessViewModel => ({
+      state: "available",
+      code: "24681357",
+      accessStartsAt: Temporal.Instant.from("2026-08-13T08:00:00Z"),
+      accessEndsAt: Temporal.Instant.from("2026-08-13T16:00:00Z"),
+    })
+  ),
+  Match.when(
+    "unavailable",
+    (): ReservationAccessViewModel => ({ state: "unavailable" })
+  ),
+  Match.exhaustive
+);
 
 export default async function ReservationAccessPreviewPage({
   searchParams,
