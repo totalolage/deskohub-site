@@ -40,11 +40,7 @@ describe("PostOrderInvoicePage", () => {
     expect((view.getByLabelText("Address") as HTMLInputElement).value).toBe("");
     expect(view.queryByLabelText("Legal company name")).toBeNull();
     expect(view.queryByLabelText("Email")).toBeNull();
-    expect(
-      view.getByRole("option", {
-        name: "Falkland Islands (the) [Malvinas]",
-      })
-    ).toBeTruthy();
+    expect(view.getByRole("option", { name: "Czechia" })).toBeTruthy();
     expect(view.getByRole("button", { name: "Create invoice" })).toBeTruthy();
     expect(
       view.container
@@ -75,5 +71,18 @@ describe("PostOrderInvoicePage", () => {
       view.getByRole("button", { name: "Resend invoice to email" })
     ).toBeTruthy();
     expect(view.queryByLabelText("Address")).toBeNull();
+  });
+
+  test("localizes country names for Czech billing forms", () => {
+    const view = render(
+      <PostOrderInvoicePage
+        accessToken="signed-capability"
+        initialState="create"
+        locale="cs-CZ"
+        orderId={"reservation-id" as never}
+      />
+    );
+
+    expect(view.getByRole("option", { name: "Česko" })).toBeTruthy();
   });
 });

@@ -198,6 +198,38 @@ describe("reservation invoice processing", () => {
     });
   });
 
+  test("reconciles a losing concurrent request to the issued buyer", async () => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const committedAddress = { ...personalAddress, line1: "Winner 1" };
+    const harness = makeHarness(source, {
+      issuedInvoice: {
+        document: {
+          ...makeCoworkInvoiceDocument("en-US"),
+          buyer: {
+            kind: "person",
+            legalName: "Ada Lovelace",
+            address: committedAddress,
+          },
+        },
+      },
+      issueChanged: false,
+    });
+    const accessToken = await Effect.runPromise(
+      createReservationAccessToken({
+        orderId: source.workspaceReservationId,
+        locale: "en-US",
+      })
+    );
+
+    await runPostOrderCreate(harness, accessToken);
+
+    expect(harness.updateBilling).toHaveBeenCalledTimes(2);
+    expect(harness.updateBilling).toHaveBeenLastCalledWith(
+      "dotypos-customer-1",
+      expect.objectContaining({ addressLine1: "Winner 1" })
+    );
+  });
+
   test("resends an existing invoice only through the customer resend path", async () => {
     const source = makeSource({ purpose: "personal", invoice: "none" });
     const harness = makeHarness(source, { existingInvoice: {} });
@@ -318,10 +350,15 @@ const makeHarness = (
   options: {
     readonly billingFailure?: ExternalAPIError;
     readonly existingInvoice?: object;
+    readonly issuedInvoice?: object;
+    readonly issueChanged?: boolean;
   } = {}
 ) => {
   const issue = mock(() =>
-    Effect.succeed({ invoice: {} as never, changed: true })
+    Effect.succeed({
+      invoice: (options.issuedInvoice ?? {}) as never,
+      changed: options.issueChanged ?? true,
+    })
   );
   const deliver = mock(() =>
     Effect.succeed({ status: "delivered" as const, changed: true })

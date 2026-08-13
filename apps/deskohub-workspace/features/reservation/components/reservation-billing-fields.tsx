@@ -2,6 +2,7 @@
 
 import { getName } from "country-list";
 import { Info } from "lucide-react";
+import { useSyncExternalStore } from "react";
 import { type FieldPathByValue, useFormContext } from "react-hook-form";
 import {
   type InvoiceBuyerAddressInput,
@@ -41,6 +42,27 @@ type BillingFieldName = FieldPathByValue<
   ReservationBillingFormValues,
   string | undefined
 >;
+
+const stableInvoiceCountries = invoiceCountryCodes.map((code) => ({
+  code,
+  name: getName(code) ?? code,
+}));
+const localizedInvoiceCountries = new Map<
+  Locale,
+  typeof stableInvoiceCountries
+>();
+const subscribeToCountryNames = () => () => {};
+
+const getLocalizedInvoiceCountries = (locale: Locale) => {
+  const cached = localizedInvoiceCountries.get(locale);
+  if (cached) return cached;
+  const displayNames = new Intl.DisplayNames([locale], { type: "region" });
+  const countries = invoiceCountryCodes
+    .map((code) => ({ code, name: displayNames.of(code) ?? code }))
+    .sort((left, right) => left.name.localeCompare(right.name, locale));
+  localizedInvoiceCountries.set(locale, countries);
+  return countries;
+};
 
 export function ReservationBillingFields({
   locale,
@@ -211,6 +233,7 @@ export function ReservationBillingAddressFields({
       />
       <BillingCountryField
         label={m.reservationBillingCountryLabel({}, { locale })}
+        locale={locale}
         name={`${address}.country` as BillingFieldName}
       />
     </div>
@@ -219,12 +242,19 @@ export function ReservationBillingAddressFields({
 
 function BillingCountryField({
   label,
+  locale,
   name,
 }: {
   readonly label: string;
+  readonly locale: Locale;
   readonly name: BillingFieldName;
 }) {
   const { control } = useFormContext<ReservationBillingFormValues>();
+  const countries = useSyncExternalStore(
+    subscribeToCountryNames,
+    () => getLocalizedInvoiceCountries(locale),
+    () => stableInvoiceCountries
+  );
 
   return (
     <FormField
@@ -242,9 +272,9 @@ function BillingCountryField({
               })}
               required
             >
-              {invoiceCountryCodes.map((countryCode) => (
-                <option key={countryCode} value={countryCode}>
-                  {getName(countryCode) ?? countryCode}
+              {countries.map((country) => (
+                <option key={country.code} value={country.code}>
+                  {country.name}
                 </option>
               ))}
             </select>

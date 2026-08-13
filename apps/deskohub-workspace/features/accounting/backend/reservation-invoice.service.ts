@@ -150,6 +150,29 @@ export const ReservationInvoiceServiceLive = Layer.effect(
           paymentAttemptId: context.paymentAttemptId,
           buyer,
         });
+        if (!issuance.changed) {
+          const committedBuyer = issuance.invoice.document.buyer;
+          if (committedBuyer.kind !== "person") {
+            return yield* new PostOrderInvoiceUnavailableError({
+              message:
+                "The issued invoice buyer does not match the reservation.",
+            });
+          }
+          const committedBillingDetails = getDotyposCustomerBillingDetails({
+            purpose: "personal",
+            invoice: "requested",
+            address: committedBuyer.address,
+          });
+          if (!committedBillingDetails) {
+            return yield* new PostOrderInvoiceUnavailableError({
+              message: "The issued invoice billing details are unavailable.",
+            });
+          }
+          yield* dotypos.updateCustomerBillingDetails(
+            context.source.dotyposCustomerId,
+            committedBillingDetails
+          );
+        }
         const delivered = yield* invoiceDeliveries
           .deliverByPaymentAttemptId({
             paymentAttemptId: context.paymentAttemptId,
