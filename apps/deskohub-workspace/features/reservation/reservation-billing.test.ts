@@ -88,4 +88,21 @@ describe("reservation billing", () => {
       })
     ).toBeUndefined();
   });
+
+  test("validates ISO countries and supported national postal-code formats", () => {
+    expect(() =>
+      decodeBilling({
+        purpose: "personal",
+        invoice: "requested",
+        address: { ...address, country: "XX" },
+      })
+    ).toThrow();
+    expect(() =>
+      decodeBilling({
+        purpose: "personal",
+        invoice: "requested",
+        address: { ...address, postalCode: "invalid" },
+      })
+    ).toThrow();
+  });
 });

@@ -2,6 +2,7 @@
 
 import { Info } from "lucide-react";
 import { useFormContext } from "react-hook-form";
+import { invoiceCountryCodes } from "@/features/accounting/billing-identity";
 import { type Locale, m } from "@/features/i18n";
 import {
   defaultReservationBillingSelection,
@@ -17,7 +18,7 @@ import {
   FormItem,
   FormMessage,
 } from "@/shared/components/ui/form";
-import { Input } from "@/shared/components/ui/input";
+import { Input, inputVariants } from "@/shared/components/ui/input";
 import { Switch } from "@/shared/components/ui/switch";
 import {
   Tooltip,
@@ -210,12 +211,57 @@ function AddressFields({
         label={m.reservationBillingPostalCodeLabel({}, { locale })}
         name={`${address}.postalCode` as BillingFieldName}
       />
-      <BillingTextField
-        autoComplete="country-name"
+      <BillingCountryField
         label={m.reservationBillingCountryLabel({}, { locale })}
+        locale={locale}
         name={`${address}.country` as BillingFieldName}
       />
     </div>
+  );
+}
+
+function BillingCountryField({
+  label,
+  locale,
+  name,
+}: {
+  readonly label: string;
+  readonly locale: Locale;
+  readonly name: BillingFieldName;
+}) {
+  const { control } = useFormContext<ReservationBillingFormValues>();
+  const displayNames = new Intl.DisplayNames([locale], { type: "region" });
+  const countries = invoiceCountryCodes
+    .map((code) => ({ code, name: displayNames.of(code) ?? code }))
+    .sort((left, right) => left.name.localeCompare(right.name, locale));
+
+  return (
+    <FormField
+      control={control}
+      name={name}
+      render={({ field, fieldState }) => (
+        <FormItem>
+          <ReservationFormLabel required>{label}</ReservationFormLabel>
+          <FormControl>
+            <select
+              {...field}
+              autoComplete="country"
+              className={inputVariants({
+                variant: fieldState.error ? "error" : "default",
+              })}
+              required
+            >
+              {countries.map((country) => (
+                <option key={country.code} value={country.code}>
+                  {country.name}
+                </option>
+              ))}
+            </select>
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
   );
 }
 

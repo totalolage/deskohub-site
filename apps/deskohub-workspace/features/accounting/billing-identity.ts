@@ -1,4 +1,9 @@
+import { getCodes } from "country-list";
 import { Schema } from "effect";
+import isPostalCode, {
+  locales as postalCodeLocales,
+} from "validator/lib/isPostalCode.js";
+import { m } from "@/features/i18n";
 
 const billingTextSchema = (maximumLength: number) =>
   Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(maximumLength));
@@ -19,13 +24,33 @@ export const vatRegistrationIdSchema = billingTextSchema(255)
   });
 export type VatRegistrationId = typeof vatRegistrationIdSchema.Type;
 
+export const invoiceCountryCodes = getCodes().sort();
+const invoiceCountryCodeSet = new Set(invoiceCountryCodes);
+const postalCodeLocaleSet = new Set<string>(postalCodeLocales);
+
+const invoiceCountryCodeSchema = billingTextSchema(2).check(
+  Schema.makeFilter((country) => invoiceCountryCodeSet.has(country), {
+    message: m.reservationBillingCountryInvalid(),
+  })
+);
+
 export const invoiceBuyerAddressSchema = Schema.Struct({
   line1: billingTextSchema(180),
   line2: Schema.optionalKey(billingTextSchema(180)),
   city: billingTextSchema(255),
   postalCode: billingTextSchema(20),
-  country: billingTextSchema(10),
-});
+  country: invoiceCountryCodeSchema,
+}).check(
+  Schema.makeFilter(({ country, postalCode }) =>
+    !postalCodeLocaleSet.has(country) ||
+    isPostalCode(postalCode, country as (typeof postalCodeLocales)[number])
+      ? true
+      : {
+          path: ["postalCode"],
+          issue: m.reservationBillingPostalCodeInvalid(),
+        }
+  )
+);
 
 export const personalInvoiceBuyerSchema = Schema.Struct({
   kind: Schema.Literal("person"),

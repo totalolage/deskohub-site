@@ -60,6 +60,11 @@ describe("ReservationBillingFields", () => {
     expect((view.getByLabelText("Address") as HTMLInputElement).required).toBe(
       true
     );
+    expect(
+      (view.getByRole("combobox", { name: "Country" }) as HTMLSelectElement)
+        .value
+    ).toBe("CZ");
+    expect(view.getByRole("option", { name: "Czechia" })).toBeTruthy();
     fireEvent.change(view.getByLabelText("Address"), {
       target: { value: "Private street 1" },
     });

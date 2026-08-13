@@ -116,12 +116,10 @@ export const makeInvoiceDocument = (input: {
   readonly fulfilledAt: Temporal.Instant;
   readonly paidAt: Temporal.Instant;
 }): InvoiceDocument => {
-  const { billing: _billing, delivery: _delivery, ...source } = input.source;
-
   return invoiceDocumentSchema.make({
-    ...source,
+    ...input.source,
     supplier: {
-      ...source.supplier,
+      ...input.source.supplier,
       commercialRegister: workspaceSiteConstants.company.commercialRegister,
     },
     buyer: input.buyer,
