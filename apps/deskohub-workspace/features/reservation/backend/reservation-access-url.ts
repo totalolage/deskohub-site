@@ -9,18 +9,15 @@ export const getReservationAccessPath = (input: {
   readonly orderId: WorkspaceReservationId;
   readonly accessToken: string;
   readonly setBypassCookie?: boolean;
-  readonly skipPreviewProtectionBypass?: boolean;
 }) => {
   const url = new URL(
     `/${input.locale}${reservationAccessPath}/${input.orderId}`,
     "https://deskohub.local"
   );
   url.searchParams.set(reservationAccessTokenQueryParam, input.accessToken);
-  if (!input.skipPreviewProtectionBypass) {
-    appendVercelPreviewProtectionBypass(url, {
-      setBypassCookie: input.setBypassCookie,
-    });
-  }
+  appendVercelPreviewProtectionBypass(url, {
+    setBypassCookie: input.setBypassCookie,
+  });
 
   return `${url.pathname}${url.search}`;
 };

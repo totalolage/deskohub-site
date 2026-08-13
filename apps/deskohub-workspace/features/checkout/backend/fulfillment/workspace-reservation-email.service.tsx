@@ -384,25 +384,30 @@ const createInternalReservationEmail = (
 
 export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
   "WorkspaceReservationEmailService.renderCustomerPreview"
-)((input: { readonly reservation: WorkspaceReservationDetails }) => {
-  const locale = getReservationLocale(input.reservation.locale);
+)(
+  (input: {
+    readonly accessUrl: string;
+    readonly reservation: WorkspaceReservationDetails;
+  }) => {
+    const locale = getReservationLocale(input.reservation.locale);
 
-  return createPreviewNetworkQrPng().pipe(
-    Effect.flatMap((networkQrPng) =>
-      renderWorkspaceEmail(
-        createCustomerReservationEmail({
-          reservation: input.reservation,
-          locale,
-          accessUrl: `https://${workspaceSiteConstants.brand.domain}/${locale}/reservation/access/${input.reservation.id}?accessToken=preview-token`,
-          networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
-          networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
-          locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
-        })
-      )
-    ),
-    Effect.map(({ html }) => html)
-  );
-});
+    return createPreviewNetworkQrPng().pipe(
+      Effect.flatMap((networkQrPng) =>
+        renderWorkspaceEmail(
+          createCustomerReservationEmail({
+            reservation: input.reservation,
+            locale,
+            accessUrl: input.accessUrl,
+            networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
+            networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
+            locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
+          })
+        )
+      ),
+      Effect.map(({ html }) => html)
+    );
+  }
+);
 
 const createPreviewNetworkQrPng = () =>
   Effect.tryPromise({

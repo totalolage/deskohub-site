@@ -8,7 +8,6 @@ describe("reservation access URL", () => {
         locale: "en-US",
         orderId: "reservation-id",
         accessToken: "signed-access-token",
-        skipPreviewProtectionBypass: true,
       })
     ).toBe(
       "/en-US/reservation/access/reservation-id?accessToken=signed-access-token"

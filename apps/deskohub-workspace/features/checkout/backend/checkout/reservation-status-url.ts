@@ -9,7 +9,6 @@ export const getReservationStatusPath = (input: {
   readonly orderId: WorkspaceReservationId;
   readonly outcome?: CheckoutStatusReturnOutcome;
   readonly setBypassCookie?: boolean;
-  readonly skipPreviewProtectionBypass?: boolean;
 }) => {
   const url = new URL(
     `/${input.locale}${reservationStatusPath}/${input.orderId}`,
@@ -18,11 +17,9 @@ export const getReservationStatusPath = (input: {
   if (input.outcome && input.outcome !== "unknown") {
     url.searchParams.set("outcome", input.outcome);
   }
-  if (!input.skipPreviewProtectionBypass) {
-    appendVercelPreviewProtectionBypass(url, {
-      setBypassCookie: input.setBypassCookie,
-    });
-  }
+  appendVercelPreviewProtectionBypass(url, {
+    setBypassCookie: input.setBypassCookie,
+  });
 
   return `${url.pathname}${url.search}`;
 };
