@@ -157,14 +157,20 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 )
                 .limit(1)
                 .for("update");
-              if (
-                !reservation ||
-                reservation.activePaymentAttemptId !== input.paymentAttemptId
-              ) {
+              if (!reservation) {
                 return yield* recoveryStateError(
                   "settle",
                   input.paymentAttemptId,
-                  "Late payment is not the reservation's active attempt."
+                  "Late-payment reservation was not found."
+                );
+              }
+              const isActiveAttempt =
+                reservation.activePaymentAttemptId === input.paymentAttemptId;
+              if (!isActiveAttempt && input.state !== "refund_required") {
+                return yield* recoveryStateError(
+                  "settle",
+                  input.paymentAttemptId,
+                  "Only an active payment attempt can recover the reservation."
                 );
               }
               if (
@@ -261,52 +267,57 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 );
               }
 
-              let reservationValues = {};
-              if (input.recoveredDotyposReservationId) {
-                reservationValues = {
-                  dotyposReservationId: input.recoveredDotyposReservationId,
-                  reservationState: input.reservationState,
-                  reservationCreatedAt: input.completedAt,
-                  reservationConfirmedAt:
-                    input.reservationState === "confirmed"
-                      ? input.completedAt
-                      : null,
-                  reservationCancelledAt: null,
-                  reservationHoldExpiredAt: null,
-                };
-              } else if (input.reservationState) {
-                reservationValues = {
-                  reservationState: input.reservationState,
-                  ...(input.reservationState === "confirmed" && {
-                    reservationConfirmedAt: input.completedAt,
-                  }),
-                };
-              }
-              const [updatedReservation] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  ...reservationValues,
-                  paymentState: "paid",
-                  paidAt: recovery.verifiedPaidAt,
-                  failureCode: input.failureCode ?? null,
-                  updatedAt: input.completedAt,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(
-                      workspaceReservations.activePaymentAttemptId,
-                      input.paymentAttemptId
+              if (isActiveAttempt) {
+                let reservationValues = {};
+                if (input.recoveredDotyposReservationId) {
+                  reservationValues = {
+                    dotyposReservationId: input.recoveredDotyposReservationId,
+                    reservationState: input.reservationState,
+                    reservationCreatedAt: input.completedAt,
+                    reservationConfirmedAt:
+                      input.reservationState === "confirmed"
+                        ? input.completedAt
+                        : null,
+                    reservationCancelledAt: null,
+                    reservationHoldExpiredAt: null,
+                  };
+                } else if (input.reservationState) {
+                  reservationValues = {
+                    reservationState: input.reservationState,
+                    ...(input.reservationState === "confirmed" && {
+                      reservationConfirmedAt: input.completedAt,
+                    }),
+                  };
+                }
+                const [updatedReservation] = yield* tx
+                  .update(workspaceReservations)
+                  .set({
+                    ...reservationValues,
+                    paymentState: "paid",
+                    paidAt: recovery.verifiedPaidAt,
+                    failureCode: input.failureCode ?? null,
+                    updatedAt: input.completedAt,
+                  })
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(
+                        workspaceReservations.activePaymentAttemptId,
+                        input.paymentAttemptId
+                      )
                     )
                   )
-                )
-                .returning({ id: workspaceReservations.id });
-              if (!updatedReservation) {
-                return yield* recoveryStateError(
-                  "settle",
-                  input.paymentAttemptId,
-                  "Late-payment reservation settlement failed."
-                );
+                  .returning({ id: workspaceReservations.id });
+                if (!updatedReservation) {
+                  return yield* recoveryStateError(
+                    "settle",
+                    input.paymentAttemptId,
+                    "Late-payment reservation settlement failed."
+                  );
+                }
               }
 
               yield* tx
@@ -378,16 +389,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   .select()
                   .from(workspaceReservations)
                   .where(
-                    and(
-                      eq(
-                        workspaceReservations.id,
-                        input.workspaceReservationId
-                      ),
-                      eq(
-                        workspaceReservations.activePaymentAttemptId,
-                        input.paymentAttemptId
-                      )
-                    )
+                    eq(workspaceReservations.id, input.workspaceReservationId)
                   )
                   .limit(1)
                   .for("update");
@@ -395,7 +397,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   return yield* recoveryStateError(
                     "start",
                     input.paymentAttemptId,
-                    "Late-payment recovery requires the terminal active attempt and its Dotypos reservation."
+                    "Late-payment recovery requires a terminal attempt and its Dotypos reservation."
                   );
                 }
 

@@ -24,6 +24,7 @@ const recovery = {
 
 const heldReservation = {
   id: "reservation-id",
+  activePaymentAttemptId: "attempt-id",
   reservationState: "held" as const,
 };
 
@@ -120,6 +121,50 @@ describe("LatePaymentRecoveryService", () => {
     );
   });
 
+  test("requires a refund without disturbing a newer active payment attempt", async () => {
+    const requireRefund = mock(() => Effect.void);
+    const layer = LatePaymentRecoveryServiceLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(LatePaymentRecoveryRepository, {
+            findByPaymentAttemptId: mock(() =>
+              Effect.succeed(recovery as never)
+            ),
+            claim: mock(() =>
+              Effect.succeed({ ...recovery, state: "processing" } as never)
+            ),
+            requireRefund,
+          }),
+          Layer.mock(WorkspaceReservationRepository, {
+            findById: mock(() =>
+              Effect.succeed({
+                ...heldReservation,
+                activePaymentAttemptId: "newer-attempt-id",
+              } as never)
+            ),
+          }),
+          Layer.mock(AccountingDocumentSnapshotRepository, {}),
+          Layer.mock(WorkspaceAvailabilityService, {}),
+          Layer.mock(DotyposService, {}),
+          Layer.mock(WorkspaceTableAssignmentService, {}),
+          Layer.mock(WorkspacePaidFulfillmentService, {})
+        )
+      )
+    );
+
+    const outcome = await Effect.gen(function* () {
+      const service = yield* LatePaymentRecoveryService;
+      return yield* service.recover({ paymentAttemptId: "attempt-id" });
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(outcome).toBe("refund_required");
+    expect(requireRefund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failureCode: "late_payment_superseded_attempt",
+      })
+    );
+  });
+
   test("recreates a cancellation-failed reservation after Dotypos reports it cancelled", async () => {
     const completeWithReplacement = mock(() => Effect.void);
     const fulfillPaidOrder = mock(() => Effect.void);
@@ -134,6 +179,7 @@ describe("LatePaymentRecoveryService", () => {
     } as never;
     const cancelledReservation = {
       id: "reservation-id",
+      activePaymentAttemptId: "attempt-id",
       reservationState: "cancellation_failed",
       dotyposCustomerId: "dotypos-customer-id",
       reservationDetails: {

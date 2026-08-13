@@ -270,6 +270,15 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
         return "review_required" as const;
       }
 
+      if (reservation.activePaymentAttemptId !== claimed.paymentAttemptId) {
+        yield* settleRefund({
+          paymentAttemptId: claimed.paymentAttemptId,
+          workspaceReservationId: reservation.id,
+          failureCode: "late_payment_superseded_attempt",
+        });
+        return "refund_required" as const;
+      }
+
       const newerReservation = yield* recoveries.hasNewerActiveReservation(
         reservation.id
       );

@@ -46,6 +46,21 @@ test("allows refund settlement for a superseded late payment", async () => {
   );
 });
 
+test("records an older attempt refund without replacing the active attempt", async () => {
+  const source = await Bun.file(
+    new URL("./late-payment-recovery.repository.ts", import.meta.url)
+  ).text();
+  const start = source.slice(source.indexOf("start: Effect.fn"));
+
+  expect(start).not.toContain(
+    "workspaceReservations.activePaymentAttemptId,\n                        input.paymentAttemptId"
+  );
+  expect(source).toContain(
+    '!isActiveAttempt && input.state !== "refund_required"'
+  );
+  expect(source).toContain("if (isActiveAttempt) {");
+});
+
 test("redeems the attempt's discount claim in recovered settlements", async () => {
   const source = await Bun.file(
     new URL("./late-payment-recovery.repository.ts", import.meta.url)
