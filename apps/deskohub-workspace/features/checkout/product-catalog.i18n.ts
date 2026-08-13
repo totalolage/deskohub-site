@@ -49,10 +49,7 @@ export const workspaceProductTierCardMessages = {
   basic: {
     description: m.reservationTierBasicBulletDesk,
     perksLabel: m.reservationTierPerksLabel,
-    perks: [
-      { message: m.reservationTierBasicPerkWifi },
-      { message: m.reservationTierBasicPerkWater },
-    ],
+    perks: [{ message: m.reservationTierBasicPerkWifi }],
   },
   plus: {
     description: m.reservationTierCoworkBulletDesk,

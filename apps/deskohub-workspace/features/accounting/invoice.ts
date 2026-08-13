@@ -7,12 +7,20 @@ import {
 import {
   type AccountingDocumentSnapshot,
   accountingDocumentIdentitySchema,
-  companyRegistrationIdSchema,
   coworkAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
   officeAccountingDocumentSnapshotSchema,
-  vatRegistrationIdSchema,
 } from "./accounting-document-snapshot";
+import type { InvoiceBuyer } from "./billing-identity";
+
+export {
+  type BusinessInvoiceBuyer,
+  businessInvoiceBuyerSchema,
+  type InvoiceBuyer,
+  invoiceBuyerSchema,
+  type PersonalInvoiceBuyer,
+  personalInvoiceBuyerSchema,
+} from "./billing-identity";
 
 export const invoiceNumberSchema = Schema.String.pipe(
   Schema.brand("InvoiceNumber")
@@ -23,39 +31,36 @@ export const invoiceNumberSchema = Schema.String.pipe(
 
 export type InvoiceNumber = typeof invoiceNumberSchema.Type;
 
-const invoiceBillingTextSchema = Schema.Trim.check(Schema.isNonEmpty());
-
-const invoiceBuyerAddressSchema = Schema.Struct({
-  line1: invoiceBillingTextSchema,
-  line2: Schema.optionalKey(invoiceBillingTextSchema),
-  city: invoiceBillingTextSchema,
-  postalCode: invoiceBillingTextSchema,
-  country: invoiceBillingTextSchema,
+const storedInvoiceBillingTextSchema = Schema.Trim.check(Schema.isNonEmpty());
+const storedInvoiceBuyerAddressSchema = Schema.Struct({
+  line1: storedInvoiceBillingTextSchema,
+  line2: Schema.optionalKey(storedInvoiceBillingTextSchema),
+  city: storedInvoiceBillingTextSchema,
+  postalCode: storedInvoiceBillingTextSchema,
+  country: storedInvoiceBillingTextSchema,
 });
-
-export const invoiceBuyerSchema = Schema.Union([
+const storedInvoiceBuyerSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("person"),
-    legalName: invoiceBillingTextSchema,
-    address: invoiceBuyerAddressSchema,
+    legalName: storedInvoiceBillingTextSchema,
+    address: storedInvoiceBuyerAddressSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("business"),
-    legalName: invoiceBillingTextSchema,
-    companyId: companyRegistrationIdSchema,
-    vatId: Schema.optionalKey(vatRegistrationIdSchema),
-    address: invoiceBuyerAddressSchema,
+    legalName: storedInvoiceBillingTextSchema,
+    companyId: storedInvoiceBillingTextSchema.pipe(
+      Schema.brand("CompanyRegistrationId")
+    ),
+    vatId: Schema.optionalKey(
+      storedInvoiceBillingTextSchema.pipe(Schema.brand("VatRegistrationId"))
+    ),
+    address: storedInvoiceBuyerAddressSchema,
   }),
-]).annotate({
-  identifier: "InvoiceBuyer",
-  description: "Complete immutable billing identity of an issued invoice.",
-});
-
-export type InvoiceBuyer = typeof invoiceBuyerSchema.Type;
+]);
 
 const invoiceIdentitySchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
-  buyer: invoiceBuyerSchema,
+  buyer: storedInvoiceBuyerSchema,
   supplier: Schema.Struct({
     ...accountingDocumentIdentitySchema.fields.supplier.fields,
     commercialRegister: Schema.optional(
@@ -138,12 +143,10 @@ export const makeInvoiceDocument = (input: {
   readonly fulfilledAt: Temporal.Instant;
   readonly paidAt: Temporal.Instant;
 }): InvoiceDocument => {
-  const { delivery: _delivery, ...source } = input.source;
-
   return invoiceDocumentSchema.make({
-    ...source,
+    ...input.source,
     supplier: {
-      ...source.supplier,
+      ...input.source.supplier,
       commercialRegister: workspaceSiteConstants.company.commercialRegister,
     },
     buyer: input.buyer,

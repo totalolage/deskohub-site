@@ -123,6 +123,7 @@ describe("getReservationDefaultValuesFromPayState", () => {
       email: "ada@example.com",
       phone: "+420 777 000 111",
       message: "Please prepare the standing desk.",
+      billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });
   });
