@@ -56,6 +56,25 @@ export const getAdministrationOverviewDateRanges = (
   },
 });
 
+export const getAdministrationReservationDateShortcuts = (
+  currentDate = getCurrentWorkspaceDate()
+): {
+  readonly today: AdministrationReservationClosedDateRange;
+  readonly upcoming: AdministrationReservationDateRange;
+  readonly past: AdministrationReservationDateRange;
+} => ({
+  today: {
+    from: currentDate.toString(),
+    to: currentDate.toString(),
+  },
+  upcoming: {
+    from: currentDate.add({ days: 1 }).toString(),
+  },
+  past: {
+    to: currentDate.subtract({ days: 1 }).toString(),
+  },
+});
+
 const parseCalendarDate = (value: string | undefined) => {
   if (!value) return undefined;
   try {

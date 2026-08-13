@@ -136,6 +136,7 @@ export type AdminDiscountCodeDetail = {
 };
 
 export type AdminCustomerCode = AdminDiscountCode & {
+  readonly discountAdjustment: DiscountAdjustment;
   readonly discountLabel: string;
   readonly eligible: boolean;
 };
@@ -798,6 +799,7 @@ export class DiscountAdministration extends Context.Service<
             codes: codeRows
               .map((row) => ({
                 ...toAdminDiscountCode(row),
+                discountAdjustment: toDiscountAdjustment(row.discount),
                 discountLabel: row.discount.labels["en-US"],
                 eligible: row.customers.some(
                   ({ dotyposCustomerId }) =>
@@ -1242,23 +1244,33 @@ const toAdminDiscountCodeClaim = (
   releaseReason: row.releaseReason,
 });
 
+const toDiscountAdjustment = (
+  row: Pick<
+    StoredDiscount,
+    | "fixedAmountCurrency"
+    | "fixedAmountExponent"
+    | "fixedAmountValue"
+    | "percentageBasisPoints"
+  >
+): DiscountAdjustment =>
+  row.percentageBasisPoints === null
+    ? {
+        kind: "fixed",
+        amount: {
+          value: row.fixedAmountValue!,
+          exponent: row.fixedAmountExponent!,
+          currency: row.fixedAmountCurrency!,
+        },
+      }
+    : {
+        kind: "percentage",
+        basisPoints: row.percentageBasisPoints,
+      };
+
 const toAdminDiscount = (row: AdminDiscountRow): AdminDiscount => ({
   id: row.id,
   labels: row.labels,
-  adjustment:
-    row.percentageBasisPoints === null
-      ? {
-          kind: "fixed",
-          amount: {
-            value: row.fixedAmountValue!,
-            exponent: row.fixedAmountExponent!,
-            currency: row.fixedAmountCurrency!,
-          },
-        }
-      : {
-          kind: "percentage",
-          basisPoints: row.percentageBasisPoints,
-        },
+  adjustment: toDiscountAdjustment(row),
   products: row.productTargets.map(({ productTarget }) => productTarget),
   codeCount: row.codes.length,
   createdAt: row.createdAt,

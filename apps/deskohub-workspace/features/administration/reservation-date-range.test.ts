@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   getAdministrationOverviewDateRanges,
   getAdministrationReservationDateRange,
+  getAdministrationReservationDateShortcuts,
 } from "./reservation-date-range";
 
 describe("administration reservation date ranges", () => {
@@ -33,6 +34,18 @@ describe("administration reservation date ranges", () => {
       today: { from: "2026-08-12", to: "2026-08-12" },
       upcoming: { from: "2026-08-13", to: "2026-09-11" },
       lastSevenDays: { from: "2026-08-06", to: "2026-08-12" },
+    });
+  });
+
+  test("builds today and open-ended reservation shortcuts", () => {
+    expect(
+      getAdministrationReservationDateShortcuts(
+        Temporal.PlainDate.from("2026-08-12")
+      )
+    ).toEqual({
+      today: { from: "2026-08-12", to: "2026-08-12" },
+      upcoming: { from: "2026-08-13" },
+      past: { to: "2026-08-11" },
     });
   });
 });
