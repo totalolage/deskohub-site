@@ -165,11 +165,7 @@ describe("CheckoutPayPage payment navigation", () => {
     const execute = mock(() => {
       events.push("execute");
     });
-    const replace = mock((_href: string) => undefined);
     const paymentWindow = {
-      close: mock(() => undefined),
-      closed: false,
-      location: { replace },
       opener: window,
     };
     spyOn(window, "open").mockImplementation(() => {
@@ -207,9 +203,8 @@ describe("CheckoutPayPage payment navigation", () => {
       })
     );
 
-    expect(events).toEqual(["open", "execute"]);
-    expect(window.open).toHaveBeenCalledWith("about:blank", "_blank");
-    expect(paymentWindow.opener).toBeNull();
+    expect(events).toEqual(["execute"]);
+    expect(window.open).not.toHaveBeenCalled();
     expect(execute).toHaveBeenCalledWith({
       locale: "en-US",
       payStateToken: "signed-summary",
@@ -240,9 +235,12 @@ describe("CheckoutPayPage payment navigation", () => {
       });
     });
 
-    expect(replace).toHaveBeenCalledWith(
-      "https://payments.example.test/checkout"
+    expect(events).toEqual(["execute", "open"]);
+    expect(window.open).toHaveBeenCalledWith(
+      "https://payments.example.test/checkout",
+      "_blank"
     );
+    expect(paymentWindow.opener).toBeNull();
     expect(workspaceRouterPush).toHaveBeenCalledWith(
       "/en-US/reservation/status/reservation-id"
     );
@@ -251,7 +249,6 @@ describe("CheckoutPayPage payment navigation", () => {
         "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
       )
     ).toBe("true");
-    expect(paymentWindow.close).not.toHaveBeenCalled();
   });
 
   test("omits the early-performance request when the withdrawal period has elapsed", async () => {
@@ -284,13 +281,8 @@ describe("CheckoutPayPage payment navigation", () => {
     ).toBe("/en-US/operating-rules");
   });
 
-  test("closes the pre-opened payment tab when checkout unmounts", async () => {
-    const paymentWindow = {
-      close: mock(() => undefined),
-      closed: false,
-      opener: window,
-    };
-    spyOn(window, "open").mockReturnValue(paymentWindow as Window);
+  test("does not open a payment tab for an internal zero-total checkout", async () => {
+    const openPaymentWindow = spyOn(window, "open");
     workspaceUseAction.mockReturnValue({
       execute: mock(),
       isExecuting: false,
@@ -298,9 +290,10 @@ describe("CheckoutPayPage payment navigation", () => {
     });
 
     const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildCoworkReservationQuote({
-      entryTier: "basic",
-      coffee: false,
+    const quote = buildDiscountedQuote({
+      basisPoints: 10_000,
+      countdownStartsAt: "2099-01-01T09:00:00.000Z",
+      expiresAt: "2099-01-01T10:00:00.000Z",
     });
     const view = render(
       <CheckoutPayPage
@@ -317,9 +310,34 @@ describe("CheckoutPayPage payment navigation", () => {
         name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
       })
     );
-    view.unmount();
 
-    expect(paymentWindow.close).toHaveBeenCalledTimes(1);
+    const actionOptions = workspaceUseAction.mock.calls.at(-1)?.[1] as
+      | {
+          readonly onSuccess: (result: {
+            readonly data: {
+              readonly status: "redirect";
+              readonly redirectUrl: string;
+              readonly statusUrl?: string;
+            };
+          }) => void;
+        }
+      | undefined;
+    if (!actionOptions) throw new Error("Checkout action options missing");
+
+    act(() => {
+      actionOptions.onSuccess({
+        data: {
+          status: "redirect",
+          redirectUrl:
+            "/en-US/reservation/status/reservation-id?outcome=success",
+        },
+      });
+    });
+
+    expect(openPaymentWindow).not.toHaveBeenCalled();
+    expect(workspaceRouterPush).toHaveBeenCalledWith(
+      "/en-US/reservation/status/reservation-id?outcome=success"
+    );
   });
 });
 
@@ -470,9 +488,11 @@ describe("CheckoutPayPage discount urgency", () => {
 });
 
 function buildDiscountedQuote({
+  basisPoints = 5000,
   countdownStartsAt,
   expiresAt,
 }: {
+  readonly basisPoints?: number;
   readonly countdownStartsAt: string;
   readonly expiresAt: string;
 }) {
@@ -481,6 +501,7 @@ function buildDiscountedQuote({
     exponent: 2,
     currency: "CZK",
   });
+  const discountAmount = 35_000 * (basisPoints / 10_000);
 
   return buildCoworkReservationQuote(
     { entryTier: "basic", coffee: false },
@@ -493,17 +514,17 @@ function buildDiscountedQuote({
             discount: {
               id: Schema.decodeUnknownSync(discountIdSchema)("summer-sale"),
               label: "Summer sale",
-              adjustment: { kind: "percentage", basisPoints: 5000 },
+              adjustment: { kind: "percentage", basisPoints },
               countdownStartsAt,
               expiresAt,
             },
             subtotalBefore: money(35_000),
-            amount: money(17_500),
-            subtotalAfter: money(17_500),
+            amount: money(discountAmount),
+            subtotalAfter: money(35_000 - discountAmount),
           },
         ],
-        totalDiscount: money(17_500),
-        discountedSubtotal: money(17_500),
+        totalDiscount: money(discountAmount),
+        discountedSubtotal: money(35_000 - discountAmount),
       },
     }
   );
