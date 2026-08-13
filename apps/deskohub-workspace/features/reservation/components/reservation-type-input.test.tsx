@@ -75,6 +75,11 @@ describe("ReservationTypeInput", () => {
     expect(fourHours.checked).toBe(false);
     expect(oneHour.name).toBe("duration");
     expect(inputRef).toHaveBeenCalled();
+    expect(
+      view.container.querySelector(
+        '[data-reservation-type-option="hour:4"] label'
+      )?.className
+    ).toContain("z-30");
 
     fireEvent.click(fourHours);
     expect(onChange).toHaveBeenCalledWith("hour:4");

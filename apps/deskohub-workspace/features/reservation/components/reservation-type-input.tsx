@@ -188,7 +188,7 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
       <label
         htmlFor={inputId}
         className={cn(
-          "absolute inset-0 cursor-pointer rounded-[1.4rem]",
+          "absolute inset-0 z-30 cursor-pointer rounded-[1.4rem]",
           disabled && "cursor-not-allowed"
         )}
       >
