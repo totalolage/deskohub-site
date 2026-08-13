@@ -799,9 +799,37 @@ export const AdministrationDiscountGroup = Schema.Struct({
 export type AdministrationDiscountGroup =
   typeof AdministrationDiscountGroup.Type;
 
+const administrationDiscountCodeVariant = Schema.makeFilter<{
+  readonly kind: "discount" | "voucher";
+  readonly discountId: string | null;
+  readonly voucherCredit: AdministrationMoney | null;
+  readonly remainingVoucherCredit: AdministrationMoney | null;
+}>((code) => {
+  if (code.kind === "discount") {
+    return (
+      code.discountId !== null &&
+      code.voucherCredit === null &&
+      code.remainingVoucherCredit === null
+    );
+  }
+  const { remainingVoucherCredit, voucherCredit } = code;
+  return (
+    code.discountId === null &&
+    voucherCredit !== null &&
+    remainingVoucherCredit !== null &&
+    remainingVoucherCredit.value >= 0 &&
+    remainingVoucherCredit.value <= voucherCredit.value &&
+    remainingVoucherCredit.exponent === voucherCredit.exponent &&
+    remainingVoucherCredit.currency === voucherCredit.currency
+  );
+});
+
 export const AdministrationDiscountCode = Schema.Struct({
   id: AdministrationDiscountCodeId,
-  discountId: AdministrationStoredDiscountId,
+  kind: Schema.Literals(["discount", "voucher"]),
+  discountId: Schema.NullOr(AdministrationStoredDiscountId),
+  voucherCredit: Schema.NullOr(AdministrationMoney),
+  remainingVoucherCredit: Schema.NullOr(AdministrationMoney),
   code: Schema.String,
   enabled: Schema.Boolean,
   validFrom: Schema.NullOr(Schema.String),
@@ -814,14 +842,14 @@ export const AdministrationDiscountCode = Schema.Struct({
   remainingUses: Schema.NullOr(Schema.Number),
   createdAt: Schema.String,
   updatedAt: Schema.String,
-});
+}).check(administrationDiscountCodeVariant);
 export type AdministrationDiscountCode = typeof AdministrationDiscountCode.Type;
 
 export const AdministrationCustomerCode = Schema.Struct({
   ...AdministrationDiscountCode.fields,
   discountLabel: Schema.String,
   eligible: Schema.Boolean,
-});
+}).check(administrationDiscountCodeVariant);
 export type AdministrationCustomerCode = typeof AdministrationCustomerCode.Type;
 
 export const AdministrationDiscountCodeClaim = Schema.Struct({
@@ -831,6 +859,7 @@ export const AdministrationDiscountCodeClaim = Schema.Struct({
   state: Schema.Literals(["reserved", "redeemed", "released"]),
   paymentAttemptId: AdministrationPaymentAttemptId,
   workspaceReservationId: AdministrationWorkspaceReservationId,
+  appliedAmount: AdministrationMoney,
   reservationExpiresAt: Schema.String,
   reservedAt: Schema.String,
   redeemedAt: Schema.NullOr(Schema.String),
@@ -999,6 +1028,16 @@ export const AdministrationExistingDiscountCodeCreateInput = Schema.Struct({
 export type AdministrationExistingDiscountCodeCreateInput =
   typeof AdministrationExistingDiscountCodeCreateInput.Type;
 
+const administrationVoucherCredit = AdministrationMoney.check(
+  Schema.makeFilter(
+    (credit) =>
+      Number.isInteger(credit.value) &&
+      credit.value > 0 &&
+      credit.exponent === 2 &&
+      (credit.currency === "CZK" || credit.currency === "EUR")
+  )
+);
+
 const AdministrationDiscountSelection = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("existing"),
@@ -1008,27 +1047,52 @@ const AdministrationDiscountSelection = Schema.Union([
     kind: Schema.Literal("new"),
     discount: AdministrationDiscountDefinitionInput,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("voucher"),
+    credit: administrationVoucherCredit,
+  }),
 ]);
+
+const vouchersHaveNoUseLimit = Schema.makeFilter<{
+  readonly code: { readonly maxUses: number | null };
+  readonly discount: { readonly kind: "existing" | "new" | "voucher" };
+}>(
+  ({ code, discount }) => discount.kind !== "voucher" || code.maxUses === null,
+  { message: "Vouchers cannot have a use limit." }
+);
 
 export const AdministrationDiscountCodeCreateInput = Schema.Struct({
   code: AdministrationDiscountCodeConfigurationInput,
   discount: AdministrationDiscountSelection,
-});
+}).check(vouchersHaveNoUseLimit);
 export type AdministrationDiscountCodeCreateInput =
   typeof AdministrationDiscountCodeCreateInput.Type;
 
 export const AdministrationCustomerDiscountCodeCreateInput = Schema.Struct({
   customerId: AdministrationDotyposCustomerId,
   ...AdministrationDiscountCodeCreateInput.fields,
-});
+}).check(vouchersHaveNoUseLimit);
 export type AdministrationCustomerDiscountCodeCreateInput =
   typeof AdministrationCustomerDiscountCodeCreateInput.Type;
 
-export const AdministrationDiscountCodeUpdateInput = Schema.Struct({
-  id: AdministrationDiscountCodeId,
-  discountId: AdministrationStoredDiscountId,
-  ...AdministrationDiscountCodeConfigurationInput.fields,
-}).check(administrationDiscountCodeWindow);
+export const AdministrationDiscountCodeUpdateInput = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("discount"),
+    id: AdministrationDiscountCodeId,
+    discountId: AdministrationStoredDiscountId,
+    ...AdministrationDiscountCodeConfigurationInput.fields,
+  }).check(administrationDiscountCodeWindow),
+  Schema.Struct({
+    kind: Schema.Literal("voucher"),
+    id: AdministrationDiscountCodeId,
+    credit: administrationVoucherCredit,
+    code: AdministrationCanonicalDiscountCode,
+    enabled: Schema.Boolean,
+    validFrom: Schema.NullOr(AdministrationInstant),
+    validUntil: Schema.NullOr(AdministrationInstant),
+    maxUses: Schema.Null,
+  }).check(administrationDiscountCodeWindow),
+]);
 export type AdministrationDiscountCodeUpdateInput =
   typeof AdministrationDiscountCodeUpdateInput.Type;
 
@@ -1062,11 +1126,11 @@ export const AdministrationDiscountMutation = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("create-code"),
     ...AdministrationDiscountCodeCreateInput.fields,
-  }),
+  }).check(vouchersHaveNoUseLimit),
   Schema.Struct({
     kind: Schema.Literal("create-customer-code"),
     ...AdministrationCustomerDiscountCodeCreateInput.fields,
-  }),
+  }).check(vouchersHaveNoUseLimit),
   Schema.Struct({
     kind: Schema.Literal("update-code"),
     code: AdministrationDiscountCodeUpdateInput,

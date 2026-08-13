@@ -445,7 +445,10 @@ describe("WorkspaceAdminApiClient", () => {
           return Response.json({
             code: {
               id: "code-1",
+              kind: "discount",
               discountId,
+              voucherCredit: null,
+              remainingVoucherCredit: null,
               code: "SUMMER10",
               enabled: true,
               validFrom: null,

@@ -13,6 +13,7 @@ import {
   type DiscountCodeAvailability,
   type DiscountCodeConfiguration,
   DiscountCodeConfigurationError,
+  type VoucherConfiguration,
 } from "./discount-code";
 import type { IDiscountCodeRepository } from "./discount-code.repository";
 import { DiscountCodeRepositoryMock } from "./discount-code.repository.mock";
@@ -55,11 +56,24 @@ const configuration = (
   overrides: Partial<DiscountCodeConfiguration> = {}
 ): DiscountCodeConfiguration => ({
   id: codeId,
+  kind: "discount",
   discountId,
   enabled: true,
   validFrom: null,
   validUntil: null,
   maxUses: null,
+  ...overrides,
+});
+
+const voucherConfiguration = (
+  overrides: Partial<VoucherConfiguration> = {}
+): VoucherConfiguration => ({
+  id: codeId,
+  kind: "voucher",
+  amount: { value: 10_000, exponent: 2, currency: "CZK" },
+  enabled: true,
+  validFrom: null,
+  validUntil: null,
   ...overrides,
 });
 
@@ -71,6 +85,7 @@ const availability = (
   activeUseCount: 0,
   customerHasRedeemed: false,
   customerHasReserved: false,
+  voucherUsedValue: 0,
   ...overrides,
 });
 
@@ -237,6 +252,51 @@ describe("CodeDiscountProvider", () => {
     });
     expect(result[0]?.discount).not.toHaveProperty("expiresAt");
     expect(result[0]?.discount).not.toHaveProperty("countdownStartsAt");
+  });
+
+  test("spends only the remaining voucher credit without loading a discount", async () => {
+    const loadDefinition = mock(defaultLoadDefinition);
+    const result = await runWithProvider(resolve(), {
+      findByCode: () => Effect.succeed(Option.some(voucherConfiguration())),
+      loadAvailability: () =>
+        Effect.succeed(availability({ voucherUsedValue: 4_000 })),
+      loadDefinition,
+    });
+
+    expect(result[0]).toMatchObject({
+      discount: {
+        label: "Voucher",
+        adjustment: {
+          kind: "fixed",
+          amount: { value: 6_000, exponent: 2, currency: "CZK" },
+        },
+      },
+      provenance: {
+        providerNamespace: "database-voucher",
+        providerReference: codeId,
+        details: { voucherCodeId: codeId },
+      },
+      claim: {
+        kind: "voucher",
+        codeId,
+        availableAmount: { value: 6_000, exponent: 2, currency: "CZK" },
+      },
+    });
+    expect(result[0]?.discount.id).not.toBe(codeId);
+    expect(loadDefinition).not.toHaveBeenCalled();
+  });
+
+  test("rejects an exhausted voucher", async () => {
+    const result = await runWithProvider(resolve().pipe(Effect.result), {
+      findByCode: () => Effect.succeed(Option.some(voucherConfiguration())),
+      loadAvailability: () =>
+        Effect.succeed(availability({ voucherUsedValue: 10_000 })),
+    });
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "usage_limit_reached", codeId },
+    });
   });
 
   test.each([

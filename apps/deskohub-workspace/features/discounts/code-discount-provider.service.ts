@@ -4,10 +4,13 @@ import {
   getWorkspaceProductKey,
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
+import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
+import { m } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
 import {
+  type CodeConfiguration,
   type DiscountCodeAvailability,
   type DiscountCodeConfiguration,
   type DiscountCodeConfigurationError,
@@ -22,6 +25,7 @@ import {
   DiscountCodeUnavailableError,
   DiscountProviderError,
 } from "./errors";
+import { deriveOpaqueDiscountId } from "./opaque-discount-id";
 import type { DiscountCandidate } from "./provider";
 
 export type CodeDiscountProviderInput = Pick<
@@ -68,7 +72,7 @@ export class CodeDiscountProvider extends Context.Service<
         "CodeDiscountProvider.loadCodeAvailability"
       )(
         (input: {
-          readonly configuration: DiscountCodeConfiguration;
+          readonly configuration: CodeConfiguration;
           readonly dotyposCustomerId: DotyposCustomerId;
         }) =>
           codes
@@ -85,6 +89,32 @@ export class CodeDiscountProvider extends Context.Service<
         definitions
           .loadById({ discountId: input.configuration.discountId })
           .pipe(Effect.mapError(toDiscountDefinitionProviderError))
+      );
+
+      const resolveConfiguredCode = Effect.fn(
+        "CodeDiscountProvider.resolveConfiguredCode"
+      )(
+        (
+          input: CodeDiscountProviderInput & {
+            readonly configuration: CodeConfiguration;
+            readonly availability: DiscountCodeAvailability;
+          }
+        ) =>
+          Match.value(input.configuration).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              discount: (configuration) =>
+                Effect.succeed({ ...input, configuration }).pipe(
+                  Effect.tap(validateCustomerNotRedeemed),
+                  Effect.tap(validateUsageAvailable),
+                  Effect.bind("definition", loadDiscountDefinition),
+                  Effect.tap(validateDiscountCodeProduct),
+                  Effect.tap(validateFixedAdjustmentCompatibility),
+                  Effect.map(toDiscountCodeCandidate)
+                ),
+              voucher: (configuration) =>
+                toVoucherCandidate({ ...input, configuration }),
+            })
+          )
       );
 
       const resolveCode = Effect.fn("CodeDiscountProvider.resolveCode")(
@@ -104,14 +134,9 @@ export class CodeDiscountProvider extends Context.Service<
             Effect.tap(validateDiscountCodeStarted),
             Effect.tap(validateDiscountCodeUnexpired),
             Effect.bind("availability", loadCodeAvailability),
-            Effect.tap(validateCustomerNotRedeemed),
             Effect.tap(validateCustomerNotReserved),
-            Effect.tap(validateUsageAvailable),
             Effect.tap(validateCustomerAllowed),
-            Effect.bind("definition", loadDiscountDefinition),
-            Effect.tap(validateDiscountCodeProduct),
-            Effect.tap(validateFixedAdjustmentCompatibility),
-            Effect.map(toDiscountCodeCandidate)
+            Effect.flatMap(resolveConfiguredCode)
           )
       );
 
@@ -151,7 +176,7 @@ export class CodeDiscountProvider extends Context.Service<
 }
 
 const requireDiscountCodeConfiguration = (
-  configuration: Option.Option<DiscountCodeConfiguration>
+  configuration: Option.Option<CodeConfiguration>
 ) =>
   Option.match(configuration, {
     onNone: () =>
@@ -165,7 +190,7 @@ const requireDiscountCodeConfiguration = (
   });
 
 const validateDiscountCodeEnabled = (input: {
-  readonly configuration: DiscountCodeConfiguration;
+  readonly configuration: CodeConfiguration;
 }) =>
   input.configuration.enabled
     ? Effect.void
@@ -173,7 +198,7 @@ const validateDiscountCodeEnabled = (input: {
 
 const validateDiscountCodeStarted = (input: {
   readonly at: Temporal.Instant;
-  readonly configuration: DiscountCodeConfiguration;
+  readonly configuration: CodeConfiguration;
 }) =>
   input.configuration.validFrom === null ||
   Temporal.Instant.compare(input.at, input.configuration.validFrom) >= 0
@@ -182,7 +207,7 @@ const validateDiscountCodeStarted = (input: {
 
 const validateDiscountCodeUnexpired = (input: {
   readonly at: Temporal.Instant;
-  readonly configuration: DiscountCodeConfiguration;
+  readonly configuration: CodeConfiguration;
 }) =>
   input.configuration.validUntil === null ||
   Temporal.Instant.compare(input.at, input.configuration.validUntil) < 0
@@ -199,7 +224,7 @@ const validateCustomerNotRedeemed = (input: {
 
 const validateCustomerNotReserved = (input: {
   readonly availability: DiscountCodeAvailability;
-  readonly configuration: DiscountCodeConfiguration;
+  readonly configuration: CodeConfiguration;
 }) =>
   input.availability.customerHasReserved
     ? unavailable(input.configuration, "claim_conflict")
@@ -216,7 +241,7 @@ const validateUsageAvailable = (input: {
 
 const validateCustomerAllowed = (input: {
   readonly availability: DiscountCodeAvailability;
-  readonly configuration: DiscountCodeConfiguration;
+  readonly configuration: CodeConfiguration;
 }) =>
   input.availability.allowlistSize > 0 && !input.availability.customerAllowed
     ? unavailable(input.configuration, "customer_ineligible")
@@ -309,8 +334,74 @@ const toDiscountCodeCandidate = (input: {
   };
 };
 
+const toVoucherCandidate = (input: {
+  readonly availability: DiscountCodeAvailability;
+  readonly configuration: Extract<
+    CodeConfiguration,
+    { readonly kind: "voucher" }
+  >;
+  readonly discountableSubtotal: DiscountQuoteInput["discountableSubtotal"];
+  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly locale: CodeDiscountProviderInput["locale"];
+}): Effect.Effect<
+  DiscountCandidate,
+  DiscountCodeUnavailableError | DiscountProviderError
+> => {
+  const availableAmount = workspaceMoneyWithValue(
+    input.configuration.amount.value - input.availability.voucherUsedValue,
+    input.configuration.amount
+  );
+  if (availableAmount.value <= 0) {
+    return unavailable(input.configuration, "usage_limit_reached");
+  }
+  if (
+    availableAmount.currency !== input.discountableSubtotal.currency ||
+    availableAmount.exponent !== input.discountableSubtotal.exponent
+  ) {
+    return Effect.fail(
+      new DiscountProviderError({
+        reason: "malformed_configuration",
+        message:
+          "The voucher credit is incompatible with the requested subtotal.",
+        cause: new DiscountCalculationError({
+          reason:
+            availableAmount.currency !== input.discountableSubtotal.currency
+              ? "currency_mismatch"
+              : "exponent_mismatch",
+          message:
+            "Voucher currency and exponent must match the discountable subtotal.",
+        }),
+      })
+    );
+  }
+
+  const id = deriveOpaqueDiscountId({
+    providerNamespace: "database-voucher",
+    providerReference: input.configuration.id,
+  });
+  return Effect.succeed({
+    discount: {
+      id,
+      label: m.checkoutVoucherLabel({}, { locale: input.locale }),
+      adjustment: { kind: "fixed", amount: availableAmount },
+      ...getDiscountCodeTiming(input.configuration.validUntil),
+    },
+    provenance: {
+      providerNamespace: "database-voucher",
+      providerReference: input.configuration.id,
+      details: { voucherCodeId: input.configuration.id },
+    },
+    claim: {
+      kind: "voucher",
+      codeId: input.configuration.id,
+      availableAmount,
+      dotyposCustomerId: input.dotyposCustomerId,
+    },
+  });
+};
+
 const unavailable = (
-  configuration: DiscountCodeConfiguration,
+  configuration: CodeConfiguration,
   reason: DiscountCodeUnavailableError["reason"]
 ) =>
   Effect.fail(

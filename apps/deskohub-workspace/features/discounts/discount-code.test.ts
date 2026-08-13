@@ -26,7 +26,11 @@ const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
 
 const codeRow = (overrides: Partial<DiscountCode> = {}): DiscountCode => ({
   id: codeId,
+  kind: "discount",
   discountId,
+  voucherAmountValue: null,
+  voucherAmountExponent: null,
+  voucherAmountCurrency: null,
   code: canonicalCode,
   enabled: true,
   validFrom: null,
@@ -111,6 +115,7 @@ describe("stored discount code configuration", () => {
 
     expect(result).toEqual({
       id: codeId,
+      kind: "discount",
       discountId,
       enabled: true,
       validFrom: null,
@@ -118,6 +123,48 @@ describe("stored discount code configuration", () => {
       maxUses: null,
     });
     expect(result).not.toHaveProperty("code");
+  });
+
+  test("decodes a voucher as issued money without a discount", async () => {
+    const result = await Effect.runPromise(
+      decodeDiscountCodeConfiguration({
+        row: codeRow({
+          kind: "voucher",
+          discountId: null,
+          maxUses: null,
+          voucherAmountValue: 10_000,
+          voucherAmountExponent: 2,
+          voucherAmountCurrency: "CZK",
+        }),
+      })
+    );
+
+    expect(result).toEqual({
+      id: codeId,
+      kind: "voucher",
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      amount: { value: 10_000, exponent: 2, currency: "CZK" },
+    });
+  });
+
+  test("rejects mixed discount and voucher storage", async () => {
+    const result = await Effect.runPromise(
+      decodeDiscountCodeConfiguration({
+        row: codeRow({
+          kind: "voucher",
+          voucherAmountValue: 10_000,
+          voucherAmountExponent: 2,
+          voucherAmountCurrency: "CZK",
+        }),
+      }).pipe(Effect.result)
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "DiscountCodeConfigurationError", codeId },
+    });
   });
 
   test("rejects a noncanonical stored code", async () => {

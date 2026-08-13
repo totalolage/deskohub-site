@@ -1,7 +1,11 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
-import { discountCodeCustomers, discountCodeRedemptions } from "@/db/schema";
+import {
+  discountApplications,
+  discountCodeCustomers,
+  discountCodeRedemptions,
+} from "@/db/schema";
 import type { DiscountCodeId } from "./persistence-contracts";
 
 export const buildDiscountCodeAvailabilityQueries = (input: {
@@ -21,8 +25,13 @@ export const buildDiscountCodeAvailabilityQueries = (input: {
       activeUseCount: count(),
       customerHasRedeemed: sql<boolean>`coalesce(bool_or(${discountCodeRedemptions.dotyposCustomerId} = ${input.dotyposCustomerId} and ${discountCodeRedemptions.state} = 'redeemed'), false)`,
       customerHasReserved: sql<boolean>`coalesce(bool_or(${discountCodeRedemptions.dotyposCustomerId} = ${input.dotyposCustomerId} and ${discountCodeRedemptions.state} = 'reserved'), false)`,
+      voucherUsedValue: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
     })
     .from(discountCodeRedemptions)
+    .innerJoin(
+      discountApplications,
+      eq(discountApplications.id, discountCodeRedemptions.applicationId)
+    )
     .where(
       and(
         eq(discountCodeRedemptions.codeId, input.codeId),

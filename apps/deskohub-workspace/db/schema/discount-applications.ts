@@ -2,6 +2,7 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -19,6 +20,7 @@ import type {
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import type { DiscountCodeKind } from "./discounts";
 import { discountCodes } from "./discounts";
 import { paymentAttempts } from "./payment-attempts";
 import { quotedSqlList } from "./sql-list";
@@ -112,10 +114,8 @@ export const discountCodeRedemptions = pgTable(
       .primaryKey()
       .default(postgresUuidV7)
       .$type<DiscountCodeClaimId>(),
-    codeId: text("code_id")
-      .notNull()
-      .$type<DiscountCodeId>()
-      .references(() => discountCodes.id),
+    codeId: text("code_id").notNull().$type<DiscountCodeId>(),
+    kind: text("kind").notNull().default("discount").$type<DiscountCodeKind>(),
     applicationId: text("application_id")
       .notNull()
       .$type<DiscountApplicationId>()
@@ -145,8 +145,15 @@ export const discountCodeRedemptions = pgTable(
     ),
     uniqueIndex("discount_code_redemptions_active_customer_unique_idx")
       .on(t.codeId, t.dotyposCustomerId)
-      .where(sql`${t.state} in ('reserved', 'redeemed')`),
+      .where(
+        sql`(${t.kind} = 'discount' and ${t.state} in ('reserved', 'redeemed')) or (${t.kind} = 'voucher' and ${t.state} = 'reserved')`
+      ),
     index("discount_code_redemptions_code_state_idx").on(t.codeId, t.state),
+    foreignKey({
+      name: "discount_code_redemptions_code_kind_fk",
+      columns: [t.codeId, t.kind],
+      foreignColumns: [discountCodes.id, discountCodes.kind],
+    }),
     index("discount_code_redemptions_stale_reserved_idx")
       .on(t.reservationExpiresAt)
       .where(sql`${t.state} = 'reserved'`),
@@ -157,6 +164,10 @@ export const discountCodeRedemptions = pgTable(
     check(
       "discount_code_redemptions_state_check",
       sql`${t.state} in (${quotedSqlList(discountCodeClaimStates)})`
+    ),
+    check(
+      "discount_code_redemptions_kind_check",
+      sql`${t.kind} in ('discount', 'voucher')`
     ),
     check(
       "discount_code_redemptions_expiration_check",

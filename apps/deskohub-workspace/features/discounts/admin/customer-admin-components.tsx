@@ -67,9 +67,14 @@ export function CodeAdministrationDetailPage({
     <AdministrationPage>
       <AdministrationPageHeader title={code.code} />
       <AdministrationNoticeBanner notice={notice} />
-      <Button asChild className="mb-4" size="sm" variant="ghost">
-        <Link href="/admin/codes">← Back to codes</Link>
-      </Button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/admin/codes">← Back to codes</Link>
+        </Button>
+        <Button asChild size="sm" variant="secondary">
+          <Link href="/admin/codes">Edit or delete code</Link>
+        </Button>
+      </div>
 
       <CodeSummary code={code} discountLabel={detail.discountLabel} />
 
@@ -293,7 +298,7 @@ export function CustomerAdministrationDetailPage({
                   href={`/admin/customers/${profile.customer.id}/create-code`}
                 >
                   <Plus aria-hidden className="size-4" />
-                  Create discount code
+                  Create code
                 </Link>
               </Button>
             </div>
@@ -308,7 +313,7 @@ export function CustomerAdministrationDetailPage({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Code</TableHead>
-                      <TableHead>Discount</TableHead>
+                      <TableHead>Benefit</TableHead>
                       <TableHead>Availability</TableHead>
                       <TableHead>
                         <span className="sr-only">Manage eligibility</span>
@@ -327,7 +332,7 @@ export function CustomerAdministrationDetailPage({
                               {code.code}
                             </Link>
                           </TableCell>
-                          <TableCell>{code.discountLabel}</TableCell>
+                          <TableCell>{formatCodeBenefit(code)}</TableCell>
                           <TableCell>
                             {getCustomerCodeAvailability(code)}
                           </TableCell>
@@ -568,6 +573,11 @@ function CustomerTransactionHistory({
 const formatMoneyTotals = (totals: readonly AdministrationMoney[]) =>
   totals.length > 0 ? totals.map(formatAdministrationMoney).join(" + ") : "—";
 
+const formatCodeBenefit = (code: AdminCustomerProfile["codes"][number]) =>
+  code.kind === "voucher" && code.voucherCredit && code.remainingVoucherCredit
+    ? `Voucher · ${formatAdministrationMoney(code.voucherCredit)} issued · ${formatAdministrationMoney(code.remainingVoucherCredit)} remaining`
+    : code.discountLabel;
+
 function CodeSummary({
   code,
   discountLabel,
@@ -575,9 +585,23 @@ function CodeSummary({
   readonly code: AdminDiscountCode;
   readonly discountLabel: string;
 }) {
+  const benefit =
+    code.kind === "voucher" && code.voucherCredit
+      ? `Voucher · ${formatAdministrationMoney(code.voucherCredit)} issued`
+      : discountLabel;
+  const remaining = code.remainingVoucherCredit
+    ? formatAdministrationMoney(code.remainingVoucherCredit)
+    : (code.remainingUses ?? "Unlimited");
+
   return (
-    <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-5">
-      <SummaryFact label="Discount" value={discountLabel} />
+    <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryFact label="Benefit" value={benefit} />
+      <SummaryFact
+        label="Status"
+        value={code.enabled ? "Enabled" : "Disabled"}
+      />
+      <SummaryFact label="Valid from" value={formatInstant(code.validFrom)} />
+      <SummaryFact label="Valid until" value={formatInstant(code.validUntil)} />
       <SummaryFact
         label="Audience"
         value={
@@ -588,10 +612,7 @@ function CodeSummary({
       />
       <SummaryFact label="Reserved" value={code.reservedUses} />
       <SummaryFact label="Redeemed" value={code.redeemedUses} />
-      <SummaryFact
-        label="Remaining"
-        value={code.remainingUses ?? "Unlimited"}
-      />
+      <SummaryFact label="Remaining" value={remaining} />
     </dl>
   );
 }
@@ -635,6 +656,7 @@ function ClaimHistory({
               <TableHead>Customer</TableHead>
             )}
             <TableHead>State</TableHead>
+            <TableHead>Amount</TableHead>
             <TableHead>Reserved</TableHead>
             <TableHead>Completed</TableHead>
             <TableHead>Reservation</TableHead>
@@ -674,6 +696,9 @@ function ClaimHistory({
                     {claim.releaseReason}
                   </p>
                 )}
+              </TableCell>
+              <TableCell className="whitespace-nowrap">
+                {formatAdministrationMoney(claim.appliedAmount)}
               </TableCell>
               <TableCell className="whitespace-nowrap">
                 {formatInstant(claim.reservedAt)}

@@ -60,6 +60,14 @@ describe("discount administration conflicts", () => {
       message:
         "This discount is still referenced by a discount code and cannot be deleted.",
     });
+    expect(
+      findDiscountAdminConflict({
+        constraint: "discount_code_redemptions_code_kind_fk",
+      })
+    ).toMatchObject({
+      _tag: "DiscountAdminConflictError",
+      message: "This discount code has claims and cannot be deleted.",
+    });
     expect(findDiscountAdminConflict(new Error("database unavailable"))).toBe(
       undefined
     );

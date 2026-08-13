@@ -1,5 +1,6 @@
 import { Data, Effect, Option, Schema } from "effect";
 import type { DiscountCode } from "@/db/schema";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   TemporalInstantSchema,
   temporalInstantToIsoString,
@@ -13,14 +14,27 @@ import {
   storedDiscountIdSchema,
 } from "./persistence-contracts";
 
-export type DiscountCodeConfiguration = {
+type DiscountCodeConfigurationBase = {
   readonly id: DiscountCodeId;
-  readonly discountId: StoredDiscountId;
   readonly enabled: boolean;
   readonly validFrom: Temporal.Instant | null;
   readonly validUntil: Temporal.Instant | null;
+};
+
+export type DiscountCodeConfiguration = DiscountCodeConfigurationBase & {
+  readonly kind: "discount";
+  readonly discountId: StoredDiscountId;
   readonly maxUses: number | null;
 };
+
+export type VoucherConfiguration = DiscountCodeConfigurationBase & {
+  readonly kind: "voucher";
+  readonly amount: WorkspaceMoney;
+};
+
+export type CodeConfiguration =
+  | DiscountCodeConfiguration
+  | VoucherConfiguration;
 
 export type DiscountCodeAvailability = {
   readonly allowlistSize: number;
@@ -28,6 +42,7 @@ export type DiscountCodeAvailability = {
   readonly activeUseCount: number;
   readonly customerHasRedeemed: boolean;
   readonly customerHasReserved: boolean;
+  readonly voucherUsedValue: number;
 };
 
 export class DiscountCodeConfigurationError extends Data.TaggedError(
@@ -94,14 +109,42 @@ export const decodeDiscountCodeConfiguration = Effect.fn(
     onExcessProperty: "error",
   })({
     id: input.row.id,
+    kind: input.row.kind,
     discountId: input.row.discountId,
     code: input.row.code,
     enabled: input.row.enabled,
     validFrom: input.row.validFrom,
     validUntil: input.row.validUntil,
     maxUses: input.row.maxUses,
+    voucherAmountValue: input.row.voucherAmountValue,
+    voucherAmountExponent: input.row.voucherAmountExponent,
+    voucherAmountCurrency: input.row.voucherAmountCurrency,
   }).pipe(
-    Effect.map(({ code: _code, ...configuration }) => configuration),
+    Effect.map(
+      ({ code: _code, ...configuration }): CodeConfiguration =>
+        configuration.kind === "discount"
+          ? {
+              kind: configuration.kind,
+              id: configuration.id,
+              discountId: configuration.discountId,
+              enabled: configuration.enabled,
+              validFrom: configuration.validFrom,
+              validUntil: configuration.validUntil,
+              maxUses: configuration.maxUses,
+            }
+          : {
+              kind: configuration.kind,
+              id: configuration.id,
+              enabled: configuration.enabled,
+              validFrom: configuration.validFrom,
+              validUntil: configuration.validUntil,
+              amount: {
+                value: configuration.voucherAmountValue,
+                exponent: configuration.voucherAmountExponent,
+                currency: configuration.voucherAmountCurrency,
+              },
+            }
+    ),
     Effect.mapError(
       (cause) =>
         new DiscountCodeConfigurationError({
@@ -135,15 +178,34 @@ export const decodeDiscountCodeAvailability = Effect.fn(
     )
 );
 
-const discountCodeConfigurationSchema = Schema.Struct({
+const discountCodeConfigurationBase = Schema.Struct({
   id: discountCodeIdSchema,
-  discountId: storedDiscountIdSchema,
   code: canonicalDiscountCodeSchema,
   enabled: Schema.Boolean,
   validFrom: Schema.NullOr(TemporalInstantSchema),
   validUntil: Schema.NullOr(TemporalInstantSchema),
-  maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
-}).check(
+});
+
+const discountCodeConfigurationSchema = Schema.Union([
+  Schema.Struct({
+    ...discountCodeConfigurationBase.fields,
+    kind: Schema.Literal("discount"),
+    discountId: storedDiscountIdSchema,
+    maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+    voucherAmountValue: Schema.Null,
+    voucherAmountExponent: Schema.Null,
+    voucherAmountCurrency: Schema.Null,
+  }),
+  Schema.Struct({
+    ...discountCodeConfigurationBase.fields,
+    kind: Schema.Literal("voucher"),
+    discountId: Schema.Null,
+    maxUses: Schema.Null,
+    voucherAmountValue: Schema.Int.check(Schema.isGreaterThan(0)),
+    voucherAmountExponent: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+    voucherAmountCurrency: Schema.String.check(Schema.isPattern(/^[A-Z]{3}$/)),
+  }),
+]).check(
   Schema.makeFilter(
     ({ validFrom, validUntil }) =>
       validFrom === null ||
@@ -161,6 +223,7 @@ const discountCodeAvailabilitySchema = Schema.Struct({
   activeUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   customerHasRedeemed: Schema.Boolean,
   customerHasReserved: Schema.Boolean,
+  voucherUsedValue: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 
 const generatedDiscountCodeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";

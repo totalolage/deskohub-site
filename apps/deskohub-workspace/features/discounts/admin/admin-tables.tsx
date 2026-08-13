@@ -30,6 +30,10 @@ import { AdministrationAlert } from "@/features/administration/notice";
 import { AdministrationSortHead } from "@/features/administration/sort-head";
 import { AdministrationStatusBadge } from "@/features/administration/status-badge";
 import { AdministrationTableFrame } from "@/features/administration/table-frame";
+import {
+  formatWorkspaceMoney,
+  type WorkspaceMoney,
+} from "@/features/checkout/workspace-money";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import { generateDiscountCode } from "@/features/discounts/discount-code";
 import type {
@@ -63,7 +67,12 @@ import { mutateDiscountAdmin } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
 import type { AdminCalendarSale } from "./discount-administration.service";
 import { getDiscountAdminValidationMessage } from "./form-feedback";
-import { readDiscountCodeForm, readDiscountForm } from "./form-input";
+import {
+  readDiscountCodeConfigurationForm,
+  readDiscountCodeForm,
+  readDiscountForm,
+  readVoucherCreditForm,
+} from "./form-input";
 
 export type DiscountTableItem = {
   readonly id: StoredDiscountId;
@@ -78,7 +87,10 @@ export type DiscountTableItem = {
 
 export type DiscountCodeTableItem = {
   readonly id: DiscountCodeId;
-  readonly discountId: StoredDiscountId;
+  readonly kind: "discount" | "voucher";
+  readonly discountId: StoredDiscountId | null;
+  readonly voucherCredit: WorkspaceMoney | null;
+  readonly remainingVoucherCredit: WorkspaceMoney | null;
   readonly code: string;
   readonly enabled: boolean;
   readonly validFrom: string | null;
@@ -93,6 +105,20 @@ export type DiscountCodeTableItem = {
 const isTableRowControl = (target: EventTarget | null) =>
   target instanceof Element &&
   Boolean(target.closest("a, button, input, select, textarea, label, summary"));
+
+const getCodeBenefitLabel = (
+  code: DiscountCodeTableItem,
+  discountLabels: ReadonlyMap<StoredDiscountId, string>
+) => {
+  if (code.kind === "voucher") {
+    return code.voucherCredit
+      ? `Voucher · ${formatWorkspaceMoney(code.voucherCredit, "en-US")} issued`
+      : "Voucher";
+  }
+  return code.discountId
+    ? (discountLabels.get(code.discountId) ?? code.discountId)
+    : "Unavailable discount";
+};
 
 export function DiscountCodesAdminTable({
   codes,
@@ -124,10 +150,9 @@ export function DiscountCodesAdminTable({
         ),
       },
       {
-        accessorFn: (code) =>
-          discountLabels.get(code.discountId) ?? code.discountId,
-        id: "discount",
-        header: "Discount",
+        accessorFn: (code) => getCodeBenefitLabel(code, discountLabels),
+        id: "benefit",
+        header: "Benefit",
       },
       {
         accessorFn: (code) => (code.enabled ? "Enabled" : "Disabled"),
@@ -158,10 +183,16 @@ export function DiscountCodesAdminTable({
         header: "Redeemed",
       },
       {
-        accessorFn: (code) => code.remainingUses ?? Number.POSITIVE_INFINITY,
+        accessorFn: (code) =>
+          code.remainingVoucherCredit?.value ??
+          code.remainingUses ??
+          Number.POSITIVE_INFINITY,
         id: "remaining",
         header: "Remaining",
-        cell: ({ row }) => row.original.remainingUses ?? "Unlimited",
+        cell: ({ row }) =>
+          row.original.remainingVoucherCredit
+            ? formatWorkspaceMoney(row.original.remainingVoucherCredit, "en-US")
+            : (row.original.remainingUses ?? "Unlimited"),
       },
     ],
     [discountLabels]
@@ -179,7 +210,7 @@ export function DiscountCodesAdminTable({
       }
       renderActions={(code, expanded) => (
         <RowActions
-          confirmation={`Delete the code “${code.code}”? Redeemed codes cannot be deleted. Disable it to preserve history. This cannot be undone.`}
+          confirmation={`Delete the code “${code.code}”? Codes with claim history cannot be deleted. Disable it to preserve history. This cannot be undone.`}
           deleteLabel={`Delete ${code.code}`}
           editLabel={`Edit ${code.code}`}
           expanded={expanded}
@@ -217,7 +248,7 @@ function CodeAndDiscountEditor({
         <h3 className="mb-4 font-semibold">Code</h3>
         <DiscountCodeEditor code={code} discounts={discounts} />
       </section>
-      {discount && (
+      {code.kind === "discount" && discount && (
         <section className="border-t border-navy-blue/10 pt-6">
           <h3 className="mb-4 font-semibold">Discount</h3>
           <DiscountEditor
@@ -650,10 +681,20 @@ function DiscountCodeEditor({
         actionName={`updateDiscountCode.${code.id}`}
         buildMutation={(formData) => ({
           kind: "update-code",
-          code: {
-            id: code.id,
-            ...readDiscountCodeForm(formData),
-          },
+          code:
+            code.kind === "voucher"
+              ? {
+                  kind: "voucher",
+                  id: code.id,
+                  ...readDiscountCodeConfigurationForm(formData),
+                  maxUses: null,
+                  credit: readVoucherCreditForm(formData),
+                }
+              : {
+                  kind: "discount",
+                  id: code.id,
+                  ...readDiscountCodeForm(formData),
+                },
         })}
         requireDirty
         submitLabel="Save code"
@@ -833,9 +874,9 @@ function DeleteButton({
         {!iconOnly && (isExecuting ? "Deleting…" : "Delete")}
       </Button>
       {error && (
-        <span className="sr-only" role="alert">
+        <AdministrationAlert className="mt-3" role="alert" status="error">
           {error}
-        </span>
+        </AdministrationAlert>
       )}
     </>
   );
@@ -997,21 +1038,25 @@ function DiscountCodeFields({
 }) {
   return (
     <div className="grid gap-5">
-      <FormField label="Discount">
-        <select
-          className={selectClassName}
-          defaultValue={code?.discountId}
-          id={fieldId("discountId", code?.id)}
-          name="discountId"
-          required
-        >
-          {discounts.map((discount) => (
-            <option key={discount.id} value={discount.id}>
-              {discount.labels["en-US"]}
-            </option>
-          ))}
-        </select>
-      </FormField>
+      {code?.kind === "voucher" ? (
+        <VoucherCreditFields credit={code.voucherCredit} />
+      ) : (
+        <FormField label="Discount">
+          <select
+            className={selectClassName}
+            defaultValue={code?.discountId ?? undefined}
+            id={fieldId("discountId", code?.id)}
+            name="discountId"
+            required
+          >
+            {discounts.map((discount) => (
+              <option key={discount.id} value={discount.id}>
+                {discount.labels["en-US"]}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      )}
       <DiscountCodeConfigurationFields code={code} />
     </div>
   );
@@ -1019,8 +1064,10 @@ function DiscountCodeFields({
 
 export function DiscountCodeConfigurationFields({
   code,
+  voucher = false,
 }: {
   readonly code?: DiscountCodeTableItem;
+  readonly voucher?: boolean;
 }) {
   const [codeValue, setCodeValue] = useState(code?.code ?? "");
   const codeInputId = fieldId("code", code?.id);
@@ -1087,22 +1134,66 @@ export function DiscountCodeConfigurationFields({
             type="datetime-local"
           />
         </FormField>
-        <FormField label="Maximum uses">
-          <Input
-            defaultValue={code?.maxUses ?? ""}
-            id={fieldId("maxUses", code?.id)}
-            min={1}
-            name="maxUses"
-            placeholder="Unlimited"
-            type="number"
-          />
-        </FormField>
+        {!voucher && code?.kind !== "voucher" && (
+          <FormField label="Maximum uses">
+            <Input
+              defaultValue={code?.maxUses ?? ""}
+              id={fieldId("maxUses", code?.id)}
+              min={1}
+              name="maxUses"
+              placeholder="Unlimited"
+              type="number"
+            />
+          </FormField>
+        )}
       </div>
       <p className="text-xs leading-5 text-navy-blue/70">
         Times use the Workspace’s Prague time zone. Both bounds are optional;
         “valid until” is exclusive.
       </p>
     </div>
+  );
+}
+
+export function VoucherCreditFields({
+  credit,
+}: {
+  readonly credit?: WorkspaceMoney | null;
+}) {
+  return (
+    <fieldset>
+      <legend className="mb-3 text-sm font-semibold">Voucher credit</legend>
+      <div className="grid gap-4 md:grid-cols-2">
+        <FormField label="Value in minor units">
+          <Input
+            defaultValue={credit?.value ?? 10_000}
+            min={1}
+            name="voucherValue"
+            required
+            step={1}
+            type="number"
+          />
+        </FormField>
+        <FormField label="Currency">
+          <select
+            className={selectClassName}
+            defaultValue={credit?.currency ?? defaultWorkspaceCurrency.code}
+            name="voucherCurrency"
+            required
+          >
+            {workspaceCurrencyDefinitions.map((currency) => (
+              <option key={currency.code} value={currency.code}>
+                {currency.code} — {currency.name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+      </div>
+      <p className="mt-3 text-xs leading-5 text-navy-blue/70">
+        Credit uses minor units: 10000 = 100.00. Existing claims remain in the
+        history if the issued credit is increased later.
+      </p>
+    </fieldset>
   );
 }
 

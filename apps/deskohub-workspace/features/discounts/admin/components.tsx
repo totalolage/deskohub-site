@@ -180,7 +180,10 @@ const toDiscountCodeTableItems = ({
 }: Pick<DiscountAdminCodesPage, "codes">) =>
   codes.map((code) => ({
     code: code.code,
+    kind: code.kind,
     discountId: code.discountId,
+    voucherCredit: code.voucherCredit,
+    remainingVoucherCredit: code.remainingVoucherCredit,
     enabled: code.enabled,
     id: code.id,
     maxUses: code.maxUses,

@@ -4,6 +4,7 @@ import {
   type AdministrationCustomerQueryType,
   type AdministrationDiscountAdjustmentType,
   AdministrationDiscountCodeId,
+  type AdministrationDiscountCodeType,
   type AdministrationDiscountDefinitionInputType,
   AdministrationDiscountMutation,
   type AdministrationDiscountMutationResultType,
@@ -749,11 +750,11 @@ const percentageFlag = Flag.string("percentage").pipe(
 
 const fixedValueFlag = Flag.integer("fixed-value").pipe(
   Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
-  Flag.withDescription("Fixed discount in minor currency units")
+  Flag.withDescription("Money value in minor currency units")
 );
 
 const fixedCurrencyFlag = Flag.choice("currency", ["CZK", "EUR"]).pipe(
-  Flag.withDescription("Currency for a fixed discount")
+  Flag.withDescription("Currency for the money value")
 );
 
 const discountIdArgument = Argument.string("discount-id").pipe(
@@ -1016,12 +1017,40 @@ const codesCreateFixedCommand = Command.make(
     )
 ).pipe(Command.withDescription("Create a code and fixed discount atomically"));
 
+const codesCreateVoucherCommand = Command.make(
+  "voucher",
+  {
+    code: discountCodeArgument,
+    customer: discountCodeCreateFlags.customer,
+    disabled: discountCodeCreateFlags.disabled,
+    validFrom: discountCodeCreateFlags.validFrom,
+    validUntil: discountCodeCreateFlags.validUntil,
+    currency: fixedCurrencyFlag,
+    fixedValue: fixedValueFlag,
+  },
+  (input) =>
+    runDiscountMutation(
+      makeCreateCodeMutation(
+        { ...input, maxUses: Option.none() },
+        {
+          kind: "voucher",
+          credit: {
+            value: input.fixedValue,
+            exponent: 2,
+            currency: input.currency,
+          },
+        }
+      )
+    )
+).pipe(Command.withDescription("Create a reusable stored-credit voucher"));
+
 const codesCreateCommand = Command.make("create").pipe(
   Command.withDescription("Create a managed discount code"),
   Command.withSubcommands([
     codesCreateExistingCommand,
     codesCreatePercentageCommand,
     codesCreateFixedCommand,
+    codesCreateVoucherCommand,
   ])
 );
 
@@ -1043,6 +1072,7 @@ const codesUpdateCommand = Command.make(
     runDiscountMutation({
       kind: "update-code",
       code: {
+        kind: "discount",
         id: codeId,
         discountId,
         code,
@@ -1054,12 +1084,42 @@ const codesUpdateCommand = Command.make(
     })
 ).pipe(Command.withDescription("Replace a managed discount code"));
 
+const codesUpdateVoucherCommand = Command.make(
+  "update-voucher",
+  {
+    codeId: discountCodeIdArgument,
+    code: discountCodeArgument,
+    enabled: Flag.choiceWithValue("enabled", [
+      ["true", true],
+      ["false", false],
+    ] as const),
+    validFrom: discountCodeCreateFlags.validFrom,
+    validUntil: discountCodeCreateFlags.validUntil,
+    currency: fixedCurrencyFlag,
+    fixedValue: fixedValueFlag,
+  },
+  ({ code, codeId, currency, enabled, fixedValue, validFrom, validUntil }) =>
+    runDiscountMutation({
+      kind: "update-code",
+      code: {
+        kind: "voucher",
+        id: codeId,
+        code,
+        credit: { value: fixedValue, exponent: 2, currency },
+        enabled,
+        maxUses: null,
+        validFrom: Option.getOrNull(validFrom),
+        validUntil: Option.getOrNull(validUntil),
+      },
+    })
+).pipe(Command.withDescription("Replace a managed voucher"));
+
 const codesDeleteCommand = Command.make(
   "delete",
   { codeId: discountCodeIdArgument, yes: confirmationFlag },
   ({ codeId, yes }) =>
     runConfirmedDiscountMutation({
-      confirmation: `Delete discount code ${codeId}? Redeemed codes cannot be deleted. This cannot be undone.`,
+      confirmation: `Delete discount code ${codeId}? Codes with claim history cannot be deleted. This cannot be undone.`,
       mutation: { kind: "delete-code", id: codeId },
       yes,
     })
@@ -1130,9 +1190,9 @@ const codesListCommand = Command.make("list", {}, () =>
           [
             code.id,
             code.code,
-            discountLabels.get(code.discountId) ?? code.discountId,
+            formatCodeBenefit(code, discountLabels),
             code.enabled ? "Enabled" : "Disabled",
-            code.remainingUses ?? "Unlimited",
+            formatCodeRemaining(code),
           ].join("\t")
         );
       }
@@ -1157,15 +1217,68 @@ const codesGetCommand = Command.make(
             detail.code.code,
             detail.discountLabel,
             detail.code.enabled ? "Enabled" : "Disabled",
-            detail.code.remainingUses ?? "Unlimited uses",
+            formatCodeRemaining(detail.code, "Unlimited uses"),
           ].join("\t")
         );
         yield* Console.log(
-          `${detail.customers.length} customers · ${detail.claims.length} claims`
+          `Validity\t${detail.code.validFrom ?? "No start"}\t${detail.code.validUntil ?? "No end"}`
         );
+        yield* Console.log(
+          detail.customers.length === 0
+            ? "Audience\tUnrestricted"
+            : `Audience\t${detail.customers.length} customers`
+        );
+        for (const { customer, customerId } of detail.customers) {
+          yield* Console.log(
+            [
+              "Customer",
+              customerId,
+              customer?.displayName ?? "Unavailable",
+            ].join("\t")
+          );
+        }
+        yield* Console.log(`Claims\t${detail.claims.length}`);
+        for (const claim of detail.claims) {
+          yield* Console.log(
+            [
+              claim.state,
+              formatMoney(claim.appliedAmount),
+              claim.dotyposCustomerId,
+              claim.workspaceReservationId,
+              claim.reservedAt,
+              claim.redeemedAt ?? claim.releasedAt ?? "Pending",
+            ].join("\t")
+          );
+        }
       })
     )
 ).pipe(Command.withDescription("Show a discount code and its claims"));
+
+const formatMoney = (money: {
+  readonly value: number;
+  readonly exponent: number;
+  readonly currency: string;
+}) => `${money.value / 10 ** money.exponent} ${money.currency}`;
+
+const formatCodeBenefit = (
+  code: AdministrationDiscountCodeType,
+  discountLabels: ReadonlyMap<string, string>
+) => {
+  if (code.kind === "voucher" && code.voucherCredit) {
+    return `Voucher · ${formatMoney(code.voucherCredit)} issued`;
+  }
+  return code.discountId
+    ? (discountLabels.get(code.discountId) ?? code.discountId)
+    : "Unavailable discount";
+};
+
+const formatCodeRemaining = (
+  code: AdministrationDiscountCodeType,
+  unlimitedLabel: string | number = "Unlimited"
+) =>
+  code.remainingVoucherCredit
+    ? formatMoney(code.remainingVoucherCredit)
+    : (code.remainingUses ?? unlimitedLabel);
 
 const codesCommand = Command.make("codes").pipe(
   Command.withDescription("Inspect and manage discount codes"),
@@ -1174,6 +1287,7 @@ const codesCommand = Command.make("codes").pipe(
     codesGetCommand,
     codesCreateCommand,
     codesUpdateCommand,
+    codesUpdateVoucherCommand,
     codesDeleteCommand,
     codesAddCustomerCommand,
     codesRemoveCustomerCommand,
@@ -1711,7 +1825,7 @@ const formatDiscountAdjustment = (
 ) =>
   adjustment.kind === "percentage"
     ? `${adjustment.basisPoints / 100}%`
-    : `${adjustment.amount.value / 10 ** adjustment.amount.exponent} ${adjustment.amount.currency}`;
+    : formatMoney(adjustment.amount);
 
 const offerAutomaticUpdate = (json: boolean) =>
   Effect.gen(function* () {

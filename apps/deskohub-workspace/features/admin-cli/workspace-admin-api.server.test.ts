@@ -210,7 +210,10 @@ describe("Workspace Admin API", () => {
     } satisfies AdminDiscount;
     const discountCode = {
       id: codeId,
+      kind: "discount" as const,
       discountId,
+      voucherCredit: null,
+      remainingVoucherCredit: null,
       code: "SUMMER10",
       enabled: true,
       validFrom: null,
@@ -578,7 +581,12 @@ describe("Workspace Admin API", () => {
       },
       {
         kind: "update-code",
-        code: { id: codeId, discountId, ...codeConfiguration },
+        code: {
+          kind: "discount",
+          id: codeId,
+          discountId,
+          ...codeConfiguration,
+        },
       },
       { kind: "delete-code", id: codeId },
       { kind: "add-code-customer", codeId, customerId },

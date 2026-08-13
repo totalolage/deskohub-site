@@ -57,6 +57,26 @@ describe("discount persistence contracts", () => {
     expect(migration).not.toContain('"raw_payload"');
   });
 
+  test("migrates discount codes to checked voucher variants", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260813090859_round_raider/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(migration).toContain(
+      'ALTER TABLE "discount_codes" ALTER COLUMN "discount_id" DROP NOT NULL'
+    );
+    expect(migration).toContain('CONSTRAINT "discount_codes_kind_check" CHECK');
+    expect(migration).toContain(
+      'CONSTRAINT "discount_code_redemptions_code_kind_fk" FOREIGN KEY ("code_id","kind")'
+    );
+    expect(migration).toContain(
+      `("kind" = 'voucher' and "state" = 'reserved')`
+    );
+  });
+
   test("accepts only canonical product keys and discount codes", () => {
     const decodeProductKey = Schema.decodeUnknownSync(
       workspaceCoworkProductKeySchema
@@ -203,11 +223,16 @@ describe("discount persistence contracts", () => {
 
   test("enforces canonical code configuration in the database schema", () => {
     const config = configOf(discountCodes);
+    const discountId = config.columns.find(
+      ({ name }) => name === "discount_id"
+    );
 
+    expect(discountId?.notNull).toBe(false);
     expect(namesOf(config.checks)).toEqual([
       "discount_codes_code_check",
       "discount_codes_valid_window_check",
       "discount_codes_max_uses_check",
+      "discount_codes_kind_check",
     ]);
     expect(
       config.indexes.map(({ config: index }) => [index.name, index.unique])
@@ -261,8 +286,12 @@ describe("discount persistence contracts", () => {
     ).toEqual(
       expect.arrayContaining([
         "discount_code_redemptions_application_id_discount_applications_id_fk",
+        "discount_code_redemptions_code_kind_fk",
         "discount_code_redemptions_payment_attempt_id_payment_attempts_id_fk",
       ])
+    );
+    expect(namesOf(config.checks)).toContain(
+      "discount_code_redemptions_kind_check"
     );
     expect(namesOf(config.checks)).toContain(
       "discount_code_redemptions_lifecycle_check"

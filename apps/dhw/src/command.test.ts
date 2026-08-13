@@ -151,6 +151,79 @@ describe("dhw mutation commands", () => {
     expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
     expect(mutations).toHaveLength(0);
   });
+
+  test("creates reusable voucher credit", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "codes",
+        "create",
+        "voucher",
+        "VOUCHER100",
+        "--fixed-value",
+        "10000",
+        "--currency",
+        "CZK",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "create-code",
+        code: {
+          code: "VOUCHER100",
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+          maxUses: null,
+        },
+        discount: {
+          kind: "voucher",
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+        },
+      },
+    ]);
+  });
+
+  test("updates reusable voucher credit and configuration", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "codes",
+        "update-voucher",
+        codeId,
+        "GIFT150",
+        "--fixed-value",
+        "15000",
+        "--currency",
+        "CZK",
+        "--enabled",
+        "false",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "update-code",
+        code: {
+          kind: "voucher",
+          id: codeId,
+          code: "GIFT150",
+          credit: { value: 15_000, exponent: 2, currency: "CZK" },
+          enabled: false,
+          maxUses: null,
+          validFrom: null,
+          validUntil: null,
+        },
+      },
+    ]);
+  });
 });
 
 const runCommand = <R>(

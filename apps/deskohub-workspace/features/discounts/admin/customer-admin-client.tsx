@@ -296,9 +296,9 @@ export function AdminMutationButton({
         {isExecuting ? "Saving…" : children}
       </Button>
       {error && (
-        <span className="sr-only" role="alert">
+        <AdministrationAlert className="mt-3" role="alert" status="error">
           {error}
-        </span>
+        </AdministrationAlert>
       )}
     </>
   );

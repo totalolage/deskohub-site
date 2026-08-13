@@ -22,14 +22,20 @@ Overlapping valid sales may all participate in pricing. The home-page banner is 
 
 ## Discount codes
 
-Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain between 3 and 64 characters. A code owns:
+Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain between 3 and 64 characters. An ordinary discount code owns:
 
 - whether it is enabled;
 - an optional inclusive start and exclusive end;
 - an optional positive global-use limit; and
 - an optional customer allowlist.
 
-No global-use limit means unlimited global uses. Every code is still limited to one successful redemption per customer. An empty customer allowlist means the code is open to every customer; adding the first customer makes it restricted.
+No global-use limit means unlimited global uses. Every ordinary code is still limited to one successful redemption per customer. An empty customer allowlist means the code is open to every customer; adding the first customer makes it restricted.
+
+## Vouchers
+
+A voucher uses the same code syntax, enablement, validity window, and optional customer allowlist, but it owns positive issued credit instead of referencing a discount definition. It has no use-count limit or per-customer redemption limit, applies to every product family, and may be reused while matching-currency credit remains. Checkout applies at most the smaller of the remaining credit and the current discountable subtotal and shows the localized generic label “Voucher”.
+
+Available credit is the issued value minus reserved and redeemed applications. Entering a voucher does not reserve credit. Final payment admission locks and rechecks it; a failed, cancelled, or expired payment releases its reservation, while a paid claim permanently consumes the exact applied amount. Concurrent checkouts can therefore never spend more than the issued value.
 
 Disabling a code is preferred to deleting it when historical applications or redemptions exist. Removing every customer from an allowlist makes the code unrestricted again, so that change must be deliberate.
 
@@ -43,6 +49,6 @@ A bounded discount may show a localized expiry countdown near the end of its act
 
 ## Usage evidence
 
-Accepted discounts are snapshotted with their resolved label and applied amount. Code capacity includes reserved and redeemed claims; a released claim no longer consumes capacity but remains part of operational history.
+Accepted discounts are snapshotted with their resolved label and applied amount. Ordinary-code capacity and voucher credit both include reserved and redeemed claims; a released claim consumes neither but remains part of operational history.
 
 Application and redemption evidence is immutable. Corrections require a reviewed repair process and must never be achieved by editing completed customer history in place.

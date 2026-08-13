@@ -30,6 +30,8 @@ Do not recreate `checkout_return_state_tokens` as a state table. Return pages mu
 
 Discount configuration and audit history extend this lifecycle through `discounts`, `discount_targets`, `discount_codes`, `discount_code_customers`, `discount_applications`, and `discount_code_redemptions`. These tables store only source-neutral benefit configuration, Dotypos customer IDs, generic application snapshots, and claim state. They must not store customer contact data, Workspace access codes, or raw provider payloads. Read the [discount administration reference](../../deskohub-workspace-administration/references/discounts.md) for operator mutations and the [business discount specification](../../../../apps/deskohub-workspace/docs/discount-codes.md) for product policy.
 
+`discount_codes` is a checked variant: an ordinary code references one `discounts` row, while a voucher stores issued money and has no discount reference. Voucher availability is issued value minus reserved and redeemed claim applications. Admission locks the code row, rechecks the exact available money, and inserts the claim in the same payment transaction; release restores availability by state alone.
+
 Customer marketing consent is independent of a reservation and lives in `customer_marketing_consents`, keyed directly by the stable Dotypos customer ID. The reservation page always shows a privacy notice and link, but privacy-policy acknowledgement is not a consent gate and is not persisted. The optional marketing checkbox grants customer-level consent; leaving it unchecked is a no-op, not a withdrawal.
 
 ## Advertised, quoted, and payable prices

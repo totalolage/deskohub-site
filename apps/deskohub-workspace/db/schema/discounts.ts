@@ -23,6 +23,9 @@ import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
 
+export const discountCodeKinds = ["discount", "voucher"] as const;
+export type DiscountCodeKind = (typeof discountCodeKinds)[number];
+
 export const discounts = pgTable(
   "discounts",
   {
@@ -91,10 +94,13 @@ export const discountCodes = pgTable(
   "discount_codes",
   {
     id: text("id").primaryKey().default(postgresUuidV7).$type<DiscountCodeId>(),
+    kind: text("kind").notNull().default("discount").$type<DiscountCodeKind>(),
     discountId: text("discount_id")
-      .notNull()
       .$type<StoredDiscountId>()
       .references(() => discounts.id),
+    voucherAmountValue: integer("voucher_amount_value"),
+    voucherAmountExponent: integer("voucher_amount_exponent"),
+    voucherAmountCurrency: text("voucher_amount_currency"),
     code: text("code").notNull().$type<CanonicalDiscountCode>(),
     enabled: boolean("enabled").notNull(),
     validFrom: instant("valid_from"),
@@ -105,6 +111,7 @@ export const discountCodes = pgTable(
   },
   (t) => [
     uniqueIndex("discount_codes_code_unique_idx").on(t.code),
+    uniqueIndex("discount_codes_id_kind_unique_idx").on(t.id, t.kind),
     index("discount_codes_discount_idx").on(t.discountId),
     check(
       "discount_codes_code_check",
@@ -117,6 +124,23 @@ export const discountCodes = pgTable(
     check(
       "discount_codes_max_uses_check",
       sql`${t.maxUses} is null or ${t.maxUses} > 0`
+    ),
+    check(
+      "discount_codes_kind_check",
+      sql`(
+        ${t.kind} = 'discount'
+        and ${t.discountId} is not null
+        and ${t.voucherAmountValue} is null
+        and ${t.voucherAmountExponent} is null
+        and ${t.voucherAmountCurrency} is null
+      ) or (
+        ${t.kind} = 'voucher'
+        and ${t.discountId} is null
+        and ${t.maxUses} is null
+        and ${t.voucherAmountValue} > 0
+        and ${t.voucherAmountExponent} >= 0
+        and ${t.voucherAmountCurrency} ~ '^[A-Z]{3}$'
+      )`
     ),
   ]
 );

@@ -103,7 +103,10 @@ dhw codes create existing SUMMER10 <discount-id>
 dhw codes create percentage VIP15 --customer <customer-id> \
   --label-en "VIP discount" --label-cs "VIP sleva" \
   --percentage 15 --product cowork
+dhw codes create voucher GIFT100 --fixed-value 10000 --currency CZK
 dhw codes update <code-id> SUMMER15 <discount-id> --enabled true
+dhw codes update-voucher <code-id> GIFT150 --fixed-value 15000 \
+  --currency CZK --enabled true
 dhw codes add-customer <code-id> <customer-id>
 dhw codes remove-customer <code-id> <customer-id>
 dhw codes make-unrestricted <code-id>
@@ -116,7 +119,9 @@ dhw sessions revoke <session-id>
 ```
 
 The `codes create percentage` and `codes create fixed` variants create the
-discount definition and code atomically, matching the Admin UI. Add
+discount definition and code atomically, matching the Admin UI. The `voucher`
+variant creates reusable credit and `codes get` reports its issued and remaining
+credit together with every reserved, redeemed, or released claim. Add
 `--customer` to restrict the new code to one customer. Fixed values use minor
 currency units. Code validity bounds use ISO instants; omitted bounds and
 maximum uses are stored as unrestricted values. Update commands replace the

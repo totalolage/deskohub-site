@@ -6,6 +6,7 @@ import {
   AdministrationCustomerQuery,
   AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
+  AdministrationDiscountCode,
   AdministrationDiscountMutation,
   AdministrationDotyposCustomerId,
   AdministrationDotyposDiscountGroupId,
@@ -53,6 +54,52 @@ describe("StartCliAuthentication", () => {
 });
 
 describe("administration contract", () => {
+  test("rejects impossible discount-code benefit variants", () => {
+    const decode = Schema.decodeUnknownSync(AdministrationDiscountCode);
+    const common = {
+      id: "01980000-0000-7000-8000-000000000001",
+      code: "GIFT100",
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      maxUses: null,
+      audienceSize: 0,
+      reservedUses: 0,
+      redeemedUses: 0,
+      releasedUses: 0,
+      remainingUses: null,
+      createdAt: "2026-08-10T10:00:00Z",
+      updatedAt: "2026-08-10T10:00:00Z",
+    };
+
+    expect(
+      decode({
+        ...common,
+        kind: "voucher",
+        discountId: null,
+        voucherCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+        remainingVoucherCredit: {
+          value: 6500,
+          exponent: 2,
+          currency: "CZK",
+        },
+      })
+    ).toMatchObject({ kind: "voucher" });
+    expect(() =>
+      decode({
+        ...common,
+        kind: "voucher",
+        discountId: "01980000-0000-7000-8000-000000000002",
+        voucherCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+        remainingVoucherCredit: {
+          value: 11_000,
+          exponent: 2,
+          currency: "CZK",
+        },
+      })
+    ).toThrow();
+  });
+
   test("keeps branded identifiers distinct while encoding them as strings", () => {
     const reservationId = Schema.decodeUnknownSync(
       AdministrationWorkspaceReservationId
@@ -272,6 +319,26 @@ describe("administration contract", () => {
         discount: { kind: "existing", discountId },
       })
     ).toThrow();
+
+    expect(
+      decode({
+        kind: "create-code",
+        code: {
+          code: "VOUCHER100",
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+          maxUses: null,
+        },
+        discount: {
+          kind: "voucher",
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+        },
+      })
+    ).toMatchObject({
+      kind: "create-code",
+      discount: { kind: "voucher", credit: { value: 10_000 } },
+    });
   });
   test("rejects invalid reservation filters before service execution", () => {
     expect(() =>

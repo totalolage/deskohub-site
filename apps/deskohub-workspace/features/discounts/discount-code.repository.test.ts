@@ -37,10 +37,13 @@ describe("discount code availability queries", () => {
 
     expect(sql).toContain("count(*)");
     expect(sql).toContain(
-      `coalesce(bool_or("dotypos_customer_id" = $1 and "state" = 'redeemed'), false)`
+      `coalesce(bool_or("discount_code_redemptions"."dotypos_customer_id" = $1 and "discount_code_redemptions"."state" = 'redeemed'), false)`
     );
     expect(sql).toContain(
-      `coalesce(bool_or("dotypos_customer_id" = $2 and "state" = 'reserved'), false)`
+      `coalesce(bool_or("discount_code_redemptions"."dotypos_customer_id" = $2 and "discount_code_redemptions"."state" = 'reserved'), false)`
+    );
+    expect(sql).toContain(
+      'coalesce(sum("discount_applications"."applied_amount_value"), 0)::integer'
     );
     expect(sql).toContain('"discount_code_redemptions"."state" in ($4, $5)');
     expect(sql).not.toContain("reservation_expires_at");

@@ -12,6 +12,7 @@ import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateDiscountAdminInput,
   CreateDiscountCodeAdminInput,
+  UpdateDiscountCodeAdminInput,
 } from "./contracts";
 
 export const readDiscountForm = (
@@ -78,6 +79,22 @@ export const readDiscountCodeConfigurationForm = (
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
   maxUses: readOptionalNumber(formData, "maxUses"),
 });
+
+export const readVoucherCreditForm = (
+  formData: FormData
+): Extract<
+  UpdateDiscountCodeAdminInput,
+  { readonly kind: "voucher" }
+>["credit"] => {
+  const currency = findWorkspaceCurrencyDefinition(
+    readString(formData, "voucherCurrency").toUpperCase()
+  );
+  return {
+    value: Number(readString(formData, "voucherValue")),
+    exponent: currency?.exponent ?? -1,
+    currency: currency?.code ?? "",
+  };
+};
 
 const readString = (formData: FormData, field: string) => {
   const value = formData.get(field);

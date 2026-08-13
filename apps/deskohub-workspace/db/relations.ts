@@ -65,7 +65,6 @@ export const relations = defineRelations(schema, (r) => ({
     discount: r.one.discounts({
       from: r.discountCodes.discountId,
       to: r.discounts.id,
-      optional: false,
     }),
     customers: r.many.discountCodeCustomers(),
     redemptions: r.many.discountCodeRedemptions(),

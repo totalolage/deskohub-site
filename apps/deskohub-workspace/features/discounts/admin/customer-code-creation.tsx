@@ -14,6 +14,7 @@ import { mutateDiscountAdmin } from "./actions";
 import {
   DiscountCodeConfigurationFields,
   DiscountDefinitionFields,
+  VoucherCreditFields,
 } from "./admin-tables";
 import type { CreateCustomerDiscountCodeAdminInput } from "./contracts";
 import type { AdminDiscount } from "./discount-administration.service";
@@ -21,6 +22,7 @@ import { getDiscountAdminValidationMessage } from "./form-feedback";
 import {
   readDiscountCodeConfigurationForm,
   readDiscountForm,
+  readVoucherCreditForm,
 } from "./form-input";
 
 export function DiscountCodeCreationForm({
@@ -35,9 +37,9 @@ export function DiscountCodeCreationForm({
   readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
 }) {
   const router = useRouter();
-  const [discountKind, setDiscountKind] = useState<"existing" | "new">(
-    discounts.length > 0 ? "existing" : "new"
-  );
+  const [discountKind, setDiscountKind] = useState<
+    "existing" | "new" | "voucher"
+  >(discounts.length > 0 ? "existing" : "new");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const customerPath = customerId ? `/admin/customers/${customerId}` : null;
@@ -89,25 +91,36 @@ export function DiscountCodeCreationForm({
     event.preventDefault();
     setError(null);
     const formData = new FormData(event.currentTarget);
-    const discount: CreateCustomerDiscountCodeAdminInput["discount"] =
-      discountKind === "existing"
-        ? {
-            kind: "existing",
-            discountId: Schema.decodeUnknownSync(storedDiscountIdSchema)(
-              formData.get("discountId")?.toString()
-            ),
-          }
-        : { kind: "new", discount: readDiscountForm(formData) };
+    const discount: CreateCustomerDiscountCodeAdminInput["discount"] = {
+      existing: () => ({
+        kind: "existing" as const,
+        discountId: Schema.decodeUnknownSync(storedDiscountIdSchema)(
+          formData.get("discountId")?.toString()
+        ),
+      }),
+      new: () => ({
+        kind: "new" as const,
+        discount: readDiscountForm(formData),
+      }),
+      voucher: () => ({
+        kind: "voucher" as const,
+        credit: readVoucherCreditForm(formData),
+      }),
+    }[discountKind]();
     const code = readDiscountCodeConfigurationForm(formData);
     if (customerId) {
       execute({
         kind: "create-customer-code",
         customerId,
-        code,
+        code: discountKind === "voucher" ? { ...code, maxUses: null } : code,
         discount,
       });
     } else {
-      execute({ kind: "create-code", code, discount });
+      execute({
+        kind: "create-code",
+        code: discountKind === "voucher" ? { ...code, maxUses: null } : code,
+        discount,
+      });
     }
   };
 
@@ -124,7 +137,7 @@ export function DiscountCodeCreationForm({
         <p className="mt-1 text-sm text-navy-blue/65">
           Choose what the code should apply.
         </p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
           <Label className="flex cursor-pointer gap-3 rounded-xl border border-navy-blue/15 bg-white p-4 has-[:checked]:border-burned-orange has-[:checked]:ring-2 has-[:checked]:ring-burned-orange/15">
             <input
               aria-label="Use an existing discount"
@@ -142,6 +155,23 @@ export function DiscountCodeCreationForm({
               </span>
               <span className="mt-1 block text-xs leading-5 text-navy-blue/65">
                 Pair the code with a discount that is already configured.
+              </span>
+            </span>
+          </Label>
+          <Label className="flex cursor-pointer gap-3 rounded-xl border border-navy-blue/15 bg-white p-4 has-[:checked]:border-burned-orange has-[:checked]:ring-2 has-[:checked]:ring-burned-orange/15">
+            <input
+              aria-label="Create a voucher"
+              checked={discountKind === "voucher"}
+              className="mt-1 size-4 accent-[var(--brand-burned-orange)]"
+              name="discountKind"
+              onChange={() => setDiscountKind("voucher")}
+              type="radio"
+              value="voucher"
+            />
+            <span>
+              <span className="block font-semibold">Voucher</span>
+              <span className="mt-1 block text-xs leading-5 text-navy-blue/65">
+                Issue reusable credit that is deducted as customers spend it.
               </span>
             </span>
           </Label>
@@ -166,7 +196,7 @@ export function DiscountCodeCreationForm({
       </fieldset>
 
       <div className="mt-6">
-        {discountKind === "existing" ? (
+        {discountKind === "existing" && (
           <Label className="grid gap-2">
             <span>Discount</span>
             <select
@@ -181,18 +211,18 @@ export function DiscountCodeCreationForm({
               ))}
             </select>
           </Label>
-        ) : (
-          <DiscountDefinitionFields />
         )}
+        {discountKind === "new" && <DiscountDefinitionFields />}
+        {discountKind === "voucher" && <VoucherCreditFields />}
       </div>
 
       <div className="my-7 border-t border-navy-blue/10" />
       <div>
         <h2 className="text-lg">Code details</h2>
         <p className="mb-4 mt-1 text-sm text-navy-blue/65">
-          Set the code, availability window, and optional usage limit.
+          Set the code and its availability window.
         </p>
-        <DiscountCodeConfigurationFields />
+        <DiscountCodeConfigurationFields voucher={discountKind === "voucher"} />
       </div>
 
       {error && (

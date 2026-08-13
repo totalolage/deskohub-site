@@ -6,8 +6,8 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { discountCodes } from "@/db/schema";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
+  type CodeConfiguration,
   type DiscountCodeAvailability,
-  type DiscountCodeConfiguration,
   type DiscountCodeConfigurationError,
   decodeDiscountCodeAvailability,
   decodeDiscountCodeConfiguration,
@@ -22,7 +22,7 @@ export interface IDiscountCodeRepository {
   readonly findByCode: (
     input: FindDiscountCodeInput
   ) => Effect.Effect<
-    Option.Option<DiscountCodeConfiguration>,
+    Option.Option<CodeConfiguration>,
     EffectDrizzleQueryError | DiscountCodeConfigurationError
   >;
   readonly loadAvailability: (
@@ -84,6 +84,7 @@ export class DiscountCodeRepository extends Context.Service<
           activeUseCount: activeClaimRows[0]?.activeUseCount ?? 0,
           customerHasRedeemed: activeClaimRows[0]?.customerHasRedeemed ?? false,
           customerHasReserved: activeClaimRows[0]?.customerHasReserved ?? false,
+          voucherUsedValue: activeClaimRows[0]?.voucherUsedValue ?? 0,
         };
 
         return yield* decodeDiscountCodeAvailability({

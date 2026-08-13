@@ -16,7 +16,7 @@ import {
   type GoogleCalendarICalUid,
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
   Context,
@@ -36,13 +36,16 @@ import {
   type DiscountCodeRedemption,
   type DiscountLabels,
   type DiscountProductTarget,
+  discountApplications,
   discountCodeCustomers,
+  discountCodeRedemptions,
   discountCodes,
   discountProductTargets,
   discounts,
   type StoredDiscount,
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -82,7 +85,10 @@ export type AdminDiscount = {
 
 export type AdminDiscountCode = {
   readonly id: DiscountCodeId;
-  readonly discountId: StoredDiscountId;
+  readonly kind: "discount" | "voucher";
+  readonly discountId: StoredDiscountId | null;
+  readonly voucherCredit: WorkspaceMoney | null;
+  readonly remainingVoucherCredit: WorkspaceMoney | null;
   readonly code: string;
   readonly enabled: boolean;
   readonly validFrom: Temporal.Instant | null;
@@ -118,6 +124,7 @@ export type AdminDiscountCodeClaim = {
   readonly state: DiscountCodeClaimState;
   readonly paymentAttemptId: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
+  readonly appliedAmount: WorkspaceMoney;
   readonly reservationExpiresAt: Temporal.Instant;
   readonly reservedAt: Temporal.Instant;
   readonly redeemedAt: Temporal.Instant | null;
@@ -427,7 +434,7 @@ export class DiscountAdministration extends Context.Service<
           .findMany({
             with: {
               customers: {},
-              redemptions: {},
+              redemptions: { with: { application: {} } },
             },
           })
           .pipe(
@@ -582,11 +589,26 @@ export class DiscountAdministration extends Context.Service<
                         );
                       return row.id;
                     }),
+                  voucher: () => Effect.succeed(null),
                 })
               );
               const codeRows = yield* tx
                 .insert(discountCodes)
-                .values(toDiscountCodeValues({ ...input.code, discountId }))
+                .values(
+                  toDiscountCodeValues(
+                    input.discount.kind === "voucher"
+                      ? {
+                          kind: "voucher",
+                          ...input.code,
+                          credit: input.discount.credit,
+                        }
+                      : {
+                          kind: "discount",
+                          ...input.code,
+                          discountId: discountId!,
+                        }
+                  )
+                )
                 .returning({ id: discountCodes.id });
               const codeRow = codeRows[0];
               return codeRow
@@ -641,11 +663,26 @@ export class DiscountAdministration extends Context.Service<
                       );
                     return row.id;
                   }),
+                voucher: () => Effect.succeed(null),
               })
             );
             const codeRows = yield* tx
               .insert(discountCodes)
-              .values(toDiscountCodeValues({ ...input.code, discountId }))
+              .values(
+                toDiscountCodeValues(
+                  input.discount.kind === "voucher"
+                    ? {
+                        kind: "voucher",
+                        ...input.code,
+                        credit: input.discount.credit,
+                      }
+                    : {
+                        kind: "discount",
+                        ...input.code,
+                        discountId: discountId!,
+                      }
+                )
+              )
               .returning({ id: discountCodes.id });
             const codeRow = codeRows[0];
             if (!codeRow) {
@@ -664,22 +701,78 @@ export class DiscountAdministration extends Context.Service<
 
       const updateCode = Effect.fn("DiscountAdministration.updateCode")(
         (input: UpdateDiscountCodeAdminInput) =>
-          db
-            .update(discountCodes)
-            .set({
-              ...toDiscountCodeValues(input),
-              updatedAt: Temporal.Now.instant(),
-            })
-            .where(eq(discountCodes.id, input.id))
-            .returning({ id: discountCodes.id })
-            .pipe(
-              Effect.flatMap((rows) =>
-                requireUpdatedRow(rows, {
-                  kind: "discount code",
-                  id: input.id,
+          db.transaction((tx) =>
+            Effect.gen(function* () {
+              const rows = yield* tx
+                .select({
+                  id: discountCodes.id,
+                  kind: discountCodes.kind,
+                  voucherAmountExponent: discountCodes.voucherAmountExponent,
+                  voucherAmountCurrency: discountCodes.voucherAmountCurrency,
                 })
-              )
-            )
+                .from(discountCodes)
+                .where(eq(discountCodes.id, input.id))
+                .limit(1)
+                .for("update");
+              yield* requireUpdatedRow(rows, {
+                kind: "discount code",
+                id: input.id,
+              });
+              if (rows[0]?.kind !== input.kind) {
+                return yield* new DiscountAdminConflictError({
+                  message:
+                    "A discount code cannot be converted into a voucher or back.",
+                });
+              }
+              if (input.kind === "voucher") {
+                const [usage] = yield* tx
+                  .select({
+                    value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+                  })
+                  .from(discountCodeRedemptions)
+                  .innerJoin(
+                    discountApplications,
+                    eq(
+                      discountApplications.id,
+                      discountCodeRedemptions.applicationId
+                    )
+                  )
+                  .where(
+                    and(
+                      eq(discountCodeRedemptions.codeId, input.id),
+                      inArray(discountCodeRedemptions.state, [
+                        "reserved",
+                        "redeemed",
+                      ])
+                    )
+                  );
+                const usedValue = usage?.value ?? 0;
+                if (usedValue > input.credit.value) {
+                  return yield* new DiscountAdminConflictError({
+                    message:
+                      "Voucher credit cannot be lower than its reserved and redeemed value.",
+                  });
+                }
+                if (
+                  usedValue > 0 &&
+                  (rows[0]?.voucherAmountExponent !== input.credit.exponent ||
+                    rows[0]?.voucherAmountCurrency !== input.credit.currency)
+                ) {
+                  return yield* new DiscountAdminConflictError({
+                    message:
+                      "Voucher currency cannot change after credit has been spent or reserved.",
+                  });
+                }
+              }
+              yield* tx
+                .update(discountCodes)
+                .set({
+                  ...toDiscountCodeValues(input),
+                  updatedAt: Temporal.Now.instant(),
+                })
+                .where(eq(discountCodes.id, input.id));
+            })
+          )
       );
 
       const deleteCode = Effect.fn("DiscountAdministration.deleteCode")(
@@ -745,7 +838,7 @@ export class DiscountAdministration extends Context.Service<
               ),
               Effect.map(({ customers, row }) => ({
                 code: toAdminDiscountCode(row),
-                discountLabel: row.discount.labels["en-US"],
+                discountLabel: row.discount?.labels["en-US"] ?? "Voucher",
                 customers,
                 claims: row.redemptions
                   .map(toAdminDiscountCodeClaim)
@@ -798,7 +891,7 @@ export class DiscountAdministration extends Context.Service<
             codes: codeRows
               .map((row) => ({
                 ...toAdminDiscountCode(row),
-                discountLabel: row.discount.labels["en-US"],
+                discountLabel: row.discount?.labels["en-US"] ?? "Voucher",
                 eligible: row.customers.some(
                   ({ dotyposCustomerId }) =>
                     dotyposCustomerId === input.customerId
@@ -1068,6 +1161,10 @@ const discountAdminConstraintMessages = new Map([
     "discount_code_redemptions_code_id_discount_codes_id_fk",
     "This discount code has claims and cannot be deleted.",
   ],
+  [
+    "discount_code_redemptions_code_kind_fk",
+    "This discount code has claims and cannot be deleted.",
+  ],
 ]);
 
 const withDiscountAdminConflict =
@@ -1122,7 +1219,13 @@ type AdminDiscountCodeRow = DiscountCode & {
   readonly customers: readonly {
     readonly dotyposCustomerId: DotyposCustomerId;
   }[];
-  readonly redemptions: readonly DiscountCodeRedemption[];
+  readonly redemptions: readonly (DiscountCodeRedemption & {
+    readonly application: {
+      readonly appliedAmountValue: number;
+      readonly appliedAmountExponent: number;
+      readonly appliedAmountCurrency: string;
+    };
+  })[];
 };
 
 const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
@@ -1130,10 +1233,29 @@ const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
     maxUses: row.maxUses,
     states: row.redemptions.map(({ state }) => state),
   });
+  const voucherCredit =
+    row.kind === "voucher"
+      ? {
+          value: row.voucherAmountValue!,
+          exponent: row.voucherAmountExponent!,
+          currency: row.voucherAmountCurrency!,
+        }
+      : null;
+  const usedVoucherValue = row.redemptions
+    .filter(({ state }) => state === "reserved" || state === "redeemed")
+    .reduce((total, claim) => total + claim.application.appliedAmountValue, 0);
 
   return {
     id: row.id,
+    kind: row.kind,
     discountId: row.discountId,
+    voucherCredit,
+    remainingVoucherCredit: voucherCredit
+      ? {
+          ...voucherCredit,
+          value: Math.max(0, voucherCredit.value - usedVoucherValue),
+        }
+      : null,
     code: String(row.code),
     enabled: row.enabled,
     validFrom: row.validFrom,
@@ -1226,6 +1348,9 @@ const toAdminDiscountCodeClaim = (
   row: DiscountCodeRedemption & {
     readonly application: {
       readonly workspaceReservationId: WorkspaceReservationId;
+      readonly appliedAmountValue: number;
+      readonly appliedAmountExponent: number;
+      readonly appliedAmountCurrency: string;
     };
   }
 ): AdminDiscountCodeClaim => ({
@@ -1235,6 +1360,11 @@ const toAdminDiscountCodeClaim = (
   state: row.state,
   paymentAttemptId: row.paymentAttemptId,
   workspaceReservationId: row.application.workspaceReservationId,
+  appliedAmount: {
+    value: row.application.appliedAmountValue,
+    exponent: row.application.appliedAmountExponent,
+    currency: row.application.appliedAmountCurrency,
+  },
   reservationExpiresAt: row.reservationExpiresAt,
   reservedAt: row.reservedAt,
   redeemedAt: row.redeemedAt,
@@ -1287,16 +1417,29 @@ const toDiscountProductTargetRows = (
 ) => productTargets.map((productTarget) => ({ discountId, productTarget }));
 
 const toDiscountCodeValues = (
-  input: CreateDiscountCodeAdminInput | UpdateDiscountCodeAdminInput
+  input:
+    | (CreateDiscountCodeAdminInput & { readonly kind: "discount" })
+    | Extract<UpdateDiscountCodeAdminInput, { readonly kind: "discount" }>
+    | ({
+        readonly kind: "voucher";
+        readonly credit: WorkspaceMoney;
+      } & CreateCustomerDiscountCodeAdminInput["code"])
+    | Extract<UpdateDiscountCodeAdminInput, { readonly kind: "voucher" }>
 ) => ({
   code: sensitiveDatabaseParameter(input.code),
-  discountId: input.discountId,
+  kind: input.kind,
+  discountId: input.kind === "discount" ? input.discountId : null,
+  voucherAmountValue: input.kind === "voucher" ? input.credit.value : null,
+  voucherAmountExponent:
+    input.kind === "voucher" ? input.credit.exponent : null,
+  voucherAmountCurrency:
+    input.kind === "voucher" ? input.credit.currency : null,
   enabled: input.enabled,
   validFrom:
     input.validFrom === null ? null : Temporal.Instant.from(input.validFrom),
   validUntil:
     input.validUntil === null ? null : Temporal.Instant.from(input.validUntil),
-  maxUses: input.maxUses,
+  maxUses: input.kind === "discount" ? input.maxUses : null,
 });
 
 type PersistedDiscountResource = Extract<
