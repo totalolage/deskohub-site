@@ -46,6 +46,16 @@ test("allows refund settlement for a superseded late payment", async () => {
   );
 });
 
+test("marks the settled payment attempt as requiring a refund", async () => {
+  const source = await Bun.file(
+    new URL("./late-payment-recovery.repository.ts", import.meta.url)
+  ).text();
+
+  expect(source).toMatch(
+    /input\.state === "refund_required" && \{\s+refundState: "required"/
+  );
+});
+
 test("records an older attempt refund without replacing the active attempt", async () => {
   const source = await Bun.file(
     new URL("./late-payment-recovery.repository.ts", import.meta.url)

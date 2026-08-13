@@ -15,9 +15,11 @@ import {
   AdministrationNexiOrderId,
   AdministrationOperationQuery,
   AdministrationOrderQuery,
+  AdministrationPaymentAttempt,
   AdministrationPaymentAttemptId,
   AdministrationReservationAccessGrant,
   AdministrationReservationAccessMutation,
+  AdministrationReservationCancellationInput,
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
@@ -133,6 +135,9 @@ describe("administration contract", () => {
     expect(AdminCliAdministrationApi.endpoints.mutateDiscounts?.method).toBe(
       "POST"
     );
+    expect(AdminCliAdministrationApi.endpoints.cancelReservation?.method).toBe(
+      "POST"
+    );
     expect(AdminCliAdministrationApi.endpoints.renameSession?.method).toBe(
       "PATCH"
     );
@@ -145,6 +150,28 @@ describe("administration contract", () => {
         status: "complete",
       })
     ).toEqual({ page: 2, status: "complete" });
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationCancellationInput)({
+        sendCancellationEmail: true,
+      })
+    ).toEqual({ sendCancellationEmail: true });
+  });
+
+  test("exposes refund work without changing successful payment state", () => {
+    const attempt = Schema.decodeUnknownSync(AdministrationPaymentAttempt)({
+      id: "payment-attempt-id",
+      state: "paid",
+      refundState: "required",
+      providerOrderId: "order-id",
+      providerLabel: "Online payment",
+      stateLabel: "Paid",
+      amount: { value: 1000, exponent: 2, currency: "CZK" },
+      createdAt: "2026-08-13T12:00:00Z",
+      providerOrderCreatedAt: "2026-08-13T12:00:01Z",
+      updatedAt: "2026-08-13T12:01:00Z",
+    });
+
+    expect(attempt).toMatchObject({ state: "paid", refundState: "required" });
   });
 
   test("exposes access operations without exposing the PIN", () => {

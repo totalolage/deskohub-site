@@ -5,6 +5,7 @@ import type {
   ReservationState,
 } from "@/db/schema";
 import {
+  canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
 } from "./reservation-status";
@@ -21,6 +22,58 @@ const status = (
   });
 
 describe("administration reservation status", () => {
+  test("allows retries only after the cancellation lease expires", () => {
+    const now = Temporal.Now.instant();
+    expect(
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "processing",
+          paymentState: "paid",
+          reservationState: "confirmed",
+          updatedAt: now,
+        },
+        now
+      )
+    ).toBe(false);
+    expect(
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "fulfilled",
+          paymentState: "paid",
+          reservationState: "cancelling",
+          updatedAt: now,
+        },
+        now
+      )
+    ).toBe(false);
+    expect(
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "fulfilled",
+          paymentState: "paid",
+          reservationState: "cancelling",
+          updatedAt: now.subtract({ minutes: 2 }),
+        },
+        now
+      )
+    ).toBe(true);
+    expect(
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "not_started",
+          paymentState: "pending",
+          reservationState: "held",
+          updatedAt: now,
+        },
+        now
+      )
+    ).toBe(false);
+  });
+
   test.each([
     ["confirmed", "paid", "failed", "Confirmation issue", "attention"],
     [
@@ -48,10 +101,10 @@ describe("administration reservation status", () => {
     });
   });
 
-  test("keeps attention states ahead of terminal states", () => {
+  test("keeps cancellation states ahead of fulfillment states", () => {
     expect(status("cancelled", "cancelled", "failed")).toEqual({
-      group: "attention",
-      label: "Confirmation issue",
+      group: "cancelled",
+      label: "Cancelled",
     });
     expect(status("cancellation_failed", "cancelled", "fulfilled")).toEqual({
       group: "attention",

@@ -1,6 +1,6 @@
 # Workspace administration dashboard
 
-The Workspace administration dashboard is an operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Loading reservation and customer pages does not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records; reservation access recovery is an explicit operator action.
+The Workspace administration dashboard is an operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Loading reservation and customer pages does not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records; reservation cancellation and access recovery are explicit operator actions.
 
 The visible navigation is intentionally limited to Overview, Reservations, Customers, Codes, and Sales. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
 
@@ -32,6 +32,8 @@ Retry access automatically only from `failed`, which represents a definitive pro
 Treat a `provisioning` claim older than one minute as ambiguous and expose the same confirmed provider-cleanup workflow. Do not offer recovery for a fresh provisioning claim.
 
 ## Reservation lifecycle
+
+Operator cancellation uses its own guarded workflow rather than the unpaid-hold cleanup path. It may cancel held or confirmed reservations, preserves payment and fulfillment history, atomically marks paid Nexi attempts as requiring a refund without issuing one, leaves zero-total internal payments refund-free, refuses while payment is pending or fulfillment is processing, and records provider failures for retry. Customer email is attempted only after provider and local cancellation complete; its outcome is reported separately. The payment-attempt refund state is the single operator-work flag shared with unrecoverable late-payment recovery; source-specific rows retain context but do not define a second refund queue.
 
 The lifecycle diagram is a projection of the selected reservation, not a generic explanation. It combines the local reservation state, payment-attempt state, and fulfillment outcome into Started, Held, Paid, Complete, or the exact cancellation substate (Hold expired, Cancelling, Cancellation issue, or Cancelled). A live Dotypos `CANCELLED` status is overlaid as an attention-state cancellation when the local row is stale, because Dotypos owns the current booking fact. List filters and primary status badges remain projections of the durable local workflow, with the Dotypos discrepancy shown as a separate warning. This read-only overlay never writes a local transition or authorizes repair. A failed or expired payment does not by itself mark a still-held reservation as cancelled, and an in-progress or failed release is never presented as complete. The chronological history below the diagram shows the durable local milestones plus any available Nexi and PostHog observations.
 

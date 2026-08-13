@@ -27,6 +27,10 @@ import {
   ReservationAccessAdministration,
   type ReservationAccessAdministrationError,
 } from "@/features/administration/reservation-access-administration.service";
+import {
+  type ReservationAdministrationError,
+  ReservationAdministrationService,
+} from "@/features/administration/reservation-administration.service";
 import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
 import {
   type AdminCustomerProfile,
@@ -97,6 +101,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
+      const reservationAdministration = yield* ReservationAdministrationService;
       const reservationAccess = yield* ReservationAccessAdministration;
       const authentication = yield* CliAuthentication;
       const discounts = yield* DiscountAdministration;
@@ -119,6 +124,14 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   })
             )
           )
+        )
+        .handle("cancelReservation", ({ params, payload }) =>
+          reservationAdministration
+            .cancel({
+              reservationId: params.reservationId,
+              sendCancellationEmail: payload.sendCancellationEmail,
+            })
+            .pipe(Effect.mapError(mapReservationCancellationFailure))
         )
         .handle("mutateReservationAccess", ({ params, payload }) =>
           Effect.gen(function* () {
@@ -453,6 +466,18 @@ const mapDiscountMutationFailure = (
     Match.orElse(makeServiceUnavailable)
   );
 
+const mapReservationCancellationFailure = (
+  cause: ReservationAdministrationError
+) => {
+  if (cause.code === "not_found") {
+    return new CliResourceNotFound({ message: cause.message });
+  }
+  if (cause.code === "not_cancellable") {
+    return new CliMutationRejected({ message: cause.message });
+  }
+  return makeServiceUnavailable();
+};
+
 const mapReservationAccessMutationFailure = (
   cause: ReservationAccessAdministrationError
 ) =>
@@ -545,6 +570,7 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(AdministrationLive),
+    Layer.provide(ReservationAdministrationService.LiveWithDependencies),
     Layer.provide(ReservationAccessAdministration.LiveWithDependencies),
     Layer.provide(DiscountAdministrationLive),
     Layer.provide(CliMutationIdempotency.LiveWithDependencies),

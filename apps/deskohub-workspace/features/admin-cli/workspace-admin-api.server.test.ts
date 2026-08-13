@@ -25,6 +25,7 @@ import {
   ReservationAccessAdministration,
   ReservationAccessAdministrationError,
 } from "@/features/administration/reservation-access-administration.service";
+import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
 import {
   type AdminDiscount,
   type AdminDiscountCode,
@@ -44,6 +45,10 @@ import {
 const UnusedCliAuthentication = Layer.succeed(
   CliAuthentication,
   {} as CliAuthentication["Service"]
+);
+const UnusedReservationAdministration = Layer.succeed(
+  ReservationAdministrationService,
+  {} as ReservationAdministrationService["Service"]
 );
 const AllowCliAuthenticationStarts = Layer.succeed(CliAuthenticationAdmission, {
   isStartAllowed: Effect.succeed(true),
@@ -162,6 +167,7 @@ describe("Workspace Admin API", () => {
     const operationInputs: unknown[] = [];
     const orderInputs: unknown[] = [];
     const reservationInputs: unknown[] = [];
+    const reservationCancellations: unknown[] = [];
     const reservationLookups: string[] = [];
     const timestamp = "2026-08-10T10:00:00.000Z";
     const booking = {
@@ -279,6 +285,7 @@ describe("Workspace Admin API", () => {
           id === reservation.id
             ? {
                 reservation,
+                canCancel: true,
                 booking,
                 lifecycle: {
                   currentStage: "complete" as const,
@@ -408,6 +415,16 @@ describe("Workspace Admin API", () => {
       ...({} as CliAuthentication["Service"]),
       listSessions: () => Effect.succeed([{ ...session, revokedAt: null }]),
     });
+    const reservationAdministration = Layer.succeed(
+      ReservationAdministrationService,
+      {
+        cancel: (input) =>
+          Effect.sync(() => {
+            reservationCancellations.push(input);
+            return { outcome: "cancelled", email: "sent" } as const;
+          }),
+      }
+    );
 
     const result = await Effect.gen(function* () {
       const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
@@ -419,6 +436,10 @@ describe("Workspace Admin API", () => {
       });
       const reservationDetail = yield* client.administration.getReservation({
         params: { reservationId: reservation.id },
+      });
+      const cancellation = yield* client.administration.cancelReservation({
+        params: { reservationId: reservation.id },
+        payload: { sendCancellationEmail: true },
       });
       const reservationLookup = yield* client.administration.findReservation({
         query: { identifier: "payment-1" },
@@ -472,6 +493,7 @@ describe("Workspace Admin API", () => {
       return {
         bookingDetail,
         bookings,
+        cancellation,
         customerSearch,
         customer,
         customerReservations,
@@ -493,6 +515,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(reservationAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
       Effect.provide(administration),
@@ -505,6 +528,13 @@ describe("Workspace Admin API", () => {
     expect(result.overview.today.value).toBe(3);
     expect(result.reservations.page).toBe(2);
     expect(result.reservationDetail.reservation.id).toBe(reservation.id);
+    expect(result.cancellation).toEqual({
+      outcome: "cancelled",
+      email: "sent",
+    });
+    expect(reservationCancellations).toEqual([
+      { reservationId: reservation.id, sendCancellationEmail: true },
+    ]);
     expect(result.reservationLookup.reservationId).toBe(reservation.id);
     expect(result.bookings.page).toBe(4);
     expect(result.bookingDetail.booking.id).toBe(booking.id);
@@ -656,6 +686,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(UnusedReservationAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
       Effect.provide(
@@ -864,6 +895,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
+      Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedDiscountAdministration),
       Effect.provide(UnusedCliAuthentication),
       Effect.provide(
@@ -966,6 +998,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
+      Effect.provide(UnusedReservationAdministration),
       Effect.provide(discounts),
       Effect.provide(UnusedCliAuthentication),
       Effect.provide(

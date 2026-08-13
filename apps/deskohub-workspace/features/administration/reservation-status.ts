@@ -2,7 +2,35 @@ import type {
   FulfillmentState,
   PaymentState,
   ReservationState,
+  WorkspaceReservation,
 } from "@/db/schema";
+
+export const ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS = 60 * 1000;
+
+export const canCancelReservation = (
+  reservation: Pick<
+    WorkspaceReservation,
+    | "dotyposReservationId"
+    | "fulfillmentState"
+    | "paymentState"
+    | "reservationState"
+    | "updatedAt"
+  >,
+  now = Temporal.Now.instant()
+) =>
+  Boolean(reservation.dotyposReservationId?.trim()) &&
+  reservation.fulfillmentState !== "processing" &&
+  reservation.paymentState !== "pending" &&
+  (["held", "hold_expired", "confirmed", "cancellation_failed"].includes(
+    reservation.reservationState
+  ) ||
+    (reservation.reservationState === "cancelling" &&
+      Temporal.Instant.compare(
+        reservation.updatedAt,
+        now.subtract({
+          milliseconds: ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
+        })
+      ) <= 0));
 
 export type AdministrationStatusGroup =
   | "attention"
@@ -78,18 +106,10 @@ export const getAdministrationReservationLifecycle = (
       tone: "attention",
     };
   }
-  if (input.fulfillmentState === "failed") {
-    return {
-      currentStage: "paid",
-      label: "Confirmation issue",
-      reachedStages: ["started", "held", "paid"],
-      tone: "attention",
-    };
-  }
   if (input.reservationState === "cancellation_failed") {
     return {
       currentStage: "cancellation_failed",
-      label: "Release needs attention",
+      label: "Cancellation needs attention",
       reachedStages: ["started", "held", "cancellation_failed"],
       tone: "attention",
     };
@@ -100,9 +120,17 @@ export const getAdministrationReservationLifecycle = (
       label:
         input.failureCode === "payment_abandoned_after_provider_cutoff"
           ? "Payment abandoned; hold released"
-          : "Hold released",
+          : "Reservation cancelled",
       reachedStages: ["started", "held", "cancelled"],
       tone: "neutral",
+    };
+  }
+  if (input.fulfillmentState === "failed") {
+    return {
+      currentStage: "paid",
+      label: "Confirmation issue",
+      reachedStages: ["started", "held", "paid"],
+      tone: "attention",
     };
   }
   if (input.dotyposStatus === "CANCELLED") {
@@ -113,20 +141,20 @@ export const getAdministrationReservationLifecycle = (
       tone: "attention",
     };
   }
+  if (input.reservationState === "cancelling") {
+    return {
+      currentStage: "cancelling",
+      label: "Cancelling reservation",
+      reachedStages: ["started", "held", "cancelling"],
+      tone: "neutral",
+    };
+  }
   if (input.fulfillmentState === "fulfilled") {
     return {
       currentStage: "complete",
       label: "Access delivered",
       reachedStages: ["started", "held", "paid", "complete"],
       tone: "positive",
-    };
-  }
-  if (input.reservationState === "cancelling") {
-    return {
-      currentStage: "cancelling",
-      label: "Releasing hold",
-      reachedStages: ["started", "held", "cancelling"],
-      tone: "neutral",
     };
   }
   if (input.reservationState === "hold_expired") {
@@ -198,9 +226,6 @@ export const getAdministrationReservationStatus = (
   if (input.latePayment) {
     return { group: "attention", label: "Refund required" };
   }
-  if (input.fulfillmentState === "failed") {
-    return { group: "attention", label: "Confirmation issue" };
-  }
   if (input.reservationState === "cancellation_failed") {
     return { group: "attention", label: "Cancellation issue" };
   }
@@ -213,11 +238,14 @@ export const getAdministrationReservationStatus = (
           : "Cancelled",
     };
   }
-  if (input.fulfillmentState === "fulfilled") {
-    return { group: "complete", label: "Complete" };
+  if (input.fulfillmentState === "failed") {
+    return { group: "attention", label: "Confirmation issue" };
   }
   if (input.reservationState === "cancelling") {
     return { group: "in_progress", label: "Cancelling" };
+  }
+  if (input.fulfillmentState === "fulfilled") {
+    return { group: "complete", label: "Complete" };
   }
   if (input.reservationState === "hold_expired") {
     return { group: "cancelled", label: "Expired" };

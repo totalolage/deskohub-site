@@ -229,6 +229,9 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                 .update(paymentAttempts)
                 .set({
                   state: "paid",
+                  ...(input.state === "refund_required" && {
+                    refundState: "required",
+                  }),
                   lastWebhookEventId: recovery.webhookEventId,
                   lastProviderOperationId: recovery.providerOperationId,
                   lastProviderStatus: recovery.providerStatus,

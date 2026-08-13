@@ -173,6 +173,11 @@ export function PaymentAttemptList({
             </p>
             <p className="mt-1 text-sm text-navy-blue/65">
               {attempt.stateLabel}
+              {attempt.refundState === "required" && (
+                <span className="block font-semibold text-burned-orange-ink">
+                  Needs refund
+                </span>
+              )}
             </p>
           </div>
         </li>

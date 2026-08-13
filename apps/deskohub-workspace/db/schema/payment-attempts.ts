@@ -30,6 +30,10 @@ export const paymentAttemptStates = [
 
 export type PaymentAttemptState = (typeof paymentAttemptStates)[number];
 
+export const paymentRefundStates = ["not_required", "required"] as const;
+
+export type PaymentRefundState = (typeof paymentRefundStates)[number];
+
 export const paymentProviders = ["nexi", "internal"] as const;
 
 export type PaymentProvider = (typeof paymentProviders)[number];
@@ -55,6 +59,10 @@ export const paymentAttempts = pgTable(
     providerOrderId: text("provider_order_id").$type<NexiOrderId>(),
     securityToken: text("security_token"),
     state: text("state").notNull().$type<PaymentAttemptState>(),
+    refundState: text("refund_state")
+      .notNull()
+      .default("not_required")
+      .$type<PaymentRefundState>(),
     amountValue: integer("amount_value").notNull(),
     amountExponent: integer("amount_exponent").notNull(),
     currency: text("currency").notNull(),
@@ -79,6 +87,10 @@ export const paymentAttempts = pgTable(
     check(
       "payment_attempts_state_check",
       sql`${t.state} in (${quotedSqlList(paymentAttemptStates)})`
+    ),
+    check(
+      "payment_attempts_refund_state_check",
+      sql`${t.refundState} in (${quotedSqlList(paymentRefundStates)}) and (${t.refundState} <> 'required' or (${t.provider} = 'nexi' and ${t.state} = 'paid'))`
     ),
     check("payment_attempts_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check(
