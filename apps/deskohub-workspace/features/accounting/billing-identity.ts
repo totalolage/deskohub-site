@@ -1,8 +1,6 @@
 import { getCodes } from "country-list";
 import { Schema } from "effect";
-import isPostalCode, {
-  locales as postalCodeLocales,
-} from "validator/lib/isPostalCode.js";
+import validator from "validator";
 import { m } from "@/features/i18n";
 
 const billingTextSchema = (maximumLength: number) =>
@@ -26,7 +24,7 @@ export type VatRegistrationId = typeof vatRegistrationIdSchema.Type;
 
 export const invoiceCountryCodes = getCodes().sort();
 const invoiceCountryCodeSet = new Set(invoiceCountryCodes);
-const postalCodeLocaleSet = new Set<string>(postalCodeLocales);
+const postalCodeLocaleSet = new Set<string>(validator.isPostalCodeLocales);
 
 const invoiceCountryCodeSchema = billingTextSchema(2).check(
   Schema.makeFilter((country) => invoiceCountryCodeSet.has(country), {
@@ -43,7 +41,10 @@ export const invoiceBuyerAddressSchema = Schema.Struct({
 }).check(
   Schema.makeFilter(({ country, postalCode }) =>
     !postalCodeLocaleSet.has(country) ||
-    isPostalCode(postalCode, country as (typeof postalCodeLocales)[number])
+    validator.isPostalCode(
+      postalCode,
+      country as Parameters<typeof validator.isPostalCode>[1]
+    )
       ? true
       : {
           path: ["postalCode"],
