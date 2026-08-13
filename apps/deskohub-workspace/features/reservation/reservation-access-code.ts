@@ -1,5 +1,9 @@
 export const reservationAccessCodeGraceMinutes = 30;
 
+export const getReservationAccessCodeRetentionCutoff = (
+  now: Temporal.Instant
+) => now.subtract({ minutes: reservationAccessCodeGraceMinutes });
+
 export type ReservationAccessCodeWindowState =
   | {
       readonly state: "before-window";

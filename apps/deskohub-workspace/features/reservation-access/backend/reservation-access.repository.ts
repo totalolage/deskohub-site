@@ -12,6 +12,7 @@ import {
   reservationAccessGrants,
 } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { getReservationAccessCodeRetentionCutoff } from "@/features/reservation/reservation-access-code";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { ReservationAccessGrantId } from "../reservation-access";
 
@@ -323,7 +324,10 @@ export class ReservationAccessRepository extends Context.Service<
               and(
                 isNotNull(reservationAccessGrants.accessCode),
                 eq(reservationAccessGrants.state, "issued"),
-                lte(reservationAccessGrants.accessEndsAt, now)
+                lte(
+                  reservationAccessGrants.accessEndsAt,
+                  getReservationAccessCodeRetentionCutoff(now)
+                )
               )
             )
             .returning({ id: reservationAccessGrants.id })

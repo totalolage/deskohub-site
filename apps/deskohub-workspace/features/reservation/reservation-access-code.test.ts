@@ -1,7 +1,10 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import { getReservationAccessCodeWindowState } from "./reservation-access-code";
+import {
+  getReservationAccessCodeRetentionCutoff,
+  getReservationAccessCodeWindowState,
+} from "./reservation-access-code";
 
 const getState = (now: string) =>
   getReservationAccessCodeWindowState({
@@ -11,6 +14,14 @@ const getState = (now: string) =>
   });
 
 describe("getReservationAccessCodeWindowState", () => {
+  test("retains credentials until the disclosure grace period closes", () => {
+    expect(
+      getReservationAccessCodeRetentionCutoff(
+        Temporal.Instant.from("2026-06-20T12:30:00Z")
+      ).toString()
+    ).toBe("2026-06-20T12:00:00Z");
+  });
+
   test("uses an inclusive opening and exclusive closing boundary", () => {
     expect(getState("2026-06-20T07:29:59.999999999Z").state).toBe(
       "before-window"
