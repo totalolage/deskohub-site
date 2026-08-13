@@ -325,7 +325,7 @@ Allowed payment transitions:
 
 - `not_started`: no post-payment confirmation/delivery work has completed.
 - `processing`: paid workflow is claimed by a fulfillment worker.
-- `fulfilled`: Dotypos reservation confirmation and required access/internal notifications are complete.
+- `fulfilled`: Dotypos reservation confirmation and required customer-confirmation/internal notifications are complete.
 - `failed`: payment succeeded but fulfillment needs retry or manual recovery.
 
 Allowed fulfillment transitions:
@@ -338,12 +338,28 @@ Allowed fulfillment transitions:
 Fulfillment is allowed only when `payment_state = 'paid'`.
 
 Production reaches `fulfilled` only after the Resend delivery webhook confirms
-the customer access email. Preview and Development reach `fulfilled` after the
+the customer reservation-confirmation email. Preview and Development reach `fulfilled` after the
 configured email provider accepts the required customer send; the internal
 notification remains best effort. Protected Preview deployments cannot receive
 provider callbacks reliably. Recovery sends use deterministic
 reservation-and-category idempotency keys, and an abandoned `processing` claim
 becomes retryable after one minute.
+
+The customer confirmation contains a protected reservation-access link and
+never contains the door PIN. The dedicated access page resolves the current PIN on every
+authorized request and returns it only while the reservation is paid, locally
+confirmed, live-confirmed in Dotypos, and inside `[reservedFrom - 30 minutes,
+reservedUntil + 30 minutes)`. Calculate this window from the Dotypos-projected
+instants for every reservation family. The grace period controls disclosure and
+does not extend booked use or imply that the current static PIN is revoked.
+Keep this boundary stateless; it does not require a new database field.
+The signed access capability is bound to the reservation and locale, not to a
+copied reservation interval; the live provider timing remains authoritative
+when a confirmed reservation is moved or extended.
+Sign access capabilities with their dedicated long-lived token secret rather
+than the rotated checkout Pay-state keyring or provider credentials. Retain that
+secret for at least the maximum future reservation lifetime so an emailed
+access link remains valid until its reservation.
 
 ## Checkout Session And Attempt HMACs
 

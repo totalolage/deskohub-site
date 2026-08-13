@@ -189,6 +189,7 @@ const fullyDiscountedCommitment = makeDiscountCommitment({
 const buildPayStateToken = (input: {
   readonly orderId: string;
   readonly locale?: Locale;
+  readonly reservation?: typeof reservationData;
   readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
@@ -196,10 +197,11 @@ const buildPayStateToken = (input: {
 }) =>
   Effect.runSync(
     Effect.gen(function* () {
+      const reservation = input.reservation ?? reservationData;
       const state = yield* buildSignedPayState({
         locale: input.locale ?? "en-US",
-        reservation: reservationData,
-        quote: input.quote ?? buildCoworkReservationQuote(reservationData),
+        reservation,
+        quote: input.quote ?? buildCoworkReservationQuote(reservation),
         orderId: input.orderId,
         checkoutSessionId: input.checkoutSessionId ?? "checkout-session-id",
         ...(input.submittedCode !== undefined && {
@@ -418,6 +420,8 @@ const makeReservation = <Overrides extends object>(
 
 type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly orderId: string;
+  readonly legalConsent?: boolean;
+  readonly earlyPerformanceConsent?: boolean;
   readonly payStateToken?: string;
   readonly locale?: Locale;
   readonly acceptedQuote?: CoworkReservationQuote;
@@ -495,6 +499,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     );
   const fulfillPaidOrder = options.fulfillPaidOrder ?? mock(() => Effect.void);
   const capture = options.capture ?? mock(() => Effect.void);
+  const recordLegalEvidence = mock((_input: readonly unknown[]) => Effect.void);
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
   const attachHostedPaymentPage = mock(() => Effect.succeed(attachedAttempt));
   const markTerminalForReservation = mock(() =>
@@ -592,7 +597,8 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             submittedCode: options.submittedCode,
             changedKeys: options.changedKeys,
           }),
-        legalConsent: true,
+        legalConsent: options.legalConsent ?? true,
+        earlyPerformanceConsent: options.earlyPerformanceConsent ?? true,
       },
       locale
     );
@@ -619,7 +625,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
               capture,
             }),
             Layer.mock(LegalEvidenceEventRepository, {
-              recordMany: mock((_input: readonly unknown[]) => Effect.void),
+              recordMany: recordLegalEvidence,
             })
           )
         )
@@ -640,11 +646,100 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     createHostedPaymentPage,
     fulfillPaidOrder,
     capture,
+    recordLegalEvidence,
     requireCurrent,
   };
 };
 
 describe("CheckoutService", () => {
+  test("does not require an early-performance request after the withdrawal period", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-after-withdrawal-period",
+      earlyPerformanceConsent: false,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result.status).toBe("redirect");
+    expect(harness.recordLegalEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        evidence: expect.not.objectContaining({
+          acknowledgements: expect.anything(),
+        }),
+      }),
+      expect.anything(),
+    ]);
+  });
+
+  test("rejects checkout when the required early-performance request is missing", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-missing-early-performance-consent",
+      earlyPerformanceConsent: false,
+      payStateToken: buildPayStateToken({
+        orderId: "reservation-missing-early-performance-consent",
+        reservation: nearTermReservation,
+      }),
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      code: "checkout_failed",
+      message: "Early performance consent is required before checkout.",
+    });
+    expect(harness.requireCurrent).toHaveBeenCalled();
+    expect(harness.affirm).toHaveBeenCalled();
+    expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("records the accepted documents and separate withdrawal acknowledgements", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-records-legal-evidence",
+      payStateToken: buildPayStateToken({
+        orderId: "reservation-records-legal-evidence",
+        reservation: nearTermReservation,
+      }),
+    });
+
+    await Effect.runPromise(harness.effect);
+
+    expect(harness.recordLegalEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          documentKey: "termsAndConditions",
+          acknowledgements: {
+            earlyPerformanceConsent: true,
+          },
+        }),
+      }),
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          documentKey: "operatingRules",
+        }),
+      }),
+    ]);
+  });
+
   test("prepares fallible local provider inputs before committing an attempt", async () => {
     const source = await Bun.file(
       new URL("./checkout.service.ts", import.meta.url)
@@ -1031,6 +1126,41 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("recovers an already-paid checkout after early-performance consent becomes required", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const orderId = "reservation-paid-after-consent-cutoff";
+    const harness = await createCheckoutHarness({
+      orderId,
+      earlyPerformanceConsent: false,
+      payStateToken: buildPayStateToken({
+        orderId,
+        reservation: nearTermReservation,
+      }),
+      reservationOverrides: {
+        paymentState: "paid",
+        paidAt: testInstant(),
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: `/en-US/reservation/status/${orderId}?outcome=success`,
+    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({ orderId });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
   test("recovers an already-paid checkout after payable revalidation loses the race", async () => {
     const { PayableReservationUnavailableError } = await import(
       "./payable-reservation.service"
@@ -1271,6 +1401,7 @@ describe("CheckoutService", () => {
     };
     const harness = await createCheckoutHarness({
       orderId,
+      earlyPerformanceConsent: false,
       payStateToken: buildMeetingRoomPayStateToken({
         orderId,
         reservation: endedReservation,

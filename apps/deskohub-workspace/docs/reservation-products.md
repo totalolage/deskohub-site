@@ -34,6 +34,7 @@ The office is exclusive for the complete selected date range. Any existing occup
 
 ## Cross-family rules
 
+- The customer confirmation email contains a protected link to the dedicated reservation access page, never the door PIN itself. The access page resolves the current PIN on each authorized request and displays it only from 30 minutes before the reservation starts until 30 minutes after it ends. This display grace period does not extend the reserved use of the space. Payment redirects and fulfillment recovery remain on the separate reservation status page.
 - Product identity includes the reservation family and every choice that changes the purchased product.
 - Discount configuration may target a whole reservation family, while quotes and completed purchases preserve the exact selected product.
 - Availability, pricing, summaries, persistence, confirmation, email, and status views dispatch each family explicitly.

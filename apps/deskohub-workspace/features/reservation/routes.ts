@@ -5,6 +5,7 @@ import type { ReservationOrderData } from "@/features/reservation/reservation-or
 export const coworkReservationPath = "/reservation/cowork";
 export const meetingRoomReservationPath = "/reservation/meeting-room";
 export const officeReservationPath = "/reservation/office";
+export const reservationAccessPath = "/reservation/access";
 export const reservationStatusPath = "/reservation/status";
 
 export const getCoworkReservationPath = (locale: Locale) =>

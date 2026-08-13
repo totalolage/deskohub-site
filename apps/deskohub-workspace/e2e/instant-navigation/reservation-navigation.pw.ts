@@ -71,6 +71,29 @@ test("serves the reservation status shell on direct navigation", async ({
   );
 });
 
+test("serves the reservation access shell on direct navigation", async ({
+  baseURL,
+  page,
+}) => {
+  await instant(
+    page,
+    async () => {
+      await page.goto(
+        "/en-US/reservation/access/instant-navigation-missing-order?accessToken=synthetic"
+      );
+
+      await expectReservationSteps(page);
+      await expect(
+        page.getByRole("status", {
+          name: "Reservation access | Deskohub Workspace",
+        })
+      ).toHaveAttribute("aria-busy", "true");
+      await page.close();
+    },
+    { baseURL: requireBaseUrl(baseURL) }
+  );
+});
+
 const clientNavigationCases = [
   {
     contentName: "Reservation date",

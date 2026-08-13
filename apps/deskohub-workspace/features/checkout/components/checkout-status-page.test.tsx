@@ -93,6 +93,19 @@ describe("CheckoutStatusPage", () => {
     ).toBeDefined();
   });
 
+  test("keeps reservation access outside the payment status page", () => {
+    const view = render(
+      <CheckoutStatusPage locale="en-US" status={baseStatus} />
+    );
+
+    expect(
+      view.container.querySelector("[data-reservation-access]")
+    ).toBeNull();
+    expect(
+      view.container.querySelector("[data-reservation-access-code]")
+    ).toBeNull();
+  });
+
   test("renders meeting-room timing and links to its current entry point", () => {
     const view = render(
       <CheckoutStatusPage
@@ -264,12 +277,12 @@ describe("CheckoutStatusPage", () => {
       [
         "Hi Deskohub Workspace,",
         "",
-        "My payment was received, but the access-code email did not arrive.",
+        "My payment was received, but the reservation confirmation email did not arrive.",
         "",
         "Order reference: reservation-status-page",
         "Reservation: Basic Day Pass on Saturday, June 20, 2026",
         "",
-        "Please help me get my workspace access codes.",
+        "Please help me get my secure access link.",
       ].join("\n")
     );
   });

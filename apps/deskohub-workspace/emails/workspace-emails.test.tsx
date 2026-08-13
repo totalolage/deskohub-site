@@ -48,9 +48,14 @@ describe("Workspace React Email templates", () => {
 
     expect(business).toContain(contactBusinessPreviewProps.heading);
     expect(confirmation).toContain(contactConfirmationPreviewProps.heading);
-    expect(customerReservation).toContain(
-      customerReservationPreviewProps.accessCode
+    expect(customerReservation).toContain("Show access code");
+    expect(customerReservation).not.toContain(
+      "For security, the current access PIN is shown"
     );
+    expect(customerReservation).toContain("/reservation/access/");
+    expect(customerReservation).toContain("accessToken=preview-token");
+    expect(customerReservation).not.toContain("statusToken=");
+    expect(customerReservation).not.toContain("4829");
     expect(customerReservation).toContain('bgcolor="#00024f"');
     expect(customerReservation).toContain("background-color:#00024f");
     expect(customerReservation).toContain(
@@ -62,9 +67,7 @@ describe("Workspace React Email templates", () => {
     expect(customerReservation).not.toContain("Where to sit");
     expect(customerReservation).not.toContain("customer@example.com");
     expect(staffNotification).toContain("customer@example.com");
-    expect(staffNotification).not.toContain(
-      customerReservationPreviewProps.accessCode
-    );
+    expect(staffNotification).not.toContain("4829");
     expect(invoiceDelivery).toContain(invoiceDeliveryPreviewProps.body);
   });
 });

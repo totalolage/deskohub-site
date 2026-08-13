@@ -3,6 +3,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
+  assertFulfilledStatusScript,
   getAssertPrefilledReservationScript,
   getPrepareCoworkAdvertisedPriceScript,
   getPrepareMeetingRoomAdvertisedPriceScript,
@@ -36,6 +37,25 @@ const officeSlot = {
   startsAt: "2099-08-31T22:00:00Z",
   endsAt: "2099-09-02T22:00:00Z",
 } as const;
+
+test("rejects reservation access UI on the checkout status page", () => {
+  const run = new Function(
+    "document",
+    "location",
+    `return (${assertFulfilledStatusScript.trim()})`
+  );
+  const document = {
+    body: {
+      textContent:
+        "Your reservation is confirmed. The secure access link has been sent by email.",
+    },
+    querySelector: () => ({ dataset: { reservationAccess: "" } }),
+  };
+
+  expect(() =>
+    run(document, { href: "https://workspace.example.test/status" })
+  ).toThrow("reservation access rendered on checkout status page");
+});
 
 test("keeps advertised-price preparation separable from form submission", () => {
   const data = makeCoworkCheckoutData(

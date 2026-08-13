@@ -196,6 +196,10 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
+    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    expect(
+      view.getByRole("checkbox", { name: /statutory withdrawal period/ })
+    ).toBeDefined();
     fireEvent.click(view.getByRole("checkbox"));
     fireEvent.click(
       view.getByRole("button", {
@@ -210,6 +214,7 @@ describe("CheckoutPayPage payment navigation", () => {
       locale: "en-US",
       payStateToken: "signed-summary",
       legalConsent: true,
+      earlyPerformanceConsent: true,
     });
 
     const actionOptions = workspaceUseAction.mock.calls.at(-1)?.[1] as
@@ -247,6 +252,36 @@ describe("CheckoutPayPage payment navigation", () => {
       )
     ).toBe("true");
     expect(paymentWindow.close).not.toHaveBeenCalled();
+  });
+
+  test("omits the early-performance request when the withdrawal period has elapsed", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired={false}
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+
+    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    expect(
+      view.queryByRole("checkbox", { name: /statutory withdrawal period/ })
+    ).toBeNull();
+    expect(
+      view
+        .getByRole("link", { name: "General Terms and Conditions" })
+        .getAttribute("href")
+    ).toBe("/en-US/terms-and-conditions");
+    expect(
+      view.getByRole("link", { name: "Operating Rules" }).getAttribute("href")
+    ).toBe("/en-US/operating-rules");
   });
 
   test("closes the pre-opened payment tab when checkout unmounts", async () => {

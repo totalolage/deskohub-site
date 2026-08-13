@@ -1,5 +1,6 @@
 import type { DiscountCountdown } from "@/features/checkout/discount-countdown";
 import type { Locale } from "@/features/i18n";
+import { formatDuration } from "@/shared/utils/format-duration";
 
 export const formatDiscountCountdown = (
   countdown: DiscountCountdown,
@@ -13,16 +14,5 @@ export const formatDiscountCountdown = (
         ].filter(({ value }) => value > 0)
       : [countdown];
 
-  return new Intl.ListFormat(locale, {
-    style: "long",
-    type: "conjunction",
-  }).format(
-    remainingUnits.map(({ value, unit }) =>
-      new Intl.NumberFormat(locale, {
-        style: "unit",
-        unit,
-        unitDisplay: "long",
-      }).format(value)
-    )
-  );
+  return formatDuration(remainingUnits, locale);
 };

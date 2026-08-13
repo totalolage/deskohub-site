@@ -19,9 +19,11 @@ export type CustomerReservationEmailProps = {
   readonly locale: WorkspaceEmailLocale;
   readonly preview: string;
   readonly heading: string;
-  readonly accessCode: string;
+  readonly access: {
+    readonly button: string;
+    readonly url: string;
+  };
   readonly labels: {
-    readonly accessCode: string;
     readonly location: string;
     readonly directions: string;
     readonly table: string;
@@ -50,7 +52,7 @@ export function CustomerReservationEmail({
   locale,
   preview,
   heading,
-  accessCode,
+  access,
   labels,
   location,
   table,
@@ -68,13 +70,13 @@ export function CustomerReservationEmail({
           className="bg-navy px-4 py-6 text-center sm:px-6"
           style={{ backgroundColor: "#00024f" }}
         >
-          <WorkspaceEmailLabel inverse>{labels.accessCode}</WorkspaceEmailLabel>
-          <Text
-            className="m-0 mt-2 text-[50px] font-bold leading-[56px] tracking-[4px] text-white sm:text-[58px] sm:leading-[64px] sm:tracking-[6px]"
-            style={{ color: "#ffffff" }}
+          <Link
+            className="inline-block rounded-full bg-aquamarine px-7 py-3 text-[14px] font-bold leading-[20px] text-navy no-underline"
+            href={access.url}
+            style={{ backgroundColor: "#00df99", color: "#00024f" }}
           >
-            {accessCode}
-          </Text>
+            {access.button}
+          </Link>
         </Section>
         {table && (
           <Section className="border-t-4 border-aquamarine bg-[#e9fff6] px-5 py-5 text-center">

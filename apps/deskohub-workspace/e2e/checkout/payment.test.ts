@@ -15,7 +15,7 @@ const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
 const checkoutUrl =
   "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/cowork";
 
-test("retries a transient reservation preparation failure with the same checkout attempt", async () => {
+test("retries a transient reservation preparation failure without requiring non-applicable consent", async () => {
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
   let activeTabId = "t1";
@@ -115,7 +115,7 @@ test("retries a transient reservation preparation failure with the same checkout
         [
           '- LabelText "I agree to the terms" [ref=e1] clickable [cursor:pointer]',
           '  - checkbox "I agree to the terms" [checked=false, ref=e2]',
-          '- button "ORDER AND PAY" [ref=e3]',
+          '- button "ORDER AND PAY" [ref=e5]',
         ].join("\n")
       );
     }
@@ -123,7 +123,7 @@ test("retries a transient reservation preparation failure with the same checkout
     if (commandArgs[0] === "click") {
       clickedRefs.push(commandArgs[1] ?? "");
       activatedRefs.push(commandArgs[1] ?? "");
-      if (commandArgs[1] === "@e3") {
+      if (commandArgs[1] === "@e5") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
       }
@@ -137,7 +137,7 @@ test("retries a transient reservation preparation failure with the same checkout
 
     if (commandArgs[0] === "press") {
       activatedRefs.push(focusedRef ?? "");
-      if (focusedRef === "@e3") {
+      if (focusedRef === "@e5") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
       }
@@ -164,7 +164,7 @@ test("retries a transient reservation preparation failure with the same checkout
     "#reservation-submit",
     "#reservation-submit",
     "@e2",
-    "@e3",
+    "@e5",
   ]);
   expect(switchedTabs).toEqual(["t1", "t2"]);
 });
@@ -404,7 +404,23 @@ test("types into a hosted payment field when fill does not stick", async () => {
   expect(cardTypeAttempts).toBe(1);
 });
 
-test("returns through back to shop and restores the single original status tab", async () => {
+test.each([
+  [
+    "destroyed execution context",
+    "locator.ariaSnapshot: Execution context was destroyed, most likely because of a navigation",
+    "target-change",
+  ],
+  [
+    "document without a body",
+    'locator.ariaSnapshot: Selector "body" does not match any element',
+    "target-change",
+  ],
+  [
+    "document without a body before the back-to-shop target appears",
+    'locator.ariaSnapshot: Selector "body" does not match any element',
+    "target-search",
+  ],
+] as const)("returns through back to shop and restores the original status tab across %s", async (_name, transitionError, errorStage) => {
   const calls: string[][] = [];
   const values = new Map<string, string>();
   const buttons = [
@@ -414,6 +430,7 @@ test("returns through back to shop and restores the single original status tab",
     '- button "BACK TO THE SHOP" [ref=e9]',
   ];
   let buttonIndex = 0;
+  let backToShopUrlRead = false;
   let tabListReads = 0;
   let transitionSnapshotPending = true;
   const run: Runner = async (_command, args) => {
@@ -442,11 +459,15 @@ test("returns through back to shop and restores the single original status tab",
     if (commandArgs[0] === "tab") return success();
 
     if (commandArgs[0] === "snapshot") {
-      if (buttonIndex === 3 && transitionSnapshotPending) {
+      const shouldFailSnapshot =
+        buttonIndex === 3 &&
+        transitionSnapshotPending &&
+        (errorStage === "target-change"
+          ? !backToShopUrlRead
+          : backToShopUrlRead);
+      if (shouldFailSnapshot) {
         transitionSnapshotPending = false;
-        throw new Error(
-          "locator.ariaSnapshot: Execution context was destroyed, most likely because of a navigation"
-        );
+        throw new Error(transitionError);
       }
       return success(
         [
@@ -463,6 +484,7 @@ test("returns through back to shop and restores the single original status tab",
     }
 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
+      if (buttonIndex === 3) backToShopUrlRead = true;
       return success(
         buttonIndex > 3
           ? `https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/status/${orderId}`
