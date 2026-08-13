@@ -1,12 +1,9 @@
-import { Match } from "effect";
 import { KeyRound } from "lucide-react";
-import Link from "next/link";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import type { ReservationAccessViewModel } from "@/features/reservation/backend/reservation-access.service";
 import { formatReservationDisplayDateTime } from "@/features/reservation/reservation-date";
-import { ReservationAccessCountdown } from "./reservation-access-countdown";
 
 type ReservationAccessPageProps = {
   readonly access: ReservationAccessViewModel;
@@ -17,40 +14,10 @@ export function ReservationAccessPage({
   access,
   locale,
 }: ReservationAccessPageProps) {
-  const copy = Match.value(access).pipe(
-    Match.discriminatorsExhaustive("state")({
-      upcoming: ({ availableAt }) => ({
-        title: m.reservationAccessTitle({}, { locale }),
-        lead: m.reservationAccessUpcomingLead(
-          {
-            availableAt: formatReservationDisplayDateTime(availableAt, locale),
-          },
-          { locale }
-        ),
-      }),
-      available: ({ unavailableAt }) => ({
-        title: m.reservationAccessTitle({}, { locale }),
-        lead: m.reservationAccessAvailableLead(
-          {
-            unavailableAt: formatReservationDisplayDateTime(
-              unavailableAt,
-              locale
-            ),
-          },
-          { locale }
-        ),
-      }),
-      ended: () => ({
-        title: m.reservationAccessEndedTitle({}, { locale }),
-        lead: m.reservationAccessEndedLead({}, { locale }),
-        contactLink: m.reservationAccessEndedContactLink({}, { locale }),
-      }),
-      unavailable: () => ({
-        title: m.reservationAccessUnavailableTitle({}, { locale }),
-        lead: m.reservationAccessUnavailableLead({}, { locale }),
-      }),
-    })
-  );
+  const title = {
+    available: m.reservationAccessTitle({}, { locale }),
+    unavailable: m.reservationAccessUnavailableTitle({}, { locale }),
+  }[access.state];
 
   return (
     <CheckoutFlowLayout activeStepKey="access" locale={locale}>
@@ -65,41 +32,15 @@ export function ReservationAccessPage({
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-balance text-[1.75rem] leading-none sm:text-5xl">
-                {copy.title}
+                {title}
               </h1>
-              {access.state !== "upcoming" && access.state !== "available" && (
+              {access.state === "unavailable" && (
                 <p className="mt-5 text-lg leading-8 text-navy-blue/70">
-                  {copy.lead}
-                  {"contactLink" in copy && (
-                    <>
-                      {" "}
-                      <Link
-                        className="underline decoration-navy-blue/30 underline-offset-4 transition-colors hover:text-burned-orange hover:decoration-burned-orange focus-visible:text-burned-orange focus-visible:decoration-burned-orange"
-                        href={`/${locale}/contact`}
-                      >
-                        {copy.contactLink}
-                      </Link>
-                      {"."}
-                    </>
-                  )}
+                  {m.reservationAccessUnavailableLead({}, { locale })}
                 </p>
               )}
             </div>
           </div>
-
-          {access.state === "upcoming" && (
-            <>
-              <noscript>
-                <p className="mt-6 text-center text-lg leading-8 text-navy-blue/70">
-                  {copy.lead}
-                </p>
-              </noscript>
-              <ReservationAccessCountdown
-                availableAt={access.availableAt.toString()}
-                locale={locale}
-              />
-            </>
-          )}
 
           {access.state === "available" && (
             <div className="mt-10 sm:mt-12">
@@ -122,7 +63,19 @@ export function ReservationAccessPage({
               </output>
 
               <p className="mt-10 text-center font-mono text-sm text-navy-blue/60 sm:mt-14">
-                {copy.lead}
+                {m.reservationAccessLead(
+                  {
+                    startsAt: formatReservationDisplayDateTime(
+                      access.accessStartsAt,
+                      locale
+                    ),
+                    endsAt: formatReservationDisplayDateTime(
+                      access.accessEndsAt,
+                      locale
+                    ),
+                  },
+                  { locale }
+                )}
               </p>
             </div>
           )}

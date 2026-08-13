@@ -24,20 +24,14 @@ const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
   readonly VERCEL_ENV: "production" | "preview" | "development";
   readonly IGLOOHOME_CLIENT_ID?: string | undefined;
   readonly IGLOOHOME_CLIENT_SECRET?: string | undefined;
-  readonly IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID?: string | undefined;
 }>((environment) => {
   if (environment.VERCEL_ENV !== "production") return undefined;
 
-  return (
-    [
-      "IGLOOHOME_CLIENT_ID",
-      "IGLOOHOME_CLIENT_SECRET",
-      "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID",
-    ] as const
-  ).flatMap((key) =>
-    environment[key] === undefined
-      ? [{ path: [key], issue: `${key} is required in production.` }]
-      : []
+  return (["IGLOOHOME_CLIENT_ID", "IGLOOHOME_CLIENT_SECRET"] as const).flatMap(
+    (key) =>
+      environment[key] === undefined
+        ? [{ path: [key], issue: `${key} is required in production.` }]
+        : []
   );
 });
 
@@ -91,7 +85,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   ),
   IGLOOHOME_CLIENT_ID: optionalNonEmptyStringSchema,
   IGLOOHOME_CLIENT_SECRET: optionalNonEmptyStringSchema,
-  IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: optionalNonEmptyStringSchema,
+  IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: nonEmptyStringSchema,
   RESEND_WEBHOOK_SECRET: optionalStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(

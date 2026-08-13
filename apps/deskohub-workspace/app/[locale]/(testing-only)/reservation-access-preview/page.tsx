@@ -14,31 +14,26 @@ type ReservationAccessPreviewPageProps = {
 
 const decodePreviewSearchParams = getSearchParamsDecoder(
   Schema.Struct({
-    state: Schema.optional(
-      Schema.Literals(["upcoming", "available", "ended", "unavailable"])
-    ),
+    state: Schema.optional(Schema.Literals(["available", "unavailable"])),
   })
 );
 
-const getPreviewAccess = (
-  state: "upcoming" | "available" | "ended" | "unavailable",
-  now: Temporal.Instant
-): ReservationAccessViewModel =>
-  Match.value(state).pipe(
-    Match.when("upcoming", () => ({
-      state: "upcoming" as const,
-      availableAt: now.add({ hours: 1, minutes: 5, seconds: 5 }),
-      unavailableAt: now.add({ hours: 6 }),
-    })),
-    Match.when("available", () => ({
-      state: "available" as const,
+const getPreviewAccess = Match.type<"available" | "unavailable">().pipe(
+  Match.when(
+    "available",
+    (): ReservationAccessViewModel => ({
+      state: "available",
       code: "24681357",
-      unavailableAt: now.add({ hours: 5 }),
-    })),
-    Match.when("ended", () => ({ state: "ended" as const })),
-    Match.when("unavailable", () => ({ state: "unavailable" as const })),
-    Match.exhaustive
-  );
+      accessStartsAt: Temporal.Instant.from("2026-08-13T08:00:00Z"),
+      accessEndsAt: Temporal.Instant.from("2026-08-13T16:00:00Z"),
+    })
+  ),
+  Match.when(
+    "unavailable",
+    (): ReservationAccessViewModel => ({ state: "unavailable" })
+  ),
+  Match.exhaustive
+);
 
 export default async function ReservationAccessPreviewPage({
   searchParams,
@@ -51,7 +46,7 @@ export default async function ReservationAccessPreviewPage({
 
   return runWithRequestLocale((locale) => (
     <ReservationAccessPage
-      access={getPreviewAccess(state ?? "available", Temporal.Now.instant())}
+      access={getPreviewAccess(state ?? "available")}
       locale={locale}
     />
   ));

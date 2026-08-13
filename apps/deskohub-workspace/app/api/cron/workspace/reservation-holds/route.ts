@@ -1,11 +1,10 @@
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/holds";
-import { ReservationAccessService } from "@/features/reservation-access";
 import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 
 const cronBatchLimit = 25;
@@ -19,7 +18,6 @@ const isAuthorizedCronRequest = (request: Request) => {
 const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
   function* () {
     const cleanup = yield* ReservationHoldCleanupService;
-    const reservationAccess = yield* ReservationAccessService;
     const input = {
       now: Temporal.Now.instant(),
       limit: cronBatchLimit,
@@ -27,17 +25,11 @@ const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
     yield* Effect.annotateLogsScoped({ input });
     yield* Effect.logInfo("Reservation hold cleanup sweep started");
 
-    const [result, expiredAccessCodesCleared] = yield* Effect.all(
-      [
-        cleanup.sweepExpiredHolds(input),
-        reservationAccess.clearExpiredAccessCodes(input.now),
-      ],
-      { concurrency: "inherit" }
-    );
-    yield* Effect.annotateLogsScoped({ result, expiredAccessCodesCleared });
+    const result = yield* cleanup.sweepExpiredHolds(input);
+    yield* Effect.annotateLogsScoped({ result });
     yield* Effect.logInfo("Reservation hold cleanup sweep completed");
 
-    return NextResponse.json({ ...result, expiredAccessCodesCleared });
+    return NextResponse.json(result);
   },
   Effect.scoped
 );
@@ -70,12 +62,7 @@ export const GET = defineWorkspaceRoute(
     }
 
     return sweepExpiredReservationHolds().pipe(
-      Effect.provide(
-        Layer.merge(
-          ReservationHoldCleanupServiceLiveWithDependencies,
-          ReservationAccessService.LiveWithDependencies
-        )
-      ),
+      Effect.provide(ReservationHoldCleanupServiceLiveWithDependencies),
       Effect.catch(handleReservationHoldCleanupCronError)
     );
   }
