@@ -1701,8 +1701,11 @@ const runConfirmedReservationAccessMutation = ({
         yield* reportCancellation(json);
         return;
       }
+      const crypto = yield* Crypto.Crypto;
+      const requestId = CliMutationRequestId.make(yield* crypto.randomUUIDv7);
       const grant = yield* api.mutateReservationAccess(
         accessToken,
+        requestId,
         reservationId,
         mutation
       );

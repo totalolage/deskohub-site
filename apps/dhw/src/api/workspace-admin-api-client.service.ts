@@ -126,6 +126,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly mutateReservationAccess: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
+    requestId: CliMutationRequestIdType,
     reservationId: AdministrationWorkspaceReservationIdType,
     mutation: AdministrationReservationAccessMutationType
   ) => Effect.Effect<
@@ -374,14 +375,22 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     ),
     mutateReservationAccess: Effect.fn(
       "WorkspaceAdminApiClient.mutateReservationAccess"
-    )((accessToken, reservationId, mutation) =>
+    )((accessToken, requestId, reservationId, mutation) =>
       makeClient(accessToken).pipe(
         Effect.flatMap((authorized) =>
           authorized.administration.mutateReservationAccess({
             params: { reservationId },
-            payload: mutation,
+            payload: { requestId, mutation },
           })
         ),
+        Effect.retry({
+          schedule: Schedule.spaced("250 millis"),
+          times: 20,
+          while: (cause) =>
+            cause instanceof CliMutationInProgress ||
+            cause instanceof CliServiceUnavailable ||
+            HttpClientError.isHttpClientError(cause),
+        }),
         Effect.mapError(sanitizeMutationError)
       )
     ),

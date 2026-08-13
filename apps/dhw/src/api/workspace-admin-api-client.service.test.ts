@@ -159,6 +159,7 @@ describe("WorkspaceAdminApiClient", () => {
     });
     const requests: Array<{ readonly method: string; readonly path: string }> =
       [];
+    let accessMutationAttempts = 0;
     let mutationAttempts = 0;
     const server = Bun.serve({
       port: 0,
@@ -255,11 +256,25 @@ describe("WorkspaceAdminApiClient", () => {
           return Response.json({ reservationId: reservation.id });
         }
         if (url.pathname.endsWith("/reservations/reservation-1/access")) {
+          accessMutationAttempts += 1;
           expect(request.method).toBe("POST");
           expect(request.headers.get("authorization")).toBe(
             `Bearer ${accessToken}`
           );
-          expect(await request.json()).toEqual({ kind: "retry-failed" });
+          expect(await request.json()).toEqual({
+            requestId: mutationRequestId,
+            mutation: { kind: "retry-failed" },
+          });
+          if (accessMutationAttempts === 1) {
+            return Response.json(
+              {
+                _tag: "CliMutationInProgress",
+                message: "The mutation is still being applied.",
+                requestId: mutationRequestId,
+              },
+              { status: 409 }
+            );
+          }
           return Response.json({
             id: "access-1",
             state: "issued",
@@ -547,6 +562,7 @@ describe("WorkspaceAdminApiClient", () => {
         );
         yield* client.mutateReservationAccess(
           Redacted.make(accessToken),
+          mutationRequestId,
           reservation.id,
           { kind: "retry-failed" }
         );
@@ -616,6 +632,10 @@ describe("WorkspaceAdminApiClient", () => {
         {
           method: "GET",
           path: "/api/v1/cli/reservations/reservation-1",
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/reservations/reservation-1/access",
         },
         {
           method: "POST",

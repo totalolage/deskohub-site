@@ -1294,9 +1294,15 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       "/reservations/:reservationId/access",
       {
         params: { reservationId: AdministrationWorkspaceReservationId },
-        payload: AdministrationReservationAccessMutation,
+        payload: Schema.Struct({
+          requestId: CliMutationRequestId,
+          mutation: AdministrationReservationAccessMutation,
+        }).annotate({
+          parseOptions: { errors: "all", onExcessProperty: "error" },
+        }),
         success: AdministrationReservationAccessGrant,
         error: [
+          CliMutationInProgress.schema,
           CliResourceNotFound.schema,
           CliMutationRejected.schema,
           CliServiceUnavailable.schema,

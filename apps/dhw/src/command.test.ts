@@ -235,7 +235,12 @@ const makeCommandLayer = ({
               : null,
         };
       }),
-    mutateReservationAccess: (_accessToken, reservationId, mutation) =>
+    mutateReservationAccess: (
+      _accessToken,
+      _requestId,
+      reservationId,
+      mutation
+    ) =>
       Effect.sync(() => {
         accessMutations.push([reservationId, mutation]);
         const timestamp = "2026-08-10T10:00:00.000Z";

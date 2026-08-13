@@ -1,4 +1,6 @@
 import {
+  AdministrationDiscountMutationResult,
+  AdministrationReservationAccessGrant,
   CliAuthenticationRateLimited,
   CliBearerAuthentication,
   CliGrantRejected,
@@ -11,7 +13,7 @@ import {
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
-import { Effect, Layer, Match, Redacted } from "effect";
+import { Effect, Layer, Match, Redacted, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AdministrationLive } from "@/features/administration/administration.runtime";
@@ -116,12 +118,64 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           )
         )
         .handle("mutateReservationAccess", ({ params, payload }) =>
-          reservationAccess
-            .mutate({ reservationId: params.reservationId, ...payload })
-            .pipe(
-              Effect.map(toCliReservationAccessGrant),
-              Effect.mapError(mapReservationAccessMutationFailure)
-            )
+          Effect.gen(function* () {
+            const session = yield* CurrentCliSession;
+            const request = {
+              sessionId: session.id,
+              requestId: payload.requestId,
+              mutation: {
+                kind: "reservation-access" as const,
+                reservationId: params.reservationId,
+                mutation: payload.mutation,
+              },
+            };
+            const claim = yield* mutationIdempotency
+              .claim(request)
+              .pipe(mapServiceFailure);
+
+            return yield* Match.value(claim).pipe(
+              Match.discriminatorsExhaustive("kind")({
+                claimed: () =>
+                  reservationAccess
+                    .mutate({
+                      reservationId: params.reservationId,
+                      ...payload.mutation,
+                    })
+                    .pipe(
+                      Effect.map(toCliReservationAccessGrant),
+                      Effect.mapError(mapReservationAccessMutationFailure),
+                      Effect.tapError((cause) =>
+                        cause instanceof CliResourceNotFound ||
+                        cause instanceof CliMutationRejected
+                          ? mutationIdempotency
+                              .release(request)
+                              .pipe(Effect.catch(() => Effect.void))
+                          : Effect.void
+                      ),
+                      Effect.tap((result) =>
+                        mutationIdempotency
+                          .complete({ ...request, result })
+                          .pipe(mapServiceFailure)
+                      )
+                    ),
+                completed: ({ result }) =>
+                  Schema.decodeUnknownEffect(
+                    AdministrationReservationAccessGrant
+                  )(result).pipe(Effect.mapError(makeServiceUnavailable)),
+                "in-progress": () =>
+                  new CliMutationInProgress({
+                    requestId: payload.requestId,
+                    message:
+                      "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
+                  }),
+                mismatch: () =>
+                  new CliMutationRejected({
+                    message:
+                      "This mutation request identifier was already used for different input.",
+                  }),
+              })
+            );
+          })
         )
         .handle("findReservation", ({ query }) =>
           administration.findReservationId(query.identifier).pipe(
@@ -272,7 +326,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                         .pipe(mapServiceFailure)
                     )
                   ),
-                completed: ({ result }) => Effect.succeed(result),
+                completed: ({ result }) =>
+                  Schema.decodeUnknownEffect(
+                    AdministrationDiscountMutationResult
+                  )(result).pipe(Effect.mapError(makeServiceUnavailable)),
                 "in-progress": () =>
                   new CliMutationInProgress({
                     requestId: payload.requestId,

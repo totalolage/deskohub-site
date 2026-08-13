@@ -692,6 +692,12 @@ describe("Workspace Admin API", () => {
 
   test("returns safe access metadata and maps invalid recovery", async () => {
     const instant = Temporal.Instant.from("2026-08-10T10:00:00Z");
+    const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000020"
+    );
+    const rejectedRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000021"
+    );
     const grant = {
       id: "access-1" as ReservationAccessGrant["id"],
       reservationId: "reservation-1",
@@ -710,16 +716,37 @@ describe("Workspace Admin API", () => {
       createdAt: instant,
       updatedAt: instant,
     } satisfies ReservationAccessGrant;
+    let executions = 0;
     const reservationAccess = Layer.succeed(ReservationAccessAdministration, {
       mutate: (mutation) =>
         mutation.kind === "retry-failed"
-          ? Effect.succeed(grant)
+          ? Effect.sync(() => {
+              executions += 1;
+              return grant;
+            })
           : Effect.fail(
               new ReservationAccessAdministrationError({
                 reason: "invalid_state",
                 message: "Only uncertain access can be reconciled.",
               })
             ),
+    });
+    const completed = new Map<string, unknown>();
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: ({ requestId: claimedRequestId }) =>
+        Effect.succeed(
+          completed.has(claimedRequestId)
+            ? {
+                kind: "completed" as const,
+                result: completed.get(claimedRequestId) as never,
+              }
+            : { kind: "claimed" as const }
+        ),
+      complete: ({ requestId: completedRequestId, result }) =>
+        Effect.sync(() => {
+          completed.set(completedRequestId, result);
+        }),
+      release: () => Effect.void,
     });
 
     const result = await Effect.gen(function* () {
@@ -728,22 +755,29 @@ describe("Workspace Admin API", () => {
       ]);
       const recovered = yield* client.administration.mutateReservationAccess({
         params: { reservationId: grant.reservationId },
-        payload: { kind: "retry-failed" },
+        payload: { requestId, mutation: { kind: "retry-failed" } },
+      });
+      const replayed = yield* client.administration.mutateReservationAccess({
+        params: { reservationId: grant.reservationId },
+        payload: { requestId, mutation: { kind: "retry-failed" } },
       });
       const rejected = yield* client.administration
         .mutateReservationAccess({
           params: { reservationId: grant.reservationId },
           payload: {
-            kind: "confirm-provider-credential-removed",
-            providerCredentialRemoved: true,
+            requestId: rejectedRequestId,
+            mutation: {
+              kind: "confirm-provider-credential-removed",
+              providerCredentialRemoved: true,
+            },
           },
         })
         .pipe(Effect.flip);
-      return { recovered, rejected };
+      return { recovered, rejected, replayed };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
-      Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(idempotency),
       Effect.provide(UnusedDiscountAdministration),
       Effect.provide(UnusedCliAuthentication),
       Effect.provide(
@@ -759,6 +793,8 @@ describe("Workspace Admin API", () => {
     );
 
     expect(result.recovered.state).toBe("issued");
+    expect(result.replayed).toEqual(result.recovered);
+    expect(executions).toBe(1);
     expect("accessCode" in result.recovered).toBe(false);
     expect(result.rejected).toBeInstanceOf(CliMutationRejected);
   });

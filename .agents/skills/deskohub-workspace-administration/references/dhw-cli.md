@@ -135,6 +135,8 @@ require it.
 Each discount mutation carries a client-generated request identifier. The
 server persists the request and result per CLI session, so an ambiguous
 transport failure can be retried without applying the same mutation twice.
+Reservation access mutations use the same request ledger so a lost successful
+response replays safe grant metadata without issuing another credential.
 
 ## Development
 

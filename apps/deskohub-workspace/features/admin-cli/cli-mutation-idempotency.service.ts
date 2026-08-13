@@ -1,7 +1,6 @@
 import {
   AdministrationDiscountMutationResult,
-  type AdministrationDiscountMutationResultType,
-  type AdministrationDiscountMutationType,
+  AdministrationReservationAccessGrant,
   type CliMutationRequestIdType,
   type CliSessionIdType,
 } from "@deskohub/workspace-admin-api";
@@ -10,13 +9,17 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
-import { cliMutationRequests } from "@/db/schema";
+import {
+  type CliStoredMutation,
+  type CliStoredMutationResult,
+  cliMutationRequests,
+} from "@/db/schema";
 
 export type CliMutationClaim =
   | { readonly kind: "claimed" }
   | {
       readonly kind: "completed";
-      readonly result: AdministrationDiscountMutationResultType;
+      readonly result: CliStoredMutationResult;
     }
   | { readonly kind: "in-progress" }
   | { readonly kind: "mismatch" };
@@ -24,7 +27,7 @@ export type CliMutationClaim =
 type CliMutationRequest = {
   readonly sessionId: CliSessionIdType;
   readonly requestId: CliMutationRequestIdType;
-  readonly mutation: AdministrationDiscountMutationType;
+  readonly mutation: CliStoredMutation;
 };
 
 interface ICliMutationIdempotency {
@@ -36,7 +39,7 @@ interface ICliMutationIdempotency {
   >;
   readonly complete: (
     request: CliMutationRequest & {
-      readonly result: AdministrationDiscountMutationResultType;
+      readonly result: CliStoredMutationResult;
     }
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
   readonly release: (
@@ -81,7 +84,10 @@ export class CliMutationIdempotency extends Context.Service<
         if (row.result === null) return { kind: "in-progress" } as const;
 
         const result = yield* Schema.decodeUnknownEffect(
-          AdministrationDiscountMutationResult
+          Schema.Union([
+            AdministrationDiscountMutationResult,
+            AdministrationReservationAccessGrant,
+          ])
         )(row.result);
         return { kind: "completed", result } as const;
       });
@@ -89,7 +95,7 @@ export class CliMutationIdempotency extends Context.Service<
       const complete = Effect.fn("CliMutationIdempotency.complete")(
         (
           request: CliMutationRequest & {
-            readonly result: AdministrationDiscountMutationResultType;
+            readonly result: CliStoredMutationResult;
           }
         ) =>
           db
