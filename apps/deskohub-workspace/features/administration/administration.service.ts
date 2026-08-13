@@ -1211,7 +1211,8 @@ export class AdministrationService extends Context.Service<
                       latePaymentRecoveries.workspaceReservationId,
                       rows.map(({ id }) => id)
                     )
-                  ),
+                  )
+                  .orderBy(asc(latePaymentRecoveries.createdAt)),
                 liveRows: Effect.all(
                   rows.map((row) =>
                     loadLiveReservation(row).pipe(

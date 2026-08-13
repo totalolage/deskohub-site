@@ -257,6 +257,7 @@ describe("AdministrationService", () => {
       ],
     ] as const;
     let selectCall = 0;
+    let recoveryOrderByCalls = 0;
 
     const result = await Effect.gen(function* () {
       const administration = yield* AdministrationService;
@@ -270,7 +271,17 @@ describe("AdministrationService", () => {
                 WorkspaceDatabase,
                 WorkspaceDatabase.of({
                   db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
+                    select: () => {
+                      const call = selectCall++;
+                      const query = makeQuery(rows[call] ?? []);
+                      if (call === 4) {
+                        query.orderBy = () => {
+                          recoveryOrderByCalls += 1;
+                          return query;
+                        };
+                      }
+                      return query;
+                    },
                   } as never,
                 })
               ),
@@ -306,6 +317,7 @@ describe("AdministrationService", () => {
 
     expect(result.items[0]?.statusNote).toBe("Recovery in progress");
     expect(result.items[0]?.status.label).toBe("Recovering payment");
+    expect(recoveryOrderByCalls).toBe(1);
   });
 
   test("returns no booking when Dotypos reports it missing", async () => {
