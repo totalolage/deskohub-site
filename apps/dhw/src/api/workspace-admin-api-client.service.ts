@@ -26,6 +26,8 @@ import {
   type AdministrationOrderQueryType,
   type AdministrationOrderType,
   type AdministrationOverviewType,
+  type AdministrationReservationAccessGrantType,
+  type AdministrationReservationAccessMutationType,
   type AdministrationReservationCancellationInputType,
   type AdministrationReservationCancellationResultType,
   type AdministrationReservationDetailType,
@@ -131,6 +133,20 @@ interface IWorkspaceAdminApiClient {
   ) => Effect.Effect<
     AdministrationReservationCancellationResultType,
     | CliApiRequestError
+    | CliMutationRejected
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly mutateReservationAccess: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    requestId: CliMutationRequestIdType,
+    reservationId: AdministrationWorkspaceReservationIdType,
+    mutation: AdministrationReservationAccessMutationType
+  ) => Effect.Effect<
+    AdministrationReservationAccessGrantType,
+    | CliApiRequestError
+    | CliMutationInProgress
     | CliMutationRejected
     | CliResourceNotFound
     | CliSessionUnauthorized
@@ -370,6 +386,27 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           ),
           Effect.mapError(sanitizeResourceError)
         )
+    ),
+    mutateReservationAccess: Effect.fn(
+      "WorkspaceAdminApiClient.mutateReservationAccess"
+    )((accessToken, requestId, reservationId, mutation) =>
+      makeClient(accessToken).pipe(
+        Effect.flatMap((authorized) =>
+          authorized.administration.mutateReservationAccess({
+            params: { reservationId },
+            payload: { requestId, mutation },
+          })
+        ),
+        Effect.retry({
+          schedule: Schedule.spaced("250 millis"),
+          times: 20,
+          while: (cause) =>
+            cause instanceof CliMutationInProgress ||
+            cause instanceof CliServiceUnavailable ||
+            HttpClientError.isHttpClientError(cause),
+        }),
+        Effect.mapError(sanitizeMutationError)
+      )
     ),
     findReservation: Effect.fn("WorkspaceAdminApiClient.findReservation")(
       (

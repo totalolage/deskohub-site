@@ -28,6 +28,8 @@ type TestWorkspaceReservation = Pick<
   | "dotyposCustomerId"
   | "dotyposReservationId"
   | "reservationDetails"
+  | "reservationState"
+  | "paymentState"
   | "locale"
 >;
 
@@ -37,6 +39,8 @@ const makeWorkspaceReservation = (
   id: "reservation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: " dotypos-reservation-id ",
+  reservationState: "confirmed",
+  paymentState: "paid",
   reservationDetails: {
     kind: "cowork",
     entryTier: "profi",
@@ -117,6 +121,45 @@ const detailsEffect = (input: {
     )
   );
 };
+
+const accessTargetEffect = (input: {
+  readonly workspaceReservation?: TestWorkspaceReservation;
+  readonly dotyposReservation?: Reservation;
+}) =>
+  Effect.gen(function* () {
+    const service = yield* WorkspaceReservationService;
+    return yield* service.getAccessTarget("reservation-id");
+  }).pipe(
+    Effect.provide(
+      WorkspaceReservationService.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(WorkspaceReservationRepository, {
+              findById: mock(() =>
+                Effect.succeed(
+                  (input.workspaceReservation ??
+                    makeWorkspaceReservation()) as WorkspaceReservation
+                )
+              ),
+            }),
+            Layer.mock(DotyposService, {
+              getReservation: mock(() =>
+                Effect.succeed({
+                  reservation:
+                    input.dotyposReservation ?? makeDotyposReservation(),
+                  customer,
+                })
+              ),
+              getTables: mock(() => Effect.succeed([])),
+            }),
+            SeatingMapFeatureFlagServiceMock({
+              isEnabled: Effect.succeed(false),
+            })
+          )
+        )
+      )
+    )
+  );
 
 describe("WorkspaceReservationService", () => {
   test("builds details from Dotypos reservation dates and table", async () => {
@@ -209,5 +252,24 @@ describe("WorkspaceReservationService", () => {
       reservationId: "reservation-id",
       errorCode: "dotypos_reservation_date_invalid",
     });
+  });
+
+  test("rejects access recovery unless both local and provider reservations are eligible", async () => {
+    for (const effect of [
+      accessTargetEffect({
+        workspaceReservation: makeWorkspaceReservation({
+          paymentState: "not_started",
+        }),
+      }),
+      accessTargetEffect({
+        dotyposReservation: makeDotyposReservation({ status: "CANCELLED" }),
+      }),
+    ]) {
+      const error = await Effect.runPromise(Effect.flip(effect));
+      expect(error).toMatchObject({
+        reservationId: "reservation-id",
+        errorCode: "reservation_access_unavailable",
+      });
+    }
   });
 });

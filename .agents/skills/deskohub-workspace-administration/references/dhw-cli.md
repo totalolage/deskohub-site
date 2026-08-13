@@ -72,6 +72,8 @@ dhw sales list
 dhw sessions list
 ```
 
+Reservation detail includes safe access-grant metadata but never the secret PIN.
+
 Pass the root `--json` flag for schema-decoded machine output, for example
 `dhw --json reservations list`. Human output is intentionally compact; JSON
 retains the complete typed response.
@@ -89,6 +91,9 @@ Mutation commands use the same validated mutation schema and application
 services as the Admin UI. Representative commands are:
 
 ```bash
+dhw reservations retry-access <reservation-id> --yes
+dhw reservations reconcile-access <reservation-id> \
+  --provider-credential-removed --yes
 dhw discounts create percentage \
   --label-en "Summer sale" --label-cs "Letní sleva" \
   --percentage 10 --product cowork --product office
@@ -133,6 +138,11 @@ Reservation cancellation preserves successful settlement facts, marks a paid Nex
 Each discount mutation carries a client-generated request identifier. The
 server persists the request and result per CLI session, so an ambiguous
 transport failure can be retried without applying the same mutation twice.
+Reservation access mutations use the same request ledger so a lost successful
+response replays safe grant metadata without issuing another credential.
+An incomplete access request claim can be reclaimed after the one-minute
+provisioning window; recovery returns an issued grant, safely retries a failed
+grant, or requires provider reconciliation for every ambiguous state.
 
 ## Development
 

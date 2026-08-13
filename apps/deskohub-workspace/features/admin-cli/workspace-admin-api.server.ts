@@ -1,4 +1,6 @@
 import {
+  AdministrationDiscountMutationResult,
+  AdministrationReservationAccessGrant,
   CliAuthenticationRateLimited,
   CliBearerAuthentication,
   CliGrantRejected,
@@ -11,7 +13,7 @@ import {
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
-import { Effect, Layer, Match, Redacted } from "effect";
+import { Effect, Layer, Match, Redacted, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AdministrationLive } from "@/features/administration/administration.runtime";
@@ -21,6 +23,10 @@ import {
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "@/features/administration/payment-administration-filters";
+import {
+  ReservationAccessAdministration,
+  type ReservationAccessAdministrationError,
+} from "@/features/administration/reservation-access-administration.service";
 import {
   type ReservationAdministrationError,
   ReservationAdministrationService,
@@ -36,6 +42,10 @@ import {
 } from "@/features/discounts/admin/discount-administration.service";
 import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute-discount-admin-mutation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import {
+  type ReservationAccessGrant,
+  reservationAccessProvisioningStaleAfterMilliseconds,
+} from "@/features/reservation-access";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
@@ -92,6 +102,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
       const reservationAdministration = yield* ReservationAdministrationService;
+      const reservationAccess = yield* ReservationAccessAdministration;
       const authentication = yield* CliAuthentication;
       const discounts = yield* DiscountAdministration;
       const mutationIdempotency = yield* CliMutationIdempotency;
@@ -121,6 +132,96 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               sendCancellationEmail: payload.sendCancellationEmail,
             })
             .pipe(Effect.mapError(mapReservationCancellationFailure))
+        )
+        .handle("mutateReservationAccess", ({ params, payload }) =>
+          Effect.gen(function* () {
+            const session = yield* CurrentCliSession;
+            const request = {
+              sessionId: session.id,
+              requestId: payload.requestId,
+              mutation: {
+                kind: "reservation-access" as const,
+                reservationId: params.reservationId,
+                mutation: payload.mutation,
+              },
+            };
+            const claim = yield* mutationIdempotency
+              .claim(request)
+              .pipe(mapServiceFailure);
+            const applyMutation = reservationAccess
+              .mutate({
+                reservationId: params.reservationId,
+                ...payload.mutation,
+              })
+              .pipe(
+                Effect.map(toCliReservationAccessGrant),
+                Effect.tapError((cause) =>
+                  cause.reason === "recovery_failed"
+                    ? Effect.void
+                    : mutationIdempotency
+                        .release(request)
+                        .pipe(Effect.catch(() => Effect.void))
+                ),
+                Effect.mapError(mapReservationAccessMutationFailure),
+                Effect.tap((result) =>
+                  mutationIdempotency
+                    .complete({ ...request, result })
+                    .pipe(mapServiceFailure)
+                )
+              );
+            const resumeInterruptedMutation = Effect.gen(function* () {
+              const reclaimedAt = Temporal.Now.instant();
+              const reclaimed = yield* mutationIdempotency
+                .reclaimStale({
+                  ...request,
+                  reclaimedAt,
+                  staleBefore: reclaimedAt.subtract({
+                    milliseconds:
+                      reservationAccessProvisioningStaleAfterMilliseconds,
+                  }),
+                })
+                .pipe(mapServiceFailure);
+              if (!reclaimed) {
+                return yield* new CliMutationInProgress({
+                  requestId: payload.requestId,
+                  message:
+                    "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
+                });
+              }
+              return yield* reservationAccess
+                .resumeInterruptedMutation(params.reservationId)
+                .pipe(
+                  Effect.map(toCliReservationAccessGrant),
+                  Effect.tapError(() =>
+                    mutationIdempotency
+                      .release(request)
+                      .pipe(Effect.catch(() => Effect.void))
+                  ),
+                  Effect.mapError(mapReservationAccessMutationFailure),
+                  Effect.tap((result) =>
+                    mutationIdempotency
+                      .complete({ ...request, result })
+                      .pipe(mapServiceFailure)
+                  )
+                );
+            });
+
+            return yield* Match.value(claim).pipe(
+              Match.discriminatorsExhaustive("kind")({
+                claimed: () => applyMutation,
+                completed: ({ result }) =>
+                  Schema.decodeUnknownEffect(
+                    AdministrationReservationAccessGrant
+                  )(result).pipe(Effect.mapError(makeServiceUnavailable)),
+                "in-progress": () => resumeInterruptedMutation,
+                mismatch: () =>
+                  new CliMutationRejected({
+                    message:
+                      "This mutation request identifier was already used for different input.",
+                  }),
+              })
+            );
+          })
         )
         .handle("findReservation", ({ query }) =>
           administration.findReservationId(query.identifier).pipe(
@@ -271,7 +372,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                         .pipe(mapServiceFailure)
                     )
                   ),
-                completed: ({ result }) => Effect.succeed(result),
+                completed: ({ result }) =>
+                  Schema.decodeUnknownEffect(
+                    AdministrationDiscountMutationResult
+                  )(result).pipe(Effect.mapError(makeServiceUnavailable)),
                 "in-progress": () =>
                   new CliMutationInProgress({
                     requestId: payload.requestId,
@@ -374,6 +478,42 @@ const mapReservationCancellationFailure = (
   return makeServiceUnavailable();
 };
 
+const mapReservationAccessMutationFailure = (
+  cause: ReservationAccessAdministrationError
+) =>
+  Match.value(cause.reason).pipe(
+    Match.when(
+      "not_found",
+      () => new CliResourceNotFound({ message: cause.message })
+    ),
+    Match.when(
+      "invalid_state",
+      () => new CliMutationRejected({ message: cause.message })
+    ),
+    Match.when("retryable_failure", makeServiceUnavailable),
+    Match.when("recovery_failed", makeServiceUnavailable),
+    Match.exhaustive
+  );
+
+const toCliReservationAccessGrant = (grant: ReservationAccessGrant) => ({
+  id: grant.id,
+  state: grant.state,
+  provider: grant.provider,
+  credentialType: grant.credentialType,
+  deviceId: grant.deviceId,
+  providerCredentialId: grant.providerCredentialId,
+  accessName: `Deskohub ${grant.reservationId}`.slice(0, 60),
+  scheduledStartsAt: grant.scheduledAccessStartsAt.toString(),
+  startsAt: grant.accessStartsAt.toString(),
+  endsAt: grant.accessEndsAt.toString(),
+  provisioningStartedAt: grant.provisioningStartedAt?.toString() ?? null,
+  issuedAt: grant.issuedAt?.toString() ?? null,
+  failedAt: grant.failedAt?.toString() ?? null,
+  failureCode: grant.failureCode,
+  createdAt: grant.createdAt.toString(),
+  updatedAt: grant.updatedAt.toString(),
+});
+
 const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
   ...profile,
   codes: profile.codes.map(toCliDiscountCode),
@@ -431,6 +571,7 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(AdministrationLive),
     Layer.provide(ReservationAdministrationService.LiveWithDependencies),
+    Layer.provide(ReservationAccessAdministration.LiveWithDependencies),
     Layer.provide(DiscountAdministrationLive),
     Layer.provide(CliMutationIdempotency.LiveWithDependencies),
     Layer.provide(CliAuthenticationAdmission.Live),

@@ -532,16 +532,9 @@
   "checkoutStatusTableMapLead": "Your reserved table is highlighted on the room map.",
   "checkoutStatusTableMapRoomLabel": "Room",
   "reservationAccessMetadataTitle": "Reservation access | Deskohub Workspace",
-  "reservationAccessMetadataDescription": "Open your secure reservation access page near the booked time to see the current door PIN.",
+  "reservationAccessMetadataDescription": "Open your secure reservation access page to see the current door PIN.",
   "reservationAccessTitle": "Your access PIN",
-  "reservationAccessUpcomingLead": "Available from {availableAt}.",
-  "reservationAccessUpcomingCountdown": "Access code available in {remaining}",
-  "reservationAccessCountdownLabel": "available in",
-  "reservationAccessChecking": "Checking access…",
-  "reservationAccessAvailableLead": "Available until {unavailableAt}.",
-  "reservationAccessEndedTitle": "We're looking forward to seeing you again!",
-  "reservationAccessEndedLead": "This reservation is concluded. If you have any questions, don't hesitate to",
-  "reservationAccessEndedContactLink": "contact us",
+  "reservationAccessLead": "The lock accepts this PIN from {startsAt} until {endsAt}.",
   "reservationAccessUnavailableTitle": "The access PIN is unavailable",
   "reservationAccessUnavailableLead": "We cannot safely show a PIN for the current reservation status. Contact us if your confirmed reservation should be active.",
   "checkoutStatusFulfillmentFailedContactButton": "Send support request",
@@ -636,7 +629,16 @@
   "reservationValidationOfficeEnded": "Choose an office date range that has not already ended.",
   "reservationValidationOfficeStartPassed": "Choose an office start date that has not already passed.",
   "reservationValidationOfficeMaximumEnd": "The last reservation day must be no later than one month from today.",
-  "reservationValidationOfficeMaximumDuration": "An office reservation cannot exceed {hours} hours.",
+  "reservationValidationOfficeMaximumDuration": [
+    {
+      "declarations": ["input hours", "local hoursPlural = hours: plural"],
+      "selectors": ["hoursPlural"],
+      "match": {
+        "hoursPlural=one": "An office reservation cannot exceed {hours} hour.",
+        "hoursPlural=other": "An office reservation cannot exceed {hours} hours."
+      }
+    }
+  ],
   "reservationValidationMonitorRequired": "Choose a monitor setup for Profi Workstation.",
   "reservationValidationMonitorUnavailable": "Monitor setup is available only with Profi Workstation.",
   "reservationValidationCoffeeRequired": "Coffee is included with this tier and must stay selected.",

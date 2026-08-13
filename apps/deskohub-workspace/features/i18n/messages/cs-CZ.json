@@ -538,16 +538,9 @@
   "checkoutStatusTableMapLead": "Váš rezervovaný stůl je zvýrazněný na mapě místnosti.",
   "checkoutStatusTableMapRoomLabel": "Místnost",
   "reservationAccessMetadataTitle": "Přístup k rezervaci | Deskohub Workspace",
-  "reservationAccessMetadataDescription": "Otevřete bezpečnou stránku přístupu k rezervaci v čase rezervace a zobrazte aktuální PIN ke dveřím.",
+  "reservationAccessMetadataDescription": "Otevřete bezpečnou stránku přístupu k rezervaci a zobrazte aktuální PIN ke dveřím.",
   "reservationAccessTitle": "Váš přístupový PIN",
-  "reservationAccessUpcomingLead": "Dostupný od {availableAt}.",
-  "reservationAccessUpcomingCountdown": "Přístupový kód se zobrazí za {remaining}",
-  "reservationAccessCountdownLabel": "dostupný za",
-  "reservationAccessChecking": "Ověřuji přístup…",
-  "reservationAccessAvailableLead": "Dostupný do {unavailableAt}.",
-  "reservationAccessEndedTitle": "Těšíme se na další návštěvu!",
-  "reservationAccessEndedLead": "Tato rezervace skončila. Pokud máš jakékoli dotazy, neváhej nás",
-  "reservationAccessEndedContactLink": "kontaktovat",
+  "reservationAccessLead": "Zámek přijme tento PIN od {startsAt} do {endsAt}.",
   "reservationAccessUnavailableTitle": "Přístupový PIN není dostupný",
   "reservationAccessUnavailableLead": "Pro aktuální stav rezervace nemůžeme PIN bezpečně zobrazit. Pokud má být potvrzená rezervace právě aktivní, kontaktuj nás.",
   "checkoutStatusFulfillmentFailedContactButton": "Zaslat žádost o podporu",
@@ -642,7 +635,17 @@
   "reservationValidationOfficeEnded": "Vyber termín kanceláře, který ještě neskončil.",
   "reservationValidationOfficeStartPassed": "Vyber datum začátku rezervace kanceláře, které ještě neuplynulo.",
   "reservationValidationOfficeMaximumEnd": "Poslední den rezervace nesmí být později než za měsíc od dneška.",
-  "reservationValidationOfficeMaximumDuration": "Rezervace kanceláře nesmí přesáhnout {hours} hodin.",
+  "reservationValidationOfficeMaximumDuration": [
+    {
+      "declarations": ["input hours", "local hoursPlural = hours: plural"],
+      "selectors": ["hoursPlural"],
+      "match": {
+        "hoursPlural=one": "Rezervace kanceláře nesmí přesáhnout {hours} hodinu.",
+        "hoursPlural=few": "Rezervace kanceláře nesmí přesáhnout {hours} hodiny.",
+        "hoursPlural=other": "Rezervace kanceláře nesmí přesáhnout {hours} hodin."
+      }
+    }
+  ],
   "reservationValidationMonitorRequired": "U Profi Workstation vyber monitorový setup.",
   "reservationValidationMonitorUnavailable": "Monitorový setup je dostupný jen u Profi Workstation.",
   "reservationValidationCoffeeRequired": "Káva je u tohoto tarifu zahrnutá a musí zůstat vybraná.",

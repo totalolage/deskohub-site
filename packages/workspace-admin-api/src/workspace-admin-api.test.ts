@@ -17,6 +17,8 @@ import {
   AdministrationOrderQuery,
   AdministrationPaymentAttempt,
   AdministrationPaymentAttemptId,
+  AdministrationReservationAccessGrant,
+  AdministrationReservationAccessMutation,
   AdministrationReservationCancellationInput,
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
@@ -93,6 +95,9 @@ describe("administration contract", () => {
     expect(AdminCliAdministrationApi.endpoints.getReservation?.method).toBe(
       "GET"
     );
+    expect(
+      AdminCliAdministrationApi.endpoints.mutateReservationAccess?.method
+    ).toBe("POST");
     expect(AdminCliAdministrationApi.endpoints.findReservation?.method).toBe(
       "GET"
     );
@@ -167,6 +172,46 @@ describe("administration contract", () => {
     });
 
     expect(attempt).toMatchObject({ state: "paid", refundState: "required" });
+  });
+
+  test("exposes access operations without exposing the PIN", () => {
+    const grant = Schema.decodeUnknownSync(
+      AdministrationReservationAccessGrant
+    )({
+      id: "grant-id",
+      state: "issued",
+      provider: "igloohome",
+      credentialType: "algopin_hourly",
+      deviceId: "EK1",
+      providerCredentialId: "pin-id",
+      accessName: "Deskohub reservation-id",
+      scheduledStartsAt: "2099-07-01T08:00:00Z",
+      startsAt: "2099-07-01T08:00:00Z",
+      endsAt: "2099-07-01T16:00:00Z",
+      provisioningStartedAt: null,
+      issuedAt: "2099-06-01T08:00:00Z",
+      failedAt: null,
+      failureCode: null,
+      createdAt: "2099-06-01T08:00:00Z",
+      updatedAt: "2099-06-01T08:00:00Z",
+      accessCode: null,
+    });
+    expect("accessCode" in grant).toBe(false);
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationAccessMutation)({
+        kind: "confirm-provider-credential-removed",
+        providerCredentialRemoved: true,
+      })
+    ).toEqual({
+      kind: "confirm-provider-credential-removed",
+      providerCredentialRemoved: true,
+    });
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationReservationAccessMutation)({
+        kind: "confirm-provider-credential-removed",
+        providerCredentialRemoved: false,
+      })
+    ).toThrow();
   });
 
   test("accepts office reservations throughout the read contract", () => {

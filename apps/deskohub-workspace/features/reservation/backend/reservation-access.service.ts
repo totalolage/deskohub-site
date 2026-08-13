@@ -1,5 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { Clock, Context, Effect, Layer, Result, Schema } from "effect";
+import { Context, Effect, Layer, Result, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   WorkspaceCheckoutAccessCodeService,
@@ -13,21 +13,15 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { getReservationAccessCodeWindowState } from "@/features/reservation/reservation-access-code";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 
 export type ReservationAccessViewModel =
   | {
-      readonly state: "upcoming";
-      readonly availableAt: Temporal.Instant;
-      readonly unavailableAt: Temporal.Instant;
-    }
-  | {
       readonly state: "available";
       readonly code: string;
-      readonly unavailableAt: Temporal.Instant;
+      readonly accessStartsAt: Temporal.Instant;
+      readonly accessEndsAt: Temporal.Instant;
     }
-  | { readonly state: "ended" }
   | { readonly state: "unavailable" };
 
 export interface IReservationAccessService {
@@ -41,8 +35,6 @@ export interface IReservationAccessService {
 const unavailableAccess: ReservationAccessViewModel = {
   state: "unavailable",
 };
-const endedAccess: ReservationAccessViewModel = { state: "ended" };
-
 const implementation = Effect.gen(function* () {
   const reservations = yield* WorkspaceReservationRepository;
   const dotypos = yield* DotyposService;
@@ -54,9 +46,6 @@ const implementation = Effect.gen(function* () {
       readonly locale: Locale;
       readonly accessToken?: string;
     }) {
-      const now = Temporal.Instant.fromEpochMilliseconds(
-        yield* Clock.currentTimeMillis
-      );
       const authorized = yield* authorizeAccess(input);
       if (!authorized) return unavailableAccess;
 
@@ -103,16 +92,6 @@ const implementation = Effect.gen(function* () {
       );
       if (!timing) return unavailableAccess;
 
-      const window = getReservationAccessCodeWindowState({ ...timing, now });
-      if (window.state === "before-window") {
-        return {
-          state: "upcoming",
-          availableAt: window.opensAt,
-          unavailableAt: window.closesAt,
-        } satisfies ReservationAccessViewModel;
-      }
-      if (window.state === "after-window") return endedAccess;
-
       return yield* accessCodes
         .resolveCustomerAccessCode({
           reservationId: reservation.id,
@@ -120,13 +99,17 @@ const implementation = Effect.gen(function* () {
           ...timing,
         })
         .pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.NonEmptyString)),
-          Effect.map(
-            (code): ReservationAccessViewModel => ({
-              state: "available",
-              code,
-              unavailableAt: window.closesAt,
-            })
+          Effect.flatMap((access) =>
+            Schema.decodeUnknownEffect(Schema.NonEmptyString)(access.code).pipe(
+              Effect.map(
+                (code): ReservationAccessViewModel => ({
+                  state: "available",
+                  code,
+                  accessStartsAt: access.accessStartsAt,
+                  accessEndsAt: access.accessEndsAt,
+                })
+              )
+            )
           ),
           Effect.tapError(() =>
             Effect.logError("Reservation access code resolution failed")

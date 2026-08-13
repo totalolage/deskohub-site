@@ -352,14 +352,12 @@ becomes retryable after one minute.
 
 The customer confirmation contains a protected reservation-access link and
 never contains the door PIN. The dedicated access page resolves the current PIN
-on every authorized request and returns it only while the reservation is paid,
-locally confirmed, live-confirmed in Dotypos, and inside
-`[reservedFrom - 30 minutes, reservedUntil + 30 minutes)`. Calculate this
-disclosure window from the Dotypos-projected instants for every reservation
-family. The signed access capability is bound to the reservation and locale,
-not to a copied reservation interval; live provider timing remains authoritative
-when a confirmed reservation is moved or extended. The grace period controls
-disclosure and does not extend booked use or the PIN's provider validity.
+on every authorized request and returns it while the reservation is paid,
+locally confirmed, and live-confirmed in Dotypos. Do not apply a local clock or
+disclosure window. Igloohome's programmed AlgoPIN bounds are the sole authority
+for when the lock accepts the PIN. The signed access capability is bound to the
+reservation and locale, not to a copied reservation interval; live Dotypos
+timing remains authoritative when a confirmed reservation is moved or extended.
 Keep this boundary stateless; it does not require a new database field. Sign
 access capabilities with their dedicated long-lived token secret rather than
 the rotated checkout Pay-state keyring or provider credentials. Retain that
@@ -377,17 +375,16 @@ designates EK1 as the algoPIN-generation target.
 The `reservation_access_grants` ledger has one row per Workspace reservation and
 uses `pending`, `provisioning`, `issued`, `expired`, `failed`, and `uncertain`
 states. The
-issued PIN is stored as short-lived non-PII retry state rather than an archival
-record. Never annotate, log, or return it except in the authorized access
-response; mark it as a sensitive database query parameter so SQL diagnostics
-cannot expose it. The daily cleanup sweep clears stored PIN values after their
-provider validity ends.
+issued PIN is stored as non-PII retry state. Never annotate, log, or return it
+except in the authorized access response; mark it as a sensitive database query
+parameter so SQL diagnostics cannot expose it. Retain it so the protected page
+can redisplay it; do not expire or delete it according to the application clock.
 
 If a Dotypos timing change produces a different rounded provider interval after
-a PIN is issued, move the grant to `uncertain`, clear the stored PIN, and
-withhold access until an operator reconciles the provider credential. Changes
-within the same rounded interval reuse the existing PIN because live Dotypos
-timing still controls disclosure.
+a PIN is issued, atomically reset the known issued grant and issue a replacement
+for the new interval. Changes within the same rounded interval reuse the
+existing PIN. The old PIN remains governed by its original Igloohome bounds;
+do not turn a known schedule move into ambiguous-provider reconciliation.
 
 Provider 400, 401, 403, 404, and 415 responses are definitive rejections and
 may leave a retryable `failed` grant. Timeouts, transport failures, 5xx,
@@ -395,6 +392,18 @@ undocumented statuses, malformed successes, and failures persisting a successful
 response are ambiguous. Record those as `uncertain` and require reconciliation;
 never automatically issue a second credential. Igloohome does not document an
 idempotency key or retrieval by `accessName`.
+
+Operator recovery exposes grant metadata but never the PIN. A `failed` grant
+may be retried through the normal issuance and fulfillment services. For an
+`uncertain` grant, require the operator to use the Igloohome app over Bluetooth
+at the lock, find `Deskohub <reservation-id>`, remove it or verify it is absent,
+and explicitly confirm that cleanup. Only then conditionally reset the uncertain
+grant and retry. If cleanup cannot be confirmed, wait for the possible
+credential to expire.
+
+A `provisioning` claim older than one minute has the same ambiguous-provider
+risk and uses the same confirmed cleanup workflow. A fresh claim remains
+in-progress and cannot be recovered yet.
 
 Floor the reservation start to the containing Prague hour and ceil its end to
 the containing or next Prague hour. The provider interval must start in the

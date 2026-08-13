@@ -17,11 +17,14 @@ import {
   type AdministrationOperationQueryType,
   type AdministrationOrderQueryType,
   type AdministrationOverviewMetricType,
+  type AdministrationReservationAccessGrantType,
+  type AdministrationReservationAccessMutationType,
   AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
   AdministrationStoredDiscountId,
   type AdministrationWorkspaceProductTargetType,
   AdministrationWorkspaceReservationId,
+  type AdministrationWorkspaceReservationIdType,
   type CliAccessTokenType,
   CliClientName,
   CliMutationRequestId,
@@ -184,17 +187,15 @@ const reservationsListCommand = Command.make(
 
 const reservationsGetCommand = Command.make(
   "get",
-  { reservationId: Argument.string("reservation-id") },
+  {
+    reservationId: Argument.string("reservation-id").pipe(
+      Argument.withSchema(AdministrationWorkspaceReservationId)
+    ),
+  },
   ({ reservationId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const decodedReservationId = yield* Schema.decodeUnknownEffect(
-          AdministrationWorkspaceReservationId
-        )(reservationId);
-        const detail = yield* api.getReservation(
-          accessToken,
-          decodedReservationId
-        );
+        const detail = yield* api.getReservation(accessToken, reservationId);
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -211,6 +212,11 @@ const reservationsGetCommand = Command.make(
         );
         yield* Console.log(
           `${detail.paymentAttempts.length} payment attempts · ${detail.orders.length} provider orders · ${detail.discounts.length} discounts`
+        );
+        yield* Console.log(
+          detail.accessGrant
+            ? formatReservationAccessGrant(detail.accessGrant)
+            : "Access: not provisioned"
         );
       })
     )
@@ -278,6 +284,53 @@ const reservationsCancelCommand = Command.make(
     )
 ).pipe(Command.withDescription("Cancel a reservation in Dotypos"));
 
+const reservationsRetryAccessCommand = Command.make(
+  "retry-access",
+  {
+    reservationId: Argument.string("reservation-id").pipe(
+      Argument.withSchema(AdministrationWorkspaceReservationId)
+    ),
+    yes: confirmationFlag,
+  },
+  ({ reservationId, yes }) =>
+    runConfirmedReservationAccessMutation({
+      confirmation: `Retry failed access issuance for ${reservationId}?`,
+      mutation: { kind: "retry-failed" },
+      reservationId,
+      yes,
+    })
+).pipe(Command.withDescription("Retry definitively failed access issuance"));
+
+const reservationsReconcileAccessCommand = Command.make(
+  "reconcile-access",
+  {
+    reservationId: Argument.string("reservation-id").pipe(
+      Argument.withSchema(AdministrationWorkspaceReservationId)
+    ),
+    providerCredentialRemoved: Flag.boolean("provider-credential-removed").pipe(
+      Flag.withDescription(
+        "Confirm the possible AlgoPIN was removed or verified absent in Igloohome"
+      )
+    ),
+    yes: confirmationFlag,
+  },
+  ({ providerCredentialRemoved, reservationId, yes }) =>
+    runConfirmedReservationAccessMutation({
+      confirmation: `Confirm the possible Igloohome credential for ${reservationId} was removed, then retry access issuance?`,
+      mutation: {
+        kind: "confirm-provider-credential-removed",
+        providerCredentialRemoved: true,
+      },
+      providerCredentialRemoved,
+      reservationId,
+      yes,
+    })
+).pipe(
+  Command.withDescription(
+    "Reconcile uncertain access after manual provider removal"
+  )
+);
+
 const reservationsCommand = Command.make("reservations").pipe(
   Command.withDescription("Inspect and cancel Workspace reservations"),
   Command.withSubcommands([
@@ -285,6 +338,8 @@ const reservationsCommand = Command.make("reservations").pipe(
     reservationsGetCommand,
     reservationsFindCommand,
     reservationsCancelCommand,
+    reservationsRetryAccessCommand,
+    reservationsReconcileAccessCommand,
   ])
 );
 
@@ -1665,6 +1720,46 @@ const runConfirmedDiscountMutation = ({
     })
   );
 
+const runConfirmedReservationAccessMutation = ({
+  confirmation,
+  mutation,
+  providerCredentialRemoved,
+  reservationId,
+  yes,
+}: {
+  readonly confirmation: string;
+  readonly mutation: AdministrationReservationAccessMutationType;
+  readonly providerCredentialRemoved?: boolean;
+  readonly reservationId: AdministrationWorkspaceReservationIdType;
+  readonly yes: boolean;
+}) =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      if (providerCredentialRemoved === false) {
+        return yield* new InvalidMutationInputError({
+          message:
+            "Verify the credential in Igloohome, then pass --provider-credential-removed.",
+        });
+      }
+      const confirmed = yield* confirmChange(yes, json, confirmation);
+      if (!confirmed) {
+        yield* reportCancellation(json);
+        return;
+      }
+      const crypto = yield* Crypto.Crypto;
+      const requestId = CliMutationRequestId.make(yield* crypto.randomUUIDv7);
+      const grant = yield* api.mutateReservationAccess(
+        accessToken,
+        requestId,
+        reservationId,
+        mutation
+      );
+      yield* Console.log(
+        json ? JSON.stringify(grant) : formatReservationAccessGrant(grant)
+      );
+    })
+  );
+
 const executeAndReportDiscountMutation = (
   api: WorkspaceAdminApiClient["Service"],
   accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -1750,6 +1845,11 @@ const formatReservationRow = (
     reservation.customer?.displayName ?? reservation.customerId,
     reservation.status.label,
   ].join("\t");
+
+const formatReservationAccessGrant = (
+  grant: AdministrationReservationAccessGrantType
+) =>
+  `Access: ${grant.state} · ${grant.startsAt}–${grant.endsAt} · ${grant.accessName}`;
 
 const formatDiscountAdjustment = (
   adjustment: AdministrationDiscountAdjustmentType
