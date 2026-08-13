@@ -322,13 +322,17 @@ export const validateDiscountApplications = (
           subtotal_after_currency: discountApplications.subtotalAfterCurrency,
           expires_at: discountApplications.expiresAt,
           countdown_starts_at: discountApplications.countdownStartsAt,
-          redemption_state: discountCodeRedemptions.state,
-          redeemed_at: discountCodeRedemptions.redeemedAt,
+          redemption_state: sql<string | null>`coalesce(${discountCodeRedemptions.state}, ${voucherRedemptions.state})`,
+          redeemed_at: sql<Date | null>`coalesce(${discountCodeRedemptions.redeemedAt}, ${voucherRedemptions.redeemedAt})`,
         })
         .from(discountApplications)
         .leftJoin(
           discountCodeRedemptions,
           eq(discountCodeRedemptions.applicationId, discountApplications.id)
+        )
+        .leftJoin(
+          voucherRedemptions,
+          eq(voucherRedemptions.applicationId, discountApplications.id)
         )
         .where(eq(discountApplications.workspaceReservationId, orderId))
         .orderBy(asc(discountApplications.sequence))
@@ -1148,13 +1152,17 @@ const assertInternalDiscountState = (
           subtotal_before_value: discountApplications.subtotalBeforeValue,
           applied_amount_value: discountApplications.appliedAmountValue,
           subtotal_after_value: discountApplications.subtotalAfterValue,
-          redemption_state: discountCodeRedemptions.state,
-          redeemed_at: discountCodeRedemptions.redeemedAt,
+          redemption_state: sql<string | null>`coalesce(${discountCodeRedemptions.state}, ${voucherRedemptions.state})`,
+          redeemed_at: sql<Date | null>`coalesce(${discountCodeRedemptions.redeemedAt}, ${voucherRedemptions.redeemedAt})`,
         })
         .from(discountApplications)
         .leftJoin(
           discountCodeRedemptions,
           eq(discountCodeRedemptions.applicationId, discountApplications.id)
+        )
+        .leftJoin(
+          voucherRedemptions,
+          eq(voucherRedemptions.applicationId, discountApplications.id)
         )
         .where(
           row.payment_attempt_id
@@ -1185,10 +1193,10 @@ export const assertInternalDiscountApplications = (
   );
   assert(
     redeemedApplications.length === 1,
-    "expected one redeemed code application"
+    "expected one redeemed promotion application"
   );
   const application = redeemedApplications[0];
-  assert(application, "redeemed code application missing");
+  assert(application, "redeemed promotion application missing");
   assert(
     application.applied_amount_value === application.subtotal_before_value,
     "discount did not cover the full subtotal"
@@ -1199,9 +1207,9 @@ export const assertInternalDiscountApplications = (
   );
   assert(
     application.redemption_state === "redeemed",
-    "discount code claim was not redeemed"
+    "promotion claim was not redeemed"
   );
-  assert(application.redeemed_at, "discount code redeemed_at missing");
+  assert(application.redeemed_at, "promotion redeemed_at missing");
 };
 
 const assertLegalEvidence = (
