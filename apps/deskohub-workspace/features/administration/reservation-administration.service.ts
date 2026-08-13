@@ -1,6 +1,6 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/fulfillment/network-details.service";
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
@@ -247,12 +247,12 @@ const sendLoadedCancellationEmail = ({
   readonly emails: IWorkspaceReservationEmailService;
   readonly send: boolean;
 }) =>
-  send
-    ? emails.sendCancellationEmail({ reservation: details }).pipe(
-        Effect.as("sent" as const),
-        Effect.orElseSucceed(() => "failed" as const)
-      )
-    : Effect.succeed("not_requested" as const);
+  emails.sendCancellationEmail({ reservation: details }).pipe(
+    Effect.as("sent" as const),
+    Effect.orElseSucceed(() => "failed" as const),
+    Effect.when(Effect.succeed(send)),
+    Effect.map(Option.getOrElse(() => "not_requested" as const))
+  );
 
 const cancellationFailed = (message: string, cause: unknown) =>
   new ReservationAdministrationError({
