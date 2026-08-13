@@ -68,6 +68,10 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Keep evaluated browser scripts that prepare navigation-producing forms side-effect free with respect to submission. An evaluated DOM click can navigate successfully while leaving the driver command blocked on the destroyed execution context. Return from preparation first, then focus the hydrated form-scoped submit control and activate it with a separate native keyboard command before polling the destination URL. A bounded preparation script may activate the existing production advertised-price retry control when that selected-query error control is rendered: the retry is read-only, must not reset the preparation deadline, and must never become a retry of reservation submission or another state-creating operation.
 - For client-rendered hover or focus interactions, wait for the specific React event handler used by the component, not merely for a React props marker. A partially hydrated element can expose React metadata before Radix or another composed primitive has installed the handler that opens its transient content.
 - Keep UI- or provider-backed preparation separate from the state-creating native activation. Start only side-effect-free preparation in a short Playwright evaluation, retain its bounded status in the page, poll that status under the existing semantic timeout, and activate the form only after preparation succeeds. Preserve preparation errors and do not increase timeouts or retry checkout/payment creation to hide a browser transport limit.
+- For hosted payment, activate the consent and initial pay button natively, wait
+  for the provider-ready link returned after session creation, then activate that
+  link natively to open Nexi. Do not expect the initial pay button to pre-open a
+  tab; non-provider outcomes must never enter tab management.
 - Let Playwright Test own preparation ordering, case scheduling, worker
   processes, browser processes, fail-fast admission, and the shared-fixture
   tail. Register every case statically in the checked-in catalog and assert the

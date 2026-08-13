@@ -621,6 +621,7 @@ export const submitCheckoutPayment = (run: Runner, session: string) =>
     const checkoutTabId = yield* readActiveBrowserTabId(run, session);
     yield* clickCheckoutPayConsent(run, session);
     yield* activateCheckoutPayButton(run, session);
+    yield* activateHostedPaymentLink(run, session);
     return checkoutTabId;
   });
 
@@ -647,6 +648,18 @@ const activateCheckoutPayButton = (run: Runner, session: string) =>
     const ref = yield* requireEnabledSnapshotRef({
       description: "enabled payment submit button",
       labels: ["ORDER AND PAY", "Order and pay"],
+      run,
+      session,
+    });
+    yield* focusBrowserElement(run, session, ref, { timeoutMs: 30_000 });
+    yield* pressBrowserKey(run, session, "Enter", { timeoutMs: 30_000 });
+  });
+
+const activateHostedPaymentLink = (run: Runner, session: string) =>
+  Effect.gen(function* () {
+    const ref = yield* requireEnabledSnapshotRef({
+      description: "provider-ready payment link",
+      labels: ["Continue to secure payment", "Pokračovat k bezpečné platbě"],
       run,
       session,
     });

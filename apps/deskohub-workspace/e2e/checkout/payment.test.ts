@@ -18,13 +18,14 @@ const checkoutUrl =
 test("retries a transient reservation preparation failure without requiring non-applicable consent", async () => {
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
+  let providerReady = false;
   let activeTabId = "t1";
   const activatedRefs: string[] = [];
   const clickedRefs: string[] = [];
   const switchedTabs: string[] = [];
   let focusedRef: string | undefined;
   const submitReservationScript = "submit-reservation";
-  const run = mock(async (_command, args, options = {}) => {
+  const run = mock<Runner>(async (_command, args, options = {}) => {
     const browserArgs = args.slice(2);
     const commandIndex = browserArgs.findIndex((arg) =>
       [
@@ -111,6 +112,9 @@ test("retries a transient reservation preparation failure without requiring non-
     }
 
     if (commandArgs[0] === "snapshot") {
+      if (providerReady) {
+        return success('- link "Continue to secure payment" [ref=e6]');
+      }
       return success(
         [
           '- LabelText "I agree to the terms" [ref=e1] clickable [cursor:pointer]',
@@ -124,6 +128,9 @@ test("retries a transient reservation preparation failure without requiring non-
       clickedRefs.push(commandArgs[1] ?? "");
       activatedRefs.push(commandArgs[1] ?? "");
       if (commandArgs[1] === "@e5") {
+        providerReady = true;
+      }
+      if (commandArgs[1] === "@e6") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
       }
@@ -138,6 +145,9 @@ test("retries a transient reservation preparation failure without requiring non-
     if (commandArgs[0] === "press") {
       activatedRefs.push(focusedRef ?? "");
       if (focusedRef === "@e5") {
+        providerReady = true;
+      }
+      if (focusedRef === "@e6") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
       }
@@ -145,7 +155,7 @@ test("retries a transient reservation preparation failure without requiring non-
     }
 
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
-  }) as unknown as Runner;
+  });
 
   const result = await Effect.runPromise(
     startCheckoutPaymentAttempt({
@@ -165,6 +175,7 @@ test("retries a transient reservation preparation failure without requiring non-
     "#reservation-submit",
     "@e2",
     "@e5",
+    "@e6",
   ]);
   expect(switchedTabs).toEqual(["t1", "t2"]);
 });
@@ -176,7 +187,7 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
   let preparationStateReads = 0;
   let reservationSubmitActivations = 0;
   let reservationSubmitted = false;
-  const run = mock(async (_command, args, options = {}) => {
+  const run = mock<Runner>(async (_command, args, options = {}) => {
     const commandArgs = args.slice(2);
 
     if (commandArgs[0] === "eval") {
@@ -216,7 +227,7 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
     }
 
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
-  }) as unknown as Runner;
+  });
 
   const result = await Effect.runPromise(
     submitReservationForPayPage({
@@ -237,7 +248,7 @@ test("preserves a detached reservation preparation failure without submitting", 
   const submitReservationScript =
     "Promise.reject(new Error('advertised price failed'))";
   let reservationSubmitActivations = 0;
-  const run = mock(async (_command, args, options = {}) => {
+  const run = mock<Runner>(async (_command, args, options = {}) => {
     const commandArgs = args.slice(2);
 
     if (
@@ -260,7 +271,7 @@ test("preserves a detached reservation preparation failure without submitting", 
     }
 
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
-  }) as unknown as Runner;
+  });
 
   const exit = await Effect.runPromiseExit(
     submitReservationForPayPage({
@@ -288,7 +299,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
   let currentFrame = "main";
   let focusedRef: string | undefined;
   let phase: "continue" | "pay" | "status" | "three-d-secure" = "continue";
-  const run = mock(async (_command, args) => {
+  const run = mock<Runner>(async (_command, args) => {
     const commandArgs = args.slice(2);
 
     if (commandArgs[0] === "snapshot") {
@@ -388,7 +399,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
       return success();
     }
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
-  }) as unknown as Runner;
+  });
 
   await Effect.runPromise(
     completeNexiHostedPayment({
