@@ -498,7 +498,7 @@
   "checkoutStatusPaidWaitingFulfillmentTitle": "Posíláme potvrzení rezervace!",
   "checkoutStatusPaidWaitingFulfillmentLead": "Platba je potvrzená. Nechte prosím tuto stránku otevřenou, než vám emailem pošleme bezpečný přístupový odkaz; sama se obnoví.",
   "checkoutStatusFulfilledTitle": "Tvoje rezervace je potvrzená.",
-  "checkoutStatusFulfilledLead": "Platba je dokončená a bezpečný přístupový odkaz jsme poslali emailem. Otevři ho v čase rezervace a zobrazí se aktuální PIN.",
+  "checkoutStatusFulfilledLead": "Platba je dokončená a bezpečný přístupový odkaz jsme poslali emailem.",
   "checkoutStatusFulfillmentFailedTitle": "Potvrzení se nepodařilo doručit.",
   "checkoutStatusFulfillmentFailedLead": "Platbu jsme přijali, ale potvrzovací email se nepodařilo doručit. Kontaktuj nás prosím a bezpečný přístupový odkaz pošleme znovu nebo ti pomůžeme na místě.",
   "checkoutStatusPaymentFailedTitle": "Platba nebyla dokončena.",

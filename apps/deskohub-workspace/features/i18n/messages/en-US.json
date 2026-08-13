@@ -492,7 +492,7 @@
   "checkoutStatusPaidWaitingFulfillmentTitle": "We are sending your confirmation now!",
   "checkoutStatusPaidWaitingFulfillmentLead": "Your payment is confirmed. Keep this page open while we email your secure access link; it will update automatically.",
   "checkoutStatusFulfilledTitle": "Your reservation is confirmed.",
-  "checkoutStatusFulfilledLead": "Your payment is complete and the secure access link has been sent by email. Open that link near your reservation time to see the current PIN.",
+  "checkoutStatusFulfilledLead": "Your payment is complete and the secure access link has been sent by email.",
   "checkoutStatusFulfillmentFailedTitle": "We couldn't deliver your confirmation.",
   "checkoutStatusFulfillmentFailedLead": "Your payment was received, but the confirmation email could not be delivered. Please contact us and we will resend the secure access link or help you get in.",
   "checkoutStatusPaymentFailedTitle": "Payment was not completed.",
