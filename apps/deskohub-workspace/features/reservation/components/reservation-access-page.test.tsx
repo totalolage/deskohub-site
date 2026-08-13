@@ -67,13 +67,18 @@ describe("ReservationAccessPage", () => {
       />
     );
 
-    expect(view.getByText("Your access PIN will appear here")).toBeDefined();
-    expect(view.getByRole("timer").textContent).toBe(
+    expect(view.getByText("Your access PIN")).toBeDefined();
+    expect(view.getByRole("timer").textContent).toBe("available in 00:01:05");
+    expect(view.getByRole("timer").getAttribute("aria-label")).toBe(
       "Access code available in 1 minute and 5 seconds"
     );
+    expect(
+      view.getByRole("timer").querySelector("svg[aria-hidden='true']")
+    ).not.toBeNull();
 
     act(() => jest.advanceTimersByTime(1000));
-    expect(view.getByRole("timer").textContent).toBe(
+    expect(view.getByRole("timer").textContent).toBe("available in 00:01:04");
+    expect(view.getByRole("timer").getAttribute("aria-label")).toBe(
       "Access code available in 1 minute and 4 seconds"
     );
 

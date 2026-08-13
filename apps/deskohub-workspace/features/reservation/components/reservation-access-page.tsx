@@ -57,24 +57,36 @@ export function ReservationAccessPage({
         className="overflow-hidden rounded-[2.25rem] border border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm"
         data-reservation-access=""
       >
-        <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-start sm:p-10">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-aquamarine-green/14 text-aquamarine-ink ring-8 ring-aquamarine-green/8">
-            <KeyRound className="h-9 w-9" aria-hidden="true" />
+        <div className="p-6 sm:p-10">
+          <div className="flex items-center gap-4 sm:gap-6">
+            <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-full bg-aquamarine-green/14 text-aquamarine-ink ring-8 ring-aquamarine-green/8 sm:h-16 sm:w-16">
+              <KeyRound className="h-8 w-8 sm:h-9 sm:w-9" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-balance text-[1.75rem] leading-none sm:text-5xl">
+                {copy.title}
+              </h1>
+              {access.state !== "upcoming" && (
+                <p className="mt-5 text-lg leading-8 text-navy-blue/70">
+                  {copy.lead}
+                </p>
+              )}
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-balance text-4xl leading-none sm:text-5xl">
-              {copy.title}
-            </h1>
-            <p className="mt-5 text-lg leading-8 text-navy-blue/70">
-              {copy.lead}
-            </p>
-            {access.state === "upcoming" && (
+
+          {access.state === "upcoming" && (
+            <>
+              <noscript>
+                <p className="mt-6 text-center text-lg leading-8 text-navy-blue/70">
+                  {copy.lead}
+                </p>
+              </noscript>
               <ReservationAccessCountdown
                 availableAt={access.availableAt.toString()}
                 locale={locale}
               />
-            )}
-          </div>
+            </>
+          )}
         </div>
 
         {"code" in copy && copy.code && (
