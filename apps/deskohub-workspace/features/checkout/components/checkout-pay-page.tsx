@@ -4,7 +4,7 @@ import Interpolate from "@doist/react-interpolate";
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useState } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
@@ -59,7 +59,6 @@ export function CheckoutPayPage({
   variant,
 }: CheckoutPayPageProps) {
   const router = useRouter();
-  const hostedPaymentActivatedRef = useRef(false);
   const [legalConsent, setLegalConsent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const {
@@ -84,7 +83,15 @@ export function CheckoutPayPage({
         return;
       }
 
-      if (data.statusUrl) return;
+      if (data.statusUrl) {
+        const paymentWindow = window.open(data.redirectUrl, "_blank");
+        if (paymentWindow) {
+          paymentWindow.opener = null;
+          markCheckoutStatusWindowOwner(data.statusUrl);
+          router.push(data.statusUrl);
+          return;
+        }
+      }
 
       router.push(data.redirectUrl);
     },
@@ -100,14 +107,6 @@ export function CheckoutPayPage({
   const hasCheckoutRedirect =
     submitReservationResult.data?.status === "pricing_changed" ||
     submitReservationResult.data?.status === "redirect";
-  const hostedPayment =
-    submitReservationResult.data?.status === "redirect" &&
-    submitReservationResult.data.statusUrl
-      ? {
-          redirectUrl: submitReservationResult.data.redirectUrl,
-          statusUrl: submitReservationResult.data.statusUrl,
-        }
-      : undefined;
   const isPricingChanged = variant === "pricingChanged";
   const title = {
     pay: m.checkoutPayTitle({}, { locale }),
@@ -153,13 +152,9 @@ export function CheckoutPayPage({
         summary={summary}
       />
 
-      {variant === "pay" && (
-        <fieldset className="contents" disabled={!!hostedPayment}>
-          {discountCodeForm}
-        </fieldset>
-      )}
+      {variant === "pay" && discountCodeForm}
 
-      {isPricingChanged && (
+      {isPricingChanged ? (
         <Button
           asChild
           className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
@@ -171,78 +166,43 @@ export function CheckoutPayPage({
             {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
           </Link>
         </Button>
-      )}
-
-      {!isPricingChanged && (
+      ) : (
         <>
-          <fieldset className="contents" disabled={!!hostedPayment}>
-            <CheckoutPayConsent
-              checked={legalConsent}
-              id="checkout-pay-legal-consent"
-              locale={locale}
-              onCheckedChange={setLegalConsent}
-              showEarlyPerformanceRequest={earlyPerformanceRequestRequired}
-              variant={actionVariant}
-            />
-          </fieldset>
+          <CheckoutPayConsent
+            checked={legalConsent}
+            id="checkout-pay-legal-consent"
+            locale={locale}
+            onCheckedChange={setLegalConsent}
+            showEarlyPerformanceRequest={earlyPerformanceRequestRequired}
+            variant={actionVariant}
+          />
 
-          {hostedPayment ? (
-            <Button
-              asChild
-              className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-            >
-              <a
-                href={hostedPayment.redirectUrl}
-                onClick={(event) => {
-                  if (hostedPaymentActivatedRef.current) {
-                    event.preventDefault();
-                    return;
-                  }
-                  const paymentWindow = window.open("about:blank", "_blank");
-                  if (!paymentWindow) return;
+          <CheckoutPaySubmitButton
+            disabled={!legalConsent || isSubmitPending}
+            locale={locale}
+            onClick={() => {
+              if (isSubmitPending) return;
 
-                  event.preventDefault();
-                  hostedPaymentActivatedRef.current = true;
-                  markCheckoutStatusWindowOwner(hostedPayment.statusUrl);
-                  paymentWindow.opener = null;
-                  paymentWindow.location.replace(hostedPayment.redirectUrl);
-                  router.push(hostedPayment.statusUrl);
-                }}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <CreditCard className="h-4 w-4" />
-                {m.checkoutPayContinueToPaymentButton({}, { locale })}
-              </a>
-            </Button>
-          ) : (
-            <CheckoutPaySubmitButton
-              disabled={!legalConsent || isSubmitPending}
-              locale={locale}
-              onClick={() => {
-                if (isSubmitPending) return;
+              setErrorMessage(null);
+              if (!payStateToken) {
+                setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
+                return;
+              }
 
-                setErrorMessage(null);
-                if (!payStateToken) {
-                  setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
-                  return;
-                }
-
-                const input = {
-                  locale,
-                  payStateToken,
-                  legalConsent,
-                };
-                execute(
-                  earlyPerformanceRequestRequired
-                    ? { ...input, earlyPerformanceConsent: legalConsent }
-                    : input
-                );
-              }}
-              pending={isSubmitPending}
-              variant={actionVariant}
-            />
-          )}
+              const input = {
+                locale,
+                payStateToken,
+                legalConsent,
+              };
+              execute(
+                earlyPerformanceRequestRequired
+                  ? { ...input, earlyPerformanceConsent: legalConsent }
+                  : input
+              );
+            }}
+            pending={isSubmitPending}
+            variant={actionVariant}
+          />
         </>
       )}
 

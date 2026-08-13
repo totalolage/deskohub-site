@@ -480,7 +480,6 @@
   "checkoutSummaryItemTotal": "Celkem k platbě",
   "checkoutPayConsent": "Souhlasím s dokumenty <terms>Všeobecné obchodní podmínky</terms>, <operatingRules>Provozní řád</operatingRules>.<earlyPerformance> Protože služba začíná během zákonné lhůty pro odstoupení od smlouvy, výslovně žádám o její poskytnutí v rezervovaném termínu a beru na vědomí, že po úplném poskytnutí služby mé právo odstoupit od smlouvy zaniká.</earlyPerformance>",
   "checkoutPayOrderAndPayButton": "Objednat a zaplatit",
-  "checkoutPayContinueToPaymentButton": "Pokračovat k bezpečné platbě",
   "checkoutPaySubmitError": "Platbu se nepodařilo spustit. Zkontrolujte prosím údaje rezervace a zkuste to znovu.",
   "checkoutPayPricingChangedTitle": "Cena se změnila.",
   "checkoutPayPricingChangedLead": "Cena objednávky se od posledního zobrazení změnila. Před pokračováním zkontrolujte aktualizovaný souhrn.",

@@ -9,6 +9,7 @@ import {
   completeNexiHostedPayment,
   startCheckoutPaymentAttempt,
   submitCheckoutPayment,
+  submitPaymentAndWaitForHostedPage,
   submitReservationForPayPage,
 } from "./payment";
 
@@ -66,10 +67,74 @@ test("submits a non-provider checkout without waiting for a hosted-payment link"
   expect(activatedRefs).toEqual(["@e2", "@e5"]);
 });
 
+test("supports hosted payment in the checkout tab when the popup is blocked", async () => {
+  let focusedRef: string | undefined;
+  let hostedPaymentStarted = false;
+  const run = mock<Runner>(async (_command, args) => {
+    const browserArgs = args.slice(2);
+    const commandIndex = browserArgs.findIndex((arg) =>
+      ["eval", "focus", "get", "press", "snapshot", "tab", "wait"].includes(arg)
+    );
+    const commandArgs = browserArgs.slice(commandIndex);
+
+    if (commandArgs[0] === "eval") return success("true");
+    if (commandArgs[0] === "wait") return success();
+    if (commandArgs[0] === "tab" && commandArgs[1] === "list") {
+      return success(
+        JSON.stringify({
+          data: { tabs: [{ active: true, tabId: "checkout" }] },
+          success: true,
+        })
+      );
+    }
+    if (commandArgs[0] === "tab") {
+      throw new Error("single-tab payment must not switch tabs");
+    }
+    if (commandArgs[0] === "snapshot") {
+      return success(
+        [
+          '- checkbox "I agree to the terms" [checked=false, ref=e2]',
+          '- button "ORDER AND PAY" [ref=e5]',
+        ].join("\n")
+      );
+    }
+    if (commandArgs[0] === "focus") {
+      focusedRef = commandArgs[1];
+      return success();
+    }
+    if (commandArgs[0] === "press") {
+      if (focusedRef === "@e5") hostedPaymentStarted = true;
+      return success();
+    }
+    if (commandArgs[0] === "get" && commandArgs[1] === "url") {
+      return success(
+        hostedPaymentStarted
+          ? "https://xpay.nexigroup.com/hpp/nexi/test"
+          : "https://workspace.example/en-US/checkout/pay"
+      );
+    }
+
+    throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
+  });
+
+  expect(
+    await Effect.runPromise(
+      submitPaymentAndWaitForHostedPage({
+        run,
+        session: "single-tab",
+        timeouts: workspaceE2ETimeouts,
+      })
+    )
+  ).toEqual({
+    checkoutTabId: "checkout",
+    hostedPaymentTabId: "checkout",
+    url: "https://xpay.nexigroup.com/hpp/nexi/test",
+  });
+});
+
 test("retries a transient reservation preparation failure without requiring non-applicable consent", async () => {
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
-  let providerReady = false;
   let activeTabId = "t1";
   const activatedRefs: string[] = [];
   const clickedRefs: string[] = [];
@@ -163,9 +228,6 @@ test("retries a transient reservation preparation failure without requiring non-
     }
 
     if (commandArgs[0] === "snapshot") {
-      if (providerReady) {
-        return success('- link "Continue to secure payment" [ref=e6]');
-      }
       return success(
         [
           '- LabelText "I agree to the terms" [ref=e1] clickable [cursor:pointer]',
@@ -179,9 +241,6 @@ test("retries a transient reservation preparation failure without requiring non-
       clickedRefs.push(commandArgs[1] ?? "");
       activatedRefs.push(commandArgs[1] ?? "");
       if (commandArgs[1] === "@e5") {
-        providerReady = true;
-      }
-      if (commandArgs[1] === "@e6") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
       }
@@ -196,9 +255,6 @@ test("retries a transient reservation preparation failure without requiring non-
     if (commandArgs[0] === "press") {
       activatedRefs.push(focusedRef ?? "");
       if (focusedRef === "@e5") {
-        providerReady = true;
-      }
-      if (focusedRef === "@e6") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
       }
@@ -226,7 +282,6 @@ test("retries a transient reservation preparation failure without requiring non-
     "#reservation-submit",
     "@e2",
     "@e5",
-    "@e6",
   ]);
   expect(switchedTabs).toEqual(["t1", "t2"]);
 });

@@ -509,7 +509,6 @@ sequenceDiagram
     Nexi-->>App: hostedPage and securityToken
     App->>DB: Store securityToken, redirect URL, attempt pending
     App-->>Customer: Return hostedPage and pending reservation status
-    Customer->>App: Open hostedPage from the provider-ready link
     App-->>Customer: Open hostedPage in a new tab; navigate the original tab to pending reservation status
   else exactly zero signed price affirmed
     App->>DB: In one transaction insert paid internal attempt, mark reservation paid, persist applications, and admit/redeem code claim
@@ -518,14 +517,14 @@ sequenceDiagram
   end
 ```
 
-After a provider session is ready, the Pay page exposes its hosted page through
-a new-tab link in the existing order summary, with the submitted consent and
-discount inputs still visible but locked, so checkout never presents a second
-summary page. The browser launch remains directly user-activated. Clicking
-that link synchronously creates and navigates a script-owned payment tab, which
-keeps the returned tab eligible for `window.close()`; the native link remains
-the popup-blocked fallback. The click also marks the original tab as owner in
-tab-local session storage before navigating it to status. The owner holds an
+The customer's single Order and pay activation starts checkout. Only after the
+action returns a hosted provider session does the Pay page open its hosted page
+in a new tab while browser activation remains, mark the original tab as owner in
+tab-local session storage, and navigate the original tab to status. If the
+browser blocks the new tab or activation expires, checkout navigates the current
+tab to the provider instead. It must not pre-open a placeholder before the
+hosted-provider result. No intermediate summary or second payment activation is
+rendered. The owner holds an
 exclusive browser lock scoped to the status path and preempts a returned payment
 tab that wins the hydration race. An unmarked returned tab closes when the lock
 is unavailable or preempted; if the original tab is closed, it keeps the lock

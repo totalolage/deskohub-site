@@ -590,7 +590,6 @@ export const submitPaymentAndWaitForHostedPage = ({
 }) =>
   Effect.gen(function* () {
     const checkoutTabId = yield* submitCheckoutPayment(run, session);
-    yield* activateHostedPaymentLink(run, session);
 
     const hostedPaymentUrl = yield* waitForBrowserUrl({
       description: "Nexi hosted payment page",
@@ -601,15 +600,17 @@ export const submitPaymentAndWaitForHostedPage = ({
       timeoutMs: timeouts.providerTransition,
     });
     const hostedPaymentTabId = yield* readActiveBrowserTabId(run, session);
-    yield* switchToBrowserTab(run, session, checkoutTabId);
-    yield* waitForBrowserUrl({
-      description: "checkout status page in original tab",
-      matches: isCheckoutStatusUrl,
-      run,
-      session,
-      timeoutMs: timeouts.providerTransition,
-    });
-    yield* switchToBrowserTab(run, session, hostedPaymentTabId);
+    if (hostedPaymentTabId !== checkoutTabId) {
+      yield* switchToBrowserTab(run, session, checkoutTabId);
+      yield* waitForBrowserUrl({
+        description: "checkout status page in original tab",
+        matches: isCheckoutStatusUrl,
+        run,
+        session,
+        timeoutMs: timeouts.providerTransition,
+      });
+      yield* switchToBrowserTab(run, session, hostedPaymentTabId);
+    }
     return {
       checkoutTabId,
       hostedPaymentTabId,
@@ -648,18 +649,6 @@ const activateCheckoutPayButton = (run: Runner, session: string) =>
     const ref = yield* requireEnabledSnapshotRef({
       description: "enabled payment submit button",
       labels: ["ORDER AND PAY", "Order and pay"],
-      run,
-      session,
-    });
-    yield* focusBrowserElement(run, session, ref, { timeoutMs: 30_000 });
-    yield* pressBrowserKey(run, session, "Enter", { timeoutMs: 30_000 });
-  });
-
-const activateHostedPaymentLink = (run: Runner, session: string) =>
-  Effect.gen(function* () {
-    const ref = yield* requireEnabledSnapshotRef({
-      description: "provider-ready payment link",
-      labels: ["Continue to secure payment", "Pokračovat k bezpečné platbě"],
       run,
       session,
     });
@@ -801,24 +790,30 @@ const waitForReturnedPaymentTabToClose = ({
   readonly session: string;
   readonly timeoutMs: number;
 }) =>
-  Effect.gen(function* () {
-    yield* pollUntil(
-      readBrowserTabs(run, session).pipe(
-        Effect.map((tabs) =>
-          tabs.length === 1 &&
-          tabs[0]?.tabId === hostedPaymentPage.checkoutTabId
-            ? tabs[0]
-            : undefined
-        )
-      ),
-      {
-        intervalMs: workspaceE2EPollIntervalMs.browser,
-        label: "returned payment tab to close",
-        timeoutMs,
-      }
-    );
-    yield* switchToBrowserTab(run, session, hostedPaymentPage.checkoutTabId);
-  });
+  hostedPaymentPage.hostedPaymentTabId === hostedPaymentPage.checkoutTabId
+    ? Effect.void
+    : Effect.gen(function* () {
+        yield* pollUntil(
+          readBrowserTabs(run, session).pipe(
+            Effect.map((tabs) =>
+              tabs.length === 1 &&
+              tabs[0]?.tabId === hostedPaymentPage.checkoutTabId
+                ? tabs[0]
+                : undefined
+            )
+          ),
+          {
+            intervalMs: workspaceE2EPollIntervalMs.browser,
+            label: "returned payment tab to close",
+            timeoutMs,
+          }
+        );
+        yield* switchToBrowserTab(
+          run,
+          session,
+          hostedPaymentPage.checkoutTabId
+        );
+      });
 
 const fillHostedPaymentField = (
   run: Runner,

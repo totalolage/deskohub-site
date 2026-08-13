@@ -161,15 +161,17 @@ describe("CheckoutPayPage payment navigation", () => {
   });
 
   test("opens the payment gateway in a new tab and sends the original tab to status", async () => {
-    const execute = mock();
-    const replacePaymentLocation = mock();
+    const events: string[] = [];
+    const execute = mock(() => {
+      events.push("execute");
+    });
     const paymentWindow = {
-      location: { replace: replacePaymentLocation },
       opener: window,
     };
-    const openPaymentWindow = spyOn(window, "open").mockImplementation(
-      () => paymentWindow as Window
-    );
+    const openPaymentWindow = spyOn(window, "open").mockImplementation(() => {
+      events.push("open");
+      return paymentWindow as Window;
+    });
     workspaceUseAction.mockReturnValue({
       execute,
       isExecuting: false,
@@ -203,7 +205,7 @@ describe("CheckoutPayPage payment navigation", () => {
       })
     );
 
-    expect(openPaymentWindow).not.toHaveBeenCalled();
+    expect(events).toEqual(["execute"]);
     expect(execute).toHaveBeenCalledWith({
       locale: "en-US",
       payStateToken: "signed-summary",
@@ -234,59 +236,13 @@ describe("CheckoutPayPage payment navigation", () => {
       });
     });
 
-    expect(openPaymentWindow).not.toHaveBeenCalled();
-    expect(workspaceRouterPush).not.toHaveBeenCalled();
-
-    workspaceUseAction.mockReturnValue({
-      execute,
-      isExecuting: false,
-      result: {
-        data: {
-          status: "redirect",
-          redirectUrl: "https://payments.example.test/checkout",
-          statusUrl: "/en-US/reservation/status/reservation-id",
-        },
-      },
-    });
-    view.rerender(
-      <CheckoutPayPage
-        discountCodeForm={<button type="button">Apply discount</button>}
-        locale="en-US"
-        payStateToken="signed-summary"
-        summary={quote.summary}
-        variant="pay"
-      />
-    );
-
-    const lockedDiscountButton = view.getByRole("button", {
-      name: "Apply discount",
-    });
-    expect(lockedDiscountButton.closest("fieldset")?.disabled).toBe(true);
-    expect(view.getByRole("checkbox").closest("fieldset")?.disabled).toBe(true);
-    expect(
-      view.getAllByRole("heading", {
-        name: m.checkoutPayTitle({}, { locale: "en-US" }),
-      })
-    ).toHaveLength(1);
-    const paymentLink = view.getByRole("link", {
-      name: m.checkoutPayContinueToPaymentButton({}, { locale: "en-US" }),
-    });
-    expect(paymentLink.getAttribute("href")).toBe(
-      "https://payments.example.test/checkout"
-    );
-    expect(paymentLink.getAttribute("target")).toBe("_blank");
-    expect(paymentLink.getAttribute("rel")).toBe("noreferrer");
-
-    paymentLink.addEventListener("click", (event) => event.preventDefault());
-    fireEvent.click(paymentLink);
-    fireEvent.click(paymentLink);
-
+    expect(events).toEqual(["execute", "open"]);
     expect(openPaymentWindow).toHaveBeenCalledTimes(1);
-    expect(openPaymentWindow).toHaveBeenCalledWith("about:blank", "_blank");
-    expect(paymentWindow.opener).toBeNull();
-    expect(replacePaymentLocation).toHaveBeenCalledWith(
-      "https://payments.example.test/checkout"
+    expect(openPaymentWindow).toHaveBeenCalledWith(
+      "https://payments.example.test/checkout",
+      "_blank"
     );
+    expect(paymentWindow.opener).toBeNull();
     expect(workspaceRouterPush).toHaveBeenCalledWith(
       "/en-US/reservation/status/reservation-id"
     );
