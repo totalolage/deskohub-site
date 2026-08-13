@@ -31,6 +31,37 @@ const heldReservation = {
 };
 
 describe("LatePaymentRecoveryService", () => {
+  test("keeps a fresh processing claim retryable", async () => {
+    const layer = LatePaymentRecoveryServiceLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(LatePaymentRecoveryRepository, {
+            findByPaymentAttemptId: mock(() =>
+              Effect.succeed({ ...recovery, state: "processing" } as never)
+            ),
+            claim: mock(() => Effect.succeed(null)),
+          }),
+          Layer.mock(WorkspaceReservationRepository, {}),
+          Layer.mock(AccountingDocumentSnapshotRepository, {}),
+          Layer.mock(WorkspaceAvailabilityService, {}),
+          Layer.mock(DotyposService, {}),
+          Layer.mock(WorkspaceTableAssignmentService, {}),
+          Layer.mock(WorkspacePaidFulfillmentService, {})
+        )
+      )
+    );
+
+    const result = await Effect.gen(function* () {
+      const service = yield* LatePaymentRecoveryService;
+      return yield* service.recover({ paymentAttemptId: "attempt-id" });
+    }).pipe(Effect.result, Effect.provide(layer), Effect.runPromise);
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("LatePaymentRecoveryError");
+    }
+  });
+
   test("restores a still-active original hold and continues paid fulfillment", async () => {
     const completeUsingOriginalReservation = mock(() => Effect.void);
     const fulfillPaidOrder = mock(() => Effect.void);

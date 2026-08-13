@@ -229,7 +229,12 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
         staleProcessingBefore:
           Temporal.Now.instant().subtract(recoveryClaimTimeout),
       });
-      if (!claimed) return "ignored" as const;
+      if (!claimed) {
+        return yield* new LatePaymentRecoveryError({
+          paymentAttemptId: input.paymentAttemptId,
+          message: "Late-payment recovery is already processing.",
+        });
+      }
 
       const reservation = yield* reservations.findById(
         claimed.workspaceReservationId
