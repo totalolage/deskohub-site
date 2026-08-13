@@ -1,6 +1,6 @@
 import type { DotyposReservationId } from "@deskohub/dotypos";
 import type { NexiOperationId, NexiWebhookEventId } from "@deskohub/nexi";
-import { and, eq, inArray, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, inArray, lte, ne, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -199,6 +199,10 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                         reservation.checkoutSessionKey
                       ),
                       ne(workspaceReservations.id, reservation.id),
+                      gt(
+                        workspaceReservations.createdAt,
+                        reservation.createdAt
+                      ),
                       ne(workspaceReservations.reservationState, "cancelled")
                     )
                   )
@@ -446,6 +450,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
           const [reservation] = yield* db
             .select({
               checkoutSessionKey: workspaceReservations.checkoutSessionKey,
+              createdAt: workspaceReservations.createdAt,
             })
             .from(workspaceReservations)
             .where(eq(workspaceReservations.id, workspaceReservationId))
@@ -461,6 +466,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
                   reservation.checkoutSessionKey
                 ),
                 ne(workspaceReservations.id, workspaceReservationId),
+                gt(workspaceReservations.createdAt, reservation.createdAt),
                 ne(workspaceReservations.reservationState, "cancelled")
               )
             )
