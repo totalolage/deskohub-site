@@ -621,7 +621,16 @@
   "reservationValidationOfficeEnded": "Choose an office date range that has not already ended.",
   "reservationValidationOfficeStartPassed": "Choose an office start date that has not already passed.",
   "reservationValidationOfficeMaximumEnd": "The last reservation day must be no later than one month from today.",
-  "reservationValidationOfficeMaximumDuration": "An office reservation cannot exceed {hours} hours.",
+  "reservationValidationOfficeMaximumDuration": [
+    {
+      "declarations": ["input hours", "local hoursPlural = hours: plural"],
+      "selectors": ["hoursPlural"],
+      "match": {
+        "hoursPlural=one": "An office reservation cannot exceed {hours} hour.",
+        "hoursPlural=other": "An office reservation cannot exceed {hours} hours."
+      }
+    }
+  ],
   "reservationValidationMonitorRequired": "Choose a monitor setup for Profi Workstation.",
   "reservationValidationMonitorUnavailable": "Monitor setup is available only with Profi Workstation.",
   "reservationValidationCoffeeRequired": "Coffee is included with this tier and must stay selected.",

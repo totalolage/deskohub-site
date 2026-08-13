@@ -142,9 +142,7 @@ export class ReservationAccessService extends Context.Service<
       const repository = yield* ReservationAccessRepository;
       const igloohome = yield* IgloohomeService;
       const deviceId = Schema.decodeUnknownSync(IgloohomeDeviceIdSchema)(
-        env.VERCEL_ENV === "production"
-          ? env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID
-          : "fixture-ek1"
+        env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID
       );
 
       return ReservationAccessService.of({
