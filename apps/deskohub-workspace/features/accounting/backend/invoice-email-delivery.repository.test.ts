@@ -9,12 +9,8 @@ describe("invoice email delivery repository", () => {
   test("claims only failed or stale processing deliveries", async () => {
     const source = await repositorySource();
     const claim = source.slice(
-      source.indexOf(
-        'claim: Effect.fn("InvoiceEmailDeliveryRepository.claim")'
-      ),
-      source.indexOf(
-        'markAccepted: Effect.fn("InvoiceEmailDeliveryRepository.markAccepted")'
-      )
+      source.indexOf("claim: Effect.fn"),
+      source.indexOf("claimResend: Effect.fn")
     );
 
     expect(claim).toContain(".onConflictDoUpdate({");
@@ -35,5 +31,19 @@ describe("invoice email delivery repository", () => {
     expect(source.split(attemptGuard)).toHaveLength(3);
     expect(source).toContain('state: "accepted"');
     expect(source).toContain('state: "failed"');
+  });
+
+  test("explicit resend reclaims accepted customer delivery", async () => {
+    const source = await repositorySource();
+    const claimResend = source.slice(
+      source.indexOf("claimResend: Effect.fn"),
+      source.indexOf("markAccepted: Effect.fn")
+    );
+
+    expect(claimResend).toContain('audience: "customer"');
+    expect(claimResend).toContain(
+      'eq(invoiceEmailDeliveries.state, "accepted")'
+    );
+    expect(claimResend).toContain(" = 'processing' then ");
   });
 });

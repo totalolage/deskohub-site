@@ -22,7 +22,8 @@ const isAdministrationPath = (pathname: string) =>
 
 const isPrivateReservationPath = (pathname: string) =>
   pathname.includes("/reservation/status/") ||
-  pathname.includes("/reservation/access/");
+  pathname.includes("/reservation/access/") ||
+  pathname.includes("/reservation/invoice/");
 
 export function proxy(request: NextRequest) {
   if (isAdministrationPath(request.nextUrl.pathname)) {

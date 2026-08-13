@@ -6,6 +6,7 @@ export const coworkReservationPath = "/reservation/cowork";
 export const meetingRoomReservationPath = "/reservation/meeting-room";
 export const officeReservationPath = "/reservation/office";
 export const reservationAccessPath = "/reservation/access";
+export const reservationInvoicePath = "/reservation/invoice";
 export const reservationStatusPath = "/reservation/status";
 
 export const getCoworkReservationPath = (locale: Locale) =>

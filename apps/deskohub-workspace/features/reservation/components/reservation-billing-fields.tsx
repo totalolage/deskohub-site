@@ -1,8 +1,12 @@
 "use client";
 
+import { getName } from "country-list";
 import { Info } from "lucide-react";
 import { type FieldPathByValue, useFormContext } from "react-hook-form";
-import { invoiceCountryCodes } from "@/features/accounting/billing-identity";
+import {
+  type InvoiceBuyerAddressInput,
+  invoiceCountryCodes,
+} from "@/features/accounting/billing-identity";
 import { type Locale, m } from "@/features/i18n";
 import {
   defaultReservationBillingSelection,
@@ -30,6 +34,7 @@ import { ReservationFormLabel } from "./reservation-form-label";
 
 type ReservationBillingFormValues = {
   readonly billing: ReservationBillingSelectionInput;
+  readonly address?: InvoiceBuyerAddressInput;
 };
 
 type BillingFieldName = FieldPathByValue<
@@ -138,7 +143,12 @@ export function ReservationBillingFields({
                   {m.reservationBillingDetailsLabel({}, { locale })}
                 </h3>
                 {isBusiness && <BusinessFields locale={locale} />}
-                <AddressFields business={isBusiness} locale={locale} />
+                <ReservationBillingAddressFields
+                  address={
+                    isBusiness ? "billing.buyer.address" : "billing.address"
+                  }
+                  locale={locale}
+                />
               </section>
             )}
           </FormItem>
@@ -169,14 +179,13 @@ function BusinessFields({ locale }: { readonly locale: Locale }) {
   );
 }
 
-function AddressFields({
-  business,
+export function ReservationBillingAddressFields({
+  address,
   locale,
 }: {
-  readonly business: boolean;
+  readonly address: "address" | "billing.address" | "billing.buyer.address";
   readonly locale: Locale;
 }) {
-  const address = business ? "billing.buyer.address" : "billing.address";
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       <BillingTextField
@@ -202,7 +211,6 @@ function AddressFields({
       />
       <BillingCountryField
         label={m.reservationBillingCountryLabel({}, { locale })}
-        locale={locale}
         name={`${address}.country` as BillingFieldName}
       />
     </div>
@@ -211,18 +219,12 @@ function AddressFields({
 
 function BillingCountryField({
   label,
-  locale,
   name,
 }: {
   readonly label: string;
-  readonly locale: Locale;
   readonly name: BillingFieldName;
 }) {
   const { control } = useFormContext<ReservationBillingFormValues>();
-  const displayNames = new Intl.DisplayNames([locale], { type: "region" });
-  const countries = invoiceCountryCodes
-    .map((code) => ({ code, name: displayNames.of(code) ?? code }))
-    .sort((left, right) => left.name.localeCompare(right.name, locale));
 
   return (
     <FormField
@@ -240,9 +242,9 @@ function BillingCountryField({
               })}
               required
             >
-              {countries.map((country) => (
-                <option key={country.code} value={country.code}>
-                  {country.name}
+              {invoiceCountryCodes.map((countryCode) => (
+                <option key={countryCode} value={countryCode}>
+                  {getName(countryCode) ?? countryCode}
                 </option>
               ))}
             </select>

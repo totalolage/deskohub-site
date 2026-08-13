@@ -1,7 +1,10 @@
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/checkout/vercel-preview-protection-bypass";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { reservationAccessPath } from "@/features/reservation/routes";
+import {
+  reservationAccessPath,
+  reservationInvoicePath,
+} from "@/features/reservation/routes";
 import { reservationAccessTokenQueryParam } from "./reservation-access-token";
 
 export const getReservationAccessPath = (input: {
@@ -20,4 +23,11 @@ export const getReservationAccessPath = (input: {
   });
 
   return `${url.pathname}${url.search}`;
+};
+
+export const getReservationInvoicePath = (
+  input: Parameters<typeof getReservationAccessPath>[0]
+) => {
+  const accessPath = getReservationAccessPath(input);
+  return accessPath.replace(reservationAccessPath, reservationInvoicePath);
 };

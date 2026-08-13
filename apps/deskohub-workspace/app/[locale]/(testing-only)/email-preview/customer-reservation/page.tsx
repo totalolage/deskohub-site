@@ -29,6 +29,7 @@ async function WorkspaceReservationEmailPreviewContent() {
   const html = await runWithRequestLocale((locale) =>
     createWorkspaceReservationCustomerEmailPreviewHtml({
       accessUrl: `https://workspace.deskohub.cz/${locale}/reservation/access/preview-reservation?accessToken=preview-token`,
+      invoiceUrl: `https://workspace.deskohub.cz/${locale}/reservation/invoice/preview-reservation?accessToken=preview-token`,
       reservation: createWorkspaceReservationEmailPreviewReservation(locale),
     }).pipe(
       runStandaloneWorkspaceEffect("workspaceReservationEmail.previewCustomer")

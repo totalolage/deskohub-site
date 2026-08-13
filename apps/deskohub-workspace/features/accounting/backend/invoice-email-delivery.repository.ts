@@ -22,6 +22,13 @@ export interface IInvoiceEmailDeliveryRepository {
     InvoiceEmailDeliveryClaim | null,
     EffectDrizzleQueryError
   >;
+  readonly claimResend: (input: {
+    readonly invoiceId: string;
+    readonly staleProcessingBefore: Temporal.Instant;
+  }) => Effect.Effect<
+    InvoiceEmailDeliveryClaim | null,
+    EffectDrizzleQueryError
+  >;
   readonly markAccepted: (input: {
     readonly invoiceId: string;
     readonly audience: InvoiceEmailDeliveryAudience;
@@ -89,6 +96,45 @@ export class InvoiceEmailDeliveryRepository extends Context.Service<
 
           return claimed ?? null;
         }),
+        claimResend: Effect.fn("InvoiceEmailDeliveryRepository.claimResend")(
+          function* ({ invoiceId, staleProcessingBefore }) {
+            const now = Temporal.Now.instant();
+            const [claimed] = yield* db
+              .insert(invoiceEmailDeliveries)
+              .values({
+                invoiceId,
+                audience: "customer",
+                state: "processing",
+                attemptCount: 1,
+                updatedAt: now,
+              })
+              .onConflictDoUpdate({
+                target: [
+                  invoiceEmailDeliveries.invoiceId,
+                  invoiceEmailDeliveries.audience,
+                ],
+                set: {
+                  state: "processing",
+                  attemptCount: sql`case when ${invoiceEmailDeliveries.state} = 'processing' then ${invoiceEmailDeliveries.attemptCount} else ${invoiceEmailDeliveries.attemptCount} + 1 end`,
+                  failureCode: null,
+                  updatedAt: now,
+                },
+                setWhere: or(
+                  eq(invoiceEmailDeliveries.state, "accepted"),
+                  eq(invoiceEmailDeliveries.state, "failed"),
+                  and(
+                    eq(invoiceEmailDeliveries.state, "processing"),
+                    lt(invoiceEmailDeliveries.updatedAt, staleProcessingBefore)
+                  )
+                ),
+              })
+              .returning({
+                attemptNumber: invoiceEmailDeliveries.attemptCount,
+              });
+
+            return claimed ?? null;
+          }
+        ),
         markAccepted: Effect.fn("InvoiceEmailDeliveryRepository.markAccepted")(
           function* (input) {
             yield* db

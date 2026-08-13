@@ -23,6 +23,10 @@ export type CustomerReservationEmailProps = {
     readonly button: string;
     readonly url: string;
   };
+  readonly invoice: {
+    readonly button: string;
+    readonly url: string;
+  };
   readonly labels: {
     readonly location: string;
     readonly directions: string;
@@ -53,6 +57,7 @@ export function CustomerReservationEmail({
   preview,
   heading,
   access,
+  invoice,
   labels,
   location,
   table,
@@ -76,6 +81,13 @@ export function CustomerReservationEmail({
             style={{ backgroundColor: "#00df99", color: "#00024f" }}
           >
             {access.button}
+          </Link>
+          <Link
+            className="ml-3 inline-block rounded-full border border-white/40 px-7 py-3 text-[14px] font-bold leading-[20px] text-white no-underline"
+            href={invoice.url}
+            style={{ color: "#ffffff" }}
+          >
+            {invoice.button}
           </Link>
         </Section>
         {table && (

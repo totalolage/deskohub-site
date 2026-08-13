@@ -10,6 +10,7 @@ import {
   meetingRoomReservationPath,
   officeReservationPath,
   reservationAccessPath,
+  reservationInvoicePath,
   reservationStatusPath,
 } from "./routes";
 
@@ -22,6 +23,7 @@ describe("reservation routes", () => {
     expect(meetingRoomReservationPath).toBe("/reservation/meeting-room");
     expect(officeReservationPath).toBe("/reservation/office");
     expect(reservationAccessPath).toBe("/reservation/access");
+    expect(reservationInvoicePath).toBe("/reservation/invoice");
     expect(reservationStatusPath).toBe("/reservation/status");
     expect(getCoworkReservationPath("en-US")).toBe("/en-US/reservation/cowork");
     expect(getMeetingRoomReservationPath("cs-CZ")).toBe(
@@ -73,6 +75,11 @@ describe("reservation routes", () => {
     expect(
       appRouteExists(
         "[locale]/(minimal-header)/reservation/access/[orderId]/page.tsx"
+      )
+    ).toBe(true);
+    expect(
+      appRouteExists(
+        "[locale]/(minimal-header)/reservation/invoice/[orderId]/page.tsx"
       )
     ).toBe(true);
     expect(

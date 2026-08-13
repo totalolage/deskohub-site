@@ -9,6 +9,8 @@ import {
 } from "@/features/accounting/accounting-document-snapshot";
 import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-utils";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
+import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import { InvoiceRepository } from "./invoice.repository";
 import { ReservationInvoiceService } from "./reservation-invoice";
@@ -160,6 +162,58 @@ describe("reservation invoice processing", () => {
     expect(harness.issue).not.toHaveBeenCalled();
     expect(harness.deliver).not.toHaveBeenCalled();
   });
+
+  test("rejects an invalid capability before loading the reservation", async () => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source);
+
+    const state = await runPostOrderState(harness, "invalid-token");
+
+    expect(state).toBe("unavailable");
+    expect(harness.findReservation).not.toHaveBeenCalled();
+  });
+
+  test("creates a personal invoice from a protected post-order request", async () => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source);
+    const accessToken = await Effect.runPromise(
+      createReservationAccessToken({
+        orderId: source.workspaceReservationId,
+        locale: "en-US",
+      })
+    );
+
+    const state = await runPostOrderState(harness, accessToken);
+    const result = await runPostOrderCreate(harness, accessToken);
+
+    expect(state).toBe("create");
+    expect(result).toEqual({ status: "created", delivered: true });
+    expect(harness.issue).toHaveBeenCalledWith({
+      paymentAttemptId,
+      buyer: {
+        kind: "person",
+        legalName: "Ada Lovelace",
+        address: personalAddress,
+      },
+    });
+  });
+
+  test("resends an existing invoice only through the customer resend path", async () => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source, { existingInvoice: {} });
+    const accessToken = await Effect.runPromise(
+      createReservationAccessToken({
+        orderId: source.workspaceReservationId,
+        locale: "en-US",
+      })
+    );
+
+    await runPostOrderResend(harness, accessToken);
+
+    expect(harness.resend).toHaveBeenCalledWith({ paymentAttemptId });
+    expect(harness.updateBilling).not.toHaveBeenCalled();
+    expect(harness.issue).not.toHaveBeenCalled();
+  });
 });
 
 const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
@@ -177,7 +231,81 @@ const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
             ),
             Layer.mock(DotyposService, harness.dotypos),
             Layer.mock(InvoiceRepository, harness.invoices),
-            Layer.mock(InvoiceEmailDeliveryService, harness.deliveries)
+            Layer.mock(InvoiceEmailDeliveryService, harness.deliveries),
+            Layer.mock(WorkspaceReservationRepository, harness.reservations)
+          )
+        )
+      )
+    ),
+    Effect.runPromise
+  );
+
+const runPostOrderState = (
+  harness: ReturnType<typeof makeHarness>,
+  accessToken: string
+) =>
+  runWithHarness(
+    harness,
+    Effect.gen(function* () {
+      const service = yield* ReservationInvoiceService;
+      return yield* service.getPostOrderState({
+        orderId: harness.source?.workspaceReservationId as never,
+        locale: "en-US",
+        accessToken,
+      });
+    })
+  );
+
+const runPostOrderCreate = (
+  harness: ReturnType<typeof makeHarness>,
+  accessToken: string
+) =>
+  runWithHarness(
+    harness,
+    Effect.gen(function* () {
+      const service = yield* ReservationInvoiceService;
+      return yield* service.createPostOrderInvoice({
+        orderId: harness.source?.workspaceReservationId as never,
+        locale: "en-US",
+        accessToken,
+        address: personalAddress,
+      });
+    })
+  );
+
+const runPostOrderResend = (
+  harness: ReturnType<typeof makeHarness>,
+  accessToken: string
+) =>
+  runWithHarness(
+    harness,
+    Effect.gen(function* () {
+      const service = yield* ReservationInvoiceService;
+      yield* service.resendPostOrderInvoice({
+        orderId: harness.source?.workspaceReservationId as never,
+        locale: "en-US",
+        accessToken,
+      });
+    })
+  );
+
+const runWithHarness = <A, E>(
+  harness: ReturnType<typeof makeHarness>,
+  effect: Effect.Effect<A, E, ReservationInvoiceService>
+) =>
+  effect.pipe(
+    Effect.provide(
+      ReservationInvoiceServiceLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(
+              AccountingDocumentSnapshotRepository,
+              harness.accountingSnapshots
+            ),
+            Layer.mock(DotyposService, harness.dotypos),
+            Layer.mock(InvoiceRepository, harness.invoices),
+            Layer.mock(InvoiceEmailDeliveryService, harness.deliveries),
+            Layer.mock(WorkspaceReservationRepository, harness.reservations)
           )
         )
       )
@@ -201,6 +329,26 @@ const makeHarness = (
   const updateBilling = mock(() =>
     options.billingFailure ? Effect.fail(options.billingFailure) : Effect.void
   );
+  const findReservation = mock(() =>
+    Effect.succeed(
+      source
+        ? ({
+            id: source.workspaceReservationId,
+            locale: source.locale,
+            paymentState: "paid",
+            reservationState: "confirmed",
+            fulfillmentState: "fulfilled",
+            fulfilledAt: Temporal.Instant.from("2026-08-13T12:00:00Z"),
+            activePaymentAttemptId: paymentAttemptId,
+            reservationPurpose: source.billing?.purpose ?? null,
+            dotyposCustomerId: source.dotyposCustomerId,
+          } as never)
+        : null
+    )
+  );
+  const resend = mock(() =>
+    Effect.succeed({ status: "delivered" as const, changed: true })
+  );
 
   return {
     accountingSnapshots: {
@@ -215,10 +363,17 @@ const makeHarness = (
     dotypos: {
       updateCustomerBillingDetails: updateBilling,
     },
-    deliveries: { deliverByPaymentAttemptId: deliver },
+    deliveries: {
+      deliverByPaymentAttemptId: deliver,
+      resendCustomerByPaymentAttemptId: resend,
+    },
+    reservations: { findById: findReservation },
+    source,
+    findReservation,
     updateBilling,
     issue,
     deliver,
+    resend,
   };
 };
 

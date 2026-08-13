@@ -152,6 +152,23 @@ describe("invoice email delivery", () => {
     );
   });
 
+  test("explicitly resends only the customer copy with a new idempotency key", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const harness = makeHarness({ sentMessages });
+
+    await runDelivery(harness);
+    const result = await runCustomerResend(harness);
+
+    expect(result).toEqual({ status: "delivered", changed: true });
+    expect(sentMessages).toHaveLength(3);
+    expect(sentMessages[2]).toMatchObject({
+      to: { email: "frozen-recipient@example.test" },
+      tags: ["workspace-invoice-customer"],
+      idempotencyKey: "workspace-invoice-customer-resend-invoice-id-2",
+    });
+    expect(harness.claimResend).toHaveBeenCalledTimes(1);
+  });
+
   test("rejects legacy snapshots without a frozen recipient", async () => {
     const sentMessages: EmailMessage[] = [];
     const { delivery: _delivery, ...legacySource } = source;
@@ -196,6 +213,32 @@ const runDelivery = (harness: ReturnType<typeof makeHarness>) =>
     Effect.runPromise
   );
 
+const runCustomerResend = (harness: ReturnType<typeof makeHarness>) =>
+  Effect.gen(function* () {
+    const service = yield* InvoiceEmailDeliveryService;
+    return yield* service.resendCustomerByPaymentAttemptId({
+      paymentAttemptId: document.paymentAttemptId,
+    });
+  }).pipe(
+    Effect.provide(
+      InvoiceEmailDeliveryService.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(InvoiceRepository, harness.invoices),
+            Layer.succeed(
+              AccountingDocumentSnapshotRepository,
+              harness.accountingSnapshots
+            ),
+            Layer.succeed(InvoiceEmailDeliveryRepository, harness.deliveries),
+            Layer.succeed(EmailServiceTag, harness.emailService),
+            Layer.succeed(EmailConfigTag, emailConfig)
+          )
+        )
+      )
+    ),
+    Effect.runPromise
+  );
+
 const makeHarness = (options: {
   readonly sentMessages: EmailMessage[];
   readonly invoice?: typeof invoice | null;
@@ -218,6 +261,11 @@ const makeHarness = (options: {
       return Effect.void;
     }
   );
+  const claimResend = mock(() => {
+    const attemptNumber = (attempts.get("customer") ?? 0) + 1;
+    attempts.set("customer", attemptNumber);
+    return Effect.succeed({ attemptNumber });
+  });
   const markFailed = mock(
     (input: Parameters<IInvoiceEmailDeliveryRepository["markFailed"]>[0]) => {
       states.set(input.audience, "failed");
@@ -226,6 +274,7 @@ const makeHarness = (options: {
   );
   const deliveries: IInvoiceEmailDeliveryRepository = {
     claim,
+    claimResend,
     markAccepted,
     markFailed,
   };
@@ -256,6 +305,7 @@ const makeHarness = (options: {
   return {
     accountingSnapshots,
     claim,
+    claimResend,
     deliveries,
     emailService,
     invoices,

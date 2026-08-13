@@ -24,6 +24,11 @@ describe("createPostHogPageUrl", () => {
         "https://deskohub.test/reservation/access/order-id?accessToken=signed-capability&step=access"
       )
     ).toBe("https://deskohub.test/reservation/access/order-id?step=access");
+    expect(
+      createPostHogPageUrl(
+        "https://deskohub.test/reservation/invoice/order-id?accessToken=signed-capability&step=invoice"
+      )
+    ).toBe("https://deskohub.test/reservation/invoice/order-id?step=invoice");
   });
 
   test("continues to strip the retired reservation status token name", () => {

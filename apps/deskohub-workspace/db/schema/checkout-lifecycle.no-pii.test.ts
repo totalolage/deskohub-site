@@ -305,15 +305,15 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(source).not.toContain("Effect.annotateLogs(input)");
   });
 
-  test("reservation action does not log future billing inputs", async () => {
-    const source = await readAppFile(
-      "features/reservation/actions/prepare-pay-state.ts"
-    );
-    const actionBoundary = source.slice(
-      source.indexOf("const preparePayStateAction = defineWorkspaceAction")
-    );
+  test("billing actions do not log their inputs", async () => {
+    const sources = await Promise.all([
+      readAppFile("features/reservation/actions/prepare-pay-state.ts"),
+      readAppFile("features/accounting/actions/manage-post-order-invoice.ts"),
+    ]);
 
-    expect(actionBoundary).toContain("logInput: false");
+    for (const source of sources) {
+      expect(source).toContain("logInput: false");
+    }
   });
 
   test("confidential database scalars are explicitly marked for query censorship", async () => {

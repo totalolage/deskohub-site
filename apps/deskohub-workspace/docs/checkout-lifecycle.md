@@ -79,6 +79,8 @@ The paths and hashes of the terms and operating rules accepted for payment are p
 
 Every new reservation declares personal or business purpose. A business reservation always includes an invoice; a personal reservation includes one only when requested. Purpose remains fixed with the reservation so later customer-profile changes cannot reclassify the transaction.
 
+A personal customer who did not request an invoice during checkout may create one later from the protected invoice link in the reservation email. The link carries the same reservation-scoped cryptographic capability used for access-code disclosure; the order ID alone never authorizes invoice lookup or creation. The page collects a fresh billing address, delivers the immutable invoice only to the reservation email captured at payment time, and allows an existing invoice to be resent to that address without exposing it.
+
 ## Privacy and accounting
 
 Workspace stores only the identifiers, states, amounts, timestamps, and immutable evidence needed to operate and recover checkout. Customer contact details, free-form notes, payment-instrument data, raw provider payloads, and access codes are excluded from ordinary local checkout records.

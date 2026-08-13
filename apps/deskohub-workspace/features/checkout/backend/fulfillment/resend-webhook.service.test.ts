@@ -693,6 +693,9 @@ describe("ResendWebhookService", () => {
       const accessLink = emailView.getByRole("link", {
         name: m.checkoutEmailCustomerAccessButton({}, { locale }),
       });
+      const invoiceLink = emailView.getByRole("link", {
+        name: m.checkoutEmailCustomerInvoiceButton({}, { locale }),
+      });
       const accessCodeTable = accessLink.closest("table");
       const tableLabel = emailView.getByText(
         m.checkoutEmailTableNumberLabel({}, { locale })
@@ -731,13 +734,19 @@ describe("ResendWebhookService", () => {
       expect(accessLink.getAttribute("href")).toContain(
         "/en-US/reservation/access/reservation-id?accessToken="
       );
+      expect(invoiceLink.getAttribute("href")).toContain(
+        "/en-US/reservation/invoice/reservation-id?accessToken="
+      );
       expect(accessCodeTable?.getAttribute("bgcolor")).toBe("#00024f");
       expect(accessCodeTable?.contains(accessLink)).toBe(true);
       expect(accessCodeTable?.getAttribute("style")).toContain(
         "background-color:#00024f"
       );
-      expect(accessCodeTable?.textContent).toBe(
+      expect(accessCodeTable?.textContent).toContain(
         m.checkoutEmailCustomerAccessButton({}, { locale })
+      );
+      expect(accessCodeTable?.textContent).toContain(
+        m.checkoutEmailCustomerInvoiceButton({}, { locale })
       );
       expect(networkHeading).toBeTruthy();
       expect(
