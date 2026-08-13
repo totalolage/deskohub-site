@@ -293,6 +293,7 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
   let preparationStateReads = 0;
   let reservationSubmitActivations = 0;
   let reservationSubmitted = false;
+  const hydrationOrder: string[] = [];
   const run = mock<Runner>(async (_command, args, options = {}) => {
     const commandArgs = args.slice(2);
 
@@ -302,6 +303,7 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
       }
       if (options.input?.includes(submitReservationScript)) {
         preparationKickoffs += 1;
+        hydrationOrder.push("prepare");
         return success();
       }
       if (options.input?.includes("__deskohubWorkspaceE2EPreparation")) {
@@ -312,7 +314,12 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
       }
     }
 
-    if (commandArgs[0] === "wait") return success();
+    if (commandArgs[0] === "wait") {
+      if (commandArgs.join(" ").includes("__reactProps$")) {
+        hydrationOrder.push("hydration");
+      }
+      return success();
+    }
     if (commandArgs[0] === "focus") {
       focusedRef = commandArgs[1];
       return success();
@@ -348,6 +355,7 @@ test("detaches long reservation preparation from one Playwright evaluation", asy
   expect(preparationKickoffs).toBe(1);
   expect(preparationStateReads).toBe(1);
   expect(reservationSubmitActivations).toBe(1);
+  expect(hydrationOrder.slice(0, 2)).toEqual(["hydration", "prepare"]);
 });
 
 test("preserves a detached reservation preparation failure without submitting", async () => {
@@ -371,6 +379,7 @@ test("preserves a detached reservation preparation failure without submitting", 
         JSON.stringify({ error: "advertised price failed", status: "failed" })
       );
     }
+    if (commandArgs[0] === "wait") return success();
     if (commandArgs[0] === "focus") {
       reservationSubmitActivations += 1;
       return success();
