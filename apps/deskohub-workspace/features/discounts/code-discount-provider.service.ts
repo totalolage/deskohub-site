@@ -104,9 +104,8 @@ export class CodeDiscountProvider extends Context.Service<
             Effect.tap(validateDiscountCodeStarted),
             Effect.tap(validateDiscountCodeUnexpired),
             Effect.bind("availability", loadCodeAvailability),
-            Effect.tap(validateCustomerNotRedeemed),
-            Effect.tap(validateCustomerNotReserved),
             Effect.tap(validateUsageAvailable),
+            Effect.tap(validateCustomerUsageAvailable),
             Effect.tap(validateCustomerAllowed),
             Effect.bind("definition", loadDiscountDefinition),
             Effect.tap(validateDiscountCodeProduct),
@@ -189,28 +188,22 @@ const validateDiscountCodeUnexpired = (input: {
     ? Effect.void
     : unavailable(input.configuration, "expired");
 
-const validateCustomerNotRedeemed = (input: {
-  readonly availability: DiscountCodeAvailability;
-  readonly configuration: DiscountCodeConfiguration;
-}) =>
-  input.availability.customerHasRedeemed
-    ? unavailable(input.configuration, "already_redeemed")
-    : Effect.void;
-
-const validateCustomerNotReserved = (input: {
-  readonly availability: DiscountCodeAvailability;
-  readonly configuration: DiscountCodeConfiguration;
-}) =>
-  input.availability.customerHasReserved
-    ? unavailable(input.configuration, "claim_conflict")
-    : Effect.void;
-
 const validateUsageAvailable = (input: {
   readonly availability: DiscountCodeAvailability;
   readonly configuration: DiscountCodeConfiguration;
 }) =>
   input.configuration.maxUses !== null &&
   input.availability.activeUseCount >= input.configuration.maxUses
+    ? unavailable(input.configuration, "usage_limit_reached")
+    : Effect.void;
+
+const validateCustomerUsageAvailable = (input: {
+  readonly availability: DiscountCodeAvailability;
+  readonly configuration: DiscountCodeConfiguration;
+}) =>
+  input.configuration.maxUsesPerCustomer !== null &&
+  input.availability.customerActiveUseCount >=
+    input.configuration.maxUsesPerCustomer
     ? unavailable(input.configuration, "usage_limit_reached")
     : Effect.void;
 

@@ -107,6 +107,7 @@ dhw discounts delete <discount-id>
 
 dhw codes create existing SUMMER10 <discount-id>
 dhw codes create percentage VIP15 --customer <customer-id> \
+  --max-uses-per-customer 2 \
   --label-en "VIP discount" --label-cs "VIP sleva" \
   --percentage 15 --product cowork
 dhw codes update <code-id> SUMMER15 <discount-id> --enabled true
@@ -125,8 +126,9 @@ The `codes create percentage` and `codes create fixed` variants create the
 discount definition and code atomically, matching the Admin UI. Add
 `--customer` to restrict the new code to one customer. Fixed values use minor
 currency units. Code validity bounds use ISO instants; omitted bounds and
-maximum uses are stored as unrestricted values. Update commands replace the
-editable resource fields, matching the corresponding Admin UI forms.
+global or per-customer maximum uses are stored as unrestricted values. Update
+commands replace the editable resource fields, matching the corresponding
+Admin UI forms.
 
 Commands that cancel reservations, delete resources, remove restrictions, revoke sessions, change a
 customer's discount group, or add a code-audience member ask for confirmation.

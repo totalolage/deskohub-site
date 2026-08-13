@@ -74,16 +74,21 @@ export class DiscountCodeRepository extends Context.Service<
         "DiscountCodeRepository.loadAvailability"
       )(function* (input: LoadDiscountCodeAvailabilityInput) {
         const queries = buildDiscountCodeAvailabilityQueries({ db, ...input });
-        const [allowlistRows, activeClaimRows] = yield* Effect.all(
-          [queries.allowlist, queries.activeClaims],
-          { concurrency: "inherit" }
-        );
+        const [allowlistRows, activeClaimRows, customerActiveClaimRows] =
+          yield* Effect.all(
+            [
+              queries.allowlist,
+              queries.activeClaims,
+              queries.customerActiveClaims,
+            ],
+            { concurrency: "inherit" }
+          );
         const availability = {
           allowlistSize: allowlistRows[0]?.allowlistSize ?? 0,
           customerAllowed: allowlistRows[0]?.customerAllowed ?? false,
           activeUseCount: activeClaimRows[0]?.activeUseCount ?? 0,
-          customerHasRedeemed: activeClaimRows[0]?.customerHasRedeemed ?? false,
-          customerHasReserved: activeClaimRows[0]?.customerHasReserved ?? false,
+          customerActiveUseCount:
+            customerActiveClaimRows[0]?.customerActiveUseCount ?? 0,
         };
 
         return yield* decodeDiscountCodeAvailability({

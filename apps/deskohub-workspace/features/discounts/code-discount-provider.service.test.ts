@@ -60,6 +60,7 @@ const configuration = (
   validFrom: null,
   validUntil: null,
   maxUses: null,
+  maxUsesPerCustomer: null,
   ...overrides,
 });
 
@@ -69,8 +70,7 @@ const availability = (
   allowlistSize: 0,
   customerAllowed: false,
   activeUseCount: 0,
-  customerHasRedeemed: false,
-  customerHasReserved: false,
+  customerActiveUseCount: 0,
   ...overrides,
 });
 
@@ -248,11 +248,6 @@ describe("CodeDiscountProvider", () => {
     ],
     ["expired", configuration({ validUntil: nowInstant }), availability()],
     [
-      "already_redeemed",
-      configuration(),
-      availability({ customerHasRedeemed: true }),
-    ],
-    [
       "usage_limit_reached",
       configuration({ maxUses: 2 }),
       availability({ activeUseCount: 2 }),
@@ -294,7 +289,11 @@ describe("CodeDiscountProvider", () => {
     const result = await runWithProvider(resolve(), {
       loadAvailability: () =>
         Effect.succeed(
-          availability({ activeUseCount: 10_000, customerAllowed: false })
+          availability({
+            activeUseCount: 10_000,
+            customerActiveUseCount: 10_000,
+            customerAllowed: false,
+          })
         ),
     });
 
@@ -336,17 +335,17 @@ describe("CodeDiscountProvider", () => {
     expect(second[0]?.claim?.codeId).toBe(secondCodeId);
   });
 
-  test("rejects a live same-customer reservation before atomic admission", async () => {
+  test("enforces the configured per-customer use limit", async () => {
     const result = await runWithProvider(resolve().pipe(Effect.result), {
+      findByCode: () =>
+        Effect.succeed(Option.some(configuration({ maxUsesPerCustomer: 2 }))),
       loadAvailability: () =>
-        Effect.succeed(
-          availability({ activeUseCount: 1, customerHasReserved: true })
-        ),
+        Effect.succeed(availability({ customerActiveUseCount: 2 })),
     });
 
     expect(result).toMatchObject({
       _tag: "Failure",
-      failure: { reason: "claim_conflict", codeId },
+      failure: { reason: "usage_limit_reached", codeId },
     });
   });
 

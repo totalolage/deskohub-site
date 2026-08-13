@@ -866,6 +866,7 @@ export const AdministrationDiscountCode = Schema.Struct({
   validFrom: Schema.NullOr(Schema.String),
   validUntil: Schema.NullOr(Schema.String),
   maxUses: Schema.NullOr(Schema.Number),
+  maxUsesPerCustomer: Schema.NullOr(Schema.Number),
   audienceSize: Schema.Number,
   reservedUses: Schema.Number,
   redeemedUses: Schema.Number,
@@ -1047,6 +1048,9 @@ export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
   validFrom: Schema.NullOr(AdministrationInstant),
   validUntil: Schema.NullOr(AdministrationInstant),
   maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+  maxUsesPerCustomer: Schema.optional(
+    Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))
+  ),
 }).check(administrationDiscountCodeWindow);
 export type AdministrationDiscountCodeConfigurationInput =
   typeof AdministrationDiscountCodeConfigurationInput.Type;
