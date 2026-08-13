@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.7.0...dhw-v1.8.0) (2026-08-13)
+
+
+### Features
+
+* **dhw:** add per-customer discount use limits ([b254679](https://github.com/totalolage/deskohub-site/commit/b25467996d641395478758fe0050cbfbea8888cb))
+
 ## [1.7.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.6.0...dhw-v1.7.0) (2026-08-13)
 
 
