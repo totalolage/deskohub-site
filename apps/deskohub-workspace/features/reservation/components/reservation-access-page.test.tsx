@@ -43,18 +43,27 @@ describe("ReservationAccessPage", () => {
       <ReservationAccessPage
         access={{
           state: "available",
-          code: "SYNTHETIC",
+          code: "2468",
           unavailableAt: Temporal.Instant.from("2026-06-20T11:30:00Z"),
         }}
         locale="en-US"
       />
     );
 
-    const code = view.getByText("SYNTHETIC");
+    const code = view.container.querySelector("[data-reservation-access-code]");
+    if (!code) throw new Error("Access code output missing");
     expect(code.getAttribute("data-ph-mask")).toBe("");
     expect(code.getAttribute("data-ph-no-capture")).toBe("");
     expect(code.getAttribute("data-reservation-access-code")).toBe("");
-    expect(view.getByText("Your current access PIN")).toBeDefined();
+    expect(code.getAttribute("aria-label")).toBe("2 4 6 8");
+    expect(Array.from(code.children, (child) => child.textContent)).toEqual([
+      "2",
+      "4",
+      "6",
+      "8",
+    ]);
+    expect(view.getByText("Your access PIN")).toBeDefined();
+    expect(view.getByText(/Available until/)).toBeDefined();
     expect(view.container.querySelector("[data-reservation-access]")).toBe(
       code.closest("[data-reservation-access]")
     );

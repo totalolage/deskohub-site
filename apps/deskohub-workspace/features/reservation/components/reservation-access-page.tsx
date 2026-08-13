@@ -20,7 +20,7 @@ export function ReservationAccessPage({
   const copy = Match.value(access).pipe(
     Match.discriminatorsExhaustive("state")({
       upcoming: ({ availableAt }) => ({
-        title: m.reservationAccessUpcomingTitle({}, { locale }),
+        title: m.reservationAccessTitle({}, { locale }),
         lead: m.reservationAccessUpcomingLead(
           {
             availableAt: formatReservationDisplayDateTime(availableAt, locale),
@@ -28,8 +28,8 @@ export function ReservationAccessPage({
           { locale }
         ),
       }),
-      available: ({ code, unavailableAt }) => ({
-        title: m.reservationAccessAvailableTitle({}, { locale }),
+      available: ({ unavailableAt }) => ({
+        title: m.reservationAccessTitle({}, { locale }),
         lead: m.reservationAccessAvailableLead(
           {
             unavailableAt: formatReservationDisplayDateTime(
@@ -39,7 +39,6 @@ export function ReservationAccessPage({
           },
           { locale }
         ),
-        code,
       }),
       ended: () => ({
         title: m.reservationAccessEndedTitle({}, { locale }),
@@ -68,7 +67,7 @@ export function ReservationAccessPage({
               <h1 className="text-balance text-[1.75rem] leading-none sm:text-5xl">
                 {copy.title}
               </h1>
-              {access.state !== "upcoming" && (
+              {access.state !== "upcoming" && access.state !== "available" && (
                 <p className="mt-5 text-lg leading-8 text-navy-blue/70">
                   {copy.lead}
                   {"contactLink" in copy && (
@@ -101,23 +100,33 @@ export function ReservationAccessPage({
               />
             </>
           )}
-        </div>
 
-        {"code" in copy && copy.code && (
-          <div className="border-t border-navy-blue/10 bg-navy-blue px-6 py-8 text-center text-white sm:px-10 sm:py-10">
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-aquamarine-green">
-              {m.reservationAccessPinLabel({}, { locale })}
-            </p>
-            <output
-              className="mt-3 block font-mono text-5xl font-bold tracking-[0.16em] text-white sm:text-6xl"
-              data-ph-mask=""
-              data-ph-no-capture=""
-              data-reservation-access-code=""
-            >
-              {copy.code}
-            </output>
-          </div>
-        )}
+          {access.state === "available" && (
+            <div className="mt-10 sm:mt-12">
+              <output
+                aria-label={Array.from(access.code).join(" ")}
+                className="flex flex-wrap justify-center gap-[clamp(0.25rem,1.5vw,0.75rem)]"
+                data-ph-mask=""
+                data-ph-no-capture=""
+                data-reservation-access-code=""
+              >
+                {Array.from(access.code).map((character, index) => (
+                  <span
+                    aria-hidden="true"
+                    className="grid h-[clamp(3.75rem,16vw,5.75rem)] w-[clamp(1.5rem,7.5vw,4rem)] place-items-center rounded-xl bg-navy-blue/5 font-mono text-[clamp(1.35rem,6vw,2.6rem)] font-medium tabular-nums text-navy-blue"
+                    key={`${index}-${character}`}
+                  >
+                    {character}
+                  </span>
+                ))}
+              </output>
+
+              <p className="mt-10 text-center font-mono text-sm text-navy-blue/60 sm:mt-14">
+                {copy.lead}
+              </p>
+            </div>
+          )}
+        </div>
       </section>
     </CheckoutFlowLayout>
   );
