@@ -133,6 +133,71 @@ test("retrying an already-cancelled reservation does not email again", async () 
   expect(sendCancellationEmail).not.toHaveBeenCalled();
 });
 
+test("does not adopt a pre-existing provider cancellation", async () => {
+  const { WorkspaceReservationEmailService } = await import(
+    "@/features/checkout/backend/fulfillment/workspace-reservation-email.service"
+  );
+  const { WorkspaceReservationRepository } = await import(
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const { WorkspaceReservationService } = await import(
+    "@/features/reservation/backend/workspace-reservation.service"
+  );
+  const { ReservationAdministrationError, ReservationAdministrationService } =
+    await import("./reservation-administration.service");
+  const id = Schema.decodeUnknownSync(workspaceReservationIdSchema)(
+    "reservation-provider-cancelled"
+  );
+  const claimAdministrationCancellation = mock(() =>
+    Effect.die("must not claim")
+  );
+
+  const result = await Effect.gen(function* () {
+    const service = yield* ReservationAdministrationService;
+    return yield* service.cancel({
+      reservationId: id,
+      sendCancellationEmail: true,
+    });
+  }).pipe(
+    Effect.provide(
+      ReservationAdministrationService.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(DotyposService, {}),
+            Layer.mock(WorkspaceReservationEmailService, {}),
+            Layer.mock(WorkspaceReservationRepository, {
+              claimAdministrationCancellation,
+              findById: () =>
+                Effect.succeed({
+                  id,
+                  dotyposReservationId: "dotypos-provider-cancelled",
+                  fulfillmentState: "fulfilled",
+                  paymentState: "paid",
+                  reservationState: "confirmed",
+                  updatedAt: Temporal.Now.instant(),
+                } as never),
+            }),
+            Layer.mock(WorkspaceReservationService, {
+              getReservation: () =>
+                Effect.succeed({
+                  id,
+                  dotyposReservationId: "dotypos-provider-cancelled",
+                  providerStatus: "CANCELLED",
+                } as never),
+            })
+          )
+        )
+      )
+    ),
+    Effect.flip,
+    Effect.runPromise
+  );
+
+  expect(result).toBeInstanceOf(ReservationAdministrationError);
+  expect(result).toMatchObject({ code: "not_cancellable" });
+  expect(claimAdministrationCancellation).not.toHaveBeenCalled();
+});
+
 test("resumes a stale cancellation after an interrupted request", async () => {
   const { WorkspaceReservationEmailService } = await import(
     "@/features/checkout/backend/fulfillment/workspace-reservation-email.service"

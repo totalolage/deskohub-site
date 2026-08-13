@@ -99,6 +99,18 @@ export class ReservationAdministrationService extends Context.Service<
                   )
                 )
               );
+            if (
+              details.providerStatus === "CANCELLED" &&
+              !["cancelling", "cancellation_failed"].includes(
+                current.reservationState
+              )
+            ) {
+              return yield* new ReservationAdministrationError({
+                code: "not_cancellable",
+                message:
+                  "Dotypos already reports this reservation as cancelled. Use the recovery workflow instead.",
+              });
+            }
             const claimed = yield* reservations
               .claimAdministrationCancellation({
                 id: current.id,
