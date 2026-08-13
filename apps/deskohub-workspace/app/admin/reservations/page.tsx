@@ -22,6 +22,10 @@ import {
   loadAdministrationReservations,
   loadAdministrationReservationsPage,
 } from "@/features/administration/page-data.server";
+import {
+  type AdministrationReservationDateRange,
+  getAdministrationReservationDateShortcuts,
+} from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
 
@@ -123,6 +127,23 @@ function ReservationFilters({
 }: {
   readonly input: ReservationsData["input"];
 }) {
+  const shortcutRanges = getAdministrationReservationDateShortcuts();
+  const shortcutHref = (range: AdministrationReservationDateRange) => {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries({
+      customerId: input.customerId,
+      direction: input.direction,
+      from: range.from,
+      sort: input.sort,
+      status: input.status,
+      to: range.to,
+      type: input.type,
+    })) {
+      if (value) search.set(key, value);
+    }
+    return `/admin/reservations?${search.toString()}`;
+  };
+
   return (
     <AdministrationFilterForm className="2xl:grid-cols-[10rem_12rem_10rem_10rem]">
       <AdministrationFilterField
@@ -181,23 +202,41 @@ function ReservationFilters({
       )}
       <input name="sort" type="hidden" value={input.sort} />
       <input name="direction" type="hidden" value={input.direction} />
-      <Button className="min-h-10 2xl:col-start-1" size="sm" type="submit">
-        Apply filters
-      </Button>
-      {(input.customerId ||
-        input.from ||
-        input.status ||
-        input.to ||
-        input.type) && (
-        <Button
-          asChild
-          className="min-h-10 2xl:col-start-2"
-          size="sm"
-          variant="ghost"
+      <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between 2xl:col-span-4">
+        <nav
+          aria-label="Reservation date shortcuts"
+          className="flex flex-wrap items-center gap-2"
         >
-          <Link href="/admin/reservations">Clear</Link>
-        </Button>
-      )}
+          {(
+            [
+              ["Today", shortcutRanges.today],
+              ["Upcoming", shortcutRanges.upcoming],
+              ["Past", shortcutRanges.past],
+            ] as const
+          ).map(([label, range]) => (
+            <Button asChild key={label} size="sm" variant="secondary">
+              <Link href={shortcutHref(range)}>{label}</Link>
+            </Button>
+          ))}
+        </nav>
+        <fieldset
+          aria-label="Filter actions"
+          className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
+        >
+          {(input.customerId ||
+            input.from ||
+            input.status ||
+            input.to ||
+            input.type) && (
+            <Button asChild className="min-h-10" size="sm" variant="ghost">
+              <Link href="/admin/reservations">Clear</Link>
+            </Button>
+          )}
+          <Button className="min-h-10" size="sm" type="submit">
+            Apply filters
+          </Button>
+        </fieldset>
+      </div>
     </AdministrationFilterForm>
   );
 }
