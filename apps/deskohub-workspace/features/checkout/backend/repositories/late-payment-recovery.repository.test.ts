@@ -26,6 +26,16 @@ test("only treats later checkout-session reservations as superseding", async () 
   ).toHaveLength(2);
 });
 
+test("rechecks supersession when settling with the original reservation", async () => {
+  const source = await Bun.file(
+    new URL("./late-payment-recovery.repository.ts", import.meta.url)
+  ).text();
+
+  expect(source).not.toContain(
+    "if (input.recoveredDotyposReservationId) {\n                const [newer]"
+  );
+});
+
 test("redeems the attempt's discount claim in recovered settlements", async () => {
   const source = await Bun.file(
     new URL("./late-payment-recovery.repository.ts", import.meta.url)
