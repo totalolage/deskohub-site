@@ -230,7 +230,7 @@ function BillingTextField({
   readonly name: BillingFieldName;
   readonly optional?: boolean;
 }) {
-  const { control } = useFormContext();
+  const { control } = useFormContext<ReservationBillingFormValues>();
 
   return (
     <FormField
@@ -253,7 +253,7 @@ function BillingTextField({
                 )
               }
               required={!optional}
-              value={typeof field.value === "string" ? field.value : ""}
+              value={field.value ?? ""}
               variant={fieldState.error ? "error" : "default"}
             />
           </FormControl>

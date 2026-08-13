@@ -294,23 +294,14 @@ describe("WorkspacePaidFulfillmentService", () => {
         WorkspacePaidFulfillmentServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, {
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 markFulfillmentFailed,
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(
-                DotyposService,
-                {} as typeof DotyposService.Service
-              ),
-              Layer.succeed(
-                WorkspaceReservationService,
-                {} as IWorkspaceReservationService
-              ),
-              Layer.succeed(
-                WorkspaceReservationEmailService,
-                {} as IWorkspaceReservationEmailService
-              ),
-              Layer.succeed(PostHogEventService, {
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(WorkspaceReservationService, {}),
+              Layer.mock(WorkspaceReservationEmailService, {}),
+              Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
               }),
               Layer.mock(ReservationInvoiceService, {

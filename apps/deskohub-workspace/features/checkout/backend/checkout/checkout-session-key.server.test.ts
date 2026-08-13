@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
+import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 
 mock.module("server-only", () => ({}));
@@ -75,7 +76,7 @@ describe("checkout attempt key", () => {
       entryTier: "basic",
       coffee: false,
     };
-    const getKey = (billing: unknown) =>
+    const getKey = (billing: ReservationBillingSelectionInput) =>
       deriveCheckoutAttemptKey({
         checkoutSessionId: "session-id",
         checkoutAttemptId: "attempt-id",

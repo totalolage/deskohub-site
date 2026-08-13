@@ -164,13 +164,13 @@ const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
       ReservationInvoiceServiceLive.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(
+            Layer.mock(
               AccountingDocumentSnapshotRepository,
               harness.accountingSnapshots
             ),
-            Layer.succeed(DotyposService, harness.dotypos),
-            Layer.succeed(InvoiceRepository, harness.invoices),
-            Layer.succeed(InvoiceEmailDeliveryService, harness.deliveries)
+            Layer.mock(DotyposService, harness.dotypos),
+            Layer.mock(InvoiceRepository, harness.invoices),
+            Layer.mock(InvoiceEmailDeliveryService, harness.deliveries)
           )
         )
       )
@@ -207,7 +207,7 @@ const makeHarness = (
     },
     dotypos: {
       updateCustomerBillingDetails: updateBilling,
-    } as unknown as typeof DotyposService.Service,
+    },
     deliveries: { deliverByPaymentAttemptId: deliver },
     updateBilling,
     issue,

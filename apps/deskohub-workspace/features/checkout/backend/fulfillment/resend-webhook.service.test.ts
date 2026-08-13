@@ -10,10 +10,7 @@ import {
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer, Logger } from "effect";
-import {
-  ReservationInvoiceService,
-  type ReservationInvoiceService as ReservationInvoiceServiceShape,
-} from "@/features/accounting/backend/reservation-invoice";
+import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice";
 import { m } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -139,8 +136,8 @@ const validRawWebhookRequest: RawWebhookRequest = {
 };
 
 const processWebhook = async (input: {
-  readonly reservations: WorkspaceReservationRepositoryType;
-  readonly reservationInvoices?: ReservationInvoiceServiceShape;
+  readonly reservations: Partial<WorkspaceReservationRepositoryType>;
+  readonly reservationInvoices?: ReservationInvoiceService;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
 }) => {
@@ -149,8 +146,8 @@ const processWebhook = async (input: {
 };
 
 const processWebhookError = async (input: {
-  readonly reservations: WorkspaceReservationRepositoryType;
-  readonly reservationInvoices?: ReservationInvoiceServiceShape;
+  readonly reservations: Partial<WorkspaceReservationRepositoryType>;
+  readonly reservationInvoices?: ReservationInvoiceService;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
 }) => {
@@ -159,8 +156,8 @@ const processWebhookError = async (input: {
 };
 
 const processWebhookEffect = async (input: {
-  readonly reservations: WorkspaceReservationRepositoryType;
-  readonly reservationInvoices?: ReservationInvoiceServiceShape;
+  readonly reservations: Partial<WorkspaceReservationRepositoryType>;
+  readonly reservationInvoices?: ReservationInvoiceService;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
 }) => {
@@ -191,18 +188,18 @@ const processWebhookEffect = async (input: {
   }).pipe(
     Effect.provide(
       ResendWebhookServiceLive.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.mock(WorkspaceReservationRepository, input.reservations),
-              Layer.mock(
-                ReservationInvoiceService,
-                input.reservationInvoices ?? {
-                  processByPaymentAttemptId: () => Effect.void,
-                }
-              ),
-              Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
-              }),
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(WorkspaceReservationRepository, input.reservations),
+            Layer.mock(
+              ReservationInvoiceService,
+              input.reservationInvoices ?? {
+                processByPaymentAttemptId: () => Effect.void,
+              }
+            ),
+            Layer.mock(PostHogEventService, {
+              capture: () => Effect.void,
+            }),
             Layer.succeed(ResendWebhookRuntimeConfig, config)
           )
         )
@@ -276,7 +273,7 @@ describe("ResendWebhookService", () => {
         } as never)
       ),
       markFulfilled,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const error = await processWebhookError({
       reservations,
