@@ -157,6 +157,11 @@ export async function ReservationAdministrationDetail({
                       reservation.latestPayment.updatedAt
                     )}
                   </p>
+                  {reservation.latestPayment.refundState === "required" && (
+                    <p className="mt-2 font-semibold text-burned-orange-ink text-sm">
+                      Needs refund
+                    </p>
+                  )}
                   {reservation.latestPayment.providerOrderId && (
                     <NexiOrderLink
                       accessibleLabel={`Payment ${reservation.latestPayment.providerOrderId}`}

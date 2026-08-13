@@ -15,6 +15,7 @@ import {
   AdministrationNexiOrderId,
   AdministrationOperationQuery,
   AdministrationOrderQuery,
+  AdministrationPaymentAttempt,
   AdministrationPaymentAttemptId,
   AdministrationReservationCancellationInput,
   AdministrationReservationLookupQuery,
@@ -149,6 +150,23 @@ describe("administration contract", () => {
         sendCancellationEmail: true,
       })
     ).toEqual({ sendCancellationEmail: true });
+  });
+
+  test("exposes refund work without changing successful payment state", () => {
+    const attempt = Schema.decodeUnknownSync(AdministrationPaymentAttempt)({
+      id: "payment-attempt-id",
+      state: "paid",
+      refundState: "required",
+      providerOrderId: "order-id",
+      providerLabel: "Online payment",
+      stateLabel: "Paid",
+      amount: { value: 1000, exponent: 2, currency: "CZK" },
+      createdAt: "2026-08-13T12:00:00Z",
+      providerOrderCreatedAt: "2026-08-13T12:00:01Z",
+      updatedAt: "2026-08-13T12:01:00Z",
+    });
+
+    expect(attempt).toMatchObject({ state: "paid", refundState: "required" });
   });
 
   test("accepts office reservations throughout the read contract", () => {

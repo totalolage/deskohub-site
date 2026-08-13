@@ -8,6 +8,7 @@ import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
+  paymentAttempts,
   type WorkspaceReservation as WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
@@ -154,7 +155,7 @@ export interface WorkspaceReservationRepository {
     readonly cancelledAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
+    EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
   >;
   readonly completeSupersessionAndCreateDraft: (input: {
     readonly cancelledReservationId: WorkspaceReservationId;
@@ -619,27 +620,43 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       markAdministrationCancelled: Effect.fn(
         "workspaceReservations.markAdministrationCancelled"
       )(function* (input) {
-        const updated = yield* db
-          .update(workspaceReservations)
-          .set({
-            reservationState: "cancelled",
-            reservationCancelledAt: input.cancelledAt,
-            failureCode: null,
-            updatedAt: Temporal.Now.instant(),
+        const transaction = db.transaction((tx) =>
+          Effect.gen(function* () {
+            const updatedAt = Temporal.Now.instant();
+            const updated = yield* tx
+              .update(workspaceReservations)
+              .set({
+                reservationState: "cancelled",
+                reservationCancelledAt: input.cancelledAt,
+                failureCode: null,
+                updatedAt,
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.id),
+                  eq(workspaceReservations.reservationState, "cancelling")
+                )
+              )
+              .returning({ id: workspaceReservations.id });
+            yield* ensureUpdated(
+              updated,
+              "workspaceReservations.markAdministrationCancelled",
+              input.id,
+              "Only an operator-cancelled reservation can be marked cancelled."
+            );
+            yield* tx
+              .update(paymentAttempts)
+              .set({ refundState: "required", updatedAt })
+              .where(
+                and(
+                  eq(paymentAttempts.workspaceReservationId, input.id),
+                  eq(paymentAttempts.provider, "nexi"),
+                  eq(paymentAttempts.state, "paid")
+                )
+              );
           })
-          .where(
-            and(
-              eq(workspaceReservations.id, input.id),
-              eq(workspaceReservations.reservationState, "cancelling")
-            )
-          )
-          .returning({ id: workspaceReservations.id });
-        yield* ensureUpdated(
-          updated,
-          "workspaceReservations.markAdministrationCancelled",
-          input.id,
-          "Only an operator-cancelled reservation can be marked cancelled."
         );
+        yield* transaction;
       }),
       completeSupersessionAndCreateDraft: Effect.fn(
         "workspaceReservations.completeSupersessionAndCreateDraft"

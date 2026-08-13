@@ -83,4 +83,19 @@ describe("WorkspaceReservationRepository", () => {
       "lte(workspaceReservations.reservationHoldExpiresAt, input.now)"
     );
   });
+
+  test("marks paid Nexi attempts as requiring a refund with admin cancellation", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "markAdministrationCancelled: Effect.fn(",
+      "completeSupersessionAndCreateDraft: Effect.fn("
+    );
+
+    expect(section).toContain("db.transaction");
+    expect(section).toContain(".update(paymentAttempts)");
+    expect(section).toContain('refundState: "required"');
+    expect(section).toContain('eq(paymentAttempts.provider, "nexi")');
+    expect(section).toContain('eq(paymentAttempts.state, "paid")');
+  });
 });

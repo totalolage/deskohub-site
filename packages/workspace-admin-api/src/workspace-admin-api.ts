@@ -442,6 +442,7 @@ export const AdministrationPaymentAttempt = Schema.Struct({
     "cancelled",
     "expired",
   ]),
+  refundState: Schema.Literals(["not_required", "required"]),
   providerOrderId: Schema.NullOr(AdministrationNexiOrderId),
   providerLabel: Schema.String,
   stateLabel: Schema.String,

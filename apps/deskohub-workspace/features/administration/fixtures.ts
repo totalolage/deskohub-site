@@ -70,6 +70,7 @@ const makeFixturePayment = (
 ): AdministrationPaymentAttempt => ({
   id: fixturePaymentAttemptId(`payment-${id}`),
   state: "paid",
+  refundState: "not_required",
   providerOrderId: fixtureNexiOrderId(`ORDER-${id}`),
   providerLabel: "Online payment",
   stateLabel: "Paid",
@@ -385,6 +386,7 @@ export const loadFixtureReservation = (
       {
         id: fixturePaymentAttemptId("fixture-payment"),
         state: "paid",
+        refundState: "not_required",
         providerOrderId: fixtureNexiOrderId("DADMINFIXTUREPAYMENT"),
         providerLabel: "Online payment",
         stateLabel: "Paid",

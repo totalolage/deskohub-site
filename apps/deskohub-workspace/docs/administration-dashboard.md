@@ -8,7 +8,7 @@ The primary navigation is limited to Overview, Reservations, Customers, Codes, a
 
 ## Operator responsibilities
 
-Viewing reservation and customer data does not refresh payment state, retry fulfillment, or repair an external record. An authorized operator may explicitly cancel an eligible reservation from its detail page and choose whether to send the customer a localized cancellation email. Cancellation does not change or refund an existing payment.
+Viewing reservation and customer data does not refresh payment state, retry fulfillment, or repair an external record. An authorized operator may explicitly cancel an eligible reservation from its detail page and choose whether to send the customer a localized cancellation email. Cancelling preserves successful settlement facts and atomically marks a paid Nexi attempt as needing a refund; it does not issue the refund automatically. Zero-total internal payments do not require a refund.
 
 Discount definitions are managed through the code or sale that uses them. Creating a code may create its benefit at the same time. Historical applications and redemptions remain immutable.
 

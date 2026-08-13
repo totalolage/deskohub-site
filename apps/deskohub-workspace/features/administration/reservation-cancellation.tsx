@@ -83,7 +83,8 @@ export function ReservationCancellation({
               <DialogTitle>Cancel this reservation?</DialogTitle>
               <DialogDescription>
                 This cancels the booking in Dotypos and cannot be undone. Any
-                payment is unaffected and is not refunded automatically.
+                paid online payment will be marked as needing a refund; no
+                refund is issued automatically.
               </DialogDescription>
             </DialogHeader>
             <label

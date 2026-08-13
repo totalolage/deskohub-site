@@ -42,6 +42,7 @@ import {
   discountApplications,
   legalEvidenceEvents,
   type PaymentAttemptState,
+  type PaymentRefundState,
   paymentAttempts,
   type WorkspaceReservation,
   webhookEvents,
@@ -209,6 +210,7 @@ export type AdministrationBookingDetail = {
 export type AdministrationPaymentAttempt = {
   readonly id: PaymentAttemptId;
   readonly state: PaymentAttemptState;
+  readonly refundState: PaymentRefundState;
   readonly providerOrderId: NexiOrderId | null;
   readonly providerLabel: string;
   readonly stateLabel: string;
@@ -408,6 +410,7 @@ type SafePaymentAttemptRow = {
   readonly providerOrderId: NexiOrderId | null;
   readonly provider: "internal" | "nexi";
   readonly state: PaymentAttemptState;
+  readonly refundState: PaymentRefundState;
   readonly amountValue: number;
   readonly amountExponent: number;
   readonly currency: string;
@@ -422,6 +425,7 @@ const safePaymentAttemptSelection = {
   providerOrderId: paymentAttempts.providerOrderId,
   provider: paymentAttempts.provider,
   state: paymentAttempts.state,
+  refundState: paymentAttempts.refundState,
   amountValue: paymentAttempts.amountValue,
   amountExponent: paymentAttempts.amountExponent,
   currency: paymentAttempts.currency,
@@ -435,6 +439,7 @@ const toAdministrationPaymentAttempt = (
 ): AdministrationPaymentAttempt => ({
   id: attempt.id,
   state: attempt.state,
+  refundState: attempt.refundState,
   providerOrderId: attempt.providerOrderId,
   providerLabel:
     attempt.provider === "internal" ? "Included" : "Online payment",
@@ -489,6 +494,16 @@ const toReservationSummary = ({
   readonly live: LiveReservationDetails;
   readonly row: SafeReservationRow;
 }): AdministrationReservationSummary => {
+  let statusNote: string | null = null;
+  if (latestPayment?.refundState === "required") {
+    statusNote = "Needs refund";
+  } else if (
+    live.reservation?.status === "CANCELLED" &&
+    row.reservationState !== "cancelled"
+  ) {
+    statusNote = "Cancelled in Dotypos";
+  }
+
   return {
     id: row.id,
     customerId: row.dotyposCustomerId,
@@ -509,11 +524,7 @@ const toReservationSummary = ({
       paymentState: row.paymentState,
       reservationState: row.reservationState,
     }),
-    statusNote:
-      live.reservation?.status === "CANCELLED" &&
-      row.reservationState !== "cancelled"
-        ? "Cancelled in Dotypos"
-        : null,
+    statusNote,
     createdAt: toIsoString(row.createdAt),
     latestPayment,
     updatedAt: toIsoString(row.updatedAt),
