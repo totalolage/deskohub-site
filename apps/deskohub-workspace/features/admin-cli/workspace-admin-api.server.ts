@@ -21,6 +21,10 @@ import {
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "@/features/administration/payment-administration-filters";
+import {
+  type ReservationAdministrationError,
+  ReservationAdministrationService,
+} from "@/features/administration/reservation-administration.service";
 import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
 import {
   type AdminCustomerProfile,
@@ -87,6 +91,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
+      const reservationAdministration = yield* ReservationAdministrationService;
       const authentication = yield* CliAuthentication;
       const discounts = yield* DiscountAdministration;
       const mutationIdempotency = yield* CliMutationIdempotency;
@@ -108,6 +113,14 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   })
             )
           )
+        )
+        .handle("cancelReservation", ({ params, payload }) =>
+          reservationAdministration
+            .cancel({
+              reservationId: params.reservationId,
+              sendCancellationEmail: payload.sendCancellationEmail,
+            })
+            .pipe(Effect.mapError(mapReservationCancellationFailure))
         )
         .handle("findReservation", ({ query }) =>
           administration.findReservationId(query.identifier).pipe(
@@ -349,6 +362,18 @@ const mapDiscountMutationFailure = (
     Match.orElse(makeServiceUnavailable)
   );
 
+const mapReservationCancellationFailure = (
+  cause: ReservationAdministrationError
+) => {
+  if (cause.code === "not_found") {
+    return new CliResourceNotFound({ message: cause.message });
+  }
+  if (cause.code === "not_cancellable") {
+    return new CliMutationRejected({ message: cause.message });
+  }
+  return makeServiceUnavailable();
+};
+
 const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
   ...profile,
   codes: profile.codes.map(toCliDiscountCode),
@@ -405,6 +430,7 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(AdministrationLive),
+    Layer.provide(ReservationAdministrationService.LiveWithDependencies),
     Layer.provide(DiscountAdministrationLive),
     Layer.provide(CliMutationIdempotency.LiveWithDependencies),
     Layer.provide(CliAuthenticationAdmission.Live),

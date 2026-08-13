@@ -700,9 +700,25 @@ export const AdministrationReservationDetail = Schema.Struct({
     dotyposReservationId: Schema.NullOr(AdministrationDotyposReservationId),
     customerId: AdministrationDotyposCustomerId,
   }),
+  canCancel: Schema.Boolean,
 });
 export type AdministrationReservationDetail =
   typeof AdministrationReservationDetail.Type;
+
+export const AdministrationReservationCancellationInput = Schema.Struct({
+  sendCancellationEmail: Schema.Boolean,
+}).annotate({
+  parseOptions: { errors: "all", onExcessProperty: "error" },
+});
+export type AdministrationReservationCancellationInput =
+  typeof AdministrationReservationCancellationInput.Type;
+
+export const AdministrationReservationCancellationResult = Schema.Struct({
+  outcome: Schema.Literals(["cancelled", "already_cancelled"]),
+  email: Schema.Literals(["not_requested", "sent", "failed"]),
+});
+export type AdministrationReservationCancellationResult =
+  typeof AdministrationReservationCancellationResult.Type;
 
 export const AdministrationCustomerSummary = Schema.Struct({
   customer: Schema.NullOr(AdministrationCustomer),
@@ -1248,6 +1264,22 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       success: AdministrationReservationDetail,
       error: CliResourceNotFound.schema,
     })
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "cancelReservation",
+      "/reservations/:reservationId/cancellation",
+      {
+        params: { reservationId: AdministrationWorkspaceReservationId },
+        payload: AdministrationReservationCancellationInput,
+        success: AdministrationReservationCancellationResult,
+        error: [
+          CliMutationRejected.schema,
+          CliResourceNotFound.schema,
+          CliServiceUnavailable.schema,
+        ],
+      }
+    )
   )
   .add(
     HttpApiEndpoint.get("findReservation", "/reservations/find", {

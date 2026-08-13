@@ -316,6 +316,7 @@ export const loadFixtureReservation = (
     .toString();
   return {
     reservation,
+    canCancel: true,
     timeline: [
       {
         id: "fixture-checkout",

@@ -134,10 +134,23 @@ export interface WorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
+  readonly claimAdministrationCancellation: (
+    id: WorkspaceReservationId
+  ) => Effect.Effect<
+    WorkspaceReservation | null,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly markCancelled: (input: {
     readonly id: WorkspaceReservationId;
     readonly cancelledAt: Temporal.Instant;
     readonly holdExpiredAt?: Temporal.Instant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
+  readonly markAdministrationCancelled: (input: {
+    readonly id: WorkspaceReservationId;
+    readonly cancelledAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
@@ -154,6 +167,13 @@ export interface WorkspaceReservationRepository {
     | WorkspaceReservationStateError
   >;
   readonly markCancellationFailed: (input: {
+    readonly id: WorkspaceReservationId;
+    readonly failureCode: string;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
+  readonly markAdministrationCancellationFailed: (input: {
     readonly id: WorkspaceReservationId;
     readonly failureCode: string;
   }) => Effect.Effect<
@@ -535,6 +555,30 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .returning();
         return yield* decodeOptionalWorkspaceReservation(claimed);
       }),
+      claimAdministrationCancellation: Effect.fn(
+        "workspaceReservations.claimAdministrationCancellation"
+      )(function* (id) {
+        const [claimed] = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationState: "cancelling",
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, id),
+              inArray(workspaceReservations.reservationState, [
+                "held",
+                "hold_expired",
+                "confirmed",
+                "cancellation_failed",
+              ]),
+              sql`${workspaceReservations.fulfillmentState} <> 'processing'`
+            )
+          )
+          .returning();
+        return yield* decodeOptionalWorkspaceReservation(claimed);
+      }),
       markCancelled: Effect.fn("workspaceReservations.markCancelled")(
         function* (input) {
           const updated = yield* db
@@ -562,6 +606,31 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           );
         }
       ),
+      markAdministrationCancelled: Effect.fn(
+        "workspaceReservations.markAdministrationCancelled"
+      )(function* (input) {
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationState: "cancelled",
+            reservationCancelledAt: input.cancelledAt,
+            failureCode: null,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "cancelling")
+            )
+          )
+          .returning({ id: workspaceReservations.id });
+        yield* ensureUpdated(
+          updated,
+          "workspaceReservations.markAdministrationCancelled",
+          input.id,
+          "Only an operator-cancelled reservation can be marked cancelled."
+        );
+      }),
       completeSupersessionAndCreateDraft: Effect.fn(
         "workspaceReservations.completeSupersessionAndCreateDraft"
       )(function* (input) {
@@ -653,6 +722,30 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           "Workspace reservation was not found."
         );
       }),
+      markAdministrationCancellationFailed: Effect.fn(
+        "workspaceReservations.markAdministrationCancellationFailed"
+      )(function* (input) {
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationState: "cancellation_failed",
+            failureCode: input.failureCode,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "cancelling")
+            )
+          )
+          .returning({ id: workspaceReservations.id });
+        yield* ensureUpdated(
+          updated,
+          "workspaceReservations.markAdministrationCancellationFailed",
+          input.id,
+          "Workspace reservation was not being cancelled."
+        );
+      }),
       recordHoldCleanupSkipped: Effect.fn(
         "workspaceReservations.recordHoldCleanupSkipped"
       )(function* (input) {
@@ -695,6 +788,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             and(
               eq(workspaceReservations.id, input.id),
               eq(workspaceReservations.paymentState, "paid"),
+              inArray(workspaceReservations.reservationState, [
+                "held",
+                "confirmed",
+              ]),
               or(
                 inArray(workspaceReservations.fulfillmentState, [
                   "not_started",

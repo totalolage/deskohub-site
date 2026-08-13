@@ -5,6 +5,7 @@ import type {
   ReservationState,
 } from "@/db/schema";
 import {
+  canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
 } from "./reservation-status";
@@ -21,6 +22,16 @@ const status = (
   });
 
 describe("administration reservation status", () => {
+  test("does not allow cancellation while fulfillment is processing", () => {
+    expect(
+      canCancelReservation({
+        dotyposReservationId: "dotypos-reservation",
+        fulfillmentState: "processing",
+        reservationState: "confirmed",
+      })
+    ).toBe(false);
+  });
+
   test.each([
     ["confirmed", "paid", "failed", "Confirmation issue", "attention"],
     [
@@ -48,10 +59,10 @@ describe("administration reservation status", () => {
     });
   });
 
-  test("keeps attention states ahead of terminal states", () => {
+  test("keeps cancellation states ahead of fulfillment states", () => {
     expect(status("cancelled", "cancelled", "failed")).toEqual({
-      group: "attention",
-      label: "Confirmation issue",
+      group: "cancelled",
+      label: "Cancelled",
     });
     expect(status("cancellation_failed", "cancelled", "fulfilled")).toEqual({
       group: "attention",

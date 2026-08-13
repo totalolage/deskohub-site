@@ -16,6 +16,7 @@ import {
   AdministrationOperationQuery,
   AdministrationOrderQuery,
   AdministrationPaymentAttemptId,
+  AdministrationReservationCancellationInput,
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
@@ -128,6 +129,9 @@ describe("administration contract", () => {
     expect(AdminCliAdministrationApi.endpoints.mutateDiscounts?.method).toBe(
       "POST"
     );
+    expect(AdminCliAdministrationApi.endpoints.cancelReservation?.method).toBe(
+      "POST"
+    );
     expect(AdminCliAdministrationApi.endpoints.renameSession?.method).toBe(
       "PATCH"
     );
@@ -140,6 +144,11 @@ describe("administration contract", () => {
         status: "complete",
       })
     ).toEqual({ page: 2, status: "complete" });
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationCancellationInput)({
+        sendCancellationEmail: true,
+      })
+    ).toEqual({ sendCancellationEmail: true });
   });
 
   test("accepts office reservations throughout the read contract", () => {

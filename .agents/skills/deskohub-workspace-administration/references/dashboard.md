@@ -1,6 +1,6 @@
 # Workspace administration dashboard
 
-The Workspace administration dashboard is a read-oriented operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Its reservation and customer pages do not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records.
+The Workspace administration dashboard is a read-oriented operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Reservation detail has one explicit mutation: an operator may cancel an eligible Dotypos reservation and optionally send a localized customer cancellation email. Viewing pages does not refresh payment state, retry fulfillment, or repair provider records.
 
 The visible navigation is intentionally limited to Overview, Reservations, Customers, Codes, and Sales. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
 
@@ -28,6 +28,8 @@ Fuzzy customer search by name or email remains a protected server action. Custom
 The administration projection deliberately excludes Workspace access codes, payment security tokens, provider redirect URLs, Dotypos notes, raw provider responses, and raw PostHog property bags.
 
 ## Reservation lifecycle
+
+Operator cancellation uses its own guarded workflow rather than the unpaid-hold cleanup path. It may cancel held or confirmed reservations, preserves payment and fulfillment history without issuing a refund, refuses while fulfillment is processing, and records provider failures for retry. Customer email is attempted only after provider and local cancellation complete; its outcome is reported separately.
 
 The lifecycle diagram is a projection of the selected reservation, not a generic explanation. It combines the local reservation state, payment-attempt state, and fulfillment outcome into Started, Held, Paid, Complete, or the exact cancellation substate (Hold expired, Cancelling, Cancellation issue, or Cancelled). A live Dotypos `CANCELLED` status is overlaid as an attention-state cancellation when the local row is stale, because Dotypos owns the current booking fact. List filters and primary status badges remain projections of the durable local workflow, with the Dotypos discrepancy shown as a separate warning. This read-only overlay never writes a local transition or authorizes repair. A failed or expired payment does not by itself mark a still-held reservation as cancelled, and an in-progress or failed release is never presented as complete. The chronological history below the diagram shows the durable local milestones plus any available Nexi and PostHog observations.
 

@@ -234,12 +234,57 @@ const reservationsFindCommand = Command.make(
   Command.withDescription("Find a reservation by reservation or payment ID")
 );
 
+const reservationsCancelCommand = Command.make(
+  "cancel",
+  {
+    reservationId: Argument.string("reservation-id"),
+    sendCancellationEmail: Flag.boolean("send-cancellation-email").pipe(
+      Flag.withDescription("Email the customer after cancellation")
+    ),
+    yes: confirmationFlag,
+  },
+  ({ reservationId, sendCancellationEmail, yes }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const decodedReservationId = yield* Schema.decodeUnknownEffect(
+          AdministrationWorkspaceReservationId
+        )(reservationId);
+        const confirmed = yield* confirmChange(
+          yes,
+          json,
+          "Cancel this reservation? Any payment is unaffected and is not refunded automatically."
+        );
+        if (!confirmed) {
+          yield* reportCancellation(json);
+          return;
+        }
+        const result = yield* api.cancelReservation(
+          accessToken,
+          decodedReservationId,
+          { sendCancellationEmail }
+        );
+        yield* Console.log(
+          json
+            ? JSON.stringify(result)
+            : {
+                failed:
+                  "Reservation cancelled, but the cancellation email could not be sent.",
+                not_requested:
+                  "Reservation cancelled without emailing the customer.",
+                sent: "Reservation cancelled and the customer was emailed.",
+              }[result.email]
+        );
+      })
+    )
+).pipe(Command.withDescription("Cancel a reservation in Dotypos"));
+
 const reservationsCommand = Command.make("reservations").pipe(
-  Command.withDescription("Inspect Workspace reservations"),
+  Command.withDescription("Inspect and cancel Workspace reservations"),
   Command.withSubcommands([
     reservationsListCommand,
     reservationsGetCommand,
     reservationsFindCommand,
+    reservationsCancelCommand,
   ])
 );
 

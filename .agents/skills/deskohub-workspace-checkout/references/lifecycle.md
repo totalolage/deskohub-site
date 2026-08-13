@@ -277,13 +277,14 @@ Allowed reservation transitions:
 - `held -> cancelling -> cancelled` for unsuccessful terminal payment before hold expiry.
 - `cancelling -> cancellation_failed`
 - `cancellation_failed -> cancelling -> cancelled`
+- `confirmed -> cancelling -> cancelled` through the explicit operator workflow, preserving paid and fulfillment facts without issuing a refund.
 
 Forbidden reservation transitions:
 
-- Any transition from `cancelled` or `confirmed` without an explicit manual repair path.
+- Any transition from `cancelled`, or from `confirmed` outside the explicit guarded operator cancellation workflow.
 - Any creation of a second Dotypos reservation for the same `checkout_attempt_key`.
 - Any creation of a replacement Dotypos reservation in the same checkout session before the prior local and Dotypos reservations are cancelled.
-- Any cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed.
+- Any cleanup cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed. Operator cancellation has separate claim and finalization guards and refuses while fulfillment is processing.
 
 ### Payment State
 

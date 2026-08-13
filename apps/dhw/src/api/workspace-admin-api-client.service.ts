@@ -26,6 +26,8 @@ import {
   type AdministrationOrderQueryType,
   type AdministrationOrderType,
   type AdministrationOverviewType,
+  type AdministrationReservationCancellationInputType,
+  type AdministrationReservationCancellationResultType,
   type AdministrationReservationDetailType,
   type AdministrationReservationLookupResultType,
   type AdministrationReservationPageType,
@@ -118,6 +120,18 @@ interface IWorkspaceAdminApiClient {
   ) => Effect.Effect<
     AdministrationReservationDetailType,
     | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly cancelReservation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    reservationId: AdministrationWorkspaceReservationIdType,
+    input: AdministrationReservationCancellationInputType
+  ) => Effect.Effect<
+    AdministrationReservationCancellationResultType,
+    | CliApiRequestError
+    | CliMutationRejected
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
@@ -509,6 +523,22 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         Effect.mapError(sanitizeSessionError)
       )
     ),
+    cancelReservation: Effect.fn("WorkspaceAdminApiClient.cancelReservation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        reservationId: AdministrationWorkspaceReservationIdType,
+        input: AdministrationReservationCancellationInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.cancelReservation({
+              params: { reservationId },
+              payload: input,
+            })
+          ),
+          Effect.mapError(sanitizeReservationMutationError)
+        )
+    ),
     getDiscountCode: Effect.fn("WorkspaceAdminApiClient.getDiscountCode")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -678,3 +708,14 @@ const sanitizeMutationError = (
   }
   return sanitizeResourceError(cause);
 };
+
+const sanitizeReservationMutationError = (
+  cause:
+    | CliMutationRejected
+    | CliResourceNotFound
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliMutationRejected ? cause : sanitizeResourceError(cause);

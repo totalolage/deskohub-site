@@ -40,6 +40,7 @@ export type WorkspaceReservationDetails = Pick<
   readonly customer: Customer;
   readonly reservedFrom: Temporal.Instant;
   readonly reservedUntil: Temporal.Instant;
+  readonly providerStatus: "NEW" | "CONFIRMED" | "CANCELLED";
   readonly seats: number;
   readonly tableName?: string;
   readonly tableMap?: WorkspaceTableMap;
@@ -160,6 +161,7 @@ export class WorkspaceReservationService extends Context.Service<
             reservationDetails: reservation.reservationDetails,
             locale: reservation.locale,
             customer: dotyposReservationDetails.customer,
+            providerStatus: dotyposReservationDetails.reservation.status,
             reservedFrom,
             reservedUntil,
             seats,

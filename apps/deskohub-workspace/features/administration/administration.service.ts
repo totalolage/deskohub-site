@@ -88,8 +88,9 @@ import {
   getAdministrationReservationDateRange,
 } from "./reservation-date-range";
 import { getUniqueReservationId } from "./reservation-lookup.server";
-import type { AdministrationStatusGroup } from "./reservation-status";
 import {
+  type AdministrationStatusGroup,
+  canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
 } from "./reservation-status";
@@ -276,6 +277,7 @@ export type AdministrationTimelineItem = {
 };
 
 export type AdministrationReservationDetail = {
+  readonly canCancel: boolean;
   readonly reservation: AdministrationReservationSummary;
   readonly booking: AdministrationBookingSummary | null;
   readonly lifecycle: ReturnType<typeof getAdministrationReservationLifecycle>;
@@ -1418,6 +1420,7 @@ export class AdministrationService extends Context.Service<
             dotyposReservationId: row.dotyposReservationId,
             customerId: row.dotyposCustomerId,
           },
+          canCancel: canCancelReservation(row),
         } satisfies AdministrationReservationDetail;
       });
 

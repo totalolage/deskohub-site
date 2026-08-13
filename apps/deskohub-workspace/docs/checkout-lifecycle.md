@@ -82,3 +82,5 @@ Accounting evidence is the narrow exception: the accepted transaction and buyer 
 ## Operator expectations
 
 Operators must be able to distinguish a held, paid, fulfilled, expired, cancelling, cancelled, and recovery-needed reservation in business language. A live external cancellation may be shown as an attention state when Workspace is stale, but that observation does not itself rewrite history, authorize access, or prove that Workspace completed recovery.
+
+An authorized operator may explicitly cancel a held or confirmed reservation when fulfillment is not actively processing. This cancellation preserves payment and fulfillment history and does not issue a refund. The operator may separately request a localized cancellation email; email delivery occurs after cancellation and cannot roll it back.

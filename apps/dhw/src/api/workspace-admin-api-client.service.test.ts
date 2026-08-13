@@ -226,6 +226,7 @@ describe("WorkspaceAdminApiClient", () => {
           );
           return Response.json({
             reservation,
+            canCancel: true,
             booking,
             lifecycle: {
               currentStage: "complete",

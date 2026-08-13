@@ -55,6 +55,9 @@ export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
+  readonly sendCancellationEmail: (input: {
+    readonly reservation: WorkspaceReservationDetails;
+  }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
 
 const workspaceLocationMapContentId = "workspace-location-map";
@@ -468,6 +471,45 @@ export class WorkspaceReservationEmailService extends Context.Service<
       });
 
       return {
+        sendCancellationEmail: Effect.fn(
+          "WorkspaceReservationEmailService.sendCancellationEmail"
+        )(function* ({ reservation }) {
+          const locale = getReservationLocale(reservation.locale);
+          const customerEmail = reservation.customer.email?.trim();
+          if (!customerEmail) {
+            return yield* Effect.fail(
+              new EmailServiceError(
+                "Workspace reservation customer email is missing."
+              )
+            );
+          }
+          const subject = m.reservationCancellationEmailSubject({}, { locale });
+          const rendered = yield* renderWorkspaceEmail(
+            <ReservationNotificationEmail
+              body={m.reservationCancellationEmailBody({}, { locale })}
+              details={createReservationRows(reservation, locale)}
+              heading={m.reservationCancellationEmailHeading({}, { locale })}
+              locale={locale}
+              preview={subject}
+            />
+          );
+          const message: EmailMessage = {
+            from: emailConfig.defaultFrom,
+            to: { email: customerEmail },
+            replyTo: workspaceEmailRecipient,
+            subject,
+            html: rendered.html,
+            text: rendered.text,
+            tags: ["workspace-reservation-cancellation"],
+            metadata: {
+              deploymentEnvironment: env.VERCEL_ENV,
+              source: "workspace-reservation-administration",
+              workspaceReservationId: reservation.id,
+              dotyposReservationId: reservation.dotyposReservationId,
+            },
+          };
+          yield* emailService.send(message).pipe(Effect.asVoid);
+        }),
         sendPaidReservationEmails: Effect.fn(
           "WorkspaceReservationEmailService.sendPaidReservationEmails"
         )(function* ({ reservation }) {
