@@ -10,7 +10,6 @@ import { LatePaymentRecoveryService } from "./late-payment-recovery.service";
 export const latePaymentRecoveryQueueTopic = "workspace-late-payment-recovery";
 
 const payloadSchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
   paymentAttemptId: paymentAttemptIdSchema,
 });
 
@@ -35,7 +34,7 @@ export const makeLatePaymentRecoveryQueueService = (
       try: () =>
         sendMessage(
           latePaymentRecoveryQueueTopic,
-          { schemaVersion: 1, paymentAttemptId: input.paymentAttemptId },
+          { paymentAttemptId: input.paymentAttemptId },
           {
             retentionSeconds: 7 * 24 * 60 * 60,
             idempotencyKey: `late-payment-recovery:${input.paymentAttemptId}`,

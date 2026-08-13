@@ -18,7 +18,7 @@ describe("late-payment recovery queue", () => {
 
     expect(send).toHaveBeenCalledWith(
       latePaymentRecoveryQueueTopic,
-      { schemaVersion: 1, paymentAttemptId: "attempt-id" },
+      { paymentAttemptId: "attempt-id" },
       {
         retentionSeconds: 604_800,
         idempotencyKey: "late-payment-recovery:attempt-id",
@@ -29,7 +29,6 @@ describe("late-payment recovery queue", () => {
   test("decodes a valid message and invokes recovery", async () => {
     const recover = mock(() => Effect.succeed("recovered" as const));
     const outcome = await processLatePaymentRecoveryMessage({
-      schemaVersion: 1,
       paymentAttemptId: "attempt-id",
     }).pipe(
       Effect.provide(Layer.mock(LatePaymentRecoveryService, { recover })),

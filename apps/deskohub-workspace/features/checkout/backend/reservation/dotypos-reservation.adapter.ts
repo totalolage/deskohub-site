@@ -21,16 +21,12 @@ import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
-import { getOfficeReservationIntervalInput } from "@/features/reservation/office-reservation";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import {
-  getReservationDate,
-  getReservationIntervalNormalization,
-} from "@/features/reservation/reservation-interval";
+import { getReservationDate } from "@/features/reservation/reservation-interval";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
+  getWorkspaceReservationInterval,
   type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
 } from "./workspace-table-assignment.service";
@@ -59,15 +55,8 @@ export const createWorkspaceDotyposReservation: (
 
     const dotypos = yield* DotyposService;
     const tableAssignments = yield* WorkspaceTableAssignmentService;
-    const reservationIntervalInput = Match.value(input.reservation).pipe(
-      Match.discriminatorsExhaustive("kind")({
-        cowork: ({ date }) => getCoworkReservationIntervalInput(date),
-        "meeting-room": (meetingRoomReservation) => meetingRoomReservation,
-        office: getOfficeReservationIntervalInput,
-      })
-    );
-    const { startsAt, endsAt } = yield* getReservationIntervalNormalization(
-      reservationIntervalInput
+    const { startsAt, endsAt } = yield* getWorkspaceReservationInterval(
+      input.reservation
     ).pipe(
       Effect.mapError(
         (cause) => new ValidationError({ message: cause.message, cause })

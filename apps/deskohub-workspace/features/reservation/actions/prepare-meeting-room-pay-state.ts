@@ -18,6 +18,7 @@ import type { WorkspaceAvailabilityService } from "@/features/reservation/backen
 import {
   getMeetingRoomAdvertisedPriceReservation,
   meetingRoomAdvertisedPriceReservationEquals,
+  type MeetingRoomReservationDetails,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
 import type { PrepareMeetingRoomPayStateInput } from "./prepare-meeting-room-pay-state.schema";
@@ -91,7 +92,10 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
 
 export const ensureMeetingRoomPayStateAvailable = (input: {
   readonly availability: typeof WorkspaceAvailabilityService.Service;
-  readonly reservation: NormalizedMeetingRoomReservationOrder;
+  readonly reservation: Pick<
+    MeetingRoomReservationDetails,
+    "kind" | "startsAt" | "endsAt"
+  >;
 }) =>
   input.availability.ensureAvailable({
     kind: input.reservation.kind,

@@ -5,25 +5,19 @@ import { AccountingDocumentSnapshotRepository } from "@/features/accounting/back
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
+import { ensureCoworkPayStateAvailable } from "@/features/reservation/actions/prepare-cowork-pay-state";
+import { ensureMeetingRoomPayStateAvailable } from "@/features/reservation/actions/prepare-meeting-room-pay-state";
+import { ensureOfficePayStateAvailable } from "@/features/reservation/actions/prepare-office-pay-state";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import {
-  type CoworkReservationDetails,
-  getCoworkReservationIntervalInput,
-} from "@/features/reservation/cowork-reservation";
+import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
-import {
-  getOfficeReservationIntervalInput,
-  type OfficeReservationDetails,
-} from "@/features/reservation/office-reservation";
+import type { OfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import {
-  getReservationIntervalNormalization,
-  hasReservationIntervalEnded,
-} from "@/features/reservation/reservation-interval";
+import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   plainDateStringSchema,
@@ -33,6 +27,7 @@ import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import { createWorkspaceDotyposReservation } from "../reservation/dotypos-reservation.adapter";
 import {
+  getWorkspaceReservationInterval,
   type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
 } from "../reservation/workspace-table-assignment.service";
@@ -161,19 +156,6 @@ const reconstructReservation = (
   return null;
 };
 
-const getReservationInterval = (
-  reservation: WorkspaceTableAssignmentReservation
-) =>
-  getReservationIntervalNormalization(
-    Match.value(reservation).pipe(
-      Match.discriminatorsExhaustive("kind")({
-        cowork: ({ date }) => getCoworkReservationIntervalInput(date),
-        "meeting-room": (meetingRoom) => meetingRoom,
-        office: getOfficeReservationIntervalInput,
-      })
-    )
-  );
-
 const ensureAvailable = (
   availability: typeof WorkspaceAvailabilityService.Service,
   reservation: WorkspaceTableAssignmentReservation
@@ -181,28 +163,17 @@ const ensureAvailable = (
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: (cowork) =>
-        availability.ensureAvailable({
-          kind: cowork.kind,
-          date: cowork.date,
-          entryTier: cowork.entryTier,
-          monitorOption: cowork.monitorOption,
+        ensureCoworkPayStateAvailable({
+          availability,
+          reservation: cowork,
         }),
       "meeting-room": (meetingRoom) =>
-        availability.ensureAvailable({
-          kind: meetingRoom.kind,
-          startsAt: meetingRoom.startsAt,
-          endsAt: meetingRoom.endsAt,
+        ensureMeetingRoomPayStateAvailable({
+          availability,
+          reservation: meetingRoom,
         }),
       office: (office) =>
-        getReservationInterval(office).pipe(
-          Effect.flatMap((interval) =>
-            availability.ensureAvailable({
-              kind: office.kind,
-              ...interval,
-              seats: office.seats,
-            })
-          )
-        ),
+        ensureOfficePayStateAvailable({ availability, reservation: office }),
     })
   );
 
@@ -376,7 +347,9 @@ export const LatePaymentRecoveryServiceLive = Layer.effect(
         return "refund_required" as const;
       }
 
-      const interval = yield* getReservationInterval(recreated.reservation);
+      const interval = yield* getWorkspaceReservationInterval(
+        recreated.reservation
+      );
       if (hasReservationIntervalEnded(interval)) {
         yield* settleRefund({
           paymentAttemptId: claimed.paymentAttemptId,
