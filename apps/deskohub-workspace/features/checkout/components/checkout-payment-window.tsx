@@ -3,82 +3,89 @@
 import { useEffect, useRef } from "react";
 
 const paymentWindowCheckIntervalMs = 500;
+const checkoutStatusOwnerAliveMessage = "owner-alive";
 const getCheckoutStatusLockName = () =>
   `deskohub:checkout-status:${window.location.pathname}`;
 const getCheckoutStatusOwnerStorageKey = (pathname: string) =>
   `deskohub:checkout-status-owner:${pathname}`;
-const consumeCheckoutStatusWindowOwner = (pathname: string) => {
+type CheckoutStatusWindowOwnership = {
+  readonly ownsStatusWindow: boolean;
+  readonly token?: string;
+};
+const consumeCheckoutStatusWindowOwner = (
+  pathname: string
+): CheckoutStatusWindowOwnership => {
   try {
     const storageKey = getCheckoutStatusOwnerStorageKey(pathname);
-    const ownsStatusWindow = sessionStorage.getItem(storageKey) === "true";
+    const storedOwnership = sessionStorage.getItem(storageKey);
     sessionStorage.removeItem(storageKey);
-    return ownsStatusWindow;
+    if (storedOwnership === "true") return { ownsStatusWindow: true };
+    if (!storedOwnership) return { ownsStatusWindow: false };
+
+    const separatorIndex = storedOwnership.indexOf(":");
+    const role = storedOwnership.slice(0, separatorIndex);
+    const token = storedOwnership.slice(separatorIndex + 1);
+    if ((role !== "owner" && role !== "returned") || !token)
+      return { ownsStatusWindow: false };
+    return {
+      ownsStatusWindow: role === "owner",
+      token,
+    };
   } catch {
-    return false;
+    return { ownsStatusWindow: false };
   }
 };
 
-type CheckoutWindow = Window & {
-  trackedCheckoutPaymentWindow?: {
-    readonly paymentWindow: Window;
-    readonly statusPathname: string;
-  };
-};
-
-export const trackCheckoutPaymentWindow = (
-  paymentWindow: Window,
-  statusUrl: string
+export const markCheckoutStatusWindowOwner = (
+  statusUrl: string,
+  paymentWindow: Window
 ) => {
-  (window as CheckoutWindow).trackedCheckoutPaymentWindow = {
-    paymentWindow,
-    statusPathname: new URL(statusUrl, "https://deskohub.local").pathname,
-  };
-};
-
-const closeReturnedCheckoutPaymentWindow = () => {
-  const checkoutWindow = window as CheckoutWindow;
-  const trackedPaymentWindow = checkoutWindow.trackedCheckoutPaymentWindow;
-  if (!trackedPaymentWindow) return;
-  const { paymentWindow, statusPathname } = trackedPaymentWindow;
-  if (paymentWindow.closed) {
-    checkoutWindow.trackedCheckoutPaymentWindow = undefined;
-    return;
-  }
-
-  try {
-    if (paymentWindow.location.pathname !== statusPathname) return;
-    paymentWindow.close();
-    checkoutWindow.trackedCheckoutPaymentWindow = undefined;
-  } catch {
-    // The provider page remains cross-origin until it returns to checkout.
-  }
-};
-
-export const markCheckoutStatusWindowOwner = (statusUrl: string) => {
   try {
     const pathname = new URL(statusUrl, "https://deskohub.local").pathname;
-    sessionStorage.setItem(getCheckoutStatusOwnerStorageKey(pathname), "true");
+    const storageKey = getCheckoutStatusOwnerStorageKey(pathname);
+    const token = crypto.randomUUID();
+    paymentWindow.sessionStorage.setItem(storageKey, `returned:${token}`);
+    sessionStorage.setItem(storageKey, `owner:${token}`);
   } catch {
     // Ownership coordination must not block payment navigation.
   }
 };
 
 export function CheckoutPaymentWindowCoordinator() {
-  const ownsStatusWindowRef = useRef<boolean | undefined>(undefined);
+  const ownershipRef = useRef<CheckoutStatusWindowOwnership | undefined>(
+    undefined
+  );
 
   useEffect(() => {
-    closeReturnedCheckoutPaymentWindow();
-    const paymentWindowInterval = globalThis.setInterval(
-      closeReturnedCheckoutPaymentWindow,
-      paymentWindowCheckIntervalMs
-    );
-    const ownsStatusWindow =
-      ownsStatusWindowRef.current ??
+    const ownership =
+      ownershipRef.current ??
       consumeCheckoutStatusWindowOwner(window.location.pathname);
-    ownsStatusWindowRef.current = ownsStatusWindow;
-    if (!navigator.locks) {
-      return () => globalThis.clearInterval(paymentWindowInterval);
+    ownershipRef.current = ownership;
+    let stopHeartbeat: () => void = () => undefined;
+    if (ownership.token && "BroadcastChannel" in globalThis) {
+      const channel = new BroadcastChannel(
+        `${getCheckoutStatusLockName()}:${ownership.token}`
+      );
+      if (!ownership.ownsStatusWindow) {
+        channel.addEventListener("message", (event) => {
+          if (event.data === checkoutStatusOwnerAliveMessage) window.close();
+        });
+        stopHeartbeat = () => channel.close();
+      } else {
+        const notifyReturnedWindow = () =>
+          channel.postMessage(checkoutStatusOwnerAliveMessage);
+        notifyReturnedWindow();
+        const interval = globalThis.setInterval(
+          notifyReturnedWindow,
+          paymentWindowCheckIntervalMs
+        );
+        stopHeartbeat = () => {
+          globalThis.clearInterval(interval);
+          channel.close();
+        };
+      }
     }
+    if (!navigator.locks) return stopHeartbeat;
 
     let active = true;
     let releaseLock: () => void = () => undefined;
@@ -89,7 +96,7 @@ export function CheckoutPaymentWindowCoordinator() {
     navigator.locks
       .request(
         getCheckoutStatusLockName(),
-        ownsStatusWindow
+        ownership.ownsStatusWindow
           ? { mode: "exclusive", steal: true }
           : { ifAvailable: true, mode: "exclusive" },
         (lock) => {
@@ -105,7 +112,7 @@ export function CheckoutPaymentWindowCoordinator() {
       .catch((cause) => {
         if (
           active &&
-          !ownsStatusWindow &&
+          !ownership.ownsStatusWindow &&
           cause instanceof DOMException &&
           cause.name === "AbortError"
         ) {
@@ -114,7 +121,7 @@ export function CheckoutPaymentWindowCoordinator() {
       });
 
     return () => {
-      globalThis.clearInterval(paymentWindowInterval);
+      stopHeartbeat();
       active = false;
       releaseLock();
     };

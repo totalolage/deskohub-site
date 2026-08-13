@@ -513,15 +513,13 @@ After a provider session is ready, the Pay page exposes its hosted page through
 a new-tab link so the browser launch remains directly user-activated. Clicking
 that link synchronously creates and navigates a script-owned payment tab, which
 keeps the returned tab eligible for `window.close()`; the native link remains
-the popup-blocked fallback. The original tab retains that exact window reference
-and closes it after it returns to the expected same-origin status path. The click
-also marks the original tab as owner in tab-local session storage before
-navigating it to status. The owner holds an exclusive browser lock scoped to the
-status path and preempts a returned payment tab that wins the hydration race.
-An unmarked returned tab closes when the lock is unavailable or preempted; if
-the original tab is closed, it keeps the lock and remains open. The tracked
-window reference lives on the original browser window so it survives route
-module boundaries and remains the fallback when Web Locks are unavailable.
+the popup-blocked fallback. Before either tab navigates, the click writes a
+shared random token and distinct owner/returned roles into their tab-local
+session storage. Both status pages derive an authenticated BroadcastChannel
+from that token; the owner's heartbeat closes only its matching returned tab.
+An independent browser lock scoped to the status path covers channel-unavailable
+clients and hydration races. If the original tab is closed, no heartbeat or
+preemption arrives and the returned tab remains open.
 
 Starting a new reservation from terminal status or invalid Pay state uses a
 document navigation. Cache Components may retain the previous reservation form

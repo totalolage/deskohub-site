@@ -10,10 +10,7 @@ import type {
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-summary";
 import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
-import {
-  markCheckoutStatusWindowOwner,
-  trackCheckoutPaymentWindow,
-} from "@/features/checkout/components/checkout-payment-window";
+import { markCheckoutStatusWindowOwner } from "@/features/checkout/components/checkout-payment-window";
 import {
   CheckoutSummary,
   CheckoutSummarySection,
@@ -184,18 +181,17 @@ export function CheckoutPayPage({
                 event.preventDefault();
                 return;
               }
-              hostedPaymentActivatedRef.current = true;
               const paymentWindow = window.open("about:blank", "_blank");
-              if (paymentWindow) {
-                event.preventDefault();
-                paymentWindow.opener = null;
-                paymentWindow.location.replace(hostedPayment.redirectUrl);
-                trackCheckoutPaymentWindow(
-                  paymentWindow,
-                  hostedPayment.statusUrl
-                );
-              }
-              markCheckoutStatusWindowOwner(hostedPayment.statusUrl);
+              if (!paymentWindow) return;
+
+              event.preventDefault();
+              hostedPaymentActivatedRef.current = true;
+              markCheckoutStatusWindowOwner(
+                hostedPayment.statusUrl,
+                paymentWindow
+              );
+              paymentWindow.opener = null;
+              paymentWindow.location.replace(hostedPayment.redirectUrl);
               router.push(hostedPayment.statusUrl);
             }}
             rel="noreferrer"

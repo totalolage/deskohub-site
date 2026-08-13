@@ -166,6 +166,7 @@ describe("CheckoutPayPage payment navigation", () => {
     const paymentWindow = {
       location: { replace: replacePaymentLocation },
       opener: window,
+      sessionStorage,
     };
     const openPaymentWindow = spyOn(window, "open").mockImplementation(
       () => paymentWindow as Window
@@ -285,7 +286,7 @@ describe("CheckoutPayPage payment navigation", () => {
       sessionStorage.getItem(
         "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
       )
-    ).toBe("true");
+    ).toContain("owner:");
   });
 
   test("omits the early-performance request when the withdrawal period has elapsed", async () => {

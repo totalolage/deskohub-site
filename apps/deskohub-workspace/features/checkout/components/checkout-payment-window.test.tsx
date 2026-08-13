@@ -15,12 +15,13 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import {
   CheckoutPaymentWindowCoordinator,
-  trackCheckoutPaymentWindow,
+  markCheckoutStatusWindowOwner,
 } from "./checkout-payment-window";
 
 type LockRequestCallback = (lock: Lock | null) => Promise<void> | void;
 
 let originalLocksDescriptor: PropertyDescriptor | undefined;
+let originalBroadcastChannelDescriptor: PropertyDescriptor | undefined;
 const getCheckoutStatusOwnerStorageKey = () =>
   `deskohub:checkout-status-owner:${window.location.pathname}`;
 
@@ -53,6 +54,10 @@ describe("CheckoutPaymentWindowCoordinator", () => {
       navigator,
       "locks"
     );
+    originalBroadcastChannelDescriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "BroadcastChannel"
+    );
   });
 
   afterEach(() => {
@@ -63,6 +68,15 @@ describe("CheckoutPaymentWindowCoordinator", () => {
       Object.defineProperty(navigator, "locks", originalLocksDescriptor);
     } else {
       Reflect.deleteProperty(navigator, "locks");
+    }
+    if (originalBroadcastChannelDescriptor) {
+      Object.defineProperty(
+        globalThis,
+        "BroadcastChannel",
+        originalBroadcastChannelDescriptor
+      );
+    } else {
+      Reflect.deleteProperty(globalThis, "BroadcastChannel");
     }
   });
 
@@ -125,23 +139,70 @@ describe("CheckoutPaymentWindowCoordinator", () => {
     await waitFor(() => expect(closeCurrentWindow).toHaveBeenCalledTimes(1));
   });
 
-  test("closes the exact tracked payment window after it returns", async () => {
-    const closePaymentWindow = mock();
-    const statusPathname = "/en-US/reservation/status/reservation-id";
-    const paymentWindow = {
-      close: closePaymentWindow,
-      closed: false,
-      location: { pathname: statusPathname },
-    };
-    trackCheckoutPaymentWindow(paymentWindow as Window, statusPathname);
+  test("shares authenticated fallback ownership with the payment tab", () => {
     Object.defineProperty(navigator, "locks", {
       configurable: true,
       value: undefined,
     });
+    const setPaymentWindowStorage = mock();
+    const paymentWindow: Window = Object.create(window);
+    Object.defineProperty(paymentWindow, "sessionStorage", {
+      value: { setItem: setPaymentWindowStorage },
+    });
 
-    render(<CheckoutPaymentWindowCoordinator />);
+    markCheckoutStatusWindowOwner(
+      "/en-US/reservation/status/reservation-id",
+      paymentWindow
+    );
 
-    await waitFor(() => expect(closePaymentWindow).toHaveBeenCalledTimes(1));
+    expect(setPaymentWindowStorage).toHaveBeenCalledWith(
+      "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id",
+      expect.stringContaining("returned:")
+    );
+    expect(
+      sessionStorage.getItem(
+        "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
+      )
+    ).toContain("owner:");
+  });
+
+  test("closes an authenticated returned tab without Web Locks", async () => {
+    Object.defineProperty(navigator, "locks", {
+      configurable: true,
+      value: undefined,
+    });
+    let receiveOwnerMessage: ((event: MessageEvent) => void) | undefined;
+    const closeChannel = mock();
+    const createChannel = mock();
+    class BroadcastChannelMock {
+      constructor() {
+        createChannel();
+      }
+      addEventListener(_type: string, listener: (event: MessageEvent) => void) {
+        receiveOwnerMessage = listener;
+      }
+      close() {
+        closeChannel();
+      }
+      postMessage() {}
+    }
+    Object.defineProperty(globalThis, "BroadcastChannel", {
+      configurable: true,
+      value: BroadcastChannelMock,
+    });
+    sessionStorage.setItem(
+      getCheckoutStatusOwnerStorageKey(),
+      "returned:shared-token"
+    );
+    const closeCurrentWindow = jest.spyOn(window, "close");
+    const view = render(<CheckoutPaymentWindowCoordinator />);
+
+    await waitFor(() => expect(createChannel).toHaveBeenCalledTimes(1));
+    receiveOwnerMessage?.(new MessageEvent("message", { data: "owner-alive" }));
+
+    expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(closeChannel).toHaveBeenCalledTimes(1);
   });
 
   test("closes a returned tab when the original preempts its lock", async () => {
