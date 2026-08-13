@@ -1,6 +1,7 @@
 import { mock } from "bun:test";
 
 export const workspaceRouterPush = mock((_href: string) => undefined);
+export const workspaceRouterRefresh = mock(() => undefined);
 export const workspaceRouterReplace = mock((_href: string) => undefined);
 export const workspaceUseSearchParams = mock(() => new URLSearchParams());
 export const workspaceUseFeatureFlagEnabled = mock(
@@ -25,6 +26,7 @@ export const workspaceUseAction = mock(
 mock.module("next/navigation", () => ({
   useRouter: () => ({
     push: workspaceRouterPush,
+    refresh: workspaceRouterRefresh,
     replace: workspaceRouterReplace,
   }),
   useSearchParams: workspaceUseSearchParams,

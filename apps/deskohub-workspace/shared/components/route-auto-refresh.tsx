@@ -42,6 +42,9 @@ export function RouteAutoRefresh({
       const remainingMs = Date.parse(refreshAt) - Date.now();
       if (remainingMs <= 0) {
         refreshRoute();
+        if (!enabled) {
+          timeoutId = globalThis.setTimeout(schedule, intervalMs);
+        }
         return;
       }
       timeoutId = globalThis.setTimeout(
@@ -55,7 +58,7 @@ export function RouteAutoRefresh({
       cancelled = true;
       if (timeoutId !== undefined) globalThis.clearTimeout(timeoutId);
     };
-  }, [refreshAt]);
+  }, [enabled, intervalMs, refreshAt]);
 
   useEffect(() => {
     if (!refreshOnFocus) return;
