@@ -210,6 +210,22 @@ describe("administration reservation lifecycle", () => {
     });
   });
 
+  test("keeps an active retry held when an older attempt settles late", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "pending",
+        reservationState: "held",
+      })
+    ).toEqual({
+      currentStage: "held",
+      label: "Awaiting payment",
+      reachedStages: ["started", "held"],
+      tone: "neutral",
+    });
+  });
+
   test.each([
     ["hold_expired", "hold_expired"],
     ["cancelling", "cancelling"],

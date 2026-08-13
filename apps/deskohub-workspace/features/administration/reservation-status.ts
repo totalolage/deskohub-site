@@ -44,7 +44,7 @@ export type AdministrationReservationLifecycle = {
 export const getAdministrationReservationLifecycle = (
   input: ReservationStatusInput
 ): AdministrationReservationLifecycle => {
-  if (input.latePayment) {
+  if (input.latePayment && input.reservationState === "cancelled") {
     return {
       currentStage: "cancelled",
       label: "Late payment — refund required",
