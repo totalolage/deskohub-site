@@ -126,14 +126,27 @@ export class ReservationAdministrationService extends Context.Service<
               yield* dotypos
                 .cancelReservation(details.dotyposReservationId)
                 .pipe(
-                  Effect.tapError(() =>
-                    reservations
-                      .markAdministrationCancellationFailed({
-                        id: claimed.id,
-                        claimedAt: claimed.updatedAt,
-                        failureCode: "admin_dotypos_cancel_failed",
-                      })
-                      .pipe(Effect.ignore)
+                  Effect.catch((cause) =>
+                    Effect.gen(function* () {
+                      const cancelled = yield* reservationDetails
+                        .getReservation(current.id)
+                        .pipe(
+                          Effect.map(
+                            (latest) => latest.providerStatus === "CANCELLED"
+                          ),
+                          Effect.orElseSucceed(() => false)
+                        );
+                      if (cancelled) return;
+
+                      yield* reservations
+                        .markAdministrationCancellationFailed({
+                          id: claimed.id,
+                          claimedAt: claimed.updatedAt,
+                          failureCode: "admin_dotypos_cancel_failed",
+                        })
+                        .pipe(Effect.ignore);
+                      return yield* Effect.fail(cause);
+                    })
                   ),
                   Effect.mapError((cause) =>
                     cancellationFailed(
