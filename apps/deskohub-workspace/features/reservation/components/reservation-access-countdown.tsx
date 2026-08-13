@@ -7,6 +7,10 @@ import { formatDuration } from "@/shared/utils/format-duration";
 const secondsPerMinute = 60;
 const secondsPerHour = 60 * secondsPerMinute;
 const secondsPerDay = 24 * secondsPerHour;
+const HALF_LIFE_MS = 60 * 60 * 1000;
+
+export const countdownFill = (remainingMs: number): number =>
+  -Math.expm1((-Math.LN2 * Math.max(0, remainingMs)) / HALF_LIFE_MS);
 
 const formatDigitalCountdown = (totalSeconds: number) => {
   const hours = Math.floor(totalSeconds / secondsPerHour);
@@ -72,6 +76,7 @@ export function ReservationAccessCountdown({
   if (remainingSeconds === undefined) return null;
 
   const checking = remainingSeconds === 0;
+  const fill = countdownFill(remainingSeconds * 1000);
 
   return (
     <div className="mt-8 flex justify-center sm:mt-10">
@@ -102,18 +107,21 @@ export function ReservationAccessCountdown({
             stroke="currentColor"
             strokeWidth="18"
           />
-          <circle
-            className="text-burned-orange/62"
-            cx="120"
-            cy="120"
-            fill="none"
-            r="96"
-            stroke="currentColor"
-            strokeDasharray="434 169"
-            strokeLinecap="round"
-            strokeWidth="18"
-            transform="rotate(-90 120 120)"
-          />
+          {fill > 0 && (
+            <circle
+              className="text-burned-orange/62"
+              cx="120"
+              cy="120"
+              fill="none"
+              pathLength="1"
+              r="96"
+              stroke="currentColor"
+              strokeDasharray={`${fill} ${1 - fill}`}
+              strokeLinecap="round"
+              strokeWidth="18"
+              transform="rotate(-90 120 120)"
+            />
+          )}
         </svg>
         {checking ? (
           <span className="relative max-w-40 text-center text-lg font-semibold text-burned-orange">

@@ -14,7 +14,15 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { countdownFill } from "./reservation-access-countdown";
 import { ReservationAccessPage } from "./reservation-access-page";
+
+test("maps remaining duration to countdown fill", () => {
+  expect(countdownFill(-1)).toBe(0);
+  expect(countdownFill(0)).toBe(0);
+  expect(countdownFill(60 * 60 * 1000)).toBeCloseTo(0.5);
+  expect(countdownFill(Number.MAX_VALUE)).toBe(1);
+});
 
 describe("ReservationAccessPage", () => {
   beforeAll(() => {
