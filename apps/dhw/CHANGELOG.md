@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.6.0...dhw-v1.7.0) (2026-08-13)
+
+
+### Features
+
+* **dhw:** administer reservation access ([78231b4](https://github.com/totalolage/deskohub-site/commit/78231b4c34e47461e5408710003f0871785e3649))
+
+
+### Bug Fixes
+
+* **dhw:** replay reservation access mutations ([9e737be](https://github.com/totalolage/deskohub-site/commit/9e737bee6f21b53b2817534f7b796122fb13bcfa))
+
 ## [1.6.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.5.0...dhw-v1.6.0) (2026-08-11)
 
 
