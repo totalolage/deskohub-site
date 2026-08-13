@@ -130,6 +130,7 @@ export class ReservationAdministrationService extends Context.Service<
                     reservations
                       .markAdministrationCancellationFailed({
                         id: claimed.id,
+                        claimedAt: claimed.updatedAt,
                         failureCode: "admin_dotypos_cancel_failed",
                       })
                       .pipe(Effect.ignore)
@@ -147,12 +148,14 @@ export class ReservationAdministrationService extends Context.Service<
               .markAdministrationCancelled({
                 id: claimed.id,
                 cancelledAt: Temporal.Now.instant(),
+                claimedAt: claimed.updatedAt,
               })
               .pipe(
                 Effect.tapError(() =>
                   reservations
                     .markAdministrationCancellationFailed({
                       id: claimed.id,
+                      claimedAt: claimed.updatedAt,
                       failureCode: "admin_local_cancel_failed",
                     })
                     .pipe(Effect.ignore)

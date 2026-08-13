@@ -27,6 +27,7 @@ test("operator cancellation cancels Dotypos, records the result, and optionally 
     dotyposReservationId: "dotypos-test",
     fulfillmentState: "fulfilled",
     reservationState: "confirmed",
+    updatedAt: Temporal.Now.instant(),
   } as never;
   const details = {
     id,
@@ -70,7 +71,11 @@ test("operator cancellation cancels Dotypos, records the result, and optionally 
 
   expect(result).toEqual({ outcome: "cancelled", email: "sent" });
   expect(cancelReservation).toHaveBeenCalledWith("dotypos-test");
-  expect(markAdministrationCancelled).toHaveBeenCalledTimes(1);
+  expect(markAdministrationCancelled).toHaveBeenCalledWith({
+    id,
+    cancelledAt: expect.any(Temporal.Instant),
+    claimedAt: current.updatedAt,
+  });
   expect(sendCancellationEmail).toHaveBeenCalledWith({ reservation: details });
 });
 
@@ -195,5 +200,9 @@ test("resumes a stale cancellation after an interrupted request", async () => {
     id,
     staleCancellingBefore: expect.any(Temporal.Instant),
   });
-  expect(markAdministrationCancelled).toHaveBeenCalledTimes(1);
+  expect(markAdministrationCancelled).toHaveBeenCalledWith({
+    id,
+    cancelledAt: expect.any(Temporal.Instant),
+    claimedAt: current.updatedAt,
+  });
 });

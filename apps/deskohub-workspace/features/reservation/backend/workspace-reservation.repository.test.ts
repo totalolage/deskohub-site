@@ -98,4 +98,26 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain('eq(paymentAttempts.provider, "nexi")');
     expect(section).toContain('eq(paymentAttempts.state, "paid")');
   });
+
+  test("fences admin cancellation completion to the active claim", async () => {
+    const source = await readRepository();
+    const completed = sliceFrom(
+      source,
+      "markAdministrationCancelled: Effect.fn(",
+      "completeSupersessionAndCreateDraft: Effect.fn("
+    );
+    const failed = sliceFrom(
+      source,
+      "markAdministrationCancellationFailed: Effect.fn(",
+      "recordHoldCleanupSkipped: Effect.fn("
+    );
+
+    expect(source).toContain("readonly claimedAt: Temporal.Instant");
+    expect(completed).toContain(
+      "eq(workspaceReservations.updatedAt, input.claimedAt)"
+    );
+    expect(failed).toContain(
+      "eq(workspaceReservations.updatedAt, input.claimedAt)"
+    );
+  });
 });

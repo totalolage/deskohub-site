@@ -153,6 +153,7 @@ export interface WorkspaceReservationRepository {
   readonly markAdministrationCancelled: (input: {
     readonly id: WorkspaceReservationId;
     readonly cancelledAt: Temporal.Instant;
+    readonly claimedAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
@@ -177,6 +178,7 @@ export interface WorkspaceReservationRepository {
   >;
   readonly markAdministrationCancellationFailed: (input: {
     readonly id: WorkspaceReservationId;
+    readonly claimedAt: Temporal.Instant;
     readonly failureCode: string;
   }) => Effect.Effect<
     void,
@@ -634,7 +636,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               .where(
                 and(
                   eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.reservationState, "cancelling")
+                  eq(workspaceReservations.reservationState, "cancelling"),
+                  eq(workspaceReservations.updatedAt, input.claimedAt)
                 )
               )
               .returning({ id: workspaceReservations.id });
@@ -762,7 +765,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .where(
             and(
               eq(workspaceReservations.id, input.id),
-              eq(workspaceReservations.reservationState, "cancelling")
+              eq(workspaceReservations.reservationState, "cancelling"),
+              eq(workspaceReservations.updatedAt, input.claimedAt)
             )
           )
           .returning({ id: workspaceReservations.id });
