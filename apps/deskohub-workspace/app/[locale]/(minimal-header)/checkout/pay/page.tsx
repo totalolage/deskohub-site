@@ -30,6 +30,7 @@ import {
   getReservationStartPath,
 } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { RouteAutoRefresh } from "@/shared/components/route-auto-refresh";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -212,6 +213,10 @@ async function CheckoutPayContent({
       [payStateTokenQueryParam]: payStateToken,
     })
   );
+  const earlyPerformanceRequestRequired = isEarlyPerformanceRequestRequired({
+    reservation: state.reservation,
+    contractAt: Temporal.Now.instant(),
+  });
 
   return runWithRequestLocale(() => (
     <CheckoutFlowLayout
@@ -224,6 +229,16 @@ async function CheckoutPayContent({
         },
       }}
     >
+      {!earlyPerformanceRequestRequired && (
+        <RouteAutoRefresh
+          enabled={false}
+          intervalMs={60_000}
+          refreshAt={getEarlyPerformanceRequestRequiredAt(
+            state.reservation
+          ).toString()}
+          refreshOnFocus
+        />
+      )}
       <CheckoutPayPage
         changedKeys={state.changedKeys}
         discountCodeForm={
@@ -238,14 +253,9 @@ async function CheckoutPayContent({
           />
         }
         freshPayUrl={freshPayUrl}
-        earlyPerformanceRequestRequiredAt={getEarlyPerformanceRequestRequiredAt(
-          state.reservation
-        ).toString()}
-        earlyPerformanceRequestRequired={isEarlyPerformanceRequestRequired({
-          reservation: state.reservation,
-          contractAt: Temporal.Now.instant(),
-        })}
+        earlyPerformanceRequestRequired={earlyPerformanceRequestRequired}
         locale={locale}
+        key={earlyPerformanceRequestRequired ? "early-performance" : "standard"}
         payStateToken={state.changedKeys ? undefined : payStateToken}
         summary={getSignedPayStateCheckoutSummary(state)}
         variant={state.changedKeys ? "pricingChanged" : "pay"}

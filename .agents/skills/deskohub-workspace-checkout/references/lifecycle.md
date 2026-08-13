@@ -353,6 +353,11 @@ family. The signed access capability is bound to the reservation and locale,
 not to a copied reservation interval; live provider timing remains authoritative
 when a confirmed reservation is moved or extended. The grace period controls
 disclosure and does not extend booked use or the PIN's provider validity.
+Keep this boundary stateless; it does not require a new database field. Sign
+access capabilities with their dedicated long-lived token secret rather than
+the rotated checkout Pay-state keyring or provider credentials. Retain that
+secret for at least the maximum future reservation lifetime so an emailed
+access link remains valid until its reservation.
 
 ### Reservation access issuance
 

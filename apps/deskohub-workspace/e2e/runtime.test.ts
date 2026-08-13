@@ -106,6 +106,43 @@ test("types provider-controlled fields with user-like key timing", async () => {
   expect(typeOptions).toEqual({ delay: 50, timeout: 5000 });
 });
 
+test("waits for the document body before taking a snapshot", async () => {
+  const calls: string[] = [];
+  const bodyLocator = {
+    ariaSnapshot: async () => {
+      calls.push("snapshot");
+      return "- generic";
+    },
+    waitFor: async () => {
+      calls.push("wait");
+    },
+  };
+  const frame = {
+    locator: () => bodyLocator,
+  };
+  const page = {
+    mainFrame: () => frame,
+    on: () => undefined,
+  };
+  const context = {
+    close: async () => undefined,
+    newPage: async () => page,
+    on: () => undefined,
+  };
+  const browser = {
+    newContext: async () => context,
+  } as unknown as Browser;
+  const run = makePlaywrightBrowserRunner(browser);
+
+  try {
+    await run("playwright", ["--session", "snapshot-test", "snapshot"]);
+  } finally {
+    await run.close?.();
+  }
+
+  expect(calls).toEqual(["wait", "snapshot"]);
+});
+
 test("restores the remaining page when the current popup closes", async () => {
   let registerPopup: ((page: unknown) => void) | undefined;
   let closePopup: (() => void) | undefined;
