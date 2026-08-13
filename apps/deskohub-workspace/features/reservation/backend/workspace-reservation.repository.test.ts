@@ -71,6 +71,10 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain("inArray(workspaceReservations.reservationState");
     expect(section).toContain('"held"');
     expect(section).toContain('"confirmed"');
+    expect(section).toContain("notExists(");
+    expect(section).toContain("latePaymentRecoveries.paymentAttemptId");
+    expect(section).toContain("workspaceReservations.activePaymentAttemptId");
+    expect(section).toContain('ne(latePaymentRecoveries.state, "recovered")');
   });
 
   test("selects expired local Dotypos holds for availability filtering", async () => {

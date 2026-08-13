@@ -2,12 +2,24 @@ import type {
   DotyposCustomerId,
   DotyposReservationId,
 } from "@deskohub/dotypos";
-import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  lte,
+  ne,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
+  latePaymentRecoveries,
   type WorkspaceReservation as WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
@@ -699,6 +711,26 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 "held",
                 "confirmed",
               ]),
+              notExists(
+                db
+                  .select({
+                    paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
+                  })
+                  .from(latePaymentRecoveries)
+                  .where(
+                    and(
+                      eq(
+                        latePaymentRecoveries.workspaceReservationId,
+                        workspaceReservations.id
+                      ),
+                      eq(
+                        latePaymentRecoveries.paymentAttemptId,
+                        workspaceReservations.activePaymentAttemptId
+                      ),
+                      ne(latePaymentRecoveries.state, "recovered")
+                    )
+                  )
+              ),
               or(
                 inArray(workspaceReservations.fulfillmentState, [
                   "not_started",
