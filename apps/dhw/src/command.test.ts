@@ -66,6 +66,56 @@ describe("dhw mutation commands", () => {
     expect(clears).toBe(1);
   });
 
+  test("requires confirmation and provider cleanup before reconciling access", async () => {
+    const { accessMutations, layer } = makeCommandLayer();
+
+    const confirmationError = await runCommand(
+      ["--json", "reservations", "retry-access", "reservation-1"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+    const providerError = await runCommand(
+      ["--json", "reservations", "reconcile-access", "reservation-1", "--yes"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(confirmationError).toMatchObject({
+      _tag: "ConfirmationRequiredError",
+    });
+    expect(providerError).toMatchObject({ _tag: "InvalidMutationInputError" });
+    expect(accessMutations).toHaveLength(0);
+  });
+
+  test("dispatches the confirmed reservation access mutations", async () => {
+    const { accessMutations, layer } = makeCommandLayer();
+
+    await runCommand(
+      ["--json", "reservations", "retry-access", "reservation-1", "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      [
+        "--json",
+        "reservations",
+        "reconcile-access",
+        "reservation-1",
+        "--provider-credential-removed",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(accessMutations).toEqual([
+      ["reservation-1", { kind: "retry-failed" }],
+      [
+        "reservation-1",
+        {
+          kind: "confirm-provider-credential-removed",
+          providerCredentialRemoved: true,
+        },
+      ],
+    ]);
+  });
+
   test("rejects percentages that cannot be represented as whole basis points", async () => {
     const { layer, mutations } = makeCommandLayer();
 
@@ -169,6 +219,7 @@ const makeCommandLayer = ({
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
 } = {}) => {
   const mutations: unknown[] = [];
+  const accessMutations: unknown[] = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
     mutateDiscounts: (_accessToken, _requestId, mutation) =>
@@ -182,6 +233,29 @@ const makeCommandLayer = ({
             mutation.kind === "create-customer-code"
               ? codeId
               : null,
+        };
+      }),
+    mutateReservationAccess: (_accessToken, reservationId, mutation) =>
+      Effect.sync(() => {
+        accessMutations.push([reservationId, mutation]);
+        const timestamp = "2026-08-10T10:00:00.000Z";
+        return {
+          id: "access-1",
+          state: "issued" as const,
+          provider: "igloohome",
+          credentialType: "algopin-hourly",
+          deviceId: "EK1X16f8898a",
+          providerCredentialId: "pin-1",
+          accessName: `Deskohub ${reservationId}`,
+          scheduledStartsAt: timestamp,
+          startsAt: timestamp,
+          endsAt: timestamp,
+          provisioningStartedAt: timestamp,
+          issuedAt: timestamp,
+          failedAt: null,
+          failureCode: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         };
       }),
     revokeSession,
@@ -202,6 +276,7 @@ const makeCommandLayer = ({
   });
 
   return {
+    accessMutations,
     mutations,
     layer: Layer.mergeAll(BunServices.layer, api, authentication, config),
   };

@@ -21,6 +21,10 @@ import {
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "@/features/administration/payment-administration-filters";
+import {
+  ReservationAccessAdministration,
+  type ReservationAccessAdministrationError,
+} from "@/features/administration/reservation-access-administration.service";
 import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
 import {
   type AdminCustomerProfile,
@@ -32,6 +36,7 @@ import {
 } from "@/features/discounts/admin/discount-administration.service";
 import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute-discount-admin-mutation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import type { ReservationAccessGrant } from "@/features/reservation-access";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
@@ -87,6 +92,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
+      const reservationAccess = yield* ReservationAccessAdministration;
       const authentication = yield* CliAuthentication;
       const discounts = yield* DiscountAdministration;
       const mutationIdempotency = yield* CliMutationIdempotency;
@@ -108,6 +114,14 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   })
             )
           )
+        )
+        .handle("mutateReservationAccess", ({ params, payload }) =>
+          reservationAccess
+            .mutate({ reservationId: params.reservationId, ...payload })
+            .pipe(
+              Effect.map(toCliReservationAccessGrant),
+              Effect.mapError(mapReservationAccessMutationFailure)
+            )
         )
         .handle("findReservation", ({ query }) =>
           administration.findReservationId(query.identifier).pipe(
@@ -349,6 +363,41 @@ const mapDiscountMutationFailure = (
     Match.orElse(makeServiceUnavailable)
   );
 
+const mapReservationAccessMutationFailure = (
+  cause: ReservationAccessAdministrationError
+) =>
+  Match.value(cause.reason).pipe(
+    Match.when(
+      "not_found",
+      () => new CliResourceNotFound({ message: cause.message })
+    ),
+    Match.when(
+      "invalid_state",
+      () => new CliMutationRejected({ message: cause.message })
+    ),
+    Match.when("recovery_failed", makeServiceUnavailable),
+    Match.exhaustive
+  );
+
+const toCliReservationAccessGrant = (grant: ReservationAccessGrant) => ({
+  id: grant.id,
+  state: grant.state,
+  provider: grant.provider,
+  credentialType: grant.credentialType,
+  deviceId: grant.deviceId,
+  providerCredentialId: grant.providerCredentialId,
+  accessName: `Deskohub ${grant.reservationId}`.slice(0, 60),
+  scheduledStartsAt: grant.scheduledAccessStartsAt.toString(),
+  startsAt: grant.accessStartsAt.toString(),
+  endsAt: grant.accessEndsAt.toString(),
+  provisioningStartedAt: grant.provisioningStartedAt?.toString() ?? null,
+  issuedAt: grant.issuedAt?.toString() ?? null,
+  failedAt: grant.failedAt?.toString() ?? null,
+  failureCode: grant.failureCode,
+  createdAt: grant.createdAt.toString(),
+  updatedAt: grant.updatedAt.toString(),
+});
+
 const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
   ...profile,
   codes: profile.codes.map(toCliDiscountCode),
@@ -405,6 +454,7 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(AdministrationLive),
+    Layer.provide(ReservationAccessAdministration.LiveWithDependencies),
     Layer.provide(DiscountAdministrationLive),
     Layer.provide(CliMutationIdempotency.LiveWithDependencies),
     Layer.provide(CliAuthenticationAdmission.Live),

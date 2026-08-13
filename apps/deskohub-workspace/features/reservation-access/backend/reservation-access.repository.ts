@@ -26,7 +26,8 @@ export class ReservationAccessStorageError extends Data.TaggedError(
     | "load"
     | "mark_failed"
     | "mark_issued"
-    | "mark_uncertain";
+    | "mark_uncertain"
+    | "reconcile_uncertain";
   readonly reservationId?: WorkspaceReservationId;
   readonly message: string;
 }> {}
@@ -76,6 +77,10 @@ export interface IReservationAccessRepository {
   readonly clearExpiredAccessCodes: (
     now: Temporal.Instant
   ) => Effect.Effect<number, ReservationAccessStorageError>;
+  readonly reconcileUncertain: (input: {
+    readonly reservationId: WorkspaceReservationId;
+    readonly reconciledAt: Temporal.Instant;
+  }) => Effect.Effect<ReservationAccessGrantRow, ReservationAccessStorageError>;
 }
 
 export class ReservationAccessRepository extends Context.Service<
@@ -316,6 +321,50 @@ export class ReservationAccessRepository extends Context.Service<
               );
           }
         ),
+        reconcileUncertain: Effect.fn(
+          "ReservationAccessRepository.reconcileUncertain"
+        )(function* (input) {
+          const [grant] = yield* db
+            .update(reservationAccessGrants)
+            .set({
+              state: "failed",
+              providerCredentialId: null,
+              provisioningStartedAt: null,
+              issuedAt: null,
+              failedAt: input.reconciledAt,
+              failureCode: "provider_credential_removed",
+              updatedAt: input.reconciledAt,
+            })
+            .where(
+              and(
+                eq(
+                  reservationAccessGrants.workspaceReservationId,
+                  input.reservationId
+                ),
+                eq(reservationAccessGrants.state, "uncertain")
+              )
+            )
+            .returning()
+            .pipe(
+              Effect.mapError(
+                () =>
+                  new ReservationAccessStorageError({
+                    operation: "reconcile_uncertain",
+                    reservationId: input.reservationId,
+                    message:
+                      "Uncertain reservation access could not be reconciled.",
+                  })
+              )
+            );
+          if (!grant) {
+            return yield* new ReservationAccessStorageError({
+              operation: "reconcile_uncertain",
+              reservationId: input.reservationId,
+              message: "Reservation access is not awaiting reconciliation.",
+            });
+          }
+          return grant;
+        }),
         clearExpiredAccessCodes: Effect.fn(
           "ReservationAccessRepository.clearExpiredAccessCodes"
         )(function* (now) {

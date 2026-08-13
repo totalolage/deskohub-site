@@ -11,6 +11,7 @@ import {
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import {
   workspaceRouterPush,
+  workspaceRouterRefresh,
   workspaceUseAction,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -41,16 +42,19 @@ import {
   ProviderStatusBadge,
   ReservationOrderList,
 } from "./payment-components";
+import { ReservationAccessAdministration } from "./reservation-access-administration";
 import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
 
 mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
+  mutateReservationAccess: mock(),
 }));
 
 describe("administration reservation components", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
   beforeEach(() => {
     workspaceRouterPush.mockClear();
+    workspaceRouterRefresh.mockClear();
     workspaceUseAction.mockReset();
   });
   afterEach(() => cleanup());
@@ -101,6 +105,66 @@ describe("administration reservation components", () => {
     expect(view.getByText("Active").className).toContain(
       "bg-aquamarine-green/12"
     );
+  });
+
+  test("shows safe access metadata and the failed retry action without the PIN", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail?.accessGrant).not.toBeNull();
+    if (!detail?.accessGrant) return;
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+    } as never);
+
+    const view = render(
+      <ReservationAccessAdministration
+        grant={detail.accessGrant}
+        reservationId={detail.reservation.id}
+      />
+    );
+
+    expect(view.getByText("Failed")).toBeDefined();
+    expect(view.getByText(detail.accessGrant.accessName)).toBeDefined();
+    expect(view.queryByText("PIN")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Retry access" }));
+    expect(execute).toHaveBeenCalledWith({
+      kind: "retry-failed",
+      reservationId: detail.reservation.id,
+    });
+  });
+
+  test("requires explicit manual provider reconciliation for uncertain access", async () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail?.accessGrant).not.toBeNull();
+    if (!detail?.accessGrant) return;
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+    } as never);
+
+    const view = render(
+      <ReservationAccessAdministration
+        grant={{ ...detail.accessGrant, state: "uncertain" }}
+        reservationId={detail.reservation.id}
+      />
+    );
+    const disclosure = view.getByText("Reconcile access").closest("details");
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(view.getByText("Reconcile access"));
+    expect(disclosure?.open).toBe(true);
+    expect(
+      await view.findByText(/connect the Igloohome app over Bluetooth/i)
+    ).toBeDefined();
+    fireEvent.click(
+      view.getByRole("button", { name: "Confirm removed and retry" })
+    );
+    expect(execute).toHaveBeenCalledWith({
+      kind: "confirm-provider-credential-removed",
+      providerCredentialRemoved: true,
+      reservationId: detail.reservation.id,
+    });
   });
 
   test("renders a semantic reservation table with friendly status labels", () => {

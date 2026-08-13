@@ -340,4 +340,33 @@ describe("ReservationAccessService", () => {
     expect(markUncertain).toHaveBeenCalledTimes(1);
     expect(markFailed).not.toHaveBeenCalled();
   });
+
+  test("confirms manual provider removal only for an uncertain grant", async () => {
+    const reconcileUncertain = mock(() =>
+      Effect.succeed({ ...grant, state: "failed" as const })
+    );
+
+    const reconciled = await Effect.gen(function* () {
+      const service = yield* ReservationAccessService;
+      return yield* service.confirmProviderCredentialRemoved(reservationId);
+    }).pipe(
+      Effect.provide(
+        ReservationAccessService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ReservationAccessRepository, { reconcileUncertain }),
+              Layer.mock(IgloohomeService, {})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(reconciled.state).toBe("failed");
+    expect(reconcileUncertain).toHaveBeenCalledWith({
+      reservationId,
+      reconciledAt: expect.any(Temporal.Instant),
+    });
+  });
 });

@@ -237,6 +237,7 @@ describe("WorkspaceAdminApiClient", () => {
             paymentAttempts: [],
             orders: [],
             discounts: [],
+            accessGrant: null,
             otherCustomerReservations: [],
             sameDateReservations: [],
             references: {
@@ -252,6 +253,31 @@ describe("WorkspaceAdminApiClient", () => {
           );
           expect(url.searchParams.get("identifier")).toBe("payment-1");
           return Response.json({ reservationId: reservation.id });
+        }
+        if (url.pathname.endsWith("/reservations/reservation-1/access")) {
+          expect(request.method).toBe("POST");
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(await request.json()).toEqual({ kind: "retry-failed" });
+          return Response.json({
+            id: "access-1",
+            state: "issued",
+            provider: "igloohome",
+            credentialType: "algopin-hourly",
+            deviceId: "EK1X16f8898a",
+            providerCredentialId: "pin-1",
+            accessName: "Deskohub reservation-1",
+            scheduledStartsAt: expiresAt,
+            startsAt: expiresAt,
+            endsAt: expiresAt,
+            provisioningStartedAt: expiresAt,
+            issuedAt: expiresAt,
+            failedAt: null,
+            failureCode: null,
+            createdAt: expiresAt,
+            updatedAt: expiresAt,
+          });
         }
         if (url.pathname.endsWith("/bookings/booking-1")) {
           expect(request.headers.get("authorization")).toBe(
@@ -519,6 +545,11 @@ describe("WorkspaceAdminApiClient", () => {
           Redacted.make(accessToken),
           reservation.id
         );
+        yield* client.mutateReservationAccess(
+          Redacted.make(accessToken),
+          reservation.id,
+          { kind: "retry-failed" }
+        );
         yield* client.findReservation(Redacted.make(accessToken), "payment-1");
         yield* client.listBookings(Redacted.make(accessToken), {
           date: "2026-08-10",
@@ -585,6 +616,10 @@ describe("WorkspaceAdminApiClient", () => {
         {
           method: "GET",
           path: "/api/v1/cli/reservations/reservation-1",
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/reservations/reservation-1/access",
         },
         { method: "GET", path: "/api/v1/cli/reservations/find" },
         { method: "GET", path: "/api/v1/cli/bookings" },

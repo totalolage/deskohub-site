@@ -3,4 +3,7 @@ export {
   ReservationAccessIssuanceError,
   ReservationAccessService,
 } from "./backend/reservation-access.service";
-export type { IssuedReservationAccess } from "./reservation-access";
+export type {
+  IssuedReservationAccess,
+  ReservationAccessGrant,
+} from "./reservation-access";

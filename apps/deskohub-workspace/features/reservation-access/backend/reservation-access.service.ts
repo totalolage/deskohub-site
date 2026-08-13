@@ -5,12 +5,16 @@ import {
 } from "@deskohub/igloohome";
 import { Context, Data, Effect, Layer, Match, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import type { ReservationAccessGrantRow } from "@/db/schema";
 import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { IgloohomeServiceLive } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { ceilToWholeHour, floorToWholeHour } from "@/shared/utils/temporal";
-import type { IssuedReservationAccess } from "../reservation-access";
+import type {
+  IssuedReservationAccess,
+  ReservationAccessGrant,
+} from "../reservation-access";
 import {
   ReservationAccessRepository,
   ReservationAccessRepositoryLive,
@@ -28,6 +32,7 @@ export class ReservationAccessIssuanceError extends Data.TaggedError(
   readonly reservationId: WorkspaceReservationId;
   readonly outcome: ReservationAccessIssuanceOutcome;
   readonly message: string;
+  readonly cause?: unknown;
 }> {}
 
 export interface ReservationAccessInterval {
@@ -108,6 +113,15 @@ const getReservationAccessSchedule = (input: {
 };
 
 export interface IReservationAccessService {
+  readonly loadGrant: (
+    reservationId: WorkspaceReservationId
+  ) => Effect.Effect<
+    ReservationAccessGrant | null,
+    ReservationAccessIssuanceError
+  >;
+  readonly confirmProviderCredentialRemoved: (
+    reservationId: WorkspaceReservationId
+  ) => Effect.Effect<ReservationAccessGrant, ReservationAccessIssuanceError>;
   readonly issueForReservation: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly reservedFrom: Temporal.Instant;
@@ -135,6 +149,40 @@ export class ReservationAccessService extends Context.Service<
 
       return ReservationAccessService.of({
         clearExpiredAccessCodes: repository.clearExpiredAccessCodes,
+        loadGrant: (reservationId) =>
+          repository.findByReservationId(reservationId).pipe(
+            Effect.map((grant) =>
+              grant ? toReservationAccessGrant(grant) : null
+            ),
+            Effect.mapError(
+              (cause) =>
+                new ReservationAccessIssuanceError({
+                  reservationId,
+                  outcome: "rejected",
+                  message: "Reservation access grant could not be loaded.",
+                  cause,
+                })
+            )
+          ),
+        confirmProviderCredentialRemoved: (reservationId) =>
+          repository
+            .reconcileUncertain({
+              reservationId,
+              reconciledAt: Temporal.Now.instant(),
+            })
+            .pipe(
+              Effect.map(toReservationAccessGrant),
+              Effect.mapError(
+                (cause) =>
+                  new ReservationAccessIssuanceError({
+                    reservationId,
+                    outcome: "rejected",
+                    message:
+                      "Reservation access is not awaiting provider reconciliation.",
+                    cause,
+                  })
+              )
+            ),
         issueForReservation: Effect.fn(
           "ReservationAccessService.issueForReservation"
         )(function* (input) {
@@ -412,3 +460,24 @@ export class ReservationAccessService extends Context.Service<
     Layer.provide(IgloohomeServiceLive)
   );
 }
+
+const toReservationAccessGrant = (
+  grant: ReservationAccessGrantRow
+): ReservationAccessGrant => ({
+  id: grant.id,
+  reservationId: grant.workspaceReservationId,
+  provider: grant.provider,
+  credentialType: grant.credentialType,
+  deviceId: grant.deviceId,
+  state: grant.state,
+  providerCredentialId: grant.providerCredentialId,
+  scheduledAccessStartsAt: grant.scheduledAccessStartsAt,
+  accessStartsAt: grant.accessStartsAt,
+  accessEndsAt: grant.accessEndsAt,
+  provisioningStartedAt: grant.provisioningStartedAt,
+  issuedAt: grant.issuedAt,
+  failedAt: grant.failedAt,
+  failureCode: grant.failureCode,
+  createdAt: grant.createdAt,
+  updatedAt: grant.updatedAt,
+});

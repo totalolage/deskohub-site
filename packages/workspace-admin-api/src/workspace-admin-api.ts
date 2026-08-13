@@ -685,6 +685,44 @@ export const AdministrationDiscountApplication = Schema.Struct({
 export type AdministrationDiscountApplication =
   typeof AdministrationDiscountApplication.Type;
 
+export const AdministrationReservationAccessGrant = Schema.Struct({
+  id: Schema.NonEmptyString,
+  state: Schema.Literals([
+    "pending",
+    "provisioning",
+    "issued",
+    "expired",
+    "uncertain",
+    "failed",
+  ]),
+  provider: Schema.String,
+  credentialType: Schema.String,
+  deviceId: Schema.String,
+  providerCredentialId: Schema.NullOr(Schema.String),
+  accessName: Schema.String,
+  scheduledStartsAt: Schema.String,
+  startsAt: Schema.String,
+  endsAt: Schema.String,
+  provisioningStartedAt: Schema.NullOr(Schema.String),
+  issuedAt: Schema.NullOr(Schema.String),
+  failedAt: Schema.NullOr(Schema.String),
+  failureCode: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+export type AdministrationReservationAccessGrant =
+  typeof AdministrationReservationAccessGrant.Type;
+
+export const AdministrationReservationAccessMutation = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("retry-failed") }),
+  Schema.Struct({
+    kind: Schema.Literal("confirm-provider-credential-removed"),
+    providerCredentialRemoved: Schema.Literal(true),
+  }),
+]);
+export type AdministrationReservationAccessMutation =
+  typeof AdministrationReservationAccessMutation.Type;
+
 export const AdministrationReservationDetail = Schema.Struct({
   reservation: AdministrationReservationSummary,
   booking: Schema.NullOr(AdministrationBookingSummary),
@@ -693,6 +731,7 @@ export const AdministrationReservationDetail = Schema.Struct({
   paymentAttempts: Schema.Array(AdministrationPaymentAttempt),
   orders: Schema.Array(AdministrationOrder),
   discounts: Schema.Array(AdministrationDiscountApplication),
+  accessGrant: Schema.NullOr(AdministrationReservationAccessGrant),
   otherCustomerReservations: Schema.Array(AdministrationReservationSummary),
   sameDateReservations: Schema.Array(AdministrationReservationSummary),
   references: Schema.Struct({
@@ -1248,6 +1287,22 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       success: AdministrationReservationDetail,
       error: CliResourceNotFound.schema,
     })
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "mutateReservationAccess",
+      "/reservations/:reservationId/access",
+      {
+        params: { reservationId: AdministrationWorkspaceReservationId },
+        payload: AdministrationReservationAccessMutation,
+        success: AdministrationReservationAccessGrant,
+        error: [
+          CliResourceNotFound.schema,
+          CliMutationRejected.schema,
+          CliServiceUnavailable.schema,
+        ],
+      }
+    )
   )
   .add(
     HttpApiEndpoint.get("findReservation", "/reservations/find", {

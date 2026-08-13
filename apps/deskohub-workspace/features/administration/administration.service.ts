@@ -43,6 +43,7 @@ import {
   legalEvidenceEvents,
   type PaymentAttemptState,
   paymentAttempts,
+  reservationAccessGrants,
   type WorkspaceReservation,
   webhookEvents,
   workspaceReservations,
@@ -283,6 +284,7 @@ export type AdministrationReservationDetail = {
   readonly paymentAttempts: readonly AdministrationPaymentAttempt[];
   readonly orders: readonly AdministrationOrder[];
   readonly discounts: readonly AdministrationDiscountApplication[];
+  readonly accessGrant: AdministrationReservationAccessGrant | null;
   readonly otherCustomerReservations: readonly AdministrationReservationSummary[];
   readonly sameDateReservations: readonly AdministrationReservationSummary[];
   readonly references: {
@@ -290,6 +292,31 @@ export type AdministrationReservationDetail = {
     readonly dotyposReservationId: DotyposReservationId | null;
     readonly customerId: DotyposCustomerId;
   };
+};
+
+export type AdministrationReservationAccessGrant = {
+  readonly id: string;
+  readonly state:
+    | "pending"
+    | "provisioning"
+    | "issued"
+    | "expired"
+    | "uncertain"
+    | "failed";
+  readonly provider: string;
+  readonly credentialType: string;
+  readonly deviceId: string;
+  readonly providerCredentialId: string | null;
+  readonly accessName: string;
+  readonly scheduledStartsAt: string;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly provisioningStartedAt: string | null;
+  readonly issuedAt: string | null;
+  readonly failedAt: string | null;
+  readonly failureCode: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 };
 
 export type AdministrationCustomerSummary = {
@@ -1272,6 +1299,7 @@ export class AdministrationService extends Context.Service<
         if (!row) return null;
 
         const {
+          accessRows,
           applicationRows,
           attemptRows,
           history,
@@ -1281,6 +1309,30 @@ export class AdministrationService extends Context.Service<
           tables,
         } = yield* Effect.all(
           {
+            accessRows: db
+              .select({
+                id: reservationAccessGrants.id,
+                state: reservationAccessGrants.state,
+                provider: reservationAccessGrants.provider,
+                credentialType: reservationAccessGrants.credentialType,
+                deviceId: reservationAccessGrants.deviceId,
+                providerCredentialId:
+                  reservationAccessGrants.providerCredentialId,
+                scheduledStartsAt:
+                  reservationAccessGrants.scheduledAccessStartsAt,
+                startsAt: reservationAccessGrants.accessStartsAt,
+                endsAt: reservationAccessGrants.accessEndsAt,
+                provisioningStartedAt:
+                  reservationAccessGrants.provisioningStartedAt,
+                issuedAt: reservationAccessGrants.issuedAt,
+                failedAt: reservationAccessGrants.failedAt,
+                failureCode: reservationAccessGrants.failureCode,
+                createdAt: reservationAccessGrants.createdAt,
+                updatedAt: reservationAccessGrants.updatedAt,
+              })
+              .from(reservationAccessGrants)
+              .where(eq(reservationAccessGrants.workspaceReservationId, row.id))
+              .limit(1),
             applicationRows: db
               .select({
                 id: discountApplications.id,
@@ -1318,7 +1370,7 @@ export class AdministrationService extends Context.Service<
               .orderBy(desc(workspaceReservations.updatedAt))
               .limit(4),
           },
-          { concurrency: 7 }
+          { concurrency: 8 }
         );
 
         let sameDateRows: readonly SafeReservationRow[] = [];
@@ -1411,6 +1463,21 @@ export class AdministrationService extends Context.Service<
               currency: application.appliedAmountCurrency,
             },
           })),
+          accessGrant: accessRows[0]
+            ? {
+                ...accessRows[0],
+                accessName: `Deskohub ${row.id}`.slice(0, 60),
+                scheduledStartsAt: accessRows[0].scheduledStartsAt.toString(),
+                startsAt: accessRows[0].startsAt.toString(),
+                endsAt: accessRows[0].endsAt.toString(),
+                provisioningStartedAt:
+                  accessRows[0].provisioningStartedAt?.toString() ?? null,
+                issuedAt: accessRows[0].issuedAt?.toString() ?? null,
+                failedAt: accessRows[0].failedAt?.toString() ?? null,
+                createdAt: accessRows[0].createdAt.toString(),
+                updatedAt: accessRows[0].updatedAt.toString(),
+              }
+            : null,
           otherCustomerReservations,
           sameDateReservations,
           references: {

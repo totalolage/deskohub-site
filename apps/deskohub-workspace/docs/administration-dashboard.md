@@ -8,7 +8,7 @@ The primary navigation is limited to Overview, Reservations, Customers, Codes, a
 
 ## Operator responsibilities
 
-Reservation and customer views are observational. Viewing them does not refresh payment state, retry fulfillment, cancel a reservation, or repair an external record. Mutations belong to explicit operator workflows such as maintaining discounts, codes, sales, customer discount groups, or administration sessions.
+Reading reservation and customer views does not refresh payment state, retry fulfillment, cancel a reservation, or repair an external record. Mutations belong to explicit operator workflows such as recovering reservation access, maintaining discounts, codes, sales, customer discount groups, or administration sessions.
 
 Discount definitions are managed through the code or sale that uses them. Creating a code may create its benefit at the same time. Historical applications and redemptions remain immutable.
 
@@ -25,7 +25,9 @@ An unavailable external record never hides an existing Workspace reservation. Pr
 
 Customer contact search is protected. Contact values are not placed in shareable URLs or copied into Workspace records merely to support search. Filters may use non-sensitive identifiers, dates, reservation families, and business statuses.
 
-Workspace access codes, payment security values, payment redirect addresses, free-form provider notes, and raw provider or analytics payloads are excluded from administration projections.
+Secret Workspace access codes, payment security values, payment redirect addresses, free-form provider notes, and raw provider or analytics payloads are excluded from administration projections. Reservation access state, validity, device, provider credential identifier, and failure metadata are visible without the code itself.
+
+A definitively failed access issuance can be retried. An uncertain issuance can be retried only after an operator uses the Igloohome app over Bluetooth at the lock to remove the named credential or verify that it is absent, then explicitly confirms that cleanup. If cleanup cannot be confirmed, the possible credential must be allowed to expire instead of creating another one.
 
 ## Reservation presentation
 

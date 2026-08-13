@@ -21,6 +21,10 @@ import { Effect, Layer, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
 import { AdministrationService } from "@/features/administration/administration.service";
 import {
+  ReservationAccessAdministration,
+  ReservationAccessAdministrationError,
+} from "@/features/administration/reservation-access-administration.service";
+import {
   type AdminDiscount,
   type AdminDiscountCode,
   type AdminDiscountCodeDetail,
@@ -48,6 +52,14 @@ const ClaimEveryCliMutation = Layer.succeed(CliMutationIdempotency, {
   complete: () => Effect.void,
   release: () => Effect.void,
 });
+const UnusedReservationAccessAdministration = Layer.succeed(
+  ReservationAccessAdministration,
+  {} as ReservationAccessAdministration["Service"]
+);
+const UnusedDiscountAdministration = Layer.succeed(
+  DiscountAdministration,
+  {} as DiscountAdministration["Service"]
+);
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
   clientName: "test client",
@@ -281,6 +293,7 @@ describe("Workspace Admin API", () => {
                 paymentAttempts: [],
                 orders: [],
                 discounts: [],
+                accessGrant: null,
                 otherCustomerReservations: [],
                 sameDateReservations: [],
                 references: {
@@ -481,6 +494,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(discounts),
       Effect.provide(authentication),
       Effect.provide(administration),
+      Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -648,6 +662,7 @@ describe("Workspace Admin API", () => {
           {} as AdministrationService["Service"]
         )
       ),
+      Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -673,6 +688,79 @@ describe("Workspace Admin API", () => {
       "renameSession",
       "revokeSession",
     ]);
+  });
+
+  test("returns safe access metadata and maps invalid recovery", async () => {
+    const instant = Temporal.Instant.from("2026-08-10T10:00:00Z");
+    const grant = {
+      id: "access-1" as ReservationAccessGrant["id"],
+      reservationId: "reservation-1",
+      provider: "igloohome",
+      credentialType: "algopin-hourly",
+      deviceId: "EK1X16f8898a",
+      state: "issued" as const,
+      providerCredentialId: "pin-1",
+      scheduledAccessStartsAt: instant,
+      accessStartsAt: instant,
+      accessEndsAt: instant,
+      provisioningStartedAt: instant,
+      issuedAt: instant,
+      failedAt: null,
+      failureCode: null,
+      createdAt: instant,
+      updatedAt: instant,
+    } satisfies ReservationAccessGrant;
+    const reservationAccess = Layer.succeed(ReservationAccessAdministration, {
+      mutate: (mutation) =>
+        mutation.kind === "retry-failed"
+          ? Effect.succeed(grant)
+          : Effect.fail(
+              new ReservationAccessAdministrationError({
+                reason: "invalid_state",
+                message: "Only uncertain access can be reconciled.",
+              })
+            ),
+    });
+
+    const result = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      const recovered = yield* client.administration.mutateReservationAccess({
+        params: { reservationId: grant.reservationId },
+        payload: { kind: "retry-failed" },
+      });
+      const rejected = yield* client.administration
+        .mutateReservationAccess({
+          params: { reservationId: grant.reservationId },
+          payload: {
+            kind: "confirm-provider-credential-removed",
+            providerCredentialRemoved: true,
+          },
+        })
+        .pipe(Effect.flip);
+      return { recovered, rejected };
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(
+        Layer.succeed(
+          AdministrationService,
+          {} as AdministrationService["Service"]
+        )
+      ),
+      Effect.provide(reservationAccess),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.runPromise
+    );
+
+    expect(result.recovered.state).toBe("issued");
+    expect("accessCode" in result.recovered).toBe(false);
+    expect(result.rejected).toBeInstanceOf(CliMutationRejected);
   });
 
   test("replays completed mutations and preserves deterministic conflicts", async () => {
@@ -757,6 +845,7 @@ describe("Workspace Admin API", () => {
           {} as AdministrationService["Service"]
         )
       ),
+      Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise

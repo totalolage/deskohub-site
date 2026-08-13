@@ -384,6 +384,14 @@ response are ambiguous. Record those as `uncertain` and require reconciliation;
 never automatically issue a second credential. Igloohome does not document an
 idempotency key or retrieval by `accessName`.
 
+Operator recovery exposes grant metadata but never the PIN. A `failed` grant
+may be retried through the normal issuance and fulfillment services. For an
+`uncertain` grant, require the operator to use the Igloohome app over Bluetooth
+at the lock, find `Deskohub <reservation-id>`, remove it or verify it is absent,
+and explicitly confirm that cleanup. Only then conditionally reset the uncertain
+grant and retry. If cleanup cannot be confirmed, wait for the possible
+credential to expire.
+
 Floor the reservation start to the containing Prague hour and ceil its end to
 the containing or next Prague hour. The provider interval must start in the
 current or a future hour and span 1–672 elapsed hours. When a still-active

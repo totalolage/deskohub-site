@@ -71,6 +71,8 @@ dhw sales list
 dhw sessions list
 ```
 
+Reservation detail includes safe access-grant metadata but never the secret PIN.
+
 Pass the root `--json` flag for schema-decoded machine output, for example
 `dhw --json reservations list`. Human output is intentionally compact; JSON
 retains the complete typed response.
@@ -88,6 +90,9 @@ Mutation commands use the same validated mutation schema and application
 services as the Admin UI. Representative commands are:
 
 ```bash
+dhw reservations retry-access <reservation-id> --yes
+dhw reservations reconcile-access <reservation-id> \
+  --provider-credential-removed --yes
 dhw discounts create percentage \
   --label-en "Summer sale" --label-cs "Letní sleva" \
   --percentage 10 --product cowork --product office
