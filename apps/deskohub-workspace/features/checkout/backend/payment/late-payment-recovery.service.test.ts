@@ -14,6 +14,7 @@ import { WorkspaceTableAssignmentService } from "../reservation/workspace-table-
 import {
   LatePaymentRecoveryService,
   LatePaymentRecoveryServiceLive,
+  latePaymentRecoveryMaxExecutionSeconds,
 } from "./late-payment-recovery.service";
 
 const recovery = {
@@ -34,6 +35,9 @@ describe("LatePaymentRecoveryService", () => {
     const completeUsingOriginalReservation = mock(() => Effect.void);
     const fulfillPaidOrder = mock(() => Effect.void);
     const getReservationStatus = mock(() => Effect.succeed("NEW" as const));
+    const claim = mock(() =>
+      Effect.succeed({ ...recovery, state: "processing" } as never)
+    );
     const layer = LatePaymentRecoveryServiceLive.pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -41,9 +45,7 @@ describe("LatePaymentRecoveryService", () => {
             findByPaymentAttemptId: mock(() =>
               Effect.succeed(recovery as never)
             ),
-            claim: mock(() =>
-              Effect.succeed({ ...recovery, state: "processing" } as never)
-            ),
+            claim,
             hasNewerActiveReservation: mock(() => Effect.succeed(false)),
             completeUsingOriginalReservation,
           }),
@@ -77,6 +79,11 @@ describe("LatePaymentRecoveryService", () => {
       })
     );
     expect(getReservationStatus).toHaveBeenCalledWith("dotypos-reservation-id");
+    const staleProcessingBefore = claim.mock.calls[0]?.[0]
+      .staleProcessingBefore as Temporal.Instant;
+    expect(
+      Temporal.Now.instant().since(staleProcessingBefore).total("seconds")
+    ).toBeGreaterThan(latePaymentRecoveryMaxExecutionSeconds);
     expect(fulfillPaidOrder).toHaveBeenCalledWith({
       orderId: "reservation-id",
     });

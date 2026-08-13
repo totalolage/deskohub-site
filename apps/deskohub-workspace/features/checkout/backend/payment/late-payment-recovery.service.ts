@@ -32,7 +32,10 @@ import {
   WorkspaceTableAssignmentService,
 } from "../reservation/workspace-table-assignment.service";
 
-const recoveryClaimTimeout = Temporal.Duration.from({ minutes: 1 });
+export const latePaymentRecoveryMaxExecutionSeconds = 5 * 60;
+const recoveryClaimTimeout = Temporal.Duration.from({
+  seconds: latePaymentRecoveryMaxExecutionSeconds + 60,
+});
 
 export type LatePaymentRecoveryOutcome =
   | "ignored"
