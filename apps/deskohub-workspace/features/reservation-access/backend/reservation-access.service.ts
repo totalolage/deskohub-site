@@ -154,6 +154,7 @@ export class ReservationAccessService extends Context.Service<
             );
           if (existingGrant?.state === "issued") {
             if (
+              existingGrant.deviceId !== deviceId ||
               !existingGrant.reservationStartsAt.equals(input.reservedFrom) ||
               !existingGrant.accessEndsAt.equals(input.reservedUntil)
             ) {
@@ -161,7 +162,7 @@ export class ReservationAccessService extends Context.Service<
                 .markUncertain({
                   id: existingGrant.id,
                   reservationId: input.reservationId,
-                  failureCode: "reservation_timing_changed",
+                  failureCode: "reservation_access_changed",
                   failedAt: Temporal.Now.instant(),
                 })
                 .pipe(
@@ -176,7 +177,7 @@ export class ReservationAccessService extends Context.Service<
               return yield* issuanceError(
                 input.reservationId,
                 "uncertain",
-                "Reservation timing changed after AlgoPIN issuance."
+                "Reservation access changed after AlgoPIN issuance."
               );
             }
             const accessCode = yield* repository
