@@ -94,6 +94,7 @@ export type DiscountCodeTableItem = {
   readonly validFrom: string | null;
   readonly validUntil: string | null;
   readonly maxUses: number | null;
+  readonly maxUsesPerCustomer: number | null;
   readonly audienceSize: number;
   readonly reservedUses: number;
   readonly redeemedUses: number;
@@ -187,8 +188,15 @@ export function DiscountCodesAdminTable({
       {
         accessorFn: (code) => code.remainingUses ?? Number.POSITIVE_INFINITY,
         id: "remaining",
-        header: "Remaining",
+        header: "Remaining globally",
         cell: ({ row }) => row.original.remainingUses ?? "Unlimited",
+      },
+      {
+        accessorFn: (code) =>
+          code.maxUsesPerCustomer ?? Number.POSITIVE_INFINITY,
+        id: "maxUsesPerCustomer",
+        header: "Uses per customer",
+        cell: ({ row }) => row.original.maxUsesPerCustomer ?? "Unlimited",
       },
     ],
     [discountLabels]
@@ -1261,7 +1269,7 @@ export function DiscountCodeConfigurationFields({
           Enabled
         </label>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <FormField label="Valid from">
           <Input
             defaultValue={toDateTimeInputValue(code?.validFrom)}
@@ -1279,18 +1287,34 @@ export function DiscountCodeConfigurationFields({
           />
         </FormField>
         {showMaxUses && (
-          <FormField label="Maximum uses">
-            <Input
-              defaultValue={
-                code && "maxUses" in code ? (code.maxUses ?? "") : ""
-              }
-              id={fieldId("maxUses", code?.id)}
-              min={1}
-              name="maxUses"
-              placeholder="Unlimited"
-              type="number"
-            />
-          </FormField>
+          <>
+            <FormField label="Maximum uses">
+              <Input
+                defaultValue={
+                  code && "maxUses" in code ? (code.maxUses ?? "") : ""
+                }
+                id={fieldId("maxUses", code?.id)}
+                min={1}
+                name="maxUses"
+                placeholder="Unlimited"
+                type="number"
+              />
+            </FormField>
+            <FormField label="Maximum uses per customer">
+              <Input
+                defaultValue={
+                  code && "maxUsesPerCustomer" in code
+                    ? (code.maxUsesPerCustomer ?? "")
+                    : ""
+                }
+                id={fieldId("maxUsesPerCustomer", code?.id)}
+                min={1}
+                name="maxUsesPerCustomer"
+                placeholder="Unlimited"
+                type="number"
+              />
+            </FormField>
+          </>
         )}
       </div>
       <p className="text-xs leading-5 text-navy-blue/70">

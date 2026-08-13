@@ -277,6 +277,7 @@ export const seedDiscountE2EFixtures: Effect.Effect<
             ...discountCodeFixtures.onePerCustomer,
             discountId: zeroTotalDiscountId,
             enabled: true,
+            maxUsesPerCustomer: 1,
           },
         ];
 
@@ -371,6 +372,7 @@ interface DiscountCodeFixture {
   readonly enabled: boolean;
   readonly id: DiscountCodeId;
   readonly maxUses?: number;
+  readonly maxUsesPerCustomer?: number;
   readonly validFrom?: Temporal.Instant;
   readonly validUntil?: Temporal.Instant;
 }
@@ -413,6 +415,7 @@ const seedDiscountCode = (
         enabled: fixture.enabled,
         id: fixture.id,
         maxUses: fixture.maxUses ?? null,
+        maxUsesPerCustomer: fixture.maxUsesPerCustomer ?? null,
         promotionCodeId,
         validFrom: fixture.validFrom ?? null,
         validUntil: fixture.validUntil ?? null,
@@ -424,6 +427,7 @@ const seedDiscountCode = (
           discountId: fixture.discountId,
           enabled: fixture.enabled,
           maxUses: fixture.maxUses ?? null,
+          maxUsesPerCustomer: fixture.maxUsesPerCustomer ?? null,
           promotionCodeId,
           updatedAt: Temporal.Now.instant(),
           validFrom: fixture.validFrom ?? null,

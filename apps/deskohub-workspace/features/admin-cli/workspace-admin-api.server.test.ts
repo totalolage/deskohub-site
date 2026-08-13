@@ -230,6 +230,7 @@ describe("Workspace Admin API", () => {
       validFrom: null,
       validUntil: null,
       maxUses: null,
+      maxUsesPerCustomer: null,
       audienceSize: 0,
       reservedUses: 0,
       redeemedUses: 0,
@@ -574,6 +575,7 @@ describe("Workspace Admin API", () => {
       validFrom: null,
       validUntil: null,
       maxUses: 10,
+      maxUsesPerCustomer: 2,
     };
     const mutations = [
       { kind: "create-discount", discount: discountDefinition },

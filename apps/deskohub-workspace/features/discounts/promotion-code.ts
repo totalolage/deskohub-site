@@ -29,6 +29,7 @@ export type DiscountCodeConfiguration = PromotionConfiguration & {
   readonly id: DiscountCodeId;
   readonly discountId: StoredDiscountId;
   readonly maxUses: number | null;
+  readonly maxUsesPerCustomer: number | null;
 };
 
 export type VoucherConfiguration = PromotionConfiguration & {
@@ -48,8 +49,7 @@ export type PromotionAudienceAvailability = {
 
 export type DiscountCodeAvailability = PromotionAudienceAvailability & {
   readonly activeUseCount: number;
-  readonly customerHasRedeemed: boolean;
-  readonly customerHasReserved: boolean;
+  readonly customerActiveUseCount: number;
 };
 
 export type VoucherAvailability = PromotionAudienceAvailability & {
@@ -119,6 +119,7 @@ export type PromotionConfigurationRow = {
   readonly discountCodeId: DiscountCodeId | null;
   readonly discountId: StoredDiscountId | null;
   readonly maxUses: number | null;
+  readonly maxUsesPerCustomer: number | null;
   readonly voucherId: VoucherId | null;
   readonly issuedAmountValue: number | null;
   readonly issuedAmountExponent: number | null;
@@ -144,6 +145,7 @@ export const decodePromotionConfiguration = Effect.fn(
               validFrom: configuration.validFrom,
               validUntil: configuration.validUntil,
               maxUses: configuration.maxUses,
+              maxUsesPerCustomer: configuration.maxUsesPerCustomer,
             }
           : {
               kind: "voucher",
@@ -185,6 +187,9 @@ const promotionConfigurationSchema = Schema.Union([
     discountCodeId: discountCodeIdSchema,
     discountId: storedDiscountIdSchema,
     maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+    maxUsesPerCustomer: Schema.NullOr(
+      Schema.Int.check(Schema.isGreaterThan(0))
+    ),
     voucherId: Schema.Null,
     issuedAmountValue: Schema.Null,
     issuedAmountExponent: Schema.Null,
@@ -196,6 +201,7 @@ const promotionConfigurationSchema = Schema.Union([
     discountCodeId: Schema.Null,
     discountId: Schema.Null,
     maxUses: Schema.Null,
+    maxUsesPerCustomer: Schema.Null,
     voucherId: voucherIdSchema,
     issuedAmountValue: Schema.Int.check(Schema.isGreaterThan(0)),
     issuedAmountExponent: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),

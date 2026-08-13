@@ -34,8 +34,7 @@ export const buildDiscountCodeAvailabilityQuery = (input: {
   input.db
     .select({
       activeUseCount: count(),
-      customerHasRedeemed: sql<boolean>`coalesce(bool_or(${discountCodeRedemptions.dotyposCustomerId} = ${input.dotyposCustomerId} and ${discountCodeRedemptions.state} = 'redeemed'), false)`,
-      customerHasReserved: sql<boolean>`coalesce(bool_or(${discountCodeRedemptions.dotyposCustomerId} = ${input.dotyposCustomerId} and ${discountCodeRedemptions.state} = 'reserved'), false)`,
+      customerActiveUseCount: sql<number>`count(*) filter (where ${discountCodeRedemptions.dotyposCustomerId} = ${input.dotyposCustomerId})::integer`,
     })
     .from(discountCodeRedemptions)
     .where(

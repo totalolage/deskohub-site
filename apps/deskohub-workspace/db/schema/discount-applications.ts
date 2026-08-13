@@ -145,9 +145,6 @@ export const discountCodeRedemptions = pgTable(
     uniqueIndex("discount_code_redemptions_attempt_unique_idx").on(
       t.paymentAttemptId
     ),
-    uniqueIndex("discount_code_redemptions_active_customer_unique_idx")
-      .on(t.codeId, t.dotyposCustomerId)
-      .where(sql`${t.state} in ('reserved', 'redeemed')`),
     index("discount_code_redemptions_code_state_idx").on(t.codeId, t.state),
     index("discount_code_redemptions_stale_reserved_idx")
       .on(t.reservationExpiresAt)

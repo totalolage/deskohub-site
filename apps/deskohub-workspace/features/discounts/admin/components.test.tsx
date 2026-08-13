@@ -75,6 +75,7 @@ const dashboard: DiscountAdminDashboard = {
       validFrom: Temporal.Instant.from("2026-08-01T08:00:00Z"),
       validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
       maxUses: 100,
+      maxUsesPerCustomer: 2,
       audienceSize: 2,
       reservedUses: 1,
       redeemedUses: 3,
@@ -293,6 +294,9 @@ describe("discount administration pages", () => {
         "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
       )
     ).not.toBeNull();
+    expect(
+      view.getByRole("spinbutton", { name: "Maximum uses per customer" })
+    ).toHaveProperty("value", "2");
     expect(view.getByRole("button", { name: "Save discount" })).toBeDefined();
 
     act(() => {
@@ -404,6 +408,9 @@ describe("discount administration pages", () => {
     expect(
       within(table).getByRole("link", { name: "SUMMER10" }).getAttribute("href")
     ).toBe("/admin/codes/019c91dd-c560-7e55-b9d8-c95065efd52d");
+    expect(
+      within(table).getByRole("columnheader", { name: "Uses per customer" })
+    ).toBeDefined();
     expect(within(table).getByText("2 customers")).toBeDefined();
     expect(within(table).getByText("96")).toBeDefined();
   });
@@ -1031,6 +1038,7 @@ describe("discount administration pages", () => {
         validFrom: null,
         validUntil: null,
         maxUses: null,
+        maxUsesPerCustomer: null,
       },
       discount: {
         kind: "existing",

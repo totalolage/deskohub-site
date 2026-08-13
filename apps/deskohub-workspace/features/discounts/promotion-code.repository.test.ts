@@ -45,15 +45,9 @@ describe("promotion availability queries", () => {
     }).toSQL();
 
     expect(sql).toContain("count(*)");
-    expect(sql).toContain('"discount_code_redemptions"."state" in ($4, $5)');
+    expect(sql).toContain('"discount_code_redemptions"."state" in ($3, $4)');
     expect(sql).not.toContain("released");
-    expect(params).toEqual([
-      "customer-1",
-      "customer-1",
-      codeId,
-      "reserved",
-      "redeemed",
-    ]);
+    expect(params).toEqual(["customer-1", codeId, "reserved", "redeemed"]);
   });
 
   test("sums only reserved and redeemed voucher applications", () => {

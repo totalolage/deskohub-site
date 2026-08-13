@@ -69,6 +69,7 @@ export class PromotionCodeRepository extends Context.Service<
               discountCodeId: discountCodes.id,
               discountId: discountCodes.discountId,
               maxUses: discountCodes.maxUses,
+              maxUsesPerCustomer: discountCodes.maxUsesPerCustomer,
               voucherId: vouchers.id,
               issuedAmountValue: vouchers.issuedAmountValue,
               issuedAmountExponent: vouchers.issuedAmountExponent,
@@ -113,8 +114,7 @@ export class PromotionCodeRepository extends Context.Service<
           allowlistSize: audienceRows[0]?.allowlistSize ?? 0,
           customerAllowed: audienceRows[0]?.customerAllowed ?? false,
           activeUseCount: claimRows[0]?.activeUseCount ?? 0,
-          customerHasRedeemed: claimRows[0]?.customerHasRedeemed ?? false,
-          customerHasReserved: claimRows[0]?.customerHasReserved ?? false,
+          customerActiveUseCount: claimRows[0]?.customerActiveUseCount ?? 0,
         }).pipe(
           Effect.mapError((cause) =>
             malformedAvailability(input.promotionCodeId, cause)
@@ -168,8 +168,7 @@ const availabilityBase = {
 const discountCodeAvailabilitySchema = Schema.Struct({
   ...availabilityBase,
   activeUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  customerHasRedeemed: Schema.Boolean,
-  customerHasReserved: Schema.Boolean,
+  customerActiveUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 
 const voucherAvailabilitySchema = Schema.Struct({

@@ -867,6 +867,7 @@ export const AdministrationDiscountCode = Schema.Struct({
   discountId: AdministrationStoredDiscountId,
   ...administrationPromotionFields,
   maxUses: Schema.NullOr(Schema.Number),
+  maxUsesPerCustomer: Schema.NullOr(Schema.Number),
   remainingUses: Schema.NullOr(Schema.Number),
 });
 export type AdministrationDiscountCode = typeof AdministrationDiscountCode.Type;
@@ -1079,6 +1080,9 @@ export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
   validFrom: Schema.NullOr(AdministrationInstant),
   validUntil: Schema.NullOr(AdministrationInstant),
   maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+  maxUsesPerCustomer: Schema.optional(
+    Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))
+  ),
 }).check(administrationDiscountCodeWindow);
 export type AdministrationDiscountCodeConfigurationInput =
   typeof AdministrationDiscountCodeConfigurationInput.Type;

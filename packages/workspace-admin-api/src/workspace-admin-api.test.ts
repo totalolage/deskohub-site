@@ -79,6 +79,7 @@ describe("administration contract", () => {
         ...common,
         discountId: "01980000-0000-7000-8000-000000000002",
         maxUses: null,
+        maxUsesPerCustomer: null,
         remainingUses: null,
       })
     ).toMatchObject({ code: "GIFT100", maxUses: null });

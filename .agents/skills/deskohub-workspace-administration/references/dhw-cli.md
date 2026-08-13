@@ -106,6 +106,7 @@ dhw discounts delete <discount-id>
 
 dhw codes create existing SUMMER10 <discount-id>
 dhw codes create percentage VIP15 --customer <customer-id> \
+  --max-uses-per-customer 2 \
   --label-en "VIP discount" --label-cs "VIP sleva" \
   --percentage 15 --product cowork
 dhw codes update <code-id> SUMMER15 <discount-id> --enabled true
@@ -136,9 +137,9 @@ their own command group; `vouchers get` reports issued and remaining credit
 together with every reserved, redeemed, or released claim. Add `--customer` to
 either create command to restrict the new resource to one customer. Fixed and
 credit values use minor currency units. Validity bounds use ISO instants;
-omitted bounds and code maximum uses are stored as unrestricted values. Update
-commands replace the editable resource fields, matching the corresponding Admin
-UI forms.
+omitted bounds and global or per-customer code maximum uses are stored as
+unrestricted values. Update commands replace the editable resource fields,
+matching the corresponding Admin UI forms.
 
 Commands that delete resources, remove restrictions, revoke sessions, change a
 customer's discount group, or add a code-audience member ask for confirmation.

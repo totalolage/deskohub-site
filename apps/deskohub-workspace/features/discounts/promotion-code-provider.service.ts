@@ -101,10 +101,9 @@ export class PromotionCodeProvider extends Context.Service<
                       availability,
                       configuration,
                     })),
-                    Effect.tap(validateCustomerNotRedeemed),
-                    Effect.tap(validateCustomerNotReserved),
                     Effect.tap(validateCustomerAllowed),
                     Effect.tap(validateUsageAvailable),
+                    Effect.tap(validateCustomerUsageAvailable),
                     Effect.bind("definition", loadDiscountDefinition),
                     Effect.tap(validateDiscountCodeProduct),
                     Effect.tap(validateFixedAdjustmentCompatibility),
@@ -226,14 +225,6 @@ const validateDiscountCodeUnexpired = (input: {
     ? Effect.void
     : unavailable(input.configuration, "expired");
 
-const validateCustomerNotRedeemed = (input: {
-  readonly availability: DiscountCodeAvailability;
-  readonly configuration: DiscountCodeConfiguration;
-}) =>
-  input.availability.customerHasRedeemed
-    ? unavailable(input.configuration, "already_redeemed")
-    : Effect.void;
-
 const validateCustomerNotReserved = (input: {
   readonly availability: { readonly customerHasReserved: boolean };
   readonly configuration: SubmittedPromotionConfiguration;
@@ -248,6 +239,16 @@ const validateUsageAvailable = (input: {
 }) =>
   input.configuration.maxUses !== null &&
   input.availability.activeUseCount >= input.configuration.maxUses
+    ? unavailable(input.configuration, "usage_limit_reached")
+    : Effect.void;
+
+const validateCustomerUsageAvailable = (input: {
+  readonly availability: DiscountCodeAvailability;
+  readonly configuration: DiscountCodeConfiguration;
+}) =>
+  input.configuration.maxUsesPerCustomer !== null &&
+  input.availability.customerActiveUseCount >=
+    input.configuration.maxUsesPerCustomer
     ? unavailable(input.configuration, "usage_limit_reached")
     : Effect.void;
 

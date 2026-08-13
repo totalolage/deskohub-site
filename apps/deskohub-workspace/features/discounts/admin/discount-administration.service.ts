@@ -103,6 +103,7 @@ export type AdminDiscountCode = {
   readonly validFrom: Temporal.Instant | null;
   readonly validUntil: Temporal.Instant | null;
   readonly maxUses: number | null;
+  readonly maxUsesPerCustomer: number | null;
   readonly audienceSize: number;
   readonly reservedUses: number;
   readonly redeemedUses: number;
@@ -764,6 +765,7 @@ export class DiscountAdministration extends Context.Service<
                   promotionCodeId: promotion.id,
                   discountId,
                   maxUses: input.code.maxUses,
+                  maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
                 })
                 .returning({ id: discountCodes.id });
               const codeRow = codeRows[0];
@@ -840,6 +842,7 @@ export class DiscountAdministration extends Context.Service<
                 promotionCodeId: promotion.id,
                 discountId,
                 maxUses: input.code.maxUses,
+                maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
               })
               .returning({ id: discountCodes.id });
             const codeRow = codeRows[0];
@@ -880,6 +883,9 @@ export class DiscountAdministration extends Context.Service<
                   ...toPromotionCodeValues(input),
                   discountId: input.discountId,
                   maxUses: input.maxUses,
+                  ...(input.maxUsesPerCustomer !== undefined && {
+                    maxUsesPerCustomer: input.maxUsesPerCustomer,
+                  }),
                   updatedAt: Temporal.Now.instant(),
                 })
                 .where(eq(discountCodes.id, input.id));
@@ -1744,6 +1750,7 @@ const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
     validFrom: row.promotion.validFrom,
     validUntil: row.promotion.validUntil,
     maxUses: row.maxUses,
+    maxUsesPerCustomer: row.maxUsesPerCustomer,
     audienceSize: row.promotion.customers.length,
     ...usage,
     createdAt: row.promotion.createdAt,

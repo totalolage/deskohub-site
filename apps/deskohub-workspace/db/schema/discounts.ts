@@ -170,6 +170,7 @@ export const discountCodes = pgTable(
       .$type<StoredDiscountId>()
       .references(() => discounts.id),
     maxUses: integer("max_uses"),
+    maxUsesPerCustomer: integer("max_uses_per_customer"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
@@ -196,6 +197,10 @@ export const discountCodes = pgTable(
     check(
       "discount_codes_max_uses_check",
       sql`${t.maxUses} is null or ${t.maxUses} > 0`
+    ),
+    check(
+      "discount_codes_max_uses_per_customer_check",
+      sql`${t.maxUsesPerCustomer} is null or ${t.maxUsesPerCustomer} > 0`
     ),
   ]
 );

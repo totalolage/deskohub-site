@@ -92,7 +92,9 @@ describe("discount persistence contracts", () => {
     expect(migration).toContain(
       'CREATE FUNCTION "sync_promotion_discount_code_customer"'
     );
-    expect(migration.match(/IF pg_trigger_depth\(\) > 1 THEN/g)).toHaveLength(5);
+    expect(migration.match(/IF pg_trigger_depth\(\) > 1 THEN/g)).toHaveLength(
+      5
+    );
     expect(migration).not.toContain(
       'ALTER TABLE "discount_codes" DROP COLUMN "code"'
     );
@@ -100,6 +102,31 @@ describe("discount persistence contracts", () => {
       'ALTER TABLE "discount_code_customers" RENAME TO'
     );
     expect(migration).not.toContain('ALTER COLUMN "discount_id" DROP NOT NULL');
+  });
+
+  test("adds explicit per-customer code limits without changing existing behavior", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260813192416_black_jane_foster/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(migration).toContain('ADD COLUMN "max_uses_per_customer" integer');
+    expect(migration).toContain(
+      'UPDATE "discount_codes" SET "max_uses_per_customer" = 1 WHERE "max_uses" IS NOT NULL'
+    );
+    expect(
+      migration.indexOf('ADD COLUMN "max_uses_per_customer"')
+    ).toBeLessThan(migration.indexOf('UPDATE "discount_codes"'));
+    expect(migration.indexOf('UPDATE "discount_codes"')).toBeLessThan(
+      migration.indexOf(
+        'DROP INDEX "discount_code_redemptions_active_customer_unique_idx"'
+      )
+    );
+    expect(migration).toContain(
+      'CONSTRAINT "discount_codes_max_uses_per_customer_check"'
+    );
   });
 
   test("accepts only canonical product keys and discount codes", () => {
@@ -265,6 +292,7 @@ describe("discount persistence contracts", () => {
       "discount_codes_code_check",
       "discount_codes_valid_window_check",
       "discount_codes_max_uses_check",
+      "discount_codes_max_uses_per_customer_check",
     ]);
     expect(namesOf(voucherConfig.checks)).toEqual([
       "vouchers_promotion_kind_check",
@@ -317,7 +345,7 @@ describe("discount persistence contracts", () => {
       partial: index.where !== undefined,
     }));
 
-    expect(indexes).toContainEqual({
+    expect(indexes).not.toContainEqual({
       name: "discount_code_redemptions_active_customer_unique_idx",
       unique: true,
       partial: true,

@@ -39,6 +39,7 @@ const discountRow = (
   discountCodeId: codeId,
   discountId,
   maxUses: null,
+  maxUsesPerCustomer: null,
   voucherId: null,
   issuedAmountValue: null,
   issuedAmountExponent: null,
@@ -111,6 +112,7 @@ describe("stored promotion configuration", () => {
       validFrom: null,
       validUntil: null,
       maxUses: null,
+      maxUsesPerCustomer: null,
     });
   });
 
@@ -144,6 +146,7 @@ describe("stored promotion configuration", () => {
     ["mixed child data", discountRow({ voucherId })],
     ["noncanonical code", discountRow({ code: "summer_50" })],
     ["zero maximum uses", discountRow({ maxUses: 0 })],
+    ["zero per-customer maximum uses", discountRow({ maxUsesPerCustomer: 0 })],
     [
       "inverted validity window",
       discountRow({

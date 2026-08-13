@@ -783,8 +783,6 @@ function CodeSummary({
   readonly discountLabel: string;
 }) {
   const benefit = discountLabel;
-  const remaining = code.remainingUses ?? "Unlimited";
-
   return (
     <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
       <SummaryFact label="Benefit" value={benefit} />
@@ -804,7 +802,14 @@ function CodeSummary({
       />
       <SummaryFact label="Reserved" value={code.reservedUses} />
       <SummaryFact label="Redeemed" value={code.redeemedUses} />
-      <SummaryFact label="Remaining" value={remaining} />
+      <SummaryFact
+        label="Remaining globally"
+        value={code.remainingUses ?? "Unlimited"}
+      />
+      <SummaryFact
+        label="Uses per customer"
+        value={code.maxUsesPerCustomer ?? "Unlimited"}
+      />
     </dl>
   );
 }

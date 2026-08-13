@@ -173,6 +173,9 @@ describe("PaymentLifecycleRepository", () => {
     expect(reserveClaim).toContain(
       'inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])'
     );
+    expect(reserveClaim).toContain("code.maxUsesPerCustomer !== null");
+    expect(reserveClaim).toContain("customerUses?.count");
+    expect(reserveClaim).not.toContain('"already_redeemed"');
     expect(reserveClaim).toContain("validateVoucherClaim");
     expect(reserveClaim).toContain("coalesce(sum(");
     expect(reserveClaim).toContain("discountApplications.appliedAmountValue");
