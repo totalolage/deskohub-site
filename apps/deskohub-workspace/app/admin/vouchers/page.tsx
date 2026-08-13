@@ -27,7 +27,7 @@ export default function VouchersAdminPage({
   const data = loadDiscountAdminVouchersPageData(searchParams);
   return (
     <AdministrationPage>
-      <h1 className="sr-only">Vouchers</h1>
+      <h1 className="sr-only">Promotional vouchers</h1>
       <Suspense fallback={null}>
         <VouchersNotice data={data} />
       </Suspense>
