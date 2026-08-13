@@ -139,7 +139,7 @@ describe("ReservationAccessService", () => {
 
   const grant = {
     id: grantId,
-    workspaceReservationId: reservationId,
+    reservationId,
     deviceId,
     state: "issued" as const,
     providerCredentialId: pinId,

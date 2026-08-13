@@ -5,7 +5,6 @@ import {
 } from "@deskohub/igloohome";
 import { Context, Data, Effect, Layer, Match, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
-import type { ReservationAccessGrantRow } from "@/db/schema";
 import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { IgloohomeServiceLive } from "@/shared/backend/config/igloohome.config";
@@ -145,9 +144,6 @@ export class ReservationAccessService extends Context.Service<
       return ReservationAccessService.of({
         loadGrant: (reservationId) =>
           repository.findByReservationId(reservationId).pipe(
-            Effect.map((grant) =>
-              grant ? toReservationAccessGrant(grant) : null
-            ),
             Effect.mapError(
               (cause) =>
                 new ReservationAccessIssuanceError({
@@ -169,7 +165,6 @@ export class ReservationAccessService extends Context.Service<
               }),
             })
             .pipe(
-              Effect.map(toReservationAccessGrant),
               Effect.mapError(
                 (cause) =>
                   new ReservationAccessIssuanceError({
@@ -459,24 +454,3 @@ export class ReservationAccessService extends Context.Service<
     Layer.provide(IgloohomeServiceLive)
   );
 }
-
-const toReservationAccessGrant = (
-  grant: ReservationAccessGrantRow
-): ReservationAccessGrant => ({
-  id: grant.id,
-  reservationId: grant.workspaceReservationId,
-  provider: grant.provider,
-  credentialType: grant.credentialType,
-  deviceId: grant.deviceId,
-  state: grant.state,
-  providerCredentialId: grant.providerCredentialId,
-  scheduledAccessStartsAt: grant.scheduledAccessStartsAt,
-  accessStartsAt: grant.accessStartsAt,
-  accessEndsAt: grant.accessEndsAt,
-  provisioningStartedAt: grant.provisioningStartedAt,
-  issuedAt: grant.issuedAt,
-  failedAt: grant.failedAt,
-  failureCode: grant.failureCode,
-  createdAt: grant.createdAt,
-  updatedAt: grant.updatedAt,
-});

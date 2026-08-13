@@ -7,13 +7,32 @@ import { AlgoPinSchema } from "@deskohub/igloohome";
 import { and, eq, inArray, lte, or } from "drizzle-orm";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import {
-  type ReservationAccessGrantRow,
-  reservationAccessGrants,
-} from "@/db/schema";
+import { reservationAccessGrants } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
-import type { ReservationAccessGrantId } from "../reservation-access";
+import type {
+  ReservationAccessGrant,
+  ReservationAccessGrantId,
+} from "../reservation-access";
+
+const reservationAccessGrantSelection = {
+  id: reservationAccessGrants.id,
+  reservationId: reservationAccessGrants.workspaceReservationId,
+  provider: reservationAccessGrants.provider,
+  credentialType: reservationAccessGrants.credentialType,
+  deviceId: reservationAccessGrants.deviceId,
+  state: reservationAccessGrants.state,
+  providerCredentialId: reservationAccessGrants.providerCredentialId,
+  scheduledAccessStartsAt: reservationAccessGrants.scheduledAccessStartsAt,
+  accessStartsAt: reservationAccessGrants.accessStartsAt,
+  accessEndsAt: reservationAccessGrants.accessEndsAt,
+  provisioningStartedAt: reservationAccessGrants.provisioningStartedAt,
+  issuedAt: reservationAccessGrants.issuedAt,
+  failedAt: reservationAccessGrants.failedAt,
+  failureCode: reservationAccessGrants.failureCode,
+  createdAt: reservationAccessGrants.createdAt,
+  updatedAt: reservationAccessGrants.updatedAt,
+};
 
 export class ReservationAccessStorageError extends Data.TaggedError(
   "ReservationAccessStorageError"
@@ -37,11 +56,11 @@ export interface IReservationAccessRepository {
     readonly scheduledAccessStartsAt: Temporal.Instant;
     readonly accessStartsAt: Temporal.Instant;
     readonly accessEndsAt: Temporal.Instant;
-  }) => Effect.Effect<ReservationAccessGrantRow, ReservationAccessStorageError>;
+  }) => Effect.Effect<ReservationAccessGrant, ReservationAccessStorageError>;
   readonly findByReservationId: (
     reservationId: WorkspaceReservationId
   ) => Effect.Effect<
-    ReservationAccessGrantRow | null,
+    ReservationAccessGrant | null,
     ReservationAccessStorageError
   >;
   readonly claim: (input: {
@@ -76,7 +95,7 @@ export interface IReservationAccessRepository {
     readonly reservationId: WorkspaceReservationId;
     readonly reconciledAt: Temporal.Instant;
     readonly provisioningStaleBefore: Temporal.Instant;
-  }) => Effect.Effect<ReservationAccessGrantRow, ReservationAccessStorageError>;
+  }) => Effect.Effect<ReservationAccessGrant, ReservationAccessStorageError>;
 }
 
 export class ReservationAccessRepository extends Context.Service<
@@ -92,7 +111,7 @@ export class ReservationAccessRepository extends Context.Service<
         "ReservationAccessRepository.findByReservationId"
       )(function* (reservationId: WorkspaceReservationId) {
         const [row] = yield* db
-          .select()
+          .select(reservationAccessGrantSelection)
           .from(reservationAccessGrants)
           .where(
             eq(reservationAccessGrants.workspaceReservationId, reservationId)
@@ -357,7 +376,7 @@ export class ReservationAccessRepository extends Context.Service<
                 )
               )
             )
-            .returning()
+            .returning(reservationAccessGrantSelection)
             .pipe(
               Effect.mapError(
                 () =>
