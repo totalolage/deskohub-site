@@ -6,16 +6,16 @@ import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resourc
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
-import { CodeDiscountProvider } from "./code-discount-provider.service";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
 import { DiscountService } from "./discount.service";
-import { DiscountCodeRepository } from "./discount-code.repository";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
+import { PromotionCodeRepository } from "./promotion-code.repository";
+import { PromotionCodeProvider } from "./promotion-code-provider.service";
 
 const discountRepositories = Layer.mergeAll(
   DiscountDefinitionRepository.Live,
-  DiscountCodeRepository.Live
+  PromotionCodeRepository.Live
 ).pipe(Layer.provide(WorkspaceDatabaseLive));
 
 const providerDependencies = Layer.mergeAll(
@@ -28,7 +28,7 @@ const providerDependencies = Layer.mergeAll(
 const discountProviders = Layer.mergeAll(
   CalendarDiscountProvider.Live,
   CustomerDiscountProvider.Live,
-  CodeDiscountProvider.Live
+  PromotionCodeProvider.Live
 ).pipe(Layer.provide(providerDependencies));
 
 export const DiscountReleaseGateServiceLiveWithDependencies =

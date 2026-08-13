@@ -8,7 +8,7 @@ import type { ReservationQuotePayment } from "@/features/checkout/reservation-qu
 import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import {
   type AffirmedDiscountAdvertisementQuote,
-  type CanonicalDiscountCode,
+  type CanonicalPromotionCode,
   type DiscountAdvertisementInput,
   type DiscountCommitment,
   type DiscountId,
@@ -64,7 +64,7 @@ export type ReservationPaymentPriceAffirmationInput<
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly quote: Quote;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
 };
 
 export type ReservationDiscountCodePriceInput<
@@ -74,7 +74,7 @@ export type ReservationDiscountCodePriceInput<
   ReservationPaymentPriceAffirmationInput<Reservation, Quote>,
   "submittedCode"
 > & {
-  readonly submittedCode: CanonicalDiscountCode;
+  readonly submittedCode: CanonicalPromotionCode;
 };
 
 export type ReservationAdvertisementQuote<

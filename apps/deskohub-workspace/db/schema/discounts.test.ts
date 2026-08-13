@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { Schema } from "effect";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
-import { canonicalDiscountCodeSchema } from "@/features/discounts/persistence-contracts";
+import { canonicalPromotionCodeSchema } from "@/features/discounts/persistence-contracts";
 import {
   workspaceCoworkProductIdentitySchema,
   workspaceCoworkProductKeySchema,
@@ -10,12 +10,15 @@ import {
 import {
   discountApplications,
   discountCodeRedemptions,
+  voucherRedemptions,
 } from "./discount-applications";
 import {
-  discountCodeCustomers,
   discountCodes,
   discountProductTargets,
   discounts,
+  promotionCodeCustomers,
+  promotionCodes,
+  vouchers,
 } from "./discounts";
 
 const configOf = (table: PgTable) => getTableConfig(table);
@@ -57,11 +60,32 @@ describe("discount persistence contracts", () => {
     expect(migration).not.toContain('"raw_payload"');
   });
 
+  test("introduces vouchers separately without discarding discount codes", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260813185209_many_lilith/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(migration).toContain('CREATE TABLE "promotion_codes"');
+    expect(migration).toContain('CREATE TABLE "vouchers"');
+    expect(migration).toContain('CREATE TABLE "voucher_redemptions"');
+    expect(migration).toContain('SELECT "id", \'discount\', "code", "enabled"');
+    expect(migration.indexOf('INSERT INTO "promotion_codes"')).toBeLessThan(
+      migration.indexOf('ALTER TABLE "discount_codes" DROP COLUMN "code"')
+    );
+    expect(migration).toContain(
+      'UPDATE "discount_codes" SET "promotion_code_id" = "id"'
+    );
+    expect(migration).not.toContain('ALTER COLUMN "discount_id" DROP NOT NULL');
+  });
+
   test("accepts only canonical product keys and discount codes", () => {
     const decodeProductKey = Schema.decodeUnknownSync(
       workspaceCoworkProductKeySchema
     );
-    const decodeCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
+    const decodeCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema);
 
     for (const tier of workspaceCoworkProductIdentitySchema.fields.tier
       .literals) {
@@ -102,8 +126,8 @@ describe("discount persistence contracts", () => {
       "discount_id",
       "product_target",
     ]);
-    expect(namesOf(configOf(discountCodeCustomers).primaryKeys)).toEqual([
-      "discount_code_customers_pk",
+    expect(namesOf(configOf(promotionCodeCustomers).primaryKeys)).toEqual([
+      "promotion_code_customers_pk",
     ]);
   });
 
@@ -201,17 +225,38 @@ describe("discount persistence contracts", () => {
     );
   });
 
-  test("enforces canonical code configuration in the database schema", () => {
-    const config = configOf(discountCodes);
+  test("enforces separate promotion, discount-code, and voucher aggregates", () => {
+    const promotionConfig = configOf(promotionCodes);
+    const codeConfig = configOf(discountCodes);
+    const voucherConfig = configOf(vouchers);
+    const discountId = codeConfig.columns.find(
+      ({ name }) => name === "discount_id"
+    );
 
-    expect(namesOf(config.checks)).toEqual([
-      "discount_codes_code_check",
-      "discount_codes_valid_window_check",
+    expect(discountId?.notNull).toBe(true);
+    expect(namesOf(promotionConfig.checks)).toEqual([
+      "promotion_codes_code_check",
+      "promotion_codes_valid_window_check",
+      "promotion_codes_kind_check",
+    ]);
+    expect(namesOf(codeConfig.checks)).toEqual([
+      "discount_codes_promotion_kind_check",
       "discount_codes_max_uses_check",
     ]);
+    expect(namesOf(voucherConfig.checks)).toEqual([
+      "vouchers_promotion_kind_check",
+      "vouchers_issued_amount_check",
+    ]);
     expect(
-      config.indexes.map(({ config: index }) => [index.name, index.unique])
-    ).toContainEqual(["discount_codes_code_unique_idx", true]);
+      promotionConfig.indexes.map(({ config: index }) => [
+        index.name,
+        index.unique,
+      ])
+    ).toContainEqual(["promotion_codes_code_unique_idx", true]);
+    expect(codeConfig.columns.map(({ name }) => name)).not.toContain("code");
+    expect(voucherConfig.columns.map(({ name }) => name)).not.toContain(
+      "discount_id"
+    );
   });
 
   test("keeps immutable application snapshots source-neutral", () => {
@@ -238,9 +283,10 @@ describe("discount persistence contracts", () => {
     ).not.toContain("discount_applications_public_discount_id_discounts_id_fk");
   });
 
-  test("prevents duplicate active customer claims while retaining releases", () => {
-    const config = configOf(discountCodeRedemptions);
-    const indexes = config.indexes.map(({ config: index }) => ({
+  test("keeps ordinary and voucher claim invariants independent", () => {
+    const codeConfig = configOf(discountCodeRedemptions);
+    const voucherConfig = configOf(voucherRedemptions);
+    const indexes = codeConfig.indexes.map(({ config: index }) => ({
       name: index.name,
       unique: index.unique,
       partial: index.where !== undefined,
@@ -257,15 +303,30 @@ describe("discount persistence contracts", () => {
       partial: true,
     });
     expect(
-      config.foreignKeys.map((foreignKey) => foreignKey.getName())
+      codeConfig.foreignKeys.map((foreignKey) => foreignKey.getName())
     ).toEqual(
       expect.arrayContaining([
         "discount_code_redemptions_application_id_discount_applications_id_fk",
+        "discount_code_redemptions_code_id_discount_codes_id_fk",
         "discount_code_redemptions_payment_attempt_id_payment_attempts_id_fk",
       ])
     );
-    expect(namesOf(config.checks)).toContain(
+    expect(namesOf(codeConfig.checks)).not.toContain(
+      "discount_code_redemptions_kind_check"
+    );
+    expect(namesOf(codeConfig.checks)).toContain(
       "discount_code_redemptions_lifecycle_check"
     );
+    expect(
+      voucherConfig.indexes.map(({ config: index }) => ({
+        name: index.name,
+        unique: index.unique,
+        partial: index.where !== undefined,
+      }))
+    ).toContainEqual({
+      name: "voucher_redemptions_active_customer_unique_idx",
+      unique: true,
+      partial: true,
+    });
   });
 });

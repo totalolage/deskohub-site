@@ -29,8 +29,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
+import { VoucherEditor } from "./admin-tables";
 import {
   AddCodeCustomerForm,
+  AddVoucherCustomerForm,
   AdminMutationButton,
   CustomerCodeAction,
   CustomerDiscountGroupForm,
@@ -40,6 +42,9 @@ import type {
   AdminDiscountCode,
   AdminDiscountCodeClaim,
   AdminDiscountCodeDetail,
+  AdminVoucher,
+  AdminVoucherClaim,
+  AdminVoucherDetail,
 } from "./discount-administration.service";
 
 type Notice = {
@@ -62,6 +67,14 @@ const getDiscountLabel = (code: AdminCustomerProfile["codes"][number]) =>
       : formatAdministrationMoney(code.discountAdjustment.amount)
   }`;
 
+const getCustomerVoucherAvailability = (
+  voucher: AdminCustomerProfile["vouchers"][number]
+) => {
+  if (voucher.audienceSize === 0) return "Available to all";
+  if (voucher.eligible) return `${voucher.audienceSize} selected customers`;
+  return "Restricted";
+};
+
 export function CodeAdministrationDetailPage({
   detail,
   notice,
@@ -74,9 +87,14 @@ export function CodeAdministrationDetailPage({
     <AdministrationPage>
       <AdministrationPageHeader title={code.code} />
       <AdministrationNoticeBanner notice={notice} />
-      <Button asChild className="mb-4" size="sm" variant="ghost">
-        <Link href="/admin/codes">← Back to codes</Link>
-      </Button>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/admin/codes">← Back to codes</Link>
+        </Button>
+        <Button asChild size="sm" variant="secondary">
+          <Link href="/admin/codes">Edit or delete code</Link>
+        </Button>
+      </div>
 
       <CodeSummary code={code} discountLabel={detail.discountLabel} />
 
@@ -167,7 +185,127 @@ export function CodeAdministrationDetailPage({
 
       <section className="mt-5">
         <h2 className="mb-3 font-semibold">Claim history</h2>
-        <ClaimHistory claims={detail.claims} showCode={false} />
+        <ClaimHistory claims={detail.claims} resource="code-customer" />
+      </section>
+    </AdministrationPage>
+  );
+}
+
+export function VoucherAdministrationDetailPage({
+  detail,
+  notice,
+}: {
+  readonly detail: AdminVoucherDetail;
+  readonly notice?: Notice;
+}) {
+  const { voucher } = detail;
+  return (
+    <AdministrationPage>
+      <AdministrationPageHeader title={voucher.code} />
+      <AdministrationNoticeBanner notice={notice} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/admin/vouchers">← Back to vouchers</Link>
+        </Button>
+      </div>
+
+      <VoucherSummary voucher={voucher} />
+
+      <section className="mt-5 rounded-xl border border-navy-blue/10 bg-white p-5">
+        <h2 className="mb-4 font-semibold">Configuration</h2>
+        <VoucherEditor
+          deletable
+          deleteRedirect="/admin/vouchers"
+          voucher={{
+            ...voucher,
+            validFrom: voucher.validFrom?.toString() ?? null,
+            validUntil: voucher.validUntil?.toString() ?? null,
+          }}
+        />
+      </section>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-blue/10 px-5 py-4">
+            <div>
+              <h2 className="font-semibold">Audience</h2>
+              <p className="mt-1 text-sm text-navy-blue/65">
+                {detail.customers.length === 0
+                  ? "Any Dotypos customer can use this voucher."
+                  : `${detail.customers.length} customers can use this voucher.`}
+              </p>
+            </div>
+            {detail.customers.length > 0 && (
+              <AdminMutationButton
+                confirmation="Make this voucher unrestricted? Every Dotypos customer will be eligible."
+                mutation={{
+                  kind: "make-voucher-unrestricted",
+                  voucherId: voucher.id,
+                }}
+              >
+                Make unrestricted
+              </AdminMutationButton>
+            )}
+          </div>
+          {detail.customers.length === 0 ? (
+            <EmptyState message="Unrestricted audience" />
+          ) : (
+            <ul className="divide-y divide-navy-blue/10">
+              {detail.customers.map(({ customer, customerId }) => (
+                <li
+                  className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
+                  key={customerId}
+                >
+                  <div>
+                    <Link
+                      className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
+                      href={`/admin/customers/${customerId}`}
+                    >
+                      {customer?.displayName ?? "Details unavailable"}
+                    </Link>
+                    <p className="mt-1 text-sm text-navy-blue/65">
+                      {customer
+                        ? [customer.email, customer.phone]
+                            .filter(Boolean)
+                            .join(" · ") || "No contact details"
+                        : customerId}
+                    </p>
+                  </div>
+                  {detail.customers.length > 1 ? (
+                    <AdminMutationButton
+                      confirmation={`Remove ${customer?.displayName ?? customerId} from this voucher audience?`}
+                      mutation={{
+                        kind: "remove-voucher-customer",
+                        voucherId: voucher.id,
+                        customerId,
+                      }}
+                    >
+                      Remove
+                    </AdminMutationButton>
+                  ) : (
+                    <span className="text-xs text-navy-blue/65">
+                      Use Make unrestricted
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5">
+          <h2 className="font-semibold">Add customer</h2>
+          <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
+            Adding the first customer changes an unrestricted voucher into a
+            restricted voucher.
+          </p>
+          <AddVoucherCustomerForm voucherId={voucher.id} />
+        </aside>
+      </div>
+
+      <section className="mt-5">
+        <h2 className="mb-3 font-semibold">Claim history</h2>
+        <ClaimHistory claims={detail.claims} resource="voucher-customer" />
       </section>
     </AdministrationPage>
   );
@@ -205,6 +343,9 @@ export function CustomerAdministrationDetailPage({
   const universalCodeCount = profile.codes.filter(
     (code) => code.enabled && code.audienceSize === 0
   ).length;
+  const visibleVouchers = profile.vouchers
+    .filter((voucher) => voucher.eligible || voucher.audienceSize === 0)
+    .toSorted((left, right) => left.code.localeCompare(right.code));
   const reservationGroups = groupCustomerReservations(activity.reservations);
   return (
     <AdministrationPage>
@@ -301,7 +442,7 @@ export function CustomerAdministrationDetailPage({
                   href={`/admin/customers/${profile.customer.id}/create-code`}
                 >
                   <Plus aria-hidden className="size-4" />
-                  Create discount code
+                  Create code
                 </Link>
               </Button>
             </div>
@@ -370,7 +511,55 @@ export function CustomerAdministrationDetailPage({
 
           <section>
             <h2 className="mb-3 text-xl">Discount code history</h2>
-            <ClaimHistory claims={profile.claims} showCode />
+            <ClaimHistory claims={profile.claims} resource="code" />
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-xl">Vouchers</h2>
+            {visibleVouchers.length === 0 ? (
+              <EmptyState message="No vouchers are available to this customer." />
+            ) : (
+              <AdministrationTableFrame className="overflow-x-auto">
+                <Table aria-label="Customer voucher eligibility">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Voucher</TableHead>
+                      <TableHead>Issued</TableHead>
+                      <TableHead>Remaining</TableHead>
+                      <TableHead>Availability</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {visibleVouchers.map((voucher) => (
+                      <TableRow key={voucher.id}>
+                        <TableCell>
+                          <Link
+                            className="font-mono font-semibold underline underline-offset-4"
+                            href={`/admin/vouchers/${voucher.id}`}
+                          >
+                            {voucher.code}
+                          </Link>
+                        </TableCell>
+                        <TableCell>
+                          {formatAdministrationMoney(voucher.issuedCredit)}
+                        </TableCell>
+                        <TableCell>
+                          {formatAdministrationMoney(voucher.remainingCredit)}
+                        </TableCell>
+                        <TableCell>
+                          {getCustomerVoucherAvailability(voucher)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </AdministrationTableFrame>
+            )}
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-xl">Voucher history</h2>
+            <ClaimHistory claims={profile.voucherClaims} resource="voucher" />
           </section>
         </div>
 
@@ -593,9 +782,18 @@ function CodeSummary({
   readonly code: AdminDiscountCode;
   readonly discountLabel: string;
 }) {
+  const benefit = discountLabel;
+  const remaining = code.remainingUses ?? "Unlimited";
+
   return (
-    <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-5">
-      <SummaryFact label="Discount" value={discountLabel} />
+    <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryFact label="Benefit" value={benefit} />
+      <SummaryFact
+        label="Status"
+        value={code.enabled ? "Enabled" : "Disabled"}
+      />
+      <SummaryFact label="Valid from" value={formatInstant(code.validFrom)} />
+      <SummaryFact label="Valid until" value={formatInstant(code.validUntil)} />
       <SummaryFact
         label="Audience"
         value={
@@ -606,10 +804,44 @@ function CodeSummary({
       />
       <SummaryFact label="Reserved" value={code.reservedUses} />
       <SummaryFact label="Redeemed" value={code.redeemedUses} />
+      <SummaryFact label="Remaining" value={remaining} />
+    </dl>
+  );
+}
+
+function VoucherSummary({ voucher }: { readonly voucher: AdminVoucher }) {
+  return (
+    <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryFact
+        label="Issued"
+        value={formatAdministrationMoney(voucher.issuedCredit)}
+      />
       <SummaryFact
         label="Remaining"
-        value={code.remainingUses ?? "Unlimited"}
+        value={formatAdministrationMoney(voucher.remainingCredit)}
       />
+      <SummaryFact
+        label="Status"
+        value={voucher.enabled ? "Enabled" : "Disabled"}
+      />
+      <SummaryFact
+        label="Audience"
+        value={
+          voucher.audienceSize === 0
+            ? "Unrestricted"
+            : `${voucher.audienceSize} customers`
+        }
+      />
+      <SummaryFact
+        label="Valid from"
+        value={formatInstant(voucher.validFrom)}
+      />
+      <SummaryFact
+        label="Valid until"
+        value={formatInstant(voucher.validUntil)}
+      />
+      <SummaryFact label="Reserved" value={voucher.reservedUses} />
+      <SummaryFact label="Redeemed" value={voucher.redeemedUses} />
     </dl>
   );
 }
@@ -633,26 +865,31 @@ function SummaryFact({
 
 function ClaimHistory({
   claims,
-  showCode,
+  resource,
 }: {
-  readonly claims: readonly AdminDiscountCodeClaim[];
-  readonly showCode: boolean;
+  readonly claims: readonly (AdminDiscountCodeClaim | AdminVoucherClaim)[];
+  readonly resource: "code" | "code-customer" | "voucher" | "voucher-customer";
 }) {
+  const isVoucher = resource.startsWith("voucher");
+  const showsCustomer = resource.endsWith("customer");
+  const subjectLabel = isVoucher ? "Voucher" : "Discount code";
   if (claims.length === 0) {
-    return <EmptyState message="No code claims yet." />;
+    return (
+      <EmptyState message={`No ${subjectLabel.toLowerCase()} claims yet.`} />
+    );
   }
 
   return (
     <AdministrationTableFrame className="overflow-x-auto">
-      <Table aria-label="Discount code claim history" className="min-w-[820px]">
+      <Table
+        aria-label={`${subjectLabel} claim history`}
+        className="min-w-[820px]"
+      >
         <TableHeader>
           <TableRow>
-            {showCode ? (
-              <TableHead>Code</TableHead>
-            ) : (
-              <TableHead>Customer</TableHead>
-            )}
+            <TableHead>{showsCustomer ? "Customer" : subjectLabel}</TableHead>
             <TableHead>State</TableHead>
+            <TableHead>Amount</TableHead>
             <TableHead>Reserved</TableHead>
             <TableHead>Completed</TableHead>
             <TableHead>Reservation</TableHead>
@@ -661,13 +898,13 @@ function ClaimHistory({
         <TableBody>
           {claims.map((claim) => (
             <TableRow key={claim.id}>
-              {showCode ? (
+              {!showsCustomer ? (
                 <TableCell>
                   <Link
                     className="font-semibold underline underline-offset-4"
-                    href={`/admin/codes/${claim.codeId}`}
+                    href={getClaimSubjectHref(claim)}
                   >
-                    View code
+                    View {resource}
                   </Link>
                 </TableCell>
               ) : (
@@ -694,6 +931,9 @@ function ClaimHistory({
                 )}
               </TableCell>
               <TableCell className="whitespace-nowrap">
+                {formatAdministrationMoney(claim.appliedAmount)}
+              </TableCell>
+              <TableCell className="whitespace-nowrap">
                 {formatInstant(claim.reservedAt)}
               </TableCell>
               <TableCell className="whitespace-nowrap">
@@ -714,6 +954,13 @@ function ClaimHistory({
     </AdministrationTableFrame>
   );
 }
+
+const getClaimSubjectHref = (
+  claim: AdminDiscountCodeClaim | AdminVoucherClaim
+) =>
+  "codeId" in claim
+    ? `/admin/codes/${claim.codeId}`
+    : `/admin/vouchers/${claim.voucherId}`;
 
 const formatInstant = (instant: Temporal.Instant | null) =>
   instant

@@ -15,11 +15,13 @@ import type {
   DiscountApplicationId,
   DiscountCodeClaimId,
   DiscountCodeId,
+  VoucherClaimId,
+  VoucherId,
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
-import { discountCodes } from "./discounts";
+import { discountCodes, vouchers } from "./discounts";
 import { paymentAttempts } from "./payment-attempts";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
@@ -185,9 +187,88 @@ export const discountCodeRedemptions = pgTable(
   ]
 );
 
+export const voucherRedemptions = pgTable(
+  "voucher_redemptions",
+  {
+    id: text("id").primaryKey().default(postgresUuidV7).$type<VoucherClaimId>(),
+    voucherId: text("voucher_id")
+      .notNull()
+      .$type<VoucherId>()
+      .references(() => vouchers.id),
+    applicationId: text("application_id")
+      .notNull()
+      .$type<DiscountApplicationId>()
+      .references(() => discountApplications.id),
+    paymentAttemptId: text("payment_attempt_id")
+      .notNull()
+      .$type<PaymentAttemptId>()
+      .references(() => paymentAttempts.id),
+    dotyposCustomerId: text("dotypos_customer_id")
+      .notNull()
+      .$type<DotyposCustomerId>(),
+    state: text("state").notNull().$type<DiscountCodeClaimState>(),
+    reservationExpiresAt: instant("reservation_expires_at").notNull(),
+    reservedAt: instant("reserved_at").notNull().default(sql`now()`),
+    redeemedAt: instant("redeemed_at"),
+    releasedAt: instant("released_at"),
+    releaseReason: text("release_reason"),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
+  },
+  (t) => [
+    uniqueIndex("voucher_redemptions_application_unique_idx").on(
+      t.applicationId
+    ),
+    uniqueIndex("voucher_redemptions_attempt_unique_idx").on(
+      t.paymentAttemptId
+    ),
+    uniqueIndex("voucher_redemptions_active_customer_unique_idx")
+      .on(t.voucherId, t.dotyposCustomerId)
+      .where(sql`${t.state} = 'reserved'`),
+    index("voucher_redemptions_voucher_state_idx").on(t.voucherId, t.state),
+    index("voucher_redemptions_stale_reserved_idx")
+      .on(t.reservationExpiresAt)
+      .where(sql`${t.state} = 'reserved'`),
+    check(
+      "voucher_redemptions_customer_check",
+      sql`btrim(${t.dotyposCustomerId}) <> ''`
+    ),
+    check(
+      "voucher_redemptions_state_check",
+      sql`${t.state} in (${quotedSqlList(discountCodeClaimStates)})`
+    ),
+    check(
+      "voucher_redemptions_expiration_check",
+      sql`${t.reservationExpiresAt} > ${t.reservedAt}`
+    ),
+    check(
+      "voucher_redemptions_lifecycle_check",
+      sql`(
+        ${t.state} = 'reserved'
+        and ${t.redeemedAt} is null
+        and ${t.releasedAt} is null
+        and ${t.releaseReason} is null
+      ) or (
+        ${t.state} = 'redeemed'
+        and ${t.redeemedAt} is not null
+        and ${t.releasedAt} is null
+        and ${t.releaseReason} is null
+      ) or (
+        ${t.state} = 'released'
+        and ${t.redeemedAt} is null
+        and ${t.releasedAt} is not null
+        and ${t.releaseReason} is not null
+        and btrim(${t.releaseReason}) <> ''
+      )`
+    ),
+  ]
+);
+
 export type DiscountApplication = typeof discountApplications.$inferSelect;
 export type NewDiscountApplication = typeof discountApplications.$inferInsert;
 export type DiscountCodeRedemption =
   typeof discountCodeRedemptions.$inferSelect;
 export type NewDiscountCodeRedemption =
   typeof discountCodeRedemptions.$inferInsert;
+export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
+export type NewVoucherRedemption = typeof voucherRedemptions.$inferInsert;

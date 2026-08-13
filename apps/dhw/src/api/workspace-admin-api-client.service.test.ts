@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   AdministrationBookingSummary,
-  AdministrationCanonicalDiscountCode,
+  AdministrationCanonicalPromotionCode,
   AdministrationDiscountCodeId,
   AdministrationNexiOperationId,
   AdministrationOperation,
@@ -85,7 +85,7 @@ describe("WorkspaceAdminApiClient", () => {
       "01980000-0000-7000-8000-000000000001"
     );
     const canonicalCode = Schema.decodeUnknownSync(
-      AdministrationCanonicalDiscountCode
+      AdministrationCanonicalPromotionCode
     )("SUMMER10");
     const sessionId = Schema.decodeUnknownSync(CliSessionId)(
       "01980000-0000-7000-8000-000000000000"
@@ -448,6 +448,7 @@ describe("WorkspaceAdminApiClient", () => {
             kind: "create-code",
             createdDiscountId: null,
             createdCodeId: "01980000-0000-7000-8000-000000000002",
+            createdVoucherId: null,
           });
         }
         if (url.pathname.endsWith("/discounts")) {
@@ -470,6 +471,7 @@ describe("WorkspaceAdminApiClient", () => {
               },
             ],
             codes: [],
+            vouchers: [],
             calendar: {
               events: [],
               unavailable: false,

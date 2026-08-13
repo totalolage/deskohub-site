@@ -31,7 +31,7 @@ export function AdministrationTableToolbar({
       {(filters || actions) && (
         <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-end 2xl:justify-end">
           {filters}
-          {actions}
+          {actions && <div className="self-end">{actions}</div>}
         </div>
       )}
     </section>

@@ -12,6 +12,7 @@ import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateDiscountAdminInput,
   CreateDiscountCodeAdminInput,
+  CreateVoucherAdminInput,
 } from "./contracts";
 
 export const readDiscountForm = (
@@ -78,6 +79,27 @@ export const readDiscountCodeConfigurationForm = (
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
   maxUses: readOptionalNumber(formData, "maxUses"),
 });
+
+export const readVoucherCreditForm = (
+  formData: FormData
+): CreateVoucherAdminInput["credit"] => {
+  const currency = findWorkspaceCurrencyDefinition(
+    readString(formData, "voucherCurrency").toUpperCase()
+  );
+  return {
+    value: Number(readString(formData, "voucherValue")),
+    exponent: currency?.exponent ?? -1,
+    currency: currency?.code ?? "",
+  };
+};
+
+export const readVoucherConfigurationForm = (
+  formData: FormData
+): Omit<CreateVoucherAdminInput, "credit"> => {
+  const { maxUses: _maxUses, ...configuration } =
+    readDiscountCodeConfigurationForm(formData);
+  return configuration;
+};
 
 const readString = (formData: FormData, field: string) => {
   const value = formData.get(field);

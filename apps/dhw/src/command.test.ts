@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   AdministrationDiscountCodeId,
+  AdministrationVoucherId,
   CliAccessToken,
   CliSessionId,
 } from "@deskohub/workspace-admin-api";
@@ -18,6 +19,9 @@ const sessionId = Schema.decodeUnknownSync(CliSessionId)(
 );
 const codeId = Schema.decodeUnknownSync(AdministrationDiscountCodeId)(
   "01980000-0000-7000-8000-000000000001"
+);
+const voucherId = Schema.decodeUnknownSync(AdministrationVoucherId)(
+  "01980000-0000-7000-8000-000000000002"
 );
 const session = {
   id: sessionId,
@@ -201,6 +205,107 @@ describe("dhw mutation commands", () => {
     expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
     expect(mutations).toHaveLength(0);
   });
+
+  test("creates reusable voucher credit", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "vouchers",
+        "create",
+        "VOUCHER100",
+        "--credit-value",
+        "10000",
+        "--currency",
+        "CZK",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "create-voucher",
+        voucher: {
+          code: "VOUCHER100",
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+        },
+      },
+    ]);
+  });
+
+  test("updates reusable voucher credit and configuration", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "vouchers",
+        "update",
+        voucherId,
+        "GIFT150",
+        "--credit-value",
+        "15000",
+        "--currency",
+        "CZK",
+        "--enabled",
+        "false",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "update-voucher",
+        voucher: {
+          id: voucherId,
+          code: "GIFT150",
+          credit: { value: 15_000, exponent: 2, currency: "CZK" },
+          enabled: false,
+          validFrom: null,
+          validUntil: null,
+        },
+      },
+    ]);
+  });
+
+  test("manages a voucher audience and deletion", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      ["--json", "vouchers", "add-customer", voucherId, "customer-1", "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      [
+        "--json",
+        "vouchers",
+        "remove-customer",
+        voucherId,
+        "customer-1",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      ["--json", "vouchers", "make-unrestricted", voucherId, "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      ["--json", "vouchers", "delete", voucherId, "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      { kind: "add-voucher-customer", voucherId, customerId: "customer-1" },
+      { kind: "remove-voucher-customer", voucherId, customerId: "customer-1" },
+      { kind: "make-voucher-unrestricted", voucherId },
+      { kind: "delete-voucher", id: voucherId },
+    ]);
+  });
 });
 
 const runCommand = <R>(
@@ -232,6 +337,11 @@ const makeCommandLayer = ({
             mutation.kind === "create-code" ||
             mutation.kind === "create-customer-code"
               ? codeId
+              : null,
+          createdVoucherId:
+            mutation.kind === "create-voucher" ||
+            mutation.kind === "create-customer-voucher"
+              ? voucherId
               : null,
         };
       }),

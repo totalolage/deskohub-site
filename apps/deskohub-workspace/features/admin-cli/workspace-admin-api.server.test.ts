@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  AdministrationCanonicalDiscountCode,
+  AdministrationCanonicalPromotionCode,
   AdministrationDiscountCodeId,
   type AdministrationDiscountMutationType,
   AdministrationDotyposCustomerId,
@@ -241,6 +241,7 @@ describe("Workspace Admin API", () => {
     const discountDashboard = {
       discounts: [discount],
       codes: [discountCode],
+      vouchers: [],
       calendar: {
         events: [],
         unavailable: false,
@@ -554,7 +555,7 @@ describe("Workspace Admin API", () => {
     const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
       "01980000-0000-7000-8000-000000000003"
     );
-    const code = Schema.decodeUnknownSync(AdministrationCanonicalDiscountCode)(
+    const code = Schema.decodeUnknownSync(AdministrationCanonicalPromotionCode)(
       "SUMMER10"
     );
     const calls: Array<readonly [string, unknown]> = [];
@@ -594,7 +595,11 @@ describe("Workspace Admin API", () => {
       },
       {
         kind: "update-code",
-        code: { id: codeId, discountId, ...codeConfiguration },
+        code: {
+          id: codeId,
+          discountId,
+          ...codeConfiguration,
+        },
       },
       { kind: "delete-code", id: codeId },
       { kind: "add-code-customer", codeId, customerId },
@@ -911,6 +916,7 @@ describe("Workspace Admin API", () => {
       kind: mutation.kind,
       createdDiscountId: null,
       createdCodeId: null,
+      createdVoucherId: null,
     };
     const idempotency = Layer.succeed(CliMutationIdempotency, {
       claim: ({ requestId }) =>

@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/shared/components/ui/dialog";
-import { CreateDiscountForm } from "./admin-tables";
+import { CreateDiscountForm, CreateVoucherForm } from "./admin-tables";
 import { DiscountCodeCreationForm } from "./customer-code-creation";
 import type { AdminDiscount } from "./discount-administration.service";
 
@@ -93,6 +93,30 @@ export function SaleDiscountCreationDialog() {
           ) : (
             <CreateDiscountForm onCreated={setCompletion} />
           )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function VoucherCreationDialog() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm">
+          <Plus aria-hidden className="size-4" />
+          Create a voucher
+        </Button>
+      </DialogTrigger>
+      <DialogContent className={dialogContentClassName}>
+        <DialogHeader>
+          <DialogTitle>Create a voucher</DialogTitle>
+          <DialogDescription>
+            Issue promotional credit that remains available until it is spent.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mt-5">
+          <CreateVoucherForm />
         </div>
       </DialogContent>
     </Dialog>

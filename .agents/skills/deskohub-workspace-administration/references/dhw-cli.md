@@ -114,6 +114,16 @@ dhw codes remove-customer <code-id> <customer-id>
 dhw codes make-unrestricted <code-id>
 dhw codes delete <code-id>
 
+dhw vouchers create GIFT100 --credit-value 10000 --currency CZK
+dhw vouchers update <voucher-id> GIFT150 --credit-value 15000 \
+  --currency CZK --enabled true
+dhw vouchers add-customer <voucher-id> <customer-id>
+dhw vouchers remove-customer <voucher-id> <customer-id>
+dhw vouchers make-unrestricted <voucher-id>
+dhw vouchers get <voucher-id>
+dhw vouchers list
+dhw vouchers delete <voucher-id>
+
 dhw customers set-discount-group <customer-id> <group-id>
 dhw customers clear-discount-group <customer-id>
 dhw sessions rename <session-id> "Office Mac"
@@ -121,11 +131,14 @@ dhw sessions revoke <session-id>
 ```
 
 The `codes create percentage` and `codes create fixed` variants create the
-discount definition and code atomically, matching the Admin UI. Add
-`--customer` to restrict the new code to one customer. Fixed values use minor
-currency units. Code validity bounds use ISO instants; omitted bounds and
-maximum uses are stored as unrestricted values. Update commands replace the
-editable resource fields, matching the corresponding Admin UI forms.
+discount definition and code atomically, matching the Admin UI. Vouchers have
+their own command group; `vouchers get` reports issued and remaining credit
+together with every reserved, redeemed, or released claim. Add `--customer` to
+either create command to restrict the new resource to one customer. Fixed and
+credit values use minor currency units. Validity bounds use ISO instants;
+omitted bounds and code maximum uses are stored as unrestricted values. Update
+commands replace the editable resource fields, matching the corresponding Admin
+UI forms.
 
 Commands that delete resources, remove restrictions, revoke sessions, change a
 customer's discount group, or add a code-audience member ask for confirmation.

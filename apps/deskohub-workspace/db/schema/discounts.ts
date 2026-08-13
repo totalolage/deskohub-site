@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -12,9 +13,11 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type {
-  CanonicalDiscountCode,
+  CanonicalPromotionCode,
   DiscountCodeId,
+  PromotionCodeId,
   StoredDiscountId,
+  VoucherId,
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { Locale } from "@/features/i18n";
@@ -22,6 +25,9 @@ import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
+
+export const promotionCodeKinds = ["discount", "voucher"] as const;
+export type PromotionCodeKind = (typeof promotionCodeKinds)[number];
 
 export const discounts = pgTable(
   "discounts",
@@ -87,32 +93,92 @@ export const discountProductTargets = pgTable(
   ]
 );
 
+export const promotionCodes = pgTable(
+  "promotion_codes",
+  {
+    id: text("id")
+      .primaryKey()
+      .default(postgresUuidV7)
+      .$type<PromotionCodeId>(),
+    kind: text("kind").notNull().$type<PromotionCodeKind>(),
+    code: text("code").notNull().$type<CanonicalPromotionCode>(),
+    enabled: boolean("enabled").notNull(),
+    validFrom: instant("valid_from"),
+    validUntil: instant("valid_until"),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
+  },
+  (t) => [
+    uniqueIndex("promotion_codes_code_unique_idx").on(t.code),
+    uniqueIndex("promotion_codes_id_kind_unique_idx").on(t.id, t.kind),
+    check(
+      "promotion_codes_code_check",
+      sql`${t.code} ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$'`
+    ),
+    check(
+      "promotion_codes_valid_window_check",
+      sql`${t.validFrom} is null or ${t.validUntil} is null or ${t.validUntil} > ${t.validFrom}`
+    ),
+    check(
+      "promotion_codes_kind_check",
+      sql`${t.kind} in ('discount', 'voucher')`
+    ),
+  ]
+);
+
+export const promotionCodeCustomers = pgTable(
+  "promotion_code_customers",
+  {
+    promotionCodeId: text("promotion_code_id")
+      .notNull()
+      .$type<PromotionCodeId>()
+      .references(() => promotionCodes.id, { onDelete: "cascade" }),
+    dotyposCustomerId: text("dotypos_customer_id")
+      .notNull()
+      .$type<DotyposCustomerId>(),
+  },
+  (t) => [
+    primaryKey({
+      name: "promotion_code_customers_pk",
+      columns: [t.promotionCodeId, t.dotyposCustomerId],
+    }),
+    check(
+      "promotion_code_customers_customer_check",
+      sql`btrim(${t.dotyposCustomerId}) <> ''`
+    ),
+  ]
+);
+
 export const discountCodes = pgTable(
   "discount_codes",
   {
     id: text("id").primaryKey().default(postgresUuidV7).$type<DiscountCodeId>(),
+    promotionCodeId: text("promotion_code_id")
+      .notNull()
+      .unique()
+      .$type<PromotionCodeId>(),
+    promotionKind: text("promotion_kind")
+      .notNull()
+      .default("discount")
+      .$type<"discount">(),
     discountId: text("discount_id")
       .notNull()
       .$type<StoredDiscountId>()
       .references(() => discounts.id),
-    code: text("code").notNull().$type<CanonicalDiscountCode>(),
-    enabled: boolean("enabled").notNull(),
-    validFrom: instant("valid_from"),
-    validUntil: instant("valid_until"),
     maxUses: integer("max_uses"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
-    uniqueIndex("discount_codes_code_unique_idx").on(t.code),
     index("discount_codes_discount_idx").on(t.discountId),
+    foreignKey({
+      name: "discount_codes_promotion_fk",
+      columns: [t.promotionCodeId, t.promotionKind],
+      foreignColumns: [promotionCodes.id, promotionCodes.kind],
+    }).onDelete("cascade"),
     check(
-      "discount_codes_code_check",
-      sql`${t.code} ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$'`
-    ),
-    check(
-      "discount_codes_valid_window_check",
-      sql`${t.validFrom} is null or ${t.validUntil} is null or ${t.validUntil} > ${t.validFrom}`
+      "discount_codes_promotion_kind_check",
+      sql`${t.promotionKind} = 'discount'`
     ),
     check(
       "discount_codes_max_uses_check",
@@ -121,25 +187,34 @@ export const discountCodes = pgTable(
   ]
 );
 
-export const discountCodeCustomers = pgTable(
-  "discount_code_customers",
+export const vouchers = pgTable(
+  "vouchers",
   {
-    codeId: text("code_id")
+    id: text("id").primaryKey().default(postgresUuidV7).$type<VoucherId>(),
+    promotionCodeId: text("promotion_code_id")
       .notNull()
-      .$type<DiscountCodeId>()
-      .references(() => discountCodes.id, { onDelete: "cascade" }),
-    dotyposCustomerId: text("dotypos_customer_id")
+      .unique()
+      .$type<PromotionCodeId>(),
+    promotionKind: text("promotion_kind")
       .notNull()
-      .$type<DotyposCustomerId>(),
+      .default("voucher")
+      .$type<"voucher">(),
+    issuedAmountValue: integer("issued_amount_value").notNull(),
+    issuedAmountExponent: integer("issued_amount_exponent").notNull(),
+    issuedAmountCurrency: text("issued_amount_currency").notNull(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
-    primaryKey({
-      name: "discount_code_customers_pk",
-      columns: [t.codeId, t.dotyposCustomerId],
-    }),
+    foreignKey({
+      name: "vouchers_promotion_fk",
+      columns: [t.promotionCodeId, t.promotionKind],
+      foreignColumns: [promotionCodes.id, promotionCodes.kind],
+    }).onDelete("cascade"),
+    check("vouchers_promotion_kind_check", sql`${t.promotionKind} = 'voucher'`),
     check(
-      "discount_code_customers_customer_check",
-      sql`btrim(${t.dotyposCustomerId}) <> ''`
+      "vouchers_issued_amount_check",
+      sql`${t.issuedAmountValue} > 0 and ${t.issuedAmountExponent} >= 0 and ${t.issuedAmountCurrency} ~ '^[A-Z]{3}$'`
     ),
   ]
 );
@@ -151,5 +226,10 @@ export type NewDiscountProductTarget =
   typeof discountProductTargets.$inferInsert;
 export type DiscountCode = typeof discountCodes.$inferSelect;
 export type NewDiscountCode = typeof discountCodes.$inferInsert;
-export type DiscountCodeCustomer = typeof discountCodeCustomers.$inferSelect;
-export type NewDiscountCodeCustomer = typeof discountCodeCustomers.$inferInsert;
+export type PromotionCode = typeof promotionCodes.$inferSelect;
+export type NewPromotionCode = typeof promotionCodes.$inferInsert;
+export type PromotionCodeCustomer = typeof promotionCodeCustomers.$inferSelect;
+export type NewPromotionCodeCustomer =
+  typeof promotionCodeCustomers.$inferInsert;
+export type Voucher = typeof vouchers.$inferSelect;
+export type NewVoucher = typeof vouchers.$inferInsert;

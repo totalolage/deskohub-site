@@ -26,18 +26,18 @@ export const discountIdSchema = Schema.NonEmptyString.pipe(
 
 export type DiscountId = Schema.Schema.Type<typeof discountIdSchema>;
 
-export const canonicalDiscountCodeSchema = Schema.String.check(
+export const canonicalPromotionCodeSchema = Schema.String.check(
   Schema.isPattern(/^[A-Z0-9][A-Z0-9_-]{2,63}$/)
 )
-  .pipe(Schema.brand("CanonicalDiscountCode"))
+  .pipe(Schema.brand("CanonicalPromotionCode"))
   .annotate({
-    identifier: "CanonicalDiscountCode",
+    identifier: "CanonicalPromotionCode",
     description:
-      "Canonical ASCII-uppercase discount code accepted by Workspace checkout.",
+      "Canonical ASCII-uppercase promotion code accepted by Workspace checkout.",
   });
 
-export type CanonicalDiscountCode = Schema.Schema.Type<
-  typeof canonicalDiscountCodeSchema
+export type CanonicalPromotionCode = Schema.Schema.Type<
+  typeof canonicalPromotionCodeSchema
 >;
 
 export const discountBasisPointsSchema = Schema.Int.check(
@@ -189,5 +189,5 @@ export type DiscountQuoteInput = {
   readonly reservationDate: string;
   readonly locale: Locale;
   readonly dotyposCustomerId: DotyposCustomerId;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
 };

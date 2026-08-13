@@ -2,8 +2,8 @@ import { Schema } from "effect";
 import { discountIdSchema } from "./contracts";
 
 export {
-  type CanonicalDiscountCode,
-  canonicalDiscountCodeSchema,
+  type CanonicalPromotionCode,
+  canonicalPromotionCodeSchema,
 } from "./contracts";
 
 export const storedDiscountIdSchema = discountIdSchema
@@ -31,6 +31,24 @@ export const discountCodeIdSchema = Schema.NonEmptyString.pipe(
 
 export type DiscountCodeId = Schema.Schema.Type<typeof discountCodeIdSchema>;
 
+export const promotionCodeIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("PromotionCodeId")
+).annotate({
+  identifier: "PromotionCodeId",
+  description: "Opaque identifier for a submitted promotion code.",
+});
+
+export type PromotionCodeId = Schema.Schema.Type<typeof promotionCodeIdSchema>;
+
+export const voucherIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("VoucherId")
+).annotate({
+  identifier: "VoucherId",
+  description: "Opaque identifier for a promotional credit voucher.",
+});
+
+export type VoucherId = Schema.Schema.Type<typeof voucherIdSchema>;
+
 export const discountApplicationIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("DiscountApplicationId")
 ).annotate({
@@ -52,3 +70,12 @@ export const discountCodeClaimIdSchema = Schema.NonEmptyString.pipe(
 export type DiscountCodeClaimId = Schema.Schema.Type<
   typeof discountCodeClaimIdSchema
 >;
+
+export const voucherClaimIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("VoucherClaimId")
+).annotate({
+  identifier: "VoucherClaimId",
+  description: "Opaque identifier for a voucher claim lifecycle.",
+});
+
+export type VoucherClaimId = Schema.Schema.Type<typeof voucherClaimIdSchema>;

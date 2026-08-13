@@ -29,6 +29,8 @@ import {
   discountCodeRedemptions,
   legalEvidenceEvents,
   paymentAttempts,
+  voucherRedemptions,
+  vouchers,
   webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
@@ -36,6 +38,8 @@ import type {
   PaymentAttemptId,
   StoredWebhookEventId,
 } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { VoucherId } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
@@ -489,6 +493,117 @@ export const assertNoDiscountPaymentState = (
     });
     log("Unavailable discount code created no payment state");
   });
+
+export const validateVoucherRedemptions = (
+  config: DatasourceConfig,
+  voucherId: VoucherId,
+  orderIds: readonly WorkspaceReservationId[],
+  creditPerRun: WorkspaceMoney
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runRetrySafeDatabaseOperation(
+      "read voucher redemption history",
+      db
+        .select({
+          adjustment: sql<
+            VoucherRedemptionRow["adjustment"]
+          >`${discountApplications.adjustment}`,
+          appliedAmountCurrency: discountApplications.appliedAmountCurrency,
+          appliedAmountExponent: discountApplications.appliedAmountExponent,
+          appliedAmountValue: discountApplications.appliedAmountValue,
+          claimState: voucherRedemptions.state,
+          issuedAmountCurrency: vouchers.issuedAmountCurrency,
+          issuedAmountExponent: vouchers.issuedAmountExponent,
+          issuedAmountValue: vouchers.issuedAmountValue,
+          redeemedAt: voucherRedemptions.redeemedAt,
+          reservationId: discountApplications.workspaceReservationId,
+          subtotalAfterValue: discountApplications.subtotalAfterValue,
+          subtotalBeforeValue: discountApplications.subtotalBeforeValue,
+        })
+        .from(voucherRedemptions)
+        .innerJoin(
+          discountApplications,
+          eq(discountApplications.id, voucherRedemptions.applicationId)
+        )
+        .innerJoin(vouchers, eq(vouchers.id, voucherRedemptions.voucherId))
+        .where(
+          and(
+            eq(voucherRedemptions.voucherId, voucherId),
+            inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+          )
+        )
+    );
+
+    yield* tryWorkspaceE2ESync("assert voucher redemption history", () => {
+      assert(orderIds.length === 2, "expected two voucher checkout orders");
+      assert(
+        creditPerRun.value % orderIds.length === 0,
+        "voucher credit must split evenly across the checkout orders"
+      );
+      const spendValue = creditPerRun.value / orderIds.length;
+      const currentRows = orderIds.map((orderId) => {
+        const matching = rows.filter(
+          ({ reservationId }) => reservationId === orderId
+        );
+        assert(
+          matching.length === 1,
+          "expected one voucher claim per checkout"
+        );
+        return matching[0]!;
+      });
+
+      currentRows.forEach((row, index) => {
+        assert(row.claimState === "redeemed", "voucher claim was not redeemed");
+        assert(row.redeemedAt, "voucher redemption timestamp missing");
+        assert(
+          row.adjustment.kind === "fixed" &&
+            row.adjustment.amount?.value ===
+              creditPerRun.value - spendValue * index,
+          "unexpected remaining voucher adjustment"
+        );
+        assert(
+          row.appliedAmountValue === spendValue &&
+            row.subtotalBeforeValue === spendValue &&
+            row.subtotalAfterValue === 0,
+          "voucher did not cover the expected checkout subtotal"
+        );
+        assert(
+          row.appliedAmountCurrency === config.expectedCurrency &&
+            row.appliedAmountExponent === creditPerRun.exponent,
+          "unexpected voucher application money"
+        );
+      });
+
+      const issuedValue = rows[0]?.issuedAmountValue;
+      assert(
+        issuedValue !== null && issuedValue !== undefined,
+        "voucher issued credit missing"
+      );
+      assert(
+        rows.every(
+          (row) =>
+            row.issuedAmountValue === issuedValue &&
+            row.issuedAmountCurrency === creditPerRun.currency &&
+            row.issuedAmountExponent === creditPerRun.exponent
+        ),
+        "voucher issued credit changed across claims"
+      );
+      assert(
+        rows.reduce((sum, row) => sum + row.appliedAmountValue, 0) ===
+          issuedValue,
+        "voucher should be exhausted after the second checkout"
+      );
+    });
+    log("Voucher reuse and exhaustion validated");
+  });
+
+interface VoucherRedemptionRow {
+  readonly adjustment: {
+    readonly amount?: WorkspaceMoney;
+    readonly kind?: string;
+  };
+}
 
 export const validateInternalPostgres = (
   config: DatasourceConfig,

@@ -33,6 +33,9 @@ import {
   type AdminDiscountCode,
   type AdminDiscountCodeClaim,
   type AdminDiscountCodeDetail,
+  type AdminVoucher,
+  type AdminVoucherClaim,
+  type AdminVoucherDetail,
   type DiscountAdminDashboard,
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
@@ -324,6 +327,23 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             )
           )
         )
+        .handle("getVoucher", ({ params }) =>
+          discounts.loadVoucherDetail({ voucherId: params.voucherId }).pipe(
+            Effect.map(toCliVoucherDetail),
+            Effect.catchTag(
+              "DiscountAdminNotFoundError",
+              () =>
+                new CliResourceNotFound({
+                  message: "The voucher was not found.",
+                })
+            ),
+            Effect.mapError((cause) =>
+              cause instanceof CliResourceNotFound
+                ? cause
+                : makeServiceUnavailable()
+            )
+          )
+        )
         .handle("listSessions", () =>
           authentication.listSessions().pipe(mapServiceFailure)
         )
@@ -493,6 +513,8 @@ const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
   ...profile,
   codes: profile.codes.map(toCliDiscountCode),
   claims: profile.claims.map(toCliDiscountCodeClaim),
+  vouchers: profile.vouchers.map(toCliVoucher),
+  voucherClaims: profile.voucherClaims.map(toCliVoucherClaim),
 });
 
 const toCliDiscountCode = <Code extends AdminDiscountCode>(code: Code) => ({
@@ -511,6 +533,22 @@ const toCliDiscountCodeClaim = (claim: AdminDiscountCodeClaim) => ({
   releasedAt: claim.releasedAt?.toString() ?? null,
 });
 
+const toCliVoucher = <Voucher extends AdminVoucher>(voucher: Voucher) => ({
+  ...voucher,
+  validFrom: voucher.validFrom?.toString() ?? null,
+  validUntil: voucher.validUntil?.toString() ?? null,
+  createdAt: voucher.createdAt.toString(),
+  updatedAt: voucher.updatedAt.toString(),
+});
+
+const toCliVoucherClaim = (claim: AdminVoucherClaim) => ({
+  ...claim,
+  reservationExpiresAt: claim.reservationExpiresAt.toString(),
+  reservedAt: claim.reservedAt.toString(),
+  redeemedAt: claim.redeemedAt?.toString() ?? null,
+  releasedAt: claim.releasedAt?.toString() ?? null,
+});
+
 const toCliDiscountDashboard = (dashboard: DiscountAdminDashboard) => ({
   ...dashboard,
   discounts: dashboard.discounts.map((discount) => ({
@@ -519,12 +557,19 @@ const toCliDiscountDashboard = (dashboard: DiscountAdminDashboard) => ({
     updatedAt: discount.updatedAt.toString(),
   })),
   codes: dashboard.codes.map(toCliDiscountCode),
+  vouchers: dashboard.vouchers.map(toCliVoucher),
 });
 
 const toCliDiscountCodeDetail = (detail: AdminDiscountCodeDetail) => ({
   ...detail,
   code: toCliDiscountCode(detail.code),
   claims: detail.claims.map(toCliDiscountCodeClaim),
+});
+
+const toCliVoucherDetail = (detail: AdminVoucherDetail) => ({
+  ...detail,
+  voucher: toCliVoucher(detail.voucher),
+  claims: detail.claims.map(toCliVoucherClaim),
 });
 
 const noStore = HttpRouter.middleware(

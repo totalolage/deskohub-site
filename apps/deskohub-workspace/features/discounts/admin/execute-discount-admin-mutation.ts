@@ -17,6 +17,7 @@ export const executeDiscountAdminMutation = Effect.fn(
               kind,
               createdDiscountId,
               createdCodeId: null,
+              createdVoucherId: null,
             })
           )
         ),
@@ -26,6 +27,7 @@ export const executeDiscountAdminMutation = Effect.fn(
             kind,
             createdDiscountId: null,
             createdCodeId: null,
+            createdVoucherId: null,
           } satisfies AdministrationDiscountMutationResultType)
         ),
       "delete-discount": ({ id, kind }) =>
@@ -34,6 +36,7 @@ export const executeDiscountAdminMutation = Effect.fn(
             kind,
             createdDiscountId: null,
             createdCodeId: null,
+            createdVoucherId: null,
           } satisfies AdministrationDiscountMutationResultType)
         ),
       "create-code": ({ code, discount, kind }) =>
@@ -43,6 +46,7 @@ export const executeDiscountAdminMutation = Effect.fn(
               kind,
               createdDiscountId: null,
               createdCodeId,
+              createdVoucherId: null,
             })
           )
         ),
@@ -53,6 +57,7 @@ export const executeDiscountAdminMutation = Effect.fn(
               kind,
               createdDiscountId: null,
               createdCodeId,
+              createdVoucherId: null,
             })
           )
         ),
@@ -62,6 +67,7 @@ export const executeDiscountAdminMutation = Effect.fn(
             kind,
             createdDiscountId: null,
             createdCodeId: null,
+            createdVoucherId: null,
           } satisfies AdministrationDiscountMutationResultType)
         ),
       "delete-code": ({ id, kind }) =>
@@ -70,6 +76,7 @@ export const executeDiscountAdminMutation = Effect.fn(
             kind,
             createdDiscountId: null,
             createdCodeId: null,
+            createdVoucherId: null,
           } satisfies AdministrationDiscountMutationResultType)
         ),
       "add-code-customer": ({ codeId, customerId, kind }) =>
@@ -78,6 +85,7 @@ export const executeDiscountAdminMutation = Effect.fn(
             kind,
             createdDiscountId: null,
             createdCodeId: null,
+            createdVoucherId: null,
           } satisfies AdministrationDiscountMutationResultType)
         ),
       "remove-code-customer": ({ codeId, customerId, kind }) =>
@@ -86,6 +94,7 @@ export const executeDiscountAdminMutation = Effect.fn(
             kind,
             createdDiscountId: null,
             createdCodeId: null,
+            createdVoucherId: null,
           } satisfies AdministrationDiscountMutationResultType)
         ),
       "make-code-unrestricted": ({ codeId, kind }) =>
@@ -94,6 +103,7 @@ export const executeDiscountAdminMutation = Effect.fn(
             kind,
             createdDiscountId: null,
             createdCodeId: null,
+            createdVoucherId: null,
           } satisfies AdministrationDiscountMutationResultType)
         ),
       "set-customer-discount-group": ({ customerId, discountGroupId, kind }) =>
@@ -104,8 +114,76 @@ export const executeDiscountAdminMutation = Effect.fn(
               kind,
               createdDiscountId: null,
               createdCodeId: null,
+              createdVoucherId: null,
             } satisfies AdministrationDiscountMutationResultType)
           ),
+      "create-voucher": ({ kind, voucher }) =>
+        administration.createVoucher(voucher).pipe(
+          Effect.map(
+            (createdVoucherId): AdministrationDiscountMutationResultType => ({
+              kind,
+              createdDiscountId: null,
+              createdCodeId: null,
+              createdVoucherId,
+            })
+          )
+        ),
+      "create-customer-voucher": ({ kind, voucher }) =>
+        administration.createCustomerVoucher(voucher).pipe(
+          Effect.map(
+            (createdVoucherId): AdministrationDiscountMutationResultType => ({
+              kind,
+              createdDiscountId: null,
+              createdCodeId: null,
+              createdVoucherId,
+            })
+          )
+        ),
+      "update-voucher": ({ kind, voucher }) =>
+        administration.updateVoucher(voucher).pipe(
+          Effect.as({
+            kind,
+            createdDiscountId: null,
+            createdCodeId: null,
+            createdVoucherId: null,
+          } satisfies AdministrationDiscountMutationResultType)
+        ),
+      "delete-voucher": ({ id, kind }) =>
+        administration.deleteVoucher({ id }).pipe(
+          Effect.as({
+            kind,
+            createdDiscountId: null,
+            createdCodeId: null,
+            createdVoucherId: null,
+          } satisfies AdministrationDiscountMutationResultType)
+        ),
+      "add-voucher-customer": ({ customerId, kind, voucherId }) =>
+        administration.addVoucherCustomer({ customerId, voucherId }).pipe(
+          Effect.as({
+            kind,
+            createdDiscountId: null,
+            createdCodeId: null,
+            createdVoucherId: null,
+          } satisfies AdministrationDiscountMutationResultType)
+        ),
+      "remove-voucher-customer": ({ customerId, kind, voucherId }) =>
+        administration.removeVoucherCustomer({ customerId, voucherId }).pipe(
+          Effect.as({
+            kind,
+            createdDiscountId: null,
+            createdCodeId: null,
+            createdVoucherId: null,
+          } satisfies AdministrationDiscountMutationResultType)
+        ),
+      "make-voucher-unrestricted": ({ kind, voucherId }) =>
+        administration.makeVoucherUnrestricted({ voucherId }).pipe(
+          Effect.as({
+            kind,
+            createdDiscountId: null,
+            createdCodeId: null,
+            createdVoucherId: null,
+          } satisfies AdministrationDiscountMutationResultType)
+        ),
     })
   );
 });

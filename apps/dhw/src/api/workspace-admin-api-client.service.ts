@@ -32,6 +32,8 @@ import {
   type AdministrationReservationLookupResultType,
   type AdministrationReservationPageType,
   type AdministrationReservationQueryType,
+  type AdministrationVoucherDetailType,
+  type AdministrationVoucherIdType,
   type AdministrationWorkspaceReservationIdType,
   type CliAccessTokenType,
   type CliAuthenticationCodeType,
@@ -230,6 +232,16 @@ interface IWorkspaceAdminApiClient {
     codeId: AdministrationDiscountCodeIdType
   ) => Effect.Effect<
     AdministrationDiscountCodeDetailType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly getVoucher: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    voucherId: AdministrationVoucherIdType
+  ) => Effect.Effect<
+    AdministrationVoucherDetailType,
     | CliApiRequestError
     | CliResourceNotFound
     | CliSessionUnauthorized
@@ -554,6 +566,18 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.getDiscountCode({ params: { codeId } })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    getVoucher: Effect.fn("WorkspaceAdminApiClient.getVoucher")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        voucherId: AdministrationVoucherIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getVoucher({ params: { voucherId } })
           ),
           Effect.mapError(sanitizeResourceError)
         )

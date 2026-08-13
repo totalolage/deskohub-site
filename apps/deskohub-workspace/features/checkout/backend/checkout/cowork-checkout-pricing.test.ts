@@ -6,7 +6,7 @@ import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
-  canonicalDiscountCodeSchema,
+  canonicalPromotionCodeSchema,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
   discountQuoteCodec,
@@ -27,7 +27,7 @@ const advertisedDiscountId =
 const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
   "customer-id"
 );
-const submittedCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+const submittedCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
   "SAVE20"
 );
 const emptyCommitment = () =>

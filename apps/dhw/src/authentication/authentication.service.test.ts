@@ -42,6 +42,7 @@ describe("AuthenticationService", () => {
       listCustomerReservations: () => Effect.die("not used"),
       getDiscountDashboard: () => Effect.die("not used"),
       getDiscountCode: () => Effect.die("not used"),
+      getVoucher: () => Effect.die("not used"),
       listSessions: () => Effect.die("not used"),
       mutateDiscounts: () => Effect.die("not used"),
       renameSession: () => Effect.die("not used"),

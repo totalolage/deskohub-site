@@ -5,6 +5,7 @@ import {
   CalendarRange,
   ChevronRight,
   CircleGauge,
+  Gift,
   Menu,
   SquareTerminal,
   Ticket,
@@ -50,6 +51,7 @@ const navigation = [
       },
       { href: "/admin/customers", icon: Users, label: "Customers" },
       { href: "/admin/codes", icon: Ticket, label: "Codes" },
+      { href: "/admin/vouchers", icon: Gift, label: "Vouchers" },
       { href: "/admin/sales", icon: BadgePercent, label: "Sales" },
       {
         href: "/admin/cli/sessions",
@@ -143,6 +145,7 @@ const breadcrumbNames = new Map([
   ["orders", "Orders"],
   ["reservations", "Reservations"],
   ["sales", "Sales"],
+  ["vouchers", "Vouchers"],
   ["sessions", "Sessions"],
 ]);
 
@@ -168,6 +171,7 @@ export function AdministrationBreadcrumbs({
         operations: "Operation",
         orders: "Order",
         reservations: "Reservation",
+        vouchers: "Voucher",
       }[segments[index - 1] ?? ""] ??
         segment),
   }));

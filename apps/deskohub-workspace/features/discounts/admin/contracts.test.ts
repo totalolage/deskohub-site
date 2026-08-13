@@ -146,7 +146,7 @@ describe("discount administration inputs", () => {
     ).toThrow();
   });
 
-  test("creates a code with an existing or new discount", () => {
+  test("creates discount codes and vouchers through separate mutations", () => {
     const code = {
       code: validCode.code,
       enabled: validCode.enabled,
@@ -162,6 +162,30 @@ describe("discount administration inputs", () => {
         discount: { kind: "new", discount: validDiscount },
       })
     ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "create-voucher",
+        voucher: {
+          code: code.code,
+          enabled: code.enabled,
+          validFrom: code.validFrom,
+          validUntil: code.validUntil,
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+        },
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "create-voucher",
+        voucher: {
+          code: code.code,
+          enabled: code.enabled,
+          validFrom: code.validFrom,
+          validUntil: code.validUntil,
+          credit: { value: 0, exponent: 2, currency: "CZK" },
+        },
+      })
+    ).toThrow();
     expect(() =>
       decodeMutation({
         kind: "create-customer-code",

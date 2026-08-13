@@ -11,7 +11,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import { AdministrationAlert } from "@/features/administration/notice";
-import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
+import type {
+  DiscountCodeId,
+  VoucherId,
+} from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -208,6 +211,39 @@ export function AddCodeCustomerForm({
   );
 }
 
+export function AddVoucherCustomerForm({
+  voucherId,
+}: {
+  readonly voucherId: VoucherId;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  return (
+    <AdminMutationForm
+      buildMutation={(formData) => ({
+        kind: "add-voucher-customer",
+        voucherId,
+        customerId: decodeDotyposCustomerId(
+          formData.get("customerId")?.toString().trim()
+        ),
+      })}
+      formRef={formRef}
+      submitLabel="Add customer"
+    >
+      <div className="grid gap-1.5">
+        <Label htmlFor={`voucher-audience-customer-${voucherId}`}>
+          Dotypos customer ID
+        </Label>
+        <Input
+          autoComplete="off"
+          id={`voucher-audience-customer-${voucherId}`}
+          name="customerId"
+          required
+        />
+      </div>
+    </AdminMutationForm>
+  );
+}
+
 export function CustomerDiscountGroupForm({
   customerId,
   currentGroupId,
@@ -296,9 +332,9 @@ export function AdminMutationButton({
         {isExecuting ? "Saving…" : children}
       </Button>
       {error && (
-        <span className="sr-only" role="alert">
+        <AdministrationAlert className="mt-3" role="alert" status="error">
           {error}
-        </span>
+        </AdministrationAlert>
       )}
     </>
   );

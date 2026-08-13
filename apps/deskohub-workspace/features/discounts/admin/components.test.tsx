@@ -84,6 +84,7 @@ const dashboard: DiscountAdminDashboard = {
       updatedAt: Temporal.Instant.from("2026-07-02T08:00:00Z"),
     },
   ],
+  vouchers: [],
   calendar: {
     events: [
       {
@@ -307,6 +308,94 @@ describe("discount administration pages", () => {
     expect(validFrom).toHaveProperty("value", "2026-08-01T10:00");
   });
 
+  test("lists and updates voucher credit without discount or use fields", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const voucher = {
+      id: "019c91dd-c560-7e55-b9d8-c95065efd53d",
+      issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      remainingCredit: {
+        value: 6500,
+        exponent: 2,
+        currency: "CZK",
+      },
+      code: "GIFT100",
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      audienceSize: 0,
+      reservedUses: 0,
+      redeemedUses: 1,
+      releasedUses: 0,
+      createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
+      updatedAt: Temporal.Instant.from("2026-07-02T08:00:00Z"),
+    };
+    const { VouchersAdministrationCollection } = await import("./components");
+    const view = render(
+      <VouchersAdministrationCollection dashboard={{ vouchers: [voucher] }} />
+    );
+
+    expect(view.getByText(/CZK.?100/)).toBeDefined();
+    expect(view.getByText(/CZK.?65/)).toBeDefined();
+    fireEvent.click(view.getByRole("button", { name: "Edit GIFT100" }));
+    const credit = view.getByRole("spinbutton", {
+      name: "Value in minor units",
+    });
+    expect(credit).toHaveProperty("value", "10000");
+    expect(view.queryByRole("combobox", { name: "Discount" })).toBeNull();
+    expect(view.queryByRole("spinbutton", { name: "Maximum uses" })).toBeNull();
+
+    fireEvent.input(credit, { target: { value: "15000" } });
+    fireEvent.submit(
+      view.getByRole("button", { name: "Save voucher" }).closest("form")!
+    );
+    expect(execute).toHaveBeenCalledWith({
+      kind: "update-voucher",
+      voucher: {
+        id: voucher.id,
+        code: "GIFT100",
+        credit: { value: 15_000, exponent: 2, currency: "CZK" },
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+      },
+    });
+  });
+
+  test("creates vouchers through their own administration dialog", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { VouchersAdministrationActions } = await import("./components");
+    const view = render(<VouchersAdministrationActions />);
+
+    fireEvent.click(view.getByRole("button", { name: "Create a voucher" }));
+    fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
+      target: { value: "gift100" },
+    });
+    fireEvent.submit(
+      view.getByRole("button", { name: "Create voucher" }).closest("form")!
+    );
+
+    expect(execute).toHaveBeenCalledWith({
+      kind: "create-voucher",
+      voucher: {
+        code: "GIFT100",
+        credit: { value: 10_000, exponent: 2, currency: "CZK" },
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+      },
+    });
+  });
+
   test("links codes to audience management and shows live capacity", async () => {
     const { CodesAdministrationPage } = await import("./components");
     const view = render(<CodesAdministrationPage dashboard={dashboard} />);
@@ -490,6 +579,7 @@ describe("discount administration pages", () => {
               state: "redeemed",
               paymentAttemptId: "payment-id",
               workspaceReservationId: "reservation-id",
+              appliedAmount: { value: 3500, exponent: 2, currency: "CZK" },
               reservationExpiresAt: Temporal.Instant.from(
                 "2026-08-01T09:00:00Z"
               ),
@@ -507,8 +597,83 @@ describe("discount administration pages", () => {
     expect(
       view.getByRole("table", { name: "Discount code claim history" })
     ).toBeDefined();
+    expect(view.getByText(/CZK.?35\.00/)).toBeDefined();
+    expect(view.getByText("Enabled")).toBeDefined();
+    expect(
+      view.getByRole("link", { name: "Edit or delete code" })
+    ).toBeDefined();
     expect(view.queryByRole("button", { name: /release/i })).toBeNull();
     expect(view.queryByRole("button", { name: /redeem/i })).toBeNull();
+  });
+
+  test("manages voucher configuration, deletion, audience, and history", async () => {
+    const { VoucherAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const voucher = {
+      id: "019c91dd-c560-7e55-b9d8-c95065efd53d",
+      issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+      remainingCredit: { value: 6500, exponent: 2, currency: "CZK" },
+      code: "GIFT100",
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      audienceSize: 1,
+      reservedUses: 0,
+      redeemedUses: 1,
+      releasedUses: 0,
+      createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
+      updatedAt: Temporal.Instant.from("2026-07-02T08:00:00Z"),
+    };
+    const view = render(
+      <VoucherAdministrationDetailPage
+        detail={{
+          voucher,
+          customers: [
+            {
+              customerId: "dotypos-customer",
+              customer: {
+                id: "dotypos-customer",
+                displayName: "Test Customer",
+                email: "test@example.com",
+                phone: null,
+                discountGroupId: null,
+              },
+            },
+          ],
+          claims: [
+            {
+              id: "voucher-claim-id",
+              voucherId: voucher.id,
+              dotyposCustomerId: "dotypos-customer",
+              state: "redeemed",
+              paymentAttemptId: "payment-id",
+              workspaceReservationId: "reservation-id",
+              appliedAmount: { value: 3500, exponent: 2, currency: "CZK" },
+              reservationExpiresAt: Temporal.Instant.from(
+                "2026-08-01T09:00:00Z"
+              ),
+              reservedAt: Temporal.Instant.from("2026-08-01T08:00:00Z"),
+              redeemedAt: Temporal.Instant.from("2026-08-01T08:10:00Z"),
+              releasedAt: null,
+              releaseReason: null,
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(view.getByRole("button", { name: "Save voucher" })).toBeDefined();
+    expect(view.getByRole("button", { name: "Delete GIFT100" })).toBeDefined();
+    expect(
+      view.getByRole("button", { name: "Make unrestricted" })
+    ).toBeDefined();
+    expect(view.getByRole("button", { name: "Add customer" })).toBeDefined();
+    expect(
+      view.getByRole("table", { name: "Voucher claim history" })
+    ).toBeDefined();
+    expect(view.getAllByText(/CZK.?35\.00/).length).toBeGreaterThan(0);
+    expect(view.queryByRole("button", { name: /release/i })).toBeNull();
   });
 
   test("shows only explicit and unrestricted customer codes with guarded icon actions", async () => {
@@ -575,6 +740,25 @@ describe("discount administration pages", () => {
         },
       ],
       claims: [],
+      vouchers: [
+        {
+          id: "019c91dd-c560-7e55-b9d8-c95065efd55d",
+          issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+          remainingCredit: { value: 6500, exponent: 2, currency: "CZK" },
+          code: "GIFT100",
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+          audienceSize: 0,
+          reservedUses: 0,
+          redeemedUses: 1,
+          releasedUses: 0,
+          createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
+          updatedAt: Temporal.Instant.from("2026-07-02T08:00:00Z"),
+          eligible: false,
+        },
+      ],
+      voucherClaims: [],
     };
     const reservations = loadFixtureReservations({
       customerId: "customer-alex",
@@ -617,7 +801,7 @@ describe("discount administration pages", () => {
     });
 
     const createCodeLink = view.getByRole("link", {
-      name: "Create discount code",
+      name: "Create code",
     });
     expect(createCodeLink.getAttribute("href")).toBe(
       "/admin/customers/dotypos-customer/create-code"
@@ -628,6 +812,12 @@ describe("discount administration pages", () => {
     expect(within(table).getByText("ONLYME")).toBeDefined();
     expect(within(table).getByText("OPEN")).toBeDefined();
     expect(within(table).getByText("AADISABLED")).toBeDefined();
+    const voucherTable = view.getByRole("table", {
+      name: "Customer voucher eligibility",
+    });
+    expect(within(voucherTable).getByText("GIFT100")).toBeDefined();
+    expect(within(voucherTable).getByText(/CZK.?100\.00/)).toBeDefined();
+    expect(within(voucherTable).getByText(/CZK.?65\.00/)).toBeDefined();
     expect(within(table).queryByText("SOMEONEELSE")).toBeNull();
     expect(view.getByText("1 (+ 1)")).toBeDefined();
     expect(
@@ -744,6 +934,8 @@ describe("discount administration pages", () => {
           discountGroups: [],
           codes: [],
           claims: [],
+          vouchers: [],
+          voucherClaims: [],
         }}
       />
     );
@@ -788,6 +980,8 @@ describe("discount administration pages", () => {
           discountGroups: [],
           codes: [],
           claims: [],
+          vouchers: [],
+          voucherClaims: [],
         }}
       />
     );
@@ -799,7 +993,7 @@ describe("discount administration pages", () => {
     expect(view.queryByText("Declined")).toBeNull();
   });
 
-  test("creates a customer code with an existing discount or a new definition", async () => {
+  test("creates a customer discount code without mixing in vouchers", async () => {
     const execute = mock();
     workspaceUseAction.mockReturnValue({
       execute,
@@ -849,6 +1043,8 @@ describe("discount administration pages", () => {
       view.getByRole("textbox", { name: "English (en-US)" })
     ).toBeDefined();
     expect(view.queryByRole("combobox", { name: "Discount" })).toBeNull();
+
+    expect(view.queryByRole("radio", { name: "Create a voucher" })).toBeNull();
   });
 
   test("shows nested customer code validation errors", async () => {

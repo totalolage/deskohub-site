@@ -1,6 +1,6 @@
 import { Data } from "effect";
 import type { DiscountId } from "./contracts";
-import type { DiscountCodeId } from "./persistence-contracts";
+import type { DiscountCodeId, VoucherId } from "./persistence-contracts";
 
 export type DiscountCalculationFailureReason =
   | "invalid_discountable_subtotal"
@@ -16,7 +16,7 @@ export class DiscountCalculationError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export type DiscountCodeUnavailableReason =
+export type PromotionCodeUnavailableReason =
   | "invalid_syntax"
   | "feature_disabled"
   | "unknown_code"
@@ -30,12 +30,12 @@ export type DiscountCodeUnavailableReason =
   | "product_ineligible"
   | "no_eligible_subtotal";
 
-export class DiscountCodeUnavailableError extends Data.TaggedError(
-  "DiscountCodeUnavailableError"
+export class PromotionCodeUnavailableError extends Data.TaggedError(
+  "PromotionCodeUnavailableError"
 )<{
-  readonly reason: DiscountCodeUnavailableReason;
+  readonly reason: PromotionCodeUnavailableReason;
   readonly message: string;
-  readonly codeId?: DiscountCodeId;
+  readonly codeId?: DiscountCodeId | VoucherId;
   readonly cause?: unknown;
 }> {}
 
@@ -76,13 +76,13 @@ export class DiscountClaimError extends Data.TaggedError("DiscountClaimError")<{
   readonly operation: "reserve" | "redeem" | "release";
   readonly reason: DiscountClaimFailureReason;
   readonly message: string;
-  readonly codeId?: DiscountCodeId;
+  readonly codeId?: DiscountCodeId | VoucherId;
   readonly cause?: unknown;
 }> {}
 
 export type DiscountResolutionError =
   | DiscountCalculationError
-  | DiscountCodeUnavailableError
+  | PromotionCodeUnavailableError
   | DiscountProviderError;
 
 export type DiscountError = DiscountClaimError | DiscountResolutionError;

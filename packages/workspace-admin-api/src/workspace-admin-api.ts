@@ -357,6 +357,17 @@ export const AdministrationDiscountCodeId = Schema.NonEmptyString.pipe(
 export type AdministrationDiscountCodeId =
   typeof AdministrationDiscountCodeId.Type;
 
+export const AdministrationVoucherId = Schema.NonEmptyString.pipe(
+  Schema.brand("VoucherId")
+).annotate({ identifier: "VoucherId" });
+export type AdministrationVoucherId = typeof AdministrationVoucherId.Type;
+
+export const AdministrationVoucherClaimId = Schema.NonEmptyString.pipe(
+  Schema.brand("VoucherClaimId")
+).annotate({ identifier: "VoucherClaimId" });
+export type AdministrationVoucherClaimId =
+  typeof AdministrationVoucherClaimId.Type;
+
 export const AdministrationGoogleCalendarEventId = Schema.NonEmptyString.pipe(
   Schema.brand("GoogleCalendarEventId")
 ).annotate({
@@ -838,21 +849,25 @@ export const AdministrationDiscountGroup = Schema.Struct({
 export type AdministrationDiscountGroup =
   typeof AdministrationDiscountGroup.Type;
 
-export const AdministrationDiscountCode = Schema.Struct({
-  id: AdministrationDiscountCodeId,
-  discountId: AdministrationStoredDiscountId,
+const administrationPromotionFields = {
   code: Schema.String,
   enabled: Schema.Boolean,
   validFrom: Schema.NullOr(Schema.String),
   validUntil: Schema.NullOr(Schema.String),
-  maxUses: Schema.NullOr(Schema.Number),
   audienceSize: Schema.Number,
   reservedUses: Schema.Number,
   redeemedUses: Schema.Number,
   releasedUses: Schema.Number,
-  remainingUses: Schema.NullOr(Schema.Number),
   createdAt: Schema.String,
   updatedAt: Schema.String,
+};
+
+export const AdministrationDiscountCode = Schema.Struct({
+  id: AdministrationDiscountCodeId,
+  discountId: AdministrationStoredDiscountId,
+  ...administrationPromotionFields,
+  maxUses: Schema.NullOr(Schema.Number),
+  remainingUses: Schema.NullOr(Schema.Number),
 });
 export type AdministrationDiscountCode = typeof AdministrationDiscountCode.Type;
 
@@ -863,27 +878,64 @@ export const AdministrationCustomerCode = Schema.Struct({
 });
 export type AdministrationCustomerCode = typeof AdministrationCustomerCode.Type;
 
-export const AdministrationDiscountCodeClaim = Schema.Struct({
-  id: AdministrationDiscountCodeClaimId,
-  codeId: AdministrationDiscountCodeId,
+export const AdministrationVoucher = Schema.Struct({
+  id: AdministrationVoucherId,
+  ...administrationPromotionFields,
+  issuedCredit: AdministrationMoney,
+  remainingCredit: AdministrationMoney,
+}).check(
+  Schema.makeFilter(
+    ({ issuedCredit, remainingCredit }) =>
+      remainingCredit.value >= 0 &&
+      remainingCredit.value <= issuedCredit.value &&
+      remainingCredit.exponent === issuedCredit.exponent &&
+      remainingCredit.currency === issuedCredit.currency
+  )
+);
+export type AdministrationVoucher = typeof AdministrationVoucher.Type;
+
+export const AdministrationCustomerVoucher = Schema.Struct({
+  ...AdministrationVoucher.fields,
+  eligible: Schema.Boolean,
+});
+export type AdministrationCustomerVoucher =
+  typeof AdministrationCustomerVoucher.Type;
+
+const administrationPromotionClaimFields = {
   dotyposCustomerId: AdministrationDotyposCustomerId,
   state: Schema.Literals(["reserved", "redeemed", "released"]),
   paymentAttemptId: AdministrationPaymentAttemptId,
   workspaceReservationId: AdministrationWorkspaceReservationId,
+  appliedAmount: AdministrationMoney,
   reservationExpiresAt: Schema.String,
   reservedAt: Schema.String,
   redeemedAt: Schema.NullOr(Schema.String),
   releasedAt: Schema.NullOr(Schema.String),
   releaseReason: Schema.NullOr(Schema.String),
+};
+
+export const AdministrationDiscountCodeClaim = Schema.Struct({
+  id: AdministrationDiscountCodeClaimId,
+  codeId: AdministrationDiscountCodeId,
+  ...administrationPromotionClaimFields,
 });
 export type AdministrationDiscountCodeClaim =
   typeof AdministrationDiscountCodeClaim.Type;
+
+export const AdministrationVoucherClaim = Schema.Struct({
+  id: AdministrationVoucherClaimId,
+  voucherId: AdministrationVoucherId,
+  ...administrationPromotionClaimFields,
+});
+export type AdministrationVoucherClaim = typeof AdministrationVoucherClaim.Type;
 
 export const AdministrationCustomerProfile = Schema.Struct({
   customer: AdministrationExternalCustomer,
   discountGroups: Schema.Array(AdministrationDiscountGroup),
   codes: Schema.Array(AdministrationCustomerCode),
   claims: Schema.Array(AdministrationDiscountCodeClaim),
+  vouchers: Schema.Array(AdministrationCustomerVoucher),
+  voucherClaims: Schema.Array(AdministrationVoucherClaim),
 });
 export type AdministrationCustomerProfile =
   typeof AdministrationCustomerProfile.Type;
@@ -933,13 +985,13 @@ export const AdministrationDiscountAdjustment = Schema.Union([
 export type AdministrationDiscountAdjustment =
   typeof AdministrationDiscountAdjustment.Type;
 
-export const AdministrationCanonicalDiscountCode = Schema.String.check(
+export const AdministrationCanonicalPromotionCode = Schema.String.check(
   Schema.isPattern(/^[A-Z0-9][A-Z0-9_-]{2,63}$/)
 )
-  .pipe(Schema.brand("CanonicalDiscountCode"))
-  .annotate({ identifier: "CanonicalDiscountCode" });
-export type AdministrationCanonicalDiscountCode =
-  typeof AdministrationCanonicalDiscountCode.Type;
+  .pipe(Schema.brand("CanonicalPromotionCode"))
+  .annotate({ identifier: "CanonicalPromotionCode" });
+export type AdministrationCanonicalPromotionCode =
+  typeof AdministrationCanonicalPromotionCode.Type;
 
 const administrationDiscountLabel = Schema.Trim.check(Schema.isNonEmpty());
 
@@ -1022,7 +1074,7 @@ const administrationDiscountCodeWindow = Schema.makeFilter<{
 );
 
 export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
-  code: AdministrationCanonicalDiscountCode,
+  code: AdministrationCanonicalPromotionCode,
   enabled: Schema.Boolean,
   validFrom: Schema.NullOr(AdministrationInstant),
   validUntil: Schema.NullOr(AdministrationInstant),
@@ -1037,6 +1089,16 @@ export const AdministrationExistingDiscountCodeCreateInput = Schema.Struct({
 }).check(administrationDiscountCodeWindow);
 export type AdministrationExistingDiscountCodeCreateInput =
   typeof AdministrationExistingDiscountCodeCreateInput.Type;
+
+const administrationVoucherCredit = AdministrationMoney.check(
+  Schema.makeFilter(
+    (credit) =>
+      Number.isInteger(credit.value) &&
+      credit.value > 0 &&
+      credit.exponent === 2 &&
+      (credit.currency === "CZK" || credit.currency === "EUR")
+  )
+);
 
 const AdministrationDiscountSelection = Schema.Union([
   Schema.Struct({
@@ -1071,6 +1133,35 @@ export const AdministrationDiscountCodeUpdateInput = Schema.Struct({
 export type AdministrationDiscountCodeUpdateInput =
   typeof AdministrationDiscountCodeUpdateInput.Type;
 
+export const AdministrationVoucherConfigurationInput = Schema.Struct({
+  code: AdministrationCanonicalPromotionCode,
+  enabled: Schema.Boolean,
+  validFrom: Schema.NullOr(AdministrationInstant),
+  validUntil: Schema.NullOr(AdministrationInstant),
+  credit: administrationVoucherCredit,
+}).check(administrationDiscountCodeWindow);
+export type AdministrationVoucherConfigurationInput =
+  typeof AdministrationVoucherConfigurationInput.Type;
+
+export const AdministrationVoucherCreateInput =
+  AdministrationVoucherConfigurationInput;
+export type AdministrationVoucherCreateInput =
+  typeof AdministrationVoucherCreateInput.Type;
+
+export const AdministrationCustomerVoucherCreateInput = Schema.Struct({
+  customerId: AdministrationDotyposCustomerId,
+  ...AdministrationVoucherConfigurationInput.fields,
+}).check(administrationDiscountCodeWindow);
+export type AdministrationCustomerVoucherCreateInput =
+  typeof AdministrationCustomerVoucherCreateInput.Type;
+
+export const AdministrationVoucherUpdateInput = Schema.Struct({
+  id: AdministrationVoucherId,
+  ...AdministrationVoucherConfigurationInput.fields,
+}).check(administrationDiscountCodeWindow);
+export type AdministrationVoucherUpdateInput =
+  typeof AdministrationVoucherUpdateInput.Type;
+
 export const ADMINISTRATION_DISCOUNT_MUTATION_KINDS = [
   "create-discount",
   "update-discount",
@@ -1082,6 +1173,13 @@ export const ADMINISTRATION_DISCOUNT_MUTATION_KINDS = [
   "add-code-customer",
   "remove-code-customer",
   "make-code-unrestricted",
+  "create-voucher",
+  "create-customer-voucher",
+  "update-voucher",
+  "delete-voucher",
+  "add-voucher-customer",
+  "remove-voucher-customer",
+  "make-voucher-unrestricted",
   "set-customer-discount-group",
 ] as const;
 
@@ -1129,6 +1227,36 @@ export const AdministrationDiscountMutation = Schema.Union([
     codeId: AdministrationDiscountCodeId,
   }),
   Schema.Struct({
+    kind: Schema.Literal("create-voucher"),
+    voucher: AdministrationVoucherCreateInput,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("create-customer-voucher"),
+    voucher: AdministrationCustomerVoucherCreateInput,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("update-voucher"),
+    voucher: AdministrationVoucherUpdateInput,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("delete-voucher"),
+    id: AdministrationVoucherId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("add-voucher-customer"),
+    voucherId: AdministrationVoucherId,
+    customerId: AdministrationDotyposCustomerId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("remove-voucher-customer"),
+    voucherId: AdministrationVoucherId,
+    customerId: AdministrationDotyposCustomerId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("make-voucher-unrestricted"),
+    voucherId: AdministrationVoucherId,
+  }),
+  Schema.Struct({
     kind: Schema.Literal("set-customer-discount-group"),
     customerId: AdministrationDotyposCustomerId,
     discountGroupId: Schema.NullOr(AdministrationDotyposDiscountGroupId),
@@ -1143,6 +1271,7 @@ export const AdministrationDiscountMutationResult = Schema.Struct({
   kind: Schema.Literals(ADMINISTRATION_DISCOUNT_MUTATION_KINDS),
   createdDiscountId: Schema.NullOr(AdministrationStoredDiscountId),
   createdCodeId: Schema.NullOr(AdministrationDiscountCodeId),
+  createdVoucherId: Schema.NullOr(AdministrationVoucherId),
 });
 export type AdministrationDiscountMutationResult =
   typeof AdministrationDiscountMutationResult.Type;
@@ -1193,6 +1322,7 @@ export type AdministrationCalendarSale = typeof AdministrationCalendarSale.Type;
 export const AdministrationDiscountDashboard = Schema.Struct({
   discounts: Schema.Array(AdministrationDiscount),
   codes: Schema.Array(AdministrationDiscountCode),
+  vouchers: Schema.Array(AdministrationVoucher),
   calendar: Schema.Struct({
     events: Schema.Array(AdministrationCalendarSale),
     unavailable: Schema.Boolean,
@@ -1217,6 +1347,19 @@ export const AdministrationDiscountCodeDetail = Schema.Struct({
 });
 export type AdministrationDiscountCodeDetail =
   typeof AdministrationDiscountCodeDetail.Type;
+
+export const AdministrationVoucherDetail = Schema.Struct({
+  voucher: AdministrationVoucher,
+  customers: Schema.Array(
+    Schema.Struct({
+      customerId: AdministrationDotyposCustomerId,
+      customer: Schema.NullOr(AdministrationExternalCustomer),
+    })
+  ),
+  claims: Schema.Array(AdministrationVoucherClaim),
+});
+export type AdministrationVoucherDetail =
+  typeof AdministrationVoucherDetail.Type;
 
 export const CliSessionAdministration = Schema.Struct({
   ...CliSession.fields,
@@ -1391,6 +1534,13 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
     HttpApiEndpoint.get("getDiscountCode", "/codes/:codeId", {
       params: { codeId: AdministrationDiscountCodeId },
       success: AdministrationDiscountCodeDetail,
+      error: CliResourceNotFound.schema,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getVoucher", "/vouchers/:voucherId", {
+      params: { voucherId: AdministrationVoucherId },
+      success: AdministrationVoucherDetail,
       error: CliResourceNotFound.schema,
     })
   )

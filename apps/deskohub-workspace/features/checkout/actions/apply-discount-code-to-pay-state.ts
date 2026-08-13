@@ -7,9 +7,9 @@ import {
   PayStateTokenError,
 } from "@/features/checkout/backend/checkout";
 import {
-  DiscountCodeUnavailableError,
   DiscountProviderError,
-  normalizeSubmittedDiscountCode,
+  normalizeSubmittedPromotionCode,
+  PromotionCodeUnavailableError,
 } from "@/features/discounts";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
@@ -43,13 +43,13 @@ export const applyDiscountCodeToPayState = Effect.fn(
         return { status: "unavailable" as const };
       }
 
-      const submittedCode = yield* normalizeSubmittedDiscountCode({
+      const submittedCode = yield* normalizeSubmittedPromotionCode({
         submittedCode: input.submittedCode,
       }).pipe(
         Effect.flatMap(Effect.fromOption),
         Effect.mapError(
           () =>
-            new DiscountCodeUnavailableError({
+            new PromotionCodeUnavailableError({
               reason: "invalid_syntax",
               message: "A discount code is required.",
             })
@@ -114,7 +114,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
   (effect) =>
     effect.pipe(
       Effect.catchTags({
-        DiscountCodeUnavailableError: () =>
+        PromotionCodeUnavailableError: () =>
           Effect.succeed({ status: "unavailable" as const }),
         DiscountProviderError: () =>
           Effect.succeed({ status: "unavailable" as const }),
