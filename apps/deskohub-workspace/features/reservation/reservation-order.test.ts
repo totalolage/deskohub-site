@@ -135,6 +135,7 @@ describe("reservation schema", () => {
     if (Result.isSuccess(result)) {
       expect(result.success).toEqual({
         ...validMeetingRoomReservation,
+        billing: { purpose: "personal", invoice: "none" },
         startsAt: "2099-06-10T07:00:00Z",
         endsAt: "2099-06-10T08:00:00Z",
       });

@@ -159,6 +159,7 @@ export const getReservationDefaultValuesFromPayState = (
   name: reservation.name,
   email: reservation.email,
   phone: reservation.phone,
+  billing: reservation.billing,
   ...(reservation.monitorOption !== undefined && {
     monitorOption: reservation.monitorOption,
   }),

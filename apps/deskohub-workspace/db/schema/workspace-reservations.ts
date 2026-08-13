@@ -21,6 +21,10 @@ import type {
   StoredWorkspaceReservationDetails,
   WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
+import {
+  type ReservationPurpose,
+  reservationPurposeSchema,
+} from "@/features/reservation/reservation-billing";
 import inlangSettings from "../../project.inlang/settings.json" with {
   type: "json",
 };
@@ -91,6 +95,7 @@ export const workspaceReservations = pgTable(
     dotyposCustomerId: text("dotypos_customer_id")
       .notNull()
       .$type<DotyposCustomerId>(),
+    reservationPurpose: text("reservation_purpose").$type<ReservationPurpose>(),
     dotyposReservationId: text(
       "dotypos_reservation_id"
     ).$type<DotyposReservationId>(),
@@ -137,6 +142,10 @@ export const workspaceReservations = pgTable(
     check(
       "workspace_reservations_locale_check",
       sql`${t.locale} in (${quotedSqlList(inlangSettings.locales)})`
+    ),
+    check(
+      "workspace_reservations_purpose_check",
+      sql`${t.reservationPurpose} is null or ${t.reservationPurpose} in (${quotedSqlList(reservationPurposeSchema.literals)})`
     ),
     check(
       "workspace_reservations_hold_id_check",
