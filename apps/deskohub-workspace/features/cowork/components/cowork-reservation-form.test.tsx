@@ -287,6 +287,32 @@ describe("CoworkReservationForm advertised pricing", () => {
     view.unmount();
   });
 
+  test("shows validation messages when required customer fields are empty", async () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=basic&date=2099-07-30&coffee=true")
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+    const continueButton = view.getByRole("button", { name: "Continue" });
+    await waitFor(() => {
+      expect(continueButton.hasAttribute("disabled")).toBe(false);
+    });
+
+    fireEvent.click(continueButton);
+
+    expect(await view.findByText("Email is required.")).toBeDefined();
+    expect(view.getByText("Phone is required.")).toBeDefined();
+    expect(view.getByText("Name must be at least 2 characters.")).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   test("does not render catalog prices before a backend quote is available", () => {
     workspaceUseSearchParams.mockReturnValue(
       new URLSearchParams("entryTier=basic")

@@ -114,7 +114,7 @@ export function ReservationCheckoutForm<
       }
     >
       <Form {...form}>
-        <form className="space-y-7" onSubmit={handleSubmit}>
+        <form className="space-y-7" noValidate onSubmit={handleSubmit}>
           {children}
           <ReservationCustomerFields
             locale={locale}
