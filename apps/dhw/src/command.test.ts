@@ -214,6 +214,42 @@ describe("dhw mutation commands", () => {
     ]);
   });
 
+  test("maps a per-customer code limit", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "codes",
+        "create",
+        "existing",
+        "SUMMER10",
+        "01980000-0000-7000-8000-000000000002",
+        "--max-uses-per-customer",
+        "2",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "create-code",
+        code: {
+          code: "SUMMER10",
+          enabled: true,
+          maxUses: null,
+          maxUsesPerCustomer: 2,
+          validFrom: null,
+          validUntil: null,
+        },
+        discount: {
+          kind: "existing",
+          discountId: "01980000-0000-7000-8000-000000000002",
+        },
+      },
+    ]);
+  });
+
   test("rejects duplicate product flags before making a request", async () => {
     const { layer, mutations } = makeCommandLayer();
 

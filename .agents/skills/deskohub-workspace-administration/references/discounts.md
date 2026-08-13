@@ -6,7 +6,7 @@ Use the authenticated Workspace administration UI or `dhw` commands for ordinary
 
 - Create or update a discount with its complete locale labels, one adjustment, and at least one reservation-family target.
 - Code creation may create its discount atomically or reference an existing discount.
-- Code scheduling, enablement, use limit, and customer audience belong to the code rather than its shared discount.
+- Code scheduling, enablement, global and per-customer use limits, and customer audience belong to the code rather than its shared discount. An omitted limit is unlimited in that dimension.
 - An empty audience is unrestricted. Removing the last customer therefore broadens access and requires explicit confirmation.
 - Deleting a discount or code must fail when immutable applications or claims require it for historical attribution. Prefer disabling a code.
 - Customer discount-group changes and administration-session changes are explicit confirmed mutations.

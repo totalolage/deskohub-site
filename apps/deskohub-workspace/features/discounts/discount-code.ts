@@ -20,14 +20,14 @@ export type DiscountCodeConfiguration = {
   readonly validFrom: Temporal.Instant | null;
   readonly validUntil: Temporal.Instant | null;
   readonly maxUses: number | null;
+  readonly maxUsesPerCustomer: number | null;
 };
 
 export type DiscountCodeAvailability = {
   readonly allowlistSize: number;
   readonly customerAllowed: boolean;
   readonly activeUseCount: number;
-  readonly customerHasRedeemed: boolean;
-  readonly customerHasReserved: boolean;
+  readonly customerActiveUseCount: number;
 };
 
 export class DiscountCodeConfigurationError extends Data.TaggedError(
@@ -100,6 +100,7 @@ export const decodeDiscountCodeConfiguration = Effect.fn(
     validFrom: input.row.validFrom,
     validUntil: input.row.validUntil,
     maxUses: input.row.maxUses,
+    maxUsesPerCustomer: input.row.maxUsesPerCustomer,
   }).pipe(
     Effect.map(({ code: _code, ...configuration }) => configuration),
     Effect.mapError(
@@ -143,6 +144,7 @@ const discountCodeConfigurationSchema = Schema.Struct({
   validFrom: Schema.NullOr(TemporalInstantSchema),
   validUntil: Schema.NullOr(TemporalInstantSchema),
   maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+  maxUsesPerCustomer: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
 }).check(
   Schema.makeFilter(
     ({ validFrom, validUntil }) =>
@@ -159,8 +161,7 @@ const discountCodeAvailabilitySchema = Schema.Struct({
   allowlistSize: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   customerAllowed: Schema.Boolean,
   activeUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  customerHasRedeemed: Schema.Boolean,
-  customerHasReserved: Schema.Boolean,
+  customerActiveUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 
 const generatedDiscountCodeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";

@@ -1046,6 +1046,11 @@ const discountCodeCreateFlags = {
     Flag.optional,
     Flag.withDescription("Maximum successful redemptions")
   ),
+  maxUsesPerCustomer: Flag.integer("max-uses-per-customer").pipe(
+    Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
+    Flag.optional,
+    Flag.withDescription("Maximum successful redemptions per customer")
+  ),
   validFrom: Flag.string("valid-from").pipe(
     Flag.withSchema(AdministrationInstant),
     Flag.optional,
@@ -1151,10 +1156,20 @@ const codesUpdateCommand = Command.make(
       ["false", false],
     ] as const),
     maxUses: discountCodeCreateFlags.maxUses,
+    maxUsesPerCustomer: discountCodeCreateFlags.maxUsesPerCustomer,
     validFrom: discountCodeCreateFlags.validFrom,
     validUntil: discountCodeCreateFlags.validUntil,
   },
-  ({ code, codeId, discountId, enabled, maxUses, validFrom, validUntil }) =>
+  ({
+    code,
+    codeId,
+    discountId,
+    enabled,
+    maxUses,
+    maxUsesPerCustomer,
+    validFrom,
+    validUntil,
+  }) =>
     runDiscountMutation({
       kind: "update-code",
       code: {
@@ -1163,6 +1178,7 @@ const codesUpdateCommand = Command.make(
         code,
         enabled,
         maxUses: Option.getOrNull(maxUses),
+        maxUsesPerCustomer: Option.getOrNull(maxUsesPerCustomer),
         validFrom: Option.getOrNull(validFrom),
         validUntil: Option.getOrNull(validUntil),
       },
@@ -1247,7 +1263,8 @@ const codesListCommand = Command.make("list", {}, () =>
             code.code,
             discountLabels.get(code.discountId) ?? code.discountId,
             code.enabled ? "Enabled" : "Disabled",
-            code.remainingUses ?? "Unlimited",
+            `${code.remainingUses ?? "Unlimited"} globally`,
+            `${code.maxUsesPerCustomer ?? "Unlimited"} per customer`,
           ].join("\t")
         );
       }
@@ -1272,7 +1289,8 @@ const codesGetCommand = Command.make(
             detail.code.code,
             detail.discountLabel,
             detail.code.enabled ? "Enabled" : "Disabled",
-            detail.code.remainingUses ?? "Unlimited uses",
+            `${detail.code.remainingUses ?? "Unlimited"} globally`,
+            `${detail.code.maxUsesPerCustomer ?? "Unlimited"} per customer`,
           ].join("\t")
         );
         yield* Console.log(
@@ -1683,6 +1701,7 @@ const makeCreateCodeMutation = (
     readonly customer: Option.Option<CreateCustomerCodeMutation["customerId"]>;
     readonly disabled: boolean;
     readonly maxUses: Option.Option<number>;
+    readonly maxUsesPerCustomer: Option.Option<number>;
     readonly validFrom: Option.Option<
       NonNullable<CreateCodeMutation["code"]["validFrom"]>
     >;
@@ -1696,6 +1715,7 @@ const makeCreateCodeMutation = (
     code: input.code,
     enabled: !input.disabled,
     maxUses: Option.getOrNull(input.maxUses),
+    maxUsesPerCustomer: Option.getOrNull(input.maxUsesPerCustomer),
     validFrom: Option.getOrNull(input.validFrom),
     validUntil: Option.getOrNull(input.validUntil),
   };
