@@ -33,8 +33,6 @@ import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backe
 import {
   createWorkspaceDotyposReservation,
   splitCustomerName,
-  WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLiveWithDependencies,
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
 import {
@@ -716,8 +714,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.logDebug("Workspace reservation quote built");
 
     const holdExpiresAt = getReservationHoldExpiresAt(Temporal.Now.instant());
-    const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
-    const customerAccessCode = yield* accessCodes.generateCustomerAccessCode;
 
     const preparedDraft = yield* prepareReservationDraft({
       checkoutSessionId: input.checkoutSessionId,
@@ -725,7 +721,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservation,
       draft: {
         dotyposCustomerId,
-        customerAccessCode,
         reservationDetails: getStoredWorkspaceReservationDetails(reservation),
         locale: input.locale,
         reservationHoldExpiresAt: holdExpiresAt,
@@ -1005,7 +1000,6 @@ const PreparePayStateLive = Layer.mergeAll(
     ),
     Layer.provide(DotyposServiceLive)
   ),
-  WorkspaceCheckoutAccessCodeServiceLiveWithDependencies,
   ReservationHoldCleanupScheduleService.Live,
   PostHogEventServiceLive,
   DotyposServiceLive,

@@ -26,38 +26,6 @@ const validateFeatureFlagOverrideEnvironment = (
     stdout: "pipe",
   });
 
-const validateIgloohomeEnvironment = (input: {
-  readonly vercelEnvironment: "production" | "preview";
-  readonly accessMode: "fixture" | "live";
-  readonly includeLiveConfiguration?: boolean;
-}) =>
-  Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      "--preload",
-      "./shared/testing/workspace-test-env.ts",
-      "-e",
-      'const { env } = await import("./env.ts"); if (!env.IGLOOHOME_ACCESS_MODE) process.exit(2);',
-    ],
-    cwd: import.meta.dir,
-    env: {
-      ...process.env,
-      IGLOOHOME_ACCESS_MODE: input.accessMode,
-      IGLOOHOME_CLIENT_ID: input.includeLiveConfiguration
-        ? "synthetic-client"
-        : undefined,
-      IGLOOHOME_CLIENT_SECRET: input.includeLiveConfiguration
-        ? "synthetic-secret"
-        : undefined,
-      IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: input.includeLiveConfiguration
-        ? "synthetic-ek1"
-        : undefined,
-      VERCEL_ENV: input.vercelEnvironment,
-    },
-    stderr: "pipe",
-    stdout: "pipe",
-  });
-
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
     const decodeTimeout = Schema.decodeUnknownSync(
@@ -69,9 +37,6 @@ describe("workspace environment schemas", () => {
     const decodeIgloohomeTimeout = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.IGLOOHOME_API_TIMEOUT
     );
-    const decodeIgloohomeMode = Schema.decodeUnknownSync(
-      workspaceServerEnvSchema.fields.IGLOOHOME_ACCESS_MODE
-    );
     const decodePostHogProjectId = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.POSTHOG_PROJECT_ID
     );
@@ -80,12 +45,20 @@ describe("workspace environment schemas", () => {
     expect(decodeTimeout("2500")).toBe(2_500);
     expect(decodeServiceName(undefined)).toBe("deskohub-workspace");
     expect(decodeIgloohomeTimeout(undefined)).toBe(10_000);
-    expect(decodeIgloohomeMode(undefined)).toBe("fixture");
     expect(`${decodePostHogProjectId("42")}`).toBe("42");
     expect(decodePostHogProjectId(undefined)).toBeUndefined();
     expect(() => decodePostHogProjectId("")).toThrow();
     expect(() => decodeTimeout("1.5")).toThrow();
     expect(() => decodeTimeout("0")).toThrow();
+  });
+
+  test("requires an Igloohome target device", () => {
+    const decodeDeviceId = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID
+    );
+
+    expect(() => decodeDeviceId(undefined)).toThrow();
+    expect(decodeDeviceId("synthetic-ek1")).toBe("synthetic-ek1");
   });
 
   test("validates URLs without changing their string representation", () => {
@@ -190,32 +163,5 @@ describe("workspace environment schemas", () => {
       "Invalid PostHog feature flag override configuration."
     );
     expect(productionError).not.toContain('{"discount_codes":true}');
-  });
-
-  test("keeps live Igloohome access out of preview and fixtures out of production", () => {
-    const productionFixture = validateIgloohomeEnvironment({
-      vercelEnvironment: "production",
-      accessMode: "fixture",
-    });
-    const previewLive = validateIgloohomeEnvironment({
-      vercelEnvironment: "preview",
-      accessMode: "live",
-      includeLiveConfiguration: true,
-    });
-    const productionLive = validateIgloohomeEnvironment({
-      vercelEnvironment: "production",
-      accessMode: "live",
-      includeLiveConfiguration: true,
-    });
-
-    expect(productionFixture.exitCode).toBe(1);
-    expect(previewLive.exitCode).toBe(1);
-    expect(productionLive.exitCode).toBe(0);
-    expect(productionFixture.stderr.toString()).toContain(
-      "Production must use live Igloohome access provisioning."
-    );
-    expect(previewLive.stderr.toString()).toContain(
-      "Preview deployments must use fixture access provisioning."
-    );
   });
 });

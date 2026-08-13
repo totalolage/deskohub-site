@@ -384,7 +384,6 @@ const makeReservation = <Overrides extends object>(
   correlationId: "correlation-id",
   dotyposCustomerId: "stored-dotypos-customer-id",
   dotyposReservationId: "dotypos-reservation-id",
-  customerAccessCode: "test-access-code",
   productTier: reservationData.entryTier,
   productCoffee: reservationData.coffee,
   productMonitorOption: reservationData.monitorOption,

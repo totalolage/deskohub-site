@@ -1,25 +1,30 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
+import { FetchHttpClient, HttpClient } from "effect/unstable/http";
 import { IgloohomeRuntimeConfig } from "../config";
 import { IgloohomeRequestError } from "../errors";
 import type { IssuedHourlyAlgoPin, IssueHourlyAlgoPinInput } from "../types";
 import { AlgoPinSchema, IgloohomePinIdSchema } from "../types";
 import {
   IgloohomeAccessToken,
-  IgloohomeGeneratedClient,
+  makeIgloohomeClient,
   mapAlgoPinRequestError,
 } from "./api";
 
 const makeIgloohomeService = Effect.gen(function* () {
   const config = yield* IgloohomeRuntimeConfig;
-  const { client } = yield* IgloohomeGeneratedClient;
+  const httpClient = yield* HttpClient.HttpClient;
   const accessToken = yield* IgloohomeAccessToken;
 
   const issueHourlyAlgoPin = Effect.fn("IgloohomeService.issueHourlyAlgoPin")(
     function* (input: IssueHourlyAlgoPinInput) {
       // Authenticate before the credential-creation timeout begins. A failure
       // here is definitively pre-request and must not be reported as ambiguous.
-      yield* accessToken.get;
+      const token = yield* accessToken.get;
+      const client = makeIgloohomeClient({
+        accessToken: token,
+        config,
+        httpClient,
+      });
       const response = yield* client
         .createHourlyAlgoPin(encodeURIComponent(input.deviceId), {
           payload: {
@@ -83,10 +88,7 @@ export class IgloohomeService extends Context.Service<
   static DefaultWithoutDependencies = Layer.effect(
     this,
     makeIgloohomeService
-  ).pipe(
-    Layer.provide(IgloohomeGeneratedClient.Live),
-    Layer.provide(IgloohomeAccessToken.Live)
-  );
+  ).pipe(Layer.provide(IgloohomeAccessToken.Live));
 
   static Default = this.DefaultWithoutDependencies.pipe(
     Layer.provide(FetchHttpClient.layer)

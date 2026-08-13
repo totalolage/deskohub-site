@@ -4,6 +4,9 @@
   "tasks": {
     "generate": {
       "outputs": ["src/generated/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["generate"]
     }
   }
 }

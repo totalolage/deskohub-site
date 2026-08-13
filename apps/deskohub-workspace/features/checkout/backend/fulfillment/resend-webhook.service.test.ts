@@ -512,7 +512,6 @@ describe("ResendWebhookService", () => {
           },
           dotyposReservationId: "dotypos-reservation-id",
           dotyposCustomerId: "dotypos-customer-id",
-          customerAccessCode: "ACCESS-123",
           customer: {
             _cloudId: "customer-id",
             email: "customer@example.com",
@@ -838,7 +837,6 @@ describe("ResendWebhookService", () => {
               Layer.mock(WorkspaceReservationService, workspaceReservations),
               Layer.mock(WorkspaceReservationEmailService, reservationEmails),
               Layer.mock(WorkspaceCheckoutAccessCodeService, {
-                generateCustomerAccessCode: Effect.succeed("unused"),
                 resolveCustomerAccessCode,
               }),
               Layer.mock(PostHogEventService, {

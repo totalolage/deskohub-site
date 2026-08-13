@@ -11,7 +11,6 @@
       ],
       "env": [
         "DOTYPOS_API_TIMEOUT",
-        "IGLOOHOME_ACCESS_MODE",
         "IGLOOHOME_API_TIMEOUT",
         "IGLOOHOME_API_URL",
         "IGLOOHOME_AUTH_URL",

@@ -7,7 +7,6 @@ import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
-import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
@@ -219,7 +218,6 @@ const makeReusableReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
-    customerAccessCode: "ACCESS-123",
     reservationState: "held",
     paymentState: "not_started",
     fulfillmentState: "not_started",
@@ -268,9 +266,6 @@ const runReusableReservationScenario = async (input: {
   readonly grantMarketingConsent?: ReturnType<typeof mock>;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
-  const { WorkspaceCheckoutAccessCodeService } = await import(
-    "@/features/checkout/backend/reservation"
-  );
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
@@ -361,10 +356,6 @@ const runReusableReservationScenario = async (input: {
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
     }),
-    Layer.mock(WorkspaceCheckoutAccessCodeService, {
-      generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-      resolveCustomerAccessCode: () => Effect.die("not used"),
-    } satisfies WorkspaceCheckoutAccessCodeServiceType),
     Layer.mock(CustomerMarketingConsentRepository, {
       grant: grantMarketingConsent,
     } satisfies ICustomerMarketingConsentRepository),
@@ -438,9 +429,6 @@ const runMeetingRoomNewHoldScenario = async (
   );
   const { CustomerMarketingConsentRepository } = await import(
     "@/features/legal/backend/customer-marketing-consent.repository"
-  );
-  const { WorkspaceCheckoutAccessCodeService } = await import(
-    "@/features/checkout/backend/reservation"
   );
   const { DiscountServiceMock } = await import(
     "@/features/discounts/discount.service.mock"
@@ -533,10 +521,6 @@ const runMeetingRoomNewHoldScenario = async (
       markCancelled: mock(() => Effect.void),
       markCancellationFailed: mock(() => Effect.void),
     }),
-    Layer.mock(WorkspaceCheckoutAccessCodeService, {
-      generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-      resolveCustomerAccessCode: () => Effect.die("not used"),
-    } satisfies WorkspaceCheckoutAccessCodeServiceType),
     Layer.mock(CustomerMarketingConsentRepository, {
       grant: mock(() => Effect.void),
     } satisfies ICustomerMarketingConsentRepository),
@@ -775,9 +759,6 @@ describe("prepareWorkspacePayState", () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
-    const { WorkspaceCheckoutAccessCodeService } = await import(
-      "@/features/checkout/backend/reservation"
-    );
     const { CustomerMarketingConsentRepository } = await import(
       "@/features/legal/backend/customer-marketing-consent.repository"
     );
@@ -818,7 +799,6 @@ describe("prepareWorkspacePayState", () => {
         paymentState: "not_started",
         fulfillmentState: "not_started",
         dotyposCustomerId: input.dotyposCustomerId,
-        customerAccessCode: input.customerAccessCode,
         reservationDetails: input.reservationDetails,
         productTier: "basic",
         productCoffee: false,
@@ -896,10 +876,6 @@ describe("prepareWorkspacePayState", () => {
         markCancelled: mock(() => Effect.void),
         markCancellationFailed: mock(() => Effect.void),
       }),
-      Layer.mock(WorkspaceCheckoutAccessCodeService, {
-        generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-        resolveCustomerAccessCode: () => Effect.die("not used"),
-      } satisfies WorkspaceCheckoutAccessCodeServiceType),
       Layer.mock(CustomerMarketingConsentRepository, {
         grant: grantMarketingConsent,
       } satisfies ICustomerMarketingConsentRepository),

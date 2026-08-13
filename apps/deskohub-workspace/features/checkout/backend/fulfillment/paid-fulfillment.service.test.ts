@@ -102,7 +102,6 @@ describe("WorkspacePaidFulfillmentService", () => {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
               Layer.mock(WorkspaceCheckoutAccessCodeService, {
-                generateCustomerAccessCode: Effect.succeed("unused"),
                 resolveCustomerAccessCode,
               }),
               Layer.mock(PostHogEventService, {
@@ -214,7 +213,6 @@ describe("WorkspacePaidFulfillmentService", () => {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
               Layer.mock(WorkspaceCheckoutAccessCodeService, {
-                generateCustomerAccessCode: Effect.succeed("unused"),
                 resolveCustomerAccessCode: mock(() =>
                   Effect.succeed("access-code")
                 ),
@@ -309,7 +307,6 @@ describe("WorkspacePaidFulfillmentService", () => {
                 ),
               } satisfies IWorkspaceReservationEmailService),
               Layer.mock(WorkspaceCheckoutAccessCodeService, {
-                generateCustomerAccessCode: Effect.succeed("unused"),
                 resolveCustomerAccessCode: mock(() =>
                   Effect.die("access flow should not start")
                 ),

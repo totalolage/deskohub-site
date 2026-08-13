@@ -15,55 +15,7 @@ const nonEmptyStringSchema = toEnvSchema(Schema.NonEmptyString);
 const urlEnvSchema = toEnvSchema(urlStringSchema);
 
 const optionalStringSchema = toEnvSchema(Schema.optional(Schema.String));
-const optionalNonEmptyStringSchema = toEnvSchema(
-  Schema.optional(Schema.NonEmptyString)
-);
 const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
-
-export const igloohomeEnvironmentCheck = Schema.makeFilter<{
-  readonly IGLOOHOME_ACCESS_MODE: "fixture" | "live";
-  readonly IGLOOHOME_CLIENT_ID?: string | undefined;
-  readonly IGLOOHOME_CLIENT_SECRET?: string | undefined;
-  readonly IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID?: string | undefined;
-  readonly VERCEL_ENV: "production" | "preview" | "development";
-}>((environment) => {
-  if (
-    environment.VERCEL_ENV === "production" &&
-    environment.IGLOOHOME_ACCESS_MODE !== "live"
-  ) {
-    return {
-      path: ["IGLOOHOME_ACCESS_MODE"],
-      issue: "Production must use live Igloohome access provisioning.",
-    };
-  }
-
-  if (
-    environment.VERCEL_ENV === "preview" &&
-    environment.IGLOOHOME_ACCESS_MODE !== "fixture"
-  ) {
-    return {
-      path: ["IGLOOHOME_ACCESS_MODE"],
-      issue: "Preview deployments must use fixture access provisioning.",
-    };
-  }
-
-  if (environment.IGLOOHOME_ACCESS_MODE !== "live") return undefined;
-
-  for (const key of [
-    "IGLOOHOME_CLIENT_ID",
-    "IGLOOHOME_CLIENT_SECRET",
-    "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID",
-  ] as const) {
-    if (!environment[key]) {
-      return {
-        path: [key],
-        issue: "Live Igloohome access provisioning is incomplete.",
-      };
-    }
-  }
-
-  return undefined;
-});
 
 export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
@@ -94,11 +46,6 @@ export const workspaceServerEnvSchema = Schema.Struct({
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
   GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID: nonEmptyStringSchema,
   GITHUB_STEP_SUMMARY: optionalStringSchema,
-  IGLOOHOME_ACCESS_MODE: toEnvSchema(
-    Schema.Literals(["fixture", "live"]).pipe(
-      Schema.withDecodingDefaultType(Effect.succeed("fixture" as const))
-    )
-  ),
   IGLOOHOME_API_TIMEOUT: toEnvSchema(
     Schema.FiniteFromString.check(Schema.isInt())
       .check(Schema.isGreaterThan(0))
@@ -118,9 +65,9 @@ export const workspaceServerEnvSchema = Schema.Struct({
       )
     )
   ),
-  IGLOOHOME_CLIENT_ID: optionalNonEmptyStringSchema,
-  IGLOOHOME_CLIENT_SECRET: optionalNonEmptyStringSchema,
-  IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: optionalNonEmptyStringSchema,
+  IGLOOHOME_CLIENT_ID: nonEmptyStringSchema,
+  IGLOOHOME_CLIENT_SECRET: nonEmptyStringSchema,
+  IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: nonEmptyStringSchema,
   RESEND_WEBHOOK_SECRET: optionalStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
@@ -155,10 +102,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
-}).check(
-  postHogFeatureFlagOverridesEnvironmentCheck,
-  igloohomeEnvironmentCheck
-);
+}).check(postHogFeatureFlagOverridesEnvironmentCheck);
 
 export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: stringSchema,
@@ -186,10 +130,7 @@ export const createEnvironmentSchema = (
 
   return Schema.toStandardSchemaV1(
     isServer
-      ? schema.check(
-          postHogFeatureFlagOverridesEnvironmentCheck,
-          igloohomeEnvironmentCheck
-        )
+      ? schema.check(postHogFeatureFlagOverridesEnvironmentCheck)
       : schema
   );
 };

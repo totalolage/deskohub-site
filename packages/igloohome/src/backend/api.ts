@@ -130,62 +130,37 @@ export class IgloohomeAccessToken extends Context.Service<
   );
 }
 
-interface IIgloohomeGeneratedClient {
-  readonly client: IgloohomeClient;
-}
-
 export const makeIgloohomeClient = ({
+  accessToken,
   config,
   httpClient,
 }: {
+  accessToken: string;
   config: IgloohomeRuntimeConfigObj;
   httpClient: HttpClient.HttpClient;
 }): IgloohomeClient =>
-  make(httpClient, {
-    transformClient: (client) =>
-      Effect.succeed(
-        client.pipe(
-          HttpClient.mapRequestInput((request) =>
-            request.pipe(HttpClientRequest.prependUrl(config.apiUrl))
-          )
+  make(
+    httpClient.pipe(
+      HttpClient.mapRequestInput((request) =>
+        request.pipe(
+          HttpClientRequest.setHeaders({
+            Accept: "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          })
         )
-      ),
-  });
-
-export class IgloohomeGeneratedClient extends Context.Service<
-  IgloohomeGeneratedClient,
-  IIgloohomeGeneratedClient
->()("@deskohub/igloohome/IgloohomeGeneratedClient") {
-  static Live = Layer.effect(
-    this,
-    Effect.gen(function* () {
-      const config = yield* IgloohomeRuntimeConfig;
-      const httpClient = yield* HttpClient.HttpClient;
-      const accessToken = yield* IgloohomeAccessToken;
-      const authenticatedHttpClient = httpClient.pipe(
-        HttpClient.mapRequestInputEffect((request) =>
-          accessToken.get.pipe(
-            Effect.map((token) =>
-              request.pipe(
-                HttpClientRequest.setHeaders({
-                  Accept: "application/json",
-                  Authorization: `Bearer ${token}`,
-                })
-              )
+      )
+    ),
+    {
+      transformClient: (client) =>
+        Effect.succeed(
+          client.pipe(
+            HttpClient.mapRequestInput((request) =>
+              request.pipe(HttpClientRequest.prependUrl(config.apiUrl))
             )
           )
-        )
-      ) as HttpClient.HttpClient;
-
-      return {
-        client: makeIgloohomeClient({
-          config,
-          httpClient: authenticatedHttpClient,
-        }),
-      };
-    })
+        ),
+    }
   );
-}
 
 export const mapAlgoPinRequestError = (
   error: unknown

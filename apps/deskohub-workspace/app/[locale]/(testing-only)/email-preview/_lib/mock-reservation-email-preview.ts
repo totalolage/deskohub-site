@@ -33,7 +33,6 @@ export const createWorkspaceReservationEmailPreviewReservation = (
   id: workspaceReservationIdSchema.make("workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C"),
   dotyposCustomerId: DotyposCustomerIdSchema.make("987654321"),
   dotyposReservationId: DotyposReservationIdSchema.make("123456789"),
-  customerAccessCode: "4829",
   reservationDetails: {
     kind: "cowork",
     entryTier: "profi",

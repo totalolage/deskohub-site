@@ -5,10 +5,7 @@ import {
   ReservationAccessService as ReservationAccessProvisioningService,
 } from "@/features/reservation-access";
 
-const workspaceCheckoutPlaceholderAccessCode = "7915";
-
 export interface WorkspaceCheckoutAccessCodeService {
-  readonly generateCustomerAccessCode: Effect.Effect<string>;
   readonly resolveCustomerAccessCode: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly dotyposReservationId: string;
@@ -22,17 +19,12 @@ export const WorkspaceCheckoutAccessCodeService =
     "WorkspaceCheckoutAccessCodeService"
   );
 
-export const generateWorkspaceCustomerAccessCode = Effect.succeed(
-  workspaceCheckoutPlaceholderAccessCode
-);
-
 export const WorkspaceCheckoutAccessCodeServiceLive = Layer.effect(
   WorkspaceCheckoutAccessCodeService,
   Effect.gen(function* () {
     const reservationAccess = yield* ReservationAccessProvisioningService;
 
     return WorkspaceCheckoutAccessCodeService.of({
-      generateCustomerAccessCode: generateWorkspaceCustomerAccessCode,
       resolveCustomerAccessCode: Effect.fn(
         "WorkspaceCheckoutAccessCodeService.resolveCustomerAccessCode"
       )(function* (input) {

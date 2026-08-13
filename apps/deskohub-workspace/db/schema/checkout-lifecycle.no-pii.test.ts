@@ -250,9 +250,6 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("confidential database scalars are explicitly marked for query censorship", async () => {
-    const reservationRepository = await readAppFile(
-      "features/reservation/backend/workspace-reservation.repository.ts"
-    );
     const paymentLifecycleRepository = await readAppFile(
       "features/checkout/backend/repositories/payment-lifecycle.repository.ts"
     );
@@ -269,9 +266,6 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       "features/reservation-access/backend/reservation-access.repository.ts"
     );
 
-    expect(reservationRepository).toContain(
-      "customerAccessCode: sensitiveDatabaseParameter("
-    );
     expect(paymentLifecycleRepository).toContain(
       "securityToken: sensitiveDatabaseParameter("
     );

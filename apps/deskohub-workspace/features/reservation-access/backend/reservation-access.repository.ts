@@ -13,10 +13,7 @@ import {
 } from "@/db/schema";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
-import type {
-  ReservationAccessGrant,
-  ReservationAccessGrantId,
-} from "../reservation-access";
+import type { ReservationAccessGrantId } from "../reservation-access";
 
 export class ReservationAccessStorageError extends Data.TaggedError(
   "ReservationAccessStorageError"
@@ -33,28 +30,6 @@ export class ReservationAccessStorageError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
-const storageError = (
-  operation: ReservationAccessStorageError["operation"],
-  reservationId: WorkspaceReservationId | undefined,
-  message: string
-) => new ReservationAccessStorageError({ operation, reservationId, message });
-
-const toGrant = (row: ReservationAccessGrantRow): ReservationAccessGrant => ({
-  id: row.id,
-  workspaceReservationId: row.workspaceReservationId,
-  deviceId: row.deviceId,
-  state: row.state,
-  providerCredentialId: row.providerCredentialId,
-  reservationStartsAt: row.reservationStartsAt,
-  accessStartsAt: row.accessStartsAt,
-  accessEndsAt: row.accessEndsAt,
-  provisioningStartedAt: row.provisioningStartedAt,
-  issuedAt: row.issuedAt,
-  failedAt: row.failedAt,
-  failureCode: row.failureCode,
-  updatedAt: row.updatedAt,
-});
-
 export interface IReservationAccessRepository {
   readonly ensure: (input: {
     readonly reservationId: WorkspaceReservationId;
@@ -62,11 +37,11 @@ export interface IReservationAccessRepository {
     readonly reservationStartsAt: Temporal.Instant;
     readonly accessStartsAt: Temporal.Instant;
     readonly accessEndsAt: Temporal.Instant;
-  }) => Effect.Effect<ReservationAccessGrant, ReservationAccessStorageError>;
+  }) => Effect.Effect<ReservationAccessGrantRow, ReservationAccessStorageError>;
   readonly findByReservationId: (
     reservationId: WorkspaceReservationId
   ) => Effect.Effect<
-    ReservationAccessGrant | null,
+    ReservationAccessGrantRow | null,
     ReservationAccessStorageError
   >;
   readonly claim: (input: {
@@ -122,15 +97,16 @@ export class ReservationAccessRepository extends Context.Service<
           )
           .limit(1)
           .pipe(
-            Effect.mapError(() =>
-              storageError(
-                "load",
-                reservationId,
-                "Reservation access grant could not be loaded."
-              )
+            Effect.mapError(
+              () =>
+                new ReservationAccessStorageError({
+                  operation: "load",
+                  reservationId,
+                  message: "Reservation access grant could not be loaded.",
+                })
             )
           );
-        return row ? toGrant(row) : null;
+        return row ?? null;
       });
 
       return ReservationAccessRepository.of({
@@ -161,22 +137,23 @@ export class ReservationAccessRepository extends Context.Service<
                 ]),
               })
               .pipe(
-                Effect.mapError(() =>
-                  storageError(
-                    "ensure",
-                    input.reservationId,
-                    "Reservation access grant could not be created."
-                  )
+                Effect.mapError(
+                  () =>
+                    new ReservationAccessStorageError({
+                      operation: "ensure",
+                      reservationId: input.reservationId,
+                      message: "Reservation access grant could not be created.",
+                    })
                 )
               );
 
             const grant = yield* findByReservationId(input.reservationId);
             if (!grant) {
-              return yield* storageError(
-                "ensure",
-                input.reservationId,
-                "Reservation access grant disappeared after creation."
-              );
+              return yield* new ReservationAccessStorageError({
+                operation: "ensure",
+                reservationId: input.reservationId,
+                message: "Reservation access grant disappeared after creation.",
+              });
             }
 
             const retryableGrantHasDifferentTarget =
@@ -186,11 +163,12 @@ export class ReservationAccessRepository extends Context.Service<
                 !grant.accessStartsAt.equals(input.accessStartsAt) ||
                 !grant.accessEndsAt.equals(input.accessEndsAt));
             if (retryableGrantHasDifferentTarget) {
-              return yield* storageError(
-                "ensure",
-                input.reservationId,
-                "Existing reservation access grant has a different target interval."
-              );
+              return yield* new ReservationAccessStorageError({
+                operation: "ensure",
+                reservationId: input.reservationId,
+                message:
+                  "Existing reservation access grant has a different target interval.",
+              });
             }
 
             return grant;
@@ -215,12 +193,13 @@ export class ReservationAccessRepository extends Context.Service<
               )
               .returning({ id: reservationAccessGrants.id })
               .pipe(
-                Effect.mapError(() =>
-                  storageError(
-                    "claim",
-                    input.reservationId,
-                    "Reservation access grant could not be claimed."
-                  )
+                Effect.mapError(
+                  () =>
+                    new ReservationAccessStorageError({
+                      operation: "claim",
+                      reservationId: input.reservationId,
+                      message: "Reservation access grant could not be claimed.",
+                    })
                 )
               );
             return claimed.length > 0;
@@ -248,20 +227,21 @@ export class ReservationAccessRepository extends Context.Service<
               .returning({ id: reservationAccessGrants.id })
               .pipe(
                 Effect.withTracerEnabled(false),
-                Effect.mapError(() =>
-                  storageError(
-                    "mark_issued",
-                    input.reservationId,
-                    "Issued reservation access could not be stored."
-                  )
+                Effect.mapError(
+                  () =>
+                    new ReservationAccessStorageError({
+                      operation: "mark_issued",
+                      reservationId: input.reservationId,
+                      message: "Issued reservation access could not be stored.",
+                    })
                 )
               );
             if (updated.length === 0) {
-              return yield* storageError(
-                "mark_issued",
-                input.reservationId,
-                "Reservation access grant was not provisioning."
-              );
+              return yield* new ReservationAccessStorageError({
+                operation: "mark_issued",
+                reservationId: input.reservationId,
+                message: "Reservation access grant was not provisioning.",
+              });
             }
           }
         ),
@@ -282,12 +262,14 @@ export class ReservationAccessRepository extends Context.Service<
                 )
               )
               .pipe(
-                Effect.mapError(() =>
-                  storageError(
-                    "mark_failed",
-                    input.reservationId,
-                    "Rejected reservation access could not be recorded."
-                  )
+                Effect.mapError(
+                  () =>
+                    new ReservationAccessStorageError({
+                      operation: "mark_failed",
+                      reservationId: input.reservationId,
+                      message:
+                        "Rejected reservation access could not be recorded.",
+                    })
                 )
               );
           }
@@ -319,12 +301,14 @@ export class ReservationAccessRepository extends Context.Service<
                 )
               )
               .pipe(
-                Effect.mapError(() =>
-                  storageError(
-                    "mark_uncertain",
-                    input.reservationId,
-                    "Uncertain reservation access could not be recorded."
-                  )
+                Effect.mapError(
+                  () =>
+                    new ReservationAccessStorageError({
+                      operation: "mark_uncertain",
+                      reservationId: input.reservationId,
+                      message:
+                        "Uncertain reservation access could not be recorded.",
+                    })
                 )
               );
           }
@@ -345,12 +329,13 @@ export class ReservationAccessRepository extends Context.Service<
             .returning({ id: reservationAccessGrants.id })
             .pipe(
               Effect.withTracerEnabled(false),
-              Effect.mapError(() =>
-                storageError(
-                  "clear_expired",
-                  undefined,
-                  "Expired reservation access credentials could not be cleared."
-                )
+              Effect.mapError(
+                () =>
+                  new ReservationAccessStorageError({
+                    operation: "clear_expired",
+                    message:
+                      "Expired reservation access credentials could not be cleared.",
+                  })
               )
             );
           return cleared.length;
@@ -371,30 +356,33 @@ export class ReservationAccessRepository extends Context.Service<
               .limit(1)
               .pipe(
                 Effect.withTracerEnabled(false),
-                Effect.mapError(() =>
-                  storageError(
-                    "load",
-                    input.reservationId,
-                    "Reservation access credential could not be loaded."
-                  )
+                Effect.mapError(
+                  () =>
+                    new ReservationAccessStorageError({
+                      operation: "load",
+                      reservationId: input.reservationId,
+                      message:
+                        "Reservation access credential could not be loaded.",
+                    })
                 )
               );
             if (!row) {
-              return yield* storageError(
-                "load",
-                input.reservationId,
-                "Issued reservation access disappeared while loading."
-              );
+              return yield* new ReservationAccessStorageError({
+                operation: "load",
+                reservationId: input.reservationId,
+                message: "Issued reservation access disappeared while loading.",
+              });
             }
             return yield* Schema.decodeUnknownEffect(AlgoPinSchema)(
               row.pin
             ).pipe(
-              Effect.mapError(() =>
-                storageError(
-                  "load",
-                  input.reservationId,
-                  "Stored reservation access credential is invalid."
-                )
+              Effect.mapError(
+                () =>
+                  new ReservationAccessStorageError({
+                    operation: "load",
+                    reservationId: input.reservationId,
+                    message: "Stored reservation access credential is invalid.",
+                  })
               )
             );
           }

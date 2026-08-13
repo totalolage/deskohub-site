@@ -134,7 +134,9 @@ const officeReservationOrderInputChecks = [
       endsOn === "" ||
       isOfficeReservationWithinMaximumDuration({ startsOn, endsOn }) || {
         path: ["endsOn"],
-        issue: m.reservationValidationOfficeMaximumDuration(),
+        issue: m.reservationValidationOfficeMaximumDuration({
+          hours: officeReservationMaximumDurationHours,
+        }),
       }
   ),
 ] as const;
@@ -207,7 +209,9 @@ export const officeReservationFormInputSchema = Schema.Struct({
         endsOn: getOfficeReservationEndsOn({ startsOn, dayCount }),
       }) || {
         path: ["dayCount"],
-        issue: m.reservationValidationOfficeMaximumDuration(),
+        issue: m.reservationValidationOfficeMaximumDuration({
+          hours: officeReservationMaximumDurationHours,
+        }),
       }
   )
 );

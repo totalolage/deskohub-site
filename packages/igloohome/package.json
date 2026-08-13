@@ -9,7 +9,8 @@
   },
   "scripts": {
     "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/igloohome-api.yaml --name IgloohomeClient --output ./src/generated/effect.gen.ts",
-    "typecheck": "bun run generate && tsc --project tsconfig.json"
+    "lint": "cd ../.. && biome check packages/igloohome/src --config-path biome.json --vcs-root .",
+    "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
     "effect": "4.0.0-beta.85"
