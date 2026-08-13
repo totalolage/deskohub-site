@@ -192,7 +192,8 @@ describe("PaymentLifecycleRepository", () => {
     expect(terminal).toContain("db.transaction");
     expect(terminal).toContain("yield* releaseCodeClaim");
     expect(terminal).toContain(".delete(accountingDocumentSnapshots)");
-    expect(terminal).toContain(
+    expect(terminal).toContain('attempt.provider !== "nexi"');
+    expect(terminal).not.toContain(
       'input.failureCode !== "payment_abandoned_after_provider_cutoff"'
     );
   });

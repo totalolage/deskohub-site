@@ -795,9 +795,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              if (
-                input.failureCode !== "payment_abandoned_after_provider_cutoff"
-              ) {
+              if (attempt.provider !== "nexi") {
                 yield* tx
                   .delete(accountingDocumentSnapshots)
                   .where(

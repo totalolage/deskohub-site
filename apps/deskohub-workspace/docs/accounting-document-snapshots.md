@@ -8,7 +8,7 @@ Workspace preserves the transaction facts needed to issue a trustworthy invoice 
 
 Each payment attempt receives one protected, immutable source snapshot at the same business boundary as the attempt. The snapshot exists whether or not the customer has requested an invoice, and its presence does not mean that an invoice was requested or issued.
 
-An unsuccessful terminal payment normally no longer needs accounting evidence and may discard its snapshot. A locally abandoned Nexi attempt retains its immutable snapshot because a verified late settlement may need the accepted reservation and price facts for recovery. A paid snapshot is retained and cannot be rewritten. Historical payments are not reconstructed from current customer or catalog data.
+An unsuccessful internal payment no longer needs accounting evidence and may discard its snapshot. A terminal Nexi attempt retains its immutable snapshot because a verified late settlement may need the accepted reservation and price facts for recovery. A paid snapshot is retained and cannot be rewritten. Historical payments are not reconstructed from current customer or catalog data.
 
 The current reservation experience does not yet collect a complete reservation-specific business billing identity or issue customer invoices. Until that experience is introduced, a source snapshot must not be presented as an invoice.
 

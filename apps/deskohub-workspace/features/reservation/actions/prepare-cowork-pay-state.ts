@@ -14,8 +14,8 @@ import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
-  coworkAdvertisedPriceReservationEquals,
   type CoworkReservationDetails,
+  coworkAdvertisedPriceReservationEquals,
   getCoworkAdvertisedPriceReservation,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";

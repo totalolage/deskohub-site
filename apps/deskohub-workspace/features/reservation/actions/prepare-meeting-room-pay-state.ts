@@ -17,8 +17,8 @@ import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   getMeetingRoomAdvertisedPriceReservation,
-  meetingRoomAdvertisedPriceReservationEquals,
   type MeetingRoomReservationDetails,
+  meetingRoomAdvertisedPriceReservationEquals,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
 import type { PrepareMeetingRoomPayStateInput } from "./prepare-meeting-room-pay-state.schema";
