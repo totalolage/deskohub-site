@@ -137,6 +137,9 @@ server persists the request and result per CLI session, so an ambiguous
 transport failure can be retried without applying the same mutation twice.
 Reservation access mutations use the same request ledger so a lost successful
 response replays safe grant metadata without issuing another credential.
+An incomplete access request claim can be reclaimed after the one-minute
+provisioning window; recovery returns an issued grant, safely retries a failed
+grant, or requires provider reconciliation for every ambiguous state.
 
 ## Development
 

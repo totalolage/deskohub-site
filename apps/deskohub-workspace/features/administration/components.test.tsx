@@ -167,6 +167,44 @@ describe("administration reservation components", () => {
     });
   });
 
+  test("offers reconciliation for stale provisioning but not a fresh claim", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail?.accessGrant).not.toBeNull();
+    if (!detail?.accessGrant) return;
+    workspaceUseAction.mockReturnValue({
+      execute: mock(),
+      isExecuting: false,
+    } as never);
+
+    const fresh = render(
+      <ReservationAccessAdministration
+        grant={{
+          ...detail.accessGrant,
+          state: "provisioning",
+          provisioningStartedAt: Temporal.Now.instant().toString(),
+        }}
+        reservationId={detail.reservation.id}
+      />
+    );
+    expect(fresh.queryByText("Reconcile access")).toBeNull();
+    fresh.unmount();
+
+    const stale = render(
+      <ReservationAccessAdministration
+        grant={{
+          ...detail.accessGrant,
+          state: "provisioning",
+          provisioningStartedAt: Temporal.Now.instant()
+            .subtract({ minutes: 2 })
+            .toString(),
+        }}
+        reservationId={detail.reservation.id}
+      />
+    );
+    expect(stale.getByText("Reconcile access")).toBeDefined();
+    expect(stale.getByText("Needs reconciliation")).toBeDefined();
+  });
+
   test("renders a semantic reservation table with friendly status labels", () => {
     const { items } = loadFixtureReservations({});
     const view = render(

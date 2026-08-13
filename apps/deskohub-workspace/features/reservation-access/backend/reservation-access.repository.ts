@@ -80,6 +80,7 @@ export interface IReservationAccessRepository {
   readonly reconcileUncertain: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly reconciledAt: Temporal.Instant;
+    readonly provisioningStaleBefore: Temporal.Instant;
   }) => Effect.Effect<ReservationAccessGrantRow, ReservationAccessStorageError>;
 }
 
@@ -341,7 +342,16 @@ export class ReservationAccessRepository extends Context.Service<
                   reservationAccessGrants.workspaceReservationId,
                   input.reservationId
                 ),
-                eq(reservationAccessGrants.state, "uncertain")
+                or(
+                  eq(reservationAccessGrants.state, "uncertain"),
+                  and(
+                    eq(reservationAccessGrants.state, "provisioning"),
+                    lte(
+                      reservationAccessGrants.provisioningStartedAt,
+                      input.provisioningStaleBefore
+                    )
+                  )
+                )
               )
             )
             .returning()

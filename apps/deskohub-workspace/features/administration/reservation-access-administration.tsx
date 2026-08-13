@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { isReservationAccessProvisioningStale } from "@/features/reservation-access";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateReservationAccess } from "./actions";
@@ -45,17 +46,27 @@ export function ReservationAccessAdministration({
     );
   }
 
-  const status = {
-    pending: { label: "Pending", tone: "neutral" },
-    provisioning: { label: "Provisioning", tone: "neutral" },
-    issued: { label: "Issued", tone: "positive" },
-    expired: { label: "Expired", tone: "neutral" },
-    uncertain: { label: "Needs reconciliation", tone: "attention" },
-    failed: { label: "Failed", tone: "attention" },
-  }[grant.state] as {
-    readonly label: string;
-    readonly tone: "attention" | "neutral" | "positive";
-  };
+  const needsProviderReconciliation =
+    grant.state === "uncertain" ||
+    isReservationAccessProvisioningStale({
+      state: grant.state,
+      provisioningStartedAt: grant.provisioningStartedAt
+        ? Temporal.Instant.from(grant.provisioningStartedAt)
+        : null,
+    });
+  const status = needsProviderReconciliation
+    ? { label: "Needs reconciliation", tone: "attention" as const }
+    : ({
+        pending: { label: "Pending", tone: "neutral" },
+        provisioning: { label: "Provisioning", tone: "neutral" },
+        issued: { label: "Issued", tone: "positive" },
+        expired: { label: "Expired", tone: "neutral" },
+        uncertain: { label: "Needs reconciliation", tone: "attention" },
+        failed: { label: "Failed", tone: "attention" },
+      }[grant.state] as {
+        readonly label: string;
+        readonly tone: "attention" | "neutral" | "positive";
+      });
 
   return (
     <AdministrationDetailSection title="Door access">
@@ -87,7 +98,7 @@ export function ReservationAccessAdministration({
         </p>
       )}
 
-      {grant.state === "uncertain" && (
+      {needsProviderReconciliation && (
         <details className="mt-4 rounded-xl border border-burned-orange/25 bg-burned-orange/5 p-4">
           <summary className={buttonVariants({ size: "sm" })}>
             Reconcile access

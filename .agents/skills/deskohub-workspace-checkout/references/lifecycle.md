@@ -392,6 +392,10 @@ and explicitly confirm that cleanup. Only then conditionally reset the uncertain
 grant and retry. If cleanup cannot be confirmed, wait for the possible
 credential to expire.
 
+A `provisioning` claim older than one minute has the same ambiguous-provider
+risk and uses the same confirmed cleanup workflow. A fresh claim remains
+in-progress and cannot be recovered yet.
+
 Floor the reservation start to the containing Prague hour and ceil its end to
 the containing or next Prague hour. The provider interval must start in the
 current or a future hour and span 1–672 elapsed hours. When a still-active

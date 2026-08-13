@@ -21,6 +21,21 @@ export const reservationAccessGrantStates = [
 export type ReservationAccessGrantState =
   (typeof reservationAccessGrantStates)[number];
 
+export const reservationAccessProvisioningStaleAfterMilliseconds = 60_000;
+
+export const isReservationAccessProvisioningStale = (
+  grant: Pick<ReservationAccessGrant, "state" | "provisioningStartedAt">,
+  now = Temporal.Now.instant()
+) =>
+  grant.state === "provisioning" &&
+  grant.provisioningStartedAt !== null &&
+  Temporal.Instant.compare(
+    grant.provisioningStartedAt,
+    now.subtract({
+      milliseconds: reservationAccessProvisioningStaleAfterMilliseconds,
+    })
+  ) <= 0;
+
 export interface ReservationAccessGrant {
   readonly id: ReservationAccessGrantId;
   readonly reservationId: string;

@@ -38,7 +38,10 @@ import {
 } from "@/features/discounts/admin/discount-administration.service";
 import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute-discount-admin-mutation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
-import type { ReservationAccessGrant } from "@/features/reservation-access";
+import {
+  type ReservationAccessGrant,
+  reservationAccessProvisioningStaleAfterMilliseconds,
+} from "@/features/reservation-access";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
@@ -132,41 +135,72 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             const claim = yield* mutationIdempotency
               .claim(request)
               .pipe(mapServiceFailure);
+            const applyMutation = reservationAccess
+              .mutate({
+                reservationId: params.reservationId,
+                ...payload.mutation,
+              })
+              .pipe(
+                Effect.map(toCliReservationAccessGrant),
+                Effect.tapError((cause) =>
+                  cause.reason === "recovery_failed"
+                    ? Effect.void
+                    : mutationIdempotency
+                        .release(request)
+                        .pipe(Effect.catch(() => Effect.void))
+                ),
+                Effect.mapError(mapReservationAccessMutationFailure),
+                Effect.tap((result) =>
+                  mutationIdempotency
+                    .complete({ ...request, result })
+                    .pipe(mapServiceFailure)
+                )
+              );
+            const resumeInterruptedMutation = Effect.gen(function* () {
+              const reclaimedAt = Temporal.Now.instant();
+              const reclaimed = yield* mutationIdempotency
+                .reclaimStale({
+                  ...request,
+                  reclaimedAt,
+                  staleBefore: reclaimedAt.subtract({
+                    milliseconds:
+                      reservationAccessProvisioningStaleAfterMilliseconds,
+                  }),
+                })
+                .pipe(mapServiceFailure);
+              if (!reclaimed) {
+                return yield* new CliMutationInProgress({
+                  requestId: payload.requestId,
+                  message:
+                    "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
+                });
+              }
+              return yield* reservationAccess
+                .resumeInterruptedMutation(params.reservationId)
+                .pipe(
+                  Effect.map(toCliReservationAccessGrant),
+                  Effect.tapError(() =>
+                    mutationIdempotency
+                      .release(request)
+                      .pipe(Effect.catch(() => Effect.void))
+                  ),
+                  Effect.mapError(mapReservationAccessMutationFailure),
+                  Effect.tap((result) =>
+                    mutationIdempotency
+                      .complete({ ...request, result })
+                      .pipe(mapServiceFailure)
+                  )
+                );
+            });
 
             return yield* Match.value(claim).pipe(
               Match.discriminatorsExhaustive("kind")({
-                claimed: () =>
-                  reservationAccess
-                    .mutate({
-                      reservationId: params.reservationId,
-                      ...payload.mutation,
-                    })
-                    .pipe(
-                      Effect.map(toCliReservationAccessGrant),
-                      Effect.tapError((cause) =>
-                        cause.reason === "recovery_failed"
-                          ? Effect.void
-                          : mutationIdempotency
-                              .release(request)
-                              .pipe(Effect.catch(() => Effect.void))
-                      ),
-                      Effect.mapError(mapReservationAccessMutationFailure),
-                      Effect.tap((result) =>
-                        mutationIdempotency
-                          .complete({ ...request, result })
-                          .pipe(mapServiceFailure)
-                      )
-                    ),
+                claimed: () => applyMutation,
                 completed: ({ result }) =>
                   Schema.decodeUnknownEffect(
                     AdministrationReservationAccessGrant
                   )(result).pipe(Effect.mapError(makeServiceUnavailable)),
-                "in-progress": () =>
-                  new CliMutationInProgress({
-                    requestId: payload.requestId,
-                    message:
-                      "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
-                  }),
+                "in-progress": () => resumeInterruptedMutation,
                 mismatch: () =>
                   new CliMutationRejected({
                     message:

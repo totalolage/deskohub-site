@@ -3,9 +3,13 @@ import {
   WorkspacePaidFulfillmentService,
   WorkspacePaidFulfillmentServiceLiveWithDependencies,
 } from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
-import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import {
+  type WorkspaceReservationDetailsError,
+  WorkspaceReservationService,
+} from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
+  isReservationAccessProvisioningStale,
   type ReservationAccessGrant,
   type ReservationAccessIssuanceError,
   ReservationAccessService,
@@ -41,6 +45,12 @@ interface IReservationAccessAdministration {
     ReservationAccessGrant,
     ReservationAccessAdministrationError
   >;
+  readonly resumeInterruptedMutation: (
+    reservationId: WorkspaceReservationId
+  ) => Effect.Effect<
+    ReservationAccessGrant,
+    ReservationAccessAdministrationError
+  >;
 }
 
 export class ReservationAccessAdministration extends Context.Service<
@@ -53,6 +63,42 @@ export class ReservationAccessAdministration extends Context.Service<
       const access = yield* ReservationAccessService;
       const fulfillment = yield* WorkspacePaidFulfillmentService;
       const reservations = yield* WorkspaceReservationService;
+
+      const recover = Effect.fn("ReservationAccessAdministration.recover")(
+        function* (reservationId: WorkspaceReservationId) {
+          const target = yield* reservations
+            .getAccessTarget(reservationId)
+            .pipe(mapAccessTargetFailure);
+          yield* access
+            .issueForReservation({
+              reservationId,
+              reservedFrom: target.reservedFrom,
+              reservedUntil: target.reservedUntil,
+            })
+            .pipe(Effect.asVoid, mapIssuanceFailure);
+          yield* fulfillment
+            .fulfillPaidOrder({ orderId: reservationId })
+            .pipe(
+              Effect.catch(() =>
+                Effect.logWarning(
+                  "Reservation access issued with fulfillment recovery still incomplete",
+                  { reservationId }
+                )
+              )
+            );
+
+          const recovered = yield* access
+            .loadGrant(reservationId)
+            .pipe(mapRecoveryFailure);
+          if (!recovered) {
+            return yield* new ReservationAccessAdministrationError({
+              reason: "recovery_failed",
+              message: "Recovered reservation access could not be loaded.",
+            });
+          }
+          return recovered;
+        }
+      );
 
       return ReservationAccessAdministration.of({
         mutate: Effect.fn("ReservationAccessAdministration.mutate")(
@@ -67,6 +113,8 @@ export class ReservationAccessAdministration extends Context.Service<
               });
             }
 
+            if (grant.state === "issued") return grant;
+
             yield* Match.value(mutation).pipe(
               Match.discriminatorsExhaustive("kind")({
                 "retry-failed": () =>
@@ -76,52 +124,43 @@ export class ReservationAccessAdministration extends Context.Service<
                         "Only definitively failed access can be retried."
                       ),
                 "confirm-provider-credential-removed": () =>
-                  grant.state === "uncertain"
+                  grant.state === "uncertain" ||
+                  isReservationAccessProvisioningStale(grant)
                     ? Effect.void
                     : invalidState(
-                        "Only uncertain access can be reconciled after provider removal."
+                        "Only ambiguous access can be reconciled after provider removal."
                       ),
               })
             );
 
-            const target = yield* reservations
-              .getAccessTarget(mutation.reservationId)
-              .pipe(mapRetryableFailure);
             if (mutation.kind === "confirm-provider-credential-removed") {
               yield* access
                 .confirmProviderCredentialRemoved(mutation.reservationId)
                 .pipe(Effect.asVoid, mapRecoveryFailure);
             }
-            yield* access
-              .issueForReservation({
-                reservationId: mutation.reservationId,
-                reservedFrom: target.reservedFrom,
-                reservedUntil: target.reservedUntil,
-              })
-              .pipe(Effect.asVoid, mapIssuanceFailure);
-            yield* fulfillment
-              .fulfillPaidOrder({ orderId: mutation.reservationId })
-              .pipe(
-                Effect.catch(() =>
-                  Effect.logWarning(
-                    "Reservation access issued with fulfillment recovery still incomplete",
-                    { reservationId: mutation.reservationId }
-                  )
-                )
-              );
-
-            const recovered = yield* access
-              .loadGrant(mutation.reservationId)
-              .pipe(mapRecoveryFailure);
-            if (!recovered) {
-              return yield* new ReservationAccessAdministrationError({
-                reason: "recovery_failed",
-                message: "Recovered reservation access could not be loaded.",
-              });
-            }
-            return recovered;
+            return yield* recover(mutation.reservationId);
           }
         ),
+        resumeInterruptedMutation: Effect.fn(
+          "ReservationAccessAdministration.resumeInterruptedMutation"
+        )(function* (reservationId) {
+          const grant = yield* access
+            .loadGrant(reservationId)
+            .pipe(mapRetryableFailure);
+          if (!grant) {
+            return yield* new ReservationAccessAdministrationError({
+              reason: "not_found",
+              message: "The reservation access grant was not found.",
+            });
+          }
+          if (grant.state === "issued") return grant;
+          if (grant.state !== "failed") {
+            return yield* invalidState(
+              "Interrupted access recovery requires operator reconciliation."
+            );
+          }
+          return yield* recover(reservationId);
+        }),
       });
     })
   );
@@ -160,6 +199,26 @@ const mapRetryableFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
         new ReservationAccessAdministrationError({
           reason: "retryable_failure",
           message: "Reservation access recovery is temporarily unavailable.",
+          cause,
+        })
+    )
+  );
+
+const mapAccessTargetFailure = <A, R>(
+  effect: Effect.Effect<A, WorkspaceReservationDetailsError, R>
+) =>
+  effect.pipe(
+    Effect.mapError(
+      (cause) =>
+        new ReservationAccessAdministrationError({
+          reason:
+            cause.errorCode === "reservation_access_unavailable"
+              ? "invalid_state"
+              : "retryable_failure",
+          message:
+            cause.errorCode === "reservation_access_unavailable"
+              ? cause.message
+              : "Reservation access recovery is temporarily unavailable.",
           cause,
         })
     )

@@ -7,3 +7,7 @@ export type {
   IssuedReservationAccess,
   ReservationAccessGrant,
 } from "./reservation-access";
+export {
+  isReservationAccessProvisioningStale,
+  reservationAccessProvisioningStaleAfterMilliseconds,
+} from "./reservation-access";

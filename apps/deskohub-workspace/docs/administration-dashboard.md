@@ -29,6 +29,8 @@ Secret Workspace access codes, payment security values, payment redirect address
 
 A definitively failed access issuance can be retried. An uncertain issuance can be retried only after an operator uses the Igloohome app over Bluetooth at the lock to remove the named credential or verify that it is absent, then explicitly confirms that cleanup. If cleanup cannot be confirmed, the possible credential must be allowed to expire instead of creating another one.
 
+A provisioning attempt that remains incomplete for one minute is treated as equally ambiguous and follows the same manual cleanup workflow. A current provisioning attempt cannot be reconciled while it may still be completing.
+
 ## Reservation presentation
 
 A reservation presents an actual-state journey through Started, Held, Paid, and Complete, or an exact cancellation condition such as Hold expired, Cancelling, Cancellation issue, or Cancelled.

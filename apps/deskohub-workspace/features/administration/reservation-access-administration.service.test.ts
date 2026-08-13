@@ -3,7 +3,10 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { WorkspacePaidFulfillmentService } from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
-import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import {
+  WorkspaceReservationDetailsError,
+  WorkspaceReservationService,
+} from "@/features/reservation/backend/workspace-reservation.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
   type ReservationAccessGrant,
@@ -50,7 +53,8 @@ const runMutation = (
   mutation: Parameters<ReservationAccessAdministration["Service"]["mutate"]>[0],
   grant: ReservationAccessGrant = baseGrant,
   fulfillment = Effect.void,
-  target = Effect.succeed(reservation)
+  target = Effect.succeed(reservation),
+  resume = false
 ) => {
   const issueForReservation = mock(() =>
     Effect.succeed({
@@ -77,7 +81,9 @@ const runMutation = (
     confirmProviderCredentialRemoved,
     result: Effect.gen(function* () {
       const administration = yield* ReservationAccessAdministration;
-      return yield* administration.mutate(mutation);
+      return yield* resume
+        ? administration.resumeInterruptedMutation(mutation.reservationId)
+        : administration.mutate(mutation);
     }).pipe(
       Effect.provide(
         ReservationAccessAdministration.Live.pipe(
@@ -145,16 +151,50 @@ describe("ReservationAccessAdministration", () => {
     );
   });
 
-  test("rejects a stale recovery request after access was issued", async () => {
+  test("returns issued access for a repeated recovery request", async () => {
     const harness = runMutation(
       { kind: "retry-failed", reservationId },
       { ...baseGrant, state: "issued" }
     );
 
-    await expect(harness.result).rejects.toBeInstanceOf(
-      ReservationAccessAdministrationError
-    );
+    expect((await harness.result).state).toBe("issued");
     expect(harness.issueForReservation).not.toHaveBeenCalled();
+  });
+
+  test("allows reconciliation only after a provisioning claim is stale", async () => {
+    const fresh = runMutation(
+      {
+        kind: "confirm-provider-credential-removed",
+        providerCredentialRemoved: true,
+        reservationId,
+      },
+      {
+        ...baseGrant,
+        state: "provisioning",
+        provisioningStartedAt: Temporal.Now.instant(),
+      }
+    );
+    await expect(fresh.result).rejects.toMatchObject({
+      reason: "invalid_state",
+    });
+    expect(fresh.confirmProviderCredentialRemoved).not.toHaveBeenCalled();
+
+    const stale = runMutation(
+      {
+        kind: "confirm-provider-credential-removed",
+        providerCredentialRemoved: true,
+        reservationId,
+      },
+      {
+        ...baseGrant,
+        state: "provisioning",
+        provisioningStartedAt: Temporal.Now.instant().subtract({ minutes: 2 }),
+      }
+    );
+    expect((await stale.result).state).toBe("issued");
+    expect(stale.confirmProviderCredentialRemoved).toHaveBeenCalledWith(
+      reservationId
+    );
   });
 
   test("reports issued access when later fulfillment recovery fails", async () => {
@@ -182,5 +222,49 @@ describe("ReservationAccessAdministration", () => {
       reason: "retryable_failure",
     });
     expect(harness.issueForReservation).not.toHaveBeenCalled();
+  });
+
+  test("classifies permanently ineligible reservations as invalid", async () => {
+    const harness = runMutation(
+      { kind: "retry-failed", reservationId },
+      baseGrant,
+      Effect.void,
+      Effect.fail(
+        new WorkspaceReservationDetailsError({
+          reservationId,
+          errorCode: "reservation_access_unavailable",
+          message: "Reservation access is not available for recovery.",
+        })
+      )
+    );
+
+    await expect(harness.result).rejects.toMatchObject({
+      reason: "invalid_state",
+    });
+    expect(harness.issueForReservation).not.toHaveBeenCalled();
+  });
+
+  test("resumes interrupted requests only from safe grant states", async () => {
+    const failed = runMutation(
+      { kind: "retry-failed", reservationId },
+      baseGrant,
+      Effect.void,
+      Effect.succeed(reservation),
+      true
+    );
+    expect((await failed.result).state).toBe("issued");
+    expect(failed.issueForReservation).toHaveBeenCalledTimes(1);
+
+    const uncertain = runMutation(
+      { kind: "retry-failed", reservationId },
+      { ...baseGrant, state: "uncertain" },
+      Effect.void,
+      Effect.succeed(reservation),
+      true
+    );
+    await expect(uncertain.result).rejects.toMatchObject({
+      reason: "invalid_state",
+    });
+    expect(uncertain.issueForReservation).not.toHaveBeenCalled();
   });
 });

@@ -15,13 +15,13 @@ import type {
   IssuedReservationAccess,
   ReservationAccessGrant,
 } from "../reservation-access";
+import { reservationAccessProvisioningStaleAfterMilliseconds } from "../reservation-access";
 import {
   ReservationAccessRepository,
   ReservationAccessRepositoryLive,
   type ReservationAccessStorageError,
 } from "./reservation-access.repository";
 
-export const RESERVATION_ACCESS_PROVISIONING_STALE_AFTER_MS = 60_000;
 const maximumHourlyAlgoPinDurationHours = 672;
 
 export type ReservationAccessIssuanceOutcome = "rejected" | "uncertain";
@@ -167,6 +167,10 @@ export class ReservationAccessService extends Context.Service<
             .reconcileUncertain({
               reservationId,
               reconciledAt: Temporal.Now.instant(),
+              provisioningStaleBefore: Temporal.Now.instant().subtract({
+                milliseconds:
+                  reservationAccessProvisioningStaleAfterMilliseconds,
+              }),
             })
             .pipe(
               Effect.map(toReservationAccessGrant),
@@ -309,7 +313,7 @@ export class ReservationAccessService extends Context.Service<
 
           if (grant.state === "provisioning") {
             const staleBefore = Temporal.Now.instant().subtract({
-              milliseconds: RESERVATION_ACCESS_PROVISIONING_STALE_AFTER_MS,
+              milliseconds: reservationAccessProvisioningStaleAfterMilliseconds,
             });
             if (
               grant.provisioningStartedAt &&

@@ -364,9 +364,12 @@ describe("ReservationAccessService", () => {
     );
 
     expect(reconciled.state).toBe("failed");
-    expect(reconcileUncertain).toHaveBeenCalledWith({
-      reservationId,
-      reconciledAt: expect.any(Temporal.Instant),
-    });
+    const input = reconcileUncertain.mock.calls[0]?.[0];
+    expect(input?.reservationId).toBe(reservationId);
+    expect(
+      input &&
+        input.reconciledAt.epochMilliseconds -
+          input.provisioningStaleBefore.epochMilliseconds
+    ).toBe(60_000);
   });
 });

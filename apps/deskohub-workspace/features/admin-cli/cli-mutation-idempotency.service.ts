@@ -4,7 +4,7 @@ import {
   type CliMutationRequestIdType,
   type CliSessionIdType,
 } from "@deskohub/workspace-admin-api";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lte } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -45,6 +45,12 @@ interface ICliMutationIdempotency {
   readonly release: (
     request: CliMutationRequest
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
+  readonly reclaimStale: (
+    request: CliMutationRequest & {
+      readonly reclaimedAt: Temporal.Instant;
+      readonly staleBefore: Temporal.Instant;
+    }
+  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
 }
 
 export class CliMutationIdempotency extends Context.Service<
@@ -141,7 +147,35 @@ export class CliMutationIdempotency extends Context.Service<
             .pipe(Effect.asVoid)
       );
 
-      return { claim, complete, release } satisfies ICliMutationIdempotency;
+      const reclaimStale = Effect.fn("CliMutationIdempotency.reclaimStale")(
+        (
+          request: CliMutationRequest & {
+            readonly reclaimedAt: Temporal.Instant;
+            readonly staleBefore: Temporal.Instant;
+          }
+        ) =>
+          db
+            .update(cliMutationRequests)
+            .set({ createdAt: request.reclaimedAt })
+            .where(
+              and(
+                eq(cliMutationRequests.sessionId, request.sessionId),
+                eq(cliMutationRequests.requestId, request.requestId),
+                eq(cliMutationRequests.mutation, request.mutation),
+                isNull(cliMutationRequests.result),
+                lte(cliMutationRequests.createdAt, request.staleBefore)
+              )
+            )
+            .returning({ requestId: cliMutationRequests.requestId })
+            .pipe(Effect.map((rows) => rows.length > 0))
+      );
+
+      return {
+        claim,
+        complete,
+        reclaimStale,
+        release,
+      } satisfies ICliMutationIdempotency;
     })
   );
 
