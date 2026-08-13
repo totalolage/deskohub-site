@@ -166,6 +166,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
               }
               if (
                 input.reservationState &&
+                !input.recoveredDotyposReservationId &&
                 reservation.reservationState !== "held" &&
                 reservation.reservationState !== "cancellation_failed"
               ) {
