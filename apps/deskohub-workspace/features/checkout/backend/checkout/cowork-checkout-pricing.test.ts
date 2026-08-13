@@ -3,7 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import type { DiscountCommitment } from "@/features/discounts";
+import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
   canonicalDiscountCodeSchema,
@@ -30,6 +30,11 @@ const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
 const submittedCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
   "SAVE20"
 );
+const emptyCommitment = () =>
+  makeDiscountCommitment({
+    product: { kind: "cowork", tier: "basic" },
+    applications: [],
+  });
 
 const advertisementQuote = discountAdvertisementQuoteCodec.make({
   product: { kind: "cowork", tier: "basic" },
@@ -164,7 +169,7 @@ describe("cowork checkout pricing", () => {
   });
 
   test("affirms displayed discounts for payment and preserves the commitment", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
@@ -201,7 +206,7 @@ describe("cowork checkout pricing", () => {
   });
 
   test("affirms the displayed price before appending a submitted code", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
@@ -275,7 +280,7 @@ describe("cowork checkout pricing", () => {
   });
 
   test("returns pricing_changed before resolving a submitted code", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({
         quote: discountQuoteCodec.make({

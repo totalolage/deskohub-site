@@ -1,7 +1,6 @@
 engine biome(1.0)
 language js(typescript, jsx)
 
-// Existing debt is excluded per file; remove exclusions as files are fixed.
 // ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
@@ -14,7 +13,6 @@ file($name, $body) where {
       `var $binding: $broad = $known` as $widening,
       `($parameters): $broad => $known` as $widening
     } where {
-      not $filename <: r"(?s).*(?:\.test\.(?:ts|tsx)|features/administration/(?:admin-shell\.tsx|payment-administration\.service\.ts|reservation-date-range\.ts|reservation-lifecycle-map\.tsx)|features/checkout/(?:product-catalog\.i18n\.ts|product-catalog\.ts|workspace-room-layouts\.ts)|features/cookie-consent/(?:components/cookie-settings-page\.tsx|utils/posthog-url\.ts)|features/legal/content\.tsx|shared/backend/(?:analytics/posthog-event\.service\.ts|logging/censorship\.ts)|shared/(?:components/site-header-config\.ts|testing/workspace-component-module-mocks\.ts|utils/error-formatting\.ts))$",
       or {
         $broad <: r"(?s)^(?:unknown|object|\{[^}]+\})$",
         and {

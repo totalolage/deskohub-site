@@ -342,7 +342,7 @@ const implementation = Effect.gen(function* () {
       if (!timing) {
         const reconstruction: CheckoutStatusReconstruction = {
           reservation: emptyReconstruction.reservation,
-          ...(tableMap ? { tableMap } : {}),
+          tableMap,
           supportContactPrefill: getSupportContactPrefill(
             dotyposReservation.customer
           ),
@@ -396,7 +396,7 @@ const implementation = Effect.gen(function* () {
 
       const reconstruction: CheckoutStatusReconstruction = {
         reservation: statusReservation,
-        ...(tableMap ? { tableMap } : {}),
+        tableMap,
         supportContactPrefill: getSupportContactPrefill(
           dotyposReservation.customer
         ),
@@ -468,13 +468,11 @@ const implementation = Effect.gen(function* () {
         status: statusKind,
         paymentStatus: reservation.paymentState,
         fulfillmentStatus: reservation.fulfillmentState,
-        ...(reconstruction.tableMap
-          ? { tableMap: reconstruction.tableMap }
-          : {}),
-        ...(statusKind === "fulfillment_failed" &&
-        reconstruction.supportContactPrefill
-          ? { supportContactPrefill: reconstruction.supportContactPrefill }
-          : {}),
+        tableMap: reconstruction.tableMap,
+        supportContactPrefill:
+          statusKind === "fulfillment_failed"
+            ? reconstruction.supportContactPrefill
+            : undefined,
       };
       const result: CheckoutReservationStatusViewModel = {
         ...resultBase,

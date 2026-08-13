@@ -31,15 +31,12 @@ export type WorkspaceProductTier = WorkspaceCoworkProductTier;
 export type WorkspaceProductMonitorOption =
   (typeof workspaceProductMonitorOptions)[number];
 
-export const workspaceProductMonitorOptionTableTags: Record<
-  WorkspaceProductMonitorOption,
-  readonly string[]
-> = {
+export const workspaceProductMonitorOptionTableTags = {
   "2x27-qhd": ["monitor:count:2", "monitor:size:27", "monitor:resolution:qhd"],
   "2x32-qhd": ["monitor:count:2", "monitor:size:32", "monitor:resolution:qhd"],
   "2x27-4k": ["monitor:count:2", "monitor:size:27", "monitor:resolution:4k"],
   "2x32-4k": ["monitor:count:2", "monitor:size:32", "monitor:resolution:4k"],
-};
+} satisfies Record<WorkspaceProductMonitorOption, readonly string[]>;
 
 export type WorkspaceProductCatalogItem = {
   readonly tier: WorkspaceCoworkProductTier;
@@ -51,10 +48,7 @@ export type WorkspaceProductCatalogItem = {
   readonly allowedMonitorOptions: readonly WorkspaceProductMonitorOption[];
 };
 
-const workspaceCoworkProductsByTier: Record<
-  WorkspaceCoworkProductTier,
-  WorkspaceProductCatalogItem
-> = {
+const workspaceCoworkProductsByTier = {
   basic: {
     tier: "basic",
     label: "Basic Day Pass",
@@ -82,7 +76,7 @@ const workspaceCoworkProductsByTier: Record<
     requiresMonitorOption: true,
     allowedMonitorOptions: workspaceProductMonitorOptions,
   },
-};
+} satisfies Record<WorkspaceCoworkProductTier, WorkspaceProductCatalogItem>;
 
 export const workspaceCoworkCatalog = workspaceCoworkTiers.map(
   (tier) => workspaceCoworkProductsByTier[tier]

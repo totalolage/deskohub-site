@@ -333,16 +333,12 @@ const createCustomerReservationEmail = (input: {
       location={{
         address: workspaceFormattedAddress,
         directionsUrl: workspaceGoogleDirectionsUrl,
-        ...(input.locationMapImageSrc
-          ? { mapImageSrc: input.locationMapImageSrc }
-          : {}),
+        mapImageSrc: input.locationMapImageSrc,
       }}
       network={{
         ssid: input.networkDetails.ssid,
         password: input.networkDetails.password,
-        ...(input.networkQrImageSrc
-          ? { qrImageSrc: input.networkQrImageSrc }
-          : {}),
+        qrImageSrc: input.networkQrImageSrc,
       }}
       preview={subject}
       {...(input.reservation.tableName
@@ -503,14 +499,12 @@ export class WorkspaceReservationEmailService extends Context.Service<
               reservation,
               locale,
               networkDetails,
-              ...(networkQrAttachment
-                ? { networkQrImageSrc: `cid:${networkQrAttachment.contentId}` }
-                : {}),
-              ...(locationMapAttachment
-                ? {
-                    locationMapImageSrc: `cid:${locationMapAttachment.contentId}`,
-                  }
-                : {}),
+              networkQrImageSrc: networkQrAttachment
+                ? `cid:${networkQrAttachment.contentId}`
+                : undefined,
+              locationMapImageSrc: locationMapAttachment
+                ? `cid:${locationMapAttachment.contentId}`
+                : undefined,
             })
           );
           const customerMessage: EmailMessage = {

@@ -8,8 +8,7 @@ export const unixTimestampSecondsSchema = Schema.Int.check(
 });
 
 export const TemporalInstantSchema = Schema.declare(
-  (input: unknown): input is Temporal.Instant =>
-    input instanceof Temporal.Instant,
+  (input): input is Temporal.Instant => input instanceof Temporal.Instant,
   {
     identifier: "TemporalInstant",
     description: "Temporal instant value.",
@@ -17,8 +16,7 @@ export const TemporalInstantSchema = Schema.declare(
 );
 
 export const TemporalPlainDateSchema = Schema.declare(
-  (input: unknown): input is Temporal.PlainDate =>
-    input instanceof Temporal.PlainDate,
+  (input): input is Temporal.PlainDate => input instanceof Temporal.PlainDate,
   {
     identifier: "TemporalPlainDate",
     description: "Temporal plain date value.",
@@ -26,8 +24,7 @@ export const TemporalPlainDateSchema = Schema.declare(
 );
 
 export const TemporalPlainTimeSchema = Schema.declare(
-  (input: unknown): input is Temporal.PlainTime =>
-    input instanceof Temporal.PlainTime,
+  (input): input is Temporal.PlainTime => input instanceof Temporal.PlainTime,
   {
     identifier: "TemporalPlainTime",
     description: "Temporal plain time value.",

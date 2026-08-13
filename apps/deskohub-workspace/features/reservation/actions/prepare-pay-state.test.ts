@@ -28,7 +28,6 @@ import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backen
 import type { ICustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
@@ -339,11 +338,11 @@ const runReusableReservationScenario = async (input: {
       quoteForCustomer: quoteForCustomerResult as never,
     }),
     BotProtectionServiceMock({ verifyHuman }),
-    Layer.succeed(WorkspaceAvailabilityService, {
+    Layer.mock(WorkspaceAvailabilityService, {
       getAvailability: mock(() => Effect.die("unused")),
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
-    Layer.succeed(WorkspaceReservationRepository, {
+    Layer.mock(WorkspaceReservationRepository, {
       findByAttemptKey: input.findByAttemptKey,
       findCurrentByCheckoutSessionKey:
         input.findCurrentByCheckoutSessionKey ??
@@ -359,28 +358,28 @@ const runReusableReservationScenario = async (input: {
       completeSupersessionAndCreateDraft,
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
-    } as unknown as WorkspaceReservationRepositoryType),
-    Layer.succeed(WorkspaceCheckoutAccessCodeService, {
+    }),
+    Layer.mock(WorkspaceCheckoutAccessCodeService, {
       generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
     } satisfies WorkspaceCheckoutAccessCodeServiceType),
-    Layer.succeed(CustomerMarketingConsentRepository, {
+    Layer.mock(CustomerMarketingConsentRepository, {
       grant: grantMarketingConsent,
     } satisfies ICustomerMarketingConsentRepository),
-    Layer.succeed(ReservationHoldCleanupScheduleService, {
+    Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
     WorkspaceTableAssignmentServiceMock({
       assignTableId: mock(() => Effect.succeed("table-id")),
     }),
-    Layer.succeed(PostHogEventService, {
+    Layer.mock(PostHogEventService, {
       capture: mock(() => Effect.void),
     }),
-    Layer.succeed(DotyposService, {
+    Layer.mock(DotyposService, {
       findOrCreateCustomer,
       getReservationStatus,
       cancelReservation,
       createReservation,
-    } as unknown as typeof DotyposService.Service)
+    })
   );
 
   const result = await prepareWorkspacePayState({
@@ -512,11 +511,11 @@ const runMeetingRoomNewHoldScenario = async (
       )
     ),
     BotProtectionServiceMock({ verifyHuman: mock(() => Effect.void) }),
-    Layer.succeed(WorkspaceAvailabilityService, {
+    Layer.mock(WorkspaceAvailabilityService, {
       getAvailability: mock(() => Effect.die("unused")),
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
-    Layer.succeed(WorkspaceReservationRepository, {
+    Layer.mock(WorkspaceReservationRepository, {
       findByAttemptKey: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
       createDraft,
@@ -530,22 +529,22 @@ const runMeetingRoomNewHoldScenario = async (
       completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
       markCancelled: mock(() => Effect.void),
       markCancellationFailed: mock(() => Effect.void),
-    } as unknown as WorkspaceReservationRepositoryType),
-    Layer.succeed(WorkspaceCheckoutAccessCodeService, {
+    }),
+    Layer.mock(WorkspaceCheckoutAccessCodeService, {
       generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
     } satisfies WorkspaceCheckoutAccessCodeServiceType),
-    Layer.succeed(CustomerMarketingConsentRepository, {
+    Layer.mock(CustomerMarketingConsentRepository, {
       grant: mock(() => Effect.void),
     } satisfies ICustomerMarketingConsentRepository),
     WorkspaceTableAssignmentServiceMock({ assignTableId }),
-    Layer.succeed(ReservationHoldCleanupScheduleService, {
+    Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
-    Layer.succeed(DotyposService, {
+    Layer.mock(DotyposService, {
       findOrCreateCustomer: mock(() => Effect.succeed({ id: "customer-id" })),
       createReservation,
-    } as unknown as typeof DotyposService.Service),
-    Layer.succeed(PostHogEventService, {
+    }),
+    Layer.mock(PostHogEventService, {
       capture: mock(() => Effect.void),
     })
   );
@@ -874,11 +873,11 @@ describe("prepareWorkspacePayState", () => {
         quoteForCustomer: quoteForCustomerResult as never,
       }),
       BotProtectionServiceMock({ verifyHuman }),
-      Layer.succeed(WorkspaceAvailabilityService, {
+      Layer.mock(WorkspaceAvailabilityService, {
         getAvailability: mock(() => Effect.die("unused")),
         ensureAvailable,
       } satisfies IWorkspaceAvailabilityService),
-      Layer.succeed(WorkspaceReservationRepository, {
+      Layer.mock(WorkspaceReservationRepository, {
         findByAttemptKey: mock(() => Effect.succeed(null)),
         findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
         createDraft,
@@ -892,24 +891,24 @@ describe("prepareWorkspacePayState", () => {
         completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
         markCancelled: mock(() => Effect.void),
         markCancellationFailed: mock(() => Effect.void),
-      } as unknown as WorkspaceReservationRepositoryType),
-      Layer.succeed(WorkspaceCheckoutAccessCodeService, {
+      }),
+      Layer.mock(WorkspaceCheckoutAccessCodeService, {
         generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
       } satisfies WorkspaceCheckoutAccessCodeServiceType),
-      Layer.succeed(CustomerMarketingConsentRepository, {
+      Layer.mock(CustomerMarketingConsentRepository, {
         grant: grantMarketingConsent,
       } satisfies ICustomerMarketingConsentRepository),
       WorkspaceTableAssignmentServiceMock({
         assignTableId,
       }),
-      Layer.succeed(ReservationHoldCleanupScheduleService, {
+      Layer.mock(ReservationHoldCleanupScheduleService, {
         enqueueCleanup,
       } as never),
-      Layer.succeed(DotyposService, {
+      Layer.mock(DotyposService, {
         findOrCreateCustomer,
         createReservation,
-      } as unknown as typeof DotyposService.Service),
-      Layer.succeed(PostHogEventService, {
+      }),
+      Layer.mock(PostHogEventService, {
         capture: mock(() => Effect.void),
       })
     );

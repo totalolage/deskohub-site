@@ -4,7 +4,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "./reservation-hold-cleanup.service";
 
 const now = Temporal.Instant.from("2026-06-01T10:00:00.000Z");
@@ -46,7 +45,9 @@ const makeReservation = (
   }) as WorkspaceReservation;
 
 const runProcessMessage = async (
-  message: unknown,
+  message: Parameters<
+    typeof import("./reservation-hold-cleanup-queue.service").processReservationHoldCleanupScheduleMessage
+  >[0],
   input: {
     readonly findById?: ReturnType<typeof mock>;
     readonly cancelOrderHold?: ReturnType<typeof mock>;
@@ -73,10 +74,10 @@ const runProcessMessage = async (
   ).pipe(
     Effect.provide(
       Layer.mergeAll(
-        Layer.succeed(WorkspaceReservationRepository, {
+        Layer.mock(WorkspaceReservationRepository, {
           findById,
-        } as unknown as WorkspaceReservationRepositoryType),
-        Layer.succeed(ReservationHoldCleanupService, {
+        }),
+        Layer.mock(ReservationHoldCleanupService, {
           cancelOrderHold,
           sweepExpiredHolds: mock(() =>
             Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })

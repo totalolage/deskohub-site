@@ -18,7 +18,7 @@ declare global {
 export function dispatchConsentUpdatedEvent(
   acceptedCategories: ConsentCategory[]
 ) {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
 
   window.dispatchEvent(
     new CustomEvent(CONSENT_UPDATED_EVENT, {

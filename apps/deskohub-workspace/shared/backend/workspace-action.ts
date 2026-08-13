@@ -4,7 +4,7 @@ import {
   type EffectActionState,
 } from "@deskohub/next-effect/effect-action";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Duration, Effect, References } from "effect";
+import { Duration, Effect, Predicate, References } from "effect";
 import { headers } from "next/headers";
 import type {
   FlattenedValidationErrors,
@@ -123,7 +123,7 @@ const prepareWorkspaceAction = <
     yield* Effect.logDebug("Safe action executed").pipe(
       Effect.annotateLogs({
         locale: args.ctx.locale,
-        ...(options.logInput === false ? {} : { input: args.parsedInput }),
+        input: options.logInput === false ? undefined : args.parsedInput,
       })
     );
     const result = yield* Effect.suspend(handler).pipe(
@@ -220,16 +220,16 @@ const handleWorkspaceActionValidationFailure = async <
   } as WorkspaceActionValidationErrors<S>;
 };
 
-const collectWorkspaceActionValidationIssues = (
-  value: unknown,
+const collectWorkspaceActionValidationIssues = <T>(
+  value: T,
   path: readonly string[] = []
 ): readonly WorkspaceActionValidationIssue[] => {
   if (Array.isArray(value)) {
     return value.flatMap((item) =>
-      typeof item === "string" ? [{ message: item, path }] : []
+      Predicate.isString(item) ? [{ message: item, path }] : []
     );
   }
-  if (!(value && typeof value === "object")) return [];
+  if (!Predicate.isObject(value)) return [];
 
   return Object.entries(value).flatMap(([key, item]) =>
     collectWorkspaceActionValidationIssues(

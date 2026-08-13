@@ -1,7 +1,6 @@
 engine biome(1.0)
 language js(typescript, jsx)
 
-// Existing debt is excluded per file; remove exclusions as files are fixed.
 // ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
@@ -18,7 +17,6 @@ file($name, $body) where {
         r"(?s)^\s*\({2,}\s*[^()]+\s+as\s+[^()]+\s*\){2,}\s+as\s+.+$",
         r"(?s)^\s*<[^>]+>\s*\({2,}\s*<[^>]+>[^()]+\){2,}\s*$"
       },
-      not $filename <: r"(?s).*(?:\.test(?:-utils)?\.(?:ts|tsx)|e2e/playwright-checkout/run-plan\.ts|features/checkout/reservation-quote-office\.ts)$",
       register_diagnostic(
         span = $outer_assertion,
         message = "[anti-slop/no-chained-type-assertions] Preserve the value's type evidence instead of chaining type assertions.",

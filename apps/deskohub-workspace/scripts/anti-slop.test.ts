@@ -59,6 +59,16 @@ void payload;
   expect(result.exitCode).toBe(0);
 });
 
+test("unknown parameter rule allows error causes", () => {
+  const result = lint(`
+const handleFailure = (cause: unknown) => String(cause);
+void handleFailure;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain("[anti-slop/no-unknown-parameters]");
+});
+
 test("anti-slop reports all ten rules", () => {
   const result = lint(`
 declare const externalValue: unknown;
@@ -112,7 +122,7 @@ test("chained assertion rule retains Workspace e2e coverage", () => {
   expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
 
-test("chained assertion rule baselines the existing E2E run plan", () => {
+test("chained assertion rule retains the E2E run plan", () => {
   const result = lint(
     "declare const value: object; value as unknown as { id: string };",
     "e2e/playwright-checkout",
@@ -120,10 +130,10 @@ test("chained assertion rule baselines the existing E2E run plan", () => {
   );
   const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
 
-  expect(output).not.toContain("[anti-slop/no-chained-type-assertions]");
+  expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
 
-test("chained assertion rule preserves test utility debt", () => {
+test("chained assertion rule retains test utility coverage", () => {
   const result = lint(
     "declare const value: object; value as unknown as { id: string };",
     "shared/testing",
@@ -131,7 +141,23 @@ test("chained assertion rule preserves test utility debt", () => {
   );
   const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
 
-  expect(output).not.toContain("[anti-slop/no-chained-type-assertions]");
+  expect(output).toContain("[anti-slop/no-chained-type-assertions]");
+});
+
+test("shape rule ignores external property names", () => {
+  const result = lint(
+    `
+declare function configure(value: { defaultValidationErrorsShape: string }): void;
+configure({ defaultValidationErrorsShape: "flattened" });
+const view = <Map tableShapeInlineStyle={() => ({})} />;
+void view;
+`,
+    "scripts",
+    "probe.tsx"
+  );
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain("[anti-slop/no-shape-in-symbol-names]");
 });
 
 test("chained assertion rule unwraps nested parentheses", () => {

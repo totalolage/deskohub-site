@@ -83,16 +83,16 @@ const collectContextProperties = Effect.gen(function* () {
       ...logAnnotations,
       effect: {
         spanAnnotations,
-        ...(Option.isSome(currentSpan)
-          ? { spanAttributes: Object.fromEntries(currentSpan.value.attributes) }
-          : {}),
+        spanAttributes: Option.isSome(currentSpan)
+          ? Object.fromEntries(currentSpan.value.attributes)
+          : undefined,
       },
     },
     spanMetadata,
   };
 });
 
-const compactProperties = (properties: Record<string, unknown>) =>
+const compactProperties = (properties: PostHogEventProperties) =>
   Object.fromEntries(
     Object.entries(properties).filter(([, value]) => value !== undefined)
   ) as PostHogEventProperties;
@@ -110,7 +110,7 @@ export const makePostHogEventService = ({
         censorLogValue({
           ...contextProperties.properties,
           ...input.properties,
-        }) as Record<string, unknown>
+        }) as PostHogEventProperties
       );
       const properties = compactProperties({
         ...censoredProperties,

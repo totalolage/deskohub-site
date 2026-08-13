@@ -16,7 +16,7 @@ import { getMeetingRoomReservationDetails } from "@/features/reservation/meeting
 import { getOfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
-const deriveCheckoutKey = (payload: object) =>
+const deriveCheckoutKey = <Payload>(payload: Payload) =>
   createHmac("sha256", env.CHECKOUT_PAY_STATE_KEYS)
     .update(JSON.stringify(payload))
     .digest("hex");
@@ -27,11 +27,7 @@ const decodeCheckoutAttemptKey = checkoutAttemptKeySchema.make;
 export const deriveCheckoutSessionKey = (
   checkoutSessionId: CheckoutSessionId
 ): CheckoutSessionKey =>
-  decodeCheckoutSessionKey(
-    deriveCheckoutKey({
-      checkoutSessionId,
-    })
-  );
+  decodeCheckoutSessionKey(deriveCheckoutKey({ checkoutSessionId }));
 
 export const deriveCheckoutAttemptKey = (input: {
   readonly checkoutSessionId: CheckoutSessionId;

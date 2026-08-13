@@ -8,10 +8,25 @@ import {
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Cause, Effect, Logger, type LogLevel, References } from "effect";
+import {
+  Cause,
+  type Context,
+  Effect,
+  Logger,
+  type LogLevel,
+  Predicate,
+  References,
+} from "effect";
 import { getSensitiveDatabaseQueryParameterIndexes } from "./database-query-parameter-classifier";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
+
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
+type MutableLogAnnotations = {
+  -readonly [Key in keyof LogAnnotations]: LogAnnotations[Key];
+};
 
 const sensitiveLogKeyFragments = [
   "password",
@@ -139,17 +154,17 @@ export const isSensitiveLogKey = (key: string): boolean =>
   containsSensitiveLogKeyFragmentSegment(key) ||
   endsWithSensitiveLogKeyFragment(key);
 
-const isMap = (value: unknown): value is Map<unknown, unknown> =>
+const isMap = <T>(value: T): value is T & Map<unknown, unknown> =>
   value instanceof Map;
 
-const isHeaders = (value: unknown): value is Headers =>
-  typeof Headers !== "undefined" && value instanceof Headers;
+const isHeaders = <T>(value: T): value is T & Headers =>
+  globalThis.Headers !== undefined && value instanceof Headers;
 
-const isURLSearchParams = (value: unknown): value is URLSearchParams =>
-  typeof URLSearchParams !== "undefined" && value instanceof URLSearchParams;
+const isURLSearchParams = <T>(value: T): value is T & URLSearchParams =>
+  globalThis.URLSearchParams !== undefined && value instanceof URLSearchParams;
 
-const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-  if (typeof value !== "object" || value === null) return false;
+const isPlainObject = <T>(value: T): value is T & LogAnnotations => {
+  if (!Predicate.isObject(value)) return false;
 
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
@@ -211,19 +226,18 @@ const censorUrlString = (value: string) => {
   }
 };
 
-const isEffectDrizzleQueryError = (
-  value: unknown
-): value is EffectDrizzleQueryError =>
-  typeof value === "object" &&
-  value !== null &&
+const isEffectDrizzleQueryError = <T>(
+  value: T
+): value is T & EffectDrizzleQueryError =>
+  Predicate.isObject(value) &&
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
-const censorQueryParameter = (
-  value: unknown,
+const censorQueryParameter = <T>(
+  value: T,
   seen: WeakMap<object, unknown>
 ): unknown => {
-  if (typeof value !== "string") {
+  if (!Predicate.isString(value)) {
     return censorLogValueInternal(value, seen);
   }
 
@@ -236,9 +250,9 @@ const censorQueryParameter = (
   }
 };
 
-const censorQueryParamsInternal = (
+const censorQueryParamsInternal = <T>(
   query: string | undefined,
-  value: unknown,
+  value: T,
   seen: WeakMap<object, unknown>
 ): unknown => {
   if (!Array.isArray(value)) return censorLogValueInternal(value, seen);
@@ -268,9 +282,9 @@ export const censorDatabaseQueryParams = (
 ): readonly unknown[] =>
   censorQueryParamsInternal(query, params, new WeakMap()) as readonly unknown[];
 
-const censorLogRecordValue = (
+const censorLogRecordValue = <T>(
   key: string,
-  value: unknown,
+  value: T,
   seen: WeakMap<object, unknown>,
   databaseQuery?: string
 ): unknown => {
@@ -281,8 +295,8 @@ const censorLogRecordValue = (
   return censorLogValueInternal(value, seen);
 };
 
-const censorLogValueInternal = (
-  value: unknown,
+const censorLogValueInternal = <T>(
+  value: T,
   seen: WeakMap<object, unknown>
 ): unknown => {
   if (Array.isArray(value)) {
@@ -311,7 +325,7 @@ const censorLogValueInternal = (
     for (const [key, nestedValue] of value) {
       result.set(
         key,
-        typeof key === "string"
+        Predicate.isString(key)
           ? censorLogRecordValue(key, nestedValue, seen)
           : censorLogValueInternal(nestedValue, seen)
       );
@@ -358,13 +372,13 @@ const censorLogValueInternal = (
     return result;
   }
 
-  if (typeof value === "string") return censorUrlString(value);
+  if (Predicate.isString(value)) return censorUrlString(value);
 
   if (isEffectDrizzleQueryError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
 
-    const result: Record<string, unknown> = {
+    const result: MutableLogAnnotations = {
       _tag: value._tag,
       query: value.query,
     };
@@ -377,7 +391,7 @@ const censorLogValueInternal = (
     const existing = seen.get(value);
     if (existing) return existing;
 
-    const result: Record<string, unknown> = {
+    const result: MutableLogAnnotations = {
       errorType: value.name,
       message: CENSORED_LOG_VALUE,
     };
@@ -400,10 +414,11 @@ const censorLogValueInternal = (
   const existing = seen.get(value);
   if (existing) return existing;
 
-  const result: Record<string, unknown> = {};
+  const result: MutableLogAnnotations = {};
   seen.set(value, result);
-  const databaseQuery =
-    typeof value.query === "string" ? value.query : undefined;
+  const databaseQuery = Predicate.isString(value.query)
+    ? value.query
+    : undefined;
 
   for (const [key, nestedValue] of Object.entries(value)) {
     result[key] = censorLogRecordValue(key, nestedValue, seen, databaseQuery);
@@ -412,7 +427,7 @@ const censorLogValueInternal = (
   return result;
 };
 
-export const censorTelemetryValue = (value: unknown): unknown =>
+export const censorTelemetryValue = <T>(value: T): unknown =>
   censorLogValueInternal(value, new WeakMap());
 
 export const censorLogValue = censorTelemetryValue;
@@ -444,7 +459,7 @@ export const censorLoggerOptions = (
       getRef: (ref) => {
         const value = fiber.getRef(ref);
         if (ref !== References.CurrentLogAnnotations) return value;
-        const annotations = value as Readonly<Record<string, unknown>>;
+        const annotations = value as LogAnnotations;
 
         return Object.fromEntries(
           Object.entries(annotations).map(([key, nestedValue]) => [
@@ -480,11 +495,11 @@ const logLevelToOtelSeverity = (logLevel: LogLevel.LogLevel) => {
   }
 };
 
-const toOtelValue = (value: unknown): AnyValue => {
+const toOtelValue = <T>(value: T): AnyValue => {
   if (
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
+    Predicate.isString(value) ||
+    Predicate.isNumber(value) ||
+    Predicate.isBoolean(value)
   ) {
     return value;
   }
@@ -496,7 +511,7 @@ const toOtelValue = (value: unknown): AnyValue => {
   }
 };
 
-const toOtelBody = (message: unknown): AnyValue => {
+const toOtelBody = <T>(message: T): AnyValue => {
   if (!Array.isArray(message)) return toOtelValue(message);
   if (message.length === 1) return toOtelValue(message[0]);
   return message.map(toOtelValue);

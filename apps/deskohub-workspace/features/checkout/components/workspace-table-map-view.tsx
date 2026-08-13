@@ -31,7 +31,7 @@ const isAssignedTable = (
   assignedTableId: DotyposTableId
 ) => tableId?.trim() === assignedTableId;
 
-const getTableShapeStyle = (
+const getTableAppearance = (
   tableId: string | undefined,
   assignedTableId: DotyposTableId
 ): CSSProperties =>
@@ -73,7 +73,7 @@ export function WorkspaceTableMapView({
         getTableLabelStyle(table.id, tableMap.assignedTableId)
       }
       tableShapeInlineStyle={(table) =>
-        getTableShapeStyle(table.id, tableMap.assignedTableId)
+        getTableAppearance(table.id, tableMap.assignedTableId)
       }
       tableStyle={() => ""}
       tables={tableMap.tables}

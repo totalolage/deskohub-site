@@ -23,7 +23,6 @@ import {
 } from "@/features/discounts/contracts";
 import { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
@@ -373,9 +372,9 @@ const makeAttempt = (input: {
   updatedAt: testInstant(),
 });
 
-const makeReservation = (
+const makeReservation = <Overrides extends object>(
   orderId: string,
-  overrides: Record<string, unknown> = {}
+  overrides?: Overrides
 ) => ({
   id: orderId,
   checkoutSessionKey: "session-key",
@@ -417,7 +416,7 @@ const makeReservation = (
   ...overrides,
 });
 
-type CheckoutHarnessOptions = {
+type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly orderId: string;
   readonly payStateToken?: string;
   readonly locale?: Locale;
@@ -425,7 +424,7 @@ type CheckoutHarnessOptions = {
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
-  readonly reservationOverrides?: Record<string, unknown>;
+  readonly reservationOverrides?: ReservationOverrides;
   readonly requireCurrent?: ReturnType<typeof mock>;
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
   readonly affirm?: ReturnType<typeof mock>;
@@ -436,7 +435,9 @@ type CheckoutHarnessOptions = {
   readonly capture?: ReturnType<typeof mock>;
 };
 
-const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
+const createCheckoutHarness = async <ReservationOverrides extends object>(
+  options: CheckoutHarnessOptions<ReservationOverrides>
+) => {
   const locale = options.locale ?? "en-US";
   const { CheckoutService, CheckoutServiceLive } = await import(
     "./checkout.service"
@@ -539,7 +540,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
     updateReservationDetails,
-  } as unknown as WorkspaceReservationRepositoryType;
+  };
   const updateReservation = mock(
     (_input: {
       readonly note?: string;
@@ -547,7 +548,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   );
   const dotypos = {
     updateReservation,
-  } as unknown as typeof DotyposService.Service;
+  };
   const createHostedPaymentPage =
     options.createHostedPaymentPage ??
     mock(() =>
@@ -559,7 +560,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const nexi = {
     createHostedPaymentPage,
     verifyPaymentOutcome: mock(() => Effect.die("not used")),
-  } as unknown as typeof NexiService.Service;
+  };
   const affirm =
     options.affirm ??
     mock(() =>
@@ -603,21 +604,21 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
             CheckoutPricingServiceMock({
               affirmForPayment: affirmForPayment as never,
             }),
-            Layer.succeed(DotyposService, dotypos),
-            Layer.succeed(NexiService, nexi),
-            Layer.succeed(WorkspaceReservationRepository, reservations),
-            Layer.succeed(PayableReservationService, {
+            Layer.mock(DotyposService, dotypos),
+            Layer.mock(NexiService, nexi),
+            Layer.mock(WorkspaceReservationRepository, reservations),
+            Layer.mock(PayableReservationService, {
               requireCurrent,
             }),
-            Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-            Layer.succeed(PaymentLifecycleRepository, paymentLifecycle),
-            Layer.succeed(WorkspacePaidFulfillmentService, {
+            Layer.mock(PaymentAttemptRepository, paymentAttempts),
+            Layer.mock(PaymentLifecycleRepository, paymentLifecycle),
+            Layer.mock(WorkspacePaidFulfillmentService, {
               fulfillPaidOrder,
             }),
-            Layer.succeed(PostHogEventService, {
+            Layer.mock(PostHogEventService, {
               capture,
             }),
-            Layer.succeed(LegalEvidenceEventRepository, {
+            Layer.mock(LegalEvidenceEventRepository, {
               recordMany: mock((_input: readonly unknown[]) => Effect.void),
             })
           )

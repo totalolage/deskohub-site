@@ -1,6 +1,7 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Effect, Predicate, Schema } from "effect";
+import type { JsonObject } from "type-fest";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { buildReservationQuote } from "@/features/checkout/reservation-quote";
 import {
@@ -120,7 +121,7 @@ const seal = (state = buildState()) =>
 
 const replaceTokenHeader = (
   token: string,
-  replace: (header: Record<string, unknown>) => Record<string, unknown>
+  replace: (header: JsonObject) => JsonObject
 ) => {
   const [encodedHeader, ...rest] = token.split(".");
   if (!encodedHeader) throw new Error("Unexpected test token shape");
@@ -135,15 +136,13 @@ const replaceTokenHeader = (
   ].join(".");
 };
 
-const parseJsonRecord = (json: string): Record<string, unknown> => {
+const parseJsonRecord = (json: string): JsonObject => {
   const parsed = JSON.parse(json);
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!Predicate.isObject(parsed) || Array.isArray(parsed)) {
     throw new Error("Expected JSON object");
   }
 
-  return Object.fromEntries(
-    Object.entries(parsed).map(([key, value]) => [key, value])
-  );
+  return parsed as JsonObject;
 };
 
 const tamperCiphertext = (token: string) => {
@@ -359,7 +358,7 @@ describe("Pay URL state", () => {
     expect(() => decodeSignedPayState(oldSignedState)).toThrow();
     expect(() =>
       runSync(
-        sealPayState(oldSignedState as unknown as SignedPayState, {
+        sealPayState(oldSignedState as SignedPayState, {
           keys: [fixedKey],
         })
       )

@@ -130,21 +130,21 @@ function NavigationLink({
   return mobile ? <SheetClose asChild>{link}</SheetClose> : link;
 }
 
-const breadcrumbNames: Record<string, string> = {
-  admin: "Overview",
-  bookings: "Bookings",
-  cli: "CLI",
-  codes: "Codes",
-  customers: "Customers",
-  "create-code": "Create discount code",
-  discounts: "Discounts",
-  authenticate: "Authenticate",
-  operations: "Operations",
-  orders: "Orders",
-  reservations: "Reservations",
-  sales: "Sales",
-  sessions: "Sessions",
-};
+const breadcrumbNames = new Map([
+  ["admin", "Overview"],
+  ["bookings", "Bookings"],
+  ["cli", "CLI"],
+  ["codes", "Codes"],
+  ["customers", "Customers"],
+  ["create-code", "Create discount code"],
+  ["discounts", "Discounts"],
+  ["authenticate", "Authenticate"],
+  ["operations", "Operations"],
+  ["orders", "Orders"],
+  ["reservations", "Reservations"],
+  ["sales", "Sales"],
+  ["sessions", "Sessions"],
+]);
 
 export function AdministrationBreadcrumbs({
   entityLabel,
@@ -160,7 +160,7 @@ export function AdministrationBreadcrumbs({
     label:
       segmentLabels?.[segment] ||
       (index === segments.length - 1 && entityLabel) ||
-      breadcrumbNames[segment] ||
+      breadcrumbNames.get(segment) ||
       ({
         codes: "Code",
         bookings: "Booking",

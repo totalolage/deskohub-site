@@ -6,7 +6,21 @@ import type { DiscountCodeId, StoredDiscountId } from "./persistence-contracts";
 export type DiscountProvenance = {
   readonly providerNamespace: string;
   readonly providerReference: string;
-  readonly details?: Readonly<Record<string, unknown>>;
+  readonly details?:
+    | {
+        readonly calendarId: string;
+        readonly eventReference: string;
+        readonly occurrenceDate: string;
+        readonly storedDiscountId: StoredDiscountId;
+      }
+    | {
+        readonly discountCodeId: DiscountCodeId;
+        readonly storedDiscountId: StoredDiscountId;
+      }
+    | {
+        readonly discountGroupId: string;
+        readonly dotyposCustomerId: DotyposCustomerId;
+      };
 };
 
 export type DiscountClaimInstruction = {

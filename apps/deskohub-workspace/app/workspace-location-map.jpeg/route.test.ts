@@ -5,9 +5,9 @@ import { GET } from "./route";
 
 test("interrupts image generation when the request disconnects", async () => {
   const originalFetch = globalThis.fetch;
-  const fetch = mock(
+  const fetch: typeof globalThis.fetch = mock(
     async () => new Promise<Response>(() => undefined)
-  ) as unknown as typeof globalThis.fetch;
+  );
   globalThis.fetch = fetch;
   const controller = new AbortController();
 

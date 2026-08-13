@@ -1,6 +1,6 @@
 "use server";
 
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Predicate } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import {
   buildCheckoutPayPathFromToken,
@@ -44,7 +44,7 @@ export async function applyDiscountCodeForm(
   const result = await applyDiscountCode({
     locale,
     payStateToken,
-    submittedCode: typeof submittedCode === "string" ? submittedCode : "",
+    submittedCode: Predicate.isString(submittedCode) ? submittedCode : "",
   });
 
   if (

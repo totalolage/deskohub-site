@@ -6,6 +6,7 @@ import {
   getLocaleFromPathname as getLocaleFromPathnameShared,
   replaceLocaleInPathname,
 } from "@deskohub/i18n/pathname";
+import { Predicate } from "effect";
 import {
   baseLocale,
   cookieName,
@@ -70,8 +71,9 @@ export const withLocalePrefixAndSearch = (
   searchParams: Pick<URLSearchParams, "toString"> | string
 ): string => {
   const localizedPathname = withLocalePrefix(pathname, locale);
-  const rawSearchString =
-    typeof searchParams === "string" ? searchParams : searchParams.toString();
+  const rawSearchString = Predicate.isString(searchParams)
+    ? searchParams
+    : searchParams.toString();
   const searchString = rawSearchString.startsWith("?")
     ? rawSearchString.slice(1)
     : rawSearchString;

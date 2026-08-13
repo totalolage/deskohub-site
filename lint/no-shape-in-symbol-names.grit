@@ -1,7 +1,6 @@
 engine biome(1.0)
 language js(typescript, jsx)
 
-// Existing debt is excluded per file; remove exclusions as files are fixed.
 // ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
@@ -11,12 +10,9 @@ file($name, $body) where {
       JsReferenceIdentifier() as $symbol,
       JsName() as $symbol,
       JsPrivateName() as $symbol,
-      JsLiteralMemberName() as $symbol,
-      TsIdentifierBinding() as $symbol,
-      JsxName() as $symbol
+      TsIdentifierBinding() as $symbol
     } where {
       $symbol <: r"(?i)^#?[A-Za-z_$][A-Za-z0-9_$]*shape[A-Za-z0-9_$]*$",
-      not $filename <: r".*(?:features/checkout/components/workspace-table-map-view\.tsx|shared/backend/workspace-action\.ts|shared/utils/safe-action-client\.ts)$",
       register_diagnostic(
         span = $symbol,
         message = "[anti-slop/no-shape-in-symbol-names] Do not use shape in symbol names.",

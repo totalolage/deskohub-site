@@ -198,7 +198,10 @@ const isDueReservation = (
 
 export const processReservationHoldCleanupScheduleMessage = Effect.fn(
   "reservationHoldCleanupSchedule.processMessage"
-)(function* (message: unknown, now = Temporal.Now.instant()) {
+)(function* (
+  message: Parameters<typeof decodeSchedulePayload>[0],
+  now = Temporal.Now.instant()
+) {
   const payload = Option.getOrUndefined(decodeSchedulePayload(message));
   if (!payload) {
     yield* Effect.logWarning(

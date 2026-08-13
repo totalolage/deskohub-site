@@ -44,8 +44,8 @@ export function getPostHogRequestContextFromCookieValues({
   );
 
   return {
-    ...(decodedDistinctId ? { distinctId: decodedDistinctId } : {}),
-    ...(decodedSessionId ? { sessionId: decodedSessionId } : {}),
+    distinctId: decodedDistinctId,
+    sessionId: decodedSessionId,
   };
 }
 
@@ -84,13 +84,15 @@ export function getPostHogRequestContextFromRequestHeadersWithDiagnostics(
     };
   }
 
+  const headerContext = getPostHogRequestContextFromCookieValues({
+    distinctId: headers.get(POSTHOG_DISTINCT_ID_HEADER) ?? undefined,
+    sessionId: headers.get(POSTHOG_SESSION_ID_HEADER) ?? undefined,
+  });
+
   return {
     context: {
-      ...cookieContext,
-      ...getPostHogRequestContextFromCookieValues({
-        distinctId: headers.get(POSTHOG_DISTINCT_ID_HEADER) ?? undefined,
-        sessionId: headers.get(POSTHOG_SESSION_ID_HEADER) ?? undefined,
-      }),
+      distinctId: headerContext.distinctId ?? cookieContext.distinctId,
+      sessionId: headerContext.sessionId ?? cookieContext.sessionId,
     },
     unexpectedConsentCookieReasons,
   };

@@ -177,7 +177,7 @@ const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
 
 const getDotyposCustomerId = Effect.fn(
   "prepareWorkspacePayState.getDotyposCustomerId"
-)((value: unknown) =>
+)((value: string | undefined) =>
   decodeDotyposCustomerId(value).pipe(
     Effect.mapError(
       () =>

@@ -285,7 +285,7 @@ describe("discount calculator", () => {
 
   test("keeps private provider and claim data out of the public quote", () => {
     const discountWithRuntimeProviderFields = {
-      id: "opaque-public-id",
+      id: discountId("opaque-public-id"),
       label: "opaque-public-id",
       adjustment: {
         kind: "fixed",
@@ -299,7 +299,7 @@ describe("discount calculator", () => {
       calendarEventId: "private-calendar-event-id",
       discountGroupId: "private-group-id",
       codeId: "private-code-id-on-discount",
-    } as unknown as Discount;
+    } as const;
     const result = Effect.runSync(
       calculateDiscounts({
         product: {

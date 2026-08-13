@@ -48,7 +48,7 @@ export const getWorkspaceTableMap = (
 
   return {
     assignedTableId,
-    ...(roomName ? { roomName } : {}),
+    roomName: roomName || undefined,
     tables: roomTables.length ? roomTables : [assignedTable],
   };
 };
