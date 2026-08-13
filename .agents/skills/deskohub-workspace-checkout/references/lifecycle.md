@@ -371,10 +371,11 @@ response; mark it as a sensitive database query parameter so SQL diagnostics
 cannot expose it. The daily cleanup sweep clears stored PIN values after their
 provider validity ends.
 
-If Dotypos timing changes after a PIN is issued, move the grant to `uncertain`,
-clear the stored PIN, and withhold access until an operator reconciles the
-provider credential. Never disclose a PIN issued for a different reservation
-interval.
+If a Dotypos timing change produces a different rounded provider interval after
+a PIN is issued, move the grant to `uncertain`, clear the stored PIN, and
+withhold access until an operator reconciles the provider credential. Changes
+within the same rounded interval reuse the existing PIN because live Dotypos
+timing still controls disclosure.
 
 Provider 400, 401, 403, 404, and 415 responses are definitive rejections and
 may leave a retryable `failed` grant. Timeouts, transport failures, 5xx,
@@ -383,11 +384,14 @@ response are ambiguous. Record those as `uncertain` and require reconciliation;
 never automatically issue a second credential. Igloohome does not document an
 idempotency key or retrieval by `accessName`.
 
-The provider interval must use whole Prague hours, start in the current or a
-future hour, and span 1–672 elapsed hours. When a still-active meeting-room
-reservation is first opened after its start, use the current Prague hour
-through the original end. Preview uses a fixture credential and may never call
-live Igloohome; Production requires live mode.
+Floor the reservation start to the containing Prague hour and ceil its end to
+the containing or next Prague hour. The provider interval must start in the
+current or a future hour and span 1–672 elapsed hours. When a still-active
+reservation is first provisioned after its rounded start, use the current
+Prague hour through the rounded end. Persist the rounded scheduled start
+separately from that later provider start so subsequent live timing can be
+compared with the credential's original target. Preview uses a fixture
+credential and may never call live Igloohome; Production requires live mode.
 
 ## Checkout Session And Attempt HMACs
 

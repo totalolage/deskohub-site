@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import { Schema } from "effect";
 import {
+  ceilToWholeHour,
   floorToWholeHour,
   instantStringSchema,
   isFuturePlainDateTime,
@@ -20,6 +21,21 @@ test("floors a zoned date-time to its local hour", () => {
   expect(floorToWholeHour(value).toString()).toBe(
     "2026-07-10T10:00:00+02:00[Europe/Prague]"
   );
+});
+
+test("ceils a zoned date-time to its containing or next local hour", () => {
+  expect(
+    ceilToWholeHour(
+      Temporal.ZonedDateTime.from(
+        "2026-07-10T10:42:37.123456789+02:00[Europe/Prague]"
+      )
+    ).toString()
+  ).toBe("2026-07-10T11:00:00+02:00[Europe/Prague]");
+  expect(
+    ceilToWholeHour(
+      Temporal.ZonedDateTime.from("2026-07-10T10:00:00+02:00[Europe/Prague]")
+    ).toString()
+  ).toBe("2026-07-10T10:00:00+02:00[Europe/Prague]");
 });
 
 describe("instantStringSchema", () => {

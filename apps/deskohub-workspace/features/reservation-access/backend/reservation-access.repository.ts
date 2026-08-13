@@ -35,7 +35,7 @@ export interface IReservationAccessRepository {
   readonly ensure: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly deviceId: IgloohomeDeviceId;
-    readonly reservationStartsAt: Temporal.Instant;
+    readonly scheduledAccessStartsAt: Temporal.Instant;
     readonly accessStartsAt: Temporal.Instant;
     readonly accessEndsAt: Temporal.Instant;
   }) => Effect.Effect<ReservationAccessGrantRow, ReservationAccessStorageError>;
@@ -120,7 +120,7 @@ export class ReservationAccessRepository extends Context.Service<
                 workspaceReservationId: input.reservationId,
                 deviceId: input.deviceId,
                 state: "pending",
-                reservationStartsAt: input.reservationStartsAt,
+                scheduledAccessStartsAt: input.scheduledAccessStartsAt,
                 accessStartsAt: input.accessStartsAt,
                 accessEndsAt: input.accessEndsAt,
               })
@@ -128,7 +128,7 @@ export class ReservationAccessRepository extends Context.Service<
                 target: reservationAccessGrants.workspaceReservationId,
                 set: {
                   deviceId: input.deviceId,
-                  reservationStartsAt: input.reservationStartsAt,
+                  scheduledAccessStartsAt: input.scheduledAccessStartsAt,
                   accessStartsAt: input.accessStartsAt,
                   accessEndsAt: input.accessEndsAt,
                 },
@@ -160,7 +160,9 @@ export class ReservationAccessRepository extends Context.Service<
             const retryableGrantHasDifferentTarget =
               (grant.state === "pending" || grant.state === "failed") &&
               (grant.deviceId !== input.deviceId ||
-                !grant.reservationStartsAt.equals(input.reservationStartsAt) ||
+                !grant.scheduledAccessStartsAt.equals(
+                  input.scheduledAccessStartsAt
+                ) ||
                 !grant.accessStartsAt.equals(input.accessStartsAt) ||
                 !grant.accessEndsAt.equals(input.accessEndsAt));
             if (retryableGrantHasDifferentTarget) {

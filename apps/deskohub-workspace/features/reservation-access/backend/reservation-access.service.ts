@@ -9,7 +9,7 @@ import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { IgloohomeServiceLive } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { floorToWholeHour, isWholeHour } from "@/shared/utils/temporal";
+import { ceilToWholeHour, floorToWholeHour } from "@/shared/utils/temporal";
 import type { IssuedReservationAccess } from "../reservation-access";
 import {
   ReservationAccessRepository,
@@ -31,6 +31,7 @@ export class ReservationAccessIssuanceError extends Data.TaggedError(
 }> {}
 
 export interface ReservationAccessInterval {
+  readonly scheduledStartsAt: Temporal.Instant;
   readonly startsAt: Temporal.Instant;
   readonly endsAt: Temporal.Instant;
   readonly providerStartsAt: string;
@@ -44,26 +45,26 @@ export const getReservationAccessInterval = (input: {
   readonly now?: Temporal.Instant;
 }): Effect.Effect<ReservationAccessInterval, ReservationAccessIssuanceError> =>
   Effect.gen(function* () {
-    const timeZone = workspaceSiteConstants.location.timeZone;
     const now = input.now ?? Temporal.Now.instant();
-    const reservationStart = input.reservedFrom.toZonedDateTimeISO(timeZone);
-    const reservationEnd = input.reservedUntil.toZonedDateTimeISO(timeZone);
+    const schedule = getReservationAccessSchedule(input);
 
-    if (!isWholeHour(reservationStart) || !isWholeHour(reservationEnd)) {
+    if (Temporal.Instant.compare(now, input.reservedUntil) >= 0) {
       return yield* new ReservationAccessIssuanceError({
         reservationId: input.reservationId,
         outcome: "rejected",
-        message: "AlgoPIN access requires whole-hour reservation boundaries.",
+        message: "AlgoPIN access cannot be issued after the reservation ends.",
       });
     }
 
-    const currentHour = floorToWholeHour(now.toZonedDateTimeISO(timeZone));
+    const currentHour = floorToWholeHour(
+      now.toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    );
     const accessStart =
-      Temporal.ZonedDateTime.compare(reservationStart, currentHour) >= 0
-        ? reservationStart
+      Temporal.ZonedDateTime.compare(schedule.startsAt, currentHour) >= 0
+        ? schedule.startsAt
         : currentHour;
     const accessStartsAt = accessStart.toInstant();
-    const accessEndsAt = reservationEnd.toInstant();
+    const accessEndsAt = schedule.endsAt.toInstant();
     const durationHours =
       (accessEndsAt.epochMilliseconds - accessStartsAt.epochMilliseconds) /
       3_600_000;
@@ -81,18 +82,30 @@ export const getReservationAccessInterval = (input: {
     }
 
     return {
+      scheduledStartsAt: schedule.startsAt.toInstant(),
       startsAt: accessStartsAt,
       endsAt: accessEndsAt,
       providerStartsAt: accessStart.toString({
         smallestUnit: "second",
         timeZoneName: "never",
       }),
-      providerEndsAt: reservationEnd.toString({
+      providerEndsAt: schedule.endsAt.toString({
         smallestUnit: "second",
         timeZoneName: "never",
       }),
     };
   });
+
+const getReservationAccessSchedule = (input: {
+  readonly reservedFrom: Temporal.Instant;
+  readonly reservedUntil: Temporal.Instant;
+}) => {
+  const timeZone = workspaceSiteConstants.location.timeZone;
+  return {
+    startsAt: floorToWholeHour(input.reservedFrom.toZonedDateTimeISO(timeZone)),
+    endsAt: ceilToWholeHour(input.reservedUntil.toZonedDateTimeISO(timeZone)),
+  };
+};
 
 export interface IReservationAccessService {
   readonly issueForReservation: (input: {
@@ -125,6 +138,7 @@ export class ReservationAccessService extends Context.Service<
         issueForReservation: Effect.fn(
           "ReservationAccessService.issueForReservation"
         )(function* (input) {
+          const schedule = getReservationAccessSchedule(input);
           const existingGrant = yield* repository
             .findByReservationId(input.reservationId)
             .pipe(
@@ -140,8 +154,10 @@ export class ReservationAccessService extends Context.Service<
           if (existingGrant?.state === "issued") {
             if (
               existingGrant.deviceId !== deviceId ||
-              !existingGrant.reservationStartsAt.equals(input.reservedFrom) ||
-              !existingGrant.accessEndsAt.equals(input.reservedUntil)
+              !existingGrant.scheduledAccessStartsAt.equals(
+                schedule.startsAt.toInstant()
+              ) ||
+              !existingGrant.accessEndsAt.equals(schedule.endsAt.toInstant())
             ) {
               yield* repository
                 .markUncertain({
@@ -196,7 +212,7 @@ export class ReservationAccessService extends Context.Service<
             .ensure({
               reservationId: input.reservationId,
               deviceId,
-              reservationStartsAt: input.reservedFrom,
+              scheduledAccessStartsAt: interval.scheduledStartsAt,
               accessStartsAt: interval.startsAt,
               accessEndsAt: interval.endsAt,
             })

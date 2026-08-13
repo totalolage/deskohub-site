@@ -220,6 +220,9 @@ export const floorToWholeHour = (value: Temporal.ZonedDateTime) =>
     nanosecond: 0,
   });
 
+export const ceilToWholeHour = (value: Temporal.ZonedDateTime) =>
+  isWholeHour(value) ? value : floorToWholeHour(value).add({ hours: 1 });
+
 export const makeWholeHourInstantStringSchema = (timeZone: string) =>
   instantStringSchema.check(
     Schema.makeFilter((value) => {
