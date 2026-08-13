@@ -119,7 +119,7 @@ export function CustomerReservationEmail({
       {network && (
         <Section className="mt-6 rounded-2xl border border-[#cfe6f8] bg-sky px-5 py-5">
           <Row>
-            <Column className="block w-full align-middle sm:table-cell">
+            <Column className="block w-full align-middle sm:table-cell sm:w-auto">
               <WorkspaceEmailLabel>{labels.network}</WorkspaceEmailLabel>
               <Text className="m-0 mt-3 text-[14px] leading-[22px] text-navy">
                 <strong>{labels.networkName}:</strong>
