@@ -1,14 +1,12 @@
 import { NextEffect } from "@deskohub/next-effect";
 import { Effect, Layer } from "effect";
 import { after } from "next/server";
+import { postHogLoggerProvider } from "@/instrumentation";
 import {
   createWorkspaceOtelLoggerLive,
   WorkspaceLoggerLive,
 } from "./logging/censorship";
-import {
-  flushPostHogLogs,
-  getRegisteredPostHogLoggerProvider,
-} from "./logging/posthog-otel";
+import { flushPostHogLogs } from "./logging/posthog-otel";
 import { WorkspaceTracingLive } from "./observability/workspace-tracing";
 
 type WorkspaceEffectBoundary = "action" | "page" | "route" | "run" | "task";
@@ -56,7 +54,7 @@ export const defineWorkspacePage = <Props, A, E>(
   );
 
 export const scheduleWorkspaceTelemetryFlush = () =>
-  getRegisteredPostHogLoggerProvider()
+  postHogLoggerProvider
     ? Effect.try({
         try: () =>
           after(() =>
@@ -73,11 +71,9 @@ export const scheduleWorkspaceTelemetryFlush = () =>
       )
     : Effect.void;
 
-const registeredLoggerProvider = getRegisteredPostHogLoggerProvider();
-
 const WorkspaceObservabilityLive = Layer.merge(
-  registeredLoggerProvider
-    ? createWorkspaceOtelLoggerLive(registeredLoggerProvider)
+  postHogLoggerProvider
+    ? createWorkspaceOtelLoggerLive(postHogLoggerProvider)
     : WorkspaceLoggerLive,
   WorkspaceTracingLive
 );
@@ -87,7 +83,7 @@ const workspaceRuntime = NextEffect.make({
 });
 
 const flushTelemetry = Effect.tryPromise({
-  try: () => flushPostHogLogs(),
+  try: () => flushPostHogLogs({ provider: postHogLoggerProvider }),
   catch: (cause) => cause,
 }).pipe(
   Effect.timeout("5 seconds"),

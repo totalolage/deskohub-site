@@ -16,6 +16,12 @@ mock.module("next/server", () => ({
     scheduledTelemetryFlushes += 1;
   },
 }));
+mock.module("@/instrumentation", () => ({
+  postHogLoggerProvider: {
+    forceFlush: () => Promise.resolve(),
+    getLogger: () => ({ emit: () => undefined }),
+  },
+}));
 
 mock.module("next/headers", () => ({
   cookies: async () => ({ getAll: () => [] }),
@@ -119,15 +125,7 @@ describe("Workspace actions", () => {
   });
 
   test("schedules a telemetry flush for validation failures", async () => {
-    const { registerPostHogLoggerProvider } = await import(
-      "./logging/posthog-otel"
-    );
     const { defineWorkspaceAction } = await import("./workspace-action");
-    const provider: NonNullable<
-      Parameters<typeof registerPostHogLoggerProvider>[0]
-    > = {
-      forceFlush: () => Promise.resolve(),
-    };
     const action = defineWorkspaceAction(
       {
         operation: "test.validation-flush",
@@ -136,16 +134,11 @@ describe("Workspace actions", () => {
       () => Effect.succeed("unreachable")
     );
     scheduledTelemetryFlushes = 0;
-    registerPostHogLoggerProvider(provider);
 
-    try {
-      await expect(action(42)).resolves.toMatchObject({
-        validationErrors: expect.any(Object),
-      });
-      expect(scheduledTelemetryFlushes).toBe(1);
-    } finally {
-      registerPostHogLoggerProvider(undefined);
-    }
+    await expect(action(42)).resolves.toMatchObject({
+      validationErrors: expect.any(Object),
+    });
+    expect(scheduledTelemetryFlushes).toBe(1);
   });
 
   test("preserves public failures", async () => {

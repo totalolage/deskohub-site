@@ -135,10 +135,11 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
   const titleId = `${inputId}-title`;
   const isSelected = input.value === value;
   return (
-    <div
+    <label
+      htmlFor={inputId}
       data-reservation-type-option={value}
       className={cn(
-        "group relative grid cursor-pointer rounded-[1.4rem] px-4 outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
+        "group grid cursor-pointer rounded-[1.4rem] px-4 outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
         "lg:row-span-4",
         disabled &&
           "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
@@ -149,12 +150,28 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
         className
       )}
     >
+      <input
+        id={inputId}
+        aria-describedby={input.ariaDescribedBy}
+        aria-invalid={input.ariaInvalid}
+        aria-labelledby={`${titleId} ${priceId}`}
+        name={input.name}
+        type="radio"
+        className="sr-only"
+        checked={isSelected}
+        value={value}
+        disabled={disabled}
+        onChange={() => {
+          if (!disabled) {
+            input.onChange(value);
+          }
+        }}
+        onBlur={input.onBlur}
+        ref={inputRef}
+      />
       <span
         id={titleId}
-        className={cn(
-          "relative z-10 mt-4 mb-3 flex cursor-pointer items-start justify-between gap-2",
-          disabled && "cursor-not-allowed"
-        )}
+        className="mt-4 mb-3 flex items-start justify-between gap-2"
         data-reservation-type-title={value}
       >
         <span className="text-lg leading-6">{title}</span>
@@ -169,15 +186,12 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
         />
       </span>
       <div
-        className="relative z-20 mb-3 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue"
+        className="mb-3 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue"
         data-reservation-type-price-row={value}
       >
         <span
           id={priceId}
-          className={cn(
-            "flex cursor-pointer flex-col items-start gap-0.5",
-            disabled && "cursor-not-allowed"
-          )}
+          className="flex flex-col items-start gap-0.5"
           data-reservation-type-price={value}
           data-reservation-type-price-ready={priceReady}
         >
@@ -185,33 +199,6 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
         </span>
       </div>
       {children}
-      <label
-        htmlFor={inputId}
-        className={cn(
-          "absolute inset-0 cursor-pointer rounded-[1.4rem]",
-          disabled && "cursor-not-allowed"
-        )}
-      >
-        <input
-          id={inputId}
-          aria-describedby={input.ariaDescribedBy}
-          aria-invalid={input.ariaInvalid}
-          aria-labelledby={`${titleId} ${priceId}`}
-          name={input.name}
-          type="radio"
-          className="sr-only"
-          checked={isSelected}
-          value={value}
-          disabled={disabled}
-          onChange={() => {
-            if (!disabled) {
-              input.onChange(value);
-            }
-          }}
-          onBlur={input.onBlur}
-          ref={inputRef}
-        />
-      </label>
-    </div>
+    </label>
   );
 }
