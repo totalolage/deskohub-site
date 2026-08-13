@@ -95,7 +95,14 @@ export class ReservationAccessAdministration extends Context.Service<
               .pipe(Effect.asVoid, mapRecoveryFailure);
             yield* fulfillment
               .fulfillPaidOrder({ orderId: mutation.reservationId })
-              .pipe(mapRecoveryFailure);
+              .pipe(
+                Effect.catch(() =>
+                  Effect.logWarning(
+                    "Reservation access issued with fulfillment recovery still incomplete",
+                    { reservationId: mutation.reservationId }
+                  )
+                )
+              );
 
             const recovered = yield* access
               .loadGrant(mutation.reservationId)

@@ -48,7 +48,8 @@ const reservation = {
 
 const runMutation = (
   mutation: Parameters<ReservationAccessAdministration["Service"]["mutate"]>[0],
-  grant: ReservationAccessGrant = baseGrant
+  grant: ReservationAccessGrant = baseGrant,
+  fulfillment = Effect.void
 ) => {
   const issueForReservation = mock(() =>
     Effect.succeed({
@@ -58,7 +59,7 @@ const runMutation = (
       accessEndsAt: grant.accessEndsAt,
     } as never)
   );
-  const fulfillPaidOrder = mock(() => Effect.void);
+  const fulfillPaidOrder = mock(() => fulfillment);
   const confirmProviderCredentialRemoved = mock(() =>
     Effect.succeed({ ...grant, state: "failed" as const })
   );
@@ -153,5 +154,18 @@ describe("ReservationAccessAdministration", () => {
       ReservationAccessAdministrationError
     );
     expect(harness.issueForReservation).not.toHaveBeenCalled();
+  });
+
+  test("reports issued access when later fulfillment recovery fails", async () => {
+    const harness = runMutation(
+      { kind: "retry-failed", reservationId },
+      baseGrant,
+      Effect.fail(new Error("email unavailable"))
+    );
+
+    expect((await harness.result).state).toBe("issued");
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
+      orderId: reservationId,
+    });
   });
 });
