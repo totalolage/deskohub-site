@@ -17,7 +17,7 @@ import { ReservationInvoiceService } from "./reservation-invoice";
 
 mock.module("server-only", () => ({}));
 
-const { InvoiceEmailDeliveryService } = await import(
+const { InvoiceEmailDeliveryError, InvoiceEmailDeliveryService } = await import(
   "./invoice-email-delivery.service"
 );
 const { ReservationInvoiceServiceLive } = await import(
@@ -230,6 +230,28 @@ describe("reservation invoice processing", () => {
     );
   });
 
+  test("does not offer customer resend when only the internal copy failed", async () => {
+    const source = makeSource({ purpose: "personal", invoice: "none" });
+    const harness = makeHarness(source, {
+      deliveryFailure: new InvoiceEmailDeliveryError({
+        code: "email_delivery_failed",
+        paymentAttemptId,
+        message: "Internal invoice email delivery failed.",
+        customerDelivered: true,
+      }),
+    });
+    const accessToken = await Effect.runPromise(
+      createReservationAccessToken({
+        orderId: source.workspaceReservationId,
+        locale: "en-US",
+      })
+    );
+
+    const result = await runPostOrderCreate(harness, accessToken);
+
+    expect(result).toEqual({ status: "created", delivered: true });
+  });
+
   test("resends an existing invoice only through the customer resend path", async () => {
     const source = makeSource({ purpose: "personal", invoice: "none" });
     const harness = makeHarness(source, { existingInvoice: {} });
@@ -352,6 +374,7 @@ const makeHarness = (
     readonly existingInvoice?: object;
     readonly issuedInvoice?: object;
     readonly issueChanged?: boolean;
+    readonly deliveryFailure?: InstanceType<typeof InvoiceEmailDeliveryError>;
   } = {}
 ) => {
   const issue = mock(() =>
@@ -361,7 +384,9 @@ const makeHarness = (
     })
   );
   const deliver = mock(() =>
-    Effect.succeed({ status: "delivered" as const, changed: true })
+    options.deliveryFailure
+      ? Effect.fail(options.deliveryFailure)
+      : Effect.succeed({ status: "delivered" as const, changed: true })
   );
   const updateBilling = mock(() =>
     options.billingFailure ? Effect.fail(options.billingFailure) : Effect.void

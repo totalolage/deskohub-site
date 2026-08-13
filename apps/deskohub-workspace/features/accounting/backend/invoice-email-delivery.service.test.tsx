@@ -133,6 +133,7 @@ describe("invoice email delivery", () => {
     await expect(runDelivery(harness)).rejects.toMatchObject({
       code: "email_delivery_failed",
       paymentAttemptId: document.paymentAttemptId,
+      customerDelivered: true,
     });
     expect(sentMessages).toHaveLength(2);
     expect(harness.markFailed).toHaveBeenCalledWith({

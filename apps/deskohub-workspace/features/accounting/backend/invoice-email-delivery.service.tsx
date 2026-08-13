@@ -42,6 +42,7 @@ export class InvoiceEmailDeliveryError extends Data.TaggedError(
     | "persistence_failed";
   readonly paymentAttemptId: string;
   readonly message: string;
+  readonly customerDelivered?: boolean;
   readonly cause?: unknown;
 }> {}
 
@@ -301,7 +302,15 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           }).pipe(settleDelivery);
 
           if (!customer.success) return yield* customer.error;
-          if (!internal.success) return yield* internal.error;
+          if (!internal.success) {
+            return yield* deliveryError({
+              code: internal.error.code,
+              paymentAttemptId,
+              message: internal.error.message,
+              customerDelivered: customer.value,
+              cause: internal.error,
+            });
+          }
 
           return {
             status: "delivered",

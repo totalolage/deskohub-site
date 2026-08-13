@@ -179,8 +179,8 @@ export const ReservationInvoiceServiceLive = Layer.effect(
           })
           .pipe(
             Effect.as(true),
-            Effect.catchTag("InvoiceEmailDeliveryError", () =>
-              Effect.succeed(false)
+            Effect.catchTag("InvoiceEmailDeliveryError", (error) =>
+              Effect.succeed(error.customerDelivered === true)
             )
           );
         return {
