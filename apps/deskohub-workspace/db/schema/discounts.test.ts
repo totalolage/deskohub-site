@@ -63,11 +63,12 @@ describe("discount persistence contracts", () => {
   test("introduces vouchers separately without discarding discount codes", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260813190657_overjoyed_saracen/migration.sql",
+        "../migrations/20260814094640_standalone_promotional_vouchers/migration.sql",
         import.meta.url
       )
     ).text();
 
+    expect(20_260_814_094_640).toBeGreaterThan(20_260_813_192_416);
     expect(migration).toContain('CREATE TABLE "promotion_codes"');
     expect(migration).toContain('CREATE TABLE "vouchers"');
     expect(migration).toContain('CREATE TABLE "voucher_redemptions"');

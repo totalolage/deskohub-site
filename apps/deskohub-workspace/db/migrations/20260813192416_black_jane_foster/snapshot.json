@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "5058f44e-206d-4a6b-ab86-1f9374f4249e",
+  "id": "d32269c5-b2b6-4cf2-9cbc-8b6143ccb885",
   "prevIds": [
-    "4026ccb2-fa56-4c2d-8f46-f3118b2492ee"
+    "79035b78-3b3a-43f8-90f2-c53e88a443f8"
   ],
   "ddl": [
     {
@@ -50,12 +50,6 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "voucher_redemptions",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
       "name": "discount_code_customers",
       "entityType": "tables",
       "schema": "public"
@@ -75,24 +69,6 @@
     {
       "isRlsEnabled": false,
       "name": "discounts",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "promotion_code_customers",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "promotion_codes",
-      "entityType": "tables",
-      "schema": "public"
-    },
-    {
-      "isRlsEnabled": false,
-      "name": "vouchers",
       "entityType": "tables",
       "schema": "public"
     },
@@ -1072,175 +1048,6 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
-      "default": "uuid_generate_v7()",
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "voucher_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "application_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "payment_attempt_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "dotypos_customer_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "state",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "reservation_expires_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "reserved_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "redeemed_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "released_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "release_reason",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "updated_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
       "default": null,
       "generated": null,
       "identity": null,
@@ -1271,6 +1078,19 @@
       "generated": null,
       "identity": null,
       "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_codes"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "discount_id",
       "entityType": "columns",
       "schema": "public",
       "table": "discount_codes"
@@ -1323,45 +1143,6 @@
       "generated": null,
       "identity": null,
       "name": "valid_until",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "discount_codes"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "promotion_code_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "discount_codes"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "'discount'",
-      "generated": null,
-      "identity": null,
-      "name": "promotion_kind",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "discount_codes"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "discount_id",
       "entityType": "columns",
       "schema": "public",
       "table": "discount_codes"
@@ -1547,240 +1328,6 @@
       "entityType": "columns",
       "schema": "public",
       "table": "discounts"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "promotion_code_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_code_customers"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "dotypos_customer_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_code_customers"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "uuid_generate_v7()",
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "kind",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "code",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "type": "boolean",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "enabled",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "valid_from",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": false,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "valid_until",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "updated_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "uuid_generate_v7()",
-      "generated": null,
-      "identity": null,
-      "name": "id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "vouchers"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "promotion_code_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "vouchers"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "'voucher'",
-      "generated": null,
-      "identity": null,
-      "name": "promotion_kind",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "vouchers"
-    },
-    {
-      "type": "integer",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "issued_amount_value",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "vouchers"
-    },
-    {
-      "type": "integer",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "issued_amount_exponent",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "vouchers"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "issued_amount_currency",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "vouchers"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "created_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "vouchers"
-    },
-    {
-      "type": "timestamp with time zone",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": "now()",
-      "generated": null,
-      "identity": null,
-      "name": "updated_at",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "vouchers"
     },
     {
       "type": "text",
@@ -3419,125 +2966,6 @@
       "nameExplicit": true,
       "columns": [
         {
-          "value": "application_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "voucher_redemptions_application_unique_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "payment_attempt_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "voucher_redemptions_attempt_unique_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "voucher_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        },
-        {
-          "value": "dotypos_customer_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": "\"state\" = 'reserved'",
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "voucher_redemptions_active_customer_unique_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "voucher_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        },
-        {
-          "value": "state",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": false,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "voucher_redemptions_voucher_state_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "reservation_expires_at",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": false,
-      "where": "\"state\" = 'reserved'",
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "voucher_redemptions_stale_reserved_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
           "value": "code",
           "isExpression": false,
           "asc": true,
@@ -3575,55 +3003,6 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "discount_codes"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "code",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "promotion_codes_code_unique_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        },
-        {
-          "value": "kind",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": null,
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "promotion_codes_id_kind_unique_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "promotion_codes"
     },
     {
       "nameExplicit": true,
@@ -4327,57 +3706,6 @@
     {
       "nameExplicit": false,
       "columns": [
-        "voucher_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "vouchers",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
-      "name": "voucher_redemptions_voucher_id_vouchers_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "application_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "discount_applications",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
-      "name": "voucher_redemptions_upZW4Z72dq9a_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "payment_attempt_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "payment_attempts",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "NO ACTION",
-      "name": "voucher_redemptions_payment_attempt_id_payment_attempts_id_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
         "code_id"
       ],
       "schemaTo": "public",
@@ -4410,25 +3738,6 @@
       "table": "discount_codes"
     },
     {
-      "nameExplicit": true,
-      "columns": [
-        "promotion_code_id",
-        "promotion_kind"
-      ],
-      "schemaTo": "public",
-      "tableTo": "promotion_codes",
-      "columnsTo": [
-        "id",
-        "kind"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "discount_codes_promotion_fk",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "discount_codes"
-    },
-    {
       "nameExplicit": false,
       "columns": [
         "discount_id"
@@ -4444,42 +3753,6 @@
       "entityType": "fks",
       "schema": "public",
       "table": "discount_targets"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "promotion_code_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "promotion_codes",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "promotion_code_customers_nUyZKIbJHnBQ_fkey",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "promotion_code_customers"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        "promotion_code_id",
-        "promotion_kind"
-      ],
-      "schemaTo": "public",
-      "tableTo": "promotion_codes",
-      "columnsTo": [
-        "id",
-        "kind"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "vouchers_promotion_fk",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "vouchers"
     },
     {
       "nameExplicit": false,
@@ -4635,17 +3908,6 @@
     },
     {
       "columns": [
-        "promotion_code_id",
-        "dotypos_customer_id"
-      ],
-      "nameExplicit": true,
-      "name": "promotion_code_customers_pk",
-      "entityType": "pks",
-      "schema": "public",
-      "table": "promotion_code_customers"
-    },
-    {
-      "columns": [
         "payment_attempt_id"
       ],
       "nameExplicit": false,
@@ -4709,16 +3971,6 @@
         "id"
       ],
       "nameExplicit": false,
-      "name": "voucher_redemptions_pkey",
-      "schema": "public",
-      "table": "voucher_redemptions",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
       "name": "discount_codes_pkey",
       "schema": "public",
       "table": "discount_codes",
@@ -4732,26 +3984,6 @@
       "name": "discounts_pkey",
       "schema": "public",
       "table": "discounts",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "promotion_codes_pkey",
-      "schema": "public",
-      "table": "promotion_codes",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
-        "id"
-      ],
-      "nameExplicit": false,
-      "name": "vouchers_pkey",
-      "schema": "public",
-      "table": "vouchers",
       "entityType": "pks"
     },
     {
@@ -4833,28 +4065,6 @@
       "schema": "public",
       "table": "workspace_reservations",
       "entityType": "pks"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "promotion_code_id"
-      ],
-      "nullsNotDistinct": false,
-      "name": "discount_codes_promotion_code_id_key",
-      "schema": "public",
-      "table": "discount_codes",
-      "entityType": "uniques"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "promotion_code_id"
-      ],
-      "nullsNotDistinct": false,
-      "name": "vouchers_promotion_code_id_key",
-      "schema": "public",
-      "table": "vouchers",
-      "entityType": "uniques"
     },
     {
       "nameExplicit": false,
@@ -5083,45 +4293,10 @@
     },
     {
       "value": "btrim(\"dotypos_customer_id\") <> ''",
-      "name": "voucher_redemptions_customer_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "value": "\"state\" in ('reserved', 'redeemed', 'released')",
-      "name": "voucher_redemptions_state_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "value": "\"reservation_expires_at\" > \"reserved_at\"",
-      "name": "voucher_redemptions_expiration_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "value": "(\n        \"state\" = 'reserved'\n        and \"redeemed_at\" is null\n        and \"released_at\" is null\n        and \"release_reason\" is null\n      ) or (\n        \"state\" = 'redeemed'\n        and \"redeemed_at\" is not null\n        and \"released_at\" is null\n        and \"release_reason\" is null\n      ) or (\n        \"state\" = 'released'\n        and \"redeemed_at\" is null\n        and \"released_at\" is not null\n        and \"release_reason\" is not null\n        and btrim(\"release_reason\") <> ''\n      )",
-      "name": "voucher_redemptions_lifecycle_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "voucher_redemptions"
-    },
-    {
-      "value": "btrim(\"dotypos_customer_id\") <> ''",
       "name": "discount_code_customers_customer_check",
       "entityType": "checks",
       "schema": "public",
       "table": "discount_code_customers"
-    },
-    {
-      "value": "\"promotion_kind\" = 'discount'",
-      "name": "discount_codes_promotion_kind_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "discount_codes"
     },
     {
       "value": "\"code\" ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$'",
@@ -5171,48 +4346,6 @@
       "entityType": "checks",
       "schema": "public",
       "table": "discounts"
-    },
-    {
-      "value": "btrim(\"dotypos_customer_id\") <> ''",
-      "name": "promotion_code_customers_customer_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "promotion_code_customers"
-    },
-    {
-      "value": "\"code\" ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$'",
-      "name": "promotion_codes_code_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "value": "\"valid_from\" is null or \"valid_until\" is null or \"valid_until\" > \"valid_from\"",
-      "name": "promotion_codes_valid_window_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "value": "\"kind\" in ('discount', 'voucher')",
-      "name": "promotion_codes_kind_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "promotion_codes"
-    },
-    {
-      "value": "\"promotion_kind\" = 'voucher'",
-      "name": "vouchers_promotion_kind_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "vouchers"
-    },
-    {
-      "value": "\"issued_amount_value\" > 0 and \"issued_amount_exponent\" >= 0 and \"issued_amount_currency\" ~ '^[A-Z]{3}$'",
-      "name": "vouchers_issued_amount_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "vouchers"
     },
     {
       "value": "\"audience\" in ('customer', 'internal')",

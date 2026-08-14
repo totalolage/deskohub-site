@@ -1,9 +1,11 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "4026ccb2-fa56-4c2d-8f46-f3118b2492ee",
+  "id": "edea7477-78ba-475f-b8db-07c1a813a8ad",
   "prevIds": [
-    "79035b78-3b3a-43f8-90f2-c53e88a443f8"
+    "b7a4dda7-faf8-4b65-90b3-158d68022bb5",
+    "d32269c5-b2b6-4cf2-9cbc-8b6143ccb885",
+    "f6e7325c-d7df-4855-8041-4e57424e963d"
   ],
   "ddl": [
     {
@@ -111,6 +113,12 @@
     {
       "isRlsEnabled": false,
       "name": "invoices",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "late_payment_recoveries",
       "entityType": "tables",
       "schema": "public"
     },
@@ -1380,6 +1388,19 @@
       "table": "discount_codes"
     },
     {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "max_uses_per_customer",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_codes"
+    },
+    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": true,
@@ -2060,6 +2081,188 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_attempt_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "workspace_reservation_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "webhook_event_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "provider_operation_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "provider_status",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "state",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "original_dotypos_reservation_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "recovered_dotypos_reservation_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "failure_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "verified_paid_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "claimed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "updated_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
       "default": "uuid_generate_v7()",
       "generated": null,
       "identity": null,
@@ -2272,6 +2475,19 @@
       "generated": null,
       "identity": null,
       "name": "state",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "'not_required'",
+      "generated": null,
+      "identity": null,
+      "name": "refund_state",
       "entityType": "columns",
       "schema": "public",
       "table": "payment_attempts"
@@ -3364,34 +3580,6 @@
           "opclass": null
         },
         {
-          "value": "dotypos_customer_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        }
-      ],
-      "isUnique": true,
-      "where": "\"state\" in ('reserved', 'redeemed')",
-      "with": "",
-      "method": "btree",
-      "concurrently": false,
-      "name": "discount_code_redemptions_active_customer_unique_idx",
-      "entityType": "indexes",
-      "schema": "public",
-      "table": "discount_code_redemptions"
-    },
-    {
-      "nameExplicit": true,
-      "columns": [
-        {
-          "value": "code_id",
-          "isExpression": false,
-          "asc": true,
-          "nullsFirst": false,
-          "opclass": null
-        },
-        {
           "value": "state",
           "isExpression": false,
           "asc": true,
@@ -3807,6 +3995,76 @@
       "entityType": "indexes",
       "schema": "public",
       "table": "invoices"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "recovered_dotypos_reservation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"recovered_dotypos_reservation_id\" is not null",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "late_payment_recoveries_recovered_reservation_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "workspace_reservation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "late_payment_recoveries_reservation_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "state",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "updated_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "late_payment_recoveries_state_updated_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "late_payment_recoveries"
     },
     {
       "nameExplicit": true,
@@ -4550,6 +4808,40 @@
     {
       "nameExplicit": false,
       "columns": [
+        "payment_attempt_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "payment_attempts",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "late_payment_recoveries_wdrCKVWtB7tC_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "workspace_reservation_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workspace_reservations",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "late_payment_recoveries_ChWHYKy6GqHS_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "workspace_reservation_id"
       ],
       "schemaTo": "public",
@@ -4797,6 +5089,16 @@
       "name": "invoices_pkey",
       "schema": "public",
       "table": "invoices",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "payment_attempt_id"
+      ],
+      "nameExplicit": false,
+      "name": "late_payment_recoveries_pkey",
+      "schema": "public",
+      "table": "late_payment_recoveries",
       "entityType": "pks"
     },
     {
@@ -5160,6 +5462,13 @@
       "table": "discount_codes"
     },
     {
+      "value": "\"max_uses_per_customer\" is null or \"max_uses_per_customer\" > 0",
+      "name": "discount_codes_max_uses_per_customer_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "discount_codes"
+    },
+    {
       "value": "(\n        \"percentage_basis_points\" is not null\n        and \"fixed_amount_value\" is null\n        and \"fixed_amount_exponent\" is null\n        and \"fixed_amount_currency\" is null\n      ) or (\n        \"percentage_basis_points\" is null\n        and \"fixed_amount_value\" is not null\n        and \"fixed_amount_exponent\" is not null\n        and \"fixed_amount_currency\" is not null\n      )",
       "name": "discounts_adjustment_variant_check",
       "entityType": "checks",
@@ -5293,6 +5602,34 @@
       "table": "invoices"
     },
     {
+      "value": "\"state\" in ('pending', 'processing', 'recovered', 'refund_required', 'review_required')",
+      "name": "late_payment_recoveries_state_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "value": "(\"state\" in ('pending', 'processing') and \"completed_at\" is null) or (\"state\" in ('recovered', 'refund_required', 'review_required') and \"completed_at\" is not null)",
+      "name": "late_payment_recoveries_completion_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "value": "\"state\" <> 'recovered' or \"recovered_dotypos_reservation_id\" is not null",
+      "name": "late_payment_recoveries_recovered_booking_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
+      "value": "\"state\" not in ('refund_required', 'review_required') or (\"failure_code\" is not null and btrim(\"failure_code\") <> '')",
+      "name": "late_payment_recoveries_failure_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "late_payment_recoveries"
+    },
+    {
       "value": "\"hash_algorithm\" = 'sha256'",
       "name": "legal_evidence_events_hash_algorithm_check",
       "entityType": "checks",
@@ -5309,6 +5646,13 @@
     {
       "value": "\"state\" in ('created', 'pending', 'paid', 'failed', 'cancelled', 'expired')",
       "name": "payment_attempts_state_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "value": "\"refund_state\" in ('not_required', 'required') and (\"refund_state\" <> 'required' or (\"provider\" = 'nexi' and \"state\" = 'paid'))",
+      "name": "payment_attempts_refund_state_check",
       "entityType": "checks",
       "schema": "public",
       "table": "payment_attempts"
