@@ -50,6 +50,7 @@ test("request-bound feature flag providers are loaded lazily", async () => {
     `${repositoryRoot}/apps/deskohub-workspace/features/feature-flags/backend/workspace-feature-flag.service.ts`
   ).text();
 
+  expect(source).not.toContain('import "server-only"');
   expect(source).not.toMatch(/from "\.\/(?:node|subject)"/);
 });
 
