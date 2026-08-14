@@ -40,8 +40,11 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
   discountApplications,
+  type LatePaymentRecoveryState,
+  latePaymentRecoveries,
   legalEvidenceEvents,
   type PaymentAttemptState,
+  type PaymentRefundState,
   paymentAttempts,
   reservationAccessGrants,
   type WorkspaceReservation,
@@ -89,8 +92,9 @@ import {
   getAdministrationReservationDateRange,
 } from "./reservation-date-range";
 import { getUniqueReservationId } from "./reservation-lookup.server";
-import type { AdministrationStatusGroup } from "./reservation-status";
 import {
+  type AdministrationStatusGroup,
+  canCancelReservation,
   getAdministrationReservationLifecycle,
   getAdministrationReservationStatus,
 } from "./reservation-status";
@@ -209,9 +213,11 @@ export type AdministrationBookingDetail = {
 export type AdministrationPaymentAttempt = {
   readonly id: PaymentAttemptId;
   readonly state: PaymentAttemptState;
+  readonly refundState: PaymentRefundState;
   readonly providerOrderId: NexiOrderId | null;
   readonly providerLabel: string;
   readonly stateLabel: string;
+  readonly failureCode: string | null;
   readonly amount: {
     readonly value: number;
     readonly exponent: number;
@@ -277,9 +283,16 @@ export type AdministrationTimelineItem = {
 };
 
 export type AdministrationReservationDetail = {
+  readonly canCancel: boolean;
+  readonly requiresProviderCredentialRemoval: boolean;
   readonly reservation: AdministrationReservationSummary;
   readonly booking: AdministrationBookingSummary | null;
   readonly lifecycle: ReturnType<typeof getAdministrationReservationLifecycle>;
+  readonly operatorNotice: {
+    readonly message: string;
+    readonly status: "error" | "success" | "warning";
+    readonly title: string;
+  } | null;
   readonly timeline: readonly AdministrationTimelineItem[];
   readonly paymentAttempts: readonly AdministrationPaymentAttempt[];
   readonly orders: readonly AdministrationOrder[];
@@ -347,6 +360,7 @@ type SafeReservationRow = Pick<
   | "paidAt"
   | "fulfilledAt"
   | "fulfillmentFailedAt"
+  | "failureCode"
   | "createdAt"
   | "updatedAt"
 >;
@@ -366,6 +380,7 @@ const safeReservationSelection = {
   paidAt: workspaceReservations.paidAt,
   fulfilledAt: workspaceReservations.fulfilledAt,
   fulfillmentFailedAt: workspaceReservations.fulfillmentFailedAt,
+  failureCode: workspaceReservations.failureCode,
   createdAt: workspaceReservations.createdAt,
   updatedAt: workspaceReservations.updatedAt,
 } as const;
@@ -433,6 +448,8 @@ type SafePaymentAttemptRow = {
   readonly providerOrderId: NexiOrderId | null;
   readonly provider: "internal" | "nexi";
   readonly state: PaymentAttemptState;
+  readonly failureCode: string | null;
+  readonly refundState: PaymentRefundState;
   readonly amountValue: number;
   readonly amountExponent: number;
   readonly currency: string;
@@ -447,6 +464,8 @@ const safePaymentAttemptSelection = {
   providerOrderId: paymentAttempts.providerOrderId,
   provider: paymentAttempts.provider,
   state: paymentAttempts.state,
+  failureCode: paymentAttempts.failureCode,
+  refundState: paymentAttempts.refundState,
   amountValue: paymentAttempts.amountValue,
   amountExponent: paymentAttempts.amountExponent,
   currency: paymentAttempts.currency,
@@ -460,10 +479,15 @@ const toAdministrationPaymentAttempt = (
 ): AdministrationPaymentAttempt => ({
   id: attempt.id,
   state: attempt.state,
+  refundState: attempt.refundState,
   providerOrderId: attempt.providerOrderId,
   providerLabel:
     attempt.provider === "internal" ? "Included" : "Online payment",
-  stateLabel: paymentAttemptStateLabels[attempt.state],
+  stateLabel:
+    attempt.failureCode === "payment_abandoned_after_provider_cutoff"
+      ? "Abandoned"
+      : paymentAttemptStateLabels[attempt.state],
+  failureCode: attempt.failureCode,
   amount: {
     value: attempt.amountValue,
     exponent: attempt.amountExponent,
@@ -505,11 +529,35 @@ type LiveReservationDetails = {
   readonly customer: DotyposCustomer | null;
 };
 
+const getReservationStatusNote = (
+  row: SafeReservationRow,
+  live: LiveReservationDetails,
+  latePayment: boolean,
+  recoveryState?: LatePaymentRecoveryState
+) => {
+  if (recoveryState === "pending" || recoveryState === "processing") {
+    return "Recovery in progress";
+  }
+  if (recoveryState === "review_required") return "Recovery needs review";
+  if (latePayment) return "Refund required";
+  if (row.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
+    return "Payment needs review";
+  }
+  return live.reservation?.status === "CANCELLED" &&
+    row.reservationState !== "cancelled"
+    ? "Cancelled in Dotypos"
+    : null;
+};
+
 const toReservationSummary = ({
+  latePayment = false,
+  recoveryState,
   latestPayment = null,
   live,
   row,
 }: {
+  readonly latePayment?: boolean;
+  readonly recoveryState?: LatePaymentRecoveryState;
   readonly latestPayment?: AdministrationPaymentAttempt | null;
   readonly live: LiveReservationDetails;
   readonly row: SafeReservationRow;
@@ -530,15 +578,17 @@ const toReservationSummary = ({
     typeLabel: getReservationTypeLabel(row),
     status: getAdministrationReservationStatus({
       dotyposStatus: live.reservation?.status,
+      failureCode: row.failureCode,
       fulfillmentState: row.fulfillmentState,
+      latePayment,
+      latePaymentRecovery: recoveryState,
       paymentState: row.paymentState,
       reservationState: row.reservationState,
     }),
     statusNote:
-      live.reservation?.status === "CANCELLED" &&
-      row.reservationState !== "cancelled"
-        ? "Cancelled in Dotypos"
-        : null,
+      latestPayment?.refundState === "required"
+        ? "Needs refund"
+        : getReservationStatusNote(row, live, latePayment, recoveryState),
     createdAt: toIsoString(row.createdAt),
     latestPayment,
     updatedAt: toIsoString(row.updatedAt),
@@ -666,6 +716,9 @@ const statusCondition = (
 const reservationStatusSort = sql<string>`case
   when ${workspaceReservations.fulfillmentState} = 'failed' then 'Confirmation issue'
   when ${workspaceReservations.reservationState} = 'cancellation_failed' then 'Cancellation issue'
+  when ${workspaceReservations.reservationState} = 'cancelled'
+    and ${workspaceReservations.failureCode} = 'payment_abandoned_after_provider_cutoff'
+    then 'Abandoned'
   when ${workspaceReservations.reservationState} = 'cancelled' then 'Cancelled'
   when ${workspaceReservations.fulfillmentState} = 'fulfilled' then 'Complete'
   when ${workspaceReservations.reservationState} = 'cancelling' then 'Cancelling'
@@ -806,21 +859,171 @@ const buildPaymentAttemptTimeline = (
     ) {
       return [started];
     }
+    const abandoned =
+      attempt.failureCode === "payment_abandoned_after_provider_cutoff";
     return [
       started,
       {
         id: `payment-attempt-${attempt.id}-${attempt.state}`,
-        title: {
-          cancelled: "Payment unsuccessful",
-          expired: "Payment unsuccessful",
-          failed: "Payment failed",
-        }[attempt.state],
-        description: "The attempt ended without a recorded payment.",
+        title: abandoned
+          ? "Payment abandoned"
+          : {
+              cancelled: "Payment unsuccessful",
+              expired: "Payment unsuccessful",
+              failed: "Payment failed",
+            }[attempt.state],
+        description: abandoned
+          ? "Workspace released the reservation after the local payment window elapsed and Nexi still reported no payment activity."
+          : "The attempt ended without a recorded payment.",
         occurredAt: attempt.updatedAt,
         tone: "warning" as const,
       },
     ];
   });
+
+type LatePaymentEventRow = {
+  readonly eventId: string;
+  readonly receivedAt: Temporal.Instant;
+  readonly reservationId: WorkspaceReservationId;
+};
+
+type LatePaymentRecoveryRow = {
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly reservationId: WorkspaceReservationId;
+  readonly state: LatePaymentRecoveryState;
+  readonly failureCode: string | null;
+  readonly verifiedPaidAt: Temporal.Instant;
+  readonly completedAt: Temporal.Instant | null;
+};
+
+const latePaymentRecoverySelection = {
+  paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
+  reservationId: latePaymentRecoveries.workspaceReservationId,
+  state: latePaymentRecoveries.state,
+  failureCode: latePaymentRecoveries.failureCode,
+  verifiedPaidAt: latePaymentRecoveries.verifiedPaidAt,
+  completedAt: latePaymentRecoveries.completedAt,
+} as const;
+
+const latePaymentSelection = {
+  eventId: webhookEvents.eventId,
+  receivedAt: webhookEvents.receivedAt,
+  reservationId: paymentAttempts.workspaceReservationId,
+} as const;
+
+const latePaymentCondition = (
+  reservationIds: readonly WorkspaceReservationId[]
+) =>
+  and(
+    inArray(paymentAttempts.workspaceReservationId, [...reservationIds]),
+    eq(webhookEvents.errorCode, "nexi_webhook_late_payment")
+  );
+
+const buildLatePaymentTimeline = (
+  events: readonly LatePaymentEventRow[]
+): readonly AdministrationTimelineItem[] =>
+  events.map((event) => ({
+    id: `late-payment-${event.eventId}`,
+    title: "Late payment — refund required",
+    description:
+      "Nexi reported payment after Workspace released the reservation. The reservation was not fulfilled and the payment requires an operator refund.",
+    occurredAt: toIsoString(event.receivedAt),
+    tone: "warning",
+  }));
+
+const buildLatePaymentRecoveryTimeline = (
+  recoveries: readonly LatePaymentRecoveryRow[]
+): readonly AdministrationTimelineItem[] =>
+  recoveries.flatMap((recovery) => {
+    const detected: AdministrationTimelineItem = {
+      id: `late-payment-recovery-${recovery.paymentAttemptId}-detected`,
+      title: "Late payment recovery started",
+      description:
+        "Nexi reported payment after local expiration. Workspace is checking whether the reservation can still be fulfilled.",
+      occurredAt: toIsoString(recovery.verifiedPaidAt),
+      tone: "warning",
+    };
+    if (!recovery.completedAt) return [detected];
+    return [
+      detected,
+      {
+        id: `late-payment-recovery-${recovery.paymentAttemptId}-${recovery.state}`,
+        title: {
+          recovered: "Late payment recovered",
+          refund_required: "Late payment — refund required",
+          review_required: "Late payment recovery needs review",
+        }[
+          recovery.state as Exclude<
+            LatePaymentRecoveryState,
+            "pending" | "processing"
+          >
+        ],
+        description: {
+          recovered:
+            "Workspace secured a valid booking and continued normal paid fulfillment.",
+          refund_required:
+            "The reservation could not be safely recovered. Refund the payment in Nexi.",
+          review_required:
+            "Workspace could not safely determine or complete recovery. Operator review is required.",
+        }[
+          recovery.state as Exclude<
+            LatePaymentRecoveryState,
+            "pending" | "processing"
+          >
+        ],
+        occurredAt: toIsoString(recovery.completedAt),
+        tone: recovery.state === "recovered" ? "positive" : "warning",
+      },
+    ];
+  });
+
+const getReservationOperatorNotice = (
+  row: SafeReservationRow,
+  latePayment: boolean,
+  recovery?: LatePaymentRecoveryRow
+): AdministrationReservationDetail["operatorNotice"] => {
+  if (recovery?.state === "pending" || recovery?.state === "processing") {
+    return {
+      status: "warning",
+      title: "Late payment recovery in progress",
+      message:
+        "Workspace is checking the original booking and current availability. Do not fulfil or refund manually while recovery is running.",
+    };
+  }
+  if (recovery?.state === "recovered") {
+    return {
+      status: "success",
+      title: "Late payment recovered",
+      message:
+        "Workspace secured a valid booking and continued normal paid fulfillment.",
+    };
+  }
+  if (recovery?.state === "review_required") {
+    return {
+      status: "error",
+      title: "Late payment recovery needs review",
+      message:
+        "Workspace could not safely complete recovery. Check the original and replacement Dotypos bookings before fulfilling or refunding.",
+    };
+  }
+  if (latePayment) {
+    return {
+      status: "error",
+      title: "Late payment — refund required",
+      message:
+        "Nexi reported payment after Workspace released this reservation. Do not fulfil it; refund the payment in Nexi.",
+    };
+  }
+  if (row.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
+    return {
+      status: "warning",
+      title: "Payment needs review",
+      message:
+        "Automatic cleanup kept this reservation held because Nexi reported payment activity or its outcome could not be verified.",
+    };
+  }
+  return null;
+};
 
 const getOperationTimelineTitle = (
   operationType: string | undefined,
@@ -1017,28 +1220,53 @@ export class AdministrationService extends Context.Service<
       const enrichRows = Effect.fn("AdministrationService.enrichRows")(
         function* (rows: readonly SafeReservationRow[]) {
           if (rows.length === 0) return [];
-          const { attemptRows, liveRows } = yield* Effect.all(
-            {
-              attemptRows: db
-                .select(safePaymentAttemptSelection)
-                .from(paymentAttempts)
-                .where(
-                  inArray(
-                    paymentAttempts.workspaceReservationId,
-                    rows.map(({ id }) => id)
+          const { attemptRows, latePaymentRows, liveRows, recoveryRows } =
+            yield* Effect.all(
+              {
+                attemptRows: db
+                  .select(safePaymentAttemptSelection)
+                  .from(paymentAttempts)
+                  .where(
+                    inArray(
+                      paymentAttempts.workspaceReservationId,
+                      rows.map(({ id }) => id)
+                    )
                   )
-                )
-                .orderBy(desc(paymentAttempts.createdAt)),
-              liveRows: Effect.all(
-                rows.map((row) =>
-                  loadLiveReservation(row).pipe(
-                    Effect.map((live) => ({ live, row }))
+                  .orderBy(desc(paymentAttempts.createdAt)),
+                latePaymentRows: db
+                  .select(latePaymentSelection)
+                  .from(webhookEvents)
+                  .innerJoin(
+                    paymentAttempts,
+                    eq(webhookEvents.paymentAttemptId, paymentAttempts.id)
                   )
+                  .where(latePaymentCondition(rows.map(({ id }) => id))),
+                recoveryRows: db
+                  .select(latePaymentRecoverySelection)
+                  .from(latePaymentRecoveries)
+                  .where(
+                    inArray(
+                      latePaymentRecoveries.workspaceReservationId,
+                      rows.map(({ id }) => id)
+                    )
+                  )
+                  .orderBy(asc(latePaymentRecoveries.createdAt)),
+                liveRows: Effect.all(
+                  rows.map((row) =>
+                    loadLiveReservation(row).pipe(
+                      Effect.map((live) => ({ live, row }))
+                    )
+                  ),
+                  { concurrency: 5 }
                 ),
-                { concurrency: 5 }
-              ),
-            },
-            { concurrency: 2 }
+              },
+              { concurrency: 3 }
+            );
+          const latePaymentReservationIds = new Set(
+            latePaymentRows.map(({ reservationId }) => reservationId)
+          );
+          const recoveryByReservation = new Map(
+            recoveryRows.map((recovery) => [recovery.reservationId, recovery])
           );
           const latestPaymentByReservation = new Map<
             string,
@@ -1057,6 +1285,10 @@ export class AdministrationService extends Context.Service<
           return liveRows.map(({ live, row }) =>
             toReservationSummary({
               latestPayment: latestPaymentByReservation.get(row.id) ?? null,
+              latePayment: recoveryByReservation.has(row.id)
+                ? recoveryByReservation.get(row.id)?.state === "refund_required"
+                : latePaymentReservationIds.has(row.id),
+              recoveryState: recoveryByReservation.get(row.id)?.state,
               live,
               row,
             })
@@ -1303,6 +1535,8 @@ export class AdministrationService extends Context.Service<
           applicationRows,
           attemptRows,
           history,
+          latePaymentRows,
+          recoveryRows,
           live,
           orders,
           otherRows,
@@ -1352,6 +1586,20 @@ export class AdministrationService extends Context.Service<
               .where(eq(paymentAttempts.workspaceReservationId, row.id))
               .orderBy(paymentAttempts.createdAt),
             history: reservationHistory.load(row.id),
+            latePaymentRows: db
+              .select(latePaymentSelection)
+              .from(webhookEvents)
+              .innerJoin(
+                paymentAttempts,
+                eq(webhookEvents.paymentAttemptId, paymentAttempts.id)
+              )
+              .where(latePaymentCondition([row.id]))
+              .orderBy(webhookEvents.receivedAt),
+            recoveryRows: db
+              .select(latePaymentRecoverySelection)
+              .from(latePaymentRecoveries)
+              .where(eq(latePaymentRecoveries.workspaceReservationId, row.id))
+              .orderBy(latePaymentRecoveries.createdAt),
             live: loadLiveReservation(row),
             orders: paymentAdministration.loadReservationOrders(row.id),
             tables: loadBookingTables(),
@@ -1410,6 +1658,10 @@ export class AdministrationService extends Context.Service<
           );
 
         const attempts = attemptRows.map(toAdministrationPaymentAttempt);
+        const recovery = recoveryRows.at(-1);
+        const latePayment = recovery
+          ? recovery.state === "refund_required"
+          : latePaymentRows.length > 0;
         const liveTableId = Option.getOrUndefined(
           decodeDotyposTableId(live.reservation?._tableId)
         );
@@ -1423,6 +1675,8 @@ export class AdministrationService extends Context.Service<
         return {
           reservation: toReservationSummary({
             latestPayment: attempts.at(-1) ?? null,
+            latePayment,
+            recoveryState: recovery?.state,
             live,
             row,
           }),
@@ -1440,14 +1694,24 @@ export class AdministrationService extends Context.Service<
               : null,
           lifecycle: getAdministrationReservationLifecycle({
             dotyposStatus: live.reservation?.status,
+            failureCode: row.failureCode,
             fulfillmentState: row.fulfillmentState,
+            latePayment,
+            latePaymentRecovery: recovery?.state,
             paymentState: row.paymentState,
             reservationState: row.reservationState,
           }),
+          operatorNotice: getReservationOperatorNotice(
+            row,
+            latePayment,
+            recovery
+          ),
           timeline: mergeReservationHistory({
             durable: [
               ...buildTimeline(row),
               ...buildPaymentAttemptTimeline(attempts),
+              ...buildLatePaymentTimeline(latePaymentRows),
+              ...buildLatePaymentRecoveryTimeline(recoveryRows),
               ...getOrderTimeline(orders),
             ],
             history,
@@ -1485,6 +1749,17 @@ export class AdministrationService extends Context.Service<
             dotyposReservationId: row.dotyposReservationId,
             customerId: row.dotyposCustomerId,
           },
+          canCancel: canCancelReservation(row),
+          requiresProviderCredentialRemoval: Boolean(
+            accessRows[0] &&
+              ["issued", "uncertain", "provisioning"].includes(
+                accessRows[0].state
+              ) &&
+              Temporal.Instant.compare(
+                accessRows[0].endsAt,
+                Temporal.Now.instant()
+              ) > 0
+          ),
         } satisfies AdministrationReservationDetail;
       });
 

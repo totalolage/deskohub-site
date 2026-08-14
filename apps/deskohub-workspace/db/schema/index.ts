@@ -6,6 +6,7 @@ export * from "./discounts";
 export * from "./invoice-email-deliveries";
 export * from "./invoice-number-counters";
 export * from "./invoices";
+export * from "./late-payment-recoveries";
 export * from "./legal-evidence-events";
 export * from "./payment-attempts";
 export * from "./reservation-access-grants";

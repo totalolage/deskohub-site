@@ -10,7 +10,10 @@ import type { Table } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer, Match } from "effect";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
+import {
+  type CoworkReservationDetails,
+  getCoworkReservationIntervalInput,
+} from "@/features/reservation/cowork-reservation";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import {
@@ -44,6 +47,19 @@ export type WorkspaceTableAssignmentReservation =
   | CoworkTableAssignmentReservation
   | MeetingRoomReservationDetails
   | OfficeReservationDetails;
+
+export const getWorkspaceReservationInterval = (
+  reservation: WorkspaceTableAssignmentReservation
+) =>
+  getReservationIntervalNormalization(
+    Match.value(reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: ({ date }) => getCoworkReservationIntervalInput(date),
+        "meeting-room": (meetingRoom) => meetingRoom,
+        office: getOfficeReservationIntervalInput,
+      })
+    )
+  );
 
 export interface IWorkspaceTableAssignmentService {
   readonly assignTableId: (

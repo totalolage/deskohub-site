@@ -413,7 +413,7 @@ Every case uses a unique customer. Dates come from the run's deterministic
 allocation shard. Basic cases may share a date up to the documented capacity
 of four; Plus and Profi Calendar dates stay disjoint from Basic and from one
 another. Playwright owns case scheduling with six workers, so at most six cases
-can enter reservation start at once. The 14 hosted-payment cases are distributed
+can enter reservation start at once. The 16 hosted-payment cases are distributed
 across three serial Playwright lanes, keeping at most three hosted sessions
 active while non-payment cases use the remaining workers. Playwright project
 dependencies run the Calendar mutation only after every independent project.

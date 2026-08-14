@@ -172,6 +172,7 @@ One row per payment attempt. Positive totals create Nexi HPP/session attempts. E
 | `provider_order_created_at` | timestamptz | no | When Nexi accepted the hosted-payment request and returned its provider session. Set once for new Nexi attempts. |
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
+| `refund_state` | text enum | yes | Refund work state, separate from successful settlement. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
 | `amount_exponent` | integer | yes | Currency exponent used for amount verification. |
 | `currency` | text | yes | Uppercase ISO currency code. |
@@ -279,13 +280,14 @@ Allowed reservation transitions:
 - `held -> cancelling -> cancelled` for unsuccessful terminal payment before hold expiry.
 - `cancelling -> cancellation_failed`
 - `cancellation_failed -> cancelling -> cancelled`
+- `confirmed -> cancelling -> cancelled` through the explicit operator workflow, preserving paid and fulfillment facts while marking paid Nexi attempts as requiring a refund without issuing it.
 
 Forbidden reservation transitions:
 
-- Any transition from `cancelled` or `confirmed` without an explicit manual repair path.
+- Any transition from `cancelled`, or from `confirmed` outside the explicit guarded operator cancellation workflow.
 - Any creation of a second Dotypos reservation for the same `checkout_attempt_key`.
 - Any creation of a replacement Dotypos reservation in the same checkout session before the prior local and Dotypos reservations are cancelled.
-- Any cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed.
+- Any cleanup cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed. Operator cancellation has separate claim and finalization guards, refuses while fulfillment is processing, and requires explicit provider-removal confirmation before atomically retiring a live or ambiguous AlgoPIN.
 
 ### Payment State
 
@@ -307,6 +309,13 @@ Attempt-level `payment_attempts.state` values:
 - `cancelled`: verified terminal cancellation.
 - `expired`: verified terminal expiry or local attempt expiry.
 
+Attempt-level `payment_attempts.refund_state` remains separate from settlement state:
+
+- `not_required`: no operator refund work is pending.
+- `required`: the paid Nexi attempt needs operator refund work, whether caused by an operator cancellation or an unrecoverable late payment; the payment remains truthfully `paid` until a separate refund workflow is completed.
+
+Use `payment_attempts.refund_state` as the single refund-work source of truth. Source-specific recovery rows may retain the reason and workflow outcome, but any transition to their refund-required outcome must mark the same payment attempt `required` atomically rather than create a competing refund queue.
+
 Allowed payment transitions:
 
 - Reservation aggregate: `not_started -> pending -> paid`.
@@ -315,11 +324,13 @@ Allowed payment transitions:
 - Attempt: `created -> pending -> paid|failed|cancelled|expired`.
 - Internal attempt: inserted directly as `paid`; no later provider or terminal transition applies.
 - Terminal aggregate updates require the active payment attempt ID and only apply while the aggregate state is still `pending` on a held reservation.
-- Attempt terminal updates only apply from non-terminal attempt states; `paid` can only be set from `pending`.
+- Normal attempt terminal updates only apply from non-terminal attempt states, and normal `paid` transition applies from `pending`. The late-payment recovery transaction is the sole exception: it may promote its matching failed, cancelled, or expired active attempt to `paid` while atomically recovering the reservation or recording the refund/review outcome.
 - Webhook terminal updates must update the attempt row and reservation aggregate in one database transaction. Provider retries may reapply a matching terminal attempt/reservation pair as an idempotent no-op, but must not mark one side terminal when the other side fails its guard.
 - Discount application persistence and code-claim admission belong to the payment-attempt creation transaction. Claim redemption belongs to the paid transaction, and claim release belongs to every failed, cancelled, or expired transaction. Any application, claim, redemption, or release error is fatal and rolls back the owning payment transition; it must never be converted to an empty discount result or `not_pending` state.
 - Failed/cancelled/expired workflows may create a new `payment_attempts` row only when the reservation is still `held` and hold deadline is valid.
 - `paid` is terminal for payment state.
+- The current Nexi card HPP contract has no documented provider expiry. Queued hold cleanup applies a local abandonment cutoff 30 minutes after `provider_order_created_at`. Before the cutoff, an operation-free order is deferred through the existing queue retry window. At or after the cutoff, only a freshly verified order with no operations and no authorized or captured amount may transition to local `expired`; any operation or non-zero amount remains pending.
+- A verified successful webhook for an already-failed, cancelled, or expired local attempt starts a durable late-payment recovery instead of directly fulfilling the released reservation. Recovery may reuse a provider-verified intact original hold or recreate the immutable accepted reservation after checking that the interval has not ended, no newer checkout reservation exists, and current availability passes. A recovered reservation transitions atomically to paid, re-redeems its released discount-code claim, and continues normal fulfillment. Unavailable or superseded recovery requires refund; ambiguous provider state requires operator review.
 
 ### Fulfillment State
 

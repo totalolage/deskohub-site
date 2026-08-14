@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   AdministrationDiscountCodeId,
   AdministrationVoucherId,
+  AdministrationWorkspaceReservationId,
   CliAccessToken,
   CliSessionId,
 } from "@deskohub/workspace-admin-api";
@@ -23,6 +24,9 @@ const codeId = Schema.decodeUnknownSync(AdministrationDiscountCodeId)(
 const voucherId = Schema.decodeUnknownSync(AdministrationVoucherId)(
   "01980000-0000-7000-8000-000000000002"
 );
+const reservationId = Schema.decodeUnknownSync(
+  AdministrationWorkspaceReservationId
+)("reservation-test");
 const session = {
   id: sessionId,
   clientName: "test client",
@@ -50,6 +54,41 @@ describe("dhw mutation commands", () => {
 
     expect(error).toMatchObject({ _tag: "ConfirmationRequiredError" });
     expect(revocations).toBe(0);
+  });
+
+  test("confirms reservation cancellation and forwards the email choice", async () => {
+    const cancellations: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      cancelReservation: (_accessToken, id, input) =>
+        Effect.sync(() => {
+          cancellations.push({ id, input });
+          return { outcome: "cancelled", email: "sent" } as const;
+        }),
+    });
+
+    await runCommand(
+      [
+        "--json",
+        "reservations",
+        "cancel",
+        reservationId,
+        "--confirm-access-credential-removed",
+        "--send-cancellation-email",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(cancellations).toEqual([
+      {
+        id: reservationId,
+        input: {
+          accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+          providerCredentialRemoved: true,
+          sendCancellationEmail: true,
+        },
+      },
+    ]);
   });
 
   test("clears the local credential after revoking its own session", async () => {
@@ -353,9 +392,12 @@ const runCommand = <R>(
   );
 
 const makeCommandLayer = ({
+  cancelReservation = () =>
+    Effect.succeed({ outcome: "already_cancelled", email: "not_requested" }),
   clear = Effect.succeed(true),
   revokeSession = () => Effect.succeed({ changed: false }),
 }: {
+  readonly cancelReservation?: WorkspaceAdminApiClient["Service"]["cancelReservation"];
   readonly clear?: AuthenticationService["Service"]["clear"];
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
 } = {}) => {
@@ -363,6 +405,11 @@ const makeCommandLayer = ({
   const accessMutations: unknown[] = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
+    cancelReservation,
+    getReservation: () =>
+      Effect.succeed({
+        accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
+      } as never),
     mutateDiscounts: (_accessToken, _requestId, mutation) =>
       Effect.sync(() => {
         mutations.push(mutation);

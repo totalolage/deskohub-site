@@ -1,0 +1,2 @@
+ALTER TABLE "payment_attempts" ADD COLUMN "refund_state" text DEFAULT 'not_required' NOT NULL;--> statement-breakpoint
+ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_refund_state_check" CHECK ("refund_state" in ('not_required', 'required') and ("refund_state" <> 'required' or ("provider" = 'nexi' and "state" = 'paid')));

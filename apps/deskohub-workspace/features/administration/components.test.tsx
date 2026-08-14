@@ -395,7 +395,7 @@ describe("administration reservation components", () => {
     const view = render(
       <PaymentAttemptList
         attempts={[
-          ...detail.paymentAttempts,
+          { ...attempt, refundState: "required" },
           {
             ...attempt,
             id: "fixture-internal-payment",
@@ -411,6 +411,7 @@ describe("administration reservation components", () => {
     expect(orderLink.getAttribute("href")).toBe(
       "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
     );
+    expect(view.getByText("Needs refund")).toBeDefined();
     expect(orderLink.getAttribute("target")).toBe("_blank");
     expect(view.getAllByText("Nexi order")).toHaveLength(1);
   });
@@ -435,6 +436,71 @@ describe("administration reservation components", () => {
     expect(
       view.container.querySelector('a[href^="/admin/operations"]')
     ).toBeNull();
+  });
+
+  test("explains pending Nexi orders using the cleanup policy", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+    const order = detail.orders[0];
+    expect(order?.provider).not.toBeNull();
+    expect(order?.link).not.toBeNull();
+    if (!(order?.provider && order.link)) return;
+
+    const emptyOrder = {
+      ...order,
+      provider: {
+        ...order.provider,
+        authorizedAmount: "0",
+        capturedAmount: "0.00",
+        operations: [],
+      },
+      link: {
+        ...order.link,
+        state: "pending" as const,
+        stateLabel: "Pending",
+        providerOrderCreatedAt: Temporal.Now.instant()
+          .subtract({ minutes: 10 })
+          .toString(),
+      },
+    };
+    const openWindow = render(<ReservationOrderList orders={[emptyOrder]} />);
+    expect(
+      openWindow.getByText(/local payment window is open until/i)
+    ).toBeDefined();
+    openWindow.unmount();
+
+    const overdue = render(
+      <ReservationOrderList
+        orders={[
+          {
+            ...emptyOrder,
+            link: {
+              ...emptyOrder.link,
+              providerOrderCreatedAt: Temporal.Now.instant()
+                .subtract({ minutes: 31 })
+                .toString(),
+            },
+          },
+        ]}
+      />
+    );
+    expect(
+      overdue.getByText(/still empty after the local payment window/i)
+    ).toBeDefined();
+    overdue.unmount();
+
+    const activity = render(
+      <ReservationOrderList
+        orders={[
+          {
+            ...order,
+            link: { ...order.link, state: "pending", stateLabel: "Pending" },
+          },
+        ]}
+      />
+    );
+    expect(activity.getByText(/Nexi reports payment activity/i)).toBeDefined();
   });
 
   test("marks the actual lifecycle stage accessibly", () => {

@@ -22,6 +22,7 @@ export const workspaceE2ENonPaymentCaseIds = [
 export const workspaceE2EPaymentCaseLanes = [
   [
     "payment-failed",
+    "payment-late-recovery-recreated",
     "checkout-cowork-basic",
     "checkout-meeting-room-paid-one-hour",
     "checkout-office-paid-multi-day",
@@ -29,6 +30,7 @@ export const workspaceE2EPaymentCaseLanes = [
   ],
   [
     "payment-cancelled",
+    "payment-late-recovery-refund-required",
     "payment-meeting-room-cancelled",
     "checkout-meeting-room-paid-whole-day",
     "checkout-calendar-sale",

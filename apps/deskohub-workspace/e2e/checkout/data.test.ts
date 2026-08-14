@@ -48,7 +48,7 @@ test("keeps generated emails valid for the longest checkout flow identifier", ()
   const data = makeCoworkCheckoutData(
     "https://workspace.example.com",
     "2099-09-01",
-    "cowork-reservation-replacement"
+    "payment-late-recovery-refund-required"
   );
 
   expect(isEmail(data.email)).toBe(true);

@@ -803,12 +803,6 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              yield* tx
-                .delete(accountingDocumentSnapshots)
-                .where(
-                  eq(accountingDocumentSnapshots.paymentAttemptId, input.id)
-                );
-
               const [reservation] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1650,15 +1644,17 @@ const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
   }
 );
 
-const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
+export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
   function* (
     tx: TransactionClient,
     paymentAttemptId: PaymentAttemptId,
-    redeemedAt: Temporal.Instant
+    redeemedAt: Temporal.Instant,
+    allowReleased = false
   ) {
     const [discountClaims, voucherClaims] = yield* Effect.all([
       tx
         .select({
+          dotyposCustomerId: discountCodeRedemptions.dotyposCustomerId,
           id: discountCodeRedemptions.codeId,
           state: discountCodeRedemptions.state,
         })
@@ -1668,6 +1664,7 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
         .for("update"),
       tx
         .select({
+          applicationId: voucherRedemptions.applicationId,
           id: voucherRedemptions.voucherId,
           state: voucherRedemptions.state,
         })
@@ -1682,7 +1679,7 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
     );
 
     if (!claim) return;
-    if (claim.state === "released") {
+    if (claim.state === "released" && !allowReleased) {
       return yield* new DiscountClaimError({
         operation: "redeem",
         reason: "claim_conflict",
@@ -1691,12 +1688,136 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       });
     }
     if (claim.state === "redeemed") return;
+    if (claim.state === "released" && claim.kind === "discount") {
+      const [code] = yield* tx
+        .select({ maxUses: discountCodes.maxUses })
+        .from(discountCodes)
+        .where(eq(discountCodes.id, claim.id))
+        .limit(1)
+        .for("update");
+      if (!code) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason: "unknown_code",
+          message: "The accepted discount code no longer exists.",
+          codeId: claim.id,
+        });
+      }
+
+      const [customerUse] = yield* tx
+        .select({ state: discountCodeRedemptions.state })
+        .from(discountCodeRedemptions)
+        .where(
+          and(
+            eq(discountCodeRedemptions.codeId, claim.id),
+            eq(
+              discountCodeRedemptions.dotyposCustomerId,
+              claim.dotyposCustomerId
+            ),
+            inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+          )
+        )
+        .limit(1);
+      if (customerUse) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason:
+            customerUse.state === "redeemed"
+              ? "already_redeemed"
+              : "claim_conflict",
+          message: "The customer has another active claim for this code.",
+          codeId: claim.id,
+        });
+      }
+
+      if (code.maxUses !== null) {
+        const [uses] = yield* tx
+          .select({ count: count() })
+          .from(discountCodeRedemptions)
+          .where(
+            and(
+              eq(discountCodeRedemptions.codeId, claim.id),
+              inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+            )
+          );
+        if ((uses?.count ?? 0) >= code.maxUses) {
+          return yield* new DiscountClaimError({
+            operation: "redeem",
+            reason: "usage_limit_reached",
+            message: "The accepted discount code has no remaining uses.",
+            codeId: claim.id,
+          });
+        }
+      }
+    }
+
+    if (claim.state === "released" && claim.kind === "voucher") {
+      const [voucher] = yield* tx
+        .select()
+        .from(vouchers)
+        .where(eq(vouchers.id, claim.id))
+        .limit(1)
+        .for("update");
+      if (!voucher) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason: "unknown_code",
+          message: "The accepted voucher no longer exists.",
+          codeId: claim.id,
+        });
+      }
+
+      const [[application], [usage]] = yield* Effect.all([
+        tx
+          .select({
+            currency: discountApplications.appliedAmountCurrency,
+            exponent: discountApplications.appliedAmountExponent,
+            value: discountApplications.appliedAmountValue,
+          })
+          .from(discountApplications)
+          .where(eq(discountApplications.id, claim.applicationId))
+          .limit(1),
+        tx
+          .select({
+            value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+          })
+          .from(voucherRedemptions)
+          .innerJoin(
+            discountApplications,
+            eq(discountApplications.id, voucherRedemptions.applicationId)
+          )
+          .where(
+            and(
+              eq(voucherRedemptions.voucherId, claim.id),
+              inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+            )
+          ),
+      ]);
+      if (
+        !application ||
+        application.currency !== voucher.issuedAmountCurrency ||
+        application.exponent !== voucher.issuedAmountExponent ||
+        application.value > voucher.issuedAmountValue - (usage?.value ?? 0)
+      ) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason: "claim_conflict",
+          message: "The voucher no longer has enough available credit.",
+          codeId: claim.id,
+        });
+      }
+    }
 
     const values = {
       state: "redeemed" as const,
       redeemedAt,
+      releasedAt: null,
+      releaseReason: null,
       updatedAt: redeemedAt,
     };
+    const claimableStates = allowReleased
+      ? (["reserved", "released"] as const)
+      : (["reserved"] as const);
     yield* claim.kind === "discount"
       ? tx
           .update(discountCodeRedemptions)
@@ -1704,7 +1825,7 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
           .where(
             and(
               eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
-              eq(discountCodeRedemptions.state, "reserved")
+              inArray(discountCodeRedemptions.state, claimableStates)
             )
           )
       : tx
@@ -1713,7 +1834,7 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
           .where(
             and(
               eq(voucherRedemptions.paymentAttemptId, paymentAttemptId),
-              eq(voucherRedemptions.state, "reserved")
+              inArray(voucherRedemptions.state, claimableStates)
             )
           );
   }
@@ -1790,11 +1911,12 @@ const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
   }
 );
 
-const selectStoredPromotionClaim = (
-  discountClaim:
-    | { readonly id: DiscountCodeId; readonly state: string }
-    | undefined,
-  voucherClaim: { readonly id: VoucherId; readonly state: string } | undefined
+const selectStoredPromotionClaim = <
+  DiscountClaim extends { readonly id: DiscountCodeId; readonly state: string },
+  VoucherClaim extends { readonly id: VoucherId; readonly state: string },
+>(
+  discountClaim: DiscountClaim | undefined,
+  voucherClaim: VoucherClaim | undefined
 ) => {
   if (discountClaim) return { kind: "discount", ...discountClaim } as const;
   if (voucherClaim) return { kind: "voucher", ...voucherClaim } as const;

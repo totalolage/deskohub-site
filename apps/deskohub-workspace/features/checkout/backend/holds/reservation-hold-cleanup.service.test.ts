@@ -123,7 +123,7 @@ describe("ReservationHoldCleanupService", () => {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({
         orderId,
-        holdExpiredAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
+        checkedAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
       });
     }).pipe(
       Effect.provide(
@@ -150,6 +150,7 @@ describe("ReservationHoldCleanupService", () => {
     expect(finalization.finalizePendingProviderPayment).toHaveBeenCalledWith({
       orderId,
       paymentAttemptId: attemptId,
+      abandonmentCheckedAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
     });
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
@@ -248,7 +249,7 @@ describe("ReservationHoldCleanupService", () => {
     expect(cancelReservation).not.toHaveBeenCalled();
   });
 
-  test("expires a durable not-verifiable payment attempt before cancelling the hold", async () => {
+  test("expires a verified abandoned payment attempt before cancelling the hold", async () => {
     const { PaymentLifecycleRepository } = await import(
       "../repositories/payment-lifecycle.repository"
     );
@@ -264,9 +265,9 @@ describe("ReservationHoldCleanupService", () => {
       "@/shared/backend/analytics/posthog-event.service"
     );
 
-    const orderId = "reservation-cleanup-not-verifiable";
-    const attemptId = "attempt-cleanup-not-verifiable";
-    const holdExpiredAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
+    const orderId = "reservation-cleanup-abandoned";
+    const attemptId = "attempt-cleanup-abandoned";
+    const checkedAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
     const claimed = {
       id: orderId,
       reservationState: "cancelling",
@@ -286,7 +287,7 @@ describe("ReservationHoldCleanupService", () => {
     );
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.cancelOrderHold({ orderId, holdExpiredAt });
+      return yield* cleanup.cancelOrderHold({ orderId, checkedAt });
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupServiceLive.pipe(
@@ -294,7 +295,7 @@ describe("ReservationHoldCleanupService", () => {
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: mock(() =>
-                  Effect.succeed("not_verifiable" as const)
+                  Effect.succeed("abandoned" as const)
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
               Layer.mock(PaymentLifecycleRepository, {
@@ -329,20 +330,22 @@ describe("ReservationHoldCleanupService", () => {
       id: attemptId,
       workspaceReservationId: orderId,
       state: "expired",
-      failureCode: "payment_not_verifiable_before_cleanup",
+      failureCode: "payment_abandoned_after_provider_cutoff",
     });
+
     expect(claimCancellation).toHaveBeenCalledWith(orderId);
     expect(cancelReservation).toHaveBeenCalledWith("dotypos-reservation-id");
     expect(markCancelled).toHaveBeenCalledWith({
       id: orderId,
       cancelledAt: expect.any(Temporal.Instant),
-      holdExpiredAt,
+      holdExpiredAt: checkedAt,
     });
   });
 
-  test("does not cancel when expiring the not-verifiable attempt loses the active-attempt guard", async () => {
-    const { PaymentLifecycleRepository, PaymentLifecycleStateError } =
-      await import("../repositories/payment-lifecycle.repository");
+  test("does not expire or cancel a payment that cannot be verified", async () => {
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
+    );
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -357,6 +360,7 @@ describe("ReservationHoldCleanupService", () => {
 
     const orderId = "reservation-cleanup-stale-attempt";
     const attemptId = "attempt-cleanup-stale-attempt";
+    const markTerminal = mock(() => Effect.die("not used"));
     const claimCancellation = mock(() => Effect.succeed(null));
     const cancelReservation = mock(() => Effect.void);
 
@@ -374,15 +378,7 @@ describe("ReservationHoldCleanupService", () => {
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
               Layer.mock(PaymentLifecycleRepository, {
-                markTerminal: mock(() =>
-                  Effect.fail(
-                    new PaymentLifecycleStateError({
-                      operation: "PaymentLifecycleRepository.markTerminal",
-                      paymentAttemptId: attemptId,
-                      message: "stale",
-                    })
-                  )
-                ),
+                markTerminal,
               }),
               Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() =>
@@ -408,6 +404,7 @@ describe("ReservationHoldCleanupService", () => {
       Effect.runPromise
     );
 
+    expect(markTerminal).not.toHaveBeenCalled();
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
   });

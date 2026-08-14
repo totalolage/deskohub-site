@@ -14,6 +14,7 @@ import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
+  type CoworkReservationDetails,
   coworkAdvertisedPriceReservationEquals,
   getCoworkAdvertisedPriceReservation,
   type NormalizedCoworkReservationOrder,
@@ -88,7 +89,10 @@ export const prepareCoworkAdvertisement = Effect.fn(
 
 export const ensureCoworkPayStateAvailable = (input: {
   readonly availability: typeof WorkspaceAvailabilityService.Service;
-  readonly reservation: NormalizedCoworkReservationOrder;
+  readonly reservation: Pick<
+    CoworkReservationDetails,
+    "kind" | "date" | "entryTier" | "monitorOption"
+  >;
 }) =>
   input.availability.ensureAvailable({
     kind: input.reservation.kind,

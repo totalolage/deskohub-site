@@ -142,7 +142,7 @@ describe("PaymentLifecycleRepository", () => {
     const reserveClaim = sliceFrom(
       source,
       'const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")',
-      'const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")'
+      'export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")'
     );
 
     expect(reserveClaim).toContain(".from(discountCodes)");
@@ -203,7 +203,30 @@ describe("PaymentLifecycleRepository", () => {
     expect(paid).toContain("yield* redeemCodeClaim");
     expect(terminal).toContain("db.transaction");
     expect(terminal).toContain("yield* releaseCodeClaim");
-    expect(terminal).toContain(".delete(accountingDocumentSnapshots)");
+    expect(terminal).not.toContain(".delete(accountingDocumentSnapshots)");
+    expect(terminal).not.toContain(
+      'input.failureCode !== "payment_abandoned_after_provider_cutoff"'
+    );
+  });
+
+  test("rechecks released claim capacity before late-payment redemption", async () => {
+    const source = await readRepository();
+    const redeemClaim = sliceFrom(
+      source,
+      'export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")',
+      "const releaseCodeClaim"
+    );
+
+    expect(redeemClaim).toContain(".from(discountCodes)");
+    expect(redeemClaim).toContain('.for("update")');
+    expect(redeemClaim).toContain("discountCodeRedemptions.dotyposCustomerId");
+    expect(redeemClaim).toContain(
+      'inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])'
+    );
+    expect(redeemClaim).toContain('reason: "usage_limit_reached"');
+    expect(redeemClaim).toContain(".from(vouchers)");
+    expect(redeemClaim).toContain("voucher.issuedAmountValue -");
+    expect(redeemClaim).toContain(".update(voucherRedemptions)");
   });
 
   test("rejects inconsistent committed money before opening a transaction", async () => {

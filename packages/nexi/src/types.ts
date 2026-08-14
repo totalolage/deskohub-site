@@ -278,8 +278,11 @@ export type PaymentOutcomeStatus = "success" | "failure" | "pending";
 export interface ProviderPaymentFacts {
   readonly orderId: NexiOrderId;
   readonly operationId?: NexiOperationId;
+  readonly operationCount: number;
   readonly amount?: string;
   readonly currency?: string;
+  readonly authorizedAmount?: string;
+  readonly capturedAmount?: string;
   readonly orderStatus?: string;
   readonly captureExecuted: boolean;
 }

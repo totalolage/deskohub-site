@@ -8,7 +8,7 @@ The primary navigation is limited to Overview, Reservations, Customers, Codes, a
 
 ## Operator responsibilities
 
-Reading reservation and customer views does not refresh payment state, retry fulfillment, cancel a reservation, or repair an external record. Mutations belong to explicit operator workflows such as recovering reservation access, maintaining discounts, codes, sales, customer discount groups, or administration sessions.
+Reading reservation and customer views does not refresh payment state, retry fulfillment, cancel a reservation, or repair an external record. Mutations belong to explicit operator workflows such as cancelling an eligible reservation, recovering reservation access, maintaining discounts, codes, sales, customer discount groups, or administration sessions. Cancellation may send the customer a localized email, preserves successful settlement facts, and atomically marks a paid Nexi attempt as needing a refund without issuing one; zero-total internal payments do not require a refund.
 
 Discount definitions are managed through the code or sale that uses them. Creating a code may create its benefit at the same time. Historical applications and redemptions remain immutable.
 
@@ -35,7 +35,11 @@ A provisioning attempt that remains incomplete for one minute is treated as equa
 
 A reservation presents an actual-state journey through Started, Held, Paid, and Complete, or an exact cancellation condition such as Hold expired, Cancelling, Cancellation issue, or Cancelled.
 
+Operator cancellation is available for a held, confirmed, or retryable failed-cancellation reservation while payment is not pending and fulfillment is not actively processing. It cancels the current Dotypos booking and records the local reservation as cancelled while preserving payment, fulfillment, discount, legal, and accounting history. Customer email delivery happens only after cancellation succeeds; an email failure is reported separately and never misrepresents the booking as active.
+
 Payment failure alone does not make a still-held reservation cancelled. A paid reservation with incomplete or failed fulfillment is not shown as complete. If the reservation system reports cancellation while Workspace is stale, administration may show a separate attention warning without rewriting Workspace history or claiming that recovery completed.
+
+Provider-payment cleanup outcomes remain explicit. An empty Nexi order inside the local payment window is shown as waiting until its cutoff. A held reservation whose provider outcome could not be confirmed is flagged for payment review, while an operation-free order abandoned after the cutoff is shown as abandoned with its hold released. If Nexi reports payment after that release, administration shows recovery in progress, recovered, refund required, or recovery review according to the durable recovery result. A refund-required recovery and an operator cancellation both mark the affected paid Nexi attempt in the same refund-work state.
 
 Customer summaries and overview counts must say when current external facts are unavailable. They must not substitute a local measure that answers a different question.
 

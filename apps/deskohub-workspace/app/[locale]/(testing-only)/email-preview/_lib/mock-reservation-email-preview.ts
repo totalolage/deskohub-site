@@ -41,6 +41,7 @@ export const createWorkspaceReservationEmailPreviewReservation = (
   },
   locale,
   customer: workspaceReservationEmailPreviewCustomer,
+  providerStatus: "CONFIRMED",
   reservedFrom: mockDate,
   reservedUntil: mockEndDate,
   seats: 1,

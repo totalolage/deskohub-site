@@ -94,6 +94,7 @@ type LocalOrderRow = {
   readonly providerOrderId: NexiOrderId;
   readonly reservationId: WorkspaceReservationId;
   readonly state: PaymentAttemptState;
+  readonly failureCode: string | null;
   readonly amountValue: number;
   readonly amountExponent: number;
   readonly currency: string;
@@ -120,7 +121,10 @@ const toOrderLink = (row: LocalOrderRow): AdministrationOrderLink => {
     paymentAttemptId: row.paymentAttemptId,
     reservationId: row.reservationId,
     state: row.state,
-    stateLabel: paymentAttemptStateLabels[row.state],
+    stateLabel:
+      row.failureCode === "payment_abandoned_after_provider_cutoff"
+        ? "Abandoned"
+        : paymentAttemptStateLabels[row.state],
     amount: {
       value: row.amountValue,
       exponent: row.amountExponent,
@@ -138,6 +142,7 @@ const localOrderSelection = {
   providerOrderId: paymentAttempts.providerOrderId,
   reservationId: paymentAttempts.workspaceReservationId,
   state: paymentAttempts.state,
+  failureCode: paymentAttempts.failureCode,
   amountValue: paymentAttempts.amountValue,
   amountExponent: paymentAttempts.amountExponent,
   currency: paymentAttempts.currency,

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import {
+  AdministrationAlert,
   AdministrationDetailSection,
   AdministrationFact,
   AdministrationPage,
@@ -20,6 +21,7 @@ import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationReservation } from "@/features/administration/page-data.server";
 import { ReservationOrderList } from "@/features/administration/payment-components";
 import { ReservationAccessAdministration } from "@/features/administration/reservation-access-administration";
+import { ReservationCancellation } from "@/features/administration/reservation-cancellation";
 import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
 
 export default function ReservationAdministrationDetailPage({
@@ -50,6 +52,17 @@ export async function ReservationAdministrationDetail({
     <>
       <h1 className="sr-only">{reservation.typeLabel}</h1>
 
+      {detail.operatorNotice && (
+        <AdministrationAlert
+          className="mb-5"
+          role={detail.operatorNotice.status === "error" ? "alert" : "status"}
+          status={detail.operatorNotice.status}
+        >
+          <p className="font-semibold">{detail.operatorNotice.title}</p>
+          <p>{detail.operatorNotice.message}</p>
+        </AdministrationAlert>
+      )}
+
       <section aria-labelledby="lifecycle-heading">
         <h2 className="sr-only" id="lifecycle-heading">
           Reservation lifecycle
@@ -64,11 +77,21 @@ export async function ReservationAdministrationDetail({
               <div>
                 <h2 className="text-xl">Reservation details</h2>
               </div>
-              {booking && (
-                <span className="rounded-full border border-navy-blue/12 bg-navy-blue/5 px-2.5 py-1 text-xs font-semibold text-navy-blue/65">
-                  Dotypos {booking.statusLabel.toLowerCase()}
-                </span>
-              )}
+              <div className="flex flex-wrap items-center gap-3">
+                {booking && (
+                  <span className="rounded-full border border-navy-blue/12 bg-navy-blue/5 px-2.5 py-1 text-xs font-semibold text-navy-blue/65">
+                    Dotypos {booking.statusLabel.toLowerCase()}
+                  </span>
+                )}
+                <ReservationCancellation
+                  accessGrantUpdatedAt={detail.accessGrant?.updatedAt ?? null}
+                  canCancel={detail.canCancel}
+                  requiresProviderCredentialRemoval={
+                    detail.requiresProviderCredentialRemoval
+                  }
+                  reservationId={reservation.id}
+                />
+              </div>
             </div>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
               {reservation.type === "cowork" ? (
@@ -156,6 +179,11 @@ export async function ReservationAdministrationDetail({
                       reservation.latestPayment.updatedAt
                     )}
                   </p>
+                  {reservation.latestPayment.refundState === "required" && (
+                    <p className="mt-2 font-semibold text-burned-orange-ink text-sm">
+                      Needs refund
+                    </p>
+                  )}
                   {reservation.latestPayment.providerOrderId && (
                     <NexiOrderLink
                       accessibleLabel={`Payment ${reservation.latestPayment.providerOrderId}`}
