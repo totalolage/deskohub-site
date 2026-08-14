@@ -31,6 +31,8 @@ import {
   latePaymentRecoveries,
   legalEvidenceEvents,
   paymentAttempts,
+  voucherRedemptions,
+  vouchers,
   webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
@@ -38,6 +40,9 @@ import type {
   PaymentAttemptId,
   StoredWebhookEventId,
 } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import type { VoucherId } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
@@ -287,7 +292,7 @@ export const validatePostgres = (
   });
 
 export interface ExpectedDiscountApplication {
-  readonly basisPoints: number;
+  readonly adjustment: DiscountAdjustment;
   readonly hasExpiration?: boolean;
   readonly label: string;
   readonly redemptionState?: "redeemed";
@@ -320,13 +325,19 @@ export const validateDiscountApplications = (
           subtotal_after_currency: discountApplications.subtotalAfterCurrency,
           expires_at: discountApplications.expiresAt,
           countdown_starts_at: discountApplications.countdownStartsAt,
-          redemption_state: discountCodeRedemptions.state,
-          redeemed_at: discountCodeRedemptions.redeemedAt,
+          redemption_state: sql<
+            string | null
+          >`coalesce(${discountCodeRedemptions.state}, ${voucherRedemptions.state})`,
+          redeemed_at: sql<Date | null>`coalesce(${discountCodeRedemptions.redeemedAt}, ${voucherRedemptions.redeemedAt})`,
         })
         .from(discountApplications)
         .leftJoin(
           discountCodeRedemptions,
           eq(discountCodeRedemptions.applicationId, discountApplications.id)
+        )
+        .leftJoin(
+          voucherRedemptions,
+          eq(voucherRedemptions.applicationId, discountApplications.id)
         )
         .where(eq(discountApplications.workspaceReservationId, orderId))
         .orderBy(asc(discountApplications.sequence))
@@ -339,10 +350,7 @@ export const validateDiscountApplications = (
   });
 
 export interface DiscountApplicationRow {
-  readonly adjustment: {
-    readonly basisPoints?: number;
-    readonly kind?: string;
-  };
+  readonly adjustment: DiscountAdjustment;
   readonly applied_amount_currency: string;
   readonly applied_amount_exponent: number;
   readonly applied_amount_value: number;
@@ -377,16 +385,23 @@ export const assertDiscountApplications = (
       row.label === expectation.label,
       `unexpected discount label at sequence ${index}`
     );
-    assert(
-      row.adjustment.kind === "percentage" &&
-        row.adjustment.basisPoints === expectation.basisPoints,
+    deepStrictEqual(
+      row.adjustment,
+      expectation.adjustment,
       `unexpected discount adjustment at sequence ${index}`
     );
+    const expectedAppliedValue =
+      expectation.adjustment.kind === "percentage"
+        ? Math.round(
+            (row.subtotal_before_value * expectation.adjustment.basisPoints) /
+              10_000
+          )
+        : Math.min(
+            row.subtotal_before_value,
+            expectation.adjustment.amount.value
+          );
     assert(
-      row.applied_amount_value ===
-        Math.round(
-          (row.subtotal_before_value * expectation.basisPoints) / 10_000
-        ),
+      row.applied_amount_value === expectedAppliedValue,
       `unexpected discount benefit at sequence ${index}`
     );
     assert(
@@ -491,6 +506,128 @@ export const assertNoDiscountPaymentState = (
     });
     log("Unavailable discount code created no payment state");
   });
+
+export const validateVoucherRedemptions = (
+  config: DatasourceConfig,
+  voucherId: VoucherId,
+  expected: readonly {
+    readonly adjustmentValue: number;
+    readonly appliedValue: number;
+    readonly orderId: WorkspaceReservationId;
+    readonly subtotalAfter: "positive" | "zero";
+  }[],
+  creditPerRun: WorkspaceMoney
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runRetrySafeDatabaseOperation(
+      "read voucher redemption history",
+      db
+        .select({
+          adjustment: sql<
+            VoucherRedemptionRow["adjustment"]
+          >`${discountApplications.adjustment}`,
+          appliedAmountCurrency: discountApplications.appliedAmountCurrency,
+          appliedAmountExponent: discountApplications.appliedAmountExponent,
+          appliedAmountValue: discountApplications.appliedAmountValue,
+          claimState: voucherRedemptions.state,
+          issuedAmountCurrency: vouchers.issuedAmountCurrency,
+          issuedAmountExponent: vouchers.issuedAmountExponent,
+          issuedAmountValue: vouchers.issuedAmountValue,
+          redeemedAt: voucherRedemptions.redeemedAt,
+          reservationId: discountApplications.workspaceReservationId,
+          subtotalAfterValue: discountApplications.subtotalAfterValue,
+          subtotalBeforeValue: discountApplications.subtotalBeforeValue,
+        })
+        .from(voucherRedemptions)
+        .innerJoin(
+          discountApplications,
+          eq(discountApplications.id, voucherRedemptions.applicationId)
+        )
+        .innerJoin(vouchers, eq(vouchers.id, voucherRedemptions.voucherId))
+        .where(
+          and(
+            eq(voucherRedemptions.voucherId, voucherId),
+            inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+          )
+        )
+    );
+
+    yield* tryWorkspaceE2ESync("assert voucher redemption history", () => {
+      assert(expected.length > 0, "expected at least one voucher checkout");
+      const currentRows = expected.map(({ orderId }) => {
+        const matching = rows.filter(
+          ({ reservationId }) => reservationId === orderId
+        );
+        assert(
+          matching.length === 1,
+          "expected one voucher claim per checkout"
+        );
+        return matching[0]!;
+      });
+
+      currentRows.forEach((row, index) => {
+        const expectation = expected[index]!;
+        assert(row.claimState === "redeemed", "voucher claim was not redeemed");
+        assert(row.redeemedAt, "voucher redemption timestamp missing");
+        assert(
+          row.adjustment.kind === "fixed" &&
+            row.adjustment.amount?.value === expectation.adjustmentValue,
+          "unexpected remaining voucher adjustment"
+        );
+        assert(
+          row.appliedAmountValue === expectation.appliedValue &&
+            row.subtotalBeforeValue - row.appliedAmountValue ===
+              row.subtotalAfterValue,
+          "voucher did not cover the expected checkout subtotal"
+        );
+        assert(
+          expectation.subtotalAfter === "zero"
+            ? row.subtotalAfterValue === 0
+            : row.subtotalAfterValue > 0,
+          "voucher left an unexpected checkout balance"
+        );
+        assert(
+          row.appliedAmountCurrency === config.expectedCurrency &&
+            row.appliedAmountExponent === creditPerRun.exponent,
+          "unexpected voucher application money"
+        );
+      });
+      assert(
+        currentRows.reduce((sum, row) => sum + row.appliedAmountValue, 0) ===
+          creditPerRun.value,
+        "current checkouts did not consume the seeded voucher credit"
+      );
+
+      const issuedValue = rows[0]?.issuedAmountValue;
+      assert(
+        issuedValue !== null && issuedValue !== undefined,
+        "voucher issued credit missing"
+      );
+      assert(
+        rows.every(
+          (row) =>
+            row.issuedAmountValue === issuedValue &&
+            row.issuedAmountCurrency === creditPerRun.currency &&
+            row.issuedAmountExponent === creditPerRun.exponent
+        ),
+        "voucher issued credit changed across claims"
+      );
+      assert(
+        rows.reduce((sum, row) => sum + row.appliedAmountValue, 0) ===
+          issuedValue,
+        "voucher should be exhausted after the expected checkouts"
+      );
+    });
+    log("Voucher redemption history validated");
+  });
+
+interface VoucherRedemptionRow {
+  readonly adjustment: {
+    readonly amount?: WorkspaceMoney;
+    readonly kind?: string;
+  };
+}
 
 export const validateInternalPostgres = (
   config: DatasourceConfig,
@@ -1283,13 +1420,19 @@ const assertInternalDiscountState = (
           subtotal_before_value: discountApplications.subtotalBeforeValue,
           applied_amount_value: discountApplications.appliedAmountValue,
           subtotal_after_value: discountApplications.subtotalAfterValue,
-          redemption_state: discountCodeRedemptions.state,
-          redeemed_at: discountCodeRedemptions.redeemedAt,
+          redemption_state: sql<
+            string | null
+          >`coalesce(${discountCodeRedemptions.state}, ${voucherRedemptions.state})`,
+          redeemed_at: sql<Date | null>`coalesce(${discountCodeRedemptions.redeemedAt}, ${voucherRedemptions.redeemedAt})`,
         })
         .from(discountApplications)
         .leftJoin(
           discountCodeRedemptions,
           eq(discountCodeRedemptions.applicationId, discountApplications.id)
+        )
+        .leftJoin(
+          voucherRedemptions,
+          eq(voucherRedemptions.applicationId, discountApplications.id)
         )
         .where(
           row.payment_attempt_id
@@ -1320,10 +1463,10 @@ export const assertInternalDiscountApplications = (
   );
   assert(
     redeemedApplications.length === 1,
-    "expected one redeemed code application"
+    "expected one redeemed promotion application"
   );
   const application = redeemedApplications[0];
-  assert(application, "redeemed code application missing");
+  assert(application, "redeemed promotion application missing");
   assert(
     application.applied_amount_value === application.subtotal_before_value,
     "discount did not cover the full subtotal"
@@ -1334,9 +1477,9 @@ export const assertInternalDiscountApplications = (
   );
   assert(
     application.redemption_state === "redeemed",
-    "discount code claim was not redeemed"
+    "promotion claim was not redeemed"
   );
-  assert(application.redeemed_at, "discount code redeemed_at missing");
+  assert(application.redeemed_at, "promotion redeemed_at missing");
 };
 
 const assertLegalEvidence = (

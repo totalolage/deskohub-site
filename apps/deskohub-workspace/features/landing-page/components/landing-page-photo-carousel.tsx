@@ -1,7 +1,6 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import { Pause, Play } from "lucide-react";
 import { motion, type Transition } from "motion/react";
 import { useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
@@ -19,7 +18,6 @@ type LandingPagePhotoCarouselProps = {
   ariaLabel: string;
   locale: Locale;
   images: readonly CloudinaryAsset[];
-  autoPlayInterval?: number;
   className?: string;
 };
 
@@ -96,17 +94,13 @@ const getSlideZIndex = (offset: number) => {
   return 0;
 };
 
-const AUTO_PLAY_INTERVAL = 3600;
-
 export function LandingPagePhotoCarousel({
   ariaLabel,
   images,
   locale,
-  autoPlayInterval = AUTO_PLAY_INTERVAL,
   className,
 }: LandingPagePhotoCarouselProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const [isAutoPlayPaused, setIsAutoPlayPaused] = useState(false);
   const {
     activeIndex,
     dragControls,
@@ -126,7 +120,6 @@ export function LandingPagePhotoCarousel({
     virtualIndex: currentVirtualIndex,
     visibleVirtualIndex,
   } = useMotionSwipeCarousel({
-    autoPlayInterval: isAutoPlayPaused ? undefined : autoPlayInterval,
     count: images.length,
   });
   const activeSlideTransition =
@@ -301,23 +294,6 @@ export function LandingPagePhotoCarousel({
           onSelect={moveToIndex}
           transition={activeDotTransition}
         />
-        {!shouldReduceMotion && images.length > 1 && (
-          <button
-            type="button"
-            aria-pressed={isAutoPlayPaused}
-            className="inline-flex min-h-8 items-center gap-2 rounded-full border border-navy-blue/45 bg-white/85 px-3 text-xs font-semibold text-navy-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-navy-blue"
-            onClick={() => setIsAutoPlayPaused((paused) => !paused)}
-          >
-            {isAutoPlayPaused ? (
-              <Play aria-hidden className="size-3.5" />
-            ) : (
-              <Pause aria-hidden className="size-3.5" />
-            )}
-            {isAutoPlayPaused
-              ? m.landingCarouselPlay({}, { locale })
-              : m.landingCarouselPause({}, { locale })}
-          </button>
-        )}
       </div>
       <Lightbox
         animation={lightboxAnimation}

@@ -5,7 +5,6 @@ import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { appendDiscounts, calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
-import { CodeDiscountProvider } from "./code-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
 import {
   type ActiveSale,
@@ -14,7 +13,7 @@ import {
   type AppliedDiscount,
   affirmedDiscountAdvertisementQuoteCodec,
   appliedDiscountCodec,
-  type CanonicalDiscountCode,
+  type CanonicalPromotionCode,
   type DiscountAdvertisementInput,
   type DiscountAdvertisementQuote,
   type DiscountId,
@@ -29,9 +28,10 @@ import {
 } from "./discount-release-gate.service";
 import {
   type DiscountCalculationError,
-  DiscountCodeUnavailableError,
   type DiscountResolutionError,
+  PromotionCodeUnavailableError,
 } from "./errors";
+import { PromotionCodeProvider } from "./promotion-code-provider.service";
 import type { DiscountCandidate } from "./provider";
 import {
   type DiscountResolutionFailure,
@@ -43,7 +43,7 @@ import {
 
 export type DisplayedDiscountAffirmationInput = DiscountAdvertisementInput & {
   readonly dotyposCustomerId: DotyposCustomerId;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
   readonly displayedDiscountIds: readonly DiscountId[];
 };
 
@@ -67,7 +67,7 @@ export type ApplyDiscountCodeInput = {
   readonly baseQuote: DiscountQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
-  readonly submittedCode: CanonicalDiscountCode;
+  readonly submittedCode: CanonicalPromotionCode;
 };
 
 export type AppliedDiscountCodeQuote = {
@@ -111,7 +111,7 @@ export class DiscountService extends Context.Service<
     Effect.gen(function* () {
       const calendar = yield* CalendarDiscountProvider;
       const customer = yield* CustomerDiscountProvider;
-      const code = yield* CodeDiscountProvider;
+      const code = yield* PromotionCodeProvider;
       const releaseGates = yield* DiscountReleaseGateService;
 
       const resolveQuoteCandidates = Effect.fn(
@@ -489,7 +489,7 @@ const requireDiscountCodesEnabled = (releaseGates: DiscountReleaseGates) =>
   releaseGates.discountCodes
     ? Effect.void
     : Effect.fail(
-        new DiscountCodeUnavailableError({
+        new PromotionCodeUnavailableError({
           reason: "feature_disabled",
           message: "Discount code entry is disabled.",
         })
@@ -502,7 +502,7 @@ const requireEligibleSubtotal = (input: ApplyDiscountCodeInput) =>
     Effect.asVoid,
     Effect.mapError(
       (cause) =>
-        new DiscountCodeUnavailableError({
+        new PromotionCodeUnavailableError({
           reason: "no_eligible_subtotal",
           message: "No discountable subtotal remains for a discount code.",
           cause,
@@ -520,7 +520,7 @@ const requireAppliedCode = (input: {
     Effect.map(([application]) => application),
     Effect.mapError(
       (cause) =>
-        new DiscountCodeUnavailableError({
+        new PromotionCodeUnavailableError({
           reason: "no_eligible_subtotal",
           message: "The discount code has no applicable amount.",
           cause,
@@ -534,7 +534,7 @@ const withApplyDiscountCodeAnnotations = <A>(
 ) =>
   effect.pipe(
     Effect.tapError((cause) =>
-      cause._tag === "DiscountCodeUnavailableError"
+      cause._tag === "PromotionCodeUnavailableError"
         ? Effect.logDebug("Discount code was unavailable", {
             discountBoundary: "resolution",
             discountProvider: "code",

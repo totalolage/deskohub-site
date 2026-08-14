@@ -37,7 +37,10 @@ export const executeZeroTotalCheckout = ({
   state,
   submitReservationScript,
   discountCode,
+  appliedMessage = "Promotion applied: 100% off 🎉",
+  stepIdPrefix = "",
 }: {
+  readonly appliedMessage?: string;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
@@ -47,8 +50,10 @@ export const executeZeroTotalCheckout = ({
   readonly state: CheckoutFlowState;
   readonly submitReservationScript: string;
   readonly discountCode: string;
+  readonly stepIdPrefix?: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
+    const stepId = (id: string) => `${stepIdPrefix}${id}`;
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: Effect.gen(function* () {
@@ -65,13 +70,19 @@ export const executeZeroTotalCheckout = ({
           timeouts: config.timeouts,
         });
       }),
-      id: "prepare-zero-total-pay-page",
+      id: stepId("prepare-zero-total-pay-page"),
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
     yield* runStep({
-      execute: applyZeroTotalCode(config, discountCode, run, session),
-      id: "apply-zero-total-code",
+      execute: applyZeroTotalCode(
+        config,
+        discountCode,
+        appliedMessage,
+        run,
+        session
+      ),
+      id: stepId("apply-zero-total-code"),
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
@@ -91,12 +102,12 @@ export const executeZeroTotalCheckout = ({
         ),
         Effect.asVoid
       ),
-      id: "complete-internal-payment",
+      id: stepId("complete-internal-payment"),
       timeoutMs: config.timeouts.providerTransition,
     });
     yield* runStep({
       execute: markPreviewFulfillmentDeliveredForE2E(datasourceConfig, orderId),
-      id: "complete-zero-total-fulfillment",
+      id: stepId("complete-zero-total-fulfillment"),
       timeoutMs: config.timeouts.datasource,
     });
     const checkoutRow = yield* runStep({
@@ -108,13 +119,13 @@ export const executeZeroTotalCheckout = ({
           state.checkoutRow = row;
         }
       ),
-      id: "validate-internal-postgres-state",
+      id: stepId("validate-internal-postgres-state"),
       timeoutMs: config.timeouts.datasource,
     });
     state.checkoutRow = checkoutRow;
     const dotyposReservation = yield* runStep({
       execute: validateDotypos(datasourceConfig, data, checkoutRow),
-      id: "validate-zero-total-dotypos",
+      id: stepId("validate-zero-total-dotypos"),
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
@@ -127,7 +138,7 @@ export const executeZeroTotalCheckout = ({
         run,
         session,
       }),
-      id: "assert-zero-total-fulfilled-status",
+      id: stepId("assert-zero-total-fulfilled-status"),
       timeoutMs: config.timeouts.uiTransition,
     });
     log(`zero-total checkout e2e passed for order ${orderId}`);
@@ -136,11 +147,12 @@ export const executeZeroTotalCheckout = ({
 const applyZeroTotalCode = (
   config: WorkspaceE2EConfig,
   discountCode: string,
+  appliedMessage: string,
   run: Runner,
   session: string
 ) =>
   applyDiscountCode({
-    appliedMessage: "Discount code applied: 100% off 🎉",
+    appliedMessage,
     code: discountCode,
     config,
     run,

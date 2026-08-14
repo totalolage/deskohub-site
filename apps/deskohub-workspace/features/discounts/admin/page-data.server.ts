@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import type { DiscountCodeId } from "../persistence-contracts";
+import type { DiscountCodeId, VoucherId } from "../persistence-contracts";
 import { requireDiscountAdminAuthorization } from "./basic-auth.server";
 import { DiscountAdministrationLive } from "./discount-administration.runtime";
 import { DiscountAdministration } from "./discount-administration.service";
@@ -77,6 +77,26 @@ export const loadDiscountAdminSalesPageData = async (
   return { dashboard: resolvedDashboard, notice };
 };
 
+export const loadDiscountAdminVouchersPageData = async (
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+  const dashboard = Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadVouchersPage();
+  }).pipe(
+    Effect.provide(DiscountAdministrationLive),
+    runWorkspaceEffect("discount-administration.load-vouchers", {
+      boundary: "route",
+    })
+  );
+  const [resolvedDashboard, notice] = await Promise.all([
+    dashboard,
+    loadNotice(searchParams),
+  ]);
+  return { dashboard: resolvedDashboard, notice };
+};
+
 export const loadDiscountAdminShellPageData = async (
   searchParams: DiscountAdminSearchParams
 ) => {
@@ -138,6 +158,29 @@ export const loadDiscountAdminCustomerPageData = async (
     profile: resolvedProfile,
     notice,
   };
+};
+
+export const loadDiscountAdminVoucherPageData = async (
+  voucherId: VoucherId,
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+  const detail = Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadVoucherDetail({ voucherId });
+  }).pipe(
+    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
+    Effect.provide(DiscountAdministrationLive),
+    runWorkspaceEffect("discount-administration.load-voucher", {
+      boundary: "route",
+    })
+  );
+  const [resolvedDetail, notice] = await Promise.all([
+    detail,
+    loadNotice(searchParams),
+  ]);
+  if (!resolvedDetail) notFound();
+  return { detail: resolvedDetail, notice };
 };
 
 export const loadDiscountAdminCustomerCodeCreationPageData = async (

@@ -62,18 +62,49 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
   discountCodes: {
+    promotion: r.one.promotionCodes({
+      from: r.discountCodes.promotionCodeId,
+      to: r.promotionCodes.id,
+      optional: false,
+    }),
     discount: r.one.discounts({
       from: r.discountCodes.discountId,
       to: r.discounts.id,
       optional: false,
     }),
-    customers: r.many.discountCodeCustomers(),
     redemptions: r.many.discountCodeRedemptions(),
+    legacyCustomers: r.many.discountCodeCustomers(),
   },
   discountCodeCustomers: {
     code: r.one.discountCodes({
       from: r.discountCodeCustomers.codeId,
       to: r.discountCodes.id,
+      optional: false,
+    }),
+  },
+  vouchers: {
+    promotion: r.one.promotionCodes({
+      from: r.vouchers.promotionCodeId,
+      to: r.promotionCodes.id,
+      optional: false,
+    }),
+    redemptions: r.many.voucherRedemptions(),
+  },
+  promotionCodes: {
+    customers: r.many.promotionCodeCustomers(),
+    discountCode: r.one.discountCodes({
+      from: r.promotionCodes.id,
+      to: r.discountCodes.promotionCodeId,
+    }),
+    voucher: r.one.vouchers({
+      from: r.promotionCodes.id,
+      to: r.vouchers.promotionCodeId,
+    }),
+  },
+  promotionCodeCustomers: {
+    promotion: r.one.promotionCodes({
+      from: r.promotionCodeCustomers.promotionCodeId,
+      to: r.promotionCodes.id,
       optional: false,
     }),
   },
@@ -91,6 +122,27 @@ export const relations = defineRelations(schema, (r) => ({
     codeRedemption: r.one.discountCodeRedemptions({
       from: r.discountApplications.id,
       to: r.discountCodeRedemptions.applicationId,
+    }),
+    voucherRedemption: r.one.voucherRedemptions({
+      from: r.discountApplications.id,
+      to: r.voucherRedemptions.applicationId,
+    }),
+  },
+  voucherRedemptions: {
+    voucher: r.one.vouchers({
+      from: r.voucherRedemptions.voucherId,
+      to: r.vouchers.id,
+      optional: false,
+    }),
+    application: r.one.discountApplications({
+      from: r.voucherRedemptions.applicationId,
+      to: r.discountApplications.id,
+      optional: false,
+    }),
+    paymentAttempt: r.one.paymentAttempts({
+      from: r.voucherRedemptions.paymentAttemptId,
+      to: r.paymentAttempts.id,
+      optional: false,
     }),
   },
   discountCodeRedemptions: {

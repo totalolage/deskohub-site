@@ -3,10 +3,15 @@ import { Schema } from "effect";
 import {
   AdminCliAdministrationApi,
   AdministrationBookingQuery,
+  AdministrationCustomerProfile,
   AdministrationCustomerQuery,
   AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
+  AdministrationDiscountCode,
+  AdministrationDiscountCodeClaim,
+  AdministrationDiscountDashboard,
   AdministrationDiscountMutation,
+  AdministrationDiscountMutationResult,
   AdministrationDotyposCustomerId,
   AdministrationDotyposDiscountGroupId,
   AdministrationDotyposReservationId,
@@ -23,6 +28,7 @@ import {
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
+  AdministrationVoucher,
   AdministrationWorkspaceProductTarget,
   AdministrationWorkspaceReservationId,
   CliClientName,
@@ -57,6 +63,111 @@ describe("StartCliAuthentication", () => {
 });
 
 describe("administration contract", () => {
+  test("decodes pre-voucher administration responses", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountMutationResult)({
+        kind: "delete-code",
+        createdDiscountId: null,
+        createdCodeId: null,
+      })
+    ).toMatchObject({ createdVoucherId: null });
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountDashboard)({
+        discounts: [],
+        codes: [],
+        calendar: {
+          events: [],
+          unavailable: false,
+          calendarUrl: "https://calendar.example.test",
+          from: "2026-08-01",
+          to: "2026-08-31",
+        },
+      })
+    ).toMatchObject({ vouchers: [] });
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationCustomerProfile)({
+        customer: {
+          id: "customer-id",
+          displayName: "Synthetic Customer",
+          email: null,
+          phone: null,
+          discountGroupId: null,
+        },
+        discountGroups: [],
+        codes: [],
+        claims: [],
+      })
+    ).toMatchObject({ vouchers: [], voucherClaims: [] });
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountCodeClaim)({
+        id: "claim-id",
+        codeId: "01980000-0000-7000-8000-000000000001",
+        dotyposCustomerId: "customer-id",
+        state: "redeemed",
+        paymentAttemptId: "payment-attempt-id",
+        workspaceReservationId: "reservation-id",
+        reservationExpiresAt: "2026-08-10T11:00:00Z",
+        reservedAt: "2026-08-10T10:00:00Z",
+        redeemedAt: "2026-08-10T10:01:00Z",
+        releasedAt: null,
+        releaseReason: null,
+      }).appliedAmount
+    ).toBeNull();
+  });
+
+  test("keeps discount codes and vouchers as separate read models", () => {
+    const decodeCode = Schema.decodeUnknownSync(AdministrationDiscountCode);
+    const decodeVoucher = Schema.decodeUnknownSync(AdministrationVoucher);
+    const common = {
+      id: "01980000-0000-7000-8000-000000000001",
+      code: "GIFT100",
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      audienceSize: 0,
+      reservedUses: 0,
+      redeemedUses: 0,
+      releasedUses: 0,
+      createdAt: "2026-08-10T10:00:00Z",
+      updatedAt: "2026-08-10T10:00:00Z",
+    };
+
+    expect(
+      decodeCode({
+        ...common,
+        discountId: "01980000-0000-7000-8000-000000000002",
+        maxUses: null,
+        maxUsesPerCustomer: null,
+        remainingUses: null,
+      })
+    ).toMatchObject({ code: "GIFT100", maxUses: null });
+    expect(
+      decodeVoucher({
+        ...common,
+        issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+        remainingCredit: {
+          value: 6500,
+          exponent: 2,
+          currency: "CZK",
+        },
+      })
+    ).toMatchObject({ code: "GIFT100", remainingCredit: { value: 6500 } });
+    expect(() =>
+      decodeVoucher({
+        ...common,
+        issuedCredit: { value: 10_000, exponent: 2, currency: "CZK" },
+        remainingCredit: {
+          value: 11_000,
+          exponent: 2,
+          currency: "CZK",
+        },
+      })
+    ).toThrow();
+  });
+
   test("keeps branded identifiers distinct while encoding them as strings", () => {
     const reservationId = Schema.decodeUnknownSync(
       AdministrationWorkspaceReservationId
@@ -350,6 +461,22 @@ describe("administration contract", () => {
         discount: { kind: "existing", discountId },
       })
     ).toThrow();
+
+    expect(
+      decode({
+        kind: "create-voucher",
+        voucher: {
+          code: "VOUCHER100",
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+        },
+      })
+    ).toMatchObject({
+      kind: "create-voucher",
+      voucher: { credit: { value: 10_000 } },
+    });
   });
   test("rejects invalid reservation filters before service execution", () => {
     expect(() =>

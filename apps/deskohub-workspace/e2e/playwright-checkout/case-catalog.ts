@@ -16,6 +16,7 @@ export const workspaceE2ENonPaymentCaseIds = [
   "discount-code-product-ineligible",
   "discount-code-capacity-reached",
   "discount-code-already-redeemed",
+  "voucher-reuse-and-exhaustion",
 ] as const;
 
 export const workspaceE2EPaymentCaseLanes = [
@@ -40,6 +41,7 @@ export const workspaceE2EPaymentCaseLanes = [
     "checkout-customer-discount-and-code",
     "checkout-calendar-and-customer-discount",
     "checkout-all-discounts",
+    "checkout-voucher-full-usage",
   ],
 ] as const;
 

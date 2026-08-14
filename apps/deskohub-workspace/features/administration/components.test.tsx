@@ -95,6 +95,20 @@ describe("administration reservation components", () => {
     expect(view.getByLabelText("24 reservations").textContent).toBe("24");
   });
 
+  test("keeps a compact primary action beside the collection count", () => {
+    const view = render(
+      <AdministrationTableToolbar
+        actions={<button type="button">Create</button>}
+        count={1}
+        itemLabel="voucher"
+      />
+    );
+
+    expect(
+      view.getByRole("region", { name: "voucher table controls" }).className
+    ).toContain("grid-cols-[minmax(0,1fr)_auto]");
+  });
+
   test("uses one status badge foundation for domain-specific states", () => {
     const view = render(
       <AdministrationStatusBadge tone="positive">

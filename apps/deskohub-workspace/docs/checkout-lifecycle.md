@@ -35,6 +35,8 @@ Entering a discount code is an independent action on the order summary:
 - A successful payment permanently redeems the claim. A failed, cancelled, or expired payment releases it.
 - If the code or another displayed discount can no longer be honored, checkout returns an updated summary before any payment session is created.
 
+Voucher codes follow the same customer flow but resolve to their current stored credit rather than a discount definition. Code entry only quotes that credit. Final payment admission locks and reserves the exact applied amount; terminal failure releases it, and successful payment consumes it permanently.
+
 ## Reservation holds and edits
 
 Reservation submission creates a temporary hold before payment. Repeating the same immediate submission is idempotent and must not create duplicate holds.

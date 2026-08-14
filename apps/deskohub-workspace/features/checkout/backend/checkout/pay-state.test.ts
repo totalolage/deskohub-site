@@ -5,7 +5,7 @@ import type { JsonObject } from "type-fest";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { buildReservationQuote } from "@/features/checkout/reservation-quote";
 import {
-  canonicalDiscountCodeSchema,
+  canonicalPromotionCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
@@ -44,7 +44,7 @@ const rotatedKey: PayStateKey = runSync(
   parsePayStateKey("rotated-kid", Buffer.alloc(32, 3).toString("base64url"))
 );
 const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
-const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+const canonicalCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
   "SUMMER50"
 );
 const submittedCodeDiscountId = Schema.decodeUnknownSync(discountIdSchema)(

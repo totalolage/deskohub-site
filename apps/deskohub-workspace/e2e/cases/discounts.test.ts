@@ -57,7 +57,17 @@ test("reads discount details from the focused trigger's accessible description",
       config: {
         timeouts: workspaceE2ETimeouts,
       } as WorkspaceE2EConfig,
-      discounts: [calendarDiscountExpectation],
+      discounts: [
+        calendarDiscountExpectation,
+        {
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 10_000, exponent: 2, currency: "CZK" },
+          },
+          label: "Voucher",
+          redemptionState: "redeemed",
+        },
+      ],
       run,
       session: "discounts-test",
     })
@@ -67,6 +77,7 @@ test("reads discount details from the focused trigger's accessible description",
     "wait",
     "eval",
     "focus",
+    "wait",
     "wait",
   ]);
   expect(calls.at(0)?.at(4)).toContain("data-checkout-discount-details");
@@ -78,4 +89,6 @@ test("reads discount details from the focused trigger's accessible description",
   );
   expect(calls.at(3)?.at(4)).toContain('"e2e calendar sale"');
   expect(calls.at(3)?.at(4)).toContain('"20%"');
+  expect(calls.at(4)?.at(4)).toContain('"voucher"');
+  expect(calls.at(4)?.at(4)).toContain("CZK");
 });

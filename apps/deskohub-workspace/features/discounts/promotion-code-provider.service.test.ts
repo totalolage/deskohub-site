@@ -4,18 +4,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import {
-  CodeDiscountProvider,
-  type CodeDiscountProviderInput,
-} from "./code-discount-provider.service";
-import { canonicalDiscountCodeSchema } from "./contracts";
-import {
-  type DiscountCodeAvailability,
-  type DiscountCodeConfiguration,
-  DiscountCodeConfigurationError,
-} from "./discount-code";
-import type { IDiscountCodeRepository } from "./discount-code.repository";
-import { DiscountCodeRepositoryMock } from "./discount-code.repository.mock";
+import { canonicalPromotionCodeSchema } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import {
   DiscountDefinitionNotFoundError,
@@ -24,26 +13,45 @@ import {
 import { DiscountDefinitionRepositoryMock } from "./discount-definition.repository.mock";
 import {
   discountCodeIdSchema,
+  promotionCodeIdSchema,
   storedDiscountIdSchema,
+  voucherIdSchema,
 } from "./persistence-contracts";
+import {
+  type DiscountCodeAvailability,
+  type DiscountCodeConfiguration,
+  PromotionCodeConfigurationError,
+  type VoucherAvailability,
+  type VoucherConfiguration,
+} from "./promotion-code";
+import type { IPromotionCodeRepository } from "./promotion-code.repository";
+import { PromotionCodeRepositoryMock } from "./promotion-code.repository.mock";
+import {
+  PromotionCodeProvider,
+  type PromotionCodeProviderInput,
+} from "./promotion-code-provider.service";
 
 const nowInstant = Temporal.Instant.from("2026-07-15T12:00:00.000Z");
 const now = nowInstant.epochMilliseconds;
 const codeId = Schema.decodeUnknownSync(discountCodeIdSchema)(
   "019bfe6e-8ef0-7def-8b16-55cfbc82eda1"
 );
+const promotionCodeId = promotionCodeIdSchema.make(
+  "019bfe6e-8ef0-7def-8b16-55cfbc82ed9"
+);
+const voucherId = voucherIdSchema.make("019bfe6e-8ef0-7def-8b16-55cfbc82eda3");
 const secondCodeId = Schema.decodeUnknownSync(discountCodeIdSchema)(
   "019bfe6e-8ef0-7def-8b16-55cfbc82eda2"
 );
 const discountId = Schema.decodeUnknownSync(storedDiscountIdSchema)(
   "019bfe6e-8ef0-7def-8b16-55cfbc82edb7"
 );
-const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+const canonicalCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
   "SUMMER50"
 );
 const product = { kind: "cowork", tier: "basic" } as const;
 
-const input: CodeDiscountProviderInput = {
+const input: PromotionCodeProviderInput = {
   submittedCode: canonicalCode,
   dotyposCustomerId: "customer-1",
   locale: "en-US",
@@ -55,12 +63,27 @@ const configuration = (
   overrides: Partial<DiscountCodeConfiguration> = {}
 ): DiscountCodeConfiguration => ({
   id: codeId,
+  promotionCodeId,
+  kind: "discount",
   discountId,
   enabled: true,
   validFrom: null,
   validUntil: null,
   maxUses: null,
   maxUsesPerCustomer: null,
+  ...overrides,
+});
+
+const voucherConfiguration = (
+  overrides: Partial<VoucherConfiguration> = {}
+): VoucherConfiguration => ({
+  id: voucherId,
+  promotionCodeId,
+  kind: "voucher",
+  amount: { value: 10_000, exponent: 2, currency: "CZK" },
+  enabled: true,
+  validFrom: null,
+  validUntil: null,
   ...overrides,
 });
 
@@ -71,6 +94,16 @@ const availability = (
   customerAllowed: false,
   activeUseCount: 0,
   customerActiveUseCount: 0,
+  ...overrides,
+});
+
+const voucherAvailability = (
+  overrides: Partial<VoucherAvailability> = {}
+): VoucherAvailability => ({
+  allowlistSize: 0,
+  customerAllowed: false,
+  customerHasReserved: false,
+  usedValue: 0,
   ...overrides,
 });
 
@@ -87,31 +120,37 @@ const definition = (
   ...overrides,
 });
 
-const defaultFindByCode: IDiscountCodeRepository["findByCode"] = () =>
+const defaultFindByCode: IPromotionCodeRepository["findByCode"] = () =>
   Effect.succeed(Option.some(configuration()));
-const defaultLoadAvailability: IDiscountCodeRepository["loadAvailability"] =
+const defaultLoadAvailability: IPromotionCodeRepository["loadDiscountCodeAvailability"] =
   () => Effect.succeed(availability());
+const defaultLoadVoucherAvailability: IPromotionCodeRepository["loadVoucherAvailability"] =
+  () => Effect.succeed(voucherAvailability());
 const defaultLoadDefinition: IDiscountDefinitionRepository["loadById"] = () =>
   Effect.succeed(definition());
 
 const runWithProvider = <A, E>(
-  effect: Effect.Effect<A, E, CodeDiscountProvider>,
+  effect: Effect.Effect<A, E, PromotionCodeProvider>,
   options: {
-    readonly findByCode?: IDiscountCodeRepository["findByCode"];
-    readonly loadAvailability?: IDiscountCodeRepository["loadAvailability"];
+    readonly findByCode?: IPromotionCodeRepository["findByCode"];
+    readonly loadAvailability?: IPromotionCodeRepository["loadDiscountCodeAvailability"];
+    readonly loadVoucherAvailability?: IPromotionCodeRepository["loadVoucherAvailability"];
     readonly loadDefinition?: IDiscountDefinitionRepository["loadById"];
   } = {}
 ) =>
   effect.pipe(
     Effect.provide(
       Layer.mergeAll(
-        CodeDiscountProvider.Live.pipe(
+        PromotionCodeProvider.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
-              DiscountCodeRepositoryMock({
+              PromotionCodeRepositoryMock({
                 findByCode: options.findByCode ?? defaultFindByCode,
-                loadAvailability:
+                loadDiscountCodeAvailability:
                   options.loadAvailability ?? defaultLoadAvailability,
+                loadVoucherAvailability:
+                  options.loadVoucherAvailability ??
+                  defaultLoadVoucherAvailability,
               }),
               DiscountDefinitionRepositoryMock({
                 loadById: options.loadDefinition ?? defaultLoadDefinition,
@@ -125,14 +164,14 @@ const runWithProvider = <A, E>(
     Effect.runPromise
   );
 
-const resolve = (overrides: Partial<CodeDiscountProviderInput> = {}) =>
+const resolve = (overrides: Partial<PromotionCodeProviderInput> = {}) =>
   Effect.gen(function* () {
     yield* TestClock.setTime(now);
-    const provider = yield* CodeDiscountProvider;
+    const provider = yield* PromotionCodeProvider;
     return yield* provider.revalidate({ ...input, ...overrides });
   });
 
-describe("CodeDiscountProvider", () => {
+describe("PromotionCodeProvider", () => {
   test("returns no candidates and performs no reads when no code is submitted", async () => {
     const findByCode = mock(defaultFindByCode);
     const loadAvailability = mock(defaultLoadAvailability);
@@ -140,7 +179,7 @@ describe("CodeDiscountProvider", () => {
 
     const result = await runWithProvider(
       Effect.gen(function* () {
-        const provider = yield* CodeDiscountProvider;
+        const provider = yield* PromotionCodeProvider;
         return yield* provider.revalidate({
           ...input,
           submittedCode: undefined,
@@ -172,6 +211,7 @@ describe("CodeDiscountProvider", () => {
 
     expect(findByCode).toHaveBeenCalledWith({ code: canonicalCode });
     expect(loadAvailability).toHaveBeenCalledWith({
+      promotionCodeId,
       codeId,
       dotyposCustomerId: "customer-1",
     });
@@ -237,6 +277,51 @@ describe("CodeDiscountProvider", () => {
     });
     expect(result[0]?.discount).not.toHaveProperty("expiresAt");
     expect(result[0]?.discount).not.toHaveProperty("countdownStartsAt");
+  });
+
+  test("spends only the remaining voucher credit without loading a discount", async () => {
+    const loadDefinition = mock(defaultLoadDefinition);
+    const result = await runWithProvider(resolve(), {
+      findByCode: () => Effect.succeed(Option.some(voucherConfiguration())),
+      loadVoucherAvailability: () =>
+        Effect.succeed(voucherAvailability({ usedValue: 4_000 })),
+      loadDefinition,
+    });
+
+    expect(result[0]).toMatchObject({
+      discount: {
+        label: "Voucher",
+        adjustment: {
+          kind: "fixed",
+          amount: { value: 6_000, exponent: 2, currency: "CZK" },
+        },
+      },
+      provenance: {
+        providerNamespace: "database-voucher",
+        providerReference: voucherId,
+        details: { voucherId },
+      },
+      claim: {
+        kind: "voucher",
+        voucherId,
+        availableAmount: { value: 6_000, exponent: 2, currency: "CZK" },
+      },
+    });
+    expect(result[0]?.discount.id).not.toBe(voucherId);
+    expect(loadDefinition).not.toHaveBeenCalled();
+  });
+
+  test("rejects an exhausted voucher", async () => {
+    const result = await runWithProvider(resolve().pipe(Effect.result), {
+      findByCode: () => Effect.succeed(Option.some(voucherConfiguration())),
+      loadVoucherAvailability: () =>
+        Effect.succeed(voucherAvailability({ usedValue: 10_000 })),
+    });
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "usage_limit_reached", codeId: voucherId },
+    });
   });
 
   test.each([
@@ -322,7 +407,7 @@ describe("CodeDiscountProvider", () => {
     const first = await runWithProvider(resolve(), { findByCode });
     const second = await runWithProvider(
       resolve({
-        submittedCode: Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+        submittedCode: Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
           "WINTER50"
         ),
       }),
@@ -416,8 +501,8 @@ describe("CodeDiscountProvider", () => {
   });
 
   test("maps malformed persisted availability to configuration failure", async () => {
-    const cause = new DiscountCodeConfigurationError({
-      codeId,
+    const cause = new PromotionCodeConfigurationError({
+      promotionCodeId,
       message: "Malformed",
       cause: new Error("negative count"),
     });
@@ -439,7 +524,7 @@ describe("CodeDiscountProvider", () => {
     await runWithProvider(
       Effect.gen(function* () {
         yield* TestClock.setTime(now);
-        const provider = yield* CodeDiscountProvider;
+        const provider = yield* PromotionCodeProvider;
         yield* provider.revalidate(input);
         yield* provider.revalidate(input);
       }),

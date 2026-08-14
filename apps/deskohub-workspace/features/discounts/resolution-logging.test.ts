@@ -8,7 +8,7 @@ type DiscountResolutionFailureTag = Parameters<
 type ExpectedDiscountResolutionFailureTag =
   | "CalendarSaleConfigurationError"
   | "DiscountCalculationError"
-  | "DiscountCodeUnavailableError"
+  | "PromotionCodeUnavailableError"
   | "DiscountProviderError";
 
 type IsExact<Actual, Expected> = [Actual] extends [Expected]

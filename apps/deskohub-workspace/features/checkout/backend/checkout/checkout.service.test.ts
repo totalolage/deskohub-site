@@ -14,11 +14,11 @@ import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import type {
-  CanonicalDiscountCode,
+  CanonicalPromotionCode,
   DiscountQuote,
 } from "@/features/discounts/contracts";
 import {
-  canonicalDiscountCodeSchema,
+  canonicalPromotionCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { DiscountClaimError } from "@/features/discounts/errors";
@@ -100,7 +100,7 @@ const money = (value: number, currency = "CZK") => ({
 });
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
-const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
+const canonicalCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema);
 
 const application = {
   discount: {
@@ -192,7 +192,7 @@ const buildPayStateToken = (input: {
   readonly reservation?: typeof reservationData;
   readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
   Effect.runSync(
@@ -239,7 +239,7 @@ const buildMeetingRoomPayStateToken = (input: {
   readonly checkoutSessionId?: string;
   readonly quote?: ReturnType<typeof buildMeetingRoomQuote>;
   readonly reservation?: typeof meetingRoomReservationData;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
 }) =>
   Effect.runSync(
     Effect.gen(function* () {
@@ -425,7 +425,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly locale?: Locale;
   readonly acceptedQuote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly reservationOverrides?: ReservationOverrides;
   readonly requireCurrent?: ReturnType<typeof mock>;

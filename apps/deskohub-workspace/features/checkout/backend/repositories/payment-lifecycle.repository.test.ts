@@ -106,7 +106,7 @@ describe("PaymentLifecycleRepository", () => {
     const reserveClaim = sliceFrom(
       source,
       'const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")',
-      'const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")'
+      "const validateStoredDiscountClaim = Effect.fn("
     );
 
     expect(reserveClaim).toContain("return claimedAt");
@@ -142,7 +142,7 @@ describe("PaymentLifecycleRepository", () => {
     const reserveClaim = sliceFrom(
       source,
       'const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")',
-      'const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")'
+      'export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")'
     );
 
     expect(reserveClaim).toContain(".from(discountCodes)");
@@ -152,12 +152,14 @@ describe("PaymentLifecycleRepository", () => {
       'releaseReason: "reservation_expired_before_reuse"'
     );
     expect(reserveClaim.indexOf("Temporal.Now.instant()")).toBeGreaterThan(
-      reserveClaim.lastIndexOf('.for("update")')
+      reserveClaim.indexOf('.for("update")')
     );
     expect(reserveClaim).toContain(
       "Temporal.Instant.compare(input.reservationExpiresAt, claimedAt)"
     );
-    expect(reserveClaim).toContain("getDiscountCodeTiming(code.validUntil)");
+    expect(reserveClaim).toContain(
+      "getPromotionTiming(input.promotion.validUntil)"
+    );
     expect(reserveClaim).toContain(
       "currentDefinition.labels[input.locale] !=="
     );
@@ -174,7 +176,14 @@ describe("PaymentLifecycleRepository", () => {
     expect(reserveClaim).toContain("code.maxUsesPerCustomer !== null");
     expect(reserveClaim).toContain("customerUses?.count");
     expect(reserveClaim).not.toContain('"already_redeemed"');
+    expect(reserveClaim).toContain("validateVoucherClaim");
+    expect(reserveClaim).toContain("coalesce(sum(");
+    expect(reserveClaim).toContain("discountApplications.appliedAmountValue");
+    expect(reserveClaim.indexOf("validateVoucherClaim")).toBeLessThan(
+      reserveClaim.indexOf(".insert(discountCodeRedemptions)")
+    );
     expect(reserveClaim).toContain(".insert(discountCodeRedemptions)");
+    expect(reserveClaim).toContain(".insert(voucherRedemptions)");
   });
 
   test("redeems and releases claims inside the owning paid and terminal transactions", async () => {
@@ -204,7 +213,7 @@ describe("PaymentLifecycleRepository", () => {
     const source = await readRepository();
     const redeemClaim = sliceFrom(
       source,
-      'const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")',
+      'export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")',
       "const releaseCodeClaim"
     );
 
@@ -215,6 +224,18 @@ describe("PaymentLifecycleRepository", () => {
       'inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])'
     );
     expect(redeemClaim).toContain('reason: "usage_limit_reached"');
+    expect(redeemClaim).toContain(".from(vouchers)");
+    expect(redeemClaim).toContain("voucher.issuedAmountValue -");
+    expect(redeemClaim).toContain(".update(voucherRedemptions)");
+  });
+
+  test("matches promotion claim variants explicitly", async () => {
+    const source = await readRepository();
+
+    expect(source).not.toContain('claim?.kind === "discount_code" ?');
+    expect(source).not.toContain('yield* input.claim.kind === "discount_code"');
+    expect(source).not.toContain('yield* stored.kind === "discount_code"');
+    expect(source).not.toContain('yield* claim.kind === "discount"');
   });
 
   test("rejects inconsistent committed money before opening a transaction", async () => {

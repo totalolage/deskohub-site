@@ -89,15 +89,18 @@ export function DiscountCodeCreationForm({
     event.preventDefault();
     setError(null);
     const formData = new FormData(event.currentTarget);
-    const discount: CreateCustomerDiscountCodeAdminInput["discount"] =
-      discountKind === "existing"
-        ? {
-            kind: "existing",
-            discountId: Schema.decodeUnknownSync(storedDiscountIdSchema)(
-              formData.get("discountId")?.toString()
-            ),
-          }
-        : { kind: "new", discount: readDiscountForm(formData) };
+    const discount: CreateCustomerDiscountCodeAdminInput["discount"] = {
+      existing: () => ({
+        kind: "existing" as const,
+        discountId: Schema.decodeUnknownSync(storedDiscountIdSchema)(
+          formData.get("discountId")?.toString()
+        ),
+      }),
+      new: () => ({
+        kind: "new" as const,
+        discount: readDiscountForm(formData),
+      }),
+    }[discountKind]();
     const code = readDiscountCodeConfigurationForm(formData);
     if (customerId) {
       execute({
@@ -107,7 +110,11 @@ export function DiscountCodeCreationForm({
         discount,
       });
     } else {
-      execute({ kind: "create-code", code, discount });
+      execute({
+        kind: "create-code",
+        code,
+        discount,
+      });
     }
   };
 
@@ -166,7 +173,7 @@ export function DiscountCodeCreationForm({
       </fieldset>
 
       <div className="mt-6">
-        {discountKind === "existing" ? (
+        {discountKind === "existing" && (
           <Label className="grid gap-2">
             <span>Discount</span>
             <select
@@ -181,16 +188,15 @@ export function DiscountCodeCreationForm({
               ))}
             </select>
           </Label>
-        ) : (
-          <DiscountDefinitionFields />
         )}
+        {discountKind === "new" && <DiscountDefinitionFields />}
       </div>
 
       <div className="my-7 border-t border-navy-blue/10" />
       <div>
         <h2 className="text-lg">Code details</h2>
         <p className="mb-4 mt-1 text-sm text-navy-blue/65">
-          Set the code, availability window, and optional usage limit.
+          Set the code and its availability window.
         </p>
         <DiscountCodeConfigurationFields />
       </div>

@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import { workspaceProductTargets } from "@/features/discounts/product-target";
-import { readDiscountCodeForm, readDiscountForm } from "./form-input";
+import {
+  readDiscountCodeForm,
+  readDiscountForm,
+  readVoucherCreditForm,
+} from "./form-input";
 
 describe("discount administration form input", () => {
   test("converts a percentage value to stored basis points", () => {
@@ -41,6 +45,18 @@ describe("discount administration form input", () => {
       code: "SUMMER10",
       validFrom: "2026-08-01T08:00:00Z",
       validUntil: "2026-09-01T08:00:00Z",
+    });
+  });
+
+  test("reads voucher credit in the selected catalog currency", () => {
+    const formData = new FormData();
+    formData.set("voucherValue", "10000");
+    formData.set("voucherCurrency", "czk");
+
+    expect(readVoucherCreditForm(formData)).toEqual({
+      value: 10_000,
+      exponent: 2,
+      currency: "CZK",
     });
   });
 });

@@ -14,8 +14,8 @@ import type { WorkspaceProductIdentity } from "@/features/checkout/product-ident
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
-import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
 import { getDiscountCommitmentPayload } from "./commitment";
+import { PromotionCodeProviderMock } from "./promotion-code-provider.service.mock";
 
 type LogAnnotations = Context.Service.Shape<
   typeof References.CurrentLogAnnotations
@@ -24,7 +24,7 @@ type LogAnnotations = Context.Service.Shape<
 import {
   type ActiveSale,
   affirmedDiscountAdvertisementQuoteCodec,
-  canonicalDiscountCodeSchema,
+  canonicalPromotionCodeSchema,
   type Discount,
   type DiscountAdvertisementInput,
   discountIdSchema,
@@ -37,7 +37,7 @@ import {
 } from "./discount.service";
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
 import { DiscountReleaseGateServiceMock } from "./discount-release-gate.service.mock";
-import { DiscountCodeUnavailableError, DiscountProviderError } from "./errors";
+import { DiscountProviderError, PromotionCodeUnavailableError } from "./errors";
 import {
   discountCodeIdSchema,
   storedDiscountIdSchema,
@@ -65,7 +65,7 @@ const advertisementInput: DiscountAdvertisementInput = {
 const paymentInput: DisplayedDiscountAffirmationInput = {
   ...advertisementInput,
   dotyposCustomerId: "customer-1",
-  submittedCode: Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+  submittedCode: Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
     "SAVE20"
   ),
   displayedDiscountIds: [],
@@ -128,7 +128,7 @@ const runWithProviders = <A, E>(
   providers: Layer.Layer<
     | import("./calendar-discount-provider.service").CalendarDiscountProvider
     | import("./customer-discount-provider.service").CustomerDiscountProvider
-    | import("./code-discount-provider.service").CodeDiscountProvider
+    | import("./promotion-code-provider.service").PromotionCodeProvider
   >,
   releaseGates: Layer.Layer<
     import("./discount-release-gate.service").DiscountReleaseGateService
@@ -159,7 +159,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ discoverActiveSales }),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock()
+      PromotionCodeProviderMock()
     );
 
     const result = await runWithProviders(
@@ -204,7 +204,7 @@ describe("DiscountService", () => {
           ),
       }),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock()
+      PromotionCodeProviderMock()
     );
 
     const result = await runWithProviders(
@@ -255,7 +255,7 @@ describe("DiscountService", () => {
       CustomerDiscountProviderMock({
         resolve: () => waitForEveryProvider("customer"),
       }),
-      CodeDiscountProviderMock({
+      PromotionCodeProviderMock({
         revalidate: () => waitForEveryProvider("code"),
       })
     );
@@ -288,7 +288,7 @@ describe("DiscountService", () => {
         resolve: () =>
           Effect.succeed([percentage("customer", 500, "customer")]),
       }),
-      CodeDiscountProviderMock({
+      PromotionCodeProviderMock({
         revalidate: () =>
           Effect.succeed([
             candidate("code", { kind: "fixed", amount: money(1000) }, "code"),
@@ -331,7 +331,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock({ revalidate: codeRevalidate })
+      PromotionCodeProviderMock({ revalidate: codeRevalidate })
     );
     const baseQuote = discountQuoteCodec.make({
       product,
@@ -393,7 +393,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock({ revalidate: codeRevalidate })
+      PromotionCodeProviderMock({ revalidate: codeRevalidate })
     );
     const evaluate = mock(() =>
       Effect.succeed({ calendarSales, customerDiscounts, discountCodes })
@@ -426,7 +426,7 @@ describe("DiscountService", () => {
       expect(result).toMatchObject({
         _tag: "Failure",
         failure: {
-          _tag: "DiscountCodeUnavailableError",
+          _tag: "PromotionCodeUnavailableError",
           reason: "feature_disabled",
         },
       });
@@ -437,10 +437,10 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock({
+      PromotionCodeProviderMock({
         revalidate: () =>
           Effect.fail(
-            new DiscountCodeUnavailableError({
+            new PromotionCodeUnavailableError({
               reason: "already_redeemed",
               message: "Already redeemed.",
             })
@@ -466,7 +466,7 @@ describe("DiscountService", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "DiscountCodeUnavailableError",
+        _tag: "PromotionCodeUnavailableError",
         reason: "already_redeemed",
       },
     });
@@ -477,7 +477,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock({ revalidate: codeRevalidate })
+      PromotionCodeProviderMock({ revalidate: codeRevalidate })
     );
     const exhaustedQuote = discountQuoteCodec.make({
       product,
@@ -513,7 +513,7 @@ describe("DiscountService", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "DiscountCodeUnavailableError",
+        _tag: "PromotionCodeUnavailableError",
         reason: "no_eligible_subtotal",
       },
     });
@@ -523,7 +523,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock({
+      PromotionCodeProviderMock({
         revalidate: () => Effect.succeed([percentage("code", 1, "code")]),
       })
     );
@@ -553,7 +553,7 @@ describe("DiscountService", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "DiscountCodeUnavailableError",
+        _tag: "PromotionCodeUnavailableError",
         reason: "no_eligible_subtotal",
       },
     });
@@ -568,7 +568,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ discover: calendarDiscover }),
       CustomerDiscountProviderMock({ resolve: customerResolve }),
-      CodeDiscountProviderMock({ revalidate: codeRevalidate })
+      PromotionCodeProviderMock({ revalidate: codeRevalidate })
     );
 
     const result = await runWithProviders(
@@ -611,7 +611,7 @@ describe("DiscountService", () => {
         [providerOperation]: () => Effect.fail(failure),
       }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({
+      PromotionCodeProviderMock({
         revalidate: () => Effect.succeed([]),
       })
     );
@@ -653,7 +653,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ revalidate: calendarRevalidate }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({ revalidate: () => Effect.succeed([]) })
+      PromotionCodeProviderMock({ revalidate: () => Effect.succeed([]) })
     );
 
     const result = await runWithProviders(
@@ -678,7 +678,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ revalidate: calendarRevalidate }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({ revalidate: () => Effect.succeed([]) })
+      PromotionCodeProviderMock({ revalidate: () => Effect.succeed([]) })
     );
 
     await runWithProviders(
@@ -704,7 +704,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ discover: calendarDiscover }),
       CustomerDiscountProviderMock({ resolve: customerResolve }),
-      CodeDiscountProviderMock({ revalidate: codeRevalidate })
+      PromotionCodeProviderMock({ revalidate: codeRevalidate })
     );
     const affirmedAdvertisement = affirmedDiscountAdvertisementQuoteCodec.make({
       product,
@@ -792,7 +792,7 @@ describe("DiscountService", () => {
         revalidate: calendarRevalidate,
       }),
       CustomerDiscountProviderMock({ resolve: customerResolve }),
-      CodeDiscountProviderMock({ revalidate: codeRevalidate })
+      PromotionCodeProviderMock({ revalidate: codeRevalidate })
     );
 
     const appliedIds = await runWithProviders(
@@ -888,7 +888,7 @@ describe("DiscountService", () => {
           Effect.succeed([percentage("calendar", 1000, "calendar")]),
       }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({ revalidate: () => Effect.succeed([]) })
+      PromotionCodeProviderMock({ revalidate: () => Effect.succeed([]) })
     );
 
     const result = await runWithProviders(
@@ -919,7 +919,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ revalidate: calendarRevalidate }),
       CustomerDiscountProviderMock({ resolve: customerResolve }),
-      CodeDiscountProviderMock({ revalidate: codeRevalidate })
+      PromotionCodeProviderMock({ revalidate: codeRevalidate })
     );
     const failingFeatureFlags = WorkspaceFeatureFlagServiceMock({
       evaluateFlags: () =>
@@ -974,7 +974,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ revalidate: () => Effect.succeed([]) }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({
+      PromotionCodeProviderMock({
         revalidate: () => Effect.succeed([codeCandidate]),
       })
     );
@@ -1028,7 +1028,7 @@ describe("DiscountService", () => {
           Effect.succeed([percentage("full", 10_000, "calendar")]),
       }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({
+      PromotionCodeProviderMock({
         revalidate: () => Effect.succeed([codeCandidate]),
       })
     );
@@ -1068,7 +1068,7 @@ describe("DiscountService", () => {
           ]),
       }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({ revalidate: () => Effect.succeed([]) })
+      PromotionCodeProviderMock({ revalidate: () => Effect.succeed([]) })
     );
 
     const result = await runWithProviders(
@@ -1091,7 +1091,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ revalidate: () => Effect.succeed([]) }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({ revalidate: () => Effect.succeed([]) })
+      PromotionCodeProviderMock({ revalidate: () => Effect.succeed([]) })
     );
 
     const result = await runWithProviders(
@@ -1134,7 +1134,7 @@ describe("DiscountService", () => {
         resolve: () =>
           Effect.succeed([percentage("customer", 1000, "customer")]),
       }),
-      CodeDiscountProviderMock({
+      PromotionCodeProviderMock({
         revalidate: () => Effect.succeed([percentage("code", 2000, "code")]),
       })
     );
@@ -1179,7 +1179,7 @@ describe("DiscountService", () => {
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ revalidate: () => failureEffect }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
-      CodeDiscountProviderMock({ revalidate: () => Effect.succeed([]) })
+      PromotionCodeProviderMock({ revalidate: () => Effect.succeed([]) })
     );
 
     const exit = await runWithProviders(

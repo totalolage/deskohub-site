@@ -6,9 +6,12 @@ Use the authenticated Workspace administration UI or `dhw` commands for ordinary
 
 - Create or update a discount with its complete locale labels, one adjustment, and at least one reservation-family target.
 - Code creation may create its discount atomically or reference an existing discount.
-- Code scheduling, enablement, global and per-customer use limits, and customer audience belong to the code rather than its shared discount. An omitted limit is unlimited in that dimension.
+- A voucher is a separate promotional-credit resource, never a purchasable product or a variant of `discount_codes`. It has no discount definition or use-count limit; expose issued and remaining credit rather than calling them unlimited.
+- Discount codes and vouchers use separate child tables and claim ledgers. A shared `promotion_codes` registry owns their globally unique entered value, scheduling, enablement, and customer audience.
+- The voucher rollout is an expand/backfill release: `discount_codes` common fields and `discount_code_customers` remain as synchronized compatibility mirrors for overlapping old deployments. Remove those mirrors and their migration triggers only in a later contract release.
+- Global and per-customer use limits belong to the ordinary discount-code child rather than its shared discount. An omitted limit is unlimited in that dimension.
 - An empty audience is unrestricted. Removing the last customer therefore broadens access and requires explicit confirmation.
-- Deleting a discount or code must fail when immutable applications or claims require it for historical attribution. Prefer disabling a code.
+- Deleting a discount code or voucher must fail when immutable claims require it for historical attribution. Prefer disabling the promotion.
 - Customer discount-group changes and administration-session changes are explicit confirmed mutations.
 
 Every CLI mutation carries a client-generated request identity. Persist and replay its result per administration session so retrying an ambiguous transport failure cannot apply the same mutation twice.
@@ -19,7 +22,7 @@ Create and validate the discount definition before associating it with a schedul
 
 ## Evidence and diagnosis
 
-Discount applications and code claims are immutable operational evidence. Inspect them through allowlisted administration projections. Do not repair them through ordinary mutation commands or direct edits; use a reviewed migration or dedicated repair workflow.
+Discount applications and code claims are immutable operational evidence. For vouchers, show each claim's applied money and derive remaining credit from issued value minus reserved and redeemed applications; released claims restore availability without rewriting history. Inspect evidence through allowlisted administration projections. Do not repair it through ordinary mutation commands or direct edits; use a reviewed migration or dedicated repair workflow.
 
 For production diagnostics or database repair, read the Workspace operations skill and preserve its redaction and staged-release rules.
 

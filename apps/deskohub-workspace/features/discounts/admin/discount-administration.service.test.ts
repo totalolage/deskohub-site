@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   findDiscountAdminConflict,
   getAdminDiscountCodeUsage,
+  voucherDenominationCanChange,
 } from "./discount-administration.service";
 
 describe("discount administration read models", () => {
@@ -36,16 +37,33 @@ describe("discount administration read models", () => {
 });
 
 describe("discount administration conflicts", () => {
+  test("keeps voucher denomination immutable after released claim history", () => {
+    expect(
+      voucherDenominationCanChange({
+        claimCount: 1,
+        current: { exponent: 2, currency: "CZK" },
+        updated: { exponent: 2, currency: "EUR" },
+      })
+    ).toBe(false);
+    expect(
+      voucherDenominationCanChange({
+        claimCount: 0,
+        current: { exponent: 2, currency: "CZK" },
+        updated: { exponent: 2, currency: "EUR" },
+      })
+    ).toBe(true);
+  });
+
   test("recognizes durable code and reference constraint failures", () => {
     expect(
       findDiscountAdminConflict({
         cause: {
-          constraint: "discount_codes_code_unique_idx",
+          constraint: "promotion_codes_code_unique_idx",
         },
       })
     ).toMatchObject({
       _tag: "DiscountAdminConflictError",
-      message: "A discount code with this value already exists.",
+      message: "A promotion code with this value already exists.",
     });
     expect(
       findDiscountAdminConflict({
@@ -59,6 +77,22 @@ describe("discount administration conflicts", () => {
       _tag: "DiscountAdminConflictError",
       message:
         "This discount is still referenced by a discount code and cannot be deleted.",
+    });
+    expect(
+      findDiscountAdminConflict({
+        constraint: "discount_code_redemptions_code_id_discount_codes_id_fk",
+      })
+    ).toMatchObject({
+      _tag: "DiscountAdminConflictError",
+      message: "This discount code has claims and cannot be deleted.",
+    });
+    expect(
+      findDiscountAdminConflict({
+        constraint: "voucher_redemptions_voucher_id_vouchers_id_fkey",
+      })
+    ).toMatchObject({
+      _tag: "DiscountAdminConflictError",
+      message: "This voucher has claims and cannot be deleted.",
     });
     expect(findDiscountAdminConflict(new Error("database unavailable"))).toBe(
       undefined

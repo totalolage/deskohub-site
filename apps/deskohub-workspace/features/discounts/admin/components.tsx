@@ -11,15 +11,18 @@ import {
   CalendarSalesAdminTable,
   DiscountCodesAdminTable,
   type DiscountTableItem,
+  VouchersAdminTable,
 } from "./admin-tables";
 import {
   DiscountCodeCreationDialog,
   SaleDiscountCreationDialog,
+  VoucherCreationDialog,
 } from "./creation-dialogs";
 import type {
   DiscountAdminCodesPage,
   DiscountAdminDashboard,
   DiscountAdminSalesPage,
+  DiscountAdminVouchersPage,
 } from "./discount-administration.service";
 
 type DiscountAdministrationProps<Dashboard> = {
@@ -75,6 +78,35 @@ export function CodesAdministrationCollection({
         <EmptyState message="No discount codes yet." />
       ) : (
         <DiscountCodesAdminTable codes={codes} discounts={discounts} />
+      )}
+    </section>
+  );
+}
+
+export function VouchersAdministrationActions() {
+  return <VoucherCreationDialog />;
+}
+
+export function VouchersAdministrationCollection({
+  dashboard,
+}: {
+  readonly dashboard: DiscountAdminVouchersPage;
+}) {
+  return (
+    <section aria-labelledby="vouchers-heading">
+      <h2 className="sr-only" id="vouchers-heading">
+        Vouchers
+      </h2>
+      {dashboard.vouchers.length === 0 ? (
+        <EmptyState message="No vouchers yet." />
+      ) : (
+        <VouchersAdminTable
+          vouchers={dashboard.vouchers.map((voucher) => ({
+            ...voucher,
+            validFrom: voucher.validFrom?.toString() ?? null,
+            validUntil: voucher.validUntil?.toString() ?? null,
+          }))}
+        />
       )}
     </section>
   );

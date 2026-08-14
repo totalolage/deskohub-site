@@ -22,7 +22,7 @@ Overlapping valid sales may all participate in pricing. The home-page banner is 
 
 ## Discount codes
 
-Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain between 3 and 64 characters. A code owns:
+Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain between 3 and 64 characters. An ordinary discount code owns:
 
 - whether it is enabled;
 - an optional inclusive start and exclusive end;
@@ -32,7 +32,17 @@ Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain 
 
 Omitting either use limit makes that dimension unlimited. Existing codes with a finite global limit retain one use per customer; existing globally unlimited codes remain unlimited per customer. An empty customer allowlist means the code is open to every customer; adding the first customer makes it restricted.
 
-Disabling a code is preferred to deleting it when historical applications or redemptions exist. Removing every customer from an allowlist makes the code unrestricted again, so that change must be deliberate.
+## Vouchers
+
+A voucher is a promotional credit entity, not a discount code and not a product that customers can buy. It owns positive issued credit and has no discount definition. Vouchers and discount codes share only the promotion-code namespace, syntax, enablement, validity window, and optional customer allowlist so one entered value can never resolve ambiguously.
+
+A voucher has no use-count limit or per-customer redemption limit, applies to every product family, and may be reused while matching-currency credit remains. Checkout applies at most the smaller of the remaining credit and the current discountable subtotal and shows the localized generic label “Voucher”.
+
+Available credit is the issued value minus reserved and redeemed applications. Entering a voucher does not reserve credit. Final payment admission locks and rechecks it; a failed, cancelled, or expired payment releases its reservation, while a paid claim permanently consumes the exact applied amount. Concurrent checkouts can therefore never spend more than the issued value.
+
+Disabling a discount code or voucher is preferred to deleting it when historical applications or redemptions exist. Removing every customer from an allowlist makes the promotion unrestricted again, so that change must be deliberate.
+
+Administration exposes discount codes and vouchers as separate resources. Both the Admin UI and `dhw` support creating, inspecting, replacing, disabling, changing validity and audience, and deleting unused vouchers. Issued credit cannot be reduced below reserved and redeemed value, and its currency or exponent cannot change after any credit has been reserved or spent.
 
 ## Customer experience
 
@@ -44,6 +54,6 @@ A bounded discount may show a localized expiry countdown near the end of its act
 
 ## Usage evidence
 
-Accepted discounts are snapshotted with their resolved label and applied amount. Code capacity includes reserved and redeemed claims; a released claim no longer consumes capacity but remains part of operational history.
+Accepted discounts are snapshotted with their resolved label and applied amount. Ordinary-code capacity and voucher credit both include reserved and redeemed claims; a released claim consumes neither but remains part of operational history.
 
 Application and redemption evidence is immutable. Corrections require a reviewed repair process and must never be achieved by editing completed customer history in place.

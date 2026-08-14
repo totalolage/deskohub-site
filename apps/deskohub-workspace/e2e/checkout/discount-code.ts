@@ -47,7 +47,7 @@ export const applyUnavailableDiscountCode = ({
       waitForBrowserTextContent(
         run,
         session,
-        "That discount code isn’t available. Check it and try again, or continue with the current price.",
+        "That discount code or voucher isn’t available. Check it and try again, or continue with the current price.",
         { timeoutMs: config.timeouts.uiTransition }
       )
     )

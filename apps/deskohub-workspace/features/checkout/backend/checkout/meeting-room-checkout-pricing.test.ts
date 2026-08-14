@@ -7,7 +7,7 @@ import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
-  canonicalDiscountCodeSchema,
+  canonicalPromotionCodeSchema,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
   discountQuoteCodec,
@@ -30,7 +30,7 @@ const discountId = Schema.decodeUnknownSync(discountIdSchema)("summer-sale");
 const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
   "customer-id"
 );
-const submittedCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+const submittedCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
   "SAVE20"
 );
 

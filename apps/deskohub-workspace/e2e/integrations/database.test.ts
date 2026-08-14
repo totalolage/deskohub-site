@@ -391,7 +391,53 @@ test("accepts the catalog money exponent in persisted discount applications", ()
           subtotal_before_value: 35_000,
         },
       ],
-      [{ basisPoints: 1000, label: "Customer discount" }],
+      [
+        {
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          label: "Customer discount",
+        },
+      ],
+      "CZK"
+    )
+  ).not.toThrow();
+});
+
+test("accepts a fixed voucher that leaves a positive payment balance", () => {
+  expect(() =>
+    assertDiscountApplications(
+      [
+        {
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 10_000, exponent: 2, currency: "CZK" },
+          },
+          applied_amount_currency: "CZK",
+          applied_amount_exponent: 2,
+          applied_amount_value: 10_000,
+          countdown_starts_at: null,
+          expires_at: null,
+          label: "Voucher",
+          redeemed_at: new Date("2099-07-24T12:00:00.000Z"),
+          redemption_state: "redeemed",
+          sequence: 0,
+          subtotal_after_currency: "CZK",
+          subtotal_after_exponent: 2,
+          subtotal_after_value: 18_000,
+          subtotal_before_currency: "CZK",
+          subtotal_before_exponent: 2,
+          subtotal_before_value: 28_000,
+        },
+      ],
+      [
+        {
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 10_000, exponent: 2, currency: "CZK" },
+          },
+          label: "Voucher",
+          redemptionState: "redeemed",
+        },
+      ],
       "CZK"
     )
   ).not.toThrow();

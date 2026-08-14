@@ -19,10 +19,12 @@ const executeDiscountAdminActionMutation = Effect.fn(
   "DiscountAdministration.executeActionMutation"
 )(function* (input: DiscountAdminMutation) {
   const result = yield* executeDiscountAdminMutation(input);
-  const customerPath =
-    input.kind === "create-customer-code"
-      ? `/admin/customers/${input.customerId}`
-      : null;
+  let customerPath: string | null = null;
+  if (input.kind === "create-customer-code") {
+    customerPath = `/admin/customers/${input.customerId}`;
+  } else if (input.kind === "create-customer-voucher") {
+    customerPath = `/admin/customers/${input.voucher.customerId}`;
+  }
   yield* Option.fromNullOr(customerPath).pipe(
     Option.match({
       onNone: () => Effect.void,
@@ -54,6 +56,25 @@ const executeDiscountAdminActionMutation = Effect.fn(
         () => "Customer removed from the code audience."
       ),
       Match.when("make-code-unrestricted", () => "Code made unrestricted."),
+      Match.when("create-voucher", () => "Voucher created."),
+      Match.when(
+        "create-customer-voucher",
+        () => "Voucher created for this customer."
+      ),
+      Match.when("update-voucher", () => "Voucher updated."),
+      Match.when("delete-voucher", () => "Voucher deleted."),
+      Match.when(
+        "add-voucher-customer",
+        () => "Customer added to the voucher audience."
+      ),
+      Match.when(
+        "remove-voucher-customer",
+        () => "Customer removed from the voucher audience."
+      ),
+      Match.when(
+        "make-voucher-unrestricted",
+        () => "Voucher made unrestricted."
+      ),
       Match.when(
         "set-customer-discount-group",
         () => "Customer discount group updated."

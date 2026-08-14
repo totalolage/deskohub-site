@@ -360,9 +360,10 @@ production Neon branch, then promote the ready deployment.
 ## Discount fixtures
 
 Before browser cases start, the runner upserts source-neutral discount
-definitions, targets, and code configurations into the exact preview database.
-It does not insert application or redemption history: those records must be
-created only by the deployed checkout lifecycle.
+definitions, targets, promotion-code registry rows, ordinary discount-code
+children, and voucher children into the exact preview database. It does not
+insert application, discount-code claim, or voucher claim history: those
+records must be created only by the deployed checkout lifecycle.
 
 The stable Calendar event and its database definition cover Calendar-only and
 Calendar-plus-code checkout. Dedicated immutable code rows cover valid,
@@ -402,6 +403,12 @@ zero-total checkout, then exercise a second customer or reservation against
 the consumed code. Capacity limits advance from retained active audit history
 on reruns; the suite never deletes application or redemption records.
 
+The voucher case issues enough credit for two zero-total reservations, reuses
+the same promotional voucher for both, verifies two rows in
+`voucher_redemptions` totaling the immutable issued credit, and then proves a
+third submission is unavailable. Its fixture derives issued credit from prior
+reserved and redeemed voucher applications so reruns preserve audit history.
+
 Every case uses a unique customer. Dates come from the run's deterministic
 allocation shard. Basic cases may share a date up to the documented capacity
 of four; Plus and Profi Calendar dates stay disjoint from Basic and from one
@@ -432,6 +439,7 @@ or unreliable to manufacture through shared external systems.
 | Calendar + customer, Calendar + code, or customer + code | Completed payment and applications persisted in source-neutral order |
 | Calendar + customer + code | Completed payment and all three applications persisted in order |
 | Code reduces total to zero | Internal paid attempt, redeemed claim, fulfillment, no Nexi page |
+| Voucher is partially spent, reused, and exhausted | Two internal paid attempts for the same customer, two redeemed claims totaling the issued credit, then the generic unavailable error |
 | Invalid syntax, unknown, inactive, not started, or already expired code | One generic field error; existing summary remains usable; no payment state |
 | Customer-ineligible or product-ineligible code | One generic field error; no application or claim |
 | Capacity exhausted or already redeemed by the same customer | A real first redemption followed by the rejected customer attempt |

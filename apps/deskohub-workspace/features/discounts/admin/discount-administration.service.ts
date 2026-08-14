@@ -16,7 +16,7 @@ import {
   type GoogleCalendarICalUid,
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
   Context,
@@ -29,20 +29,31 @@ import {
   Schema,
 } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
-import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
 import {
   type DiscountCode,
   type DiscountCodeClaimState,
   type DiscountCodeRedemption,
   type DiscountLabels,
   type DiscountProductTarget,
-  discountCodeCustomers,
+  discountApplications,
   discountCodes,
   discountProductTargets,
   discounts,
+  type PromotionCode,
+  promotionCodeCustomers,
+  promotionCodes,
   type StoredDiscount,
+  type Voucher,
+  type VoucherRedemption,
+  voucherRedemptions,
+  vouchers,
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -59,15 +70,19 @@ import {
   type DiscountCodeId,
   type StoredDiscountId,
   storedDiscountIdSchema,
+  type VoucherClaimId,
+  type VoucherId,
 } from "../persistence-contracts";
 import type {
   CreateCustomerDiscountCodeAdminInput,
+  CreateCustomerVoucherAdminInput,
   CreateDiscountAdminInput,
-  CreateDiscountCodeAdminInput,
   CreateManagedDiscountCodeAdminInput,
+  CreateVoucherAdminInput,
   DiscountAdminCustomerSearch,
   UpdateDiscountAdminInput,
   UpdateDiscountCodeAdminInput,
+  UpdateVoucherAdminInput,
 } from "./contracts";
 
 export type AdminDiscount = {
@@ -98,6 +113,22 @@ export type AdminDiscountCode = {
   readonly updatedAt: Temporal.Instant;
 };
 
+export type AdminVoucher = {
+  readonly id: VoucherId;
+  readonly issuedCredit: WorkspaceMoney;
+  readonly remainingCredit: WorkspaceMoney;
+  readonly code: string;
+  readonly enabled: boolean;
+  readonly validFrom: Temporal.Instant | null;
+  readonly validUntil: Temporal.Instant | null;
+  readonly audienceSize: number;
+  readonly reservedUses: number;
+  readonly redeemedUses: number;
+  readonly releasedUses: number;
+  readonly createdAt: Temporal.Instant;
+  readonly updatedAt: Temporal.Instant;
+};
+
 export type AdminDotyposCustomer = {
   readonly id: DotyposCustomerId;
   readonly displayName: string;
@@ -119,6 +150,7 @@ export type AdminDiscountCodeClaim = {
   readonly state: DiscountCodeClaimState;
   readonly paymentAttemptId: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
+  readonly appliedAmount: WorkspaceMoney;
   readonly reservationExpiresAt: Temporal.Instant;
   readonly reservedAt: Temporal.Instant;
   readonly redeemedAt: Temporal.Instant | null;
@@ -136,6 +168,20 @@ export type AdminDiscountCodeDetail = {
   readonly claims: readonly AdminDiscountCodeClaim[];
 };
 
+export type AdminVoucherClaim = Omit<
+  AdminDiscountCodeClaim,
+  "id" | "codeId"
+> & {
+  readonly id: VoucherClaimId;
+  readonly voucherId: VoucherId;
+};
+
+export type AdminVoucherDetail = {
+  readonly voucher: AdminVoucher;
+  readonly customers: AdminDiscountCodeDetail["customers"];
+  readonly claims: readonly AdminVoucherClaim[];
+};
+
 export type AdminCustomerCode = AdminDiscountCode & {
   readonly discountAdjustment: DiscountAdjustment;
   readonly discountLabel: string;
@@ -147,6 +193,8 @@ export type AdminCustomerProfile = {
   readonly discountGroups: readonly AdminDiscountGroup[];
   readonly codes: readonly AdminCustomerCode[];
   readonly claims: readonly AdminDiscountCodeClaim[];
+  readonly vouchers: readonly (AdminVoucher & { readonly eligible: boolean })[];
+  readonly voucherClaims: readonly AdminVoucherClaim[];
 };
 
 export type AdminCustomerCodeCreation = {
@@ -184,6 +232,7 @@ export type AdminCalendarSale = {
 export type DiscountAdminDashboard = {
   readonly discounts: readonly AdminDiscount[];
   readonly codes: readonly AdminDiscountCode[];
+  readonly vouchers: readonly AdminVoucher[];
   readonly calendar: {
     readonly events: readonly AdminCalendarSale[];
     readonly unavailable: boolean;
@@ -198,6 +247,11 @@ export type DiscountAdminCodesPage = Pick<
   "codes" | "discounts"
 >;
 
+export type DiscountAdminVouchersPage = Pick<
+  DiscountAdminDashboard,
+  "vouchers"
+>;
+
 export type DiscountAdminSalesPage = Pick<
   DiscountAdminDashboard,
   "calendar" | "discounts"
@@ -210,6 +264,10 @@ export interface IDiscountAdministration {
   >;
   readonly loadCodesPage: () => Effect.Effect<
     DiscountAdminCodesPage,
+    EffectDrizzleQueryError | SqlError
+  >;
+  readonly loadVouchersPage: () => Effect.Effect<
+    DiscountAdminVouchersPage,
     EffectDrizzleQueryError | SqlError
   >;
   readonly loadSalesPage: () => Effect.Effect<
@@ -272,6 +330,48 @@ export interface IDiscountAdministration {
     | SqlError
     | DiscountAdminNotFoundError
     | DiscountAdminConflictError
+  >;
+  readonly createVoucher: (
+    input: CreateVoucherAdminInput
+  ) => Effect.Effect<
+    VoucherId,
+    EffectDrizzleQueryError | SqlError | DiscountAdminConflictError
+  >;
+  readonly createCustomerVoucher: (
+    input: CreateCustomerVoucherAdminInput
+  ) => Effect.Effect<
+    VoucherId,
+    | EffectDrizzleQueryError
+    | SqlError
+    | ExternalAPIError
+    | NetworkError
+    | ValidationError
+    | DiscountAdminNotFoundError
+    | DiscountAdminConflictError
+  >;
+  readonly updateVoucher: (
+    input: UpdateVoucherAdminInput
+  ) => Effect.Effect<
+    void,
+    | EffectDrizzleQueryError
+    | SqlError
+    | DiscountAdminNotFoundError
+    | DiscountAdminConflictError
+  >;
+  readonly deleteVoucher: (input: {
+    readonly id: VoucherId;
+  }) => Effect.Effect<
+    void,
+    | EffectDrizzleQueryError
+    | SqlError
+    | DiscountAdminNotFoundError
+    | DiscountAdminConflictError
+  >;
+  readonly loadVoucherDetail: (input: {
+    readonly voucherId: VoucherId;
+  }) => Effect.Effect<
+    AdminVoucherDetail,
+    EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
   >;
   readonly loadCodeDetail: (input: {
     readonly codeId: DiscountCodeId;
@@ -340,6 +440,34 @@ export interface IDiscountAdministration {
   >;
   readonly makeCodeUnrestricted: (input: {
     readonly codeId: DiscountCodeId;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
+  >;
+  readonly addVoucherCustomer: (input: {
+    readonly voucherId: VoucherId;
+    readonly customerId: DotyposCustomerId;
+  }) => Effect.Effect<
+    void,
+    | EffectDrizzleQueryError
+    | SqlError
+    | ExternalAPIError
+    | NetworkError
+    | ValidationError
+    | DiscountAdminNotFoundError
+  >;
+  readonly removeVoucherCustomer: (input: {
+    readonly voucherId: VoucherId;
+    readonly customerId: DotyposCustomerId;
+  }) => Effect.Effect<
+    void,
+    | EffectDrizzleQueryError
+    | SqlError
+    | DiscountAdminNotFoundError
+    | DiscountAdminAudienceError
+  >;
+  readonly makeVoucherUnrestricted: (input: {
+    readonly voucherId: VoucherId;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
@@ -428,8 +556,8 @@ export class DiscountAdministration extends Context.Service<
         db.query.discountCodes
           .findMany({
             with: {
-              customers: {},
-              redemptions: {},
+              promotion: { with: { customers: {} } },
+              redemptions: { with: { application: {} } },
             },
           })
           .pipe(
@@ -439,6 +567,26 @@ export class DiscountAdministration extends Context.Service<
                 .toSorted((left, right) => left.code.localeCompare(right.code))
             )
           )
+      );
+
+      const loadVouchers = Effect.fn("DiscountAdministration.loadVouchers")(
+        () =>
+          db.query.vouchers
+            .findMany({
+              with: {
+                promotion: { with: { customers: {} } },
+                redemptions: { with: { application: {} } },
+              },
+            })
+            .pipe(
+              Effect.map((rows) =>
+                rows
+                  .map(toAdminVoucher)
+                  .toSorted((left, right) =>
+                    left.code.localeCompare(right.code)
+                  )
+              )
+            )
       );
 
       const loadCodesPage = Effect.fn("DiscountAdministration.loadCodesPage")(
@@ -451,6 +599,10 @@ export class DiscountAdministration extends Context.Service<
             { concurrency: 2 }
           )
       );
+
+      const loadVouchersPage = Effect.fn(
+        "DiscountAdministration.loadVouchersPage"
+      )(() => loadVouchers().pipe(Effect.map((vouchers) => ({ vouchers }))));
 
       const loadSalesPage = Effect.fn("DiscountAdministration.loadSalesPage")(
         () =>
@@ -467,7 +619,14 @@ export class DiscountAdministration extends Context.Service<
 
       const loadDashboard = Effect.fn("DiscountAdministration.loadDashboard")(
         () =>
-          loadCodesPage().pipe(
+          Effect.all({
+            codesPage: loadCodesPage(),
+            vouchers: loadVouchers(),
+          }).pipe(
+            Effect.map(({ codesPage, vouchers }) => ({
+              ...codesPage,
+              vouchers,
+            })),
             Effect.bind("calendar", ({ discounts }) =>
               loadCalendarDashboard({
                 calendar,
@@ -475,10 +634,11 @@ export class DiscountAdministration extends Context.Service<
                 salesCalendarId,
               })
             ),
-            Effect.map(({ calendar, codes, discounts }) => ({
+            Effect.map(({ calendar, codes, discounts, vouchers }) => ({
               calendar,
               codes,
               discounts,
+              vouchers,
             }))
           )
       );
@@ -586,9 +746,27 @@ export class DiscountAdministration extends Context.Service<
                     }),
                 })
               );
+              const [promotion] = yield* tx
+                .insert(promotionCodes)
+                .values({
+                  kind: "discount",
+                  ...toPromotionCodeValues(input.code),
+                })
+                .returning({ id: promotionCodes.id });
+              if (!promotion) {
+                return yield* Effect.die(
+                  new Error("Promotion insert returned no identifier.")
+                );
+              }
               const codeRows = yield* tx
                 .insert(discountCodes)
-                .values(toDiscountCodeValues({ ...input.code, discountId }))
+                .values({
+                  ...toPromotionCodeValues(input.code),
+                  promotionCodeId: promotion.id,
+                  discountId,
+                  maxUses: input.code.maxUses,
+                  maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+                })
                 .returning({ id: discountCodes.id });
               const codeRow = codeRows[0];
               return codeRow
@@ -645,9 +823,27 @@ export class DiscountAdministration extends Context.Service<
                   }),
               })
             );
+            const [promotion] = yield* tx
+              .insert(promotionCodes)
+              .values({
+                kind: "discount",
+                ...toPromotionCodeValues(input.code),
+              })
+              .returning({ id: promotionCodes.id });
+            if (!promotion) {
+              return yield* Effect.die(
+                new Error("Promotion insert returned no identifier.")
+              );
+            }
             const codeRows = yield* tx
               .insert(discountCodes)
-              .values(toDiscountCodeValues({ ...input.code, discountId }))
+              .values({
+                ...toPromotionCodeValues(input.code),
+                promotionCodeId: promotion.id,
+                discountId,
+                maxUses: input.code.maxUses,
+                maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+              })
               .returning({ id: discountCodes.id });
             const codeRow = codeRows[0];
             if (!codeRow) {
@@ -655,8 +851,8 @@ export class DiscountAdministration extends Context.Service<
                 new Error("Discount code insert returned no identifier.")
               );
             }
-            yield* tx.insert(discountCodeCustomers).values({
-              codeId: codeRow.id,
+            yield* tx.insert(promotionCodeCustomers).values({
+              promotionCodeId: promotion.id,
               dotyposCustomerId: input.customerId,
             });
             return codeRow.id;
@@ -666,38 +862,69 @@ export class DiscountAdministration extends Context.Service<
 
       const updateCode = Effect.fn("DiscountAdministration.updateCode")(
         (input: UpdateDiscountCodeAdminInput) =>
-          db
-            .update(discountCodes)
-            .set({
-              ...toDiscountCodeValues(input),
-              updatedAt: Temporal.Now.instant(),
-            })
-            .where(eq(discountCodes.id, input.id))
-            .returning({ id: discountCodes.id })
-            .pipe(
-              Effect.flatMap((rows) =>
-                requireUpdatedRow(rows, {
-                  kind: "discount code",
-                  id: input.id,
+          db.transaction((tx) =>
+            Effect.gen(function* () {
+              const rows = yield* tx
+                .select({
+                  id: discountCodes.id,
+                  promotionCodeId: discountCodes.promotionCodeId,
                 })
-              )
-            )
+                .from(discountCodes)
+                .where(eq(discountCodes.id, input.id))
+                .limit(1)
+                .for("update");
+              yield* requireUpdatedRow(rows, {
+                kind: "discount code",
+                id: input.id,
+              });
+              yield* tx
+                .update(discountCodes)
+                .set({
+                  ...toPromotionCodeValues(input),
+                  discountId: input.discountId,
+                  maxUses: input.maxUses,
+                  ...(input.maxUsesPerCustomer !== undefined && {
+                    maxUsesPerCustomer: input.maxUsesPerCustomer,
+                  }),
+                  updatedAt: Temporal.Now.instant(),
+                })
+                .where(eq(discountCodes.id, input.id));
+              yield* tx
+                .update(promotionCodes)
+                .set({
+                  ...toPromotionCodeValues(input),
+                  updatedAt: Temporal.Now.instant(),
+                })
+                .where(eq(promotionCodes.id, rows[0]!.promotionCodeId));
+            })
+          )
       );
 
       const deleteCode = Effect.fn("DiscountAdministration.deleteCode")(
         (input: DeleteCodeInput) =>
-          db
-            .delete(discountCodes)
-            .where(eq(discountCodes.id, input.id))
-            .returning({ id: discountCodes.id })
-            .pipe(
-              Effect.flatMap((rows) =>
-                requireUpdatedRow(rows, {
-                  kind: "discount code",
-                  id: input.id,
-                })
+          db.transaction((tx) =>
+            tx
+              .select({
+                id: discountCodes.id,
+                promotionCodeId: discountCodes.promotionCodeId,
+              })
+              .from(discountCodes)
+              .where(eq(discountCodes.id, input.id))
+              .for("update")
+              .pipe(
+                Effect.flatMap((rows) =>
+                  requireUpdatedRow(rows, {
+                    kind: "discount code",
+                    id: input.id,
+                  })
+                ),
+                Effect.flatMap((row) =>
+                  tx
+                    .delete(promotionCodes)
+                    .where(eq(promotionCodes.id, row.promotionCodeId))
+                )
               )
-            )
+          )
       );
 
       const loadCodeDetail = Effect.fn("DiscountAdministration.loadCodeDetail")(
@@ -706,7 +933,7 @@ export class DiscountAdministration extends Context.Service<
             .findFirst({
               where: { id: { eq: input.codeId } },
               with: {
-                customers: {},
+                promotion: { with: { customers: {} } },
                 discount: {},
                 redemptions: {
                   with: {
@@ -732,7 +959,7 @@ export class DiscountAdministration extends Context.Service<
               Effect.bindTo("row"),
               Effect.bind("customers", ({ row }) =>
                 Effect.forEach(
-                  row.customers,
+                  row.promotion.customers,
                   ({ dotyposCustomerId }) =>
                     dotypos.getCustomer(dotyposCustomerId).pipe(
                       Effect.map(toAdminDotyposCustomer),
@@ -756,6 +983,200 @@ export class DiscountAdministration extends Context.Service<
                   ),
               }))
             )
+      );
+
+      const insertVoucher = Effect.fn("DiscountAdministration.insertVoucher")(
+        function* (tx: TransactionClient, input: CreateVoucherAdminInput) {
+          const [promotion] = yield* tx
+            .insert(promotionCodes)
+            .values({ kind: "voucher", ...toPromotionCodeValues(input) })
+            .returning({ id: promotionCodes.id });
+          if (!promotion) {
+            return yield* Effect.die(
+              new Error("Promotion insert returned no identifier.")
+            );
+          }
+          const [voucher] = yield* tx
+            .insert(vouchers)
+            .values({
+              promotionCodeId: promotion.id,
+              issuedAmountValue: input.credit.value,
+              issuedAmountExponent: input.credit.exponent,
+              issuedAmountCurrency: input.credit.currency,
+            })
+            .returning({ id: vouchers.id });
+          if (!voucher) {
+            return yield* Effect.die(
+              new Error("Voucher insert returned no identifier.")
+            );
+          }
+          return { promotionCodeId: promotion.id, voucherId: voucher.id };
+        }
+      );
+
+      const createVoucher = Effect.fn("DiscountAdministration.createVoucher")(
+        (input: CreateVoucherAdminInput) =>
+          db.transaction((tx) =>
+            insertVoucher(tx, input).pipe(
+              Effect.map(({ voucherId }) => voucherId)
+            )
+          )
+      );
+
+      const createCustomerVoucher = Effect.fn(
+        "DiscountAdministration.createCustomerVoucher"
+      )(function* (input: CreateCustomerVoucherAdminInput) {
+        yield* loadActiveCustomer(input.customerId);
+        return yield* db.transaction((tx) =>
+          Effect.gen(function* () {
+            const created = yield* insertVoucher(tx, input);
+            yield* tx.insert(promotionCodeCustomers).values({
+              promotionCodeId: created.promotionCodeId,
+              dotyposCustomerId: input.customerId,
+            });
+            return created.voucherId;
+          })
+        );
+      });
+
+      const updateVoucher = Effect.fn("DiscountAdministration.updateVoucher")(
+        (input: UpdateVoucherAdminInput) =>
+          db.transaction((tx) =>
+            Effect.gen(function* () {
+              const row = yield* tx
+                .select()
+                .from(vouchers)
+                .where(eq(vouchers.id, input.id))
+                .limit(1)
+                .for("update")
+                .pipe(
+                  Effect.flatMap((rows) =>
+                    requireUpdatedRow(rows, { kind: "voucher", id: input.id })
+                  )
+                );
+              const [usage] = yield* tx
+                .select({
+                  claimCount: sql<number>`count(*)::integer`,
+                  value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}) filter (where ${voucherRedemptions.state} in ('reserved', 'redeemed')), 0)::integer`,
+                })
+                .from(voucherRedemptions)
+                .innerJoin(
+                  discountApplications,
+                  eq(discountApplications.id, voucherRedemptions.applicationId)
+                )
+                .where(eq(voucherRedemptions.voucherId, input.id));
+              const usedValue = usage?.value ?? 0;
+              if (usedValue > input.credit.value) {
+                return yield* new DiscountAdminConflictError({
+                  message:
+                    "Voucher credit cannot be lower than its reserved and redeemed value.",
+                });
+              }
+              if (
+                !voucherDenominationCanChange({
+                  claimCount: usage?.claimCount ?? 0,
+                  current: {
+                    exponent: row.issuedAmountExponent,
+                    currency: row.issuedAmountCurrency,
+                  },
+                  updated: input.credit,
+                })
+              ) {
+                return yield* new DiscountAdminConflictError({
+                  message:
+                    "Voucher currency cannot change after it has claim history.",
+                });
+              }
+              const updatedAt = Temporal.Now.instant();
+              yield* tx
+                .update(vouchers)
+                .set({
+                  issuedAmountValue: input.credit.value,
+                  issuedAmountExponent: input.credit.exponent,
+                  issuedAmountCurrency: input.credit.currency,
+                  updatedAt,
+                })
+                .where(eq(vouchers.id, input.id));
+              yield* tx
+                .update(promotionCodes)
+                .set({ ...toPromotionCodeValues(input), updatedAt })
+                .where(eq(promotionCodes.id, row.promotionCodeId));
+            })
+          )
+      );
+
+      const deleteVoucher = Effect.fn("DiscountAdministration.deleteVoucher")(
+        (input: { readonly id: VoucherId }) =>
+          db.transaction((tx) =>
+            tx
+              .select({
+                id: vouchers.id,
+                promotionCodeId: vouchers.promotionCodeId,
+              })
+              .from(vouchers)
+              .where(eq(vouchers.id, input.id))
+              .for("update")
+              .pipe(
+                Effect.flatMap((rows) =>
+                  requireUpdatedRow(rows, { kind: "voucher", id: input.id })
+                ),
+                Effect.flatMap((row) =>
+                  tx
+                    .delete(promotionCodes)
+                    .where(eq(promotionCodes.id, row.promotionCodeId))
+                )
+              )
+          )
+      );
+
+      const loadVoucherDetail = Effect.fn(
+        "DiscountAdministration.loadVoucherDetail"
+      )((input: { readonly voucherId: VoucherId }) =>
+        db.query.vouchers
+          .findFirst({
+            where: { id: { eq: input.voucherId } },
+            with: {
+              promotion: { with: { customers: {} } },
+              redemptions: { with: { application: {} } },
+            },
+          })
+          .pipe(
+            Effect.flatMap((row) =>
+              row
+                ? Effect.succeed(row)
+                : Effect.fail(
+                    new DiscountAdminNotFoundError({
+                      resource: { kind: "voucher", id: input.voucherId },
+                      message: "The voucher no longer exists.",
+                    })
+                  )
+            ),
+            Effect.bindTo("row"),
+            Effect.bind("customers", ({ row }) =>
+              Effect.forEach(
+                row.promotion.customers,
+                ({ dotyposCustomerId }) =>
+                  dotypos.getCustomer(dotyposCustomerId).pipe(
+                    Effect.map(toAdminDotyposCustomer),
+                    Effect.orElseSucceed(() => null),
+                    Effect.map((customer) => ({
+                      customerId: dotyposCustomerId,
+                      customer,
+                    }))
+                  ),
+                { concurrency: 5 }
+              )
+            ),
+            Effect.map(({ customers, row }) => ({
+              voucher: toAdminVoucher(row),
+              customers,
+              claims: row.redemptions
+                .map(toAdminVoucherClaim)
+                .toSorted((left, right) =>
+                  Temporal.Instant.compare(right.reservedAt, left.reservedAt)
+                ),
+            }))
+          )
       );
 
       const searchCustomers = Effect.fn(
@@ -782,7 +1203,7 @@ export class DiscountAdministration extends Context.Service<
           discountGroups: dotypos.getDiscountGroups(),
           codeRows: db.query.discountCodes.findMany({
             with: {
-              customers: {},
+              promotion: { with: { customers: {} } },
               discount: {},
               redemptions: {
                 with: {
@@ -791,8 +1212,14 @@ export class DiscountAdministration extends Context.Service<
               },
             },
           }),
+          voucherRows: db.query.vouchers.findMany({
+            with: {
+              promotion: { with: { customers: {} } },
+              redemptions: { with: { application: {} } },
+            },
+          }),
         }).pipe(
-          Effect.map(({ codeRows, customer, discountGroups }) => ({
+          Effect.map(({ codeRows, customer, discountGroups, voucherRows }) => ({
             customer: toAdminDotyposCustomer(customer),
             discountGroups: discountGroups
               .flatMap(toAdminDiscountGroup)
@@ -802,7 +1229,7 @@ export class DiscountAdministration extends Context.Service<
                 ...toAdminDiscountCode(row),
                 discountAdjustment: toDiscountAdjustment(row.discount),
                 discountLabel: row.discount.labels["en-US"],
-                eligible: row.customers.some(
+                eligible: row.promotion.customers.some(
                   ({ dotyposCustomerId }) =>
                     dotyposCustomerId === input.customerId
                 ),
@@ -816,6 +1243,27 @@ export class DiscountAdministration extends Context.Service<
                       dotyposCustomerId === input.customerId
                   )
                   .map(toAdminDiscountCodeClaim)
+              )
+              .toSorted((left, right) =>
+                Temporal.Instant.compare(right.reservedAt, left.reservedAt)
+              ),
+            vouchers: voucherRows
+              .map((row) => ({
+                ...toAdminVoucher(row),
+                eligible: row.promotion.customers.some(
+                  ({ dotyposCustomerId }) =>
+                    dotyposCustomerId === input.customerId
+                ),
+              }))
+              .toSorted((left, right) => left.code.localeCompare(right.code)),
+            voucherClaims: voucherRows
+              .flatMap((row) =>
+                row.redemptions
+                  .filter(
+                    ({ dotyposCustomerId }) =>
+                      dotyposCustomerId === input.customerId
+                  )
+                  .map(toAdminVoucherClaim)
               )
               .toSorted((left, right) =>
                 Temporal.Instant.compare(right.reservedAt, left.reservedAt)
@@ -860,18 +1308,21 @@ export class DiscountAdministration extends Context.Service<
         yield* db.transaction((tx) =>
           Effect.gen(function* () {
             const codeRows = yield* tx
-              .select({ id: discountCodes.id })
+              .select({
+                id: discountCodes.id,
+                promotionCodeId: discountCodes.promotionCodeId,
+              })
               .from(discountCodes)
               .where(eq(discountCodes.id, input.codeId))
               .for("update");
-            yield* requireUpdatedRow(codeRows, {
+            const code = yield* requireUpdatedRow(codeRows, {
               kind: "discount code",
               id: input.codeId,
             });
             yield* tx
-              .insert(discountCodeCustomers)
+              .insert(promotionCodeCustomers)
               .values({
-                codeId: input.codeId,
+                promotionCodeId: code.promotionCodeId,
                 dotyposCustomerId: input.customerId,
               })
               .onConflictDoNothing();
@@ -889,20 +1340,28 @@ export class DiscountAdministration extends Context.Service<
           db.transaction((tx) =>
             Effect.gen(function* () {
               const codeRows = yield* tx
-                .select({ id: discountCodes.id })
+                .select({
+                  id: discountCodes.id,
+                  promotionCodeId: discountCodes.promotionCodeId,
+                })
                 .from(discountCodes)
                 .where(eq(discountCodes.id, input.codeId))
                 .for("update");
-              yield* requireUpdatedRow(codeRows, {
+              const code = yield* requireUpdatedRow(codeRows, {
                 kind: "discount code",
                 id: input.codeId,
               });
               const audience = yield* tx
                 .select({
-                  customerId: discountCodeCustomers.dotyposCustomerId,
+                  customerId: promotionCodeCustomers.dotyposCustomerId,
                 })
-                .from(discountCodeCustomers)
-                .where(eq(discountCodeCustomers.codeId, input.codeId));
+                .from(promotionCodeCustomers)
+                .where(
+                  eq(
+                    promotionCodeCustomers.promotionCodeId,
+                    code.promotionCodeId
+                  )
+                );
               if (
                 !audience.some(
                   ({ customerId }) => customerId === input.customerId
@@ -923,12 +1382,15 @@ export class DiscountAdministration extends Context.Service<
                 });
               }
               yield* tx
-                .delete(discountCodeCustomers)
+                .delete(promotionCodeCustomers)
                 .where(
                   and(
-                    eq(discountCodeCustomers.codeId, input.codeId),
                     eq(
-                      discountCodeCustomers.dotyposCustomerId,
+                      promotionCodeCustomers.promotionCodeId,
+                      code.promotionCodeId
+                    ),
+                    eq(
+                      promotionCodeCustomers.dotyposCustomerId,
                       input.customerId
                     )
                   )
@@ -943,18 +1405,136 @@ export class DiscountAdministration extends Context.Service<
         db.transaction((tx) =>
           Effect.gen(function* () {
             const codeRows = yield* tx
-              .select({ id: discountCodes.id })
+              .select({
+                id: discountCodes.id,
+                promotionCodeId: discountCodes.promotionCodeId,
+              })
               .from(discountCodes)
               .where(eq(discountCodes.id, input.codeId))
               .for("update");
-            yield* requireUpdatedRow(codeRows, {
+            const code = yield* requireUpdatedRow(codeRows, {
               kind: "discount code",
               id: input.codeId,
             });
             yield* tx
-              .delete(discountCodeCustomers)
-              .where(eq(discountCodeCustomers.codeId, input.codeId));
+              .delete(promotionCodeCustomers)
+              .where(
+                eq(promotionCodeCustomers.promotionCodeId, code.promotionCodeId)
+              );
           })
+        )
+      );
+
+      const loadVoucherPromotionId = Effect.fn(
+        "DiscountAdministration.loadVoucherPromotionId"
+      )((tx: TransactionClient, voucherId: VoucherId) =>
+        tx
+          .select({
+            id: vouchers.id,
+            promotionCodeId: vouchers.promotionCodeId,
+          })
+          .from(vouchers)
+          .where(eq(vouchers.id, voucherId))
+          .for("update")
+          .pipe(
+            Effect.flatMap((rows) =>
+              requireUpdatedRow(rows, { kind: "voucher", id: voucherId })
+            ),
+            Effect.map(({ promotionCodeId }) => promotionCodeId)
+          )
+      );
+
+      const addVoucherCustomer = Effect.fn(
+        "DiscountAdministration.addVoucherCustomer"
+      )(function* (input: {
+        readonly voucherId: VoucherId;
+        readonly customerId: DotyposCustomerId;
+      }) {
+        yield* loadActiveCustomer(input.customerId);
+        yield* db.transaction((tx) =>
+          loadVoucherPromotionId(tx, input.voucherId).pipe(
+            Effect.flatMap((promotionCodeId) =>
+              tx
+                .insert(promotionCodeCustomers)
+                .values({
+                  promotionCodeId,
+                  dotyposCustomerId: input.customerId,
+                })
+                .onConflictDoNothing()
+            )
+          )
+        );
+      });
+
+      const removeVoucherCustomer = Effect.fn(
+        "DiscountAdministration.removeVoucherCustomer"
+      )(
+        (input: {
+          readonly voucherId: VoucherId;
+          readonly customerId: DotyposCustomerId;
+        }) =>
+          db.transaction((tx) =>
+            Effect.gen(function* () {
+              const promotionCodeId = yield* loadVoucherPromotionId(
+                tx,
+                input.voucherId
+              );
+              const audience = yield* tx
+                .select({
+                  customerId: promotionCodeCustomers.dotyposCustomerId,
+                })
+                .from(promotionCodeCustomers)
+                .where(
+                  eq(promotionCodeCustomers.promotionCodeId, promotionCodeId)
+                );
+              if (
+                !audience.some(
+                  ({ customerId }) => customerId === input.customerId
+                )
+              ) {
+                return yield* new DiscountAdminNotFoundError({
+                  resource: {
+                    kind: "voucher audience membership",
+                    id: input.customerId,
+                  },
+                  message:
+                    "This customer is no longer in the voucher audience.",
+                });
+              }
+              if (audience.length === 1) {
+                return yield* new DiscountAdminAudienceError({
+                  message:
+                    "Removing the final customer would make this voucher unrestricted. Use Make unrestricted instead.",
+                });
+              }
+              yield* tx
+                .delete(promotionCodeCustomers)
+                .where(
+                  and(
+                    eq(promotionCodeCustomers.promotionCodeId, promotionCodeId),
+                    eq(
+                      promotionCodeCustomers.dotyposCustomerId,
+                      input.customerId
+                    )
+                  )
+                );
+            })
+          )
+      );
+
+      const makeVoucherUnrestricted = Effect.fn(
+        "DiscountAdministration.makeVoucherUnrestricted"
+      )((input: { readonly voucherId: VoucherId }) =>
+        db.transaction((tx) =>
+          loadVoucherPromotionId(tx, input.voucherId).pipe(
+            Effect.flatMap((promotionCodeId) =>
+              tx
+                .delete(promotionCodeCustomers)
+                .where(
+                  eq(promotionCodeCustomers.promotionCodeId, promotionCodeId)
+                )
+            )
+          )
         )
       );
 
@@ -1000,11 +1580,15 @@ export class DiscountAdministration extends Context.Service<
 
       return {
         addCodeCustomer,
+        addVoucherCustomer,
         createCode: withDiscountAdminConflict(createCode),
         createCustomerCode: withDiscountAdminConflict(createCustomerCode),
+        createCustomerVoucher: withDiscountAdminConflict(createCustomerVoucher),
         createDiscount,
+        createVoucher: withDiscountAdminConflict(createVoucher),
         deleteCode: withDiscountAdminConflict(deleteCode),
         deleteDiscount: withDiscountAdminConflict(deleteDiscount),
+        deleteVoucher: withDiscountAdminConflict(deleteVoucher),
         loadCodeDetail,
         loadCodesPage,
         loadCustomerCodeCreation,
@@ -1012,12 +1596,17 @@ export class DiscountAdministration extends Context.Service<
         loadCustomerProfile,
         loadDashboard,
         loadSalesPage,
+        loadVoucherDetail,
+        loadVouchersPage,
         makeCodeUnrestricted,
+        makeVoucherUnrestricted,
         removeCodeCustomer,
+        removeVoucherCustomer,
         searchCustomers,
         setCustomerDiscountGroup,
         updateCode: withDiscountAdminConflict(updateCode),
         updateDiscount,
+        updateVoucher: withDiscountAdminConflict(updateVoucher),
       } satisfies IDiscountAdministration;
     })
   );
@@ -1026,6 +1615,7 @@ export class DiscountAdministration extends Context.Service<
 type DiscountAdminMissingResource =
   | { readonly kind: "discount"; readonly id: StoredDiscountId }
   | { readonly kind: "discount code"; readonly id: DiscountCodeId }
+  | { readonly kind: "voucher"; readonly id: VoucherId }
   | {
       readonly kind: "Dotypos customer";
       readonly id: DotyposCustomerId;
@@ -1036,6 +1626,10 @@ type DiscountAdminMissingResource =
     }
   | {
       readonly kind: "code audience membership";
+      readonly id: DotyposCustomerId;
+    }
+  | {
+      readonly kind: "voucher audience membership";
       readonly id: DotyposCustomerId;
     };
 
@@ -1060,8 +1654,8 @@ export class DiscountAdminConflictError extends Data.TaggedError(
 
 const discountAdminConstraintMessages = new Map([
   [
-    "discount_codes_code_unique_idx",
-    "A discount code with this value already exists.",
+    "promotion_codes_code_unique_idx",
+    "A promotion code with this value already exists.",
   ],
   [
     "discount_codes_discount_id_discounts_id_fk",
@@ -1070,6 +1664,14 @@ const discountAdminConstraintMessages = new Map([
   [
     "discount_code_redemptions_code_id_discount_codes_id_fk",
     "This discount code has claims and cannot be deleted.",
+  ],
+  [
+    "discount_code_redemptions_code_kind_fk",
+    "This discount code has claims and cannot be deleted.",
+  ],
+  [
+    "voucher_redemptions_voucher_id_vouchers_id_fkey",
+    "This voucher has claims and cannot be deleted.",
   ],
 ]);
 
@@ -1122,10 +1724,18 @@ type AdminDiscountRow = StoredDiscount & {
 };
 
 type AdminDiscountCodeRow = DiscountCode & {
-  readonly customers: readonly {
-    readonly dotyposCustomerId: DotyposCustomerId;
-  }[];
-  readonly redemptions: readonly DiscountCodeRedemption[];
+  readonly promotion: PromotionCode & {
+    readonly customers: readonly {
+      readonly dotyposCustomerId: DotyposCustomerId;
+    }[];
+  };
+  readonly redemptions: readonly (DiscountCodeRedemption & {
+    readonly application: {
+      readonly appliedAmountValue: number;
+      readonly appliedAmountExponent: number;
+      readonly appliedAmountCurrency: string;
+    };
+  })[];
 };
 
 const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
@@ -1133,20 +1743,67 @@ const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
     maxUses: row.maxUses,
     states: row.redemptions.map(({ state }) => state),
   });
-
   return {
     id: row.id,
     discountId: row.discountId,
-    code: String(row.code),
-    enabled: row.enabled,
-    validFrom: row.validFrom,
-    validUntil: row.validUntil,
+    code: String(row.promotion.code),
+    enabled: row.promotion.enabled,
+    validFrom: row.promotion.validFrom,
+    validUntil: row.promotion.validUntil,
     maxUses: row.maxUses,
     maxUsesPerCustomer: row.maxUsesPerCustomer,
-    audienceSize: row.customers.length,
+    audienceSize: row.promotion.customers.length,
     ...usage,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
+    createdAt: row.promotion.createdAt,
+    updatedAt: row.promotion.updatedAt,
+  };
+};
+
+type AdminVoucherRow = Voucher & {
+  readonly promotion: PromotionCode & {
+    readonly customers: readonly {
+      readonly dotyposCustomerId: DotyposCustomerId;
+    }[];
+  };
+  readonly redemptions: readonly (VoucherRedemption & {
+    readonly application: {
+      readonly appliedAmountValue: number;
+      readonly appliedAmountExponent: number;
+      readonly appliedAmountCurrency: string;
+    };
+  })[];
+};
+
+const toAdminVoucher = (row: AdminVoucherRow): AdminVoucher => {
+  const issuedCredit = {
+    value: row.issuedAmountValue,
+    exponent: row.issuedAmountExponent,
+    currency: row.issuedAmountCurrency,
+  };
+  const usedValue = row.redemptions
+    .filter(({ state }) => state === "reserved" || state === "redeemed")
+    .reduce((total, claim) => total + claim.application.appliedAmountValue, 0);
+  const usage = getAdminDiscountCodeUsage({
+    maxUses: null,
+    states: row.redemptions.map(({ state }) => state),
+  });
+  return {
+    id: row.id,
+    code: String(row.promotion.code),
+    enabled: row.promotion.enabled,
+    validFrom: row.promotion.validFrom,
+    validUntil: row.promotion.validUntil,
+    issuedCredit,
+    remainingCredit: {
+      ...issuedCredit,
+      value: Math.max(0, issuedCredit.value - usedValue),
+    },
+    audienceSize: row.promotion.customers.length,
+    reservedUses: usage.reservedUses,
+    redeemedUses: usage.redeemedUses,
+    releasedUses: usage.releasedUses,
+    createdAt: row.promotion.createdAt,
+    updatedAt: row.promotion.updatedAt,
   };
 };
 
@@ -1174,6 +1831,15 @@ export const getAdminDiscountCodeUsage = (input: {
         : Math.max(0, input.maxUses - reservedUses - redeemedUses),
   };
 };
+
+export const voucherDenominationCanChange = (input: {
+  readonly claimCount: number;
+  readonly current: Pick<WorkspaceMoney, "currency" | "exponent">;
+  readonly updated: Pick<WorkspaceMoney, "currency" | "exponent">;
+}) =>
+  input.claimCount === 0 ||
+  (input.current.currency === input.updated.currency &&
+    input.current.exponent === input.updated.exponent);
 
 const toAdminDotyposCustomer = (
   customer: DotyposCustomer
@@ -1230,6 +1896,9 @@ const toAdminDiscountCodeClaim = (
   row: DiscountCodeRedemption & {
     readonly application: {
       readonly workspaceReservationId: WorkspaceReservationId;
+      readonly appliedAmountValue: number;
+      readonly appliedAmountExponent: number;
+      readonly appliedAmountCurrency: string;
     };
   }
 ): AdminDiscountCodeClaim => ({
@@ -1239,6 +1908,39 @@ const toAdminDiscountCodeClaim = (
   state: row.state,
   paymentAttemptId: row.paymentAttemptId,
   workspaceReservationId: row.application.workspaceReservationId,
+  appliedAmount: {
+    value: row.application.appliedAmountValue,
+    exponent: row.application.appliedAmountExponent,
+    currency: row.application.appliedAmountCurrency,
+  },
+  reservationExpiresAt: row.reservationExpiresAt,
+  reservedAt: row.reservedAt,
+  redeemedAt: row.redeemedAt,
+  releasedAt: row.releasedAt,
+  releaseReason: row.releaseReason,
+});
+
+const toAdminVoucherClaim = (
+  row: VoucherRedemption & {
+    readonly application: {
+      readonly workspaceReservationId: WorkspaceReservationId;
+      readonly appliedAmountValue: number;
+      readonly appliedAmountExponent: number;
+      readonly appliedAmountCurrency: string;
+    };
+  }
+): AdminVoucherClaim => ({
+  id: row.id,
+  voucherId: row.voucherId,
+  dotyposCustomerId: row.dotyposCustomerId,
+  state: row.state,
+  paymentAttemptId: row.paymentAttemptId,
+  workspaceReservationId: row.application.workspaceReservationId,
+  appliedAmount: {
+    value: row.application.appliedAmountValue,
+    exponent: row.application.appliedAmountExponent,
+    currency: row.application.appliedAmountCurrency,
+  },
   reservationExpiresAt: row.reservationExpiresAt,
   reservedAt: row.reservedAt,
   redeemedAt: row.redeemedAt,
@@ -1300,33 +2002,40 @@ const toDiscountProductTargetRows = (
   productTargets: readonly WorkspaceProductTarget[]
 ) => productTargets.map((productTarget) => ({ discountId, productTarget }));
 
-const toDiscountCodeValues = (
-  input: CreateDiscountCodeAdminInput | UpdateDiscountCodeAdminInput
+const toPromotionCodeValues = (
+  input:
+    | CreateManagedDiscountCodeAdminInput["code"]
+    | UpdateDiscountCodeAdminInput
+    | CreateVoucherAdminInput
+    | CreateCustomerVoucherAdminInput
+    | UpdateVoucherAdminInput
 ) => ({
   code: sensitiveDatabaseParameter(input.code),
-  discountId: input.discountId,
   enabled: input.enabled,
   validFrom:
     input.validFrom === null ? null : Temporal.Instant.from(input.validFrom),
   validUntil:
     input.validUntil === null ? null : Temporal.Instant.from(input.validUntil),
-  maxUses: input.maxUses,
-  ...(input.maxUsesPerCustomer !== undefined && {
-    maxUsesPerCustomer: input.maxUsesPerCustomer,
-  }),
 });
+
+type TransactionClient = Parameters<
+  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
+>[0];
 
 type PersistedDiscountResource = Extract<
   DiscountAdminMissingResource,
-  { readonly kind: "discount" | "discount code" }
+  { readonly kind: "discount" | "discount code" | "voucher" }
 >;
 
-const requireUpdatedRow = <const Resource extends PersistedDiscountResource>(
-  rows: readonly { readonly id: Resource["id"] }[],
+const requireUpdatedRow = <
+  const Resource extends PersistedDiscountResource,
+  const Row extends { readonly id: Resource["id"] },
+>(
+  rows: readonly Row[],
   resource: Resource
 ) =>
-  rows.length === 1
-    ? Effect.void
+  rows[0]
+    ? Effect.succeed(rows[0])
     : Effect.fail(
         new DiscountAdminNotFoundError({
           resource,

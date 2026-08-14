@@ -324,7 +324,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       "features/discounts/admin/discount-administration.service.ts"
     );
     const discountCodeRepository = await readAppFile(
-      "features/discounts/discount-code.repository.ts"
+      "features/discounts/promotion-code.repository.ts"
     );
     const accountingSql = await readAppFile(
       "features/accounting/backend/accounting-snapshot-sql.ts"

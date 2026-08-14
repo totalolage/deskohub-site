@@ -7,8 +7,8 @@ import {
 } from "@/features/checkout/checkout-summary";
 import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import {
-  type CanonicalDiscountCode,
-  canonicalDiscountCodeSchema,
+  type CanonicalPromotionCode,
+  canonicalPromotionCodeSchema,
   type DiscountId,
   discountIdSchema,
 } from "@/features/discounts/contracts";
@@ -26,7 +26,7 @@ export const signedPayStateEnvelopeSchema = Schema.Struct({
   orderId: workspaceReservationIdSchema,
   checkoutSessionId: Schema.optional(checkoutSessionIdSchema),
   acceptedTotal: nonNegativeWorkspaceMoneyCodec,
-  submittedCode: Schema.optional(canonicalDiscountCodeSchema),
+  submittedCode: Schema.optional(canonicalPromotionCodeSchema),
   submittedCodeDiscountId: Schema.optional(discountIdSchema),
   changedKeys: Schema.optional(checkoutSummaryChangedKeysSchema),
 });
@@ -42,7 +42,7 @@ type BuildSignedPayStateBaseInput = {
 };
 
 export type PayStateSubmittedCodeMetadata = RequireAllOrNone<{
-  readonly submittedCode: CanonicalDiscountCode;
+  readonly submittedCode: CanonicalPromotionCode;
   readonly submittedCodeDiscountId: DiscountId;
 }>;
 
