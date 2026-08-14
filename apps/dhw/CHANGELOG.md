@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.8.0...dhw-v1.8.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **dhw:** decode pre-voucher customer responses ([ba4930e](https://github.com/totalolage/deskohub-site/commit/ba4930e3776e22d4c7053fd2507d76c10c26eaaf))
+* **dhw:** satisfy compatibility lint ([5cc5764](https://github.com/totalolage/deskohub-site/commit/5cc5764299d0afe0abd4bad870acbefe0c185ab4))
+
 ## [1.8.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.7.0...dhw-v1.8.0) (2026-08-13)
 
 
