@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.2](https://github.com/totalolage/deskohub-site/compare/dhw-v1.8.1...dhw-v1.8.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **dhw:** align default and live layer naming ([c09a411](https://github.com/totalolage/deskohub-site/commit/c09a4110769574d90274ba5ee6543d94eb62bbeb))
+
 ## [1.8.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.8.0...dhw-v1.8.1) (2026-08-14)
 
 
