@@ -35,60 +35,77 @@ import {
   openCheckoutState,
   sealCheckoutState,
 } from "./checkout-state-token";
-import type { PayStateSubmittedCodeMetadata } from "./pay-state-contract";
+import {
+  getSubmittedCodeMetadata,
+  type PayStateSubmittedCodeMetadata,
+} from "./pay-state-contract";
 import { workspaceCheckoutPriceStateSchema } from "./workspace-checkout-price-state";
 
 export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 
+const absentSubmittedCodeMetadataSchema = Schema.Struct({
+  submittedCode: Schema.optionalKey(Schema.Never),
+  submittedCodeDiscountId: Schema.optionalKey(Schema.Never),
+});
+
+const submittedCodeMetadataSchema = Schema.Struct({
+  submittedCode: canonicalPromotionCodeSchema,
+  submittedCodeDiscountId: discountIdSchema,
+});
+
+const coworkAdvertisedPriceStateSchema = Schema.Struct({
+  ...workspaceCheckoutPriceStateSchema.fields,
+  kind: coworkAdvertisedPriceReservationSchema.fields.kind,
+  reservation: coworkAdvertisedPriceReservationSchema,
+  quote: coworkReservationQuoteSchema,
+});
+
+const meetingRoomAdvertisedPriceStateSchema = Schema.Struct({
+  ...workspaceCheckoutPriceStateSchema.fields,
+  kind: meetingRoomAdvertisedPriceReservationSchema.fields.kind,
+  reservation: meetingRoomAdvertisedPriceReservationSchema,
+  quote: meetingRoomReservationQuoteSchema,
+});
+
+const officeAdvertisedPriceStateSchema = Schema.Struct({
+  ...workspaceCheckoutPriceStateSchema.fields,
+  kind: officeAdvertisedPriceReservationSchema.fields.kind,
+  reservation: officeAdvertisedPriceReservationSchema,
+  quote: officeReservationQuoteSchema,
+});
+
 export const advertisedPriceStateSchema = Schema.Union([
   Schema.Struct({
-    ...workspaceCheckoutPriceStateSchema.fields,
-    submittedCode: Schema.optional(canonicalPromotionCodeSchema),
-    submittedCodeDiscountId: Schema.optional(discountIdSchema),
-    kind: coworkAdvertisedPriceReservationSchema.fields.kind,
-    reservation: coworkAdvertisedPriceReservationSchema,
-    quote: coworkReservationQuoteSchema,
+    ...coworkAdvertisedPriceStateSchema.fields,
+    ...absentSubmittedCodeMetadataSchema.fields,
   }),
   Schema.Struct({
-    ...workspaceCheckoutPriceStateSchema.fields,
-    submittedCode: Schema.optional(canonicalPromotionCodeSchema),
-    submittedCodeDiscountId: Schema.optional(discountIdSchema),
-    kind: meetingRoomAdvertisedPriceReservationSchema.fields.kind,
-    reservation: meetingRoomAdvertisedPriceReservationSchema,
-    quote: meetingRoomReservationQuoteSchema,
+    ...coworkAdvertisedPriceStateSchema.fields,
+    ...submittedCodeMetadataSchema.fields,
   }),
   Schema.Struct({
-    ...workspaceCheckoutPriceStateSchema.fields,
-    submittedCode: Schema.optional(canonicalPromotionCodeSchema),
-    submittedCodeDiscountId: Schema.optional(discountIdSchema),
-    kind: officeAdvertisedPriceReservationSchema.fields.kind,
-    reservation: officeAdvertisedPriceReservationSchema,
-    quote: officeReservationQuoteSchema,
+    ...meetingRoomAdvertisedPriceStateSchema.fields,
+    ...absentSubmittedCodeMetadataSchema.fields,
   }),
-])
-  .check(
-    Schema.makeFilter(
-      ({ submittedCode, submittedCodeDiscountId }) =>
-        (submittedCode === undefined) ===
-          (submittedCodeDiscountId === undefined) || {
-          path: ["submittedCodeDiscountId"],
-          issue:
-            "submitted code and submitted code discount id must occur together",
-        }
-    )
-  )
-  .annotate({
-    identifier: "AdvertisedPriceState",
-    description:
-      "PII-free Workspace price advertisement state protected for reservation submission.",
-  });
+  Schema.Struct({
+    ...meetingRoomAdvertisedPriceStateSchema.fields,
+    ...submittedCodeMetadataSchema.fields,
+  }),
+  Schema.Struct({
+    ...officeAdvertisedPriceStateSchema.fields,
+    ...absentSubmittedCodeMetadataSchema.fields,
+  }),
+  Schema.Struct({
+    ...officeAdvertisedPriceStateSchema.fields,
+    ...submittedCodeMetadataSchema.fields,
+  }),
+]).annotate({
+  identifier: "AdvertisedPriceState",
+  description:
+    "PII-free Workspace price advertisement state protected for reservation submission.",
+});
 
-export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type &
-  PayStateSubmittedCodeMetadata;
-
-const preserveSubmittedCodeMetadataInvariant = (
-  state: typeof advertisedPriceStateSchema.Type
-): AdvertisedPriceState => state as AdvertisedPriceState;
+export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type;
 
 type AdvertisedPriceStateInput = (
   | {
@@ -168,12 +185,8 @@ export const buildAdvertisedPriceState = Effect.fn(
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
-    submittedCode: input.submittedCode,
-    submittedCodeDiscountId: input.submittedCodeDiscountId,
-  }).pipe(
-    Effect.map(preserveSubmittedCodeMetadataInvariant),
-    Effect.mapError(toAdvertisedPriceStateTokenError)
-  );
+    ...getSubmittedCodeMetadata(input),
+  }).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
 });
 
 export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
@@ -195,7 +208,6 @@ export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
 export const openAdvertisedPriceState = Effect.fn("advertisedPriceState.open")(
   (token: string, options: CheckoutStateCryptoOptions = {}) =>
     openCheckoutState(token, advertisedPriceStateSchema, options).pipe(
-      Effect.map(preserveSubmittedCodeMetadataInvariant),
       Effect.mapError(toAdvertisedPriceStateTokenError)
     )
 );
