@@ -100,6 +100,14 @@ test("generated promotion codes use the canonical readable alphabet", () => {
 });
 
 describe("stored promotion configuration", () => {
+  test("matches promotion variants explicitly", async () => {
+    const source = await Bun.file(
+      new URL("./promotion-code.ts", import.meta.url)
+    ).text();
+
+    expect(source).not.toContain('configuration.kind === "discount"');
+  });
+
   test("decodes a discount-code child", async () => {
     await expect(
       Effect.runPromise(decodePromotionConfiguration({ row: discountRow() }))

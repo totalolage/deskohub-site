@@ -1,4 +1,4 @@
-import { Data, Effect, Option, Schema } from "effect";
+import { Data, Effect, Match, Option, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   TemporalInstantSchema,
@@ -135,31 +135,34 @@ export const decodePromotionConfiguration = Effect.fn(
   })(input.row).pipe(
     Effect.map(
       (configuration): SubmittedPromotionConfiguration =>
-        configuration.kind === "discount"
-          ? {
+        Match.value(configuration).pipe(
+          Match.discriminatorsExhaustive("kind")({
+            discount: (discount): DiscountCodeConfiguration => ({
               kind: "discount",
-              id: configuration.discountCodeId,
-              promotionCodeId: configuration.promotionCodeId,
-              discountId: configuration.discountId,
-              enabled: configuration.enabled,
-              validFrom: configuration.validFrom,
-              validUntil: configuration.validUntil,
-              maxUses: configuration.maxUses,
-              maxUsesPerCustomer: configuration.maxUsesPerCustomer,
-            }
-          : {
+              id: discount.discountCodeId,
+              promotionCodeId: discount.promotionCodeId,
+              discountId: discount.discountId,
+              enabled: discount.enabled,
+              validFrom: discount.validFrom,
+              validUntil: discount.validUntil,
+              maxUses: discount.maxUses,
+              maxUsesPerCustomer: discount.maxUsesPerCustomer,
+            }),
+            voucher: (voucher): VoucherConfiguration => ({
               kind: "voucher",
-              id: configuration.voucherId,
-              promotionCodeId: configuration.promotionCodeId,
-              enabled: configuration.enabled,
-              validFrom: configuration.validFrom,
-              validUntil: configuration.validUntil,
+              id: voucher.voucherId,
+              promotionCodeId: voucher.promotionCodeId,
+              enabled: voucher.enabled,
+              validFrom: voucher.validFrom,
+              validUntil: voucher.validUntil,
               amount: {
-                value: configuration.issuedAmountValue,
-                exponent: configuration.issuedAmountExponent,
-                currency: configuration.issuedAmountCurrency,
+                value: voucher.issuedAmountValue,
+                exponent: voucher.issuedAmountExponent,
+                currency: voucher.issuedAmountCurrency,
               },
-            }
+            }),
+          })
+        )
     ),
     Effect.mapError(
       (cause) =>
