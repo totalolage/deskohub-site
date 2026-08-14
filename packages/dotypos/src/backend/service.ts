@@ -1412,14 +1412,13 @@ const makeDotyposService = Effect.gen(function* () {
     const ids = [...new Set(options.ids ?? [])];
     if (options.ids && ids.length === 0) return [];
     const filterValues = [
-      ...ids,
       options.customerId,
       options.startsAtOrAfter,
       options.startsBefore,
     ].filter((value): value is string => value !== undefined);
 
     if (
-      ids.some((id) => /[|;,]/.test(id)) ||
+      ids.some((id) => !id.trim() || /[|;,]/.test(id)) ||
       filterValues.some((value) => !value.trim() || /[|;]/.test(value))
     ) {
       return yield* new ValidationError({
