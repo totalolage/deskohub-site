@@ -52,3 +52,11 @@ test("request-bound feature flag providers are loaded lazily", async () => {
 
   expect(source).not.toMatch(/from "\.\/(?:node|subject)"/);
 });
+
+test("the Dotypos adapter retains its process-wide token cache", async () => {
+  const source = await Bun.file(
+    `${repositoryRoot}/apps/deskohub-workspace/shared/backend/config/dotypos.config.ts`
+  ).text();
+
+  expect(source).toContain("Layer.buildWithMemoMap");
+});
