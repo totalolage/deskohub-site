@@ -208,20 +208,20 @@ later billing-profile change cannot change the first invoice.
 
 ### 5. Post-order invoice request
 
-On the reservation status page, show “Create invoice” only for an eligible
-successfully paid reservation that has a readable payment-time source snapshot
-and no issued invoice. The button opens a dialog containing the same shared
-billing-details form as the reservation page. Keep the fields blank rather than
-returning mutable Dotypos PII to a status-page visitor.
+The reservation email links to a dedicated invoice-management page using the
+same HMAC capability as the protected access-code page. Reuse the existing
+token claims and secret so already-delivered access links remain valid, but use
+a separate invoice route and CTA. Knowledge of `orderId` alone must reveal no
+invoice state or customer information. Verify the capability before every
+database or provider lookup, then recheck locale, payment, fulfilment,
+active-attempt, source-snapshot, recipient, purpose and invoice eligibility on
+the server. Apply BotID before every mutation.
 
-The current read-only status page is located by `orderId`; knowledge of that ID
-alone must not authorize a Dotypos customer mutation or invoice issuance. Bind
-the action to a signed or opaque invoice-management capability scoped to the
-reservation and conveyed through a trusted checkout or reservation-email flow.
-If that capability is unavailable, require email verification before accepting
-billing details. Apply the existing bot protection and rate limiting in
-addition to, not instead of, this authorization, and re-check payment and
-invoice eligibility on the server.
+Show a blank personal billing-address form only for an eligible paid personal
+reservation whose frozen instruction did not request an invoice and which has
+no issued invoice. After creation show a success state. If an invoice already
+exists, show “An invoice was already generated” and a customer-only “Resend
+invoice to email” action; never send the internal copy again.
 
 The submitted recipient is never editable. After validating the form, perform
 the hard-failing Dotypos billing PATCH, create or load the immutable issued
@@ -233,9 +233,10 @@ source snapshot or recipient, keep creation unavailable and show a support
 fallback instead of reconstructing invoice facts from current provider data.
 
 Concurrent submissions must produce one issued invoice. If delivery fails, the
-status page must offer retry of the existing document rather than another
-creation attempt. Once issuance succeeds, remove the creation button and show
-the existing invoice state.
+protected page must offer resend of the existing document rather than another
+creation attempt. Once issuance succeeds, remove the creation form and show the
+existing invoice state. Record explicit resends through the existing delivery
+ledger and give each logical send its own stable provider idempotency key.
 
 Validate direct and stale action submissions, pending/failed/cancelled/not-found
 reservations, duplicate clicks, concurrent requests, Dotypos failure, database

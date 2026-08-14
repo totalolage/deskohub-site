@@ -55,6 +55,8 @@ export const invoiceBuyerAddressSchema = Schema.Struct({
         }
   )
 );
+export type InvoiceBuyerAddress = typeof invoiceBuyerAddressSchema.Type;
+export type InvoiceBuyerAddressInput = typeof invoiceBuyerAddressSchema.Encoded;
 
 export const personalInvoiceBuyerSchema = Schema.Struct({
   kind: Schema.Literal("person"),

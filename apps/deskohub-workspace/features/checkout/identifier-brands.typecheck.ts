@@ -17,6 +17,7 @@ import {
 } from "@/features/checkout/checkout-identifiers";
 import { legalEvidenceEventIdSchema } from "@/features/checkout/legal-evidence";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { reservationAccessTokenSchema } from "@/features/reservation/reservation-access-token";
 import {
   salesCalendarIdSchema,
   workspaceLimitationsCalendarIdSchema,
@@ -41,6 +42,8 @@ const limitationsCalendarId = workspaceLimitationsCalendarIdSchema.make(
 );
 const accountingKeyId = accountingSnapshotKeyIdSchema.make("K202608");
 const legalEvidenceEventId = legalEvidenceEventIdSchema.make("legal-event");
+const reservationAccessToken =
+  reservationAccessTokenSchema.make("access-token");
 
 const acceptWorkspaceReservationId = (_id: typeof workspaceReservationId) =>
   undefined;
@@ -55,6 +58,8 @@ const acceptSalesCalendarId = (_id: typeof salesCalendarId) => undefined;
 const acceptAccountingKeyId = (_id: typeof accountingKeyId) => undefined;
 const acceptLegalEvidenceEventId = (_id: typeof legalEvidenceEventId) =>
   undefined;
+const acceptReservationAccessToken = (_token: typeof reservationAccessToken) =>
+  undefined;
 
 acceptWorkspaceReservationId(workspaceReservationId);
 acceptPaymentAttemptId(paymentAttemptId);
@@ -66,6 +71,7 @@ acceptDotyposCustomerId(dotyposCustomerId);
 acceptSalesCalendarId(salesCalendarId);
 acceptAccountingKeyId(accountingKeyId);
 acceptLegalEvidenceEventId(legalEvidenceEventId);
+acceptReservationAccessToken(reservationAccessToken);
 
 // @ts-expect-error Raw strings must be decoded before entering an ID contract.
 acceptWorkspaceReservationId("reservation");
@@ -87,3 +93,5 @@ acceptSalesCalendarId(limitationsCalendarId);
 acceptAccountingKeyId(legalEvidenceEventId);
 // @ts-expect-error Legal-evidence row IDs cannot be confused with reservation IDs.
 acceptLegalEvidenceEventId(workspaceReservationId);
+// @ts-expect-error Raw strings must be decoded before entering a capability contract.
+acceptReservationAccessToken("access-token");

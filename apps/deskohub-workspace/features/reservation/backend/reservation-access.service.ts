@@ -13,6 +13,7 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 
 export type ReservationAccessViewModel =
@@ -28,7 +29,7 @@ export interface IReservationAccessService {
   readonly getAccess: (input: {
     readonly orderId: WorkspaceReservationId;
     readonly locale: Locale;
-    readonly accessToken?: string;
+    readonly accessToken?: ReservationAccessToken;
   }) => Effect.Effect<ReservationAccessViewModel>;
 }
 
@@ -44,7 +45,7 @@ const implementation = Effect.gen(function* () {
     function* (input: {
       readonly orderId: WorkspaceReservationId;
       readonly locale: Locale;
-      readonly accessToken?: string;
+      readonly accessToken?: ReservationAccessToken;
     }) {
       const authorized = yield* authorizeAccess(input);
       if (!authorized) return unavailableAccess;
@@ -148,7 +149,7 @@ const authorizeAccess = Effect.fn("ReservationAccessService.authorizeAccess")(
   function* (input: {
     readonly orderId: WorkspaceReservationId;
     readonly locale: Locale;
-    readonly accessToken?: string;
+    readonly accessToken?: ReservationAccessToken;
   }) {
     if (!input.accessToken) return false;
 

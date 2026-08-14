@@ -48,6 +48,7 @@ export interface EmailMessage {
   attachments?: EmailAttachment[];
   replyTo?: EmailRecipient;
   headers?: Record<string, string>;
+  idempotencyKey?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
 }

@@ -22,7 +22,10 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import { isLocale, type Locale, m } from "@/features/i18n";
 import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
-import { getReservationAccessPath } from "@/features/reservation/backend/reservation-access-url";
+import {
+  getReservationAccessPath,
+  getReservationInvoicePath,
+} from "@/features/reservation/backend/reservation-access-url";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import {
@@ -297,6 +300,7 @@ const createCustomerReservationEmail = (input: {
   readonly reservation: WorkspaceReservationDetails;
   readonly locale: Locale;
   readonly accessUrl: string;
+  readonly invoiceUrl: string;
   readonly networkDetails: WorkspaceCheckoutNetworkDetails;
   readonly networkQrImageSrc?: string;
   readonly locationMapImageSrc?: string;
@@ -314,6 +318,17 @@ const createCustomerReservationEmail = (input: {
           { locale: input.locale }
         ),
         url: input.accessUrl,
+      }}
+      invoice={{
+        label: m.checkoutEmailCustomerInvoiceLabel(
+          {},
+          { locale: input.locale }
+        ),
+        download: m.checkoutEmailCustomerInvoiceDownload(
+          {},
+          { locale: input.locale }
+        ),
+        url: input.invoiceUrl,
       }}
       details={createReservationRows(input.reservation, input.locale)}
       followUp={m.reservationEmailCustomerFollowUp(
@@ -386,6 +401,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
 )(
   (input: {
     readonly accessUrl: string;
+    readonly invoiceUrl: string;
     readonly reservation: WorkspaceReservationDetails;
   }) => {
     const locale = getReservationLocale(input.reservation.locale);
@@ -397,6 +413,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
             reservation: input.reservation,
             locale,
             accessUrl: input.accessUrl,
+            invoiceUrl: input.invoiceUrl,
             networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
             networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
             locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
@@ -450,8 +467,8 @@ export class WorkspaceReservationEmailService extends Context.Service<
       const networkDetailsService =
         yield* WorkspaceCheckoutNetworkDetailsService;
 
-      const createCustomerAccessUrl = Effect.fn(
-        "WorkspaceReservationEmailService.createCustomerAccessUrl"
+      const createCustomerAccessUrls = Effect.fn(
+        "WorkspaceReservationEmailService.createCustomerAccessUrls"
       )(function* (reservation: WorkspaceReservationDetails, locale: Locale) {
         const accessToken = yield* createReservationAccessToken({
           orderId: reservation.id,
@@ -459,15 +476,22 @@ export class WorkspaceReservationEmailService extends Context.Service<
         });
         const origin = yield* getWorkspaceRuntimeCallbackOrigin;
 
-        return new URL(
-          getReservationAccessPath({
-            locale,
-            orderId: reservation.id,
-            accessToken,
-            setBypassCookie: true,
-          }),
-          origin
-        ).toString();
+        const pathInput = {
+          locale,
+          orderId: reservation.id,
+          accessToken,
+          setBypassCookie: true,
+        };
+        return {
+          accessUrl: new URL(
+            getReservationAccessPath(pathInput),
+            origin
+          ).toString(),
+          invoiceUrl: new URL(
+            getReservationInvoicePath(pathInput),
+            origin
+          ).toString(),
+        };
       });
 
       return {
@@ -521,7 +545,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             yield* networkDetailsService.resolveCustomerNetworkDetails({
               reservation,
             });
-          const accessUrl = yield* createCustomerAccessUrl(
+          const { accessUrl, invoiceUrl } = yield* createCustomerAccessUrls(
             reservation,
             locale
           ).pipe(
@@ -585,6 +609,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
               reservation,
               locale,
               accessUrl,
+              invoiceUrl,
               networkDetails,
               networkQrImageSrc: networkQrAttachment
                 ? `cid:${networkQrAttachment.contentId}`

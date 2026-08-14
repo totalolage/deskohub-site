@@ -273,6 +273,12 @@ const submitReservationAndWaitForPayPage = ({
       attempt: number
     ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
       Effect.gen(function* () {
+        yield* waitForBrowserReactHydration(
+          run,
+          session,
+          reservationSubmitSelector,
+          { timeoutMs: timeouts.browserAction }
+        );
         yield* startReservationPreparation(
           run,
           session,

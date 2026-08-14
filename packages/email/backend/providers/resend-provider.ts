@@ -273,6 +273,8 @@ const createResendProvider = (apiKey: string): EmailProvider => {
 };
 
 const getResendIdempotencyKey = (message: EmailMessage) => {
+  if (message.idempotencyKey) return message.idempotencyKey.slice(0, 256);
+
   const workspaceReservationId = message.metadata?.workspaceReservationId;
   const category = message.tags?.[0];
 

@@ -252,6 +252,8 @@ describe("workspace reservation email details", () => {
     expect(customerMessage?.text).not.toContain("12:00 AM");
     expect(customerMessage?.html).toContain("/reservation/access/");
     expect(customerMessage?.text).toContain("/reservation/access/");
+    expect(customerMessage?.html).toContain("/reservation/invoice/");
+    expect(customerMessage?.text).toContain("/reservation/invoice/");
     expect(customerMessage?.html).toContain("accessToken=");
     expect(customerMessage?.text).toContain("accessToken=");
     expect(customerMessage?.html).not.toContain("statusToken=");

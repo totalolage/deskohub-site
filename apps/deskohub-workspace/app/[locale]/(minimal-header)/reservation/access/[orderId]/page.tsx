@@ -3,13 +3,16 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkout-flow-page-skeleton";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
-import { reservationAccessTokenQueryParam } from "@/features/reservation/backend/reservation-access-token";
 import { ReservationAccessPage } from "@/features/reservation/components/reservation-access-page";
-import { ReservationAccessPageSkeleton } from "@/features/reservation/components/reservation-access-page-skeleton";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import {
+  reservationAccessTokenQueryParam,
+  reservationAccessTokenSchema,
+} from "@/features/reservation/reservation-access-token";
 import { reservationAccessPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -34,7 +37,7 @@ const decodeReservationAccessParams = Schema.decodeUnknownOption(
 const decodeReservationAccessSearchParams = getSearchParamsDecoder(
   Schema.Struct({
     [reservationAccessTokenQueryParam]: Schema.optional(
-      Schema.NonEmptyString.check(Schema.isMaxLength(4096))
+      reservationAccessTokenSchema
     ),
   })
 );
@@ -119,5 +122,10 @@ async function ReservationAccessContent({
 }
 
 function ReservationAccessFallback({ locale }: { readonly locale: Locale }) {
-  return <ReservationAccessPageSkeleton locale={locale} />;
+  return (
+    <CheckoutFlowPageSkeleton
+      label={m.reservationAccessMetadataTitle({}, { locale })}
+      locale={locale}
+    />
+  );
 }

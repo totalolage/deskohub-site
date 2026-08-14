@@ -23,6 +23,11 @@ export type CustomerReservationEmailProps = {
     readonly button: string;
     readonly url: string;
   };
+  readonly invoice: {
+    readonly label: string;
+    readonly download: string;
+    readonly url: string;
+  };
   readonly labels: {
     readonly location: string;
     readonly directions: string;
@@ -53,6 +58,7 @@ export function CustomerReservationEmail({
   preview,
   heading,
   access,
+  invoice,
   labels,
   location,
   table,
@@ -146,7 +152,16 @@ export function CustomerReservationEmail({
         </Section>
       )}
 
-      <WorkspaceEmailDetails details={details} />
+      <WorkspaceEmailDetails
+        details={[
+          ...details,
+          {
+            href: invoice.url,
+            label: invoice.label,
+            value: invoice.download,
+          },
+        ]}
+      />
       <WorkspaceEmailNote>{followUp}</WorkspaceEmailNote>
     </WorkspaceEmailLayout>
   );

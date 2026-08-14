@@ -175,6 +175,24 @@ describe("ResendEmailProvider", () => {
     ]);
   });
 
+  test("prefers an explicit idempotency key", async () => {
+    await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        yield* provider.send({
+          ...message,
+          idempotencyKey: "invoice-resend-attempt-2",
+          tags: ["workspace-invoice-customer"],
+          metadata: { workspaceReservationId: "reservation-id" },
+        });
+      })
+    );
+
+    expect(send.mock.calls[0]?.[1]).toEqual({
+      idempotencyKey: "invoice-resend-attempt-2",
+    });
+  });
+
   test("verify fails when Resend returns an error", async () => {
     listDomains = mock<ListDomainsImplementation>(async () => ({
       error: { message: "Invalid API key" },

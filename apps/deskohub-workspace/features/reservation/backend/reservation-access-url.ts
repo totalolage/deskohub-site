@@ -1,23 +1,16 @@
-import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/checkout/vercel-preview-protection-bypass";
-import type { Locale } from "@/features/i18n";
-import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { reservationAccessPath } from "@/features/reservation/routes";
-import { reservationAccessTokenQueryParam } from "./reservation-access-token";
+import {
+  reservationAccessPath,
+  reservationInvoicePath,
+} from "@/features/reservation/routes";
+import {
+  getProtectedReservationPath,
+  type ProtectedReservationPathInput,
+} from "./protected-reservation-path";
 
-export const getReservationAccessPath = (input: {
-  readonly locale: Locale | string;
-  readonly orderId: WorkspaceReservationId;
-  readonly accessToken: string;
-  readonly setBypassCookie?: boolean;
-}) => {
-  const url = new URL(
-    `/${input.locale}${reservationAccessPath}/${input.orderId}`,
-    "https://deskohub.local"
-  );
-  url.searchParams.set(reservationAccessTokenQueryParam, input.accessToken);
-  appendVercelPreviewProtectionBypass(url, {
-    setBypassCookie: input.setBypassCookie,
-  });
+export const getReservationAccessPath = (
+  input: ProtectedReservationPathInput
+) => getProtectedReservationPath(reservationAccessPath, input);
 
-  return `${url.pathname}${url.search}`;
-};
+export const getReservationInvoicePath = (
+  input: ProtectedReservationPathInput
+) => getProtectedReservationPath(reservationInvoicePath, input);

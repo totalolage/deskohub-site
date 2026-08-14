@@ -49,6 +49,9 @@ describe("Workspace React Email templates", () => {
     expect(business).toContain(contactBusinessPreviewProps.heading);
     expect(confirmation).toContain(contactConfirmationPreviewProps.heading);
     expect(customerReservation).toContain("Show access code");
+    expect(customerReservation).toContain(">Invoice<");
+    expect(customerReservation).toContain(">Download<");
+    expect(customerReservation).toContain("text-decoration-line:underline");
     expect(customerReservation).not.toContain(
       "For security, the current access PIN is shown"
     );

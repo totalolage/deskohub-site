@@ -118,6 +118,7 @@ test("prevents private reservation responses from being cached", () => {
   for (const path of [
     "/en-US/reservation/status/reservation-id?outcome=success",
     "/en-US/reservation/access/reservation-id?accessToken=sensitive",
+    "/en-US/reservation/invoice/reservation-id?accessToken=sensitive",
   ]) {
     const response = proxy(new NextRequest(`https://workspace.example${path}`));
 
