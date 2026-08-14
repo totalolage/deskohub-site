@@ -1421,11 +1421,13 @@ const codesGetCommand = Command.make(
     )
 ).pipe(Command.withDescription("Show a discount code and its claims"));
 
-const formatMoney = (money: {
-  readonly value: number;
-  readonly exponent: number;
-  readonly currency: string;
-} | null) =>
+const formatMoney = (
+  money: {
+    readonly value: number;
+    readonly exponent: number;
+    readonly currency: string;
+  } | null
+) =>
   money === null
     ? "Amount unavailable"
     : `${money.value / 10 ** money.exponent} ${money.currency}`;

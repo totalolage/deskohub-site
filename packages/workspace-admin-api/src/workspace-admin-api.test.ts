@@ -3,8 +3,8 @@ import { Schema } from "effect";
 import {
   AdminCliAdministrationApi,
   AdministrationBookingQuery,
-  AdministrationCustomerQuery,
   AdministrationCustomerProfile,
+  AdministrationCustomerQuery,
   AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
   AdministrationDiscountCode,
