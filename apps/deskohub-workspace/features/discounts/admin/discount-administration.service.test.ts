@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   findDiscountAdminConflict,
   getAdminDiscountCodeUsage,
+  voucherDenominationCanChange,
 } from "./discount-administration.service";
 
 describe("discount administration read models", () => {
@@ -36,6 +37,23 @@ describe("discount administration read models", () => {
 });
 
 describe("discount administration conflicts", () => {
+  test("keeps voucher denomination immutable after released claim history", () => {
+    expect(
+      voucherDenominationCanChange({
+        claimCount: 1,
+        current: { exponent: 2, currency: "CZK" },
+        updated: { exponent: 2, currency: "EUR" },
+      })
+    ).toBe(false);
+    expect(
+      voucherDenominationCanChange({
+        claimCount: 0,
+        current: { exponent: 2, currency: "CZK" },
+        updated: { exponent: 2, currency: "EUR" },
+      })
+    ).toBe(true);
+  });
+
   test("recognizes durable code and reference constraint failures", () => {
     expect(
       findDiscountAdminConflict({

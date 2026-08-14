@@ -16,7 +16,7 @@ import {
   type GoogleCalendarICalUid,
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import {
   Context,
@@ -1056,19 +1056,15 @@ export class DiscountAdministration extends Context.Service<
                 );
               const [usage] = yield* tx
                 .select({
-                  value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+                  claimCount: sql<number>`count(*)::integer`,
+                  value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}) filter (where ${voucherRedemptions.state} in ('reserved', 'redeemed')), 0)::integer`,
                 })
                 .from(voucherRedemptions)
                 .innerJoin(
                   discountApplications,
                   eq(discountApplications.id, voucherRedemptions.applicationId)
                 )
-                .where(
-                  and(
-                    eq(voucherRedemptions.voucherId, input.id),
-                    inArray(voucherRedemptions.state, ["reserved", "redeemed"])
-                  )
-                );
+                .where(eq(voucherRedemptions.voucherId, input.id));
               const usedValue = usage?.value ?? 0;
               if (usedValue > input.credit.value) {
                 return yield* new DiscountAdminConflictError({
@@ -1077,13 +1073,18 @@ export class DiscountAdministration extends Context.Service<
                 });
               }
               if (
-                usedValue > 0 &&
-                (row.issuedAmountExponent !== input.credit.exponent ||
-                  row.issuedAmountCurrency !== input.credit.currency)
+                !voucherDenominationCanChange({
+                  claimCount: usage?.claimCount ?? 0,
+                  current: {
+                    exponent: row.issuedAmountExponent,
+                    currency: row.issuedAmountCurrency,
+                  },
+                  updated: input.credit,
+                })
               ) {
                 return yield* new DiscountAdminConflictError({
                   message:
-                    "Voucher currency cannot change after credit has been spent or reserved.",
+                    "Voucher currency cannot change after it has claim history.",
                 });
               }
               const updatedAt = Temporal.Now.instant();
@@ -1830,6 +1831,15 @@ export const getAdminDiscountCodeUsage = (input: {
         : Math.max(0, input.maxUses - reservedUses - redeemedUses),
   };
 };
+
+export const voucherDenominationCanChange = (input: {
+  readonly claimCount: number;
+  readonly current: Pick<WorkspaceMoney, "currency" | "exponent">;
+  readonly updated: Pick<WorkspaceMoney, "currency" | "exponent">;
+}) =>
+  input.claimCount === 0 ||
+  (input.current.currency === input.updated.currency &&
+    input.current.exponent === input.updated.exponent);
 
 const toAdminDotyposCustomer = (
   customer: DotyposCustomer
