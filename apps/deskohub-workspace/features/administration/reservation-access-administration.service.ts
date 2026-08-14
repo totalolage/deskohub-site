@@ -1,8 +1,5 @@
 import { Context, Data, Effect, Layer, Match } from "effect";
-import {
-  WorkspacePaidFulfillmentService,
-  WorkspacePaidFulfillmentServiceLiveWithDependencies,
-} from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
+import { WorkspacePaidFulfillmentService } from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
 import {
   type WorkspaceReservationDetailsError,
   WorkspaceReservationService,
@@ -57,7 +54,7 @@ export class ReservationAccessAdministration extends Context.Service<
   ReservationAccessAdministration,
   IReservationAccessAdministration
 >()("@deskohub-workspace/administration/ReservationAccessAdministration") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const access = yield* ReservationAccessService;
@@ -165,10 +162,10 @@ export class ReservationAccessAdministration extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ReservationAccessService.LiveWithDependencies),
-    Layer.provide(WorkspaceReservationService.LiveWithDependencies),
-    Layer.provide(WorkspacePaidFulfillmentServiceLiveWithDependencies)
+  static Live = this.Default.pipe(
+    Layer.provide(ReservationAccessService.Live),
+    Layer.provide(WorkspaceReservationService.Live),
+    Layer.provide(WorkspacePaidFulfillmentService.Live)
   );
 }
 

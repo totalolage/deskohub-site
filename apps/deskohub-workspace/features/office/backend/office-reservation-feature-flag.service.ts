@@ -9,7 +9,7 @@ export class OfficeReservationFeatureFlagService extends Context.Service<
   OfficeReservationFeatureFlagService,
   IOfficeReservationFeatureFlagService
 >()("@deskohub-workspace/office/OfficeReservationFeatureFlagService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const featureFlags = yield* WorkspaceFeatureFlagService;
@@ -23,6 +23,10 @@ export class OfficeReservationFeatureFlagService extends Context.Service<
         ),
       } satisfies IOfficeReservationFeatureFlagService;
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.Default)
   );
 }
 

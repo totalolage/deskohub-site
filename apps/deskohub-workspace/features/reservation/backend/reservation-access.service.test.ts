@@ -137,7 +137,7 @@ const runAccess = async (options: HarnessOptions = {}) => {
       accessToken: options.accessToken,
     });
   }).pipe(
-    Effect.provide(ReservationAccessService.Live),
+    Effect.provide(ReservationAccessService.Default),
     Effect.provide(
       Layer.mergeAll(
         Layer.mock(WorkspaceReservationRepository, { findById }),

@@ -33,7 +33,7 @@ export class CustomerDiscountProvider extends Context.Service<
   CustomerDiscountProvider,
   ICustomerDiscountProvider
 >()("@deskohub-workspace/discounts/CustomerDiscountProvider") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;

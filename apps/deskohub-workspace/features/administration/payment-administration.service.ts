@@ -22,6 +22,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { type PaymentAttemptState, paymentAttempts } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 
 const defaultMaxRecords = 50;
 const maximumRecords = 100;
@@ -194,7 +195,7 @@ export class PaymentAdministrationService extends Context.Service<
   PaymentAdministrationService,
   IPaymentAdministrationService
 >()("@deskohub-workspace/administration/PaymentAdministrationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -546,5 +547,9 @@ export class PaymentAdministrationService extends Context.Service<
         loadReservationOrders,
       };
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(Layer.merge(WorkspaceDatabase.Default, WorkspaceNexiLayer))
   );
 }

@@ -23,7 +23,7 @@ export class LegalEvidenceEventInputError extends Data.TaggedError(
 export type LegalEvidenceEventInput =
   typeof legalEvidenceEventInputSchema.Encoded;
 
-export interface LegalEvidenceEventRepository {
+export interface ILegalEvidenceEventRepository {
   readonly record: (
     input: LegalEvidenceEventInput
   ) => Effect.Effect<
@@ -37,9 +37,6 @@ export interface LegalEvidenceEventRepository {
     EffectDrizzleQueryError | LegalEvidenceEventInputError
   >;
 }
-
-export const LegalEvidenceEventRepository =
-  Context.Service<LegalEvidenceEventRepository>("LegalEvidenceEventRepository");
 
 const getLegalEvidenceEventRecord = (
   parsed: typeof legalEvidenceEventInputSchema.Type
@@ -55,58 +52,65 @@ const getLegalEvidenceEventRecord = (
   source: parsed.evidence.source,
 });
 
-export const LegalEvidenceEventRepositoryLive = Layer.effect(
+export class LegalEvidenceEventRepository extends Context.Service<
   LegalEvidenceEventRepository,
-  Effect.gen(function* () {
-    const { db } = yield* WorkspaceDatabase;
+  ILegalEvidenceEventRepository
+>()("LegalEvidenceEventRepository") {
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const { db } = yield* WorkspaceDatabase;
 
-    const record = Effect.fn("legalEvidenceEvents.record")(
-      function* (input: LegalEvidenceEventInput) {
-        const parsed = yield* Schema.decodeUnknownEffect(
-          legalEvidenceEventInputSchema,
-          { onExcessProperty: "error" }
-        )(input).pipe(
-          Effect.mapError(
-            (cause) =>
-              new LegalEvidenceEventInputError({
-                message: "Legal evidence event input is invalid.",
-                cause,
-              })
-          )
-        );
-        const event = getLegalEvidenceEventRecord(parsed);
-
-        const [inserted] = yield* db
-          .insert(legalEvidenceEvents)
-          .values({ id: postgresUuidV7, ...event })
-          .returning();
-
-        if (!inserted) {
-          return yield* Effect.die(
-            "Legal evidence event insert returned no row."
+      const record = Effect.fn("legalEvidenceEvents.record")(
+        function* (input: LegalEvidenceEventInput) {
+          const parsed = yield* Schema.decodeUnknownEffect(
+            legalEvidenceEventInputSchema,
+            { onExcessProperty: "error" }
+          )(input).pipe(
+            Effect.mapError(
+              (cause) =>
+                new LegalEvidenceEventInputError({
+                  message: "Legal evidence event input is invalid.",
+                  cause,
+                })
+            )
           );
-        }
+          const event = getLegalEvidenceEventRecord(parsed);
 
-        return inserted;
-      },
-      (effect, input) =>
-        effect.pipe(
-          Effect.annotateLogs({
-            workspaceReservationId: input.workspaceReservationId,
-            documentKey: input.evidence.documentKey,
-          })
-        )
-    );
+          const [inserted] = yield* db
+            .insert(legalEvidenceEvents)
+            .values({ id: postgresUuidV7, ...event })
+            .returning();
 
-    return LegalEvidenceEventRepository.of({
-      record,
-      recordMany: Effect.fn("legalEvidenceEvents.recordMany")(
-        function* (input) {
-          const inserted: LegalEvidenceEvent[] = [];
-          for (const event of input) inserted.push(yield* record(event));
+          if (!inserted) {
+            return yield* Effect.die(
+              "Legal evidence event insert returned no row."
+            );
+          }
+
           return inserted;
-        }
-      ),
-    });
-  })
-);
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              workspaceReservationId: input.workspaceReservationId,
+              documentKey: input.evidence.documentKey,
+            })
+          )
+      );
+
+      return LegalEvidenceEventRepository.of({
+        record,
+        recordMany: Effect.fn("legalEvidenceEvents.recordMany")(
+          function* (input) {
+            const inserted: LegalEvidenceEvent[] = [];
+            for (const event of input) inserted.push(yield* record(event));
+            return inserted;
+          }
+        ),
+      });
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
+}

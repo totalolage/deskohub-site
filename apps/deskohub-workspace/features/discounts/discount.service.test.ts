@@ -136,7 +136,7 @@ const runWithProviders = <A, E>(
 ) =>
   effect.pipe(
     Effect.provide(
-      DiscountService.Live.pipe(
+      DiscountService.Default.pipe(
         Layer.provide(Layer.mergeAll(providers, releaseGates))
       )
     ),
@@ -1039,7 +1039,7 @@ describe("DiscountService", () => {
           })
         ),
     });
-    const failClosedReleaseGates = DiscountReleaseGateService.Live.pipe(
+    const failClosedReleaseGates = DiscountReleaseGateService.Default.pipe(
       Layer.provide(failingFeatureFlags)
     );
 

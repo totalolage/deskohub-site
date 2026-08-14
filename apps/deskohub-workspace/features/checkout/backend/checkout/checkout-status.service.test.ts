@@ -140,7 +140,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -209,7 +209,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -338,7 +338,7 @@ describe("CheckoutStatusService", () => {
         });
       }).pipe(
         Effect.provide(
-          CheckoutStatusService.Live.pipe(
+          CheckoutStatusService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -485,7 +485,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -590,7 +590,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -673,7 +673,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -779,7 +779,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -848,7 +848,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),

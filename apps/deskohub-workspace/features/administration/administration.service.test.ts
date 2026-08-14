@@ -45,7 +45,7 @@ describe("AdministrationService", () => {
       });
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -97,7 +97,7 @@ describe("AdministrationService", () => {
       yield* administration.listReservations({ to: "2026-08-12" });
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -171,7 +171,7 @@ describe("AdministrationService", () => {
       });
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -254,7 +254,7 @@ describe("AdministrationService", () => {
       return yield* administration.listReservations({});
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -341,7 +341,7 @@ describe("AdministrationService", () => {
       return yield* administration.listReservations({});
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -416,7 +416,7 @@ describe("AdministrationService", () => {
       return yield* administration.listCustomers({});
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -475,7 +475,7 @@ describe("AdministrationService", () => {
       return yield* administration.listCustomers({});
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -538,7 +538,7 @@ describe("AdministrationService", () => {
       return yield* administration.loadOverview();
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -594,7 +594,7 @@ describe("AdministrationService", () => {
       return yield* administration.loadBooking("missing-booking");
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -644,7 +644,7 @@ describe("AdministrationService", () => {
       );
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -675,7 +675,7 @@ describe("AdministrationService", () => {
       return yield* administration.loadBookingBreadcrumb("dotypos-booking");
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(
@@ -751,7 +751,7 @@ describe("AdministrationService", () => {
       return yield* administration.loadCustomerActivity("dotypos-customer");
     }).pipe(
       Effect.provide(
-        AdministrationService.Live.pipe(
+        AdministrationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(

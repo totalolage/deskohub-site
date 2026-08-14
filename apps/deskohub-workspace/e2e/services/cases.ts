@@ -48,7 +48,7 @@ export class WorkspaceE2ECaseService extends Context.Service<
   WorkspaceE2ECaseService,
   IWorkspaceE2ECaseService
 >()("WorkspaceE2ECaseService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;

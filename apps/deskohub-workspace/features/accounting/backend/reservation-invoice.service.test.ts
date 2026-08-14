@@ -14,15 +14,12 @@ import { WorkspaceReservationRepository } from "@/features/reservation/backend/w
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import { InvoiceRepository } from "./invoice.repository";
-import { ReservationInvoiceService } from "./reservation-invoice";
+import { ReservationInvoiceService } from "./reservation-invoice.service";
 
 mock.module("server-only", () => ({}));
 
 const { InvoiceEmailDeliveryError, InvoiceEmailDeliveryService } = await import(
   "./invoice-email-delivery.service"
-);
-const { ReservationInvoiceServiceLive } = await import(
-  "./reservation-invoice.service"
 );
 
 const paymentAttemptId = paymentAttemptIdSchema.make("payment-attempt-1");
@@ -277,7 +274,7 @@ const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
     yield* service.processByPaymentAttemptId({ paymentAttemptId });
   }).pipe(
     Effect.provide(
-      ReservationInvoiceServiceLive.pipe(
+      ReservationInvoiceService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(
@@ -350,7 +347,7 @@ const runWithHarness = <A, E>(
 ) =>
   effect.pipe(
     Effect.provide(
-      ReservationInvoiceServiceLive.pipe(
+      ReservationInvoiceService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(

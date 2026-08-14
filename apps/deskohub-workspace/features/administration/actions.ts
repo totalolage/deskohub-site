@@ -6,7 +6,6 @@ import { revalidatePath } from "next/cache";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-import { AdministrationLive } from "./administration.runtime";
 import { AdministrationService } from "./administration.service";
 import {
   type ReservationCancellationInput,
@@ -44,7 +43,7 @@ const getAdministrationReservationAction = defineWorkspaceAction(
   (input) =>
     requireDiscountAdminAuthorization().pipe(
       Effect.andThen(findReservation(input)),
-      Effect.provide(AdministrationLive),
+      Effect.provide(AdministrationService.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
@@ -78,7 +77,7 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
           return result;
         })
       ),
-      Effect.provide(ReservationAdministrationService.LiveWithDependencies),
+      Effect.provide(ReservationAdministrationService.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
@@ -132,7 +131,7 @@ const mutateReservationAccessAction = defineWorkspaceAction(
           };
         })
       ),
-      Effect.provide(ReservationAccessAdministration.LiveWithDependencies),
+      Effect.provide(ReservationAccessAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

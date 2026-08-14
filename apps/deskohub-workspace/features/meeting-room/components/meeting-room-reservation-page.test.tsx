@@ -13,9 +13,9 @@ const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
 );
 
 mock.module(
-  "@/features/checkout/backend/checkout/checkout-pricing.runtime",
+  "@/features/checkout/backend/checkout/checkout-pricing.service",
   () => ({
-    CheckoutPricingServiceLiveWithDependencies: Layer.empty,
+    CheckoutPricingService: { Live: Layer.empty },
   })
 );
 mock.module("@/features/reservation/backend/advertised-prices.server", () => ({

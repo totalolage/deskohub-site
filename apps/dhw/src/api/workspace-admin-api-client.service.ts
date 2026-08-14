@@ -304,7 +304,7 @@ export class WorkspaceAdminApiClient extends Context.Service<
   WorkspaceAdminApiClient,
   IWorkspaceAdminApiClient
 >()("WorkspaceAdminApiClient") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.suspend(() => makeWorkspaceAdminApiClient)
   );

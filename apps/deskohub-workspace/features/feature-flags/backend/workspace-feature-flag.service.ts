@@ -3,7 +3,7 @@ import type {
   PostHogFeatureFlagEvaluationOptions,
   TypedPostHogFeatureFlagEvaluationSnapshot,
 } from "@deskohub/posthog/feature-flags/node";
-import { Context, type Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import type {
   PostHogFeatureFlagDefinitions,
   PostHogFeatureFlagKey,
@@ -27,4 +27,29 @@ export class WorkspaceFeatureFlagService extends Context.Service<
 >()("@deskohub-workspace/feature-flags/WorkspaceFeatureFlagService") {
   static from = (implementation: IWorkspaceFeatureFlagService) =>
     Layer.succeed(this, implementation);
+
+  static Default = Layer.unwrap(
+    Effect.promise(async () => {
+      const [{ nodeFeatureFlags }, { getCurrentPostHogFeatureFlagSubject }] =
+        await Promise.all([import("./node"), import("./subject")]);
+
+      return WorkspaceFeatureFlagService.from({
+        evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
+          (options) =>
+            getCurrentPostHogFeatureFlagSubject().pipe(
+              Effect.flatMap((subject) =>
+                nodeFeatureFlags.evaluateFlags({ options, subject })
+              )
+            )
+        ),
+        isEnabled: Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key) =>
+          getCurrentPostHogFeatureFlagSubject().pipe(
+            Effect.flatMap((subject) =>
+              nodeFeatureFlags.isEnabled({ key, subject })
+            )
+          )
+        ),
+      });
+    })
+  );
 }

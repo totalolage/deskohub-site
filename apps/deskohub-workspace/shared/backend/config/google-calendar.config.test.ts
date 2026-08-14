@@ -10,7 +10,9 @@ import {
 describe("CalendarResourceConfig", () => {
   test("decodes calendar resource identifiers from the environment", async () => {
     const config = await Effect.runPromise(
-      CalendarResourceConfig.pipe(Effect.provide(CalendarResourceConfig.Live))
+      CalendarResourceConfig.pipe(
+        Effect.provide(CalendarResourceConfig.Default)
+      )
     );
 
     expect(config.workspaceLimitationsCalendarId.length).toBeGreaterThan(0);

@@ -24,7 +24,7 @@ export const generatePostHogFeatureFlagContract = Effect.fn(
   (
     options: GeneratePostHogFeatureFlagContractOptions
   ): Effect.Effect<PostHogFeatureFlagSyncResult, PostHogFeatureFlagError> => {
-    const featureFlagServiceLive = PostHogFeatureFlagService.Live.pipe(
+    const featureFlagServiceLive = PostHogFeatureFlagService.Default.pipe(
       Layer.provide(
         PostHogFeatureFlagConfig.from({
           apiKey: options.apiKey,
@@ -34,7 +34,7 @@ export const generatePostHogFeatureFlagContract = Effect.fn(
       ),
       Layer.provide(FetchHttpClient.layer)
     );
-    const featureFlagSyncLive = PostHogFeatureFlagSync.Live.pipe(
+    const featureFlagSyncLive = PostHogFeatureFlagSync.Default.pipe(
       Layer.provide(
         Layer.merge(
           featureFlagServiceLive,

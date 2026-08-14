@@ -24,7 +24,7 @@ export class CliSessionCredential extends Context.Service<
   CliSessionCredential,
   ICliSessionCredential
 >()("CliSessionCredential") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* DhwConfig;
@@ -53,7 +53,5 @@ export class CliSessionCredential extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(CredentialStore.Live)
-  );
+  static Live = this.Default.pipe(Layer.provide(CredentialStore.Default));
 }

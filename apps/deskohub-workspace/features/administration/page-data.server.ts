@@ -7,7 +7,6 @@ import { cache } from "react";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import { AdministrationLive } from "./administration.runtime";
 import {
   type AdministrationReservationListInput,
   AdministrationService,
@@ -72,7 +71,7 @@ const runAdministration =
   (operation: string) =>
   <A, E>(effect: Effect.Effect<A, E, AdministrationService>) =>
     effect.pipe(
-      Effect.provide(AdministrationLive),
+      Effect.provide(AdministrationService.Live),
       runWorkspaceEffect(operation, { boundary: "route" })
     );
 

@@ -269,6 +269,6 @@ const testDatasourceConfig = {} as DatasourceConfig;
 const makeTestSuiteLayer = (telemetryEvents: E2ETelemetryObservation[] = []) =>
   Layer.mergeAll(
     makeE2ETelemetryMock(telemetryEvents),
-    WorkspaceE2ECleanupService.Live,
+    WorkspaceE2ECleanupService.Default,
     WorkspaceE2EProviderVerificationPermitServiceMock
   );

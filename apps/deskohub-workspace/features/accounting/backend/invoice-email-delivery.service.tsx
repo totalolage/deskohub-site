@@ -5,10 +5,12 @@ import {
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Match } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { m } from "@/features/i18n";
+import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import {
   internalWorkspaceEmailRecipient,
@@ -16,6 +18,7 @@ import {
 } from "@/shared/backend/email/workspace-email-recipients";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
+import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
 import { type Invoice, InvoiceRepository } from "./invoice.repository";
 import {
   type IInvoiceEmailDeliveryRepository,
@@ -63,7 +66,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
   InvoiceEmailDeliveryService,
   IInvoiceEmailDeliveryService
 >()("@deskohub-workspace/accounting/InvoiceEmailDeliveryService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const accountingSnapshots = yield* AccountingDocumentSnapshotRepository;
@@ -341,6 +344,32 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         }),
       } satisfies IInvoiceEmailDeliveryService;
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(getInvoiceEmailDeliveryDependencies())
+  );
+}
+
+function getInvoiceEmailDeliveryDependencies() {
+  const accountingStorage = Layer.merge(
+    WorkspaceDatabase.Default,
+    AccountingSnapshotKeyService.Default
+  );
+  const accountingSnapshots = AccountingDocumentSnapshotRepository.Default.pipe(
+    Layer.provide(accountingStorage)
+  );
+  const invoices = InvoiceRepository.Default.pipe(
+    Layer.provide(Layer.merge(accountingStorage, accountingSnapshots))
+  );
+
+  return Layer.mergeAll(
+    accountingSnapshots,
+    invoices,
+    InvoiceEmailDeliveryRepository.Default.pipe(
+      Layer.provide(WorkspaceDatabase.Default)
+    ),
+    Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer)
   );
 }
 

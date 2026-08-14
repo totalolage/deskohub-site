@@ -39768,7 +39768,7 @@ class AllocationStoreError extends exports_Data.TaggedError("AllocationStoreErro
 }
 
 class AllocationRepository extends exports_Context.Service()("WorkspaceE2E/AllocationRepository") {
-  static Live = exports_Layer.effect(this, exports_Effect.gen(function* () {
+  static Default = exports_Layer.effect(this, exports_Effect.gen(function* () {
     const sql = yield* PgClient;
     const listOwners = sql`
         select
@@ -39891,7 +39891,7 @@ class AllocationRuntimeConfig extends exports_Context.Service()("WorkspaceE2E/Al
 var WorkflowRun = exports_Schema.Struct({ status: exports_Schema.String });
 
 class GithubRunStatusService extends exports_Context.Service()("WorkspaceE2E/GithubRunStatusService") {
-  static Live = exports_Layer.effect(this, exports_Effect.gen(function* () {
+  static Default = exports_Layer.effect(this, exports_Effect.gen(function* () {
     const config = yield* AllocationRuntimeConfig;
     const httpClient = yield* exports_HttpClient.HttpClient;
     const authenticatedClient = httpClient.pipe(exports_HttpClient.mapRequestInput((request3) => request3.pipe(exports_HttpClientRequest.setHeaders({
@@ -39918,7 +39918,7 @@ class AllocationError extends exports_Data.TaggedError("AllocationError") {
 }
 
 class AllocationService extends exports_Context.Service()("WorkspaceE2E/AllocationService") {
-  static Live = exports_Layer.effect(this, exports_Effect.gen(function* () {
+  static Default = exports_Layer.effect(this, exports_Effect.gen(function* () {
     const repository = yield* AllocationRepository;
     const runStatus = yield* GithubRunStatusService;
     const terminalOwners = exports_Effect.fn("AllocationService.terminalOwners")(function* () {
@@ -40000,14 +40000,14 @@ var program = exports_Schema.decodeUnknownEffect(Environment)(process.env).pipe(
     githubApiUrl: environment.GITHUB_API_URL,
     githubToken: exports_Redacted.make(environment.WORKSPACE_E2E_ALLOCATION_TOKEN)
   });
-  const repository = AllocationRepository.Live.pipe(exports_Layer.provide(layer2({
+  const repository = AllocationRepository.Default.pipe(exports_Layer.provide(layer2({
     applicationName: "workspace-e2e-allocation",
     connectTimeout: "10 seconds",
     maxConnections: 1,
     url: exports_Redacted.make(normalizePostgresConnectionUrl(environment.WORKSPACE_E2E_COORDINATOR_DATABASE_URL))
   })));
-  const runStatus = GithubRunStatusService.Live.pipe(exports_Layer.provide(exports_Layer.merge(runtimeConfig, exports_FetchHttpClient.layer)));
-  const allocation = AllocationService.Live.pipe(exports_Layer.provide(exports_Layer.merge(repository, runStatus)));
+  const runStatus = GithubRunStatusService.Default.pipe(exports_Layer.provide(exports_Layer.merge(runtimeConfig, exports_FetchHttpClient.layer)));
+  const allocation = AllocationService.Default.pipe(exports_Layer.provide(exports_Layer.merge(repository, runStatus)));
   return run2(environment).pipe(exports_Effect.provide(allocation));
 }), exports_Effect.tapError((error) => exports_Effect.logError(error instanceof Error ? error.message : "Workspace E2E allocation failed.")));
 exports_NodeRuntime.runMain(program, { disableErrorReporting: true });

@@ -8,10 +8,6 @@ import { Context, Effect, Layer } from "effect";
 import { isCategoryDisplayable } from "../utils/category-utils";
 import { DotyposConfigFromEnv } from "./dotypos-config.layer";
 
-export const SharedDotyposServiceFromEnv = SharedDotyposService.Default.pipe(
-  Layer.provide(DotyposConfigFromEnv)
-);
-
 export interface DotyposServiceShape {
   readonly getMenuItems: Effect.Effect<
     {
@@ -26,7 +22,7 @@ export class DotyposService extends Context.Service<
   DotyposService,
   DotyposServiceShape
 >()("DotyposService") {
-  static DefaultWithoutDependencies = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const dotypos = yield* SharedDotyposService;
@@ -86,7 +82,9 @@ export class DotyposService extends Context.Service<
     })
   );
 
-  static Default = this.DefaultWithoutDependencies.pipe(
-    Layer.provide(SharedDotyposServiceFromEnv)
+  static Live = this.Default.pipe(
+    Layer.provide(
+      SharedDotyposService.Live.pipe(Layer.provide(DotyposConfigFromEnv))
+    )
   );
 }

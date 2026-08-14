@@ -60,7 +60,7 @@ describe("AuthenticationService", () => {
 
     const current = await AuthenticationService.pipe(
       Effect.flatMap((authentication) => authentication.current),
-      Effect.provide(AuthenticationService.Live),
+      Effect.provide(AuthenticationService.Default),
       Effect.provide(apiLayer),
       Effect.provide(credentialLayer),
       Effect.runPromise

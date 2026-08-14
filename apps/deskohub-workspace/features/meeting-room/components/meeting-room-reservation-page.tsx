@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
@@ -63,7 +63,7 @@ export async function renderMeetingRoomReservationContent({
       submittedCode,
     })
   ).pipe(
-    Effect.provide(CheckoutPricingServiceLiveWithDependencies),
+    Effect.provide(CheckoutPricingService.Live),
     Effect.scoped,
     runWorkspaceEffect("reservation.meeting-room.load-advertised-prices")
   );

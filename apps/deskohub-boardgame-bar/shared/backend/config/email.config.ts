@@ -7,7 +7,7 @@
 import {
   EmailConfigTag,
   type EmailProviderConfig,
-  StandaloneEmailServiceLayer,
+  EmailServiceTag,
 } from "@deskohub/email";
 import { Config, Layer, Option } from "effect";
 import { siteConstants } from "@/shared/utils/constants";
@@ -57,6 +57,6 @@ export const EmailConfigLayer = Layer.effect(
   )
 );
 
-export const EmailServiceLayer = StandaloneEmailServiceLayer.pipe(
+export const BoardgameEmailLayer = EmailServiceTag.Live.pipe(
   Layer.provide(EmailConfigLayer)
 );

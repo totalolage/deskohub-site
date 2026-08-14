@@ -6,7 +6,7 @@ import {
 import { Layer, Schema, Scope } from "effect";
 import { env } from "@/env";
 
-export const DotyposRuntimeConfigLive = Layer.effect(
+export const WorkspaceDotyposRuntimeConfigLayer = Layer.effect(
   DotyposRuntimeConfig,
   Schema.decodeUnknownEffect(DotyposRuntimeConfigSchema)({
     clientId: env.DOTYPOS_CLIENT_ID,
@@ -21,13 +21,12 @@ export const DotyposRuntimeConfigLive = Layer.effect(
   })
 );
 
-const dotyposServiceLive = DotyposService.Default.pipe(
-  Layer.provide(DotyposRuntimeConfigLive)
+const configuredDotyposLayer = DotyposService.Live.pipe(
+  Layer.provide(WorkspaceDotyposRuntimeConfigLayer)
 );
-
 const processScope = Scope.makeUnsafe();
 const processMemoMap = Layer.makeMemoMapUnsafe();
 
-export const DotyposServiceLive = Layer.fromBuild(() =>
-  Layer.buildWithMemoMap(dotyposServiceLive, processMemoMap, processScope)
+export const WorkspaceDotyposLayer = Layer.fromBuild(() =>
+  Layer.buildWithMemoMap(configuredDotyposLayer, processMemoMap, processScope)
 );

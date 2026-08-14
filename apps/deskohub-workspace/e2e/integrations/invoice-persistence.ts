@@ -483,10 +483,10 @@ const makeInvoiceRepository = (input: {
     AccountingSnapshotKeyService.of(input.keys)
   );
   const baseLayer = Layer.merge(databaseLayer, keyLayer);
-  const snapshotLayer = AccountingDocumentSnapshotRepository.Live.pipe(
+  const snapshotLayer = AccountingDocumentSnapshotRepository.Default.pipe(
     Layer.provide(baseLayer)
   );
-  const repositoryLayer = InvoiceRepository.Live.pipe(
+  const repositoryLayer = InvoiceRepository.Default.pipe(
     Layer.provide(Layer.merge(baseLayer, snapshotLayer))
   );
 
@@ -496,7 +496,7 @@ const makeInvoiceRepository = (input: {
 const makeInvoiceEmailDeliveryRepository = (db: DatabaseClient) =>
   InvoiceEmailDeliveryRepository.pipe(
     Effect.provide(
-      InvoiceEmailDeliveryRepository.Live.pipe(
+      InvoiceEmailDeliveryRepository.Default.pipe(
         Layer.provide(
           Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db }))
         )

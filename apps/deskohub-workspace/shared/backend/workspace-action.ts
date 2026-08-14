@@ -127,7 +127,7 @@ const prepareWorkspaceAction = <
       })
     );
     const result = yield* Effect.suspend(handler).pipe(
-      Effect.provide(BotProtectionService.Live)
+      Effect.provide(BotProtectionService.Default)
     );
     yield* Effect.logDebug("Action completed successfully");
     return result;

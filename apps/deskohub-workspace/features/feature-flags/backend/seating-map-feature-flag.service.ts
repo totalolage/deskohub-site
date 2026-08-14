@@ -11,7 +11,7 @@ export class SeatingMapFeatureFlagService extends Context.Service<
   SeatingMapFeatureFlagService,
   ISeatingMapFeatureFlagService
 >()("@deskohub-workspace/feature-flags/SeatingMapFeatureFlagService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const featureFlags = yield* WorkspaceFeatureFlagService;

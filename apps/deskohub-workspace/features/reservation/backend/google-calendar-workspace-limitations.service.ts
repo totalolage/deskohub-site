@@ -8,6 +8,7 @@ import {
 } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { isMidnight } from "@/shared/utils/temporal";
 
@@ -47,7 +48,7 @@ export class GoogleCalendarWorkspaceLimitationsService extends Context.Service<
 >()(
   "@deskohub-workspace/reservation/GoogleCalendarWorkspaceLimitationsService"
 ) {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const calendar = yield* GoogleCalendarService;
@@ -94,6 +95,11 @@ export class GoogleCalendarWorkspaceLimitationsService extends Context.Service<
 
       return { listLimitations };
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceGoogleCalendarLayer),
+    Layer.provide(CalendarResourceConfig.Default)
   );
 }
 

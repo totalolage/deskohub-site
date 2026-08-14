@@ -2,20 +2,21 @@ import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Match, Option, Schema } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import { WorkspaceDatabase } from "@/db/database.service";
 import type { FulfillmentState, PaymentState } from "@/db/schema";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
-import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
-import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
+import {
+  SeatingMapFeatureFlagService,
+  WorkspaceFeatureFlagService,
+} from "@/features/feature-flags/backend";
 import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
@@ -23,15 +24,11 @@ import type { StoredMeetingRoomReservationDetails } from "@/features/reservation
 import type { StoredOfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import {
-  ProviderPaymentFinalizationService,
-  ProviderPaymentFinalizationServiceLiveWithDependencies,
-} from "../payment/provider-payment-finalization.service";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { ProviderPaymentFinalizationService } from "../payment/provider-payment-finalization.service";
 import {
   type PaymentAttempt,
   PaymentAttemptRepository,
-  PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
 import type { PaymentLifecycleRepositoryError } from "../repositories/payment-lifecycle.repository";
 
@@ -578,17 +575,17 @@ export class CheckoutStatusService extends Context.Service<
   CheckoutStatusService,
   ICheckoutStatusService
 >()("@deskohub-workspace/checkout/CheckoutStatusService") {
-  static Live = Layer.effect(this, implementation);
+  static Default = Layer.effect(this, implementation);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(PaymentAttemptRepositoryLive),
-    Layer.provide(WorkspaceReservationRepositoryLive),
-    Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(DotyposServiceLive),
+  static Live = this.Default.pipe(
+    Layer.provide(ProviderPaymentFinalizationService.Live),
+    Layer.provide(PaymentAttemptRepository.Default),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
+    Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
-      SeatingMapFeatureFlagService.Live.pipe(
-        Layer.provide(WorkspaceFeatureFlagServiceLive)
+      SeatingMapFeatureFlagService.Default.pipe(
+        Layer.provide(WorkspaceFeatureFlagService.Default)
       )
     )
   );

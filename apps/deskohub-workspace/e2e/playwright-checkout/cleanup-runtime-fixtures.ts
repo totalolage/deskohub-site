@@ -42,7 +42,7 @@ export const cleanupTest = base.extend<
       const telemetry = makeE2ETelemetryRuntime(environment);
       const layer = Layer.mergeAll(
         E2EDatabase.layer(datasourceConfig),
-        E2ETelemetryService.Live.pipe(
+        E2ETelemetryService.Default.pipe(
           Layer.provideMerge(E2ERunContextService.layerValue(runContext))
         )
       ).pipe(Layer.provideMerge(telemetry.tracingLayer));

@@ -2,13 +2,13 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceDotyposRuntimeConfigLayer } from "@/shared/backend/config/dotypos.config";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { DotyposTablesPreview } from "./dotypos-tables-preview";
 
 const DotyposLive = Layer.provide(
-  DotyposService.Default,
-  DotyposRuntimeConfigLive
+  DotyposService.Live,
+  WorkspaceDotyposRuntimeConfigLayer
 );
 
 const loadTables = Effect.fn("dotyposTables.load")(function* () {

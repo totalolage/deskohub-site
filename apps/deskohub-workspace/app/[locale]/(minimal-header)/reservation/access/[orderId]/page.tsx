@@ -113,7 +113,7 @@ async function ReservationAccessContent({
     const access = await Effect.flatMap(ReservationAccessService, (service) =>
       service.getAccess({ orderId, locale, accessToken })
     ).pipe(
-      Effect.provide(ReservationAccessService.LiveWithDependencies),
+      Effect.provide(ReservationAccessService.Live),
       runWorkspaceEffect("reservation.access.load")
     );
 

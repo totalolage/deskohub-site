@@ -10,7 +10,7 @@ export class OpeningHoursCalendarConfig extends Context.Service<
   OpeningHoursCalendarConfig,
   IOpeningHoursCalendarConfig
 >()("@deskohub-boardgame-bar/opening-hours/OpeningHoursCalendarConfig") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     calendarId: env.GOOGLE_CALENDAR_OPENING_HOURS_ID,
   });
 }

@@ -121,7 +121,7 @@ test("uses one worker-scoped Drizzle client for the exact preview datasource", a
   );
   expect(runnerSource).toContain("E2EDatabase.layer(datasourceConfig)");
   expect(runnerSource).toContain(
-    "WorkspaceE2ECaseService.Live.pipe(Layer.provideMerge(support))"
+    "WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support))"
   );
 });
 

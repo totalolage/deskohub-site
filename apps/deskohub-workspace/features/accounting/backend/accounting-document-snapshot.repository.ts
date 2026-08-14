@@ -42,7 +42,7 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
   AccountingDocumentSnapshotRepository,
   IAccountingDocumentSnapshotRepository
 >()("@deskohub-workspace/accounting/AccountingDocumentSnapshotRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;

@@ -11,7 +11,6 @@ import {
   discountAdminCustomerSearchStandardSchema,
   discountAdminMutationStandardSchema,
 } from "./contracts";
-import { DiscountAdministrationLive } from "./discount-administration.runtime";
 import { DiscountAdministration } from "./discount-administration.service";
 import { executeDiscountAdminMutation } from "./execute-discount-admin-mutation";
 
@@ -92,7 +91,7 @@ const discountAdminMutationAction = defineWorkspaceAction(
   (input) =>
     requireDiscountAdminAuthorization().pipe(
       Effect.andThen(executeDiscountAdminActionMutation(input)),
-      Effect.provide(DiscountAdministrationLive),
+      Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
@@ -129,7 +128,7 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
   (input) =>
     requireDiscountAdminAuthorization().pipe(
       Effect.andThen(executeCustomerSearch(input)),
-      Effect.provide(DiscountAdministrationLive),
+      Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

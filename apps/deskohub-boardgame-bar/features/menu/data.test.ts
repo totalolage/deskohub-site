@@ -48,7 +48,7 @@ const runMenuData = async (input: {
       return yield* menuService.getMenuData;
     }).pipe(
       Effect.provide(
-        MenuService.DefaultWithoutDependencies.pipe(
+        MenuService.Default.pipe(
           Layer.provide(
             Layer.succeed(DotyposService, {
               getMenuItems: Effect.succeed(input),

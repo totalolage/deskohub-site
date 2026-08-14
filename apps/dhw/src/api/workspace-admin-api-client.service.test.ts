@@ -48,7 +48,7 @@ describe("WorkspaceAdminApiClient", () => {
         stateDirectory: "/tmp/dhw-client-test",
         updateChecksDisabled: true,
       });
-      const clientLayer = WorkspaceAdminApiClient.Live.pipe(
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(config)
       );
@@ -533,7 +533,7 @@ describe("WorkspaceAdminApiClient", () => {
     });
 
     try {
-      const clientLayer = WorkspaceAdminApiClient.Live.pipe(
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(
           Layer.succeed(DhwConfig, {
@@ -691,7 +691,7 @@ describe("WorkspaceAdminApiClient", () => {
     });
 
     try {
-      const clientLayer = WorkspaceAdminApiClient.Live.pipe(
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(
           Layer.succeed(DhwConfig, {

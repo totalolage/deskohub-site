@@ -69,6 +69,7 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
   getAdministrationExternalOrderPageIds,
@@ -1208,7 +1209,7 @@ export class AdministrationService extends Context.Service<
     readonly loadOperation: IPaymentAdministrationService["loadOperation"];
   }
 >()("@deskohub-workspace/administration/AdministrationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -2591,5 +2592,16 @@ export class AdministrationService extends Context.Service<
         loadOperation: paymentAdministration.loadOperation,
       };
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        WorkspaceDatabase.Default,
+        WorkspaceDotyposLayer,
+        PaymentAdministrationService.Live,
+        PostHogReservationHistory.Live
+      )
+    )
   );
 }

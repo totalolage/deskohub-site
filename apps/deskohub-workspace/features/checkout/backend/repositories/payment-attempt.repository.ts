@@ -54,7 +54,7 @@ export class PaymentAttemptRepository extends Context.Service<
   PaymentAttemptRepository,
   IPaymentAttemptRepository
 >()("@deskohub-workspace/checkout/PaymentAttemptRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -139,5 +139,3 @@ export class PaymentAttemptRepository extends Context.Service<
     })
   );
 }
-
-export const PaymentAttemptRepositoryLive = PaymentAttemptRepository.Live;

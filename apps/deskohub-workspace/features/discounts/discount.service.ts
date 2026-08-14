@@ -1,8 +1,12 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema, Scope } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { appendDiscounts, calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
@@ -23,6 +27,7 @@ import {
   discountCodec,
 } from "./contracts";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
+import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import {
   DiscountReleaseGateService,
   type DiscountReleaseGates,
@@ -32,6 +37,7 @@ import {
   type DiscountResolutionError,
   PromotionCodeUnavailableError,
 } from "./errors";
+import { PromotionCodeRepository } from "./promotion-code.repository";
 import { PromotionCodeProvider } from "./promotion-code-provider.service";
 import type { DiscountCandidate } from "./provider";
 import {
@@ -122,7 +128,7 @@ export class DiscountService extends Context.Service<
   DiscountService,
   IDiscountService
 >()("@deskohub-workspace/discounts/DiscountService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const calendar = yield* CalendarDiscountProvider;
@@ -524,6 +530,40 @@ export class DiscountService extends Context.Service<
         applyDiscountCode,
       } satisfies IDiscountService;
     })
+  );
+
+  static Live = makeDiscountServiceLayer();
+}
+
+function makeDiscountServiceLayer() {
+  const discountRepositories = Layer.mergeAll(
+    DiscountDefinitionRepository.Default,
+    PromotionCodeRepository.Default
+  ).pipe(Layer.provide(WorkspaceDatabase.Default));
+  const providerDependencies = Layer.mergeAll(
+    discountRepositories,
+    WorkspaceGoogleCalendarLayer,
+    CalendarResourceConfig.Default,
+    WorkspaceDotyposLayer
+  );
+  const discountProviders = Layer.mergeAll(
+    CalendarDiscountProvider.Default,
+    CustomerDiscountProvider.Default,
+    PromotionCodeProvider.Default
+  ).pipe(Layer.provide(providerDependencies));
+  const dependencies = Layer.merge(
+    discountProviders,
+    DiscountReleaseGateService.Live
+  );
+  const processScope = Scope.makeUnsafe();
+  const processMemoMap = Layer.makeMemoMapUnsafe();
+
+  return Layer.fromBuild(() =>
+    Layer.buildWithMemoMap(
+      DiscountService.Default.pipe(Layer.provide(dependencies)),
+      processMemoMap,
+      processScope
+    )
   );
 }
 

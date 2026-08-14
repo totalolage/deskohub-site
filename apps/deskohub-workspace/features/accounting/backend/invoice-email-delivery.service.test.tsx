@@ -206,7 +206,7 @@ const runDelivery = (harness: ReturnType<typeof makeHarness>) =>
     });
   }).pipe(
     Effect.provide(
-      InvoiceEmailDeliveryService.Live.pipe(
+      InvoiceEmailDeliveryService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(InvoiceRepository, harness.invoices),
@@ -232,7 +232,7 @@ const runCustomerResend = (harness: ReturnType<typeof makeHarness>) =>
     });
   }).pipe(
     Effect.provide(
-      InvoiceEmailDeliveryService.Live.pipe(
+      InvoiceEmailDeliveryService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(InvoiceRepository, harness.invoices),

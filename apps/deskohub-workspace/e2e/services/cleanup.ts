@@ -25,7 +25,7 @@ export class WorkspaceE2ECleanupService extends Context.Service<
   WorkspaceE2ECleanupService,
   WorkspaceE2ECleanup
 >()("WorkspaceE2ECleanupService") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     cleanupCheckoutStates: cleanupCheckoutFlowStates,
     cleanupOwnedCheckoutStates: cleanupOwnedCheckoutFlowStates,
   });

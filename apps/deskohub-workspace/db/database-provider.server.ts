@@ -14,9 +14,10 @@ const pool = makeDatabasePool({
 });
 attachDatabasePool(pool);
 
-export const WorkspaceDatabaseLive = Layer.effect(
-  WorkspaceDatabase,
-  makeDatabaseClient(pool).pipe(
-    Effect.map((db) => WorkspaceDatabase.of({ db }))
-  )
-);
+export const makeWorkspaceDatabaseLayer = () =>
+  Layer.effect(
+    WorkspaceDatabase,
+    makeDatabaseClient(pool).pipe(
+      Effect.map((db) => WorkspaceDatabase.of({ db }))
+    )
+  );

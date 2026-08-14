@@ -44,7 +44,7 @@ const findCurrent = async (input: {
     });
   }).pipe(
     Effect.provide(
-      ReservationSupersessionService.Live.pipe(
+      ReservationSupersessionService.Default.pipe(
         Layer.provide(
           Layer.succeed(PayableReservationService, { requireCurrent })
         )

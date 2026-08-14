@@ -442,9 +442,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
   options: CheckoutHarnessOptions<ReservationOverrides>
 ) => {
   const locale = options.locale ?? "en-US";
-  const { CheckoutService, CheckoutServiceLive } = await import(
-    "./checkout.service"
-  );
+  const { CheckoutService } = await import("./checkout.service");
   const { PayableReservationService } = await import(
     "./payable-reservation.service"
   );
@@ -603,7 +601,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     );
   }).pipe(
     Effect.provide(
-      CheckoutServiceLive.pipe(
+      CheckoutService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             CheckoutPricingServiceMock({

@@ -459,7 +459,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
 >()(
   "@deskohub-workspace/checkout/fulfillment/WorkspaceReservationEmailService"
 ) {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const emailService = yield* EmailServiceTag;

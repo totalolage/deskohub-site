@@ -4,7 +4,7 @@ import {
   type EmailMessage,
   type EmailSendResult,
 } from "../../types/email.types";
-import { type EmailProvider, EmailProviderTag } from "../service";
+import { type EmailProvider, EmailProviderTag } from "../capabilities";
 
 const ConsoleEmailProvider: EmailProvider = {
   name: "console",

@@ -64,7 +64,7 @@ export class DotyposAccessToken extends Context.Service<
   DotyposAccessToken,
   IDotyposAccessToken
 >()("@deskohub/dotypos/DotyposAccessToken") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* DotyposRuntimeConfig;
@@ -98,7 +98,7 @@ export class DotyposGeneratedClient extends Context.Service<
   DotyposGeneratedClient,
   IDotyposGeneratedClient
 >()("@deskohub/dotypos/DotyposGeneratedClient") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* DotyposRuntimeConfig;

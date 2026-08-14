@@ -95,8 +95,8 @@ export const GET = defineWorkspaceRoute(
       ),
       Effect.provide(
         Layer.merge(
-          WorkspaceAvailabilityService.LiveWithDependencies,
-          ReservationSupersessionService.LiveWithDependencies
+          WorkspaceAvailabilityService.Live,
+          ReservationSupersessionService.Live
         )
       ),
       Effect.catch(handleAvailabilityRouteError)

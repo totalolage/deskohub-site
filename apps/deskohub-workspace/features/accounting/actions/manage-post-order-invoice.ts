@@ -1,8 +1,7 @@
 "use server";
 
 import { Effect } from "effect";
-import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice";
-import { ReservationInvoiceServiceLiveWithDependencies } from "@/features/accounting/backend/reservation-invoice-live.server";
+import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { managePostOrderInvoiceSchema } from "@/features/accounting/post-order-invoice";
 import { m } from "@/features/i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
@@ -34,7 +33,7 @@ const managePostOrderInvoiceAction = defineWorkspaceAction(
         address: input.address,
       });
     }).pipe(
-      Effect.provide(ReservationInvoiceServiceLiveWithDependencies),
+      Effect.provide(ReservationInvoiceService.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

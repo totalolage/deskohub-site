@@ -35,7 +35,7 @@ export class ReservationSupersessionService extends Context.Service<
   ReservationSupersessionService,
   IReservationSupersessionService
 >()("ReservationSupersessionService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const payableReservations = yield* PayableReservationService;
@@ -55,7 +55,7 @@ export class ReservationSupersessionService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(PayableReservationService.LiveWithDependencies)
+  static Live = this.Default.pipe(
+    Layer.provide(PayableReservationService.Live)
   );
 }

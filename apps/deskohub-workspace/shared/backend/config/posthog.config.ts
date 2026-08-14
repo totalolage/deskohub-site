@@ -14,11 +14,6 @@ export interface PostHogRuntimeConfigObj {
   readonly serviceNamespace: string;
 }
 
-export class PostHogRuntimeConfig extends Context.Service<
-  PostHogRuntimeConfig,
-  PostHogRuntimeConfigObj
->()("@deskohub-workspace/analytics/PostHogRuntimeConfig") {}
-
 export const postHogRuntimeConfig: PostHogRuntimeConfigObj = {
   environment: env.VERCEL_ENV,
   featureFlagOverrides: env.POSTHOG_FEATURE_FLAG_OVERRIDES,
@@ -28,7 +23,9 @@ export const postHogRuntimeConfig: PostHogRuntimeConfigObj = {
   serviceNamespace: env.POSTHOG_SERVICE_NAMESPACE,
 };
 
-export const PostHogRuntimeConfigLive = Layer.succeed(
+export class PostHogRuntimeConfig extends Context.Service<
   PostHogRuntimeConfig,
-  postHogRuntimeConfig
-);
+  PostHogRuntimeConfigObj
+>()("@deskohub-workspace/analytics/PostHogRuntimeConfig") {
+  static Default = Layer.succeed(this, postHogRuntimeConfig);
+}

@@ -16,7 +16,6 @@ import {
 import { WorkspaceTableAssignmentService } from "../reservation/workspace-table-assignment.service";
 import {
   LatePaymentRecoveryService,
-  LatePaymentRecoveryServiceLive,
   latePaymentRecoveryMaxExecutionSeconds,
 } from "./late-payment-recovery.service";
 
@@ -35,7 +34,7 @@ const heldReservation = {
 
 describe("LatePaymentRecoveryService", () => {
   test("keeps a fresh processing claim retryable", async () => {
-    const layer = LatePaymentRecoveryServiceLive.pipe(
+    const layer = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(LatePaymentRecoveryRepository, {
@@ -72,7 +71,7 @@ describe("LatePaymentRecoveryService", () => {
     const claim = mock(() =>
       Effect.succeed({ ...recovery, state: "processing" } as never)
     );
-    const layer = LatePaymentRecoveryServiceLive.pipe(
+    const layer = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(LatePaymentRecoveryRepository, {
@@ -126,7 +125,7 @@ describe("LatePaymentRecoveryService", () => {
   test("requires a refund when a released discount claim cannot be readmitted", async () => {
     const requireRefund = mock(() => Effect.void);
     const fulfillPaidOrder = mock(() => Effect.void);
-    const layer = LatePaymentRecoveryServiceLive.pipe(
+    const layer = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(LatePaymentRecoveryRepository, {
@@ -178,7 +177,7 @@ describe("LatePaymentRecoveryService", () => {
 
   test("requires a refund when a newer checkout reservation exists", async () => {
     const requireRefund = mock(() => Effect.void);
-    const layer = LatePaymentRecoveryServiceLive.pipe(
+    const layer = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(LatePaymentRecoveryRepository, {
@@ -218,7 +217,7 @@ describe("LatePaymentRecoveryService", () => {
 
   test("requires a refund without disturbing a newer active payment attempt", async () => {
     const requireRefund = mock(() => Effect.void);
-    const layer = LatePaymentRecoveryServiceLive.pipe(
+    const layer = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(LatePaymentRecoveryRepository, {
@@ -284,7 +283,7 @@ describe("LatePaymentRecoveryService", () => {
       },
     };
     let findRecoveryCall = 0;
-    const layer = LatePaymentRecoveryServiceLive.pipe(
+    const layer = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(LatePaymentRecoveryRepository, {
@@ -359,7 +358,7 @@ describe("LatePaymentRecoveryService", () => {
     } as never;
     let findRecoveryCall = 0;
     let supersessionCheck = 0;
-    const layer = LatePaymentRecoveryServiceLive.pipe(
+    const layer = LatePaymentRecoveryService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.mock(LatePaymentRecoveryRepository, {

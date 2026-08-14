@@ -128,7 +128,7 @@ async function CheckoutStatusContent({
           cause,
         })
       ),
-      Effect.provide(CheckoutStatusService.LiveWithDependencies),
+      Effect.provide(CheckoutStatusService.Live),
       runWorkspaceEffect("checkout.status.load")
     );
     return (

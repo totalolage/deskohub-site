@@ -10,9 +10,9 @@ import {
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer, Logger } from "effect";
-import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice";
+import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { m } from "@/features/i18n";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -178,9 +178,7 @@ const processWebhookEffect = async (input: {
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
 }) => {
-  const { ResendWebhookService, ResendWebhookServiceLive } = await import(
-    "./resend-webhook.service"
-  );
+  const { ResendWebhookService } = await import("./resend-webhook.service");
   const { ResendWebhookRuntimeConfig } = await import(
     "./resend-webhook.config"
   );
@@ -204,7 +202,7 @@ const processWebhookEffect = async (input: {
     );
   }).pipe(
     Effect.provide(
-      ResendWebhookServiceLive.pipe(
+      ResendWebhookService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(WorkspaceReservationRepository, input.reservations),
@@ -623,12 +621,12 @@ describe("ResendWebhookService", () => {
       });
     }).pipe(
       Effect.provide(
-        WorkspaceReservationEmailService.Live.pipe(
+        WorkspaceReservationEmailService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(EmailServiceTag, emailService),
               Layer.mock(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Live
+              WorkspaceCheckoutNetworkDetailsService.Default
             )
           )
         )
@@ -843,10 +841,9 @@ describe("ResendWebhookService", () => {
 
   test("completes non-production fulfillment after the email provider accepts delivery", async () => {
     const { DotyposService } = await import("@deskohub/dotypos");
-    const {
-      WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
-    } = await import("./paid-fulfillment.service");
+    const { WorkspacePaidFulfillmentService } = await import(
+      "./paid-fulfillment.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -917,7 +914,7 @@ describe("ResendWebhookService", () => {
       return yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, reservations),

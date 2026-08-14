@@ -5,14 +5,14 @@ import {
   type EmailMessage,
   type EmailSendResult,
 } from "../../types/email.types";
-import { NetworkError } from "../network-error";
 import {
   EmailConfigTag,
   type EmailProvider,
   EmailProviderTag,
   EmailServiceError,
   isRetryableEmailError,
-} from "../service";
+} from "../capabilities";
+import { NetworkError } from "../network-error";
 
 const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
 

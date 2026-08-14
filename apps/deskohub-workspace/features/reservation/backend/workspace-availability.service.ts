@@ -10,7 +10,7 @@ import {
 } from "@deskohub/dotypos";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   excludeDotyposReservationsById,
   getWorkspaceTableOccupancyById,
@@ -33,9 +33,7 @@ import {
   meetingRoomReservationKind,
   officeReservationKind,
 } from "@/features/reservation/reservation-kind";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getReservationDate,
@@ -55,10 +53,7 @@ import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,
 } from "./google-calendar-workspace-limitations.service";
-import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "./workspace-reservation.repository";
+import { WorkspaceReservationRepository } from "./workspace-reservation.repository";
 
 type WorkspaceAvailabilityError =
   | ExternalAPIError
@@ -114,12 +109,6 @@ type WorkspaceAvailabilityRequest = {
   readonly query: WorkspaceAvailabilityQuery;
   readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
 };
-
-const GoogleCalendarWorkspaceLimitationsLive =
-  GoogleCalendarWorkspaceLimitationsService.Live.pipe(
-    Layer.provide(GoogleCalendarServiceLive),
-    Layer.provide(CalendarResourceConfig.Live)
-  );
 
 const implementation = Effect.gen(function* () {
   const dotypos = yield* DotyposService;
@@ -401,14 +390,14 @@ export class WorkspaceAvailabilityService extends Context.Service<
   WorkspaceAvailabilityService,
   IWorkspaceAvailabilityService
 >()("@deskohub-workspace/reservation/WorkspaceAvailabilityService") {
-  static Live = Layer.effect(this, implementation);
+  static Default = Layer.effect(this, implementation);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
-    Layer.provide(DotyposServiceLive),
+  static Live = this.Default.pipe(
+    Layer.provide(GoogleCalendarWorkspaceLimitationsService.Live),
+    Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
-      WorkspaceReservationRepositoryLive.pipe(
-        Layer.provide(WorkspaceDatabaseLive)
+      WorkspaceReservationRepository.Default.pipe(
+        Layer.provide(WorkspaceDatabase.Default)
       )
     )
   );

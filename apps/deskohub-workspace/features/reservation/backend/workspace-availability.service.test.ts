@@ -115,7 +115,7 @@ const runWithInventory = async <A>(
 
   return effect.pipe(
     Effect.provide(
-      availability.WorkspaceAvailabilityService.Live.pipe(
+      availability.WorkspaceAvailabilityService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(DotyposService, {

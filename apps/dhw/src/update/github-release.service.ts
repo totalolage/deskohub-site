@@ -51,7 +51,7 @@ export class GithubReleaseService extends Context.Service<
   GithubReleaseService,
   IGithubReleaseService
 >()("GithubReleaseService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;

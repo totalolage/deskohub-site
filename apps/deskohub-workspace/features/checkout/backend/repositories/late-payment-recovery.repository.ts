@@ -87,7 +87,7 @@ export class LatePaymentRecoveryRepository extends Context.Service<
   LatePaymentRecoveryRepository,
   ILatePaymentRecoveryRepository
 >()("@deskohub-workspace/checkout/LatePaymentRecoveryRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;

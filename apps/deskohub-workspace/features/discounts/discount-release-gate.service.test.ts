@@ -43,7 +43,7 @@ const runGateEvaluation = () =>
       operation: "discover_advertised_discounts",
     });
   }).pipe(
-    Effect.provide(DiscountReleaseGateService.Live),
+    Effect.provide(DiscountReleaseGateService.Default),
     Effect.provide(featureFlagLayer),
     Effect.runPromise
   );
@@ -83,7 +83,7 @@ describe("DiscountReleaseGateService", () => {
         operation: "discover_advertised_discounts",
       });
     }).pipe(
-      Effect.provide(DiscountReleaseGateService.Live),
+      Effect.provide(DiscountReleaseGateService.Default),
       Effect.provide(featureFlagLayer),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise
@@ -120,7 +120,7 @@ describe("DiscountReleaseGateService", () => {
         operation: "affirm_displayed_discounts",
       });
     }).pipe(
-      Effect.provide(DiscountReleaseGateService.Live),
+      Effect.provide(DiscountReleaseGateService.Default),
       Effect.provide(featureFlagLayer),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise
@@ -172,7 +172,7 @@ describe("DiscountReleaseGateService", () => {
         operation: "discover_advertised_discounts",
       });
     }).pipe(
-      Effect.provide(DiscountReleaseGateService.Live),
+      Effect.provide(DiscountReleaseGateService.Default),
       Effect.provide(failingFeatureFlags),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise

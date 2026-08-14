@@ -328,7 +328,7 @@ const makeTestTelemetry = () => {
     TARGET_SHA: "b".repeat(40),
     WORKSPACE_E2E_EXECUTION_CONTEXT: "ci",
   });
-  const telemetryLayer = E2ETelemetryService.Live.pipe(
+  const telemetryLayer = E2ETelemetryService.Default.pipe(
     Layer.provide(E2ERunContextService.layer(environment))
   );
   const tracingLayer = createTracingLive({

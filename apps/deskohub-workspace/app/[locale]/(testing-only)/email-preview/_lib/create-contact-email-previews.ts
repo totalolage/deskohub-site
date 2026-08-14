@@ -12,10 +12,7 @@ import {
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
 import { Effect, Layer } from "effect";
-import {
-  ContactService,
-  ContactServiceLive,
-} from "@/features/contact/backend/contact.service";
+import { ContactService } from "@/features/contact/backend/contact.service";
 import type { Locale } from "@/features/i18n";
 
 const previewSubmission = {
@@ -52,7 +49,7 @@ export const createContactEmailPreviews = (locale: Locale) => {
     verify: Effect.succeed(true),
   };
 
-  const PreviewContactService = ContactServiceLive.pipe(
+  const PreviewContactService = ContactService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(EmailServiceTag, emailService),

@@ -49,7 +49,7 @@ const request = (body: string, overrides: Record<string, string> = {}) =>
 const verifyRequest = (request: Request) =>
   verifyCloudinaryWebhookRequest(request).pipe(
     Effect.provide(
-      CloudinaryWebhookVerifier.Live.pipe(
+      CloudinaryWebhookVerifier.Default.pipe(
         Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
       )
     )

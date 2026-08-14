@@ -61,6 +61,8 @@ import {
   CalendarResourceConfig,
   type SalesCalendarId,
 } from "@/shared/backend/config/calendar-resource.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { DiscountAdjustment } from "../contracts";
@@ -496,7 +498,7 @@ export class DiscountAdministration extends Context.Service<
   DiscountAdministration,
   IDiscountAdministration
 >()("@deskohub-workspace/discounts/DiscountAdministration") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -1609,6 +1611,17 @@ export class DiscountAdministration extends Context.Service<
         updateVoucher: withDiscountAdminConflict(updateVoucher),
       } satisfies IDiscountAdministration;
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        WorkspaceDatabase.Default,
+        WorkspaceDotyposLayer,
+        WorkspaceGoogleCalendarLayer,
+        CalendarResourceConfig.Default
+      )
+    )
   );
 }
 

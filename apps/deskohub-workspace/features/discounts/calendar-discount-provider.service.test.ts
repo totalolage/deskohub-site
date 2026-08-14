@@ -87,7 +87,7 @@ const runWithProvider = <A, E>(
   effect.pipe(
     Effect.provide(
       Layer.mergeAll(
-        CalendarDiscountProvider.Live.pipe(
+        CalendarDiscountProvider.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               GoogleCalendarServiceMock({ listEvents }),
@@ -849,7 +849,7 @@ describe("CalendarDiscountProvider", () => {
     const providerLayer = Layer.mergeAll(
       Layer.fromBuild(() =>
         Layer.buildWithMemoMap(
-          CalendarDiscountProvider.Live.pipe(
+          CalendarDiscountProvider.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 GoogleCalendarServiceMock({ listEvents }),

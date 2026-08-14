@@ -128,7 +128,7 @@ const makeService = () =>
   Effect.runPromise(
     CloudinaryService.pipe(
       Effect.provide(
-        CloudinaryService.Live.pipe(
+        CloudinaryService.Default.pipe(
           Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
         )
       )
@@ -341,7 +341,7 @@ describe("CloudinaryService", () => {
     const result = await Effect.runPromise(
       CloudinaryService.pipe(
         Effect.provide(
-          CloudinaryService.Live.pipe(
+          CloudinaryService.Default.pipe(
             Layer.provide(
               makeCloudinaryRuntimeConfigLayer({ ...config, apiKey: "" })
             )

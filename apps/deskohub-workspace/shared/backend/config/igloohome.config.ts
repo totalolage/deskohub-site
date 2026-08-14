@@ -22,7 +22,7 @@ const fixtureService = Layer.succeed(
 );
 
 const productionService = () =>
-  IgloohomeService.Default.pipe(
+  IgloohomeService.Live.pipe(
     Layer.provide(
       Layer.succeed(
         IgloohomeRuntimeConfig,
@@ -41,5 +41,5 @@ const productionService = () =>
     )
   );
 
-export const IgloohomeServiceLive =
+export const WorkspaceIgloohomeLayer =
   env.VERCEL_ENV === "production" ? productionService() : fixtureService;

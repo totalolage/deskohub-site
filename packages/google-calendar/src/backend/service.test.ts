@@ -99,7 +99,7 @@ const runWithCalendar = <A, E>(
   Effect.runPromise(
     effect.pipe(
       Effect.provide(
-        GoogleCalendarService.Live.pipe(
+        GoogleCalendarService.Default.pipe(
           Layer.provide(Layer.succeed(GoogleCalendarRuntimeConfig, config))
         )
       )
@@ -449,7 +449,7 @@ describe("GoogleCalendarService", () => {
     const result = await Effect.runPromise(
       GoogleCalendarService.pipe(
         Effect.provide(
-          GoogleCalendarService.Live.pipe(
+          GoogleCalendarService.Default.pipe(
             Layer.provide(
               Layer.succeed(GoogleCalendarRuntimeConfig, {
                 ...config,

@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { EmailConfigTag, EmailServiceTag } from "./service";
-import { StandaloneEmailServiceLayer } from "./standalone-email-service";
 
 const originalEnv = { ...process.env };
 
@@ -9,7 +8,7 @@ afterEach(() => {
   process.env = { ...originalEnv };
 });
 
-describe("StandaloneEmailServiceLayer", () => {
+describe("EmailServiceTag.Live", () => {
   test("materializes with config and verifies console provider", async () => {
     process.env.NODE_ENV = "test";
     delete process.env.EMAIL_API_KEY;
@@ -20,7 +19,7 @@ describe("StandaloneEmailServiceLayer", () => {
         return yield* email.verify;
       }).pipe(
         Effect.provide(
-          StandaloneEmailServiceLayer.pipe(
+          EmailServiceTag.Live.pipe(
             Layer.provide(
               Layer.succeed(EmailConfigTag, {
                 provider: "console",

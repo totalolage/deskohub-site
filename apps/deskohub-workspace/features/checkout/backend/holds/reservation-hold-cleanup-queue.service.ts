@@ -173,7 +173,7 @@ export class ReservationHoldCleanupScheduleService extends Context.Service<
   ReservationHoldCleanupScheduleService,
   IReservationHoldCleanupScheduleService
 >()("ReservationHoldCleanupScheduleService") {
-  static Live = Layer.succeed(
+  static Default = Layer.succeed(
     this,
     makeReservationHoldCleanupScheduleService()
   );

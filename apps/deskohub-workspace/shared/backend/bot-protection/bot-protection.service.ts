@@ -18,7 +18,7 @@ export class BotProtectionService extends Context.Service<
   BotProtectionService,
   IBotProtectionService
 >()("@deskohub-workspace/security/BotProtectionService") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     verifyHuman: (input) => verifyHuman(input),
   });
 }

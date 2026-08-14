@@ -14,7 +14,7 @@ import {
 } from "@deskohub/email/backend/service";
 import { Effect, Layer } from "effect";
 import { m } from "@/features/i18n";
-import { ContactService, ContactServiceLive } from "./contact.service";
+import { ContactService } from "./contact.service";
 
 const sentResult = (id: string): EmailSendResult => ({
   id: EmailDeliveryIdSchema.make(id),
@@ -44,7 +44,7 @@ describe("ContactService", () => {
       },
     };
 
-    const ContactServiceTest = ContactServiceLive.pipe(
+    const ContactServiceTest = ContactService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(EmailServiceTag, emailService),

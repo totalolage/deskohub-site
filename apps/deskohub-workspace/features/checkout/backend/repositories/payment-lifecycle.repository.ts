@@ -43,7 +43,6 @@ import {
   type AccountingSnapshotKey,
   AccountingSnapshotKeyService,
 } from "@/features/accounting/backend/accounting-snapshot-key.service";
-import { AccountingSnapshotKeyServiceLive } from "@/features/accounting/backend/accounting-snapshot-key-live.server";
 import { encryptAccountingSnapshot } from "@/features/accounting/backend/accounting-snapshot-sql";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
@@ -164,7 +163,7 @@ export class PaymentLifecycleRepository extends Context.Service<
   PaymentLifecycleRepository,
   IPaymentLifecycleRepository
 >()("@deskohub-workspace/checkout/PaymentLifecycleRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -877,7 +876,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         markPaid,
         markTerminal,
       } satisfies IPaymentLifecycleRepository;
-    }).pipe(Effect.provide(AccountingSnapshotKeyServiceLive))
+    }).pipe(Effect.provide(AccountingSnapshotKeyService.Default))
   );
 }
 

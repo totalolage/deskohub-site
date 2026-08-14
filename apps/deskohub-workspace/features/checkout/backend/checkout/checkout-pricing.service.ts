@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Match } from "effect";
+import { DiscountService } from "@/features/discounts/discount.service";
 import {
   type CoworkAdvertisementAffirmation,
   type CoworkAdvertisementAffirmationInput,
@@ -137,7 +138,7 @@ export class CheckoutPricingService extends Context.Service<
   CheckoutPricingService,
   ICheckoutPricingService
 >()("@deskohub-workspace/checkout/CheckoutPricingService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const cowork = yield* coworkCheckoutPricing;
@@ -249,4 +250,6 @@ export class CheckoutPricingService extends Context.Service<
       } satisfies ICheckoutPricingService;
     })
   );
+
+  static Live = this.Default.pipe(Layer.provide(DiscountService.Live));
 }

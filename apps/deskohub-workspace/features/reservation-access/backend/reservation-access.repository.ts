@@ -102,7 +102,7 @@ export class ReservationAccessRepository extends Context.Service<
   ReservationAccessRepository,
   IReservationAccessRepository
 >()("@deskohub-workspace/reservation-access/ReservationAccessRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -447,6 +447,6 @@ export class ReservationAccessRepository extends Context.Service<
       });
     })
   );
-}
 
-export const ReservationAccessRepositoryLive = ReservationAccessRepository.Live;
+  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
+}

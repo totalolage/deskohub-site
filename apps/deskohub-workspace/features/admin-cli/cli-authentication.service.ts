@@ -33,7 +33,6 @@ import {
 } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   type CliAuthenticationRequestRow,
   type CliSessionRow,
@@ -124,7 +123,7 @@ export class CliAuthentication extends Context.Service<
   CliAuthentication,
   ICliAuthentication
 >()("@deskohub-workspace/admin-cli/CliAuthentication") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -447,8 +446,8 @@ export class CliAuthentication extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceDatabaseLive),
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(NodeCrypto.layer)
   );
 }

@@ -51,14 +51,11 @@ export class LatePaymentRecoveryError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export interface LatePaymentRecoveryService {
+export interface ILatePaymentRecoveryService {
   readonly recover: (input: {
     readonly paymentAttemptId: PaymentAttemptId;
   }) => Effect.Effect<LatePaymentRecoveryOutcome, LatePaymentRecoveryError>;
 }
-
-export const LatePaymentRecoveryService =
-  Context.Service<LatePaymentRecoveryService>("LatePaymentRecoveryService");
 
 type RecreatedReservation = {
   readonly checkoutDetails: CheckoutDetails;
@@ -183,328 +180,339 @@ const ensureAvailable = (
 const recoveryMarker = (reservationId: WorkspaceReservationId) =>
   `Payment order: ${reservationId}`;
 
-export const LatePaymentRecoveryServiceLive = Layer.effect(
+export class LatePaymentRecoveryService extends Context.Service<
   LatePaymentRecoveryService,
-  Effect.gen(function* () {
-    const recoveries = yield* LatePaymentRecoveryRepository;
-    const reservations = yield* WorkspaceReservationRepository;
-    const snapshots = yield* AccountingDocumentSnapshotRepository;
-    const availability = yield* WorkspaceAvailabilityService;
-    const dotypos = yield* DotyposService;
-    const tableAssignments = yield* WorkspaceTableAssignmentService;
-    const fulfillment = yield* WorkspacePaidFulfillmentService;
+  ILatePaymentRecoveryService
+>()("LatePaymentRecoveryService") {
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const recoveries = yield* LatePaymentRecoveryRepository;
+      const reservations = yield* WorkspaceReservationRepository;
+      const snapshots = yield* AccountingDocumentSnapshotRepository;
+      const availability = yield* WorkspaceAvailabilityService;
+      const dotypos = yield* DotyposService;
+      const tableAssignments = yield* WorkspaceTableAssignmentService;
+      const fulfillment = yield* WorkspacePaidFulfillmentService;
 
-    const settleRefund = (input: {
-      readonly paymentAttemptId: PaymentAttemptId;
-      readonly workspaceReservationId: WorkspaceReservationId;
-      readonly failureCode: string;
-    }) =>
-      recoveries.requireRefund({
-        ...input,
-        completedAt: Temporal.Now.instant(),
-      });
-
-    const recover = Effect.fn("latePaymentRecovery.recover")(function* (input: {
-      readonly paymentAttemptId: PaymentAttemptId;
-    }) {
-      const current = yield* recoveries.findByPaymentAttemptId(
-        input.paymentAttemptId
-      );
-      if (!current) return "ignored" as const;
-      if (current.state === "recovered") {
-        yield* fulfillment.fulfillPaidOrder({
-          orderId: current.workspaceReservationId,
+      const settleRefund = (input: {
+        readonly paymentAttemptId: PaymentAttemptId;
+        readonly workspaceReservationId: WorkspaceReservationId;
+        readonly failureCode: string;
+      }) =>
+        recoveries.requireRefund({
+          ...input,
+          completedAt: Temporal.Now.instant(),
         });
-        return "recovered" as const;
-      }
-      if (
-        current.state === "refund_required" ||
-        current.state === "review_required"
-      ) {
-        return current.state;
-      }
 
-      const claimed = yield* recoveries.claim({
-        paymentAttemptId: input.paymentAttemptId,
-        staleProcessingBefore:
-          Temporal.Now.instant().subtract(recoveryClaimTimeout),
-      });
-      if (!claimed) {
-        return yield* new LatePaymentRecoveryError({
-          paymentAttemptId: input.paymentAttemptId,
-          message: "Late-payment recovery is already processing.",
-        });
-      }
+      const recover = Effect.fn("latePaymentRecovery.recover")(
+        function* (input: { readonly paymentAttemptId: PaymentAttemptId }) {
+          const current = yield* recoveries.findByPaymentAttemptId(
+            input.paymentAttemptId
+          );
+          if (!current) return "ignored" as const;
+          if (current.state === "recovered") {
+            yield* fulfillment.fulfillPaidOrder({
+              orderId: current.workspaceReservationId,
+            });
+            return "recovered" as const;
+          }
+          if (
+            current.state === "refund_required" ||
+            current.state === "review_required"
+          ) {
+            return current.state;
+          }
 
-      const reservation = yield* reservations.findById(
-        claimed.workspaceReservationId
-      );
-      if (!reservation) {
-        return yield* Effect.die(
-          "Late-payment recovery reservation missing despite its foreign key."
-        );
-      }
+          const claimed = yield* recoveries.claim({
+            paymentAttemptId: input.paymentAttemptId,
+            staleProcessingBefore:
+              Temporal.Now.instant().subtract(recoveryClaimTimeout),
+          });
+          if (!claimed) {
+            return yield* new LatePaymentRecoveryError({
+              paymentAttemptId: input.paymentAttemptId,
+              message: "Late-payment recovery is already processing.",
+            });
+          }
 
-      if (reservation.activePaymentAttemptId !== claimed.paymentAttemptId) {
-        yield* settleRefund({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          failureCode: "late_payment_superseded_attempt",
-        });
-        return "refund_required" as const;
-      }
+          const reservation = yield* reservations.findById(
+            claimed.workspaceReservationId
+          );
+          if (!reservation) {
+            return yield* Effect.die(
+              "Late-payment recovery reservation missing despite its foreign key."
+            );
+          }
 
-      const newerReservation = yield* recoveries.hasNewerActiveReservation(
-        reservation.id
-      );
-      if (newerReservation && reservation.reservationState !== "cancelled") {
-        yield* settleRefund({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          failureCode: "late_payment_newer_reservation",
-        });
-        return "refund_required" as const;
-      }
-
-      if (reservation.reservationState === "cancelling") {
-        return yield* new LatePaymentRecoveryError({
-          paymentAttemptId: claimed.paymentAttemptId,
-          message: "Late-payment recovery is waiting for hold cancellation.",
-        });
-      }
-
-      if (
-        reservation.reservationState === "held" ||
-        reservation.reservationState === "cancellation_failed"
-      ) {
-        const status = yield* dotypos.getReservationStatus(
-          claimed.originalDotyposReservationId
-        );
-        if (status === "NEW" || status === "CONFIRMED") {
-          const recovered = yield* recoveries
-            .completeUsingOriginalReservation({
+          if (reservation.activePaymentAttemptId !== claimed.paymentAttemptId) {
+            yield* settleRefund({
               paymentAttemptId: claimed.paymentAttemptId,
               workspaceReservationId: reservation.id,
-              reservationState: status === "CONFIRMED" ? "confirmed" : "held",
+              failureCode: "late_payment_superseded_attempt",
+            });
+            return "refund_required" as const;
+          }
+
+          const newerReservation = yield* recoveries.hasNewerActiveReservation(
+            reservation.id
+          );
+          if (
+            newerReservation &&
+            reservation.reservationState !== "cancelled"
+          ) {
+            yield* settleRefund({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              failureCode: "late_payment_newer_reservation",
+            });
+            return "refund_required" as const;
+          }
+
+          if (reservation.reservationState === "cancelling") {
+            return yield* new LatePaymentRecoveryError({
+              paymentAttemptId: claimed.paymentAttemptId,
+              message:
+                "Late-payment recovery is waiting for hold cancellation.",
+            });
+          }
+
+          if (
+            reservation.reservationState === "held" ||
+            reservation.reservationState === "cancellation_failed"
+          ) {
+            const status = yield* dotypos.getReservationStatus(
+              claimed.originalDotyposReservationId
+            );
+            if (status === "NEW" || status === "CONFIRMED") {
+              const recovered = yield* recoveries
+                .completeUsingOriginalReservation({
+                  paymentAttemptId: claimed.paymentAttemptId,
+                  workspaceReservationId: reservation.id,
+                  reservationState:
+                    status === "CONFIRMED" ? "confirmed" : "held",
+                  completedAt: Temporal.Now.instant(),
+                })
+                .pipe(
+                  Effect.as(true),
+                  Effect.catchTag("DiscountClaimError", () =>
+                    settleRefund({
+                      paymentAttemptId: claimed.paymentAttemptId,
+                      workspaceReservationId: reservation.id,
+                      failureCode: "late_payment_discount_unavailable",
+                    }).pipe(Effect.as(false))
+                  )
+                );
+              if (!recovered) return "refund_required" as const;
+              yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id });
+              return "recovered" as const;
+            }
+            if (status !== "CANCELLED") {
+              yield* recoveries.requireReview({
+                paymentAttemptId: claimed.paymentAttemptId,
+                workspaceReservationId: reservation.id,
+                failureCode: "late_payment_original_cancellation_uncertain",
+                completedAt: Temporal.Now.instant(),
+              });
+              return "review_required" as const;
+            }
+
+            const cancellation = yield* reservations.claimCancellation(
+              reservation.id
+            );
+            if (!cancellation) {
+              return yield* new LatePaymentRecoveryError({
+                paymentAttemptId: claimed.paymentAttemptId,
+                message:
+                  "Late-payment recovery could not reconcile the cancelled provider hold.",
+              });
+            }
+            yield* reservations.markCancelled({
+              id: reservation.id,
+              cancelledAt: Temporal.Now.instant(),
+            });
+          } else if (reservation.reservationState !== "cancelled") {
+            yield* recoveries.requireReview({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              failureCode: "late_payment_reservation_state_unexpected",
+              completedAt: Temporal.Now.instant(),
+            });
+            return "review_required" as const;
+          }
+
+          const snapshot = yield* snapshots.findByPaymentAttemptId(
+            claimed.paymentAttemptId
+          );
+          const recreated = snapshot
+            ? reconstructReservation(reservation, snapshot)
+            : null;
+          if (!recreated) {
+            yield* settleRefund({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              failureCode: "late_payment_snapshot_unavailable",
+            });
+            return "refund_required" as const;
+          }
+
+          const interval = yield* getWorkspaceReservationInterval(
+            recreated.reservation
+          );
+          if (hasReservationIntervalEnded(interval)) {
+            yield* settleRefund({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              failureCode: "late_payment_reservation_ended",
+            });
+            return "refund_required" as const;
+          }
+
+          const marker = recoveryMarker(reservation.id);
+          const matchingReservations =
+            (yield* dotypos.listActiveReservationsOverlapping({
+              startDate: temporalInstantToDate(
+                Temporal.Instant.from(interval.startsAt)
+              ),
+              endDate: temporalInstantToDate(
+                Temporal.Instant.from(interval.endsAt)
+              ),
+            })).filter((candidate) =>
+              candidate.note?.split("\n").includes(marker)
+            );
+
+          if (matchingReservations.length > 1) {
+            yield* recoveries.requireReview({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              failureCode: "late_payment_replacement_ambiguous",
+              completedAt: Temporal.Now.instant(),
+            });
+            return "review_required" as const;
+          }
+
+          if (newerReservation) {
+            const orphanedReplacementId = matchingReservations[0]?.id;
+            if (orphanedReplacementId) {
+              yield* dotypos.cancelReservation(orphanedReplacementId);
+            }
+            yield* settleRefund({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              failureCode: "late_payment_newer_reservation",
+            });
+            return "refund_required" as const;
+          }
+
+          let replacementId = matchingReservations[0]?.id;
+          let replacementState =
+            matchingReservations[0]?.status === "CONFIRMED"
+              ? ("confirmed" as const)
+              : ("held" as const);
+          if (!replacementId) {
+            const isAvailable = yield* ensureAvailable(
+              availability,
+              recreated.reservation
+            ).pipe(
+              Effect.as(true),
+              Effect.catchTag("WorkspaceTableUnavailableError", () =>
+                Effect.succeed(false)
+              )
+            );
+            if (!isAvailable) {
+              yield* settleRefund({
+                paymentAttemptId: claimed.paymentAttemptId,
+                workspaceReservationId: reservation.id,
+                failureCode: "late_payment_reservation_unavailable",
+              });
+              return "refund_required" as const;
+            }
+
+            const replacement = yield* createWorkspaceDotyposReservation({
+              paymentOrderId: reservation.id,
+              dotyposCustomerId: reservation.dotyposCustomerId,
+              checkoutDetails: recreated.checkoutDetails,
+              reservation: recreated.reservation,
+              status: "CONFIRMED",
+            }).pipe(
+              Effect.provideService(DotyposService, dotypos),
+              Effect.provideService(
+                WorkspaceTableAssignmentService,
+                tableAssignments
+              )
+            );
+            replacementId = replacement.id;
+            replacementState = "confirmed";
+          }
+
+          if (!replacementId) {
+            yield* recoveries.requireReview({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              failureCode: "late_payment_replacement_id_missing",
+              completedAt: Temporal.Now.instant(),
+            });
+            return "review_required" as const;
+          }
+
+          yield* recoveries
+            .completeWithReplacement({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              recoveredDotyposReservationId: replacementId,
+              reservationState: replacementState,
               completedAt: Temporal.Now.instant(),
             })
             .pipe(
-              Effect.as(true),
+              Effect.catchTag("LatePaymentRecoveryStateError", (cause) =>
+                Effect.gen(function* () {
+                  const superseded =
+                    yield* recoveries.hasNewerActiveReservation(reservation.id);
+                  if (!superseded) return yield* cause;
+                  yield* dotypos.cancelReservation(replacementId);
+                  yield* settleRefund({
+                    paymentAttemptId: claimed.paymentAttemptId,
+                    workspaceReservationId: reservation.id,
+                    failureCode: "late_payment_newer_reservation",
+                  });
+                })
+              ),
               Effect.catchTag("DiscountClaimError", () =>
-                settleRefund({
-                  paymentAttemptId: claimed.paymentAttemptId,
-                  workspaceReservationId: reservation.id,
-                  failureCode: "late_payment_discount_unavailable",
-                }).pipe(Effect.as(false))
+                Effect.gen(function* () {
+                  yield* dotypos.cancelReservation(replacementId);
+                  yield* settleRefund({
+                    paymentAttemptId: claimed.paymentAttemptId,
+                    workspaceReservationId: reservation.id,
+                    failureCode: "late_payment_discount_unavailable",
+                  });
+                })
               )
             );
-          if (!recovered) return "refund_required" as const;
+          const settled = yield* recoveries.findByPaymentAttemptId(
+            claimed.paymentAttemptId
+          );
+          if (settled?.state === "refund_required") {
+            return "refund_required" as const;
+          }
           yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id });
           return "recovered" as const;
         }
-        if (status !== "CANCELLED") {
-          yield* recoveries.requireReview({
-            paymentAttemptId: claimed.paymentAttemptId,
-            workspaceReservationId: reservation.id,
-            failureCode: "late_payment_original_cancellation_uncertain",
-            completedAt: Temporal.Now.instant(),
-          });
-          return "review_required" as const;
-        }
-
-        const cancellation = yield* reservations.claimCancellation(
-          reservation.id
-        );
-        if (!cancellation) {
-          return yield* new LatePaymentRecoveryError({
-            paymentAttemptId: claimed.paymentAttemptId,
-            message:
-              "Late-payment recovery could not reconcile the cancelled provider hold.",
-          });
-        }
-        yield* reservations.markCancelled({
-          id: reservation.id,
-          cancelledAt: Temporal.Now.instant(),
-        });
-      } else if (reservation.reservationState !== "cancelled") {
-        yield* recoveries.requireReview({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          failureCode: "late_payment_reservation_state_unexpected",
-          completedAt: Temporal.Now.instant(),
-        });
-        return "review_required" as const;
-      }
-
-      const snapshot = yield* snapshots.findByPaymentAttemptId(
-        claimed.paymentAttemptId
       );
-      const recreated = snapshot
-        ? reconstructReservation(reservation, snapshot)
-        : null;
-      if (!recreated) {
-        yield* settleRefund({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          failureCode: "late_payment_snapshot_unavailable",
-        });
-        return "refund_required" as const;
-      }
 
-      const interval = yield* getWorkspaceReservationInterval(
-        recreated.reservation
-      );
-      if (hasReservationIntervalEnded(interval)) {
-        yield* settleRefund({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          failureCode: "late_payment_reservation_ended",
-        });
-        return "refund_required" as const;
-      }
-
-      const marker = recoveryMarker(reservation.id);
-      const matchingReservations =
-        (yield* dotypos.listActiveReservationsOverlapping({
-          startDate: temporalInstantToDate(
-            Temporal.Instant.from(interval.startsAt)
+      return LatePaymentRecoveryService.of({
+        recover: (input) =>
+          recover(input).pipe(
+            Effect.mapError((cause) =>
+              cause instanceof LatePaymentRecoveryError
+                ? cause
+                : new LatePaymentRecoveryError({
+                    paymentAttemptId: input.paymentAttemptId,
+                    message: "Late-payment recovery failed.",
+                    cause,
+                  })
+            )
           ),
-          endDate: temporalInstantToDate(
-            Temporal.Instant.from(interval.endsAt)
-          ),
-        })).filter((candidate) => candidate.note?.split("\n").includes(marker));
-
-      if (matchingReservations.length > 1) {
-        yield* recoveries.requireReview({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          failureCode: "late_payment_replacement_ambiguous",
-          completedAt: Temporal.Now.instant(),
-        });
-        return "review_required" as const;
-      }
-
-      if (newerReservation) {
-        const orphanedReplacementId = matchingReservations[0]?.id;
-        if (orphanedReplacementId) {
-          yield* dotypos.cancelReservation(orphanedReplacementId);
-        }
-        yield* settleRefund({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          failureCode: "late_payment_newer_reservation",
-        });
-        return "refund_required" as const;
-      }
-
-      let replacementId = matchingReservations[0]?.id;
-      let replacementState =
-        matchingReservations[0]?.status === "CONFIRMED"
-          ? ("confirmed" as const)
-          : ("held" as const);
-      if (!replacementId) {
-        const isAvailable = yield* ensureAvailable(
-          availability,
-          recreated.reservation
-        ).pipe(
-          Effect.as(true),
-          Effect.catchTag("WorkspaceTableUnavailableError", () =>
-            Effect.succeed(false)
-          )
-        );
-        if (!isAvailable) {
-          yield* settleRefund({
-            paymentAttemptId: claimed.paymentAttemptId,
-            workspaceReservationId: reservation.id,
-            failureCode: "late_payment_reservation_unavailable",
-          });
-          return "refund_required" as const;
-        }
-
-        const replacement = yield* createWorkspaceDotyposReservation({
-          paymentOrderId: reservation.id,
-          dotyposCustomerId: reservation.dotyposCustomerId,
-          checkoutDetails: recreated.checkoutDetails,
-          reservation: recreated.reservation,
-          status: "CONFIRMED",
-        }).pipe(
-          Effect.provideService(DotyposService, dotypos),
-          Effect.provideService(
-            WorkspaceTableAssignmentService,
-            tableAssignments
-          )
-        );
-        replacementId = replacement.id;
-        replacementState = "confirmed";
-      }
-
-      if (!replacementId) {
-        yield* recoveries.requireReview({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          failureCode: "late_payment_replacement_id_missing",
-          completedAt: Temporal.Now.instant(),
-        });
-        return "review_required" as const;
-      }
-
-      yield* recoveries
-        .completeWithReplacement({
-          paymentAttemptId: claimed.paymentAttemptId,
-          workspaceReservationId: reservation.id,
-          recoveredDotyposReservationId: replacementId,
-          reservationState: replacementState,
-          completedAt: Temporal.Now.instant(),
-        })
-        .pipe(
-          Effect.catchTag("LatePaymentRecoveryStateError", (cause) =>
-            Effect.gen(function* () {
-              const superseded = yield* recoveries.hasNewerActiveReservation(
-                reservation.id
-              );
-              if (!superseded) return yield* cause;
-              yield* dotypos.cancelReservation(replacementId);
-              yield* settleRefund({
-                paymentAttemptId: claimed.paymentAttemptId,
-                workspaceReservationId: reservation.id,
-                failureCode: "late_payment_newer_reservation",
-              });
-            })
-          ),
-          Effect.catchTag("DiscountClaimError", () =>
-            Effect.gen(function* () {
-              yield* dotypos.cancelReservation(replacementId);
-              yield* settleRefund({
-                paymentAttemptId: claimed.paymentAttemptId,
-                workspaceReservationId: reservation.id,
-                failureCode: "late_payment_discount_unavailable",
-              });
-            })
-          )
-        );
-      const settled = yield* recoveries.findByPaymentAttemptId(
-        claimed.paymentAttemptId
-      );
-      if (settled?.state === "refund_required") {
-        return "refund_required" as const;
-      }
-      yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id });
-      return "recovered" as const;
-    });
-
-    return LatePaymentRecoveryService.of({
-      recover: (input) =>
-        recover(input).pipe(
-          Effect.mapError((cause) =>
-            cause instanceof LatePaymentRecoveryError
-              ? cause
-              : new LatePaymentRecoveryError({
-                  paymentAttemptId: input.paymentAttemptId,
-                  message: "Late-payment recovery failed.",
-                  cause,
-                })
-          )
-        ),
-    });
-  })
-);
+      });
+    })
+  );
+}

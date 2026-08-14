@@ -6,14 +6,14 @@ import type {
   PaymentVerificationResult,
 } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   WorkspacePaidFulfillmentError,
   type WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType,
 } from "../fulfillment/paid-fulfillment.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
-import type { WebhookEventRepository as WebhookEventRepositoryType } from "../repositories/webhook-event.repository";
+import type { IWebhookEventRepository as WebhookEventRepositoryType } from "../repositories/webhook-event.repository";
 
 type NexiServiceType = typeof NexiServiceTag.Service;
 
@@ -104,9 +104,7 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
-  const { NexiWebhookService, NexiWebhookServiceLive } = await import(
-    "./nexi-webhook.service"
-  );
+  const { NexiWebhookService } = await import("./nexi-webhook.service");
   const { PaymentAttemptRepository } = await import(
     "../repositories/payment-attempt.repository"
   );
@@ -134,7 +132,7 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
     return yield* service.processNotification(payload);
   }).pipe(
     Effect.provide(
-      NexiWebhookServiceLive.pipe(
+      NexiWebhookService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(WebhookEventRepository, services.webhookEvents),

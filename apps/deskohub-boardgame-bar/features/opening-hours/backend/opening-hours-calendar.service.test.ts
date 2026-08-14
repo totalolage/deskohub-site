@@ -49,7 +49,7 @@ const runWithEvents = async (
     return yield* service.listExceptions(query);
   }).pipe(
     Effect.provide(
-      OpeningHoursCalendarService.Live.pipe(
+      OpeningHoursCalendarService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             GoogleCalendarServiceMock({
@@ -88,7 +88,7 @@ describe("OpeningHoursCalendarService", () => {
       });
     }).pipe(
       Effect.provide(
-        OpeningHoursCalendarService.Live.pipe(
+        OpeningHoursCalendarService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               GoogleCalendarServiceMock({

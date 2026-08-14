@@ -61,7 +61,7 @@ describe("PaymentAdministrationService", () => {
       });
     }).pipe(
       Effect.provide(
-        PaymentAdministrationService.Live.pipe(
+        PaymentAdministrationService.Default.pipe(
           Layer.provide(
             Layer.merge(
               Layer.succeed(
@@ -114,7 +114,7 @@ describe("PaymentAdministrationService", () => {
       return yield* administration.listOrders({ maxRecords: 1 });
     }).pipe(
       Effect.provide(
-        PaymentAdministrationService.Live.pipe(
+        PaymentAdministrationService.Default.pipe(
           Layer.provide(
             Layer.merge(
               Layer.succeed(

@@ -31,7 +31,7 @@ export class AuthenticationService extends Context.Service<
   AuthenticationService,
   IAuthenticationService
 >()("AuthenticationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const api = yield* WorkspaceAdminApiClient;
@@ -63,8 +63,8 @@ export class AuthenticationService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceAdminApiClient.Live),
-    Layer.provide(CliSessionCredential.LiveWithDependencies)
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceAdminApiClient.Default),
+    Layer.provide(CliSessionCredential.Live)
   );
 }

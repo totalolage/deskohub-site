@@ -22,7 +22,7 @@ export const loadCliAuthenticationApproval = async (
     Effect.flatMap((authentication) =>
       authentication.inspectApproval(decoded.value)
     ),
-    Effect.provide(CliAuthentication.LiveWithDependencies),
+    Effect.provide(CliAuthentication.Live),
     runWorkspaceEffect("cli-authentication.inspect-approval", {
       boundary: "page",
     })
@@ -33,7 +33,7 @@ export const loadCliSessions = async () => {
   await authorizeDiscountAdminPage();
   return CliAuthentication.pipe(
     Effect.flatMap((authentication) => authentication.listSessions()),
-    Effect.provide(CliAuthentication.LiveWithDependencies),
+    Effect.provide(CliAuthentication.Live),
     runWorkspaceEffect("cli-authentication.list-sessions", {
       boundary: "page",
     })

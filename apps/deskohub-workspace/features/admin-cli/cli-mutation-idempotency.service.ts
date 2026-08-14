@@ -8,7 +8,6 @@ import { and, eq, isNull, lte } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   type CliStoredMutation,
   type CliStoredMutationResult,
@@ -57,7 +56,7 @@ export class CliMutationIdempotency extends Context.Service<
   CliMutationIdempotency,
   ICliMutationIdempotency
 >()("@deskohub-workspace/admin-cli/CliMutationIdempotency") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -179,7 +178,5 @@ export class CliMutationIdempotency extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceDatabaseLive)
-  );
+  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }

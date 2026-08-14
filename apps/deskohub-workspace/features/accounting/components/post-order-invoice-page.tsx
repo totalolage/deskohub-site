@@ -5,7 +5,7 @@ import { CircleCheck, FileText } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { managePostOrderInvoice } from "@/features/accounting/actions/manage-post-order-invoice";
-import type { PostOrderInvoiceState } from "@/features/accounting/backend/reservation-invoice";
+import type { PostOrderInvoiceState } from "@/features/accounting/backend/reservation-invoice.service";
 import type {
   InvoiceBuyerAddress,
   InvoiceBuyerAddressInput,

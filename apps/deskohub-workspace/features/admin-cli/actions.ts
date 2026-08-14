@@ -24,7 +24,7 @@ export async function approveCliAuthentication(formData: FormData) {
   }).pipe(
     Effect.as(true),
     Effect.catch(() => Effect.succeed(false)),
-    Effect.provide(CliAuthentication.LiveWithDependencies),
+    Effect.provide(CliAuthentication.Live),
     runWorkspaceEffect("cli-authentication.approve", { boundary: "action" })
   );
 
@@ -45,7 +45,7 @@ export async function revokeCliSession(formData: FormData) {
     return yield* authentication.revoke(sessionId);
   }).pipe(
     Effect.catch(() => Effect.succeed(false)),
-    Effect.provide(CliAuthentication.LiveWithDependencies),
+    Effect.provide(CliAuthentication.Live),
     runWorkspaceEffect("cli-authentication.revoke", { boundary: "action" })
   );
 
@@ -74,7 +74,7 @@ const renameCliSessionAction = defineWorkspaceAction(
       yield* Effect.sync(() => revalidatePath("/admin/cli/sessions"));
       return { notice: "CLI session label updated." };
     }).pipe(
-      Effect.provide(CliAuthentication.LiveWithDependencies),
+      Effect.provide(CliAuthentication.Live),
       Effect.mapError((cause) =>
         cause instanceof PublicSafeActionError
           ? cause

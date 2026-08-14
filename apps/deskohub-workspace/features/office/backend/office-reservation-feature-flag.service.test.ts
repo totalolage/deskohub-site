@@ -25,7 +25,7 @@ describe("OfficeReservationFeatureFlagService", () => {
       const featureFlag = yield* OfficeReservationFeatureFlagService;
       return yield* featureFlag.isEnabled;
     }).pipe(
-      Effect.provide(OfficeReservationFeatureFlagService.Live),
+      Effect.provide(OfficeReservationFeatureFlagService.Default),
       Effect.provide(WorkspaceFeatureFlagServiceMock({ isEnabled })),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise

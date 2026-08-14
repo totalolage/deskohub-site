@@ -154,7 +154,7 @@ export class NexiGeneratedClient extends Context.Service<
   NexiGeneratedClient,
   INexiGeneratedClient
 >()("NexiGeneratedClient") {
-  static Live = Layer.effect(this, makeNexiGeneratedClient);
+  static Default = Layer.effect(this, makeNexiGeneratedClient);
 }
 
 export const mapNexiClientError = (

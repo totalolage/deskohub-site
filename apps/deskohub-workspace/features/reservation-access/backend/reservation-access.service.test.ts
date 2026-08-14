@@ -175,7 +175,7 @@ describe("ReservationAccessService", () => {
       return yield* service.issueForReservation(pastReservation);
     }).pipe(
       Effect.provide(
-        ReservationAccessService.Live.pipe(
+        ReservationAccessService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ReservationAccessRepository, {
@@ -223,7 +223,7 @@ describe("ReservationAccessService", () => {
       });
     }).pipe(
       Effect.provide(
-        ReservationAccessService.Live.pipe(
+        ReservationAccessService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ReservationAccessRepository, {
@@ -267,7 +267,7 @@ describe("ReservationAccessService", () => {
       return yield* service.issueForReservation(movedReservation);
     }).pipe(
       Effect.provide(
-        ReservationAccessService.Live.pipe(
+        ReservationAccessService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ReservationAccessRepository, {
@@ -320,7 +320,7 @@ describe("ReservationAccessService", () => {
         .pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        ReservationAccessService.Live.pipe(
+        ReservationAccessService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ReservationAccessRepository, {
@@ -367,7 +367,7 @@ describe("ReservationAccessService", () => {
         .pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        ReservationAccessService.Live.pipe(
+        ReservationAccessService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ReservationAccessRepository, {
@@ -406,7 +406,7 @@ describe("ReservationAccessService", () => {
       return yield* service.confirmProviderCredentialRemoved(reservationId);
     }).pipe(
       Effect.provide(
-        ReservationAccessService.Live.pipe(
+        ReservationAccessService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ReservationAccessRepository, { reconcileUncertain }),

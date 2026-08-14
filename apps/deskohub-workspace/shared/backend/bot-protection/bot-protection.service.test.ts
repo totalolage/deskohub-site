@@ -41,7 +41,7 @@ const getVerificationEffect = async (
   return Effect.gen(function* () {
     const service = yield* BotProtectionService;
     yield* service.verifyHuman({ verificationFailurePolicy });
-  }).pipe(Effect.provide(BotProtectionService.Live));
+  }).pipe(Effect.provide(BotProtectionService.Default));
 };
 
 for (const environment of ["preview", "development"] as const) {

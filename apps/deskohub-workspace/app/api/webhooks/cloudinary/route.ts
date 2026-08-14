@@ -14,16 +14,17 @@ import {
 } from "@/shared/backend/workspace-route";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
-const CloudinaryWebhookVerifierLive = CloudinaryWebhookVerifier.Live.pipe(
-  Layer.provide(
-    makeCloudinaryRuntimeConfigLayer({
-      cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-      apiKey: env.CLOUDINARY_API_KEY,
-      apiSecret: env.CLOUDINARY_API_SECRET,
-      serviceName: "deskohub-workspace",
-    })
-  )
-);
+const WorkspaceCloudinaryWebhookVerifierLayer =
+  CloudinaryWebhookVerifier.Default.pipe(
+    Layer.provide(
+      makeCloudinaryRuntimeConfigLayer({
+        cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+        apiKey: env.CLOUDINARY_API_KEY,
+        apiSecret: env.CLOUDINARY_API_SECRET,
+        serviceName: "deskohub-workspace",
+      })
+    )
+  );
 
 const processWebhook = Effect.fn("processWebhook")(function* (
   webhook: VerifiedCloudinaryWebhook
@@ -122,7 +123,7 @@ export const POST = defineWorkspaceRoute(
             )
           ),
       }),
-      Effect.provide(CloudinaryWebhookVerifierLive),
+      Effect.provide(WorkspaceCloudinaryWebhookVerifierLayer),
       Effect.mapError(
         WorkspaceRouteFailure.internal("Cloudinary webhook processing failed")
       )

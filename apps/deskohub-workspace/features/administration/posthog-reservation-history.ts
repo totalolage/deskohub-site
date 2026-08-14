@@ -103,7 +103,7 @@ export class PostHogHistoryRuntimeConfig extends Context.Service<
   PostHogHistoryRuntimeConfig,
   PostHogHistoryConfig
 >()("@deskohub-workspace/administration/PostHogHistoryRuntimeConfig") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     apiKey: env.POSTHOG_HISTORY_API_KEY,
     environment: env.VERCEL_ENV,
     host: env.POSTHOG_HOST,
@@ -144,7 +144,7 @@ export class PostHogReservationHistory extends Context.Service<
     ) => Effect.Effect<ReservationHistoryResult>;
   }
 >()("@deskohub-workspace/administration/PostHogReservationHistory") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* PostHogHistoryRuntimeConfig;
@@ -221,8 +221,8 @@ export class PostHogReservationHistory extends Context.Service<
     })
   );
 
-  static Default = this.Live.pipe(
-    Layer.provide(PostHogHistoryRuntimeConfig.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(PostHogHistoryRuntimeConfig.Default),
     Layer.provide(FetchHttpClient.layer)
   );
 }

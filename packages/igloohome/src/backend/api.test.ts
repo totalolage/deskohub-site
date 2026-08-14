@@ -4,7 +4,7 @@ import { FetchHttpClient } from "effect/unstable/http";
 import { IgloohomeRuntimeConfig } from "../config";
 import { IgloohomeRequestError } from "../errors";
 import { IgloohomeDeviceIdSchema } from "../types";
-import { mapAlgoPinRequestError } from "./api";
+import { IgloohomeAccessToken, mapAlgoPinRequestError } from "./api";
 import { IgloohomeService } from "./service";
 
 const getRequest = (input: RequestInfo | URL, init?: RequestInit) =>
@@ -71,7 +71,8 @@ describe("IgloohomeService", () => {
     const httpClientLayer = FetchHttpClient.layer.pipe(
       Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
     );
-    const serviceLayer = IgloohomeService.DefaultWithoutDependencies.pipe(
+    const serviceLayer = IgloohomeService.Default.pipe(
+      Layer.provide(IgloohomeAccessToken.Default),
       Layer.provide(
         Layer.merge(
           Layer.succeed(IgloohomeRuntimeConfig, {

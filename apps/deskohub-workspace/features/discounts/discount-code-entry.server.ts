@@ -1,7 +1,6 @@
 import "server-only";
 
 import { Effect } from "effect";
-import { DiscountReleaseGateServiceLiveWithDependencies } from "./discount.runtime";
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
 export const getDiscountCodeEntryEnabled = Effect.gen(function* () {
@@ -11,4 +10,4 @@ export const getDiscountCodeEntryEnabled = Effect.gen(function* () {
   });
 
   return gates.discountCodes;
-}).pipe(Effect.provide(DiscountReleaseGateServiceLiveWithDependencies));
+}).pipe(Effect.provide(DiscountReleaseGateService.Live));

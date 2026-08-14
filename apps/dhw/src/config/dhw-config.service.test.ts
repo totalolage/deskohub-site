@@ -5,7 +5,7 @@ import { DhwConfig } from "./dhw-config.service";
 
 const readConfig = (env: Record<string, string>) =>
   DhwConfig.pipe(
-    Effect.provide(DhwConfig.Live),
+    Effect.provide(DhwConfig.Default),
     Effect.provide(BunServices.layer),
     Effect.provideService(
       ConfigProvider.ConfigProvider,

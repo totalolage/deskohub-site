@@ -1,5 +1,5 @@
 import { Effect, Schema } from "effect";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { type Locale, m } from "@/features/i18n";
 import { loadOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity.server";
 import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
@@ -59,7 +59,7 @@ export const officeReservationPage = createReservationPage({
         endsOn: initialEndsOn,
       })
     ).pipe(
-      Effect.provide(CheckoutPricingServiceLiveWithDependencies),
+      Effect.provide(CheckoutPricingService.Live),
       Effect.scoped,
       runWorkspaceEffect("reservation.office.load-advertised-price")
     );

@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice";
+import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
@@ -18,7 +18,6 @@ describe("WorkspacePaidFulfillmentService", () => {
     const {
       PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
       WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
     } = await import("./paid-fulfillment.service");
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
@@ -88,7 +87,7 @@ describe("WorkspacePaidFulfillmentService", () => {
       yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -152,10 +151,9 @@ describe("WorkspacePaidFulfillmentService", () => {
   });
 
   test("confirms held paid orders, sends emails, and completes non-production fulfillment", async () => {
-    const {
-      WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
-    } = await import("./paid-fulfillment.service");
+    const { WorkspacePaidFulfillmentService } = await import(
+      "./paid-fulfillment.service"
+    );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
     );
@@ -205,7 +203,7 @@ describe("WorkspacePaidFulfillmentService", () => {
       yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -262,10 +260,9 @@ describe("WorkspacePaidFulfillmentService", () => {
   });
 
   test("retries invoice processing without reverting completed access fulfillment", async () => {
-    const {
-      WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
-    } = await import("./paid-fulfillment.service");
+    const { WorkspacePaidFulfillmentService } = await import(
+      "./paid-fulfillment.service"
+    );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
     );
@@ -295,7 +292,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         .pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -331,10 +328,9 @@ describe("WorkspacePaidFulfillmentService", () => {
   });
 
   test("releases the fulfillment claim after an unexpected infrastructure failure", async () => {
-    const {
-      WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
-    } = await import("./paid-fulfillment.service");
+    const { WorkspacePaidFulfillmentService } = await import(
+      "./paid-fulfillment.service"
+    );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
     );
@@ -370,7 +366,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         .pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {

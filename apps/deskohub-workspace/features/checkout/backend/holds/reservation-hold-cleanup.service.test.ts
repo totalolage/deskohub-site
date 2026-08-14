@@ -15,8 +15,9 @@ describe("ReservationHoldCleanupService", () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -48,7 +49,7 @@ describe("ReservationHoldCleanupService", () => {
       });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -86,8 +87,9 @@ describe("ReservationHoldCleanupService", () => {
     const { PaymentLifecycleRepository } = await import(
       "../repositories/payment-lifecycle.repository"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -127,7 +129,7 @@ describe("ReservationHoldCleanupService", () => {
       });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -163,8 +165,9 @@ describe("ReservationHoldCleanupService", () => {
     const { PaymentLifecycleRepository } = await import(
       "../repositories/payment-lifecycle.repository"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -206,7 +209,7 @@ describe("ReservationHoldCleanupService", () => {
         return yield* cleanup.sweepExpiredHolds({ now, limit: 1 });
       }).pipe(
         Effect.provide(
-          ReservationHoldCleanupServiceLive.pipe(
+          ReservationHoldCleanupService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -256,8 +259,9 @@ describe("ReservationHoldCleanupService", () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -290,7 +294,7 @@ describe("ReservationHoldCleanupService", () => {
       return yield* cleanup.cancelOrderHold({ orderId, checkedAt });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -349,8 +353,9 @@ describe("ReservationHoldCleanupService", () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -369,7 +374,7 @@ describe("ReservationHoldCleanupService", () => {
       return yield* cleanup.cancelOrderHold({ orderId });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -416,8 +421,9 @@ describe("ReservationHoldCleanupService", () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -436,7 +442,7 @@ describe("ReservationHoldCleanupService", () => {
       return yield* cleanup.cancelOrderHold({ orderId });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
