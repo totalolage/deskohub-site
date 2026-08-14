@@ -694,7 +694,7 @@ describe("ResendWebhookService", () => {
         name: m.checkoutEmailCustomerAccessButton({}, { locale }),
       });
       const invoiceLink = emailView.getByRole("link", {
-        name: m.checkoutEmailCustomerInvoiceButton({}, { locale }),
+        name: m.checkoutEmailCustomerInvoiceDownload({}, { locale }),
       });
       const accessCodeTable = accessLink.closest("table");
       const tableLabel = emailView.getByText(
@@ -745,8 +745,9 @@ describe("ResendWebhookService", () => {
       expect(accessCodeTable?.textContent).toContain(
         m.checkoutEmailCustomerAccessButton({}, { locale })
       );
-      expect(accessCodeTable?.textContent).toContain(
-        m.checkoutEmailCustomerInvoiceButton({}, { locale })
+      expect(accessCodeTable?.contains(invoiceLink)).toBe(false);
+      expect(invoiceLink.closest("tr")?.textContent).toContain(
+        m.checkoutEmailCustomerInvoiceLabel({}, { locale })
       );
       expect(networkHeading).toBeTruthy();
       expect(

@@ -43,7 +43,8 @@ export const customerReservationPreviewProps = {
     url: "https://workspace.deskohub.cz/en-US/reservation/access/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
   },
   invoice: {
-    button: "Create or resend invoice",
+    label: "Invoice",
+    download: "Download",
     url: "https://workspace.deskohub.cz/en-US/reservation/invoice/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
   },
   labels: {

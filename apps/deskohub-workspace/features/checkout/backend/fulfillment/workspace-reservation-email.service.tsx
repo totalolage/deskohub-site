@@ -320,7 +320,11 @@ const createCustomerReservationEmail = (input: {
         url: input.accessUrl,
       }}
       invoice={{
-        button: m.checkoutEmailCustomerInvoiceButton(
+        label: m.checkoutEmailCustomerInvoiceLabel(
+          {},
+          { locale: input.locale }
+        ),
+        download: m.checkoutEmailCustomerInvoiceDownload(
           {},
           { locale: input.locale }
         ),

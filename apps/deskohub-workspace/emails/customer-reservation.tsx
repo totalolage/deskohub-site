@@ -24,7 +24,8 @@ export type CustomerReservationEmailProps = {
     readonly url: string;
   };
   readonly invoice: {
-    readonly button: string;
+    readonly label: string;
+    readonly download: string;
     readonly url: string;
   };
   readonly labels: {
@@ -81,13 +82,6 @@ export function CustomerReservationEmail({
             style={{ backgroundColor: "#00df99", color: "#00024f" }}
           >
             {access.button}
-          </Link>
-          <Link
-            className="ml-3 inline-block rounded-full border border-white/40 px-7 py-3 text-[14px] font-bold leading-[20px] text-white no-underline"
-            href={invoice.url}
-            style={{ color: "#ffffff" }}
-          >
-            {invoice.button}
           </Link>
         </Section>
         {table && (
@@ -158,7 +152,16 @@ export function CustomerReservationEmail({
         </Section>
       )}
 
-      <WorkspaceEmailDetails details={details} />
+      <WorkspaceEmailDetails
+        details={[
+          ...details,
+          {
+            href: invoice.url,
+            label: invoice.label,
+            value: invoice.download,
+          },
+        ]}
+      />
       <WorkspaceEmailNote>{followUp}</WorkspaceEmailNote>
     </WorkspaceEmailLayout>
   );

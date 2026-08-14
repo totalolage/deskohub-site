@@ -1,4 +1,4 @@
-import { Column, Row, Section, Text } from "react-email";
+import { Column, Link, Row, Section, Text } from "react-email";
 import type { WorkspaceEmailDetail } from "../workspace-email-detail";
 
 export function WorkspaceEmailDetails({
@@ -23,7 +23,17 @@ export function WorkspaceEmailDetails({
           </Column>
           <Column className="px-4 py-3 align-top">
             <Text className="m-0 break-all text-[14px] leading-[20px] text-navy sm:break-words">
-              {detail.value}
+              {detail.href ? (
+                <Link
+                  className="text-navy underline"
+                  href={detail.href}
+                  style={{ color: "#00024f" }}
+                >
+                  {detail.value}
+                </Link>
+              ) : (
+                detail.value
+              )}
             </Text>
           </Column>
         </Row>
