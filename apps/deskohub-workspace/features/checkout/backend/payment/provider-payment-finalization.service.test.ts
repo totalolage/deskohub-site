@@ -135,7 +135,7 @@ describe("ProviderPaymentFinalizationService", () => {
         });
       }).pipe(
         Effect.provide(
-          ProviderPaymentFinalizationService.Live.pipe(
+          ProviderPaymentFinalizationService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(WorkspaceReservationRepository, reservations),
@@ -202,7 +202,7 @@ describe("ProviderPaymentFinalizationService", () => {
       });
     }).pipe(
       Effect.provide(
-        ProviderPaymentFinalizationService.Live.pipe(
+        ProviderPaymentFinalizationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, reservations),
@@ -292,7 +292,7 @@ describe("ProviderPaymentFinalizationService", () => {
         });
       }).pipe(
         Effect.provide(
-          ProviderPaymentFinalizationService.Live.pipe(
+          ProviderPaymentFinalizationService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(WorkspaceReservationRepository, reservations),
@@ -379,7 +379,7 @@ describe("ProviderPaymentFinalizationService", () => {
       });
     }).pipe(
       Effect.provide(
-        ProviderPaymentFinalizationService.Live.pipe(
+        ProviderPaymentFinalizationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -479,7 +479,7 @@ describe("ProviderPaymentFinalizationService", () => {
         });
       }).pipe(
         Effect.provide(
-          ProviderPaymentFinalizationService.Live.pipe(
+          ProviderPaymentFinalizationService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(WorkspaceReservationRepository, {
@@ -542,7 +542,7 @@ describe("ProviderPaymentFinalizationService", () => {
       });
     }).pipe(
       Effect.provide(
-        ProviderPaymentFinalizationService.Live.pipe(
+        ProviderPaymentFinalizationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -614,7 +614,7 @@ describe("ProviderPaymentFinalizationService", () => {
       });
     }).pipe(
       Effect.provide(
-        ProviderPaymentFinalizationService.Live.pipe(
+        ProviderPaymentFinalizationService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {

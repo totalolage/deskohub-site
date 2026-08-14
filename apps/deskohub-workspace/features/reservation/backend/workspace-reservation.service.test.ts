@@ -107,7 +107,7 @@ const detailsEffect = (input: {
     return yield* service.getReservation("reservation-id");
   }).pipe(
     Effect.provide(
-      WorkspaceReservationService.Live.pipe(
+      WorkspaceReservationService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(WorkspaceReservationRepository, repository),
@@ -131,7 +131,7 @@ const accessTargetEffect = (input: {
     return yield* service.getAccessTarget("reservation-id");
   }).pipe(
     Effect.provide(
-      WorkspaceReservationService.Live.pipe(
+      WorkspaceReservationService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(WorkspaceReservationRepository, {

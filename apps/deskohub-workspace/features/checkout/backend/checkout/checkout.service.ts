@@ -175,20 +175,20 @@ export class CheckoutService extends Context.Service<
   CheckoutService,
   ICheckoutService
 >()("CheckoutService") {
-  static Live = makeCheckoutServiceLayer(this);
+  static Default = makeCheckoutServiceLayer(this);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspacePaidFulfillmentService.LiveWithDependencies),
-    Layer.provide(PayableReservationService.Live),
-    Layer.provide(LegalEvidenceEventRepository.Live),
-    Layer.provide(PostHogEventService.LiveWithDependencies),
-    Layer.provide(PaymentLifecycleRepository.Live),
-    Layer.provide(PaymentAttemptRepository.Live),
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspacePaidFulfillmentService.Live),
+    Layer.provide(PayableReservationService.Default),
+    Layer.provide(LegalEvidenceEventRepository.Default),
+    Layer.provide(PostHogEventService.Live),
+    Layer.provide(PaymentLifecycleRepository.Default),
+    Layer.provide(PaymentAttemptRepository.Default),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(WorkspaceNexiLayer),
-    Layer.provide(CheckoutPricingService.LiveWithDependencies)
+    Layer.provide(CheckoutPricingService.Live)
   );
 }
 

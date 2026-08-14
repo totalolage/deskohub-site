@@ -49,7 +49,7 @@ describe("ReservationHoldCleanupService", () => {
       });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupService.Live.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -129,7 +129,7 @@ describe("ReservationHoldCleanupService", () => {
       });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupService.Live.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -209,7 +209,7 @@ describe("ReservationHoldCleanupService", () => {
         return yield* cleanup.sweepExpiredHolds({ now, limit: 1 });
       }).pipe(
         Effect.provide(
-          ReservationHoldCleanupService.Live.pipe(
+          ReservationHoldCleanupService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(ProviderPaymentFinalizationService, finalization),
@@ -294,7 +294,7 @@ describe("ReservationHoldCleanupService", () => {
       return yield* cleanup.cancelOrderHold({ orderId, checkedAt });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupService.Live.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -374,7 +374,7 @@ describe("ReservationHoldCleanupService", () => {
       return yield* cleanup.cancelOrderHold({ orderId });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupService.Live.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {
@@ -442,7 +442,7 @@ describe("ReservationHoldCleanupService", () => {
       return yield* cleanup.cancelOrderHold({ orderId });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupService.Live.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(ProviderPaymentFinalizationService, {

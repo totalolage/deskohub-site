@@ -44,7 +44,7 @@ const runRequireCurrent = (input: {
     findById: mock(() => Effect.succeed(candidate)),
     findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(current)),
   };
-  const layer = PayableReservationService.Live.pipe(
+  const layer = PayableReservationService.Default.pipe(
     Layer.provide(
       Layer.merge(
         Layer.mock(WorkspaceReservationRepository, repository),

@@ -59,7 +59,7 @@ export const officeReservationPage = createReservationPage({
         endsOn: initialEndsOn,
       })
     ).pipe(
-      Effect.provide(CheckoutPricingService.LiveWithDependencies),
+      Effect.provide(CheckoutPricingService.Live),
       Effect.scoped,
       runWorkspaceEffect("reservation.office.load-advertised-price")
     );

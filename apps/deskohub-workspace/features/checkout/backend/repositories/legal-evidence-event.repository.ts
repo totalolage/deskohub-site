@@ -56,7 +56,7 @@ export class LegalEvidenceEventRepository extends Context.Service<
   LegalEvidenceEventRepository,
   ILegalEvidenceEventRepository
 >()("LegalEvidenceEventRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -112,7 +112,5 @@ export class LegalEvidenceEventRepository extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceDatabase.Live)
-  );
+  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }

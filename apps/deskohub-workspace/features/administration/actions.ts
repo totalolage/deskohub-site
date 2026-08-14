@@ -43,7 +43,7 @@ const getAdministrationReservationAction = defineWorkspaceAction(
   (input) =>
     requireDiscountAdminAuthorization().pipe(
       Effect.andThen(findReservation(input)),
-      Effect.provide(AdministrationService.LiveWithDependencies),
+      Effect.provide(AdministrationService.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
@@ -77,7 +77,7 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
           return result;
         })
       ),
-      Effect.provide(ReservationAdministrationService.LiveWithDependencies),
+      Effect.provide(ReservationAdministrationService.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
@@ -131,7 +131,7 @@ const mutateReservationAccessAction = defineWorkspaceAction(
           };
         })
       ),
-      Effect.provide(ReservationAccessAdministration.LiveWithDependencies),
+      Effect.provide(ReservationAccessAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

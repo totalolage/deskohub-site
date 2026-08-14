@@ -501,7 +501,7 @@ const runMeetingRoomNewHoldScenario = async (
       })
   );
   const testLayer = Layer.mergeAll(
-    CheckoutPricingService.Live.pipe(
+    CheckoutPricingService.Default.pipe(
       Layer.provide(
         DiscountServiceMock({
           discoverAdvertisedDiscounts,
@@ -596,7 +596,7 @@ describe("prepareWorkspacePayState", () => {
         Layer.mergeAll(
           BotProtectionServiceMock({ verifyHuman }),
           CheckoutPricingServiceMock({}),
-          OfficeReservationFeatureFlagService.Live.pipe(
+          OfficeReservationFeatureFlagService.Default.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
                 isEnabled: mock(() => Effect.succeed(false)),

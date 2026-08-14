@@ -36,7 +36,7 @@ export class EmailTemplateServiceTag extends Context.Service<
   EmailTemplateServiceTag,
   EmailTemplateService
 >()("EmailTemplateService") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     render: Effect.fn("emailTemplateService.render")(function* (
       template: EmailTemplateData
     ) {
@@ -80,13 +80,13 @@ export class EmailServiceTag extends Context.Service<
   EmailServiceTag,
   EmailService
 >()("EmailService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.suspend(() => emailServiceImplementation)
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(EmailTemplateServiceTag.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(EmailTemplateServiceTag.Default),
     Layer.provide(ConfiguredEmailProviderLayer)
   );
 }

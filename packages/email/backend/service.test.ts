@@ -56,7 +56,7 @@ const runWithEmail = <A, E>(
   Effect.runPromise(
     effect.pipe(
       Effect.provide(
-        EmailServiceTag.Live.pipe(
+        EmailServiceTag.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(EmailProviderTag, provider),

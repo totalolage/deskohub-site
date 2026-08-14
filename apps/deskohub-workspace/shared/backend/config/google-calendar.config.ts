@@ -39,7 +39,7 @@ export class CalendarResourceConfig extends Context.Service<
   CalendarResourceConfig,
   ICalendarResourceConfig
 >()("@deskohub-workspace/config/CalendarResourceConfig") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Schema.decodeUnknownEffect(CalendarResourceConfigSchema)({
       workspaceLimitationsCalendarId:
@@ -58,6 +58,6 @@ export const WorkspaceGoogleCalendarRuntimeConfigLayer = Layer.succeed(
   } satisfies IGoogleCalendarRuntimeConfig
 );
 
-export const WorkspaceGoogleCalendarLayer = GoogleCalendarService.Live.pipe(
+export const WorkspaceGoogleCalendarLayer = GoogleCalendarService.Default.pipe(
   Layer.provide(WorkspaceGoogleCalendarRuntimeConfigLayer)
 );

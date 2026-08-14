@@ -59,7 +59,7 @@ export const GET = defineWorkspaceRoute(
     }
 
     return sweepExpiredReservationHolds().pipe(
-      Effect.provide(ReservationHoldCleanupService.LiveWithDependencies),
+      Effect.provide(ReservationHoldCleanupService.Live),
       Effect.catch(handleReservationHoldCleanupCronError)
     );
   }

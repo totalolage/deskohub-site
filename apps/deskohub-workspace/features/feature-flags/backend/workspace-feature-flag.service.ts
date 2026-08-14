@@ -28,7 +28,7 @@ export class WorkspaceFeatureFlagService extends Context.Service<
   static from = (implementation: IWorkspaceFeatureFlagService) =>
     Layer.succeed(this, implementation);
 
-  static Live = Layer.unwrap(
+  static Default = Layer.unwrap(
     Effect.promise(async () => {
       const [{ nodeFeatureFlags }, { getCurrentPostHogFeatureFlagSubject }] =
         await Promise.all([import("./node"), import("./subject")]);

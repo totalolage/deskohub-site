@@ -15,7 +15,7 @@ import {
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const WorkspaceCloudinaryWebhookVerifierLayer =
-  CloudinaryWebhookVerifier.Live.pipe(
+  CloudinaryWebhookVerifier.Default.pipe(
     Layer.provide(
       makeCloudinaryRuntimeConfigLayer({
         cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,

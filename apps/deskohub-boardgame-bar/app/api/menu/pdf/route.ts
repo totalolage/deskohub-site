@@ -9,7 +9,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     Effect.gen(function* () {
       yield* Effect.logInfo("Menu PDF generation started");
       const menuPdfStream = yield* generateMenuPdf.pipe(
-        Effect.provide(MenuData.LiveWithDependencies)
+        Effect.provide(MenuData.Live)
       );
       yield* Effect.logInfo("Menu PDF generation succeeded");
 

@@ -49,7 +49,7 @@ export class PayableReservationService extends Context.Service<
   PayableReservationService,
   IPayableReservationService
 >()("PayableReservationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const reservations = yield* WorkspaceReservationRepository;
@@ -113,8 +113,8 @@ export class PayableReservationService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceReservationRepository.LiveWithDependencies),
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceReservationRepository.Live),
     Layer.provide(WorkspaceDotyposLayer)
   );
 }

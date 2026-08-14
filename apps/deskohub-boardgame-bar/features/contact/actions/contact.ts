@@ -49,7 +49,7 @@ const _submitContactForm = createEffectSafeAction(
         },
       })
     ),
-  ContactService.LiveWithDependencies.pipe(Layer.orDie)
+  ContactService.Live.pipe(Layer.orDie)
 );
 
 // Export an explicitly async wrapper that Next.js will recognize

@@ -128,7 +128,7 @@ export class DiscountService extends Context.Service<
   DiscountService,
   IDiscountService
 >()("@deskohub-workspace/discounts/DiscountService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const calendar = yield* CalendarDiscountProvider;
@@ -532,35 +532,35 @@ export class DiscountService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = makeDiscountServiceLayer();
+  static Live = makeDiscountServiceLayer();
 }
 
 function makeDiscountServiceLayer() {
   const discountRepositories = Layer.mergeAll(
-    DiscountDefinitionRepository.Live,
-    PromotionCodeRepository.Live
-  ).pipe(Layer.provide(WorkspaceDatabase.Live));
+    DiscountDefinitionRepository.Default,
+    PromotionCodeRepository.Default
+  ).pipe(Layer.provide(WorkspaceDatabase.Default));
   const providerDependencies = Layer.mergeAll(
     discountRepositories,
     WorkspaceGoogleCalendarLayer,
-    CalendarResourceConfig.Live,
+    CalendarResourceConfig.Default,
     WorkspaceDotyposLayer
   );
   const discountProviders = Layer.mergeAll(
-    CalendarDiscountProvider.Live,
-    CustomerDiscountProvider.Live,
-    PromotionCodeProvider.Live
+    CalendarDiscountProvider.Default,
+    CustomerDiscountProvider.Default,
+    PromotionCodeProvider.Default
   ).pipe(Layer.provide(providerDependencies));
   const dependencies = Layer.merge(
     discountProviders,
-    DiscountReleaseGateService.LiveWithDependencies
+    DiscountReleaseGateService.Live
   );
   const processScope = Scope.makeUnsafe();
   const processMemoMap = Layer.makeMemoMapUnsafe();
 
   return Layer.fromBuild(() =>
     Layer.buildWithMemoMap(
-      DiscountService.Live.pipe(Layer.provide(dependencies)),
+      DiscountService.Default.pipe(Layer.provide(dependencies)),
       processMemoMap,
       processScope
     )

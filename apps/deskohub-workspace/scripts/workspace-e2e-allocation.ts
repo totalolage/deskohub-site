@@ -85,7 +85,7 @@ const program = Schema.decodeUnknownEffect(Environment)(process.env).pipe(
       githubApiUrl: environment.GITHUB_API_URL,
       githubToken: Redacted.make(environment.WORKSPACE_E2E_ALLOCATION_TOKEN),
     });
-    const repository = AllocationRepository.Live.pipe(
+    const repository = AllocationRepository.Default.pipe(
       Layer.provide(
         PgClient.layer({
           applicationName: "workspace-e2e-allocation",
@@ -99,10 +99,10 @@ const program = Schema.decodeUnknownEffect(Environment)(process.env).pipe(
         })
       )
     );
-    const runStatus = GithubRunStatusService.Live.pipe(
+    const runStatus = GithubRunStatusService.Default.pipe(
       Layer.provide(Layer.merge(runtimeConfig, FetchHttpClient.layer))
     );
-    const allocation = AllocationService.Live.pipe(
+    const allocation = AllocationService.Default.pipe(
       Layer.provide(Layer.merge(repository, runStatus))
     );
 

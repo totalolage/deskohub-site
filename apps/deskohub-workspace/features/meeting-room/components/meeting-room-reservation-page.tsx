@@ -63,7 +63,7 @@ export async function renderMeetingRoomReservationContent({
       submittedCode,
     })
   ).pipe(
-    Effect.provide(CheckoutPricingService.LiveWithDependencies),
+    Effect.provide(CheckoutPricingService.Live),
     Effect.scoped,
     runWorkspaceEffect("reservation.meeting-room.load-advertised-prices")
   );

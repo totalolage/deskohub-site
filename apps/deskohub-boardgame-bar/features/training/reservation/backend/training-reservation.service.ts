@@ -38,14 +38,12 @@ export class TrainingReservationService extends Context.Service<
   TrainingReservationService,
   ITrainingReservationService
 >()("TrainingReservationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.suspend(() => trainingReservationServiceImplementation)
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(BoardgameEmailLayer)
-  );
+  static Live = this.Default.pipe(Layer.provide(BoardgameEmailLayer));
 }
 
 const trainingReservationServiceImplementation = Effect.gen(function* () {

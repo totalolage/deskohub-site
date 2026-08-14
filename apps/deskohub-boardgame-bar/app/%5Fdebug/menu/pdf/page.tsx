@@ -22,7 +22,7 @@ export default NextEffect.make().page(
         Effect.annotateLogs({
           page: "MenuPdfDebugPage",
         }),
-        Effect.provide(MenuData.LiveWithDependencies),
+        Effect.provide(MenuData.Live),
         Effect.orElseSucceed(notFound)
       )
   )

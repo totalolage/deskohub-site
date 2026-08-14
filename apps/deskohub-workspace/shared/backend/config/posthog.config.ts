@@ -27,5 +27,5 @@ export class PostHogRuntimeConfig extends Context.Service<
   PostHogRuntimeConfig,
   PostHogRuntimeConfigObj
 >()("@deskohub-workspace/analytics/PostHogRuntimeConfig") {
-  static Live = Layer.succeed(this, postHogRuntimeConfig);
+  static Default = Layer.succeed(this, postHogRuntimeConfig);
 }

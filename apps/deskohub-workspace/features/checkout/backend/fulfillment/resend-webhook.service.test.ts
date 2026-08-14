@@ -202,7 +202,7 @@ const processWebhookEffect = async (input: {
     );
   }).pipe(
     Effect.provide(
-      ResendWebhookService.Live.pipe(
+      ResendWebhookService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(WorkspaceReservationRepository, input.reservations),
@@ -621,12 +621,12 @@ describe("ResendWebhookService", () => {
       });
     }).pipe(
       Effect.provide(
-        WorkspaceReservationEmailService.Live.pipe(
+        WorkspaceReservationEmailService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(EmailServiceTag, emailService),
               Layer.mock(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Live
+              WorkspaceCheckoutNetworkDetailsService.Default
             )
           )
         )
@@ -914,7 +914,7 @@ describe("ResendWebhookService", () => {
       return yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Live.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, reservations),

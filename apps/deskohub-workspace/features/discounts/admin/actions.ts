@@ -91,7 +91,7 @@ const discountAdminMutationAction = defineWorkspaceAction(
   (input) =>
     requireDiscountAdminAuthorization().pipe(
       Effect.andThen(executeDiscountAdminActionMutation(input)),
-      Effect.provide(DiscountAdministration.LiveWithDependencies),
+      Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
@@ -128,7 +128,7 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
   (input) =>
     requireDiscountAdminAuthorization().pipe(
       Effect.andThen(executeCustomerSearch(input)),
-      Effect.provide(DiscountAdministration.LiveWithDependencies),
+      Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

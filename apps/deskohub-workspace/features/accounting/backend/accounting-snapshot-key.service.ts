@@ -27,7 +27,7 @@ export class AccountingSnapshotKeyService extends Context.Service<
   AccountingSnapshotKeyService,
   IAccountingSnapshotKeyService
 >()("@deskohub-workspace/accounting/AccountingSnapshotKeyService") {
-  static Live = Layer.unwrap(
+  static Default = Layer.unwrap(
     Effect.promise(async () => {
       const { makeAccountingSnapshotKeyLayer } = await import(
         "./accounting-snapshot-key-provider.server"

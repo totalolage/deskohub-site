@@ -11,7 +11,7 @@ export class WorkspaceDatabase extends Context.Service<
   WorkspaceDatabase,
   IWorkspaceDatabase
 >()("WorkspaceDatabase") {
-  static Live = Layer.unwrap(
+  static Default = Layer.unwrap(
     Effect.promise(async () => {
       const { makeWorkspaceDatabaseLayer } = await import(
         "./database-provider.server"

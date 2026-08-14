@@ -64,7 +64,7 @@ const runWithShared = async <A, E>(
   return Effect.runPromise(
     makeEffect(DotyposService).pipe(
       Effect.provide(
-        DotyposService.Live.pipe(
+        DotyposService.Default.pipe(
           Layer.provide(
             Layer.succeed(
               SharedDotyposService,

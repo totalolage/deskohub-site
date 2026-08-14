@@ -74,7 +74,7 @@ export class WorkspaceTableAssignmentService extends Context.Service<
   WorkspaceTableAssignmentService,
   IWorkspaceTableAssignmentService
 >()("@deskohub-workspace/checkout/WorkspaceTableAssignmentService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;

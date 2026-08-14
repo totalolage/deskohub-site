@@ -33,9 +33,7 @@ import {
   meetingRoomReservationKind,
   officeReservationKind,
 } from "@/features/reservation/reservation-kind";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
-import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getReservationDate,
@@ -111,12 +109,6 @@ type WorkspaceAvailabilityRequest = {
   readonly query: WorkspaceAvailabilityQuery;
   readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
 };
-
-const GoogleCalendarWorkspaceLimitationsLive =
-  GoogleCalendarWorkspaceLimitationsService.Live.pipe(
-    Layer.provide(WorkspaceGoogleCalendarLayer),
-    Layer.provide(CalendarResourceConfig.Live)
-  );
 
 const implementation = Effect.gen(function* () {
   const dotypos = yield* DotyposService;
@@ -398,14 +390,14 @@ export class WorkspaceAvailabilityService extends Context.Service<
   WorkspaceAvailabilityService,
   IWorkspaceAvailabilityService
 >()("@deskohub-workspace/reservation/WorkspaceAvailabilityService") {
-  static Live = Layer.effect(this, implementation);
+  static Default = Layer.effect(this, implementation);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
+  static Live = this.Default.pipe(
+    Layer.provide(GoogleCalendarWorkspaceLimitationsService.Live),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
-      WorkspaceReservationRepository.Live.pipe(
-        Layer.provide(WorkspaceDatabase.Live)
+      WorkspaceReservationRepository.Default.pipe(
+        Layer.provide(WorkspaceDatabase.Default)
       )
     )
   );

@@ -129,13 +129,13 @@ export class ReservationAccessService extends Context.Service<
   ReservationAccessService,
   IReservationAccessService
 >()("@deskohub-workspace/reservation/ReservationAccessService") {
-  static Live = Layer.effect(this, implementation);
+  static Default = Layer.effect(this, implementation);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
-    Layer.provide(WorkspaceCheckoutAccessCodeService.LiveWithDependencies)
+    Layer.provide(WorkspaceCheckoutAccessCodeService.Live)
   );
 }
 

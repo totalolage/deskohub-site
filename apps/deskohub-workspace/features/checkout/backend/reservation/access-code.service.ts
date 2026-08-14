@@ -25,7 +25,7 @@ export class WorkspaceCheckoutAccessCodeService extends Context.Service<
   WorkspaceCheckoutAccessCodeService,
   IWorkspaceCheckoutAccessCodeService
 >()("WorkspaceCheckoutAccessCodeService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const reservationAccess = yield* ReservationAccessProvisioningService;
@@ -49,7 +49,7 @@ export class WorkspaceCheckoutAccessCodeService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ReservationAccessProvisioningService.LiveWithDependencies)
+  static Live = this.Default.pipe(
+    Layer.provide(ReservationAccessProvisioningService.Live)
   );
 }

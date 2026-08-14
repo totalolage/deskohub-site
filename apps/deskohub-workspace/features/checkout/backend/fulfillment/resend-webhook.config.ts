@@ -13,7 +13,7 @@ export class ResendWebhookRuntimeConfig extends Context.Service<
   ResendWebhookRuntimeConfig,
   ResendWebhookRuntimeConfigObj
 >()("@deskohub/workspace/ResendWebhookRuntimeConfig") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     apiKey: env.EMAIL_API_KEY,
     deploymentEnvironment: env.VERCEL_ENV,
     webhookSecret: env.RESEND_WEBHOOK_SECRET,

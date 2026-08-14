@@ -52,7 +52,7 @@ export class OpeningHoursCalendarService extends Context.Service<
   OpeningHoursCalendarService,
   IOpeningHoursCalendarService
 >()("@deskohub-boardgame-bar/opening-hours/OpeningHoursCalendarService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const calendar = yield* GoogleCalendarService;
@@ -108,9 +108,9 @@ export class OpeningHoursCalendarService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
+  static Live = this.Default.pipe(
     Layer.provide(BoardgameGoogleCalendarLayer),
-    Layer.provide(OpeningHoursCalendarConfig.Live)
+    Layer.provide(OpeningHoursCalendarConfig.Default)
   );
 }
 

@@ -73,18 +73,18 @@ export class NexiWebhookService extends Context.Service<
   NexiWebhookService,
   INexiWebhookService
 >()("NexiWebhookService") {
-  static Live = makeNexiWebhookServiceLayer(this);
+  static Default = makeNexiWebhookServiceLayer(this);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WebhookEventRepository.Live),
-    Layer.provide(PaymentAttemptRepository.Live),
-    Layer.provide(PaymentLifecycleRepository.Live),
-    Layer.provide(LatePaymentRecoveryRepository.Live),
-    Layer.provide(LatePaymentRecoveryQueueService.Live),
-    Layer.provide(PostHogEventService.LiveWithDependencies),
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live),
-    Layer.provide(WorkspacePaidFulfillmentService.LiveWithDependencies)
+  static Live = this.Default.pipe(
+    Layer.provide(WebhookEventRepository.Default),
+    Layer.provide(PaymentAttemptRepository.Default),
+    Layer.provide(PaymentLifecycleRepository.Default),
+    Layer.provide(LatePaymentRecoveryRepository.Default),
+    Layer.provide(LatePaymentRecoveryQueueService.Default),
+    Layer.provide(PostHogEventService.Live),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
+    Layer.provide(WorkspacePaidFulfillmentService.Live)
   );
 }
 

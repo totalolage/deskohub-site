@@ -26,15 +26,15 @@ export const makeWorkspaceE2ECaseRuntimeLive = (
   const datasourceConfig = getDatasourceConfig(environment);
   const support = Layer.mergeAll(
     FetchHttpClient.layer,
-    WorkspaceE2ECleanupService.Live,
+    WorkspaceE2ECleanupService.Default,
     makeWorkspaceE2EProviderVerificationPermitLive(environment),
-    E2ETelemetryService.Live.pipe(
+    E2ETelemetryService.Default.pipe(
       Layer.provideMerge(E2ERunContextService.layerValue(runContext))
     ),
     E2EDatabase.layer(datasourceConfig)
   );
 
-  return WorkspaceE2ECaseService.Live.pipe(Layer.provideMerge(support));
+  return WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support));
 };
 
 const makeWorkspaceE2EProviderVerificationPermitLive = (
@@ -63,7 +63,7 @@ const makeWorkspaceE2EProviderVerificationPermitLive = (
     )
   );
 
-  return WorkspaceE2EProviderVerificationPermitService.Live.pipe(
+  return WorkspaceE2EProviderVerificationPermitService.Default.pipe(
     Layer.provide(database)
   );
 };

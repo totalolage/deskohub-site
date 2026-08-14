@@ -274,7 +274,7 @@ const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
     yield* service.processByPaymentAttemptId({ paymentAttemptId });
   }).pipe(
     Effect.provide(
-      ReservationInvoiceService.Live.pipe(
+      ReservationInvoiceService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(
@@ -347,7 +347,7 @@ const runWithHarness = <A, E>(
 ) =>
   effect.pipe(
     Effect.provide(
-      ReservationInvoiceService.Live.pipe(
+      ReservationInvoiceService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(

@@ -34,7 +34,7 @@ const runWithEvents = async (
     return yield* service.listLimitations(query);
   }).pipe(
     Effect.provide(
-      GoogleCalendarWorkspaceLimitationsService.Live.pipe(
+      GoogleCalendarWorkspaceLimitationsService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             GoogleCalendarServiceMock({

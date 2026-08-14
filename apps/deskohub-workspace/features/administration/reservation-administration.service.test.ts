@@ -49,7 +49,7 @@ test("operator cancellation cancels Dotypos, records the result, and optionally 
     });
   }).pipe(
     Effect.provide(
-      ReservationAdministrationService.Live.pipe(
+      ReservationAdministrationService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, { cancelReservation }),
@@ -116,7 +116,7 @@ test("retrying an already-cancelled reservation does not email again", async () 
     });
   }).pipe(
     Effect.provide(
-      ReservationAdministrationService.Live.pipe(
+      ReservationAdministrationService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, {}),
@@ -173,7 +173,7 @@ test("does not adopt a pre-existing provider cancellation", async () => {
     });
   }).pipe(
     Effect.provide(
-      ReservationAdministrationService.Live.pipe(
+      ReservationAdministrationService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, {}),
@@ -252,7 +252,7 @@ test("resumes a stale cancellation after an interrupted request", async () => {
     });
   }).pipe(
     Effect.provide(
-      ReservationAdministrationService.Live.pipe(
+      ReservationAdministrationService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, {
@@ -337,7 +337,7 @@ test("reconciles a duplicate provider failure after another worker cancelled", a
     });
   }).pipe(
     Effect.provide(
-      ReservationAdministrationService.Live.pipe(
+      ReservationAdministrationService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, {

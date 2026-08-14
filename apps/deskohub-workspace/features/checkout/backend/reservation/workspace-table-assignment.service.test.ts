@@ -151,7 +151,7 @@ const assignTableId = (
     return yield* service.assignTableId(reservation);
   }).pipe(
     Effect.provide(
-      WorkspaceTableAssignmentService.Live.pipe(
+      WorkspaceTableAssignmentService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(DotyposService, dotyposService),

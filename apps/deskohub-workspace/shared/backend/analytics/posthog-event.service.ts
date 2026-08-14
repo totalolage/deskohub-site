@@ -40,7 +40,7 @@ export class PostHogEventService extends Context.Service<
   PostHogEventService,
   IPostHogEventService
 >()("@deskohub-workspace/analytics/PostHogEventService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* PostHogRuntimeConfig;
@@ -51,9 +51,7 @@ export class PostHogEventService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(PostHogRuntimeConfig.Live)
-  );
+  static Live = this.Default.pipe(Layer.provide(PostHogRuntimeConfig.Default));
 }
 
 const createPostHogCaptureClient = ({

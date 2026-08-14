@@ -50,7 +50,7 @@ describe("buildAdvertisedPrice", () => {
       Effect.provide(
         Layer.merge(
           CheckoutPricingServiceMock({ quoteAdvertisement }),
-          OfficeReservationFeatureFlagService.Live.pipe(
+          OfficeReservationFeatureFlagService.Default.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
                 isEnabled: mock(() => Effect.succeed(false)),
@@ -119,7 +119,7 @@ describe("buildAdvertisedPrice", () => {
       Effect.provide(
         Layer.merge(
           CheckoutPricingServiceMock({ quoteAdvertisement }),
-          OfficeReservationFeatureFlagService.Live.pipe(
+          OfficeReservationFeatureFlagService.Default.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
                 isEnabled: () => Effect.sync(evaluateOfficeReservationsEnabled),

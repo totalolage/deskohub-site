@@ -49,7 +49,7 @@ export const createContactEmailPreviews = (locale: Locale) => {
     verify: Effect.succeed(true),
   };
 
-  const PreviewContactService = ContactService.Live.pipe(
+  const PreviewContactService = ContactService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(EmailServiceTag, emailService),

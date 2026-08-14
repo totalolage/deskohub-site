@@ -15,7 +15,7 @@ const getAdvertisedPricesAction = defineWorkspaceAction(
   },
   (requests) =>
     loadAdvertisedPrices(requests).pipe(
-      Effect.provide(CheckoutPricingService.LiveWithDependencies),
+      Effect.provide(CheckoutPricingService.Live),
       Effect.scoped
     )
 );

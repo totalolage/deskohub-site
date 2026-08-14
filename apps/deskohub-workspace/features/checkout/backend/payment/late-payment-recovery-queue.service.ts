@@ -61,7 +61,7 @@ export class LatePaymentRecoveryQueueService extends Context.Service<
   LatePaymentRecoveryQueueService,
   ILatePaymentRecoveryQueueService
 >()("LatePaymentRecoveryQueueService") {
-  static Live = Layer.succeed(this, makeLatePaymentRecoveryQueueService());
+  static Default = Layer.succeed(this, makeLatePaymentRecoveryQueueService());
 }
 
 const decodePayload = Schema.decodeUnknownOption(payloadSchema);

@@ -29,7 +29,7 @@ const runSubmit = (send: ReturnType<typeof mock>) =>
       return yield* service.submit(input, "en-US");
     }).pipe(
       Effect.provide(
-        ContactService.Live.pipe(
+        ContactService.Default.pipe(
           Layer.provide(
             Layer.succeed(EmailServiceTag, {
               send,

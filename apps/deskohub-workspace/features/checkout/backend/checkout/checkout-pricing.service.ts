@@ -138,7 +138,7 @@ export class CheckoutPricingService extends Context.Service<
   CheckoutPricingService,
   ICheckoutPricingService
 >()("@deskohub-workspace/checkout/CheckoutPricingService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const cowork = yield* coworkCheckoutPricing;
@@ -251,7 +251,5 @@ export class CheckoutPricingService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(DiscountService.LiveWithDependencies)
-  );
+  static Live = this.Default.pipe(Layer.provide(DiscountService.Live));
 }

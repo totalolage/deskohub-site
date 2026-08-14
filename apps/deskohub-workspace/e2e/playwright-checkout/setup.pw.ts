@@ -41,7 +41,7 @@ test("validate workspace preview readiness", async () => {
   const telemetry = makeE2ETelemetryRuntime(environment);
   const layer = Layer.mergeAll(
     FetchHttpClient.layer,
-    E2ETelemetryService.Live.pipe(
+    E2ETelemetryService.Default.pipe(
       Layer.provideMerge(E2ERunContextService.layerValue(runContext))
     )
   ).pipe(Layer.provideMerge(telemetry.tracingLayer));

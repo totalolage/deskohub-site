@@ -27,7 +27,7 @@ export class DiscountDefinitionRepository extends Context.Service<
   DiscountDefinitionRepository,
   IDiscountDefinitionRepository
 >()("@deskohub-workspace/discounts/DiscountDefinitionRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;

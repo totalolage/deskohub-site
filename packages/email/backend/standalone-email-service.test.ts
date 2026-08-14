@@ -8,7 +8,7 @@ afterEach(() => {
   process.env = { ...originalEnv };
 });
 
-describe("EmailServiceTag.LiveWithDependencies", () => {
+describe("EmailServiceTag.Live", () => {
   test("materializes with config and verifies console provider", async () => {
     process.env.NODE_ENV = "test";
     delete process.env.EMAIL_API_KEY;
@@ -19,7 +19,7 @@ describe("EmailServiceTag.LiveWithDependencies", () => {
         return yield* email.verify;
       }).pipe(
         Effect.provide(
-          EmailServiceTag.LiveWithDependencies.pipe(
+          EmailServiceTag.Live.pipe(
             Layer.provide(
               Layer.succeed(EmailConfigTag, {
                 provider: "console",

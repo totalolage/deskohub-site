@@ -72,7 +72,7 @@ export class WorkspaceReservationService extends Context.Service<
   WorkspaceReservationService,
   IWorkspaceReservationService
 >()("@deskohub-workspace/reservation/WorkspaceReservationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const reservations = yield* WorkspaceReservationRepository;
@@ -244,13 +244,13 @@ export class WorkspaceReservationService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
-      SeatingMapFeatureFlagService.Live.pipe(
-        Layer.provide(WorkspaceFeatureFlagService.Live)
+      SeatingMapFeatureFlagService.Default.pipe(
+        Layer.provide(WorkspaceFeatureFlagService.Default)
       )
     )
   );

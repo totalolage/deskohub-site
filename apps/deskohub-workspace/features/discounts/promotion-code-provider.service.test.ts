@@ -145,7 +145,7 @@ const runWithProvider = <A, E>(
   effect.pipe(
     Effect.provide(
       Layer.mergeAll(
-        PromotionCodeProvider.Live.pipe(
+        PromotionCodeProvider.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               PromotionCodeRepositoryMock({

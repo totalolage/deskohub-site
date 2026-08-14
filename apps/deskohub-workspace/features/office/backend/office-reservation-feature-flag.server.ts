@@ -10,7 +10,7 @@ export async function isOfficePageEnabled() {
 
   return OfficeReservationFeatureFlagService.pipe(
     Effect.flatMap((featureFlag) => featureFlag.isEnabled),
-    Effect.provide(OfficeReservationFeatureFlagService.LiveWithDependencies),
+    Effect.provide(OfficeReservationFeatureFlagService.Live),
     runWorkspaceEffect("office.page-enabled")
   );
 }

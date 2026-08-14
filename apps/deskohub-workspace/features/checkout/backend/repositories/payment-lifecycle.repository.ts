@@ -163,7 +163,7 @@ export class PaymentLifecycleRepository extends Context.Service<
   PaymentLifecycleRepository,
   IPaymentLifecycleRepository
 >()("@deskohub-workspace/checkout/PaymentLifecycleRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -876,7 +876,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         markPaid,
         markTerminal,
       } satisfies IPaymentLifecycleRepository;
-    }).pipe(Effect.provide(AccountingSnapshotKeyService.Live))
+    }).pipe(Effect.provide(AccountingSnapshotKeyService.Default))
   );
 }
 

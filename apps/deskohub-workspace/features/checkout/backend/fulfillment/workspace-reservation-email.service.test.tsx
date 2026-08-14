@@ -219,12 +219,12 @@ describe("workspace reservation email details", () => {
         yield* service.sendCancellationEmail({ reservation });
       }).pipe(
         Effect.provide(
-          WorkspaceReservationEmailService.Live.pipe(
+          WorkspaceReservationEmailService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.succeed(EmailServiceTag, emailService),
                 Layer.succeed(EmailConfigTag, emailConfig),
-                WorkspaceCheckoutNetworkDetailsService.Live
+                WorkspaceCheckoutNetworkDetailsService.Default
               )
             )
           )

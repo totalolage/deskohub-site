@@ -42,7 +42,7 @@ const runSubmit = (
       return yield* service.submit({ ...input, duration }, locale);
     }).pipe(
       Effect.provide(
-        TrainingReservationService.Live.pipe(
+        TrainingReservationService.Default.pipe(
           Layer.provide(
             Layer.succeed(EmailServiceTag, {
               send,

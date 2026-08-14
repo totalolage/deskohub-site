@@ -28,14 +28,12 @@ export class ContactService extends Context.Service<
   ContactService,
   IContactService
 >()("ContactService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.suspend(() => contactServiceImplementation)
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(BoardgameEmailLayer)
-  );
+  static Live = this.Default.pipe(Layer.provide(BoardgameEmailLayer));
 }
 
 const contactServiceImplementation = Effect.gen(function* () {

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       return response;
     }).pipe(
       Effect.scoped,
-      Effect.provide(DotyposOAuthService.Live),
+      Effect.provide(DotyposOAuthService.Default),
       Effect.catchTag(
         "DotyposOAuthConfigError",
         (error: { readonly message: string }) =>

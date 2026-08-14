@@ -22,7 +22,7 @@ export class DotyposService extends Context.Service<
   DotyposService,
   DotyposServiceShape
 >()("DotyposService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const dotypos = yield* SharedDotyposService;
@@ -82,11 +82,9 @@ export class DotyposService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
+  static Live = this.Default.pipe(
     Layer.provide(
-      SharedDotyposService.LiveWithDependencies.pipe(
-        Layer.provide(DotyposConfigFromEnv)
-      )
+      SharedDotyposService.Live.pipe(Layer.provide(DotyposConfigFromEnv))
     )
   );
 }

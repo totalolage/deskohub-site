@@ -66,7 +66,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
   InvoiceEmailDeliveryService,
   IInvoiceEmailDeliveryService
 >()("@deskohub-workspace/accounting/InvoiceEmailDeliveryService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const accountingSnapshots = yield* AccountingDocumentSnapshotRepository;
@@ -346,30 +346,30 @@ export class InvoiceEmailDeliveryService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
+  static Live = this.Default.pipe(
     Layer.provide(getInvoiceEmailDeliveryDependencies())
   );
 }
 
 function getInvoiceEmailDeliveryDependencies() {
   const accountingStorage = Layer.merge(
-    WorkspaceDatabase.Live,
-    AccountingSnapshotKeyService.Live
+    WorkspaceDatabase.Default,
+    AccountingSnapshotKeyService.Default
   );
-  const accountingSnapshots = AccountingDocumentSnapshotRepository.Live.pipe(
+  const accountingSnapshots = AccountingDocumentSnapshotRepository.Default.pipe(
     Layer.provide(accountingStorage)
   );
-  const invoices = InvoiceRepository.Live.pipe(
+  const invoices = InvoiceRepository.Default.pipe(
     Layer.provide(Layer.merge(accountingStorage, accountingSnapshots))
   );
 
   return Layer.mergeAll(
     accountingSnapshots,
     invoices,
-    InvoiceEmailDeliveryRepository.Live.pipe(
-      Layer.provide(WorkspaceDatabase.Live)
+    InvoiceEmailDeliveryRepository.Default.pipe(
+      Layer.provide(WorkspaceDatabase.Default)
     ),
-    Layer.provideMerge(EmailServiceTag.LiveWithDependencies, EmailConfigLayer)
+    Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer)
   );
 }
 

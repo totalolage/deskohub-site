@@ -36,7 +36,7 @@ export class GoogleCalendarService extends Context.Service<
   GoogleCalendarService,
   IGoogleCalendarService
 >()("@deskohub/google-calendar/GoogleCalendarService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const rawConfig = yield* GoogleCalendarRuntimeConfig;

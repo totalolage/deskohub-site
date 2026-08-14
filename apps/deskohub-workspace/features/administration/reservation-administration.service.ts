@@ -47,7 +47,7 @@ export class ReservationAdministrationService extends Context.Service<
   ReservationAdministrationService,
   IReservationAdministrationService
 >()("@deskohub-workspace/administration/ReservationAdministrationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
@@ -210,26 +210,23 @@ export class ReservationAdministrationService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
+  static Live = this.Default.pipe(
     Layer.provide(
       Layer.provideMerge(
-        WorkspaceReservationEmailService.Live,
+        WorkspaceReservationEmailService.Default,
         Layer.provideMerge(
-          Layer.provideMerge(
-            EmailServiceTag.LiveWithDependencies,
-            EmailConfigLayer
-          ),
-          WorkspaceCheckoutNetworkDetailsService.Live
+          Layer.provideMerge(EmailServiceTag.Live, EmailConfigLayer),
+          WorkspaceCheckoutNetworkDetailsService.Default
         )
       )
     ),
-    Layer.provide(WorkspaceReservationService.Live),
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live),
+    Layer.provide(WorkspaceReservationService.Default),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
-      SeatingMapFeatureFlagService.Live.pipe(
-        Layer.provide(WorkspaceFeatureFlagService.Live)
+      SeatingMapFeatureFlagService.Default.pipe(
+        Layer.provide(WorkspaceFeatureFlagService.Default)
       )
     )
   );

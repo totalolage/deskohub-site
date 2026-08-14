@@ -20,10 +20,7 @@ const applyDiscountCodeAction = defineWorkspaceAction(
   (input) =>
     applyDiscountCodeToPayState(input).pipe(
       Effect.provide(
-        Layer.merge(
-          CheckoutPricingService.LiveWithDependencies,
-          PayableReservationService.LiveWithDependencies
-        )
+        Layer.merge(CheckoutPricingService.Live, PayableReservationService.Live)
       )
     )
 );

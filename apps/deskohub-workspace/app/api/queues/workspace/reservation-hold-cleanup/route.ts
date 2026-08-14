@@ -9,9 +9,9 @@ import { WorkspaceReservationRepository } from "@/features/reservation/backend/w
 import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
 
 const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
-  ReservationHoldCleanupService.LiveWithDependencies,
-  WorkspaceReservationRepository.Live.pipe(
-    Layer.provide(WorkspaceDatabase.Live)
+  ReservationHoldCleanupService.Live,
+  WorkspaceReservationRepository.Default.pipe(
+    Layer.provide(WorkspaceDatabase.Default)
   )
 );
 

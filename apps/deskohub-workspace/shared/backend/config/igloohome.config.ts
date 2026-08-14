@@ -22,7 +22,7 @@ const fixtureService = Layer.succeed(
 );
 
 const productionService = () =>
-  IgloohomeService.LiveWithDependencies.pipe(
+  IgloohomeService.Live.pipe(
     Layer.provide(
       Layer.succeed(
         IgloohomeRuntimeConfig,

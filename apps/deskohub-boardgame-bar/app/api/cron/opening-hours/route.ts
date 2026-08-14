@@ -78,7 +78,7 @@ export async function GET(request: Request): Promise<Response> {
       ...(channel.expiration && { expiration: channel.expiration }),
     });
   }).pipe(
-    Effect.provide(OpeningHoursCalendarService.LiveWithDependencies),
+    Effect.provide(OpeningHoursCalendarService.Live),
     Effect.tapError((cause) =>
       Effect.logError("Opening-hours midnight maintenance failed", { cause })
     ),

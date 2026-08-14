@@ -21,7 +21,7 @@ export const WorkspaceDotyposRuntimeConfigLayer = Layer.effect(
   })
 );
 
-const configuredDotyposLayer = DotyposService.LiveWithDependencies.pipe(
+const configuredDotyposLayer = DotyposService.Live.pipe(
   Layer.provide(WorkspaceDotyposRuntimeConfigLayer)
 );
 const processScope = Scope.makeUnsafe();

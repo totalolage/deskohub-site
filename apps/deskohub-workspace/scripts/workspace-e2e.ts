@@ -17,7 +17,7 @@ import {
 const environment = makeWorkspaceE2EEnvironment();
 const runContext = makeE2ERunContext(environment);
 const telemetry = makeE2ETelemetryRuntime(environment);
-const telemetryServiceLayer = E2ETelemetryService.Live.pipe(
+const telemetryServiceLayer = E2ETelemetryService.Default.pipe(
   Layer.provide(E2ERunContextService.layerValue(runContext))
 );
 const playwrightEnvironment = Object.fromEntries(

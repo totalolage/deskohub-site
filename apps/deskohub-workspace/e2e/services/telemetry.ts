@@ -116,7 +116,7 @@ export class E2ETelemetryService extends Context.Service<
   E2ETelemetryService,
   E2ETelemetry
 >()("E2ETelemetryService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { value: runContext } = yield* E2ERunContextService;

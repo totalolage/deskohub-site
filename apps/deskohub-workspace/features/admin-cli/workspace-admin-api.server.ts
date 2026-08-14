@@ -614,13 +614,13 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(AdminCliApiHandlers),
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
-    Layer.provide(AdministrationService.LiveWithDependencies),
-    Layer.provide(ReservationAdministrationService.LiveWithDependencies),
-    Layer.provide(ReservationAccessAdministration.LiveWithDependencies),
-    Layer.provide(DiscountAdministration.LiveWithDependencies),
-    Layer.provide(CliMutationIdempotency.LiveWithDependencies),
-    Layer.provide(CliAuthenticationAdmission.Live),
-    Layer.provide(CliAuthentication.LiveWithDependencies)
+    Layer.provide(AdministrationService.Live),
+    Layer.provide(ReservationAdministrationService.Live),
+    Layer.provide(ReservationAccessAdministration.Live),
+    Layer.provide(DiscountAdministration.Live),
+    Layer.provide(CliMutationIdempotency.Live),
+    Layer.provide(CliAuthenticationAdmission.Default),
+    Layer.provide(CliAuthentication.Live)
   ),
   noStore
 ).pipe(Layer.provide(NodeHttpServer.layerHttpServices));

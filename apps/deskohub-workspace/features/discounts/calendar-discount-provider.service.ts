@@ -56,7 +56,7 @@ export class CalendarDiscountProvider extends Context.Service<
   CalendarDiscountProvider,
   ICalendarDiscountProvider
 >()("@deskohub-workspace/discounts/CalendarDiscountProvider") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const calendar = yield* GoogleCalendarService;

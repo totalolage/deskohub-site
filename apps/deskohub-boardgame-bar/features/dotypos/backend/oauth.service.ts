@@ -78,7 +78,7 @@ export class DotyposOAuthService extends Context.Service<
   DotyposOAuthService,
   DotyposOAuthServiceShape
 >()("DotyposOAuthService") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     getAuthUrl: ({ redirectUri }) =>
       Effect.gen(function* () {
         const { clientId, clientSecret } = yield* getCredentials;

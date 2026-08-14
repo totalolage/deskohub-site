@@ -91,7 +91,7 @@ export const POST = defineWorkspaceRoute(
         "ResendWebhookProcessingError",
         handleResendWebhookProcessingError
       ),
-      Effect.provide(ResendWebhookService.LiveWithDependencies)
+      Effect.provide(ResendWebhookService.Live)
     )
 );
 

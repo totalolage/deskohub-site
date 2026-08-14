@@ -23,7 +23,7 @@ export const loadDiscountAdminPageData = async (
     const administration = yield* DiscountAdministration;
     return yield* administration.loadDashboard();
   }).pipe(
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load", {
       boundary: "route",
     })
@@ -44,7 +44,7 @@ export const loadDiscountAdminCodesPageData = async (
     const administration = yield* DiscountAdministration;
     return yield* administration.loadCodesPage();
   }).pipe(
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-codes", {
       boundary: "route",
     })
@@ -64,7 +64,7 @@ export const loadDiscountAdminSalesPageData = async (
     const administration = yield* DiscountAdministration;
     return yield* administration.loadSalesPage();
   }).pipe(
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-sales", {
       boundary: "route",
     })
@@ -84,7 +84,7 @@ export const loadDiscountAdminVouchersPageData = async (
     const administration = yield* DiscountAdministration;
     return yield* administration.loadVouchersPage();
   }).pipe(
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-vouchers", {
       boundary: "route",
     })
@@ -114,7 +114,7 @@ export const loadDiscountAdminCodePageData = async (
     return yield* administration.loadCodeDetail({ codeId });
   }).pipe(
     Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-code", {
       boundary: "route",
     })
@@ -142,7 +142,7 @@ export const loadDiscountAdminCustomerPageData = async (
     return yield* administration.loadCustomerProfile({ customerId });
   }).pipe(
     Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-customer", {
       boundary: "route",
     })
@@ -169,7 +169,7 @@ export const loadDiscountAdminVoucherPageData = async (
     return yield* administration.loadVoucherDetail({ voucherId });
   }).pipe(
     Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-voucher", {
       boundary: "route",
     })
@@ -192,7 +192,7 @@ export const loadDiscountAdminCustomerCodeCreationPageData = async (
     return yield* administration.loadCustomerCodeCreation({ customerId });
   }).pipe(
     Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-customer-code-creation", {
       boundary: "route",
     })
@@ -214,7 +214,7 @@ const loadOptionalDiscountAdminCustomerProfile = cache(
           customerId,
         }).pipe(Effect.as(null))
       ),
-      Effect.provide(DiscountAdministration.LiveWithDependencies),
+      Effect.provide(DiscountAdministration.Live),
       runWorkspaceEffect("discount-administration.load-customer-optional", {
         boundary: "route",
       })
@@ -245,7 +245,7 @@ export const loadDiscountAdminCustomerBreadcrumbLabel = async (
     const administration = yield* DiscountAdministration;
     return yield* administration.loadCustomerBreadcrumbLabel({ customerId });
   }).pipe(
-    Effect.provide(DiscountAdministration.LiveWithDependencies),
+    Effect.provide(DiscountAdministration.Live),
     Effect.catch((cause) =>
       Effect.logWarning("Customer breadcrumb label unavailable", {
         cause,

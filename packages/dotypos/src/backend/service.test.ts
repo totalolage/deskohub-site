@@ -150,9 +150,9 @@ const runWithService = <A, E>(
   const httpClientLayer = FetchHttpClient.layer.pipe(
     Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
   );
-  const serviceLayer = DotyposService.Live.pipe(
-    Layer.provide(DotyposGeneratedClient.Live),
-    Layer.provide(DotyposAccessToken.Live),
+  const serviceLayer = DotyposService.Default.pipe(
+    Layer.provide(DotyposGeneratedClient.Default),
+    Layer.provide(DotyposAccessToken.Default),
     Layer.provide(
       Layer.merge(makeDotyposRuntimeConfigLayer(config), httpClientLayer)
     )

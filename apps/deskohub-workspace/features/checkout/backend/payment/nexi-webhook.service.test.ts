@@ -132,7 +132,7 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
     return yield* service.processNotification(payload);
   }).pipe(
     Effect.provide(
-      NexiWebhookService.Live.pipe(
+      NexiWebhookService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(WebhookEventRepository, services.webhookEvents),

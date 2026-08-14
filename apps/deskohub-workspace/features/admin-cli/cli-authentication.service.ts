@@ -123,7 +123,7 @@ export class CliAuthentication extends Context.Service<
   CliAuthentication,
   ICliAuthentication
 >()("@deskohub-workspace/admin-cli/CliAuthentication") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -446,8 +446,8 @@ export class CliAuthentication extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceDatabase.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(NodeCrypto.layer)
   );
 }

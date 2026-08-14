@@ -93,7 +93,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
         },
       })
     ),
-  TrainingReservationService.LiveWithDependencies.pipe(Layer.orDie)
+  TrainingReservationService.Live.pipe(Layer.orDie)
 );
 
 // Export an explicitly async wrapper that Next.js will recognize

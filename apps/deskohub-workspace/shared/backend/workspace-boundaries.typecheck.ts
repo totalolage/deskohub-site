@@ -7,7 +7,7 @@ class TestService extends Context.Service<
   TestService,
   { readonly value: string }
 >()("WorkspaceBoundaryTypecheckService") {
-  static Live = Layer.succeed(this, { value: "typecheck" });
+  static Default = Layer.succeed(this, { value: "typecheck" });
 }
 
 const typecheck = false as boolean;
@@ -37,7 +37,7 @@ if (typecheck) {
       operation: "type.action-provided",
       schema: Schema.toStandardSchemaV1(Schema.String),
     },
-    () => TestService.pipe(Effect.provide(TestService.Live))
+    () => TestService.pipe(Effect.provide(TestService.Default))
   );
 
   defineWorkspaceAction(

@@ -7,7 +7,7 @@ import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { DotyposTablesPreview } from "./dotypos-tables-preview";
 
 const DotyposLive = Layer.provide(
-  DotyposService.LiveWithDependencies,
+  DotyposService.Live,
   WorkspaceDotyposRuntimeConfigLayer
 );
 

@@ -12,9 +12,7 @@ const submitReservationAction = defineWorkspaceAction(
     schema: submitReservationSchema,
   },
   (input) =>
-    submitWorkspaceReservation(input).pipe(
-      Effect.provide(CheckoutService.LiveWithDependencies)
-    )
+    submitWorkspaceReservation(input).pipe(Effect.provide(CheckoutService.Live))
 );
 
 export const submitReservation: typeof submitReservationAction = async (

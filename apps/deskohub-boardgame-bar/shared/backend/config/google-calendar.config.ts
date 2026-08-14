@@ -16,6 +16,6 @@ const boardgameGoogleCalendarConfigLayer = Layer.succeed(
   } satisfies IGoogleCalendarRuntimeConfig
 );
 
-export const BoardgameGoogleCalendarLayer = GoogleCalendarService.Live.pipe(
+export const BoardgameGoogleCalendarLayer = GoogleCalendarService.Default.pipe(
   Layer.provide(boardgameGoogleCalendarConfigLayer)
 );

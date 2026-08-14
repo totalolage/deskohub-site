@@ -57,6 +57,6 @@ export const EmailConfigLayer = Layer.effect(
   )
 );
 
-export const BoardgameEmailLayer = EmailServiceTag.LiveWithDependencies.pipe(
+export const BoardgameEmailLayer = EmailServiceTag.Live.pipe(
   Layer.provide(EmailConfigLayer)
 );

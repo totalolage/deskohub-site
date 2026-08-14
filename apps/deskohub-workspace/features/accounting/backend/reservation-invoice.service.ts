@@ -86,7 +86,7 @@ export class ReservationInvoiceService extends Context.Service<
   ReservationInvoiceService,
   IReservationInvoiceService
 >()("ReservationInvoiceService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const accountingSnapshots = yield* AccountingDocumentSnapshotRepository;
@@ -279,7 +279,7 @@ export class ReservationInvoiceService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
+  static Live = this.Default.pipe(
     Layer.provide(getReservationInvoiceDependencies()),
     Layer.orDie
   );
@@ -287,13 +287,13 @@ export class ReservationInvoiceService extends Context.Service<
 
 function getReservationInvoiceDependencies() {
   const accountingStorage = Layer.merge(
-    WorkspaceDatabase.Live,
-    AccountingSnapshotKeyService.Live
+    WorkspaceDatabase.Default,
+    AccountingSnapshotKeyService.Default
   );
-  const accountingSnapshots = AccountingDocumentSnapshotRepository.Live.pipe(
+  const accountingSnapshots = AccountingDocumentSnapshotRepository.Default.pipe(
     Layer.provide(accountingStorage)
   );
-  const invoices = InvoiceRepository.Live.pipe(
+  const invoices = InvoiceRepository.Default.pipe(
     Layer.provide(Layer.merge(accountingStorage, accountingSnapshots))
   );
 
@@ -301,7 +301,7 @@ function getReservationInvoiceDependencies() {
     accountingSnapshots,
     WorkspaceDotyposLayer,
     invoices,
-    WorkspaceReservationRepository.LiveWithDependencies,
-    InvoiceEmailDeliveryService.LiveWithDependencies
+    WorkspaceReservationRepository.Live,
+    InvoiceEmailDeliveryService.Live
   );
 }

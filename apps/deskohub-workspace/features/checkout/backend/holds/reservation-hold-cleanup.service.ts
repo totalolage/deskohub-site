@@ -51,14 +51,14 @@ export class ReservationHoldCleanupService extends Context.Service<
   ReservationHoldCleanupService,
   IReservationHoldCleanupService
 >()("ReservationHoldCleanupService") {
-  static Live = makeReservationHoldCleanupServiceLayer(this);
+  static Default = makeReservationHoldCleanupServiceLayer(this);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ProviderPaymentFinalizationService.LiveWithDependencies),
-    Layer.provide(PaymentLifecycleRepository.Live),
-    Layer.provide(PostHogEventService.LiveWithDependencies),
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(ProviderPaymentFinalizationService.Live),
+    Layer.provide(PaymentLifecycleRepository.Default),
+    Layer.provide(PostHogEventService.Live),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer)
   );
 }

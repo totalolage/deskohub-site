@@ -575,17 +575,17 @@ export class CheckoutStatusService extends Context.Service<
   CheckoutStatusService,
   ICheckoutStatusService
 >()("@deskohub-workspace/checkout/CheckoutStatusService") {
-  static Live = Layer.effect(this, implementation);
+  static Default = Layer.effect(this, implementation);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ProviderPaymentFinalizationService.LiveWithDependencies),
-    Layer.provide(PaymentAttemptRepository.Live),
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(ProviderPaymentFinalizationService.Live),
+    Layer.provide(PaymentAttemptRepository.Default),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
-      SeatingMapFeatureFlagService.Live.pipe(
-        Layer.provide(WorkspaceFeatureFlagService.Live)
+      SeatingMapFeatureFlagService.Default.pipe(
+        Layer.provide(WorkspaceFeatureFlagService.Default)
       )
     )
   );

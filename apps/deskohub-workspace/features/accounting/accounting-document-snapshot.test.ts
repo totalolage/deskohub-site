@@ -280,7 +280,7 @@ describe("accounting document snapshot", () => {
       const keys = yield* AccountingSnapshotKeyService;
       return yield* keys.getActive;
     }).pipe(
-      Effect.provide(AccountingSnapshotKeyService.Live),
+      Effect.provide(AccountingSnapshotKeyService.Default),
       Effect.runPromise
     );
 

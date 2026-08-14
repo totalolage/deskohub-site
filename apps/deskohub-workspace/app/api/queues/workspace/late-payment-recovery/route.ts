@@ -18,25 +18,28 @@ import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
 export const maxDuration = 300;
 
 const databaseRepositories = Layer.mergeAll(
-  LatePaymentRecoveryRepository.Live,
-  AccountingDocumentSnapshotRepository.Live,
-  WorkspaceReservationRepository.Live
+  LatePaymentRecoveryRepository.Default,
+  AccountingDocumentSnapshotRepository.Default,
+  WorkspaceReservationRepository.Default
 ).pipe(
   Layer.provide(
-    Layer.mergeAll(WorkspaceDatabase.Live, AccountingSnapshotKeyService.Live)
+    Layer.mergeAll(
+      WorkspaceDatabase.Default,
+      AccountingSnapshotKeyService.Default
+    )
   )
 );
 
-const ConsumerLive = LatePaymentRecoveryService.Live.pipe(
+const ConsumerLive = LatePaymentRecoveryService.Default.pipe(
   Layer.provide(databaseRepositories),
-  Layer.provide(WorkspaceAvailabilityService.LiveWithDependencies),
+  Layer.provide(WorkspaceAvailabilityService.Live),
   Layer.provide(
-    WorkspaceTableAssignmentService.Live.pipe(
+    WorkspaceTableAssignmentService.Default.pipe(
       Layer.provide(databaseRepositories),
       Layer.provide(WorkspaceDotyposLayer)
     )
   ),
-  Layer.provide(WorkspacePaidFulfillmentService.LiveWithDependencies),
+  Layer.provide(WorkspacePaidFulfillmentService.Live),
   Layer.provide(WorkspaceDotyposLayer)
 );
 

@@ -187,7 +187,7 @@ async function CheckoutPayContent({
       discountCodeEntryEnabled,
       freshPayUrl,
     })),
-    Effect.provide(PayableReservationService.LiveWithDependencies),
+    Effect.provide(PayableReservationService.Live),
     Effect.catch((cause) =>
       Effect.logWarning("Checkout pay state could not be loaded", {
         cause,

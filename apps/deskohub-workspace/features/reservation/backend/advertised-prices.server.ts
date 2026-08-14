@@ -21,9 +21,7 @@ export const loadAdvertisedPrices = Effect.fn(
   const results = yield* Effect.all(
     uniqueRequests.map((request) =>
       buildAdvertisedPrice(request).pipe(
-        Effect.provide(
-          OfficeReservationFeatureFlagService.LiveWithDependencies
-        ),
+        Effect.provide(OfficeReservationFeatureFlagService.Live),
         Effect.tapError(() =>
           Effect.logError("Advertised price load failed", {
             reservationKind: request.reservation.kind,

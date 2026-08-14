@@ -27,7 +27,7 @@ export const MenuPage: LocalizedNextComponent = Effect.fn("MenuPage")(
       Effect.annotateLogs({
         page: "MenuPage",
       }),
-      Effect.provide(MenuData.LiveWithDependencies),
+      Effect.provide(MenuData.Live),
       Effect.orElseSucceed(notFound)
     )
 );

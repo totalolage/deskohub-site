@@ -130,7 +130,7 @@ export class ReservationAccessService extends Context.Service<
   ReservationAccessService,
   IReservationAccessService
 >()("@deskohub-workspace/reservation-access/ReservationAccessService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const repository = yield* ReservationAccessRepository;
@@ -446,8 +446,8 @@ export class ReservationAccessService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ReservationAccessRepository.LiveWithDependencies),
+  static Live = this.Default.pipe(
+    Layer.provide(ReservationAccessRepository.Live),
     Layer.provide(WorkspaceIgloohomeLayer)
   );
 }

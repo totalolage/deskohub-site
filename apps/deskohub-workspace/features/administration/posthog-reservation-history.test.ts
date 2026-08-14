@@ -35,7 +35,7 @@ describe("PostHog reservation history", () => {
         ],
       });
     };
-    const layer = PostHogReservationHistory.Live.pipe(
+    const layer = PostHogReservationHistory.Default.pipe(
       Layer.provide(
         Layer.succeed(PostHogHistoryRuntimeConfig, {
           apiKey: "test-key",
@@ -79,7 +79,7 @@ describe("PostHog reservation history", () => {
   });
 
   test("is unavailable without a dedicated read credential", async () => {
-    const layer = PostHogReservationHistory.Live.pipe(
+    const layer = PostHogReservationHistory.Default.pipe(
       Layer.provide(
         Layer.succeed(PostHogHistoryRuntimeConfig, {
           environment: "development",

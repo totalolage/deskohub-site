@@ -141,14 +141,14 @@ export class ResendWebhookService extends Context.Service<
   ResendWebhookService,
   IResendWebhookService
 >()("ResendWebhookService") {
-  static Live = makeResendWebhookServiceLayer(this);
+  static Default = makeResendWebhookServiceLayer(this);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ResendWebhookRuntimeConfig.Live),
-    Layer.provide(PostHogEventService.LiveWithDependencies),
-    Layer.provide(ReservationInvoiceService.LiveWithDependencies),
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live)
+  static Live = this.Default.pipe(
+    Layer.provide(ResendWebhookRuntimeConfig.Default),
+    Layer.provide(PostHogEventService.Live),
+    Layer.provide(ReservationInvoiceService.Live),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default)
   );
 }
 

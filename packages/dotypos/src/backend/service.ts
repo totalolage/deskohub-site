@@ -1527,11 +1527,11 @@ export class DotyposService extends Context.Service<
   DotyposService,
   Effect.Success<typeof makeDotyposService>
 >()("DotyposService") {
-  static Live = Layer.effect(this, makeDotyposService);
+  static Default = Layer.effect(this, makeDotyposService);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(DotyposGeneratedClient.Live),
-    Layer.provide(DotyposAccessToken.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(DotyposGeneratedClient.Default),
+    Layer.provide(DotyposAccessToken.Default),
     Layer.provide(FetchHttpClient.layer)
   );
 }

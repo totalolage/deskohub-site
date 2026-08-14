@@ -71,7 +71,7 @@ const runAdministration =
   (operation: string) =>
   <A, E>(effect: Effect.Effect<A, E, AdministrationService>) =>
     effect.pipe(
-      Effect.provide(AdministrationService.LiveWithDependencies),
+      Effect.provide(AdministrationService.Live),
       runWorkspaceEffect(operation, { boundary: "route" })
     );
 

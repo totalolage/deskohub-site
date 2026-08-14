@@ -88,7 +88,7 @@ export class InvoiceRepository extends Context.Service<
   InvoiceRepository,
   IInvoiceRepository
 >()("@deskohub-workspace/accounting/InvoiceRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;

@@ -1209,7 +1209,7 @@ export class AdministrationService extends Context.Service<
     readonly loadOperation: IPaymentAdministrationService["loadOperation"];
   }
 >()("@deskohub-workspace/administration/AdministrationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -2594,13 +2594,13 @@ export class AdministrationService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
+  static Live = this.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        WorkspaceDatabase.Live,
+        WorkspaceDatabase.Default,
         WorkspaceDotyposLayer,
-        PaymentAdministrationService.LiveWithDependencies,
-        PostHogReservationHistory.LiveWithDependencies
+        PaymentAdministrationService.Live,
+        PostHogReservationHistory.Live
       )
     )
   );

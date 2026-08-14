@@ -195,7 +195,7 @@ export class PaymentAdministrationService extends Context.Service<
   PaymentAdministrationService,
   IPaymentAdministrationService
 >()("@deskohub-workspace/administration/PaymentAdministrationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -549,7 +549,7 @@ export class PaymentAdministrationService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(Layer.merge(WorkspaceDatabase.Live, WorkspaceNexiLayer))
+  static Live = this.Default.pipe(
+    Layer.provide(Layer.merge(WorkspaceDatabase.Default, WorkspaceNexiLayer))
   );
 }

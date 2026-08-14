@@ -35,8 +35,8 @@ const runWithService = <A, E>(
   const httpClientLayer = FetchHttpClient.layer.pipe(
     Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
   );
-  const serviceLayer = NexiService.Live.pipe(
-    Layer.provide(NexiGeneratedClient.Live),
+  const serviceLayer = NexiService.Default.pipe(
+    Layer.provide(NexiGeneratedClient.Default),
     Layer.provide(
       Layer.merge(Layer.succeed(NexiRuntimeConfig, config), httpClientLayer)
     )

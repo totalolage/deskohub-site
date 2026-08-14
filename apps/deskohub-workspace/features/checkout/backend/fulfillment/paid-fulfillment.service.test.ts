@@ -87,7 +87,7 @@ describe("WorkspacePaidFulfillmentService", () => {
       yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Live.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -203,7 +203,7 @@ describe("WorkspacePaidFulfillmentService", () => {
       yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Live.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -292,7 +292,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         .pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Live.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -366,7 +366,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         .pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentService.Live.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {

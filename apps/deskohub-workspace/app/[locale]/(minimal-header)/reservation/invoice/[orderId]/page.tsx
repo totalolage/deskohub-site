@@ -109,7 +109,7 @@ async function PostOrderInvoiceContent({
       Effect.logWarning("Post-order invoice state could not be loaded")
     ),
     Effect.orElseSucceed((): PostOrderInvoiceState => "unavailable"),
-    Effect.provide(ReservationInvoiceService.LiveWithDependencies),
+    Effect.provide(ReservationInvoiceService.Live),
     runWorkspaceEffect("accounting.post-order-invoice.load")
   );
 

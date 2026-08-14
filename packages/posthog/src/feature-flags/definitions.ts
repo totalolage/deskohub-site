@@ -55,7 +55,7 @@ export class PostHogFeatureFlagService extends Context.Service<
   PostHogFeatureFlagService,
   IPostHogFeatureFlagService
 >()("@deskohub/posthog/PostHogFeatureFlagService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* PostHogFeatureFlagConfig;

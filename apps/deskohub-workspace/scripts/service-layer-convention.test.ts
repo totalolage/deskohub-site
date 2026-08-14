@@ -3,16 +3,20 @@ import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
-const sourcePaths = new Bun.Glob("{apps,packages}/**/*.{ts,tsx}")
-  .scanSync({ cwd: repositoryRoot, absolute: true })
-  .filter(
-    (path) =>
-      !path.includes("/node_modules/") &&
-      !path.includes("/generated/") &&
-      !path.includes("/.next/")
-  );
+const sourcePaths = [
+  ...new Bun.Glob("{apps,packages}/**/*.{ts,tsx}").scanSync({
+    cwd: repositoryRoot,
+    absolute: true,
+  }),
+].filter(
+  (path) =>
+    !path.includes("/node_modules/") &&
+    !path.includes("/generated/") &&
+    !path.includes("/.next/")
+);
 
-test("Context capabilities own their live layers", async () => {
+test("Context capabilities own their default and live layers", async () => {
+  expect(sourcePaths.length).toBeGreaterThan(0);
   const sources = await Promise.all(
     sourcePaths.map(
       async (path) => [path, await Bun.file(path).text()] as const
@@ -29,7 +33,7 @@ test("Context capabilities own their live layers", async () => {
   }
 
   const standaloneLayer =
-    /\b(?:declare\s+)?const\s+([A-Z][A-Za-z0-9]*?)(Live(?:WithDependencies)?)\b/g;
+    /\b(?:declare\s+)?const\s+([A-Z][A-Za-z0-9]*?)(Default|Live(?:WithDependencies)?)\b/g;
   const offenders: string[] = [];
 
   for (const [path, source] of sources) {
@@ -41,6 +45,22 @@ test("Context capabilities own their live layers", async () => {
       }
     }
   }
+
+  expect(offenders.sort()).toEqual([]);
+});
+
+test("fully wired capability layers are named Live", async () => {
+  const obsoleteName = ["Live", "With", "Dependencies"].join("");
+  const offenders = (
+    await Promise.all(
+      sourcePaths.map(async (path) => ({
+        path,
+        source: await Bun.file(path).text(),
+      }))
+    )
+  )
+    .filter(({ source }) => source.includes(obsoleteName))
+    .map(({ path }) => relative(repositoryRoot, path));
 
   expect(offenders.sort()).toEqual([]);
 });

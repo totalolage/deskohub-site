@@ -13,19 +13,19 @@ import { GithubReleaseService } from "./update/github-release.service";
 import { UpdateService } from "./update/update.service";
 import { UpdateStateStore } from "./update/update-state-store.service";
 
-const UpdateLive = UpdateService.Live.pipe(
-  Layer.provide(UpdateStateStore.Live),
-  Layer.provide(GithubReleaseService.Live),
-  Layer.provide(ExecutableInstaller.Live)
+const UpdateLive = UpdateService.Default.pipe(
+  Layer.provide(UpdateStateStore.Default),
+  Layer.provide(GithubReleaseService.Default),
+  Layer.provide(ExecutableInstaller.Default)
 );
 
 const ApplicationLive = Layer.mergeAll(
-  WorkspaceAdminApiClient.Live,
-  AuthenticationService.LiveWithDependencies,
-  ClientIdentity.Live,
+  WorkspaceAdminApiClient.Default,
+  AuthenticationService.Live,
+  ClientIdentity.Default,
   UpdateLive
 ).pipe(
-  Layer.provideMerge(DhwConfig.Live),
+  Layer.provideMerge(DhwConfig.Default),
   Layer.provide(FetchHttpClient.layer)
 );
 

@@ -1027,20 +1027,20 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
 const PreparePayStateLive = Layer.mergeAll(
   Layer.mergeAll(
-    WorkspaceReservationRepository.Live,
-    CustomerMarketingConsentRepository.Live
-  ).pipe(Layer.provide(WorkspaceDatabase.Live)),
-  WorkspaceAvailabilityService.LiveWithDependencies,
-  WorkspaceTableAssignmentService.Live.pipe(
-    Layer.provide(WorkspaceReservationRepository.LiveWithDependencies),
+    WorkspaceReservationRepository.Default,
+    CustomerMarketingConsentRepository.Default
+  ).pipe(Layer.provide(WorkspaceDatabase.Default)),
+  WorkspaceAvailabilityService.Live,
+  WorkspaceTableAssignmentService.Default.pipe(
+    Layer.provide(WorkspaceReservationRepository.Live),
     Layer.provide(WorkspaceDotyposLayer)
   ),
-  ReservationHoldCleanupScheduleService.Live,
-  PostHogEventService.LiveWithDependencies,
+  ReservationHoldCleanupScheduleService.Default,
+  PostHogEventService.Live,
   WorkspaceDotyposLayer,
-  CheckoutPricingService.LiveWithDependencies,
-  OfficeReservationFeatureFlagService.Live.pipe(
-    Layer.provide(WorkspaceFeatureFlagService.Live)
+  CheckoutPricingService.Live,
+  OfficeReservationFeatureFlagService.Default.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.Default)
   )
 );
 

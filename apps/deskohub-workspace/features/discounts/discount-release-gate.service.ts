@@ -27,7 +27,7 @@ export class DiscountReleaseGateService extends Context.Service<
   DiscountReleaseGateService,
   IDiscountReleaseGateService
 >()("@deskohub-workspace/discounts/DiscountReleaseGateService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const featureFlags = yield* WorkspaceFeatureFlagService;
@@ -90,8 +90,8 @@ export class DiscountReleaseGateService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceFeatureFlagService.Live)
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.Default)
   );
 }
 

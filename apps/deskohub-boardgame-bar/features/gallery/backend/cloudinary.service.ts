@@ -13,6 +13,6 @@ const galleryCloudinaryConfigLayer = makeCloudinaryRuntimeConfigLayer({
   serviceName: "boardgame-bar",
 });
 
-export const GalleryCloudinaryLayer = CloudinaryService.Live.pipe(
+export const GalleryCloudinaryLayer = CloudinaryService.Default.pipe(
   Layer.provide(galleryCloudinaryConfigLayer)
 );

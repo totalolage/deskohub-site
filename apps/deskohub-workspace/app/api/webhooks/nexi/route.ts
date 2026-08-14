@@ -135,9 +135,7 @@ export const POST = defineWorkspaceRoute(
         )
       ),
       Effect.provide(
-        NexiWebhookService.LiveWithDependencies.pipe(
-          Layer.provide(WorkspaceNexiLayer)
-        )
+        NexiWebhookService.Live.pipe(Layer.provide(WorkspaceNexiLayer))
       ),
       Effect.mapError(
         WorkspaceRouteFailure.internal("Nexi webhook processing failed")

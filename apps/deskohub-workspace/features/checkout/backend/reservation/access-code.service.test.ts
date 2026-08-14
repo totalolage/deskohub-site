@@ -35,7 +35,7 @@ test("resolves the reservation AlgoPIN through the dynamic access provider", asy
       reservedUntil,
     });
   }).pipe(
-    Effect.provide(WorkspaceCheckoutAccessCodeService.Live),
+    Effect.provide(WorkspaceCheckoutAccessCodeService.Default),
     Effect.provideService(
       ReservationAccessProvisioningService,
       ReservationAccessProvisioningService.of({ issueForReservation })

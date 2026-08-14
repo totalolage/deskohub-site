@@ -11,6 +11,6 @@ export const WorkspaceNexiRuntimeConfigLayer = Layer.succeed(
   }
 );
 
-export const WorkspaceNexiLayer = NexiService.LiveWithDependencies.pipe(
+export const WorkspaceNexiLayer = NexiService.Live.pipe(
   Layer.provide(WorkspaceNexiRuntimeConfigLayer)
 );

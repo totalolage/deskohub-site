@@ -45,8 +45,8 @@ async function LandingPageHeroContent({
   const [meetingRoomPageEnabled, saleBanner] = await Promise.all([
     isMeetingRoomPageEnabled(),
     getActiveLandingPageSaleBanner({ locale }).pipe(
-      Effect.provide(DiscountService.LiveWithDependencies),
-      Effect.provide(OfficeReservationFeatureFlagService.LiveWithDependencies),
+      Effect.provide(DiscountService.Live),
+      Effect.provide(OfficeReservationFeatureFlagService.Live),
       runWorkspaceEffect("landing-page.sale-banner.load", {
         boundary: "page",
       })

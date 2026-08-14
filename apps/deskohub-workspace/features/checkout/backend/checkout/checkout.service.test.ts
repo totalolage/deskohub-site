@@ -601,7 +601,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
     );
   }).pipe(
     Effect.provide(
-      CheckoutService.Live.pipe(
+      CheckoutService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             CheckoutPricingServiceMock({

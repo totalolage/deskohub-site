@@ -57,15 +57,15 @@ export class ProviderPaymentFinalizationService extends Context.Service<
   ProviderPaymentFinalizationService,
   IProviderPaymentFinalizationService
 >()("ProviderPaymentFinalizationService") {
-  static Live = makeProviderPaymentFinalizationServiceLayer(this);
+  static Default = makeProviderPaymentFinalizationServiceLayer(this);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(PaymentAttemptRepository.Live),
-    Layer.provide(PaymentLifecycleRepository.Live),
-    Layer.provide(PostHogEventService.LiveWithDependencies),
-    Layer.provide(WorkspaceReservationRepository.Live),
-    Layer.provide(WorkspaceDatabase.Live),
-    Layer.provide(WorkspacePaidFulfillmentService.LiveWithDependencies),
+  static Live = this.Default.pipe(
+    Layer.provide(PaymentAttemptRepository.Default),
+    Layer.provide(PaymentLifecycleRepository.Default),
+    Layer.provide(PostHogEventService.Live),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
+    Layer.provide(WorkspacePaidFulfillmentService.Live),
     Layer.provide(WorkspaceNexiLayer)
   );
 }

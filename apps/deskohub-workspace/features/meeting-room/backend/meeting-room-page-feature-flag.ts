@@ -15,7 +15,7 @@ const meetingRoomPageFeatureFlag = Effect.gen(function* () {
       Effect.as(false)
     )
   ),
-  Effect.provide(WorkspaceFeatureFlagService.Live)
+  Effect.provide(WorkspaceFeatureFlagService.Default)
 );
 
 export const isMeetingRoomPageEnabled = cache(async () => {

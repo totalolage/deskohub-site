@@ -33,7 +33,7 @@ const managePostOrderInvoiceAction = defineWorkspaceAction(
         address: input.address,
       });
     }).pipe(
-      Effect.provide(ReservationInvoiceService.LiveWithDependencies),
+      Effect.provide(ReservationInvoiceService.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

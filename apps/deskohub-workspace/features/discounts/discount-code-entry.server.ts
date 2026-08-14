@@ -10,4 +10,4 @@ export const getDiscountCodeEntryEnabled = Effect.gen(function* () {
   });
 
   return gates.discountCodes;
-}).pipe(Effect.provide(DiscountReleaseGateService.LiveWithDependencies));
+}).pipe(Effect.provide(DiscountReleaseGateService.Live));

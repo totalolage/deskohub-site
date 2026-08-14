@@ -44,7 +44,7 @@ describe("ContactService", () => {
       },
     };
 
-    const ContactServiceTest = ContactService.Live.pipe(
+    const ContactServiceTest = ContactService.Default.pipe(
       Layer.provide(
         Layer.mergeAll(
           Layer.succeed(EmailServiceTag, emailService),

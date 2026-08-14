@@ -98,7 +98,7 @@ export class ContactService extends Context.Service<
   ContactService,
   IContactService
 >()("ContactService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const emailService = yield* EmailServiceTag;

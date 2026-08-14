@@ -184,7 +184,7 @@ export class LatePaymentRecoveryService extends Context.Service<
   LatePaymentRecoveryService,
   ILatePaymentRecoveryService
 >()("LatePaymentRecoveryService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const recoveries = yield* LatePaymentRecoveryRepository;

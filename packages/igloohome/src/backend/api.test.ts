@@ -71,8 +71,8 @@ describe("IgloohomeService", () => {
     const httpClientLayer = FetchHttpClient.layer.pipe(
       Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
     );
-    const serviceLayer = IgloohomeService.Live.pipe(
-      Layer.provide(IgloohomeAccessToken.Live),
+    const serviceLayer = IgloohomeService.Default.pipe(
+      Layer.provide(IgloohomeAccessToken.Default),
       Layer.provide(
         Layer.merge(
           Layer.succeed(IgloohomeRuntimeConfig, {

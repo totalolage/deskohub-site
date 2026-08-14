@@ -498,7 +498,7 @@ export class DiscountAdministration extends Context.Service<
   DiscountAdministration,
   IDiscountAdministration
 >()("@deskohub-workspace/discounts/DiscountAdministration") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -1613,13 +1613,13 @@ export class DiscountAdministration extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
+  static Live = this.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
-        WorkspaceDatabase.Live,
+        WorkspaceDatabase.Default,
         WorkspaceDotyposLayer,
         WorkspaceGoogleCalendarLayer,
-        CalendarResourceConfig.Live
+        CalendarResourceConfig.Default
       )
     )
   );

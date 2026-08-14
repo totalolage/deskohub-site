@@ -428,10 +428,10 @@ export class NexiService extends Context.Service<
   NexiService,
   Effect.Success<typeof makeNexiService>
 >()("NexiService") {
-  static Live = Layer.effect(this, makeNexiService);
+  static Default = Layer.effect(this, makeNexiService);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(NexiGeneratedClient.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(NexiGeneratedClient.Default),
     Layer.provide(FetchHttpClient.layer)
   );
 }

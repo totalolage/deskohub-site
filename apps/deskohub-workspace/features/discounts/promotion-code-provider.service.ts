@@ -61,7 +61,7 @@ export class PromotionCodeProvider extends Context.Service<
   PromotionCodeProvider,
   IPromotionCodeProvider
 >()("@deskohub-workspace/discounts/PromotionCodeProvider") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const promotions = yield* PromotionCodeRepository;
