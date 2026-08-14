@@ -240,6 +240,65 @@ const reservationsFindCommand = Command.make(
   Command.withDescription("Find a reservation by reservation or payment ID")
 );
 
+const reservationsCancelCommand = Command.make(
+  "cancel",
+  {
+    reservationId: Argument.string("reservation-id"),
+    providerCredentialRemoved: Flag.boolean(
+      "confirm-access-credential-removed"
+    ).pipe(
+      Flag.withDescription(
+        "Confirm any active door PIN was removed in Igloohome"
+      )
+    ),
+    sendCancellationEmail: Flag.boolean("send-cancellation-email").pipe(
+      Flag.withDescription("Email the customer after cancellation")
+    ),
+    yes: confirmationFlag,
+  },
+  ({ providerCredentialRemoved, reservationId, sendCancellationEmail, yes }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const decodedReservationId = yield* Schema.decodeUnknownEffect(
+          AdministrationWorkspaceReservationId
+        )(reservationId);
+        const confirmed = yield* confirmChange(
+          yes,
+          json,
+          "Cancel this reservation? Paid online payments will be marked as needing a refund; no refund is issued automatically."
+        );
+        if (!confirmed) {
+          yield* reportCancellation(json);
+          return;
+        }
+        const accessGrantUpdatedAt = providerCredentialRemoved
+          ? ((yield* api.getReservation(accessToken, decodedReservationId))
+              .accessGrant?.updatedAt ?? null)
+          : null;
+        const result = yield* api.cancelReservation(
+          accessToken,
+          decodedReservationId,
+          {
+            accessGrantUpdatedAt,
+            providerCredentialRemoved,
+            sendCancellationEmail,
+          }
+        );
+        yield* Console.log(
+          json
+            ? JSON.stringify(result)
+            : {
+                failed:
+                  "Reservation cancelled, but the cancellation email could not be sent.",
+                not_requested:
+                  "Reservation cancelled without emailing the customer.",
+                sent: "Reservation cancelled and the customer was emailed.",
+              }[result.email]
+        );
+      })
+    )
+).pipe(Command.withDescription("Cancel a reservation in Dotypos"));
+
 const reservationsRetryAccessCommand = Command.make(
   "retry-access",
   {
@@ -288,11 +347,12 @@ const reservationsReconcileAccessCommand = Command.make(
 );
 
 const reservationsCommand = Command.make("reservations").pipe(
-  Command.withDescription("Inspect Workspace reservations"),
+  Command.withDescription("Inspect and cancel Workspace reservations"),
   Command.withSubcommands([
     reservationsListCommand,
     reservationsGetCommand,
     reservationsFindCommand,
+    reservationsCancelCommand,
     reservationsRetryAccessCommand,
     reservationsReconcileAccessCommand,
   ])

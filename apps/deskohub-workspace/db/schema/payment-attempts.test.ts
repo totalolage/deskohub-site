@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
-import { paymentAttempts, paymentProviders } from "./payment-attempts";
+import {
+  paymentAttempts,
+  paymentProviders,
+  paymentRefundStates,
+} from "./payment-attempts";
 import { webhookProviders } from "./webhook-events";
 
 describe("payment attempt providers", () => {
@@ -33,6 +37,35 @@ describe("payment attempt providers", () => {
       unique: true,
     });
     expect(nexiOrderIndex?.where).toBeDefined();
+  });
+
+  test("tracks required refunds separately from successful payment", () => {
+    const config = getTableConfig(paymentAttempts);
+    const refundState = config.columns.find(
+      ({ name }) => name === "refund_state"
+    );
+
+    expect(paymentRefundStates).toEqual(["not_required", "required"]);
+    expect(refundState).toMatchObject({ hasDefault: true, notNull: true });
+    expect(config.checks.map(({ name }) => name)).toContain(
+      "payment_attempts_refund_state_check"
+    );
+  });
+
+  test("migrates refund state with its paid Nexi invariant", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260813181657_numerous_bromley/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(migration).toContain(
+      "ADD COLUMN \"refund_state\" text DEFAULT 'not_required' NOT NULL"
+    );
+    expect(migration).toContain(
+      "\"refund_state\" <> 'required' or (\"provider\" = 'nexi' and \"state\" = 'paid')"
+    );
   });
 
   test("generates the provider transition as one migration", async () => {

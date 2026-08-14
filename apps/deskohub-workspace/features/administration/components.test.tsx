@@ -395,7 +395,7 @@ describe("administration reservation components", () => {
     const view = render(
       <PaymentAttemptList
         attempts={[
-          ...detail.paymentAttempts,
+          { ...attempt, refundState: "required" },
           {
             ...attempt,
             id: "fixture-internal-payment",
@@ -411,6 +411,7 @@ describe("administration reservation components", () => {
     expect(orderLink.getAttribute("href")).toBe(
       "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
     );
+    expect(view.getByText("Needs refund")).toBeDefined();
     expect(orderLink.getAttribute("target")).toBe("_blank");
     expect(view.getAllByText("Nexi order")).toHaveLength(1);
   });

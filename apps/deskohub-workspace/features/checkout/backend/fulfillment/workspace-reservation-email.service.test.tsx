@@ -164,7 +164,7 @@ describe("workspace reservation email details", () => {
     ]);
   });
 
-  test("renders a DST whole-day meeting-room reservation as the calendar day", async () => {
+  test("renders localized whole-day reservation and cancellation emails", async () => {
     const { createReservationRows, WorkspaceReservationEmailService } =
       await import("./workspace-reservation-email.service");
     const { EmailConfigTag, EmailServiceTag } = await import(
@@ -216,6 +216,7 @@ describe("workspace reservation email details", () => {
       await Effect.gen(function* () {
         const service = yield* WorkspaceReservationEmailService;
         yield* service.sendPaidReservationEmails({ reservation });
+        yield* service.sendCancellationEmail({ reservation });
       }).pipe(
         Effect.provide(
           WorkspaceReservationEmailService.Live.pipe(
@@ -236,7 +237,7 @@ describe("workspace reservation email details", () => {
       });
     }
 
-    expect(sentMessages).toHaveLength(2);
+    expect(sentMessages).toHaveLength(3);
     const customerMessage = sentMessages[0];
     expect(customerMessage?.attachments).not.toEqual(
       expect.arrayContaining([
@@ -269,5 +270,19 @@ describe("workspace reservation email details", () => {
     expect(internalMessage?.text).toContain("celý den");
     expect(internalMessage?.html).not.toContain("0:00");
     expect(internalMessage?.text).not.toContain("0:00");
+
+    const cancellationMessage = sentMessages[2];
+    expect(cancellationMessage?.subject).toBe(
+      "Your Deskohub Workspace reservation was cancelled"
+    );
+    expect(cancellationMessage?.tags).toEqual([
+      "workspace-reservation-cancellation",
+    ]);
+    expect(cancellationMessage?.metadata?.workspaceReservationId).toBe(
+      reservation.id
+    );
+    expect(cancellationMessage?.html).toContain("Sunday, March 28, 2027");
+    expect(cancellationMessage?.html).not.toContain("accessToken=");
+    expect(cancellationMessage?.text).not.toContain("1234");
   });
 });

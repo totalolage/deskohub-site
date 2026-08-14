@@ -170,6 +170,7 @@ One row per payment attempt. Positive totals create Nexi HPP/session attempts. E
 | `provider_order_created_at` | timestamptz | no | When Nexi accepted the hosted-payment request and returned its provider session. Set once for new Nexi attempts. |
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
+| `refund_state` | text enum | yes | Refund work state, separate from successful settlement. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
 | `amount_exponent` | integer | yes | Currency exponent used for amount verification. |
 | `currency` | text | yes | Uppercase ISO currency code. |
@@ -277,13 +278,14 @@ Allowed reservation transitions:
 - `held -> cancelling -> cancelled` for unsuccessful terminal payment before hold expiry.
 - `cancelling -> cancellation_failed`
 - `cancellation_failed -> cancelling -> cancelled`
+- `confirmed -> cancelling -> cancelled` through the explicit operator workflow, preserving paid and fulfillment facts while marking paid Nexi attempts as requiring a refund without issuing it.
 
 Forbidden reservation transitions:
 
-- Any transition from `cancelled` or `confirmed` without an explicit manual repair path.
+- Any transition from `cancelled`, or from `confirmed` outside the explicit guarded operator cancellation workflow.
 - Any creation of a second Dotypos reservation for the same `checkout_attempt_key`.
 - Any creation of a replacement Dotypos reservation in the same checkout session before the prior local and Dotypos reservations are cancelled.
-- Any cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed.
+- Any cleanup cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed. Operator cancellation has separate claim and finalization guards, refuses while fulfillment is processing, and requires explicit provider-removal confirmation before atomically retiring a live or ambiguous AlgoPIN.
 
 ### Payment State
 
@@ -304,6 +306,11 @@ Attempt-level `payment_attempts.state` values:
 - `failed`: verified terminal failed attempt.
 - `cancelled`: verified terminal cancellation.
 - `expired`: verified terminal expiry or local attempt expiry.
+
+Attempt-level `payment_attempts.refund_state` remains separate from settlement state:
+
+- `not_required`: no operator refund work is pending.
+- `required`: an operator cancelled the reservation after a Nexi payment settled; the payment remains truthfully `paid` until a separate refund workflow is completed.
 
 Allowed payment transitions:
 

@@ -8,6 +8,8 @@ import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
+  paymentAttempts,
+  reservationAccessGrants,
   type WorkspaceReservation as WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
@@ -23,6 +25,7 @@ import {
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
 import type { ReservationPurpose } from "@/features/reservation/reservation-billing";
+import { reservationAccessProvisioningStaleAfterMilliseconds } from "@/features/reservation-access";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
 
 const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
@@ -134,6 +137,17 @@ export interface WorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
+  readonly claimAdministrationCancellation: (input: {
+    readonly accessGrantUpdatedAt: string | null;
+    readonly id: WorkspaceReservationId;
+    readonly providerCredentialRemoved: boolean;
+    readonly staleCancellingBefore: Temporal.Instant;
+  }) => Effect.Effect<
+    WorkspaceReservation | null,
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError
+  >;
   readonly markCancelled: (input: {
     readonly id: WorkspaceReservationId;
     readonly cancelledAt: Temporal.Instant;
@@ -141,6 +155,14 @@ export interface WorkspaceReservationRepository {
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
+  readonly markAdministrationCancelled: (input: {
+    readonly id: WorkspaceReservationId;
+    readonly cancelledAt: Temporal.Instant;
+    readonly claimedAt: Temporal.Instant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
   >;
   readonly completeSupersessionAndCreateDraft: (input: {
     readonly cancelledReservationId: WorkspaceReservationId;
@@ -155,6 +177,14 @@ export interface WorkspaceReservationRepository {
   >;
   readonly markCancellationFailed: (input: {
     readonly id: WorkspaceReservationId;
+    readonly failureCode: string;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
+  readonly markAdministrationCancellationFailed: (input: {
+    readonly id: WorkspaceReservationId;
+    readonly claimedAt: Temporal.Instant;
     readonly failureCode: string;
   }) => Effect.Effect<
     void,
@@ -535,6 +565,99 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .returning();
         return yield* decodeOptionalWorkspaceReservation(claimed);
       }),
+      claimAdministrationCancellation: Effect.fn(
+        "workspaceReservations.claimAdministrationCancellation"
+      )(function* (input) {
+        const transaction = db.transaction((tx) =>
+          Effect.gen(function* () {
+            const now = Temporal.Now.instant();
+            const [grant] = yield* tx
+              .select({
+                id: reservationAccessGrants.id,
+                state: reservationAccessGrants.state,
+                accessEndsAt: reservationAccessGrants.accessEndsAt,
+                provisioningStartedAt:
+                  reservationAccessGrants.provisioningStartedAt,
+                updatedAt: reservationAccessGrants.updatedAt,
+              })
+              .from(reservationAccessGrants)
+              .where(
+                eq(reservationAccessGrants.workspaceReservationId, input.id)
+              )
+              .limit(1)
+              .for("update");
+            const credentialMayBeLive =
+              grant !== undefined &&
+              ["issued", "uncertain", "provisioning"].includes(grant.state) &&
+              Temporal.Instant.compare(grant.accessEndsAt, now) > 0;
+            const provisioningIsLive =
+              grant?.state === "provisioning" &&
+              grant.provisioningStartedAt !== null &&
+              Temporal.Instant.compare(
+                grant.provisioningStartedAt,
+                now.subtract({
+                  milliseconds:
+                    reservationAccessProvisioningStaleAfterMilliseconds,
+                })
+              ) > 0;
+            if (
+              credentialMayBeLive &&
+              (!input.providerCredentialRemoved ||
+                input.accessGrantUpdatedAt !== grant.updatedAt.toString() ||
+                provisioningIsLive)
+            ) {
+              return null;
+            }
+
+            const [claimed] = yield* tx
+              .update(workspaceReservations)
+              .set({
+                reservationState: "cancelling",
+                updatedAt: now,
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.id),
+                  or(
+                    inArray(workspaceReservations.reservationState, [
+                      "held",
+                      "hold_expired",
+                      "confirmed",
+                      "cancellation_failed",
+                    ]),
+                    and(
+                      eq(workspaceReservations.reservationState, "cancelling"),
+                      lte(
+                        workspaceReservations.updatedAt,
+                        input.staleCancellingBefore
+                      )
+                    )
+                  ),
+                  sql`${workspaceReservations.paymentState} <> 'pending'`,
+                  sql`${workspaceReservations.fulfillmentState} <> 'processing'`
+                )
+              )
+              .returning();
+            if (!claimed) return null;
+
+            if (
+              grant &&
+              ["issued", "uncertain", "provisioning"].includes(grant.state)
+            ) {
+              yield* tx
+                .update(reservationAccessGrants)
+                .set({
+                  state: "expired",
+                  accessCode: null,
+                  updatedAt: now,
+                })
+                .where(eq(reservationAccessGrants.id, grant.id));
+            }
+            return yield* decodeWorkspaceReservation(claimed);
+          })
+        );
+        return yield* transaction;
+      }),
       markCancelled: Effect.fn("workspaceReservations.markCancelled")(
         function* (input) {
           const updated = yield* db
@@ -562,6 +685,48 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           );
         }
       ),
+      markAdministrationCancelled: Effect.fn(
+        "workspaceReservations.markAdministrationCancelled"
+      )(function* (input) {
+        const transaction = db.transaction((tx) =>
+          Effect.gen(function* () {
+            const updatedAt = Temporal.Now.instant();
+            const updated = yield* tx
+              .update(workspaceReservations)
+              .set({
+                reservationState: "cancelled",
+                reservationCancelledAt: input.cancelledAt,
+                failureCode: null,
+                updatedAt,
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.id),
+                  eq(workspaceReservations.reservationState, "cancelling"),
+                  eq(workspaceReservations.updatedAt, input.claimedAt)
+                )
+              )
+              .returning({ id: workspaceReservations.id });
+            yield* ensureUpdated(
+              updated,
+              "workspaceReservations.markAdministrationCancelled",
+              input.id,
+              "Only an operator-cancelled reservation can be marked cancelled."
+            );
+            yield* tx
+              .update(paymentAttempts)
+              .set({ refundState: "required", updatedAt })
+              .where(
+                and(
+                  eq(paymentAttempts.workspaceReservationId, input.id),
+                  eq(paymentAttempts.provider, "nexi"),
+                  eq(paymentAttempts.state, "paid")
+                )
+              );
+          })
+        );
+        yield* transaction;
+      }),
       completeSupersessionAndCreateDraft: Effect.fn(
         "workspaceReservations.completeSupersessionAndCreateDraft"
       )(function* (input) {
@@ -653,6 +818,31 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           "Workspace reservation was not found."
         );
       }),
+      markAdministrationCancellationFailed: Effect.fn(
+        "workspaceReservations.markAdministrationCancellationFailed"
+      )(function* (input) {
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationState: "cancellation_failed",
+            failureCode: input.failureCode,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "cancelling"),
+              eq(workspaceReservations.updatedAt, input.claimedAt)
+            )
+          )
+          .returning({ id: workspaceReservations.id });
+        yield* ensureUpdated(
+          updated,
+          "workspaceReservations.markAdministrationCancellationFailed",
+          input.id,
+          "Workspace reservation was not being cancelled."
+        );
+      }),
       recordHoldCleanupSkipped: Effect.fn(
         "workspaceReservations.recordHoldCleanupSkipped"
       )(function* (input) {
@@ -695,6 +885,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             and(
               eq(workspaceReservations.id, input.id),
               eq(workspaceReservations.paymentState, "paid"),
+              inArray(workspaceReservations.reservationState, [
+                "held",
+                "confirmed",
+              ]),
               or(
                 inArray(workspaceReservations.fulfillmentState, [
                   "not_started",
