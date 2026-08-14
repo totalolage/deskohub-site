@@ -19,11 +19,12 @@ Model Workspace sales calendar events as references to stored discount definitio
   candidates and does not block initial discovery. Do not cache a partial
   resolution as a complete success.
 - Treat reservation-page advertisement as an anonymous pricing boundary. It
-  evaluates Calendar sales because they can be discovered without customer
-  identity, and its integrity-protected snapshot explicitly records that
-  customer-specific pricing has not been evaluated. Do not resolve or create a
-  Dotypos customer merely to render an advertised price, and do not put PII in
-  the snapshot.
+  evaluates Calendar sales and may provisionally preview an explicitly supplied
+  ordinary discount code without customer identity. Keep the canonical query
+  code inside the integrity-protected snapshot, exclude vouchers, and perform
+  full customer eligibility and usage validation after identity resolution. Do
+  not resolve or create a Dotypos customer merely to render an advertised price,
+  and do not put PII in the snapshot.
 - Once a Calendar discount has been advertised, do not silently omit it from a
   quote or signed summary. Its disappearance produces `pricing_changed` for the
   affected product. Do not add a newly available Calendar discount

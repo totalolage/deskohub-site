@@ -10,6 +10,11 @@ import {
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import {
+  type CanonicalPromotionCode,
+  discountCodeQueryParam,
+  normalizeSubmittedPromotionCode,
+} from "@/features/discounts";
 import { type Locale, locales } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
@@ -35,6 +40,7 @@ type ReservationPageContext<Kind extends ReservationKind> = {
   readonly locale: Locale;
   readonly replacementToken?: string;
   readonly searchParams: SearchParamsRecord;
+  readonly submittedCode?: CanonicalPromotionCode;
 };
 
 type ReservationPageDefinition<Kind extends ReservationKind> = {
@@ -79,6 +85,7 @@ const loadRestoredReservation = Effect.fn(
     checkoutSessionId: payState.checkoutSessionId,
     initialReservation: payState.reservation as ReservationForKind<Kind>,
     replacementToken: token,
+    submittedCode: payState.submittedCode,
   };
 });
 
@@ -160,10 +167,21 @@ async function ReservationPageContent<Kind extends ReservationKind>({
       locale,
       definition.kind
     ).pipe(runWorkspaceEffect(`reservation.${definition.kind}.load-state`));
+    const normalizedCode = await normalizeSubmittedPromotionCode({
+      submittedCode: getSearchParam(
+        resolvedSearchParams,
+        discountCodeQueryParam
+      ),
+    }).pipe(
+      Effect.catch(() => Effect.succeed(Option.none())),
+      runWorkspaceEffect(`reservation.${definition.kind}.normalize-code`)
+    );
+    const submittedCode = Option.getOrUndefined(normalizedCode);
 
     return definition.render({
       locale,
       searchParams: resolvedSearchParams,
+      submittedCode,
       ...restoredReservation,
     });
   });

@@ -21,6 +21,7 @@ import { deriveOpaqueDiscountId } from "./opaque-discount-id";
 import {
   type DiscountCodeAvailability,
   type DiscountCodeConfiguration,
+  type DiscountCodePreviewAvailability,
   getPromotionTiming,
   type PromotionCodeConfigurationError,
   type SubmittedPromotionConfiguration,
@@ -38,11 +39,19 @@ export type PromotionCodeProviderInput = Pick<
   | "submittedCode"
 >;
 
+export type PromotionCodePreviewInput = Omit<
+  PromotionCodeProviderInput,
+  "dotyposCustomerId"
+>;
+
 type PromotionCodeProviderError =
   | PromotionCodeUnavailableError
   | DiscountProviderError;
 
 export interface IPromotionCodeProvider {
+  readonly preview: (
+    input: PromotionCodePreviewInput
+  ) => Effect.Effect<readonly DiscountCandidate[], PromotionCodeProviderError>;
   readonly revalidate: (
     input: PromotionCodeProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], PromotionCodeProviderError>;
@@ -131,6 +140,41 @@ export class PromotionCodeProvider extends Context.Service<
           )
       );
 
+      const previewConfiguredCode = Effect.fn(
+        "PromotionCodeProvider.previewConfiguredCode"
+      )(
+        (
+          input: PromotionCodePreviewInput & {
+            readonly configuration: SubmittedPromotionConfiguration;
+          }
+        ) =>
+          Match.value(input.configuration).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              discount: (configuration) =>
+                promotions
+                  .loadDiscountCodePreviewAvailability({
+                    promotionCodeId: configuration.promotionCodeId,
+                    codeId: configuration.id,
+                  })
+                  .pipe(
+                    Effect.mapError(toPromotionCodeProviderError),
+                    Effect.map((availability) => ({
+                      ...input,
+                      availability,
+                      configuration,
+                    })),
+                    Effect.tap(validateUsageAvailable),
+                    Effect.bind("definition", loadDiscountDefinition),
+                    Effect.tap(validateDiscountCodeProduct),
+                    Effect.tap(validateFixedAdjustmentCompatibility),
+                    Effect.map(toDiscountCodeCandidate)
+                  ),
+              voucher: (configuration) =>
+                unavailable(configuration, "customer_ineligible"),
+            })
+          )
+      );
+
       const resolveCode = Effect.fn("PromotionCodeProvider.resolveCode")(
         (
           input: PromotionCodeProviderInput & {
@@ -148,6 +192,26 @@ export class PromotionCodeProvider extends Context.Service<
             Effect.tap(validatePromotionStarted),
             Effect.tap(validateDiscountCodeUnexpired),
             Effect.flatMap(resolveConfiguredCode)
+          )
+      );
+
+      const previewCode = Effect.fn("PromotionCodeProvider.previewCode")(
+        (
+          input: PromotionCodePreviewInput & {
+            readonly code: CanonicalPromotionCode;
+          }
+        ) =>
+          Effect.succeed(input).pipe(
+            Effect.bind("at", () =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map(Temporal.Instant.fromEpochMilliseconds)
+              )
+            ),
+            Effect.bind("configuration", loadCodeConfiguration),
+            Effect.tap(validatePromotionEnabled),
+            Effect.tap(validatePromotionStarted),
+            Effect.tap(validateDiscountCodeUnexpired),
+            Effect.flatMap(previewConfiguredCode)
           )
       );
 
@@ -181,7 +245,17 @@ export class PromotionCodeProvider extends Context.Service<
         withProviderAnnotations("revalidate")
       );
 
-      return { revalidate } satisfies IPromotionCodeProvider;
+      const preview = Effect.fn("PromotionCodeProvider.preview")(
+        (input: PromotionCodePreviewInput) =>
+          Option.fromNullishOr(input.submittedCode).pipe(
+            Option.map((code) => previewCode({ ...input, code })),
+            Effect.transposeOption,
+            Effect.map(Option.toArray)
+          ),
+        withProviderAnnotations("preview")
+      );
+
+      return { preview, revalidate } satisfies IPromotionCodeProvider;
     })
   );
 }
@@ -234,7 +308,9 @@ const validateCustomerNotReserved = (input: {
     : Effect.void;
 
 const validateUsageAvailable = (input: {
-  readonly availability: DiscountCodeAvailability;
+  readonly availability:
+    | DiscountCodeAvailability
+    | DiscountCodePreviewAvailability;
   readonly configuration: DiscountCodeConfiguration;
 }) =>
   input.configuration.maxUses !== null &&
@@ -319,7 +395,7 @@ const validateFixedAdjustmentCompatibility = (input: {
 const toDiscountCodeCandidate = (input: {
   readonly configuration: DiscountCodeConfiguration;
   readonly definition: DiscountDefinition;
-  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly dotyposCustomerId?: DotyposCustomerId;
   readonly locale: PromotionCodeProviderInput["locale"];
   readonly product: WorkspaceProductIdentity;
 }): DiscountCandidate => {
@@ -340,13 +416,15 @@ const toDiscountCodeCandidate = (input: {
         storedDiscountId: input.definition.id,
       },
     },
-    claim: {
-      kind: "discount_code",
-      codeId: input.configuration.id,
-      storedDiscountId: input.definition.id,
-      dotyposCustomerId: input.dotyposCustomerId,
-      product: input.product,
-    },
+    ...(input.dotyposCustomerId && {
+      claim: {
+        kind: "discount_code" as const,
+        codeId: input.configuration.id,
+        storedDiscountId: input.definition.id,
+        dotyposCustomerId: input.dotyposCustomerId,
+        product: input.product,
+      },
+    }),
   };
 };
 
@@ -444,8 +522,11 @@ const toPromotionCodeProviderError = (
   });
 
 const withProviderAnnotations =
-  (operation: "revalidate") =>
-  <A, E>(effect: Effect.Effect<A, E>, input: PromotionCodeProviderInput) =>
+  (operation: "preview" | "revalidate") =>
+  <A, E>(
+    effect: Effect.Effect<A, E>,
+    input: Pick<PromotionCodeProviderInput, "product">
+  ) =>
     effect.pipe(
       Effect.annotateLogs({
         discountOperation: operation,

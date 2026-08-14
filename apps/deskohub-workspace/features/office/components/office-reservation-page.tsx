@@ -36,6 +36,7 @@ export const officeReservationPage = createReservationPage({
     initialReservation,
     locale,
     replacementToken,
+    submittedCode,
   }) => {
     const today = decodePlainDate(getCurrentWorkspaceDate().toString());
     const restoredInitialValues = initialReservation
@@ -54,6 +55,7 @@ export const officeReservationPage = createReservationPage({
         seatCapacity,
         locale,
         startsOn: decodePlainDate(initialValues.startsOn),
+        submittedCode,
         endsOn: initialEndsOn,
       })
     ).pipe(
@@ -71,6 +73,7 @@ export const officeReservationPage = createReservationPage({
         initialValues={initialValues}
         locale={locale}
         replacementToken={replacementToken}
+        submittedCode={submittedCode}
         today={today}
       />
     );

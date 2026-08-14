@@ -109,6 +109,64 @@ describe("cowork checkout pricing", () => {
     expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
   });
 
+  test("previews a submitted query code in the advertised quote", async () => {
+    const baseQuote = discountAdvertisementQuoteCodec.make({
+      product: { kind: "cowork", tier: "basic" },
+      discountableSubtotal: money(35_000),
+      discounts: [],
+      totalDiscount: money(0),
+      discountedSubtotal: money(35_000),
+    });
+    const codeDiscountId = Schema.decodeUnknownSync(discountIdSchema)("code");
+    const application = {
+      discount: {
+        id: codeDiscountId,
+        label: "Campaign code",
+        adjustment: { kind: "percentage" as const, basisPoints: 2000 },
+      },
+      subtotalBefore: money(35_000),
+      amount: money(7000),
+      subtotalAfter: money(28_000),
+    };
+    const previewDiscountCode = mock(() =>
+      Effect.succeed({
+        application,
+        quote: discountQuoteCodec.make({
+          ...baseQuote,
+          discounts: [application],
+          totalDiscount: money(7000),
+          discountedSubtotal: money(28_000),
+        }),
+      })
+    );
+
+    const result = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* coworkCheckoutPricing;
+        return yield* pricing.quoteAdvertisement({
+          reservation: advertisedReservation,
+          locale: "en-US",
+          submittedCode,
+        });
+      }),
+      DiscountServiceMock({
+        discoverAdvertisedDiscounts: () => Effect.succeed(baseQuote),
+        previewDiscountCode,
+      })
+    );
+
+    expect(previewDiscountCode).toHaveBeenCalledWith({
+      baseQuote,
+      locale: "en-US",
+      submittedCode,
+    });
+    expect(result).toMatchObject({
+      submittedCode,
+      submittedCodeDiscountId: codeDiscountId,
+      quote: { payment: { expectedPrice: money(33_000) } },
+    });
+  });
+
   test("freshly affirms exactly the discounts in the advertisement", async () => {
     const affirmAdvertisement = mock(() =>
       Effect.succeed(affirmedAdvertisement)

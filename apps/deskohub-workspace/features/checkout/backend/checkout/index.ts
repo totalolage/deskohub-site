@@ -6,6 +6,10 @@ export * from "./checkout-status.service";
 export * from "./checkout-status-page.server";
 export * from "./pay-state";
 export * from "./pay-state.server";
+export {
+  getSubmittedCodeMetadata,
+  type PayStateSubmittedCodeMetadata,
+} from "./pay-state-contract";
 export * from "./payable-reservation.service";
 export * from "./replacement-pay-state";
 export * from "./reservation-status-url";

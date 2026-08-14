@@ -46,6 +46,18 @@ export type PayStateSubmittedCodeMetadata = RequireAllOrNone<{
   readonly submittedCodeDiscountId: DiscountId;
 }>;
 
+export const getSubmittedCodeMetadata = (input: {
+  readonly submittedCode?: CanonicalPromotionCode;
+  readonly submittedCodeDiscountId?: DiscountId;
+}): PayStateSubmittedCodeMetadata =>
+  input.submittedCode !== undefined &&
+  input.submittedCodeDiscountId !== undefined
+    ? {
+        submittedCode: input.submittedCode,
+        submittedCodeDiscountId: input.submittedCodeDiscountId,
+      }
+    : {};
+
 export type BuildSignedPayStateCommonInput = BuildSignedPayStateBaseInput &
   PayStateSubmittedCodeMetadata;
 

@@ -247,6 +247,7 @@ describe("MeetingRoomReservationForm", () => {
         return {
           request: {
             locale: "en-US" as const,
+            submittedCode: undefined,
             reservation: {
               kind: "meeting-room" as const,
               details: {
@@ -437,6 +438,7 @@ describe("MeetingRoomReservationForm", () => {
         {
           request: {
             locale: "en-US",
+            submittedCode: undefined,
             reservation: {
               kind: "meeting-room",
               details: {

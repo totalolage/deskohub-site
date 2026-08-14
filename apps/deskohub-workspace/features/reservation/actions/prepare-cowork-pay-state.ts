@@ -2,7 +2,9 @@ import { Effect } from "effect";
 import {
   AdvertisedPriceMismatchError,
   CheckoutPricingService,
+  getSubmittedCodeMetadata,
   openSubmittedAdvertisedPriceState,
+  type PayStateSubmittedCodeMetadata,
 } from "@/features/checkout/backend/checkout";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
@@ -21,14 +23,15 @@ import {
 } from "@/features/reservation/cowork-reservation";
 import type { PrepareCoworkPayStateInput } from "./prepare-cowork-pay-state.schema";
 
-export type PreparedCoworkAdvertisement = {
+export type PreparedCoworkAdvertisement = PayStateSubmittedCodeMetadata & {
   readonly kind: "cowork";
   readonly reservation: NormalizedCoworkReservationOrder;
+  readonly advertisedQuote: CoworkReservationQuote;
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 };
 
-export type PreparedCoworkPayState = {
+export type PreparedCoworkPayState = PayStateSubmittedCodeMetadata & {
   readonly kind: "cowork";
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: CoworkReservationQuote;
@@ -71,13 +74,16 @@ export const prepareCoworkAdvertisement = Effect.fn(
     reservation: state.reservation,
     locale: input.locale,
     advertisedQuote: state.quote,
+    ...getSubmittedCodeMetadata(state),
   });
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
 
   return {
     kind: input.reservation.kind,
     reservation: input.reservation,
+    advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
+    ...getSubmittedCodeMetadata(affirmed),
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getCoworkCheckoutSummary(state.reservation.details, state.quote),

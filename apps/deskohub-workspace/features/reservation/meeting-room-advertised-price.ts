@@ -1,5 +1,6 @@
 import { Option, Schema } from "effect";
 import type { MeetingRoomAdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import { meetingRoomReservationDurations } from "@/features/reservation/meeting-room-reservation-duration";
 import {
@@ -13,9 +14,11 @@ const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 export const getMeetingRoomDurationAdvertisedPriceRequests = ({
   locale,
   startDateTime,
+  submittedCode,
 }: {
   readonly locale: Locale;
   readonly startDateTime: string;
+  readonly submittedCode?: CanonicalPromotionCode;
 }): ReadonlyArray<MeetingRoomAdvertisedPriceRequest> =>
   decodeLocalDateTime(startDateTime).pipe(
     Option.map((dateTime) =>
@@ -26,6 +29,7 @@ export const getMeetingRoomDurationAdvertisedPriceRequests = ({
     Option.map((reservationDate) =>
       meetingRoomReservationDurations.map((duration) => ({
         locale,
+        submittedCode,
         reservation: {
           kind: "meeting-room" as const,
           details: {

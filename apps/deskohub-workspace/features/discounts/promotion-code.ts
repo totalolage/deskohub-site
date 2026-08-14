@@ -52,10 +52,16 @@ export type DiscountCodeAvailability = PromotionAudienceAvailability & {
   readonly customerActiveUseCount: number;
 };
 
+export type DiscountCodePreviewAvailability = {
+  readonly activeUseCount: number;
+};
+
 export type VoucherAvailability = PromotionAudienceAvailability & {
   readonly customerHasReserved: boolean;
   readonly usedValue: number;
 };
+
+export const discountCodeQueryParam = "discountCode" as const;
 
 export class PromotionCodeConfigurationError extends Data.TaggedError(
   "PromotionCodeConfigurationError"

@@ -2,7 +2,9 @@ import { Effect } from "effect";
 import {
   AdvertisedPriceMismatchError,
   CheckoutPricingService,
+  getSubmittedCodeMetadata,
   openSubmittedAdvertisedPriceState,
+  type PayStateSubmittedCodeMetadata,
 } from "@/features/checkout/backend/checkout";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
@@ -24,14 +26,15 @@ import { normalizeReservationIntervalFields } from "@/features/reservation/reser
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import type { PrepareOfficePayStateInput } from "./prepare-office-pay-state.schema";
 
-export type PreparedOfficeAdvertisement = {
+export type PreparedOfficeAdvertisement = PayStateSubmittedCodeMetadata & {
   readonly kind: "office";
   readonly reservation: NormalizedOfficeReservationOrder;
+  readonly advertisedQuote: OfficeReservationQuote;
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 };
 
-export type PreparedOfficePayState = {
+export type PreparedOfficePayState = PayStateSubmittedCodeMetadata & {
   readonly kind: "office";
   readonly reservation: NormalizedOfficeReservationOrder;
   readonly quote: OfficeReservationQuote;
@@ -74,13 +77,16 @@ export const prepareOfficeAdvertisement = Effect.fn(
     reservation: expectedReservation,
     locale: input.locale,
     advertisedQuote: state.quote,
+    ...getSubmittedCodeMetadata(state),
   });
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
 
   return {
     kind: input.reservation.kind,
     reservation: input.reservation,
+    advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
+    ...getSubmittedCodeMetadata(affirmed),
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getOfficeCheckoutSummary(state.quote),

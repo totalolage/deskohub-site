@@ -3,6 +3,7 @@ import { checkoutSummarySchema } from "@/features/checkout/checkout-summary";
 import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
 import { officeReservationQuoteSchema } from "@/features/checkout/reservation-quote-office";
+import { canonicalPromotionCodeSchema } from "@/features/discounts/contracts";
 import { locales } from "@/features/i18n";
 import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
@@ -10,6 +11,7 @@ import { officeAdvertisedPriceReservationSchema } from "@/features/reservation/o
 
 const advertisedPriceRequestBaseSchema = Schema.Struct({
   locale: Schema.Literals(locales),
+  submittedCode: Schema.optional(canonicalPromotionCodeSchema),
 });
 
 const coworkAdvertisedPriceRequestSchema = Schema.Struct({

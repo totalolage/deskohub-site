@@ -15,6 +15,7 @@ import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
+import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
@@ -65,6 +66,7 @@ type OfficeReservationFormProps = {
   readonly initialValues: OfficeReservationInput;
   readonly locale: Locale;
   readonly replacementToken?: string;
+  readonly submittedCode?: CanonicalPromotionCode;
   readonly today: string;
 };
 
@@ -100,6 +102,7 @@ export function OfficeReservationForm({
   initialValues,
   locale,
   replacementToken,
+  submittedCode,
   today,
 }: OfficeReservationFormProps) {
   const defaultValues = useMemo(
@@ -146,9 +149,10 @@ export function OfficeReservationForm({
             locale,
             startsOn: selection.startsOn,
             endsOn: selection.endsOn,
+            submittedCode,
           })
         : [],
-    [seatCapacity, locale, selection]
+    [seatCapacity, locale, selection, submittedCode]
   );
   const advertisedPriceResults = useAdvertisedPrices(
     advertisedPriceRequests,

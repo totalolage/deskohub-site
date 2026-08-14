@@ -11,6 +11,10 @@ import {
   type OfficeReservationQuote,
   officeReservationQuoteSchema,
 } from "@/features/checkout/reservation-quote-office";
+import {
+  canonicalPromotionCodeSchema,
+  discountIdSchema,
+} from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
   type CoworkAdvertisedPriceReservation,
@@ -31,6 +35,7 @@ import {
   openCheckoutState,
   sealCheckoutState,
 } from "./checkout-state-token";
+import type { PayStateSubmittedCodeMetadata } from "./pay-state-contract";
 import { workspaceCheckoutPriceStateSchema } from "./workspace-checkout-price-state";
 
 export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
@@ -38,31 +43,54 @@ export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 export const advertisedPriceStateSchema = Schema.Union([
   Schema.Struct({
     ...workspaceCheckoutPriceStateSchema.fields,
+    submittedCode: Schema.optional(canonicalPromotionCodeSchema),
+    submittedCodeDiscountId: Schema.optional(discountIdSchema),
     kind: coworkAdvertisedPriceReservationSchema.fields.kind,
     reservation: coworkAdvertisedPriceReservationSchema,
     quote: coworkReservationQuoteSchema,
   }),
   Schema.Struct({
     ...workspaceCheckoutPriceStateSchema.fields,
+    submittedCode: Schema.optional(canonicalPromotionCodeSchema),
+    submittedCodeDiscountId: Schema.optional(discountIdSchema),
     kind: meetingRoomAdvertisedPriceReservationSchema.fields.kind,
     reservation: meetingRoomAdvertisedPriceReservationSchema,
     quote: meetingRoomReservationQuoteSchema,
   }),
   Schema.Struct({
     ...workspaceCheckoutPriceStateSchema.fields,
+    submittedCode: Schema.optional(canonicalPromotionCodeSchema),
+    submittedCodeDiscountId: Schema.optional(discountIdSchema),
     kind: officeAdvertisedPriceReservationSchema.fields.kind,
     reservation: officeAdvertisedPriceReservationSchema,
     quote: officeReservationQuoteSchema,
   }),
-]).annotate({
-  identifier: "AdvertisedPriceState",
-  description:
-    "PII-free Workspace price advertisement state protected for reservation submission.",
-});
+])
+  .check(
+    Schema.makeFilter(
+      ({ submittedCode, submittedCodeDiscountId }) =>
+        (submittedCode === undefined) ===
+          (submittedCodeDiscountId === undefined) || {
+          path: ["submittedCodeDiscountId"],
+          issue:
+            "submitted code and submitted code discount id must occur together",
+        }
+    )
+  )
+  .annotate({
+    identifier: "AdvertisedPriceState",
+    description:
+      "PII-free Workspace price advertisement state protected for reservation submission.",
+  });
 
-export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type;
+export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type &
+  PayStateSubmittedCodeMetadata;
 
-type AdvertisedPriceStateInput =
+const preserveSubmittedCodeMetadataInvariant = (
+  state: typeof advertisedPriceStateSchema.Type
+): AdvertisedPriceState => state as AdvertisedPriceState;
+
+type AdvertisedPriceStateInput = (
   | {
       readonly kind: "cowork";
       readonly locale: Locale;
@@ -83,7 +111,9 @@ type AdvertisedPriceStateInput =
       readonly reservation: OfficeAdvertisedPriceReservation;
       readonly quote: OfficeReservationQuote;
       readonly ttlMilliseconds?: number;
-    };
+    }
+) &
+  PayStateSubmittedCodeMetadata;
 
 export class AdvertisedPriceStateTokenError extends Data.TaggedError(
   "AdvertisedPriceStateTokenError"
@@ -138,7 +168,12 @@ export const buildAdvertisedPriceState = Effect.fn(
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
-  }).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
+    submittedCode: input.submittedCode,
+    submittedCodeDiscountId: input.submittedCodeDiscountId,
+  }).pipe(
+    Effect.map(preserveSubmittedCodeMetadataInvariant),
+    Effect.mapError(toAdvertisedPriceStateTokenError)
+  );
 });
 
 export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
@@ -160,6 +195,7 @@ export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
 export const openAdvertisedPriceState = Effect.fn("advertisedPriceState.open")(
   (token: string, options: CheckoutStateCryptoOptions = {}) =>
     openCheckoutState(token, advertisedPriceStateSchema, options).pipe(
+      Effect.map(preserveSubmittedCodeMetadataInvariant),
       Effect.mapError(toAdvertisedPriceStateTokenError)
     )
 );

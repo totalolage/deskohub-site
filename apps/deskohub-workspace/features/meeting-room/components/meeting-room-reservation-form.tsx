@@ -15,6 +15,7 @@ import {
   getWorkspaceMeetingRoomDurationLabel,
   getWorkspaceMeetingRoomDurationTitle,
 } from "@/features/checkout/product-catalog.i18n";
+import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
@@ -69,6 +70,7 @@ type MeetingRoomReservationFormProps = {
   readonly initialValues?: MeetingRoomReservationInput;
   readonly locale: Locale;
   readonly replacementToken?: string;
+  readonly submittedCode?: CanonicalPromotionCode;
 };
 
 type MeetingRoomReservationFormFallbackProps = {
@@ -86,6 +88,7 @@ export function MeetingRoomReservationForm({
   initialValues,
   locale,
   replacementToken,
+  submittedCode,
 }: MeetingRoomReservationFormProps) {
   const restoredInitialValues = useMemo(
     () =>
@@ -154,8 +157,9 @@ export function MeetingRoomReservationForm({
       getMeetingRoomDurationAdvertisedPriceRequests({
         locale,
         startDateTime: selectedStartDateTime,
+        submittedCode,
       }),
-    [locale, selectedStartDateTime]
+    [locale, selectedStartDateTime, submittedCode]
   );
   const advertisedPriceQueryResults = useAdvertisedPrices(
     advertisedPriceRequests,

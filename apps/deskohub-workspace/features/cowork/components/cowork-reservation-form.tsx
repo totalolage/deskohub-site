@@ -28,6 +28,7 @@ import {
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
@@ -85,6 +86,7 @@ type CoworkReservationFormProps = {
   locale: Locale;
   checkoutSessionId?: CheckoutSessionId;
   replacementToken?: string;
+  submittedCode?: CanonicalPromotionCode;
 };
 
 type CoworkReservationFormFallbackProps = Pick<
@@ -155,6 +157,7 @@ export function CoworkReservationForm({
   locale,
   checkoutSessionId,
   replacementToken,
+  submittedCode,
 }: CoworkReservationFormProps) {
   const searchParams = useSearchParams();
   const defaultValues = useMemo(
@@ -216,8 +219,9 @@ export function CoworkReservationForm({
       coffee: Boolean(selectedCoffee),
       date: selectedDate,
       locale,
+      submittedCode,
     });
-  }, [locale, selectedCoffee, selectedDate]);
+  }, [locale, selectedCoffee, selectedDate, submittedCode]);
   const advertisedPriceQueryResults = useAdvertisedPrices(
     advertisedPriceRequests,
     initialAdvertisedPrices
@@ -228,10 +232,11 @@ export function CoworkReservationForm({
         ? getCoworkCoffeeAdvertisedPriceRequest({
             date: selectedDate,
             locale,
+            submittedCode,
             tier: selectedTier,
           })
         : undefined,
-    [locale, selectedDate, selectedTier]
+    [locale, selectedDate, selectedTier, submittedCode]
   );
   const [coffeeAdvertisedPriceQueryResult] = useAdvertisedPrices(
     coffeeAdvertisedPriceRequest ? [coffeeAdvertisedPriceRequest] : [],
