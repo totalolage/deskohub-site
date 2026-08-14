@@ -16,10 +16,12 @@ import {
   voucherRedemptions,
   vouchers,
 } from "@/db/schema";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type {
   CanonicalPromotionCode,
   DiscountCodeId,
   StoredDiscountId,
+  VoucherId,
 } from "@/features/discounts/persistence-contracts";
 import {
   canonicalPromotionCodeSchema,
@@ -86,6 +88,11 @@ export const discountCodeFixtures = {
     code: canonicalPromotionCodeSchema.make("E2E_VOUCHER_REUSE"),
     creditPerRun: { value: 56_000, exponent: 2, currency: "CZK" },
     id: voucherIdSchema.make("df62e84a-10be-49b4-ae62-6fa30765a6a9"),
+  },
+  voucherFull: {
+    code: canonicalPromotionCodeSchema.make("E2E_VOUCHER_FULL"),
+    creditPerRun: { value: 10_000, exponent: 2, currency: "CZK" },
+    id: voucherIdSchema.make("7e171618-e39b-476f-a7c1-f753c664323f"),
   },
 } as const;
 
@@ -195,24 +202,6 @@ export const seedDiscountE2EFixtures: Effect.Effect<
             )
           );
         const capacityLimit = (capacity[0]?.activeUses ?? 0) + 1;
-        const [voucherUsage] = yield* tx
-          .select({
-            usedValue: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
-          })
-          .from(voucherRedemptions)
-          .innerJoin(
-            discountApplications,
-            eq(discountApplications.id, voucherRedemptions.applicationId)
-          )
-          .where(
-            and(
-              eq(
-                voucherRedemptions.voucherId,
-                discountCodeFixtures.voucherReuse.id
-              ),
-              inArray(voucherRedemptions.state, ["reserved", "redeemed"])
-            )
-          );
         const now = Temporal.Now.instant().epochMilliseconds;
         const codeFixtures: readonly DiscountCodeFixture[] = [
           {
@@ -284,11 +273,31 @@ export const seedDiscountE2EFixtures: Effect.Effect<
         for (const code of codeFixtures) {
           yield* seedDiscountCode(tx, code);
         }
-        yield* seedVoucherCode(
-          tx,
-          (voucherUsage?.usedValue ?? 0) +
-            discountCodeFixtures.voucherReuse.creditPerRun.value
-        );
+        for (const fixture of [
+          discountCodeFixtures.voucherReuse,
+          discountCodeFixtures.voucherFull,
+        ]) {
+          const [voucherUsage] = yield* tx
+            .select({
+              usedValue: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+            })
+            .from(voucherRedemptions)
+            .innerJoin(
+              discountApplications,
+              eq(discountApplications.id, voucherRedemptions.applicationId)
+            )
+            .where(
+              and(
+                eq(voucherRedemptions.voucherId, fixture.id),
+                inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+              )
+            );
+          yield* seedVoucherCode(
+            tx,
+            fixture,
+            (voucherUsage?.usedValue ?? 0) + fixture.creditPerRun.value
+          );
+        }
       })
     )
   );
@@ -377,6 +386,12 @@ interface DiscountCodeFixture {
   readonly validUntil?: Temporal.Instant;
 }
 
+interface VoucherFixture {
+  readonly code: CanonicalPromotionCode;
+  readonly creditPerRun: WorkspaceMoney;
+  readonly id: VoucherId;
+}
+
 type TransactionClient = Parameters<
   Parameters<DatabaseClient["transaction"]>[0]
 >[0];
@@ -451,9 +466,12 @@ const seedDiscountCode = (
     }
   });
 
-const seedVoucherCode = (tx: TransactionClient, issuedValue: number) =>
+const seedVoucherCode = (
+  tx: TransactionClient,
+  fixture: VoucherFixture,
+  issuedValue: number
+) =>
   Effect.gen(function* () {
-    const fixture = discountCodeFixtures.voucherReuse;
     const promotionCodeId = promotionCodeIdSchema.make(fixture.id);
     yield* tx
       .insert(promotionCodes)

@@ -1,6 +1,7 @@
 import type { DotyposDiscountGroupId } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
@@ -154,7 +155,7 @@ export const makeDiscountE2ECases = ({
     const coworkAutomaticDiscounts = [calendarDiscountExpectation] as const;
     const checkoutDates = yield* selectCoworkDates(
       preparation.availableBasicDates,
-      unavailableCodeScenarios.length + 12,
+      unavailableCodeScenarios.length + 13,
       {
         allocation,
         excludedDates,
@@ -628,6 +629,35 @@ export const makeDiscountE2ECases = ({
         config.timeouts.zeroTotalCheckoutCase + config.timeouts.checkoutCase,
     });
 
+    const voucherFullData = makeCoworkCheckoutData(
+      config.baseUrl,
+      yield* requireCheckoutDate(checkoutDates, nextDateIndex),
+      "cowork-voucher-full-usage"
+    );
+    nextDateIndex += 1;
+    const voucherFullState = trackCheckoutState(flowStates, voucherFullData);
+    cases.push({
+      checkoutStates: [voucherFullState],
+      execute: ({ runStep, session }) =>
+        executeFullyConsumedVoucherCheckout({
+          automaticDiscounts: coworkAutomaticDiscounts,
+          config,
+          data: voucherFullData,
+          datasourceConfig,
+          run,
+          runStep,
+          session,
+          state: voucherFullState,
+        }).pipe(
+          Effect.provideService(HttpClient.HttpClient, httpClient),
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("run full voucher usage e2e case", cause)
+          )
+        ),
+      id: "checkout-voucher-full-usage",
+      timeoutMs: config.timeouts.checkoutCase,
+    });
+
     const voucherOwnerData = makeCoworkCheckoutData(
       config.baseUrl,
       yield* requireCheckoutDate(checkoutDates, nextDateIndex),
@@ -1035,7 +1065,20 @@ const executeVoucherReuse = ({
       execute: validateVoucherRedemptions(
         datasourceConfig,
         fixture.id,
-        orderIds,
+        [
+          {
+            adjustmentValue: fixture.creditPerRun.value,
+            appliedValue: fixture.creditPerRun.value / 2,
+            orderId: orderIds[0],
+            subtotalAfter: "zero",
+          },
+          {
+            adjustmentValue: fixture.creditPerRun.value / 2,
+            appliedValue: fixture.creditPerRun.value / 2,
+            orderId: orderIds[1],
+            subtotalAfter: "zero",
+          },
+        ],
         fixture.creditPerRun
       ),
       id: "validate-voucher-redemptions",
@@ -1052,7 +1095,79 @@ const executeVoucherReuse = ({
     });
   });
 
+const executeFullyConsumedVoucherCheckout = ({
+  automaticDiscounts,
+  config,
+  data,
+  datasourceConfig,
+  run,
+  runStep,
+  session,
+  state,
+}: {
+  readonly automaticDiscounts: readonly ExpectedDiscountApplication[];
+  readonly config: WorkspaceE2EConfig;
+  readonly data: CheckoutData;
+  readonly datasourceConfig: DatasourceConfig;
+  readonly run: Runner;
+  readonly runStep: WorkspaceE2EStepRunner;
+  readonly session: string;
+  readonly state: CheckoutFlowState;
+}): Effect.Effect<
+  void,
+  WorkspaceE2EError,
+  E2EDatabase | HttpClient.HttpClient
+> =>
+  Effect.gen(function* () {
+    const fixture = discountCodeFixtures.voucherFull;
+    yield* executeDiscountCheckout({
+      appliedMessage: "Promotion applied:",
+      config,
+      data,
+      datasourceConfig,
+      discountCode: fixture.code,
+      expectedDiscounts: [
+        ...automaticDiscounts,
+        {
+          adjustment: { kind: "fixed", amount: fixture.creditPerRun },
+          label: "Voucher",
+          redemptionState: "redeemed",
+        },
+      ],
+      flowId: "cowork-voucher-full-usage",
+      run,
+      runStep,
+      session,
+      state,
+    });
+    const orderId = yield* tryWorkspaceE2ESync(
+      "read full voucher checkout order ID",
+      () => {
+        assert(state.orderId, "full voucher checkout order ID missing");
+        return state.orderId;
+      }
+    );
+    yield* runStep({
+      execute: validateVoucherRedemptions(
+        datasourceConfig,
+        fixture.id,
+        [
+          {
+            adjustmentValue: fixture.creditPerRun.value,
+            appliedValue: fixture.creditPerRun.value,
+            orderId,
+            subtotalAfter: "positive",
+          },
+        ],
+        fixture.creditPerRun
+      ),
+      id: "validate-full-voucher-redemption",
+      timeoutMs: config.timeouts.datasource,
+    });
+  });
+
 export const executeDiscountCheckout = ({
+  appliedMessage = "Promotion applied: 10% off 🎉",
   config,
   data,
   datasourceConfig,
@@ -1064,6 +1179,7 @@ export const executeDiscountCheckout = ({
   session,
   state,
 }: {
+  readonly appliedMessage?: string;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
@@ -1086,9 +1202,9 @@ export const executeDiscountCheckout = ({
     expectedDiscounts,
     flow: discountCheckoutFlow(flowId),
     payPageSteps: () => {
-      const automaticDiscounts = expectedDiscounts.filter(
-        ({ label }) => label !== codeDiscountLabel
-      );
+      const automaticDiscounts = discountCode
+        ? expectedDiscounts.slice(0, -1)
+        : expectedDiscounts;
       const steps: WorkspaceE2EStep<void>[] = [];
       if (automaticDiscounts.length > 0) {
         steps.push({
@@ -1105,7 +1221,7 @@ export const executeDiscountCheckout = ({
       if (discountCode) {
         steps.push({
           execute: applyDiscountCode({
-            appliedMessage: "Promotion applied: 10% off 🎉",
+            appliedMessage,
             code: discountCode,
             config,
             run,
@@ -1287,13 +1403,13 @@ export const executeDiscountCodeExpiresBeforePayment = ({
   });
 
 export const calendarDiscountExpectation = {
-  basisPoints: 2000,
+  adjustment: { kind: "percentage", basisPoints: 2000 },
   hasExpiration: true,
   label: calendarSaleLabel,
 } as const satisfies ExpectedDiscountApplication;
 
 export const codeDiscountExpectation = {
-  basisPoints: 1000,
+  adjustment: { kind: "percentage", basisPoints: 1000 },
   label: codeDiscountLabel,
   redemptionState: "redeemed",
 } as const satisfies ExpectedDiscountApplication;
@@ -1301,7 +1417,7 @@ export const codeDiscountExpectation = {
 const makeCustomerDiscountExpectation = (
   basisPoints: number
 ): ExpectedDiscountApplication => ({
-  basisPoints,
+  adjustment: { kind: "percentage", basisPoints },
   label: customerDiscountLabel,
 });
 
@@ -1336,13 +1452,10 @@ export const assertDisplayedDiscounts = ({
     yield* focusBrowserElement(run, session, triggerSelector, {
       timeoutMs: config.timeouts.browserAction,
     });
-    for (const { basisPoints, label } of discounts) {
-      const adjustment = new Intl.NumberFormat("en-US", {
-        style: "percent",
-        maximumFractionDigits: 2,
-      }).format(basisPoints / 10_000);
+    for (const { adjustment, label } of discounts) {
+      const adjustmentLabel = formatDiscountAdjustment(adjustment, "en-US");
       const labelLiteral = JSON.stringify(label.toLocaleLowerCase());
-      const adjustmentLiteral = JSON.stringify(adjustment);
+      const adjustmentLiteral = JSON.stringify(adjustmentLabel);
       yield* waitForBrowserCondition(
         run,
         session,
