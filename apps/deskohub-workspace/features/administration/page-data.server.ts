@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect, Predicate } from "effect";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { cache } from "react";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -97,6 +98,8 @@ export const loadAdministrationOverview = async () => {
 const getAdministrationReservationListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
+  await authorizeAdministrationPage();
+  await connection();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
   const dateRange = getAdministrationReservationDateRange({
