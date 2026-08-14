@@ -9,6 +9,7 @@ import {
 } from "@/features/accounting/backend/reservation-invoice";
 import { ReservationInvoiceServiceLiveWithDependencies } from "@/features/accounting/backend/reservation-invoice-live.server";
 import { PostOrderInvoicePage } from "@/features/accounting/components/post-order-invoice-page";
+import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkout-flow-page-skeleton";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { reservationAccessTokenQueryParam } from "@/features/reservation/backend/reservation-access-token";
@@ -71,7 +72,14 @@ export async function generateMetadata({
 
 export default async function LocalizedPostOrderInvoicePage(props: PageProps) {
   return runWithRequestLocale((locale) => (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <CheckoutFlowPageSkeleton
+          label={m.postOrderInvoiceMetadataTitle({}, { locale })}
+          locale={locale}
+        />
+      }
+    >
       <PostOrderInvoiceContent {...props} locale={locale} />
     </Suspense>
   ));

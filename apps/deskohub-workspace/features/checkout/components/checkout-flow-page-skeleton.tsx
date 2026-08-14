@@ -1,19 +1,18 @@
-import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import type { Locale } from "@/features/i18n";
-import { m } from "@/features/i18n";
+import { CheckoutFlowLayout } from "./checkout-flow-layout";
 
-type ReservationAccessPageSkeletonProps = {
-  readonly locale: Locale;
-};
-
-export function ReservationAccessPageSkeleton({
+export function CheckoutFlowPageSkeleton({
+  label,
   locale,
-}: ReservationAccessPageSkeletonProps) {
+}: {
+  readonly label: string;
+  readonly locale: Locale;
+}) {
   return (
     <CheckoutFlowLayout activeStepKey="access" locale={locale}>
       <output
         aria-busy="true"
-        aria-label={m.reservationAccessMetadataTitle({}, { locale })}
+        aria-label={label}
         className="block rounded-[2.25rem] border border-white/55 bg-white/94 p-6 shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm sm:p-10"
       >
         <span
