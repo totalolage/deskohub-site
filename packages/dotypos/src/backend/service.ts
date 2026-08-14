@@ -53,6 +53,7 @@ import {
 type DotyposError = ValidationError | ExternalAPIError | NetworkError;
 
 export type ReservationListOptions = {
+  readonly ids?: readonly DotyposReservationId[];
   readonly customerId?: DotyposCustomerId;
   readonly startsAtOrAfter?: string;
   readonly startsBefore?: string;
@@ -768,6 +769,45 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
+  const getCustomers = Effect.fn("getCustomers")(function* (
+    ids: readonly DotyposCustomerId[]
+  ) {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return [];
+    if (uniqueIds.some((id) => !id.trim() || /[|;,]/.test(id))) {
+      return yield* new ValidationError({
+        message: "Customer IDs contain an invalid value",
+      });
+    }
+
+    return yield* loadAllDotyposPages({
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getCustomers(config.cloudId, {
+            params: {
+              filter: `id|in|${uniqueIds.join(",")};deleted|in|0,1`,
+              limit: 100,
+              page,
+            },
+          }),
+          "getCustomers"
+        ).pipe(
+          Effect.catchTag("ExternalAPIError", (error) =>
+            page === 1 && error.statusCode === 404
+              ? Effect.succeed({ data: [] as const })
+              : Effect.fail(error)
+          ),
+          Effect.flatMap((result) =>
+            decodeProviderPage(DotyposCustomerSchema, result, "getCustomers")
+          )
+        ),
+      operation: "getCustomers",
+    }).pipe(
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("getCustomers")
+    );
+  });
+
   const searchCustomers = Effect.fn("searchCustomers")(function* (
     rawQuery: string
   ) {
@@ -1369,19 +1409,25 @@ const makeDotyposService = Effect.gen(function* () {
   const listReservations = Effect.fn("listReservations")(function* (
     options: ReservationListOptions = {}
   ) {
+    const ids = [...new Set(options.ids ?? [])];
+    if (options.ids && ids.length === 0) return [];
     const filterValues = [
       options.customerId,
       options.startsAtOrAfter,
       options.startsBefore,
     ].filter((value): value is string => value !== undefined);
 
-    if (filterValues.some((value) => !value.trim() || /[|;]/.test(value))) {
+    if (
+      ids.some((id) => !id.trim() || /[|;,]/.test(id)) ||
+      filterValues.some((value) => !value.trim() || /[|;]/.test(value))
+    ) {
       return yield* new ValidationError({
         message: "Reservation filters contain an invalid value",
       });
     }
 
     const filter = [
+      ids.length > 0 && `id|in|${ids.join(",")}`,
       options.customerId && `_customerId|eq|${options.customerId}`,
       options.startsAtOrAfter && `startDate|gteq|${options.startsAtOrAfter}`,
       options.startsBefore && `startDate|lt|${options.startsBefore}`,
@@ -1457,6 +1503,7 @@ const makeDotyposService = Effect.gen(function* () {
     getReservation,
     getReservationStatus,
     getCustomer,
+    getCustomers,
     searchCustomers,
     getCustomerDiscountGroup,
     getCustomerDiscount,

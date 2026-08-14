@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -7,6 +6,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
+import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationCustomerSummary } from "./administration.service";
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
