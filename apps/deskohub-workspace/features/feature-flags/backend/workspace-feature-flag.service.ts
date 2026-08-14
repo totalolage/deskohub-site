@@ -10,8 +10,6 @@ import type {
   PostHogFeatureFlagDefinitions,
   PostHogFeatureFlagKey,
 } from "../generated/contract";
-import { nodeFeatureFlags } from "./node";
-import { getCurrentPostHogFeatureFlagSubject } from "./subject";
 
 export interface IWorkspaceFeatureFlagService {
   readonly evaluateFlags: (
@@ -32,22 +30,28 @@ export class WorkspaceFeatureFlagService extends Context.Service<
   static from = (implementation: IWorkspaceFeatureFlagService) =>
     Layer.succeed(this, implementation);
 
-  static Live = this.from({
-    evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
-      (options) =>
-        getCurrentPostHogFeatureFlagSubject().pipe(
-          Effect.flatMap((subject) =>
-            nodeFeatureFlags.evaluateFlags({ options, subject })
+  static Live = Layer.unwrap(
+    Effect.promise(async () => {
+      const [{ nodeFeatureFlags }, { getCurrentPostHogFeatureFlagSubject }] =
+        await Promise.all([import("./node"), import("./subject")]);
+
+      return WorkspaceFeatureFlagService.from({
+        evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
+          (options) =>
+            getCurrentPostHogFeatureFlagSubject().pipe(
+              Effect.flatMap((subject) =>
+                nodeFeatureFlags.evaluateFlags({ options, subject })
+              )
+            )
+        ),
+        isEnabled: Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key) =>
+          getCurrentPostHogFeatureFlagSubject().pipe(
+            Effect.flatMap((subject) =>
+              nodeFeatureFlags.isEnabled({ key, subject })
+            )
           )
-        )
-    ),
-    isEnabled: Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key) =>
-      getCurrentPostHogFeatureFlagSubject().pipe(
-        Effect.flatMap((subject) =>
-          nodeFeatureFlags.isEnabled({ key, subject })
-        )
-      )
-    ),
-  });
+        ),
+      });
+    })
+  );
 }
-import "server-only";
