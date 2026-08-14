@@ -4,6 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { reservationAccessTokenSchema } from "@/features/reservation/reservation-access-token";
 import {
   createReservationAccessToken,
   openReservationAccessToken,
@@ -38,7 +39,11 @@ describe("reservation access token", () => {
   test("rejects tampering and reservation or locale mismatches", async () => {
     const token = await Effect.runPromise(createToken());
     const inputs = [
-      { token: `${token}x`, orderId, locale: "en-US" as const },
+      {
+        token: reservationAccessTokenSchema.make(`${token}x`),
+        orderId,
+        locale: "en-US" as const,
+      },
       {
         token,
         orderId: workspaceReservationIdSchema.make("reservation-2"),

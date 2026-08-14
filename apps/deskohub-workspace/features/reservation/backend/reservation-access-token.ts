@@ -6,8 +6,10 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-
-export const reservationAccessTokenQueryParam = "accessToken" as const;
+import {
+  type ReservationAccessToken,
+  reservationAccessTokenSchema,
+} from "@/features/reservation/reservation-access-token";
 
 const reservationAccessTokenPurpose = "reservation-access";
 const reservationAccessTokenClaimsSchema = Schema.Struct({
@@ -97,14 +99,14 @@ export const createReservationAccessToken = Effect.fn(
   );
   const signature = signClaims(encodedClaims, secret).toString("base64url");
 
-  return `${encodedClaims}.${signature}`;
+  return reservationAccessTokenSchema.make(`${encodedClaims}.${signature}`);
 });
 
 export const openReservationAccessToken = Effect.fn(
   "reservationAccessToken.open"
 )(function* (
   input: {
-    readonly token: string;
+    readonly token: ReservationAccessToken;
     readonly orderId: WorkspaceReservationId;
     readonly locale: Locale;
   },

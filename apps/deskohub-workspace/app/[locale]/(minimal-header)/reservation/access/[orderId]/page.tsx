@@ -7,9 +7,12 @@ import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkou
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
-import { reservationAccessTokenQueryParam } from "@/features/reservation/backend/reservation-access-token";
 import { ReservationAccessPage } from "@/features/reservation/components/reservation-access-page";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import {
+  reservationAccessTokenQueryParam,
+  reservationAccessTokenSchema,
+} from "@/features/reservation/reservation-access-token";
 import { reservationAccessPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -34,7 +37,7 @@ const decodeReservationAccessParams = Schema.decodeUnknownOption(
 const decodeReservationAccessSearchParams = getSearchParamsDecoder(
   Schema.Struct({
     [reservationAccessTokenQueryParam]: Schema.optional(
-      Schema.NonEmptyString.check(Schema.isMaxLength(4096))
+      reservationAccessTokenSchema
     ),
   })
 );

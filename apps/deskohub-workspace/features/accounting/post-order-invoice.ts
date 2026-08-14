@@ -2,11 +2,12 @@ import { Schema } from "effect";
 import { invoiceBuyerAddressSchema } from "@/features/accounting/billing-identity";
 import { locales } from "@/features/i18n";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { reservationAccessTokenSchema } from "@/features/reservation/reservation-access-token";
 
 const access = {
   locale: Schema.Literals(locales),
   orderId: workspaceReservationIdSchema,
-  accessToken: Schema.NonEmptyString.check(Schema.isMaxLength(4096)),
+  accessToken: reservationAccessTokenSchema,
 };
 
 export const postOrderInvoiceAddressFormSchema = Schema.toStandardSchemaV1(

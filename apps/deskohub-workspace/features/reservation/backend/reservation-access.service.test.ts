@@ -15,6 +15,10 @@ import {
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import {
+  type ReservationAccessToken,
+  reservationAccessTokenSchema,
+} from "@/features/reservation/reservation-access-token";
 
 mock.module("server-only", () => ({}));
 
@@ -89,7 +93,7 @@ const makeProviderReservation = (
 });
 
 type HarnessOptions = {
-  readonly accessToken?: string;
+  readonly accessToken?: ReservationAccessToken;
   readonly inputLocale?: Locale;
   readonly reservation?: ReturnType<typeof makeReservation> | null;
   readonly reservationFails?: boolean;
@@ -162,7 +166,7 @@ describe("ReservationAccessService", () => {
     const otherLocaleToken = await createAccessToken(orderId, "cs-CZ");
     const inputs = [
       undefined,
-      `${validToken}tampered`,
+      reservationAccessTokenSchema.make(`${validToken}tampered`),
       otherOrderToken,
       otherLocaleToken,
     ];

@@ -11,6 +11,7 @@ import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-ut
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import { InvoiceRepository } from "./invoice.repository";
 import { ReservationInvoiceService } from "./reservation-invoice";
@@ -296,7 +297,7 @@ const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
 
 const runPostOrderState = (
   harness: ReturnType<typeof makeHarness>,
-  accessToken: string
+  accessToken: ReservationAccessToken
 ) =>
   runWithHarness(
     harness,
@@ -312,7 +313,7 @@ const runPostOrderState = (
 
 const runPostOrderCreate = (
   harness: ReturnType<typeof makeHarness>,
-  accessToken: string
+  accessToken: ReservationAccessToken
 ) =>
   runWithHarness(
     harness,
@@ -329,7 +330,7 @@ const runPostOrderCreate = (
 
 const runPostOrderResend = (
   harness: ReturnType<typeof makeHarness>,
-  accessToken: string
+  accessToken: ReservationAccessToken
 ) =>
   runWithHarness(
     harness,

@@ -15,6 +15,7 @@ import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow
 import { type Locale, m } from "@/features/i18n";
 import { ReservationBillingAddressFields } from "@/features/reservation/components/reservation-billing-fields";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
 import { Button } from "@/shared/components/ui/button";
 import { Form } from "@/shared/components/ui/form";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -28,7 +29,7 @@ export function PostOrderInvoicePage({
   locale,
   orderId,
 }: {
-  readonly accessToken?: string;
+  readonly accessToken?: ReservationAccessToken;
   readonly initialDeliveryFailed?: boolean;
   readonly initialState: DisplayState;
   readonly locale: Locale;
@@ -73,7 +74,6 @@ export function PostOrderInvoicePage({
     onTransportError: () =>
       setNotice(m.postOrderInvoiceActionError({}, { locale })),
   });
-  const token = accessToken ?? "";
   const title = {
     create: m.postOrderInvoiceTitle({}, { locale }),
     created: m.postOrderInvoiceCreatedTitle({}, { locale }),
@@ -82,8 +82,9 @@ export function PostOrderInvoicePage({
   }[displayState];
 
   const resend = () => {
+    if (!accessToken) return;
     setNotice(null);
-    execute({ locale, orderId, accessToken: token, operation: "resend" });
+    execute({ locale, orderId, accessToken, operation: "resend" });
   };
 
   return (
@@ -140,11 +141,12 @@ export function PostOrderInvoicePage({
                 className="mt-8 space-y-6"
                 noValidate
                 onSubmit={form.handleSubmit(({ address }) => {
+                  if (!accessToken) return;
                   setNotice(null);
                   execute({
                     locale,
                     orderId,
-                    accessToken: token,
+                    accessToken,
                     operation: "create",
                     address,
                   });

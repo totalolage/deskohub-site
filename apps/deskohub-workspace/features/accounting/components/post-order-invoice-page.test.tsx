@@ -9,6 +9,7 @@ import {
   test,
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { reservationAccessTokenSchema } from "@/features/reservation/reservation-access-token";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -20,6 +21,7 @@ mock.module("@/features/accounting/actions/manage-post-order-invoice", () => ({
 }));
 
 const { PostOrderInvoicePage } = await import("./post-order-invoice-page");
+const accessToken = reservationAccessTokenSchema.make("signed-capability");
 
 describe("PostOrderInvoicePage", () => {
   beforeAll(registerWorkspaceComponentTestEnv);
@@ -39,7 +41,7 @@ describe("PostOrderInvoicePage", () => {
   test("renders a blank masked personal billing form with visible validation", async () => {
     const view = render(
       <PostOrderInvoicePage
-        accessToken="signed-capability"
+        accessToken={accessToken}
         initialState="create"
         locale="en-US"
         orderId={"reservation-id" as never}
@@ -68,7 +70,7 @@ describe("PostOrderInvoicePage", () => {
   test("shows only resend controls for an issued invoice", () => {
     const view = render(
       <PostOrderInvoicePage
-        accessToken="signed-capability"
+        accessToken={accessToken}
         initialState="issued"
         locale="en-US"
         orderId={"reservation-id" as never}
@@ -85,7 +87,7 @@ describe("PostOrderInvoicePage", () => {
   test("localizes country names for Czech billing forms", () => {
     const view = render(
       <PostOrderInvoicePage
-        accessToken="signed-capability"
+        accessToken={accessToken}
         initialState="create"
         locale="cs-CZ"
         orderId={"reservation-id" as never}
@@ -105,7 +107,7 @@ describe("PostOrderInvoicePage", () => {
     });
     const view = render(
       <PostOrderInvoicePage
-        accessToken="signed-capability"
+        accessToken={accessToken}
         initialDeliveryFailed
         initialState="created"
         locale="en-US"

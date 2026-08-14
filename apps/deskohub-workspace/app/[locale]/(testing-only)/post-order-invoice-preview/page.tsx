@@ -2,6 +2,7 @@ import { Option, Schema } from "effect";
 import { connection } from "next/server";
 import { PostOrderInvoicePage } from "@/features/accounting/components/post-order-invoice-page";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { reservationAccessTokenSchema } from "@/features/reservation/reservation-access-token";
 import {
   getSearchParamsDecoder,
   type SearchParamsRecord,
@@ -29,7 +30,9 @@ export default async function PostOrderInvoicePreviewPage({
 
   return runWithRequestLocale((locale) => (
     <PostOrderInvoicePage
-      accessToken="synthetic-preview-capability"
+      accessToken={reservationAccessTokenSchema.make(
+        "synthetic-preview-capability"
+      )}
       initialDeliveryFailed={params.deliveryFailed === "true"}
       initialState={params.state ?? "create"}
       locale={locale}
