@@ -7,9 +7,9 @@ import {
 } from "@deskohub/dotypos";
 import { Schema } from "effect";
 import { Minus, Plus, Search } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import { AdministrationAlert } from "@/features/administration/notice";
 import type {
   DiscountCodeId,

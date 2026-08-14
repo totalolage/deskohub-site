@@ -36,6 +36,7 @@ import {
   sum,
 } from "drizzle-orm";
 import { Context, Effect, Layer, Option, Schema } from "effect";
+import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
@@ -1225,12 +1226,13 @@ export class AdministrationService extends Context.Service<
               customer,
             })
           ),
-          Effect.catch((cause) =>
-            Effect.logWarning("Live customer details unavailable", {
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Live customer details unavailable", {
               cause,
               workspaceReservationId: row.id,
-            }).pipe(Effect.as({ reservation: null, customer: null } as const))
-          )
+            }).pipe(Effect.as({ reservation: null, customer: null } as const));
+          })
         );
 
         if (!row.dotyposReservationId) return loadCustomer;
@@ -1242,14 +1244,48 @@ export class AdministrationService extends Context.Service<
               reservation,
             })
           ),
-          Effect.catch((cause) =>
-            Effect.logWarning("Live booking details unavailable", {
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Live booking details unavailable", {
               cause,
               workspaceReservationId: row.id,
-            }).pipe(Effect.andThen(loadCustomer))
-          )
+            }).pipe(Effect.andThen(loadCustomer));
+          })
         );
       });
+
+      const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
+        function* (ids: readonly DotyposCustomerId[]) {
+          const uniqueIds = [...new Set(ids)];
+          const customers = yield* dotypos.getCustomers(uniqueIds).pipe(
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Batch customer details unavailable", {
+                cause,
+              }).pipe(Effect.as([] as const));
+            })
+          );
+          const customersById = indexCustomersById(customers);
+          const missingCustomers = yield* Effect.all(
+            uniqueIds
+              .filter((id) => !customersById.has(id))
+              .map((id) =>
+                dotypos.getCustomer(id).pipe(
+                  Effect.map((customer) => [id, customer] as const),
+                  Effect.catch((cause) => {
+                    unstable_rethrow(cause);
+                    return Effect.succeed(null);
+                  })
+                )
+              ),
+            { concurrency: 5 }
+          );
+          for (const customer of missingCustomers) {
+            if (customer) customersById.set(...customer);
+          }
+          return customersById;
+        }
+      );
 
       const loadLiveReservations = Effect.fn(
         "AdministrationService.loadLiveReservations"
@@ -1269,11 +1305,12 @@ export class AdministrationService extends Context.Service<
         const reservations = yield* dotypos
           .listReservations({ ids: missingReservationIds })
           .pipe(
-            Effect.catch((cause) =>
-              Effect.logWarning("Live booking details unavailable", {
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Live booking details unavailable", {
                 cause,
-              }).pipe(Effect.as([] as const))
-            )
+              }).pipe(Effect.as([] as const));
+            })
           );
         const reservationsById = new Map(knownReservations);
         for (const reservation of reservations) {
@@ -1296,14 +1333,7 @@ export class AdministrationService extends Context.Service<
             })
           ),
         ];
-        const customers = yield* dotypos.getCustomers(customerIds).pipe(
-          Effect.catch((cause) =>
-            Effect.logWarning("Live customer details unavailable", {
-              cause,
-            }).pipe(Effect.as([] as const))
-          )
-        );
-        const customersById = indexCustomersById(customers);
+        const customersById = yield* loadCustomers(customerIds);
 
         return rows.map((row) => {
           const reservation = row.dotyposReservationId
@@ -1403,11 +1433,12 @@ export class AdministrationService extends Context.Service<
 
       const loadBookingTables = () =>
         dotypos.getTables().pipe(
-          Effect.catch((cause) =>
-            Effect.logWarning("Booking table details unavailable", {
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Booking table details unavailable", {
               cause,
-            }).pipe(Effect.as([] as const))
-          )
+            }).pipe(Effect.as([] as const));
+          })
         );
 
       const loadReservationRangeMap = (
@@ -1433,12 +1464,13 @@ export class AdministrationService extends Context.Service<
                   })
                 )
             ),
-            Effect.catch((cause) =>
-              Effect.logWarning("Reservation date filter unavailable", {
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Reservation date filter unavailable", {
                 cause,
                 ...range,
-              }).pipe(Effect.as(null))
-            )
+              }).pipe(Effect.as(null));
+            })
           );
       };
 
@@ -1476,11 +1508,12 @@ export class AdministrationService extends Context.Service<
                 return reservationId ? [reservationId] : [];
               })
             ),
-            Effect.catch((cause) =>
-              Effect.logWarning("Reservation date sorting unavailable", {
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Reservation date sorting unavailable", {
                 cause,
-              }).pipe(Effect.as(null))
-            )
+              }).pipe(Effect.as(null));
+            })
           );
       });
 
@@ -2041,11 +2074,9 @@ export class AdministrationService extends Context.Service<
               })
             ),
           ];
-          const { customers, rows, tables } = yield* Effect.all(
+          const { customersById, rows, tables } = yield* Effect.all(
             {
-              customers: dotypos
-                .getCustomers(customerIds)
-                .pipe(Effect.catch(() => Effect.succeed([] as const))),
+              customersById: loadCustomers(customerIds),
               rows:
                 bookingIds.length > 0
                   ? db
@@ -2062,7 +2093,6 @@ export class AdministrationService extends Context.Service<
             },
             { concurrency: 3 }
           );
-          const customersById = indexCustomersById(customers);
           const rowsByBookingId = new Map(
             rows.flatMap((row) =>
               row.dotyposReservationId
@@ -2227,10 +2257,9 @@ export class AdministrationService extends Context.Service<
             .orderBy(desc(max(workspaceReservations.updatedAt)))
             .limit(customerPageSize)
             .offset(pagination.offset);
-          const liveCustomers = yield* dotypos
-            .getCustomers(rows.map(({ customerId }) => customerId))
-            .pipe(Effect.catch(() => Effect.succeed([] as const)));
-          const customersById = indexCustomersById(liveCustomers);
+          const customersById = yield* loadCustomers(
+            rows.map(({ customerId }) => customerId)
+          );
           const items = rows.map((row) => {
             const customer = customersById.get(row.customerId);
             return {
@@ -2512,12 +2541,13 @@ export class AdministrationService extends Context.Service<
             })
             .pipe(
               Effect.map((items) => ({ kind: "available" as const, items })),
-              Effect.catch((cause) =>
-                Effect.logWarning("Reservation overview unavailable", {
+              Effect.catch((cause) => {
+                unstable_rethrow(cause);
+                return Effect.logWarning("Reservation overview unavailable", {
                   cause,
                   ...overviewRange,
-                }).pipe(Effect.as({ kind: "unavailable" as const }))
-              )
+                }).pipe(Effect.as({ kind: "unavailable" as const }));
+              })
             );
           if (reservations.kind === "unavailable") {
             const unavailable = { unavailable: true, value: 0 } as const;
