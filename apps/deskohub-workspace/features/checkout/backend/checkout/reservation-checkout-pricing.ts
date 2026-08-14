@@ -19,7 +19,10 @@ import {
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import { getSubmittedCodeMetadata } from "./pay-state-contract";
+import {
+  getSubmittedCodeMetadata,
+  type PayStateSubmittedCodeMetadata,
+} from "./pay-state-contract";
 
 type ReservationDetails = {
   readonly kind: string;
@@ -35,16 +38,6 @@ type ReservationQuote = {
   readonly payment: ReservationQuotePayment;
 };
 
-type SubmittedCodeMetadata =
-  | {
-      readonly submittedCode: CanonicalPromotionCode;
-      readonly submittedCodeDiscountId: DiscountId;
-    }
-  | {
-      readonly submittedCode?: never;
-      readonly submittedCodeDiscountId?: never;
-    };
-
 export type ReservationAdvertisementQuoteInput<
   Reservation extends AdvertisedReservation<ReservationDetails>,
 > = {
@@ -57,13 +50,13 @@ export type ReservationAdvertisementAffirmationInput<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
 > = ReservationAdvertisementQuoteInput<Reservation> &
-  SubmittedCodeMetadata & {
+  PayStateSubmittedCodeMetadata & {
     readonly advertisedQuote: Quote;
   };
 
 export type ReservationCustomerQuoteInput<
   Reservation extends ReservationDetails,
-> = SubmittedCodeMetadata & {
+> = PayStateSubmittedCodeMetadata & {
   readonly reservation: Reservation;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
@@ -94,7 +87,7 @@ export type ReservationDiscountCodePriceInput<
 export type ReservationAdvertisementQuote<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
-> = SubmittedCodeMetadata & {
+> = PayStateSubmittedCodeMetadata & {
   readonly kind: Reservation["kind"];
   readonly reservation: Reservation;
   readonly quote: Quote;
@@ -120,7 +113,7 @@ export type ReservationPreparedCustomerQuote<
   Reservation extends ReservationDetails,
   Quote extends ReservationQuote,
 > = ReservationCustomerQuote<Reservation, Quote> &
-  SubmittedCodeMetadata & {
+  PayStateSubmittedCodeMetadata & {
     readonly advertisedPriceChanged?: boolean;
   };
 
