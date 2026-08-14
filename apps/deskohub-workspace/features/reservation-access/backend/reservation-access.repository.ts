@@ -447,6 +447,8 @@ export class ReservationAccessRepository extends Context.Service<
       });
     })
   );
-}
 
-export const ReservationAccessRepositoryLive = ReservationAccessRepository.Live;
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(WorkspaceDatabase.Live)
+  );
+}

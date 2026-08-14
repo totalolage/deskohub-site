@@ -5,7 +5,7 @@ import {
   ReservationAccessService as ReservationAccessProvisioningService,
 } from "@/features/reservation-access";
 
-export interface WorkspaceCheckoutAccessCodeService {
+export interface IWorkspaceCheckoutAccessCodeService {
   readonly resolveCustomerAccessCode: (input: {
     readonly reservationId: WorkspaceReservationId;
     readonly dotyposReservationId: string;
@@ -21,36 +21,35 @@ export interface WorkspaceCheckoutAccessCodeService {
   >;
 }
 
-export const WorkspaceCheckoutAccessCodeService =
-  Context.Service<WorkspaceCheckoutAccessCodeService>(
-    "WorkspaceCheckoutAccessCodeService"
+export class WorkspaceCheckoutAccessCodeService extends Context.Service<
+  WorkspaceCheckoutAccessCodeService,
+  IWorkspaceCheckoutAccessCodeService
+>()("WorkspaceCheckoutAccessCodeService") {
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const reservationAccess = yield* ReservationAccessProvisioningService;
+
+      return WorkspaceCheckoutAccessCodeService.of({
+        resolveCustomerAccessCode: Effect.fn(
+          "WorkspaceCheckoutAccessCodeService.resolveCustomerAccessCode"
+        )(function* (input) {
+          const issued = yield* reservationAccess.issueForReservation({
+            reservationId: input.reservationId,
+            reservedFrom: input.reservedFrom,
+            reservedUntil: input.reservedUntil,
+          });
+          return {
+            code: issued.accessCode,
+            accessStartsAt: issued.accessStartsAt,
+            accessEndsAt: issued.accessEndsAt,
+          };
+        }),
+      });
+    })
   );
 
-export const WorkspaceCheckoutAccessCodeServiceLive = Layer.effect(
-  WorkspaceCheckoutAccessCodeService,
-  Effect.gen(function* () {
-    const reservationAccess = yield* ReservationAccessProvisioningService;
-
-    return WorkspaceCheckoutAccessCodeService.of({
-      resolveCustomerAccessCode: Effect.fn(
-        "WorkspaceCheckoutAccessCodeService.resolveCustomerAccessCode"
-      )(function* (input) {
-        const issued = yield* reservationAccess.issueForReservation({
-          reservationId: input.reservationId,
-          reservedFrom: input.reservedFrom,
-          reservedUntil: input.reservedUntil,
-        });
-        return {
-          code: issued.accessCode,
-          accessStartsAt: issued.accessStartsAt,
-          accessEndsAt: issued.accessEndsAt,
-        };
-      }),
-    });
-  })
-);
-
-export const WorkspaceCheckoutAccessCodeServiceLiveWithDependencies =
-  WorkspaceCheckoutAccessCodeServiceLive.pipe(
+  static LiveWithDependencies = this.Live.pipe(
     Layer.provide(ReservationAccessProvisioningService.LiveWithDependencies)
   );
+}

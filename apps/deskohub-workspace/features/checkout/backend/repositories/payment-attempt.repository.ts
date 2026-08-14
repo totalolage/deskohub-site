@@ -139,5 +139,3 @@ export class PaymentAttemptRepository extends Context.Service<
     })
   );
 }
-
-export const PaymentAttemptRepositoryLive = PaymentAttemptRepository.Live;

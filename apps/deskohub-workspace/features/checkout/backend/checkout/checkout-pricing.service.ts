@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Match } from "effect";
+import { DiscountService } from "@/features/discounts/discount.service";
 import {
   type CoworkAdvertisementAffirmation,
   type CoworkAdvertisementAffirmationInput,
@@ -248,5 +249,9 @@ export class CheckoutPricingService extends Context.Service<
         applyDiscountCode,
       } satisfies ICheckoutPricingService;
     })
+  );
+
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(DiscountService.LiveWithDependencies)
   );
 }

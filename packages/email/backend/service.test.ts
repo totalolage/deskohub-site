@@ -11,7 +11,6 @@ import {
   type EmailProvider,
   EmailProviderTag,
   EmailServiceError,
-  EmailServiceLive,
   EmailServiceTag,
   type EmailTemplateService,
   EmailTemplateServiceTag,
@@ -57,7 +56,7 @@ const runWithEmail = <A, E>(
   Effect.runPromise(
     effect.pipe(
       Effect.provide(
-        EmailServiceLive.pipe(
+        EmailServiceTag.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(EmailProviderTag, provider),

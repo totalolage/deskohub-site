@@ -6,16 +6,14 @@ import {
 } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
 
 export class PayableReservationUnavailableError extends Data.TaggedError(
@@ -116,12 +114,8 @@ export class PayableReservationService extends Context.Service<
   );
 
   static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(
-      WorkspaceReservationRepositoryLive.pipe(
-        Layer.provide(WorkspaceDatabaseLive)
-      )
-    ),
-    Layer.provide(DotyposServiceLive)
+    Layer.provide(WorkspaceReservationRepository.LiveWithDependencies),
+    Layer.provide(WorkspaceDotyposLayer)
   );
 }
 

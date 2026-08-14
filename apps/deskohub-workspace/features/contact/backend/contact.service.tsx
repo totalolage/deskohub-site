@@ -22,14 +22,12 @@ export interface ContactSubmission {
   locale: Locale;
 }
 
-export interface ContactService {
+export interface IContactService {
   readonly submit: (
     data: Omit<ContactSubmission, "submittedAt" | "locale">,
     locale: Locale
   ) => Effect.Effect<ContactSubmission, StorageError>;
 }
-
-export const ContactService = Context.Service<ContactService>("ContactService");
 
 const workspaceRecipient = {
   email: workspaceSiteConstants.contact.infoEmail,
@@ -96,151 +94,159 @@ const toContactStorageError = (locale: Locale, cause: unknown) =>
     cause,
   });
 
-export const ContactServiceLive = Layer.effect(
+export class ContactService extends Context.Service<
   ContactService,
-  Effect.gen(function* () {
-    const emailService = yield* EmailServiceTag;
-    const emailConfig = yield* EmailConfigTag;
+  IContactService
+>()("ContactService") {
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const emailService = yield* EmailServiceTag;
+      const emailConfig = yield* EmailConfigTag;
 
-    return ContactService.of({
-      submit: Effect.fn("ContactService.submit")(
-        function* (data, locale) {
-          yield* Effect.annotateLogsScoped({ data, locale });
-          yield* Effect.logInfo("Workspace contact submission started");
+      return ContactService.of({
+        submit: Effect.fn("ContactService.submit")(
+          function* (data, locale) {
+            yield* Effect.annotateLogsScoped({ data, locale });
+            yield* Effect.logInfo("Workspace contact submission started");
 
-          const submission: ContactSubmission = {
-            ...data,
-            submittedAt: new Date().toISOString(),
-            locale,
-          };
-          yield* Effect.annotateLogsScoped({ submission });
-          yield* Effect.logInfo("Workspace contact submission prepared");
+            const submission: ContactSubmission = {
+              ...data,
+              submittedAt: new Date().toISOString(),
+              locale,
+            };
+            yield* Effect.annotateLogsScoped({ submission });
+            yield* Effect.logInfo("Workspace contact submission prepared");
 
-          const businessSubject = getBusinessSubject(data.name);
-          const businessHeading = m.contactEmailBusinessHeading(
-            {},
-            { locale: businessNotificationLocale }
-          );
-          const businessEmail = yield* renderWorkspaceEmail(
-            <ContactBusinessEmail
-              details={createContactEmailDetails(
-                submission,
-                formatSubmissionDate(
-                  submission.submittedAt,
-                  businessNotificationLocale
-                ),
-                businessNotificationLocale
-              )}
-              heading={businessHeading}
-              locale={businessNotificationLocale}
-              message={data.message}
-              messageHeading={m.contactEmailMessageHeading(
-                {},
-                { locale: businessNotificationLocale }
-              )}
-              preview={businessSubject}
-            />
-          ).pipe(
-            Effect.mapError((cause) => toContactStorageError(locale, cause))
-          );
-          const businessEmailMessage: EmailMessage = {
-            from: emailConfig.defaultFrom,
-            to: workspaceRecipient,
-            subject: businessSubject,
-            html: businessEmail.html,
-            text: businessEmail.text,
-            replyTo: {
-              email: data.email,
-              name: data.name,
-            },
-            tags: ["workspace-contact-form"],
-            metadata: {
-              source: "workspace-contact-form",
-              customerName: data.name,
-              customerEmail: data.email,
-              submittedAt: submission.submittedAt,
-            },
-          };
-          yield* Effect.annotateLogsScoped({ businessEmailMessage });
-          yield* Effect.logInfo(
-            "Workspace contact business email send started"
-          );
-
-          yield* emailService.send(businessEmailMessage).pipe(
-            Effect.tapError((cause) =>
-              Effect.logError(
-                "Workspace contact business email delivery failed",
-                {
-                  cause,
-                  businessEmailMessage,
-                  submission,
-                }
-              )
-            ),
-            Effect.mapError((cause) => toContactStorageError(locale, cause))
-          );
-          yield* Effect.logInfo(
-            "Workspace contact business email send succeeded"
-          );
-
-          const confirmationSubject = getConfirmationSubject(locale);
-          yield* Effect.gen(function* () {
-            const confirmationEmail = yield* renderWorkspaceEmail(
-              <ContactConfirmationEmail
-                body={m.contactEmailCustomerBody({}, { locale })}
-                followUp={m.contactEmailCustomerFollowUp(
-                  { email: workspaceSiteConstants.contact.infoEmail },
-                  { locale }
-                )}
-                heading={m.contactEmailCustomerHeading({}, { locale })}
-                locale={locale}
-                message={data.message}
-                preview={confirmationSubject}
-              />
+            const businessSubject = getBusinessSubject(data.name);
+            const businessHeading = m.contactEmailBusinessHeading(
+              {},
+              { locale: businessNotificationLocale }
             );
-            const confirmationMessage: EmailMessage = {
+            const businessEmail = yield* renderWorkspaceEmail(
+              <ContactBusinessEmail
+                details={createContactEmailDetails(
+                  submission,
+                  formatSubmissionDate(
+                    submission.submittedAt,
+                    businessNotificationLocale
+                  ),
+                  businessNotificationLocale
+                )}
+                heading={businessHeading}
+                locale={businessNotificationLocale}
+                message={data.message}
+                messageHeading={m.contactEmailMessageHeading(
+                  {},
+                  { locale: businessNotificationLocale }
+                )}
+                preview={businessSubject}
+              />
+            ).pipe(
+              Effect.mapError((cause) => toContactStorageError(locale, cause))
+            );
+            const businessEmailMessage: EmailMessage = {
               from: emailConfig.defaultFrom,
-              to: {
+              to: workspaceRecipient,
+              subject: businessSubject,
+              html: businessEmail.html,
+              text: businessEmail.text,
+              replyTo: {
                 email: data.email,
                 name: data.name,
               },
-              replyTo: workspaceRecipient,
-              subject: confirmationSubject,
-              html: confirmationEmail.html,
-              text: confirmationEmail.text,
-              tags: ["workspace-contact-confirmation"],
+              tags: ["workspace-contact-form"],
+              metadata: {
+                source: "workspace-contact-form",
+                customerName: data.name,
+                customerEmail: data.email,
+                submittedAt: submission.submittedAt,
+              },
             };
-            yield* Effect.annotateLogsScoped({ confirmationMessage });
+            yield* Effect.annotateLogsScoped({ businessEmailMessage });
             yield* Effect.logInfo(
-              "Workspace contact confirmation email send started"
+              "Workspace contact business email send started"
             );
-            yield* emailService.send(confirmationMessage);
+
+            yield* emailService.send(businessEmailMessage).pipe(
+              Effect.tapError((cause) =>
+                Effect.logError(
+                  "Workspace contact business email delivery failed",
+                  {
+                    cause,
+                    businessEmailMessage,
+                    submission,
+                  }
+                )
+              ),
+              Effect.mapError((cause) => toContactStorageError(locale, cause))
+            );
             yield* Effect.logInfo(
-              "Workspace contact confirmation email send succeeded"
+              "Workspace contact business email send succeeded"
             );
-          }).pipe(
-            Effect.catch((error) =>
-              Effect.logWarning("Contact confirmation email delivery failed", {
-                error,
-                errorType: error._tag,
-                errorMessage: error.message,
-                submission,
+
+            const confirmationSubject = getConfirmationSubject(locale);
+            yield* Effect.gen(function* () {
+              const confirmationEmail = yield* renderWorkspaceEmail(
+                <ContactConfirmationEmail
+                  body={m.contactEmailCustomerBody({}, { locale })}
+                  followUp={m.contactEmailCustomerFollowUp(
+                    { email: workspaceSiteConstants.contact.infoEmail },
+                    { locale }
+                  )}
+                  heading={m.contactEmailCustomerHeading({}, { locale })}
+                  locale={locale}
+                  message={data.message}
+                  preview={confirmationSubject}
+                />
+              );
+              const confirmationMessage: EmailMessage = {
+                from: emailConfig.defaultFrom,
+                to: {
+                  email: data.email,
+                  name: data.name,
+                },
+                replyTo: workspaceRecipient,
+                subject: confirmationSubject,
+                html: confirmationEmail.html,
+                text: confirmationEmail.text,
+                tags: ["workspace-contact-confirmation"],
+              };
+              yield* Effect.annotateLogsScoped({ confirmationMessage });
+              yield* Effect.logInfo(
+                "Workspace contact confirmation email send started"
+              );
+              yield* emailService.send(confirmationMessage);
+              yield* Effect.logInfo(
+                "Workspace contact confirmation email send succeeded"
+              );
+            }).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning(
+                  "Contact confirmation email delivery failed",
+                  {
+                    error,
+                    errorType: error._tag,
+                    errorMessage: error.message,
+                    submission,
+                  }
+                )
+              )
+            );
+
+            return submission;
+          },
+          (effect, data, locale) =>
+            effect.pipe(
+              Effect.scoped,
+              Effect.annotateLogs({
+                locale,
+                hasPhone: Boolean(data.phone),
+                hasMessage: data.message.length > 0,
               })
             )
-          );
-
-          return submission;
-        },
-        (effect, data, locale) =>
-          effect.pipe(
-            Effect.scoped,
-            Effect.annotateLogs({
-              locale,
-              hasPhone: Boolean(data.phone),
-              hasMessage: data.message.length > 0,
-            })
-          )
-      ),
-    });
-  })
-);
+        ),
+      });
+    })
+  );
+}

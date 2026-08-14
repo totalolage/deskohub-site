@@ -7,7 +7,7 @@ import {
 import { CloudinaryService } from "@deskohub/cloudinary/server";
 import { Effect, Schema } from "effect";
 import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
-import { CloudinaryServiceLive } from "../backend/cloudinary.service";
+import { GalleryCloudinaryLayer } from "../backend/cloudinary.service";
 
 export async function getCloudinaryImageByPublicId(
   publicId: string
@@ -28,7 +28,7 @@ export async function getCloudinaryImageByPublicId(
       const service = yield* CloudinaryService;
       return yield* service.getByPublicId(decodedPublicId);
     }),
-    CloudinaryServiceLive
+    GalleryCloudinaryLayer
   ).pipe(
     Effect.catch((error) =>
       Effect.logError("Cloudinary public ID lookup failed", error).pipe(

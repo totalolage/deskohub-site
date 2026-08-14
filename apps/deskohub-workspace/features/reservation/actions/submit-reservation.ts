@@ -1,7 +1,7 @@
 "use server";
 
 import { Effect } from "effect";
-import { CheckoutServiceLiveWithDependencies } from "@/features/checkout/backend/checkout";
+import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { submitReservationSchema } from "@/features/reservation/actions/submit-reservation-input";
 import { submitWorkspaceReservation } from "@/features/reservation/actions/submit-workspace-reservation";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -13,7 +13,7 @@ const submitReservationAction = defineWorkspaceAction(
   },
   (input) =>
     submitWorkspaceReservation(input).pipe(
-      Effect.provide(CheckoutServiceLiveWithDependencies)
+      Effect.provide(CheckoutService.LiveWithDependencies)
     )
 );
 

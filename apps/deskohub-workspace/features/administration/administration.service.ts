@@ -69,6 +69,7 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
   getAdministrationExternalOrderPageIds,
@@ -2591,5 +2592,16 @@ export class AdministrationService extends Context.Service<
         loadOperation: paymentAdministration.loadOperation,
       };
     })
+  );
+
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        WorkspaceDatabase.Live,
+        WorkspaceDotyposLayer,
+        PaymentAdministrationService.LiveWithDependencies,
+        PostHogReservationHistory.LiveWithDependencies
+      )
+    )
   );
 }

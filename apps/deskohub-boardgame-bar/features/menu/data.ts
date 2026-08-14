@@ -21,7 +21,7 @@ export class MenuService extends Context.Service<
   MenuService,
   MenuServiceShape
 >()("MenuService") {
-  static DefaultWithoutDependencies = Layer.effect(
+  static Live = Layer.effect(
     this,
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
@@ -105,8 +105,8 @@ export class MenuService extends Context.Service<
     })
   );
 
-  static Default = this.DefaultWithoutDependencies.pipe(
-    Layer.provide(DotyposService.Default)
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(DotyposService.LiveWithDependencies)
   );
 
   static Error = MenuDataError;
@@ -118,8 +118,8 @@ export const MenuData = Object.assign(
     return yield* menuService.getMenuData;
   }),
   {
-    Default: MenuService.Default,
-    DefaultWithoutDependencies: MenuService.DefaultWithoutDependencies,
+    Live: MenuService.Live,
+    LiveWithDependencies: MenuService.LiveWithDependencies,
     Error: MenuDataError,
   }
 );

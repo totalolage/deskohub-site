@@ -1,6 +1,6 @@
 "use server";
 
-import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
+import { EmailServiceTag } from "@deskohub/email/backend/service";
 import {
   Effect,
   Layer,
@@ -13,7 +13,7 @@ import {
   type ContactFormValues,
   processContactSubmission,
 } from "@/features/contact/actions/contact";
-import { ContactServiceLive } from "@/features/contact/backend/contact.service";
+import { ContactService } from "@/features/contact/backend/contact.service";
 import { locales } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { defineWorkspaceStateAction } from "@/shared/backend/workspace-action";
@@ -72,9 +72,11 @@ const contactFormDataStandardSchema = Schema.toStandardSchemaV1(
   contactFormDataSchema
 );
 
-const ContactActionLive = ContactServiceLive.pipe(
+const ContactActionLive = ContactService.Live.pipe(
   Layer.provide(
-    StandaloneEmailServiceLayer.pipe(Layer.provideMerge(EmailConfigLayer))
+    EmailServiceTag.LiveWithDependencies.pipe(
+      Layer.provideMerge(EmailConfigLayer)
+    )
   )
 );
 

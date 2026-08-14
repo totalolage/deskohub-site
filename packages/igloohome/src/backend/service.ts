@@ -85,12 +85,10 @@ export class IgloohomeService extends Context.Service<
   IgloohomeService,
   Effect.Success<typeof makeIgloohomeService>
 >()("IgloohomeService") {
-  static DefaultWithoutDependencies = Layer.effect(
-    this,
-    makeIgloohomeService
-  ).pipe(Layer.provide(IgloohomeAccessToken.Live));
+  static Live = Layer.effect(this, makeIgloohomeService);
 
-  static Default = this.DefaultWithoutDependencies.pipe(
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(IgloohomeAccessToken.Live),
     Layer.provide(FetchHttpClient.layer)
   );
 }

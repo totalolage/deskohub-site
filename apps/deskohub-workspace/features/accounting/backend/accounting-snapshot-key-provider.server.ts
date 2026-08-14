@@ -9,6 +9,14 @@ import {
   AccountingSnapshotKeyService,
 } from "./accounting-snapshot-key.service";
 
+export const makeAccountingSnapshotKeyLayer = () =>
+  Layer.succeed(AccountingSnapshotKeyService, {
+    getActive: getAccountingSnapshotKey(
+      env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID
+    ),
+    getById: getAccountingSnapshotKey,
+  });
+
 const decodeAccountingSnapshotKeyId = Schema.decodeUnknownEffect(
   accountingSnapshotKeyIdSchema
 );
@@ -36,13 +44,3 @@ const getAccountingSnapshotKey = Effect.fn(
 
   return { id: decodedKeyId, secret } satisfies AccountingSnapshotKey;
 });
-
-export const AccountingSnapshotKeyServiceLive = Layer.succeed(
-  AccountingSnapshotKeyService,
-  {
-    getActive: getAccountingSnapshotKey(
-      env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID
-    ),
-    getById: getAccountingSnapshotKey,
-  }
-);

@@ -3,9 +3,8 @@ import { NextResponse } from "next/server";
 import {
   NexiWebhookProcessingError,
   NexiWebhookService,
-  NexiWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/payment";
-import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
+import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -136,8 +135,8 @@ export const POST = defineWorkspaceRoute(
         )
       ),
       Effect.provide(
-        NexiWebhookServiceLiveWithDependencies.pipe(
-          Layer.provide(NexiServiceLive)
+        NexiWebhookService.LiveWithDependencies.pipe(
+          Layer.provide(WorkspaceNexiLayer)
         )
       ),
       Effect.mapError(

@@ -49,7 +49,7 @@ export class CalendarResourceConfig extends Context.Service<
   );
 }
 
-export const GoogleCalendarRuntimeConfigLive = Layer.succeed(
+export const WorkspaceGoogleCalendarRuntimeConfigLayer = Layer.succeed(
   GoogleCalendarRuntimeConfig,
   {
     serviceAccountEmail: env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL,
@@ -58,6 +58,6 @@ export const GoogleCalendarRuntimeConfigLive = Layer.succeed(
   } satisfies IGoogleCalendarRuntimeConfig
 );
 
-export const GoogleCalendarServiceLive = GoogleCalendarService.Live.pipe(
-  Layer.provide(GoogleCalendarRuntimeConfigLive)
+export const WorkspaceGoogleCalendarLayer = GoogleCalendarService.Live.pipe(
+  Layer.provide(WorkspaceGoogleCalendarRuntimeConfigLayer)
 );

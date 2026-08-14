@@ -1,4 +1,4 @@
-import { Context } from "effect";
+import { Context, Effect, Layer } from "effect";
 import type { DatabaseClient } from "./database-client";
 
 export type WorkspaceDatabaseClient = DatabaseClient;
@@ -10,4 +10,13 @@ interface IWorkspaceDatabase {
 export class WorkspaceDatabase extends Context.Service<
   WorkspaceDatabase,
   IWorkspaceDatabase
->()("WorkspaceDatabase") {}
+>()("WorkspaceDatabase") {
+  static Live = Layer.unwrap(
+    Effect.promise(async () => {
+      const { makeWorkspaceDatabaseLayer } = await import(
+        "./database-provider.server"
+      );
+      return makeWorkspaceDatabaseLayer();
+    })
+  );
+}

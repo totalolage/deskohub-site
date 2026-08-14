@@ -24,6 +24,10 @@ export class OfficeReservationFeatureFlagService extends Context.Service<
       } satisfies IOfficeReservationFeatureFlagService;
     })
   );
+
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.Live)
+  );
 }
 
 export class OfficeReservationsDisabledError extends Data.TaggedError(

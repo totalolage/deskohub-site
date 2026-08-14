@@ -15,7 +15,7 @@ import {
   Schedule,
   Schema,
 } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
   buildCheckoutPayPath,
@@ -24,7 +24,6 @@ import {
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import {
   deriveCheckoutAttemptKey,
   deriveCheckoutSessionKey,
@@ -49,7 +48,7 @@ import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summ
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
-import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
+import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
@@ -61,9 +60,9 @@ import { supersedableReservationPaymentStates } from "@/features/reservation/bac
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   type CreateWorkspaceReservationInput,
+  type IWorkspaceReservationRepository,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type DotyposCustomerId,
@@ -74,9 +73,9 @@ import {
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
-import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
+import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
@@ -362,7 +361,7 @@ const pendingHoldCreationRetryPolicy = Schedule.exponential("250 millis").pipe(
 const waitForPendingReservationTransition = Effect.fn(
   "preparePayState.waitForPendingReservationTransition"
 )(function* (input: {
-  readonly reservations: WorkspaceReservationRepository;
+  readonly reservations: IWorkspaceReservationRepository;
   readonly reservationId: WorkspaceReservationId;
   readonly pendingStates?: readonly WorkspaceReservation["reservationState"][];
 }) {
@@ -1028,24 +1027,20 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
 const PreparePayStateLive = Layer.mergeAll(
   Layer.mergeAll(
-    WorkspaceReservationRepositoryLive,
+    WorkspaceReservationRepository.Live,
     CustomerMarketingConsentRepository.Live
-  ).pipe(Layer.provide(WorkspaceDatabaseLive)),
+  ).pipe(Layer.provide(WorkspaceDatabase.Live)),
   WorkspaceAvailabilityService.LiveWithDependencies,
   WorkspaceTableAssignmentService.Live.pipe(
-    Layer.provide(
-      WorkspaceReservationRepositoryLive.pipe(
-        Layer.provide(WorkspaceDatabaseLive)
-      )
-    ),
-    Layer.provide(DotyposServiceLive)
+    Layer.provide(WorkspaceReservationRepository.LiveWithDependencies),
+    Layer.provide(WorkspaceDotyposLayer)
   ),
   ReservationHoldCleanupScheduleService.Live,
-  PostHogEventServiceLive,
-  DotyposServiceLive,
-  CheckoutPricingServiceLiveWithDependencies,
+  PostHogEventService.LiveWithDependencies,
+  WorkspaceDotyposLayer,
+  CheckoutPricingService.LiveWithDependencies,
   OfficeReservationFeatureFlagService.Live.pipe(
-    Layer.provide(WorkspaceFeatureFlagServiceLive)
+    Layer.provide(WorkspaceFeatureFlagService.Live)
   )
 );
 

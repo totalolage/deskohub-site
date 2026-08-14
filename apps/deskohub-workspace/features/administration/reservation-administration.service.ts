@@ -1,18 +1,17 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
+import { EmailServiceTag } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Option } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/fulfillment/network-details.service";
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
-import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
-import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "@/features/reservation/backend/workspace-reservation.repository";
+  SeatingMapFeatureFlagService,
+  WorkspaceFeatureFlagService,
+} from "@/features/feature-flags/backend";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import {
   ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
@@ -216,18 +215,21 @@ export class ReservationAdministrationService extends Context.Service<
       Layer.provideMerge(
         WorkspaceReservationEmailService.Live,
         Layer.provideMerge(
-          Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer),
+          Layer.provideMerge(
+            EmailServiceTag.LiveWithDependencies,
+            EmailConfigLayer
+          ),
           WorkspaceCheckoutNetworkDetailsService.Live
         )
       )
     ),
     Layer.provide(WorkspaceReservationService.Live),
-    Layer.provide(WorkspaceReservationRepositoryLive),
-    Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(DotyposServiceLive),
+    Layer.provide(WorkspaceReservationRepository.Live),
+    Layer.provide(WorkspaceDatabase.Live),
+    Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
       SeatingMapFeatureFlagService.Live.pipe(
-        Layer.provide(WorkspaceFeatureFlagServiceLive)
+        Layer.provide(WorkspaceFeatureFlagService.Live)
       )
     )
   );

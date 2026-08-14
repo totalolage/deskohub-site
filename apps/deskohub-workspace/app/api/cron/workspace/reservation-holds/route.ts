@@ -1,10 +1,7 @@
 import { Effect } from "effect";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/holds";
+import { ReservationHoldCleanupService } from "@/features/checkout/backend/holds";
 import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 
 const cronBatchLimit = 25;
@@ -62,7 +59,7 @@ export const GET = defineWorkspaceRoute(
     }
 
     return sweepExpiredReservationHolds().pipe(
-      Effect.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+      Effect.provide(ReservationHoldCleanupService.LiveWithDependencies),
       Effect.catch(handleReservationHoldCleanupCronError)
     );
   }

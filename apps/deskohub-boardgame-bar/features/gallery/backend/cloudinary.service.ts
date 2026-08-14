@@ -5,7 +5,7 @@ import {
 import { Layer } from "effect";
 import { env } from "@/env";
 
-const CloudinaryRuntimeConfigLive = makeCloudinaryRuntimeConfigLayer({
+const galleryCloudinaryConfigLayer = makeCloudinaryRuntimeConfigLayer({
   cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   apiKey: env.CLOUDINARY_API_KEY,
   apiSecret: env.CLOUDINARY_API_SECRET,
@@ -13,6 +13,6 @@ const CloudinaryRuntimeConfigLive = makeCloudinaryRuntimeConfigLayer({
   serviceName: "boardgame-bar",
 });
 
-export const CloudinaryServiceLive = CloudinaryService.Live.pipe(
-  Layer.provide(CloudinaryRuntimeConfigLive)
+export const GalleryCloudinaryLayer = CloudinaryService.Live.pipe(
+  Layer.provide(galleryCloudinaryConfigLayer)
 );

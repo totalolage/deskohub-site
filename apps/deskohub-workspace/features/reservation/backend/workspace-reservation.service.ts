@@ -5,22 +5,23 @@ import {
 } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Schema } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
-import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
-import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
+import {
+  SeatingMapFeatureFlagService,
+  WorkspaceFeatureFlagService,
+} from "@/features/feature-flags/backend";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -244,12 +245,12 @@ export class WorkspaceReservationService extends Context.Service<
   );
 
   static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceReservationRepositoryLive),
-    Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(DotyposServiceLive),
+    Layer.provide(WorkspaceReservationRepository.Live),
+    Layer.provide(WorkspaceDatabase.Live),
+    Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
       SeatingMapFeatureFlagService.Live.pipe(
-        Layer.provide(WorkspaceFeatureFlagServiceLive)
+        Layer.provide(WorkspaceFeatureFlagService.Live)
       )
     )
   );

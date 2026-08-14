@@ -8,7 +8,6 @@ import { Context, Effect, Layer, Option, References } from "effect";
 import { type EventMessage, PostHog } from "posthog-node";
 import {
   PostHogRuntimeConfig,
-  PostHogRuntimeConfigLive,
   type PostHogRuntimeConfigObj,
 } from "@/shared/backend/config/posthog.config";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
@@ -51,11 +50,11 @@ export class PostHogEventService extends Context.Service<
       });
     })
   );
-}
 
-export const PostHogEventServiceLive = PostHogEventService.Live.pipe(
-  Layer.provide(PostHogRuntimeConfigLive)
-);
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(PostHogRuntimeConfig.Live)
+  );
+}
 
 const createPostHogCaptureClient = ({
   host,

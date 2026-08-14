@@ -4,10 +4,9 @@ import {
   IgloohomeService,
 } from "@deskohub/igloohome";
 import { Context, Data, Effect, Layer, Match, Schema } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { env } from "@/env";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { IgloohomeServiceLive } from "@/shared/backend/config/igloohome.config";
+import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { ceilToWholeHour, floorToWholeHour } from "@/shared/utils/temporal";
 import type {
@@ -17,7 +16,6 @@ import type {
 import { reservationAccessProvisioningStaleAfterMilliseconds } from "../reservation-access";
 import {
   ReservationAccessRepository,
-  ReservationAccessRepositoryLive,
   type ReservationAccessStorageError,
 } from "./reservation-access.repository";
 
@@ -449,8 +447,7 @@ export class ReservationAccessService extends Context.Service<
   );
 
   static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ReservationAccessRepositoryLive),
-    Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(IgloohomeServiceLive)
+    Layer.provide(ReservationAccessRepository.LiveWithDependencies),
+    Layer.provide(WorkspaceIgloohomeLayer)
   );
 }

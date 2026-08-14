@@ -1,8 +1,12 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema, Scope } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { appendDiscounts, calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
@@ -23,6 +27,7 @@ import {
   discountCodec,
 } from "./contracts";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
+import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import {
   DiscountReleaseGateService,
   type DiscountReleaseGates,
@@ -32,6 +37,7 @@ import {
   type DiscountResolutionError,
   PromotionCodeUnavailableError,
 } from "./errors";
+import { PromotionCodeRepository } from "./promotion-code.repository";
 import { PromotionCodeProvider } from "./promotion-code-provider.service";
 import type { DiscountCandidate } from "./provider";
 import {
@@ -524,6 +530,40 @@ export class DiscountService extends Context.Service<
         applyDiscountCode,
       } satisfies IDiscountService;
     })
+  );
+
+  static LiveWithDependencies = makeDiscountServiceLayer();
+}
+
+function makeDiscountServiceLayer() {
+  const discountRepositories = Layer.mergeAll(
+    DiscountDefinitionRepository.Live,
+    PromotionCodeRepository.Live
+  ).pipe(Layer.provide(WorkspaceDatabase.Live));
+  const providerDependencies = Layer.mergeAll(
+    discountRepositories,
+    WorkspaceGoogleCalendarLayer,
+    CalendarResourceConfig.Live,
+    WorkspaceDotyposLayer
+  );
+  const discountProviders = Layer.mergeAll(
+    CalendarDiscountProvider.Live,
+    CustomerDiscountProvider.Live,
+    PromotionCodeProvider.Live
+  ).pipe(Layer.provide(providerDependencies));
+  const dependencies = Layer.merge(
+    discountProviders,
+    DiscountReleaseGateService.LiveWithDependencies
+  );
+  const processScope = Scope.makeUnsafe();
+  const processMemoMap = Layer.makeMemoMapUnsafe();
+
+  return Layer.fromBuild(() =>
+    Layer.buildWithMemoMap(
+      DiscountService.Live.pipe(Layer.provide(dependencies)),
+      processMemoMap,
+      processScope
+    )
   );
 }
 

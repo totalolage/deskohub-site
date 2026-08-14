@@ -6,10 +6,7 @@ import { Effect, Schema } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { ReservationAccessService as ReservationAccessProvisioningService } from "@/features/reservation-access";
 import { reservationAccessGrantIdSchema } from "@/features/reservation-access/reservation-access";
-import {
-  WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLive,
-} from "./access-code.service";
+import { WorkspaceCheckoutAccessCodeService } from "./access-code.service";
 
 test("resolves the reservation AlgoPIN through the dynamic access provider", async () => {
   const reservationId = Schema.decodeUnknownSync(workspaceReservationIdSchema)(
@@ -38,7 +35,7 @@ test("resolves the reservation AlgoPIN through the dynamic access provider", asy
       reservedUntil,
     });
   }).pipe(
-    Effect.provide(WorkspaceCheckoutAccessCodeServiceLive),
+    Effect.provide(WorkspaceCheckoutAccessCodeService.Live),
     Effect.provideService(
       ReservationAccessProvisioningService,
       ReservationAccessProvisioningService.of({ issueForReservation })

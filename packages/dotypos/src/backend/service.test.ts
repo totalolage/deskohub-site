@@ -21,6 +21,7 @@ import {
   DotyposTableIdSchema,
   DotyposTableSchema,
 } from "../types";
+import { DotyposAccessToken, DotyposGeneratedClient } from "./api";
 import { DotyposService } from "./service";
 
 const config = Schema.decodeUnknownSync(DotyposRuntimeConfigSchema)({
@@ -149,7 +150,9 @@ const runWithService = <A, E>(
   const httpClientLayer = FetchHttpClient.layer.pipe(
     Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
   );
-  const serviceLayer = DotyposService.DefaultWithoutDependencies.pipe(
+  const serviceLayer = DotyposService.Live.pipe(
+    Layer.provide(DotyposGeneratedClient.Live),
+    Layer.provide(DotyposAccessToken.Live),
     Layer.provide(
       Layer.merge(makeDotyposRuntimeConfigLayer(config), httpClientLayer)
     )

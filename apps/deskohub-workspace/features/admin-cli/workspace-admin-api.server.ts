@@ -16,7 +16,6 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Match, Redacted, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { AdministrationLive } from "@/features/administration/administration.runtime";
 import { AdministrationService } from "@/features/administration/administration.service";
 import {
   getAdministrationOperationFilters,
@@ -31,7 +30,6 @@ import {
   type ReservationAdministrationError,
   ReservationAdministrationService,
 } from "@/features/administration/reservation-administration.service";
-import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
 import {
   type AdminCustomerProfile,
   type AdminDiscountCode,
@@ -616,10 +614,10 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(AdminCliApiHandlers),
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
-    Layer.provide(AdministrationLive),
+    Layer.provide(AdministrationService.LiveWithDependencies),
     Layer.provide(ReservationAdministrationService.LiveWithDependencies),
     Layer.provide(ReservationAccessAdministration.LiveWithDependencies),
-    Layer.provide(DiscountAdministrationLive),
+    Layer.provide(DiscountAdministration.LiveWithDependencies),
     Layer.provide(CliMutationIdempotency.LiveWithDependencies),
     Layer.provide(CliAuthenticationAdmission.Live),
     Layer.provide(CliAuthentication.LiveWithDependencies)

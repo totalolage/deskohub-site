@@ -89,6 +89,10 @@ export class DiscountReleaseGateService extends Context.Service<
       } satisfies IDiscountReleaseGateService;
     })
   );
+
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.Live)
+  );
 }
 
 const discountReleaseGatesDisabled: DiscountReleaseGates = {

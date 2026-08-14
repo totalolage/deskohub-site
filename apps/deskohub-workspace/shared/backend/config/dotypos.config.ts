@@ -3,10 +3,10 @@ import {
   DotyposRuntimeConfigSchema,
   DotyposService,
 } from "@deskohub/dotypos";
-import { Layer, Schema, Scope } from "effect";
+import { Layer, Schema } from "effect";
 import { env } from "@/env";
 
-export const DotyposRuntimeConfigLive = Layer.effect(
+export const WorkspaceDotyposRuntimeConfigLayer = Layer.effect(
   DotyposRuntimeConfig,
   Schema.decodeUnknownEffect(DotyposRuntimeConfigSchema)({
     clientId: env.DOTYPOS_CLIENT_ID,
@@ -21,13 +21,6 @@ export const DotyposRuntimeConfigLive = Layer.effect(
   })
 );
 
-const dotyposServiceLive = DotyposService.Default.pipe(
-  Layer.provide(DotyposRuntimeConfigLive)
-);
-
-const processScope = Scope.makeUnsafe();
-const processMemoMap = Layer.makeMemoMapUnsafe();
-
-export const DotyposServiceLive = Layer.fromBuild(() =>
-  Layer.buildWithMemoMap(dotyposServiceLive, processMemoMap, processScope)
+export const WorkspaceDotyposLayer = DotyposService.LiveWithDependencies.pipe(
+  Layer.provide(WorkspaceDotyposRuntimeConfigLayer)
 );

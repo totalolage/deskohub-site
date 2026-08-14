@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import type { EmailProviderConfig } from "../types/email.types";
-import { EmailProviderLive } from "./provider-factory";
+import { ConfiguredEmailProviderLayer } from "./provider-factory";
 import { EmailConfigTag, EmailProviderTag } from "./service";
 
 const originalEnv = { ...process.env };
@@ -20,7 +20,7 @@ const providerName = (overrides: Partial<EmailProviderConfig> = {}) =>
     EmailProviderTag.pipe(
       Effect.map((provider) => provider.name),
       Effect.provide(
-        EmailProviderLive.pipe(
+        ConfiguredEmailProviderLayer.pipe(
           Layer.provide(
             Layer.succeed(EmailConfigTag, { ...config, ...overrides })
           )
@@ -29,7 +29,7 @@ const providerName = (overrides: Partial<EmailProviderConfig> = {}) =>
     )
   );
 
-describe("EmailProviderLive", () => {
+describe("ConfiguredEmailProviderLayer", () => {
   test("chooses provider from EmailConfigTag", async () => {
     process.env.NODE_ENV = "test";
     expect(await providerName()).toBe("console");
@@ -46,7 +46,7 @@ describe("EmailProviderLive", () => {
     const consoleResult = await Effect.runPromise(
       EmailProviderTag.pipe(
         Effect.provide(
-          EmailProviderLive.pipe(
+          ConfiguredEmailProviderLayer.pipe(
             Layer.provide(Layer.succeed(EmailConfigTag, config))
           )
         ),
@@ -59,7 +59,7 @@ describe("EmailProviderLive", () => {
     const resendResult = await Effect.runPromise(
       EmailProviderTag.pipe(
         Effect.provide(
-          EmailProviderLive.pipe(
+          ConfiguredEmailProviderLayer.pipe(
             Layer.provide(
               Layer.succeed(EmailConfigTag, {
                 ...config,

@@ -2,7 +2,7 @@
 
 import { Effect, Schema } from "effect";
 import { advertisedPriceRequestsSchema } from "@/features/checkout/advertised-price";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 
@@ -15,7 +15,7 @@ const getAdvertisedPricesAction = defineWorkspaceAction(
   },
   (requests) =>
     loadAdvertisedPrices(requests).pipe(
-      Effect.provide(CheckoutPricingServiceLiveWithDependencies),
+      Effect.provide(CheckoutPricingService.LiveWithDependencies),
       Effect.scoped
     )
 );

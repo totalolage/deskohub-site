@@ -9,10 +9,7 @@ import {
 import { Effect, Layer } from "effect";
 import { type Locale, locales } from "@/features/i18n";
 import { formatDurationMinutes } from "@/shared/utils/date-formatting";
-import {
-  TrainingReservationService,
-  TrainingReservationServiceLive,
-} from "./training-reservation.service";
+import { TrainingReservationService } from "./training-reservation.service";
 
 const input = {
   firstName: "Ada",
@@ -45,7 +42,7 @@ const runSubmit = (
       return yield* service.submit({ ...input, duration }, locale);
     }).pipe(
       Effect.provide(
-        TrainingReservationServiceLive.pipe(
+        TrainingReservationService.Live.pipe(
           Layer.provide(
             Layer.succeed(EmailServiceTag, {
               send,

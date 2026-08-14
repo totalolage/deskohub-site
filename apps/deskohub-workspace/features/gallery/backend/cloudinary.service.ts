@@ -22,7 +22,7 @@ export {
   type SearchOptions,
 };
 
-const CloudinaryRuntimeConfigLive = makeCloudinaryRuntimeConfigLayer({
+const WorkspaceCloudinaryRuntimeConfigLayer = makeCloudinaryRuntimeConfigLayer({
   cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   apiKey: env.CLOUDINARY_API_KEY,
   apiSecret: env.CLOUDINARY_API_SECRET,
@@ -30,6 +30,6 @@ const CloudinaryRuntimeConfigLive = makeCloudinaryRuntimeConfigLayer({
   serviceName: "workspace",
 });
 
-export const CloudinaryServiceLive = CloudinaryService.Live.pipe(
-  Layer.provide(CloudinaryRuntimeConfigLive)
+export const WorkspaceCloudinaryLayer = CloudinaryService.Live.pipe(
+  Layer.provide(WorkspaceCloudinaryRuntimeConfigLayer)
 );

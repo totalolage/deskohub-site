@@ -23,6 +23,12 @@ Select the Layer constructor by setup behavior:
 - Use `Layer.sync(this, ...)` for pure lazy construction.
 - Use `Layer.succeed(this, ...)` for an already-created implementation or test fake.
 
+Keep live Layers on their owning Context capability. Do not declare standalone
+aliases such as `FooServiceLive` or `FooServiceLiveWithDependencies`; callers
+use `FooService.Live` and `FooService.LiveWithDependencies`. This applies to
+repositories, configuration, and other Context capabilities as well as classes
+whose names end in `Service`.
+
 Represent service construction directly as an Effect when a factory adds no behavior or reuse. Do not add a `make*` function that merely returns one Effect expression.
 
 ## Structure modules
@@ -32,6 +38,12 @@ Write service modules as top-down narratives. After imports, place the public in
 Place newly introduced private helper definitions below their callers so the primary workflow remains the module's entry point and implementation details unfold afterward. Keep a helper above when its inferred return type establishes a public contract there.
 
 Keep the interface, Context service declaration, and live layer in the `*.service.ts` module. Put the mock layer in an adjacent `*.service.mock.ts` module and use `Layer.mock` for partial test implementations instead of inline test mocks.
+
+When a capability declaration must remain importable by a runtime that cannot
+load application environment modules, keep its static `Live` property on the
+class and lazily load an environment-bound provider factory. Name that export
+for construction (for example `makeFooLayer`), never as a standalone
+`FooLive` alias.
 
 When a service has one standard fully wired live composition, expose it as the
 service's static `LiveWithDependencies` layer. Do not create a separate runtime

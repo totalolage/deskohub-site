@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
+import { DiscountService } from "@/features/discounts/discount.service";
 import type { Locale } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { OfficeReservationFeatureFlagServiceLive } from "@/features/office/backend/office-reservation-feature-flag.server";
+import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { getActiveLandingPageSaleBanner } from "../landing-page-sale-banner.server";
 import { LandingPageHeroSection } from "./landing-page-hero-section";
@@ -45,8 +45,8 @@ async function LandingPageHeroContent({
   const [meetingRoomPageEnabled, saleBanner] = await Promise.all([
     isMeetingRoomPageEnabled(),
     getActiveLandingPageSaleBanner({ locale }).pipe(
-      Effect.provide(DiscountServiceLiveWithDependencies),
-      Effect.provide(OfficeReservationFeatureFlagServiceLive),
+      Effect.provide(DiscountService.LiveWithDependencies),
+      Effect.provide(OfficeReservationFeatureFlagService.LiveWithDependencies),
       runWorkspaceEffect("landing-page.sale-banner.load", {
         boundary: "page",
       })

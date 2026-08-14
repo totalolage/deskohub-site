@@ -1,20 +1,14 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { Context, Effect, Layer, Result, Schema } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database-live.server";
-import {
-  WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLiveWithDependencies,
-} from "@/features/checkout/backend/reservation/access-code.service";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import type { Locale } from "@/features/i18n";
 import { openReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
-import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "@/features/reservation/backend/workspace-reservation.repository";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { ReservationAccessToken } from "@/features/reservation/reservation-access-token";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 
 export type ReservationAccessViewModel =
   | {
@@ -138,10 +132,10 @@ export class ReservationAccessService extends Context.Service<
   static Live = Layer.effect(this, implementation);
 
   static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceReservationRepositoryLive),
-    Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(DotyposServiceLive),
-    Layer.provide(WorkspaceCheckoutAccessCodeServiceLiveWithDependencies)
+    Layer.provide(WorkspaceReservationRepository.Live),
+    Layer.provide(WorkspaceDatabase.Live),
+    Layer.provide(WorkspaceDotyposLayer),
+    Layer.provide(WorkspaceCheckoutAccessCodeService.LiveWithDependencies)
   );
 }
 

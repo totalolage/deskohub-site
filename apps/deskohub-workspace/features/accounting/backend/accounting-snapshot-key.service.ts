@@ -1,4 +1,4 @@
-import { Context, Data, type Effect } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import type { AccountingSnapshotKeyId } from "@/features/accounting/accounting-document-snapshot";
 
 export class AccountingSnapshotKeyError extends Data.TaggedError(
@@ -26,4 +26,13 @@ export interface IAccountingSnapshotKeyService {
 export class AccountingSnapshotKeyService extends Context.Service<
   AccountingSnapshotKeyService,
   IAccountingSnapshotKeyService
->()("@deskohub-workspace/accounting/AccountingSnapshotKeyService") {}
+>()("@deskohub-workspace/accounting/AccountingSnapshotKeyService") {
+  static Live = Layer.unwrap(
+    Effect.promise(async () => {
+      const { makeAccountingSnapshotKeyLayer } = await import(
+        "./accounting-snapshot-key-provider.server"
+      );
+      return makeAccountingSnapshotKeyLayer();
+    })
+  );
+}

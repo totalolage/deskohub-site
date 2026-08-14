@@ -5,10 +5,12 @@ import {
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
 import { Context, Data, Effect, Layer, Match } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { m } from "@/features/i18n";
+import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import {
   internalWorkspaceEmailRecipient,
@@ -16,6 +18,7 @@ import {
 } from "@/shared/backend/email/workspace-email-recipients";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
+import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
 import { type Invoice, InvoiceRepository } from "./invoice.repository";
 import {
   type IInvoiceEmailDeliveryRepository,
@@ -341,6 +344,32 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         }),
       } satisfies IInvoiceEmailDeliveryService;
     })
+  );
+
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(getInvoiceEmailDeliveryDependencies())
+  );
+}
+
+function getInvoiceEmailDeliveryDependencies() {
+  const accountingStorage = Layer.merge(
+    WorkspaceDatabase.Live,
+    AccountingSnapshotKeyService.Live
+  );
+  const accountingSnapshots = AccountingDocumentSnapshotRepository.Live.pipe(
+    Layer.provide(accountingStorage)
+  );
+  const invoices = InvoiceRepository.Live.pipe(
+    Layer.provide(Layer.merge(accountingStorage, accountingSnapshots))
+  );
+
+  return Layer.mergeAll(
+    accountingSnapshots,
+    invoices,
+    InvoiceEmailDeliveryRepository.Live.pipe(
+      Layer.provide(WorkspaceDatabase.Live)
+    ),
+    Layer.provideMerge(EmailServiceTag.LiveWithDependencies, EmailConfigLayer)
   );
 }
 

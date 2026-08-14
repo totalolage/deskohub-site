@@ -535,7 +535,7 @@ export const loadDotyposCapacityInventory = (
   );
 
 const getDotyposLayer = (config: DatasourceConfig) =>
-  DotyposService.Default.pipe(
+  DotyposService.LiveWithDependencies.pipe(
     Layer.provide(
       Layer.succeed(DotyposRuntimeConfig, {
         apiTimeout: config.dotypos.apiTimeout,

@@ -221,7 +221,7 @@ export class PostHogReservationHistory extends Context.Service<
     })
   );
 
-  static Default = this.Live.pipe(
+  static LiveWithDependencies = this.Live.pipe(
     Layer.provide(PostHogHistoryRuntimeConfig.Live),
     Layer.provide(FetchHttpClient.layer)
   );

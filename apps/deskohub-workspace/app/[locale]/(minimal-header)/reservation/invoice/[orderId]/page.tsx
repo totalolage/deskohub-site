@@ -6,8 +6,7 @@ import { Suspense } from "react";
 import {
   type PostOrderInvoiceState,
   ReservationInvoiceService,
-} from "@/features/accounting/backend/reservation-invoice";
-import { ReservationInvoiceServiceLiveWithDependencies } from "@/features/accounting/backend/reservation-invoice-live.server";
+} from "@/features/accounting/backend/reservation-invoice.service";
 import { PostOrderInvoicePage } from "@/features/accounting/components/post-order-invoice-page";
 import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkout-flow-page-skeleton";
 import { type Locale, locales, m } from "@/features/i18n";
@@ -110,7 +109,7 @@ async function PostOrderInvoiceContent({
       Effect.logWarning("Post-order invoice state could not be loaded")
     ),
     Effect.orElseSucceed((): PostOrderInvoiceState => "unavailable"),
-    Effect.provide(ReservationInvoiceServiceLiveWithDependencies),
+    Effect.provide(ReservationInvoiceService.LiveWithDependencies),
     runWorkspaceEffect("accounting.post-order-invoice.load")
   );
 

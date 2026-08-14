@@ -100,10 +100,9 @@ describe("ProviderPaymentFinalizationService", () => {
     "fulfilled",
   ] as const) {
     test(`starts fulfillment for already-paid ${fulfillmentState} provider returns`, async () => {
-      const {
-        ProviderPaymentFinalizationService,
-        ProviderPaymentFinalizationServiceLive,
-      } = await import("./provider-payment-finalization.service");
+      const { ProviderPaymentFinalizationService } = await import(
+        "./provider-payment-finalization.service"
+      );
       const { PaymentAttemptRepository } = await import(
         "../repositories/payment-attempt.repository"
       );
@@ -136,7 +135,7 @@ describe("ProviderPaymentFinalizationService", () => {
         });
       }).pipe(
         Effect.provide(
-          ProviderPaymentFinalizationServiceLive.pipe(
+          ProviderPaymentFinalizationService.Live.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(WorkspaceReservationRepository, reservations),
@@ -165,10 +164,9 @@ describe("ProviderPaymentFinalizationService", () => {
   }
 
   test("does not retry fulfillment after a paid reservation has failed fulfillment", async () => {
-    const {
-      ProviderPaymentFinalizationService,
-      ProviderPaymentFinalizationServiceLive,
-    } = await import("./provider-payment-finalization.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
     const { PaymentAttemptRepository } = await import(
       "../repositories/payment-attempt.repository"
     );
@@ -204,7 +202,7 @@ describe("ProviderPaymentFinalizationService", () => {
       });
     }).pipe(
       Effect.provide(
-        ProviderPaymentFinalizationServiceLive.pipe(
+        ProviderPaymentFinalizationService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, reservations),
@@ -234,10 +232,9 @@ describe("ProviderPaymentFinalizationService", () => {
     { verificationStatus: "failure" as const, expected: "terminal" as const },
   ]) {
     test(`finalizes pending ${scenario.verificationStatus} provider payments`, async () => {
-      const {
-        ProviderPaymentFinalizationService,
-        ProviderPaymentFinalizationServiceLive,
-      } = await import("./provider-payment-finalization.service");
+      const { ProviderPaymentFinalizationService } = await import(
+        "./provider-payment-finalization.service"
+      );
       const { PaymentAttemptRepository } = await import(
         "../repositories/payment-attempt.repository"
       );
@@ -295,7 +292,7 @@ describe("ProviderPaymentFinalizationService", () => {
         });
       }).pipe(
         Effect.provide(
-          ProviderPaymentFinalizationServiceLive.pipe(
+          ProviderPaymentFinalizationService.Live.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(WorkspaceReservationRepository, reservations),
@@ -356,10 +353,9 @@ describe("ProviderPaymentFinalizationService", () => {
   }
 
   test("returns not_verifiable for pending attempts missing local verification data", async () => {
-    const {
-      ProviderPaymentFinalizationService,
-      ProviderPaymentFinalizationServiceLive,
-    } = await import("./provider-payment-finalization.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
     const { PaymentAttemptRepository } = await import(
       "../repositories/payment-attempt.repository"
     );
@@ -383,7 +379,7 @@ describe("ProviderPaymentFinalizationService", () => {
       });
     }).pipe(
       Effect.provide(
-        ProviderPaymentFinalizationServiceLive.pipe(
+        ProviderPaymentFinalizationService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -416,10 +412,9 @@ describe("ProviderPaymentFinalizationService", () => {
   });
 
   test("defers empty orders until the cutoff and abandons only operation-free zero-value orders", async () => {
-    const {
-      ProviderPaymentFinalizationService,
-      ProviderPaymentFinalizationServiceLive,
-    } = await import("./provider-payment-finalization.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
     const { PaymentAttemptRepository } = await import(
       "../repositories/payment-attempt.repository"
     );
@@ -484,7 +479,7 @@ describe("ProviderPaymentFinalizationService", () => {
         });
       }).pipe(
         Effect.provide(
-          ProviderPaymentFinalizationServiceLive.pipe(
+          ProviderPaymentFinalizationService.Live.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.mock(WorkspaceReservationRepository, {
@@ -517,10 +512,9 @@ describe("ProviderPaymentFinalizationService", () => {
   });
 
   test("propagates lifecycle persistence failures instead of returning not_pending", async () => {
-    const {
-      ProviderPaymentFinalizationService,
-      ProviderPaymentFinalizationServiceLive,
-    } = await import("./provider-payment-finalization.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
     const { PaymentAttemptRepository } = await import(
       "../repositories/payment-attempt.repository"
     );
@@ -548,7 +542,7 @@ describe("ProviderPaymentFinalizationService", () => {
       });
     }).pipe(
       Effect.provide(
-        ProviderPaymentFinalizationServiceLive.pipe(
+        ProviderPaymentFinalizationService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
@@ -583,10 +577,9 @@ describe("ProviderPaymentFinalizationService", () => {
   });
 
   test("returns provider_verification_failed when Nexi verification errors", async () => {
-    const {
-      ProviderPaymentFinalizationService,
-      ProviderPaymentFinalizationServiceLive,
-    } = await import("./provider-payment-finalization.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
     const { PaymentAttemptRepository } = await import(
       "../repositories/payment-attempt.repository"
     );
@@ -621,7 +614,7 @@ describe("ProviderPaymentFinalizationService", () => {
       });
     }).pipe(
       Effect.provide(
-        ProviderPaymentFinalizationServiceLive.pipe(
+        ProviderPaymentFinalizationService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {

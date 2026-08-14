@@ -6,7 +6,7 @@ import {
   buildCheckoutPayPathFromToken,
   PayableReservationService,
 } from "@/features/checkout/backend/checkout";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import type { Locale } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
@@ -21,7 +21,7 @@ const applyDiscountCodeAction = defineWorkspaceAction(
     applyDiscountCodeToPayState(input).pipe(
       Effect.provide(
         Layer.merge(
-          CheckoutPricingServiceLiveWithDependencies,
+          CheckoutPricingService.LiveWithDependencies,
           PayableReservationService.LiveWithDependencies
         )
       )

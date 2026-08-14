@@ -1,0 +1,46 @@
+import { expect, test } from "bun:test";
+import { relative } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
+const sourcePaths = new Bun.Glob("{apps,packages}/**/*.{ts,tsx}")
+  .scanSync({ cwd: repositoryRoot, absolute: true })
+  .filter(
+    (path) =>
+      !path.includes("/node_modules/") &&
+      !path.includes("/generated/") &&
+      !path.includes("/.next/")
+  );
+
+test("Context capabilities own their live layers", async () => {
+  const sources = await Promise.all(
+    sourcePaths.map(
+      async (path) => [path, await Bun.file(path).text()] as const
+    )
+  );
+  const capabilities = new Set<string>();
+  const capabilityDeclaration =
+    /\bclass\s+([A-Z][A-Za-z0-9]*)\s+extends\s+Context\.Service\b|\bconst\s+([A-Z][A-Za-z0-9]*)\s*=\s*Context\.Service\b/g;
+
+  for (const [, source] of sources) {
+    for (const match of source.matchAll(capabilityDeclaration)) {
+      capabilities.add(match[1] ?? match[2]);
+    }
+  }
+
+  const standaloneLayer =
+    /\b(?:declare\s+)?const\s+([A-Z][A-Za-z0-9]*?)(Live(?:WithDependencies)?)\b/g;
+  const offenders: string[] = [];
+
+  for (const [path, source] of sources) {
+    for (const match of source.matchAll(standaloneLayer)) {
+      if (capabilities.has(match[1])) {
+        offenders.push(
+          `${relative(repositoryRoot, path)}: ${match[1]}${match[2]}`
+        );
+      }
+    }
+  }
+
+  expect(offenders.sort()).toEqual([]);
+});

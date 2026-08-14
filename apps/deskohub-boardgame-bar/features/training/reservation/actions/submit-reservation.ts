@@ -1,11 +1,7 @@
 "use server";
 
 import { Effect, Layer } from "effect";
-import {
-  TrainingReservationService,
-  TrainingReservationServiceLive,
-} from "@/features/training/reservation/backend/training-reservation.service";
-import { EmailServiceLayer } from "@/shared/backend/config/email.config";
+import { TrainingReservationService } from "@/features/training/reservation/backend/training-reservation.service";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { reservationSchema } from "../schemas/reservation";
 
@@ -97,11 +93,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
         },
       })
     ),
-  // Provide TrainingReservationServiceLive with its email service dependency
-  TrainingReservationServiceLive.pipe(
-    Layer.provide(EmailServiceLayer),
-    Layer.orDie
-  )
+  TrainingReservationService.LiveWithDependencies.pipe(Layer.orDie)
 );
 
 // Export an explicitly async wrapper that Next.js will recognize

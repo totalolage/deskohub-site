@@ -1,8 +1,5 @@
 import { Context, Data, Effect, Layer, Match } from "effect";
-import {
-  WorkspacePaidFulfillmentService,
-  WorkspacePaidFulfillmentServiceLiveWithDependencies,
-} from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
+import { WorkspacePaidFulfillmentService } from "@/features/checkout/backend/fulfillment/paid-fulfillment.service";
 import {
   type WorkspaceReservationDetailsError,
   WorkspaceReservationService,
@@ -168,7 +165,7 @@ export class ReservationAccessAdministration extends Context.Service<
   static LiveWithDependencies = this.Live.pipe(
     Layer.provide(ReservationAccessService.LiveWithDependencies),
     Layer.provide(WorkspaceReservationService.LiveWithDependencies),
-    Layer.provide(WorkspacePaidFulfillmentServiceLiveWithDependencies)
+    Layer.provide(WorkspacePaidFulfillmentService.LiveWithDependencies)
   );
 }
 
