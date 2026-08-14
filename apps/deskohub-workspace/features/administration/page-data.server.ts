@@ -98,6 +98,7 @@ export const loadAdministrationOverview = async () => {
 const getAdministrationReservationListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
+  await authorizeAdministrationPage();
   await connection();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
