@@ -69,6 +69,9 @@ describe("discount persistence contracts", () => {
     ).text();
 
     expect(20_260_814_094_640).toBeGreaterThan(20_260_813_192_416);
+    expect(migration).toContain(
+      "IF to_regclass('public.vouchers') IS NULL THEN"
+    );
     expect(migration).toContain('CREATE TABLE "promotion_codes"');
     expect(migration).toContain('CREATE TABLE "vouchers"');
     expect(migration).toContain('CREATE TABLE "voucher_redemptions"');

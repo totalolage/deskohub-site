@@ -1,3 +1,6 @@
+DO $voucher_rollout$
+BEGIN
+	IF to_regclass('public.vouchers') IS NULL THEN
 CREATE TABLE "voucher_redemptions" (
 	"id" text PRIMARY KEY DEFAULT uuid_generate_v7(),
 	"voucher_id" text NOT NULL,
@@ -33,14 +36,14 @@ CREATE TABLE "voucher_redemptions" (
         and btrim("release_reason") <> ''
       ))
 );
---> statement-breakpoint
+
 CREATE TABLE "promotion_code_customers" (
 	"promotion_code_id" text,
 	"dotypos_customer_id" text,
 	CONSTRAINT "promotion_code_customers_pk" PRIMARY KEY("promotion_code_id","dotypos_customer_id"),
 	CONSTRAINT "promotion_code_customers_customer_check" CHECK (btrim("dotypos_customer_id") <> '')
 );
---> statement-breakpoint
+
 CREATE TABLE "promotion_codes" (
 	"id" text PRIMARY KEY DEFAULT uuid_generate_v7(),
 	"kind" text NOT NULL,
@@ -54,7 +57,7 @@ CREATE TABLE "promotion_codes" (
 	CONSTRAINT "promotion_codes_valid_window_check" CHECK ("valid_from" is null or "valid_until" is null or "valid_until" > "valid_from"),
 	CONSTRAINT "promotion_codes_kind_check" CHECK ("kind" in ('discount', 'voucher'))
 );
---> statement-breakpoint
+
 CREATE TABLE "vouchers" (
 	"id" text PRIMARY KEY DEFAULT uuid_generate_v7(),
 	"promotion_code_id" text NOT NULL UNIQUE,
@@ -67,36 +70,36 @@ CREATE TABLE "vouchers" (
 	CONSTRAINT "vouchers_promotion_kind_check" CHECK ("promotion_kind" = 'voucher'),
 	CONSTRAINT "vouchers_issued_amount_check" CHECK ("issued_amount_value" > 0 and "issued_amount_exponent" >= 0 and "issued_amount_currency" ~ '^[A-Z]{3}$')
 );
---> statement-breakpoint
+
 INSERT INTO "promotion_codes" (
 	"id", "kind", "code", "enabled", "valid_from", "valid_until", "created_at", "updated_at"
 )
 SELECT "id", 'discount', "code", "enabled", "valid_from", "valid_until", "created_at", "updated_at"
 FROM "discount_codes";
---> statement-breakpoint
+
 INSERT INTO "promotion_code_customers" ("promotion_code_id", "dotypos_customer_id")
 SELECT "code_id", "dotypos_customer_id"
 FROM "discount_code_customers";
---> statement-breakpoint
-ALTER TABLE "discount_codes" ADD COLUMN "promotion_code_id" text;--> statement-breakpoint
-ALTER TABLE "discount_codes" ADD COLUMN "promotion_kind" text DEFAULT 'discount' NOT NULL;--> statement-breakpoint
-UPDATE "discount_codes" SET "promotion_code_id" = "id";--> statement-breakpoint
-ALTER TABLE "discount_codes" ALTER COLUMN "promotion_code_id" SET NOT NULL;--> statement-breakpoint
-ALTER TABLE "discount_codes" ADD CONSTRAINT "discount_codes_promotion_code_id_key" UNIQUE("promotion_code_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "voucher_redemptions_application_unique_idx" ON "voucher_redemptions" ("application_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "voucher_redemptions_attempt_unique_idx" ON "voucher_redemptions" ("payment_attempt_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "voucher_redemptions_active_customer_unique_idx" ON "voucher_redemptions" ("voucher_id","dotypos_customer_id") WHERE "state" = 'reserved';--> statement-breakpoint
-CREATE INDEX "voucher_redemptions_voucher_state_idx" ON "voucher_redemptions" ("voucher_id","state");--> statement-breakpoint
-CREATE INDEX "voucher_redemptions_stale_reserved_idx" ON "voucher_redemptions" ("reservation_expires_at") WHERE "state" = 'reserved';--> statement-breakpoint
-CREATE UNIQUE INDEX "promotion_codes_code_unique_idx" ON "promotion_codes" ("code");--> statement-breakpoint
-CREATE UNIQUE INDEX "promotion_codes_id_kind_unique_idx" ON "promotion_codes" ("id","kind");--> statement-breakpoint
-ALTER TABLE "voucher_redemptions" ADD CONSTRAINT "voucher_redemptions_voucher_id_vouchers_id_fkey" FOREIGN KEY ("voucher_id") REFERENCES "vouchers"("id");--> statement-breakpoint
-ALTER TABLE "voucher_redemptions" ADD CONSTRAINT "voucher_redemptions_upZW4Z72dq9a_fkey" FOREIGN KEY ("application_id") REFERENCES "discount_applications"("id");--> statement-breakpoint
-ALTER TABLE "voucher_redemptions" ADD CONSTRAINT "voucher_redemptions_payment_attempt_id_payment_attempts_id_fkey" FOREIGN KEY ("payment_attempt_id") REFERENCES "payment_attempts"("id");--> statement-breakpoint
-ALTER TABLE "discount_codes" ADD CONSTRAINT "discount_codes_promotion_fk" FOREIGN KEY ("promotion_code_id","promotion_kind") REFERENCES "promotion_codes"("id","kind") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "promotion_code_customers" ADD CONSTRAINT "promotion_code_customers_nUyZKIbJHnBQ_fkey" FOREIGN KEY ("promotion_code_id") REFERENCES "promotion_codes"("id") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "vouchers" ADD CONSTRAINT "vouchers_promotion_fk" FOREIGN KEY ("promotion_code_id","promotion_kind") REFERENCES "promotion_codes"("id","kind") ON DELETE CASCADE;--> statement-breakpoint
-ALTER TABLE "discount_codes" ADD CONSTRAINT "discount_codes_promotion_kind_check" CHECK ("promotion_kind" = 'discount');--> statement-breakpoint
+
+ALTER TABLE "discount_codes" ADD COLUMN "promotion_code_id" text;
+ALTER TABLE "discount_codes" ADD COLUMN "promotion_kind" text DEFAULT 'discount' NOT NULL;
+UPDATE "discount_codes" SET "promotion_code_id" = "id";
+ALTER TABLE "discount_codes" ALTER COLUMN "promotion_code_id" SET NOT NULL;
+ALTER TABLE "discount_codes" ADD CONSTRAINT "discount_codes_promotion_code_id_key" UNIQUE("promotion_code_id");
+CREATE UNIQUE INDEX "voucher_redemptions_application_unique_idx" ON "voucher_redemptions" ("application_id");
+CREATE UNIQUE INDEX "voucher_redemptions_attempt_unique_idx" ON "voucher_redemptions" ("payment_attempt_id");
+CREATE UNIQUE INDEX "voucher_redemptions_active_customer_unique_idx" ON "voucher_redemptions" ("voucher_id","dotypos_customer_id") WHERE "state" = 'reserved';
+CREATE INDEX "voucher_redemptions_voucher_state_idx" ON "voucher_redemptions" ("voucher_id","state");
+CREATE INDEX "voucher_redemptions_stale_reserved_idx" ON "voucher_redemptions" ("reservation_expires_at") WHERE "state" = 'reserved';
+CREATE UNIQUE INDEX "promotion_codes_code_unique_idx" ON "promotion_codes" ("code");
+CREATE UNIQUE INDEX "promotion_codes_id_kind_unique_idx" ON "promotion_codes" ("id","kind");
+ALTER TABLE "voucher_redemptions" ADD CONSTRAINT "voucher_redemptions_voucher_id_vouchers_id_fkey" FOREIGN KEY ("voucher_id") REFERENCES "vouchers"("id");
+ALTER TABLE "voucher_redemptions" ADD CONSTRAINT "voucher_redemptions_upZW4Z72dq9a_fkey" FOREIGN KEY ("application_id") REFERENCES "discount_applications"("id");
+ALTER TABLE "voucher_redemptions" ADD CONSTRAINT "voucher_redemptions_payment_attempt_id_payment_attempts_id_fkey" FOREIGN KEY ("payment_attempt_id") REFERENCES "payment_attempts"("id");
+ALTER TABLE "discount_codes" ADD CONSTRAINT "discount_codes_promotion_fk" FOREIGN KEY ("promotion_code_id","promotion_kind") REFERENCES "promotion_codes"("id","kind") ON DELETE CASCADE;
+ALTER TABLE "promotion_code_customers" ADD CONSTRAINT "promotion_code_customers_nUyZKIbJHnBQ_fkey" FOREIGN KEY ("promotion_code_id") REFERENCES "promotion_codes"("id") ON DELETE CASCADE;
+ALTER TABLE "vouchers" ADD CONSTRAINT "vouchers_promotion_fk" FOREIGN KEY ("promotion_code_id","promotion_kind") REFERENCES "promotion_codes"("id","kind") ON DELETE CASCADE;
+ALTER TABLE "discount_codes" ADD CONSTRAINT "discount_codes_promotion_kind_check" CHECK ("promotion_kind" = 'discount');
 CREATE FUNCTION "sync_discount_code_to_promotion"() RETURNS trigger AS $$
 BEGIN
 	IF pg_trigger_depth() > 1 THEN
@@ -135,11 +138,11 @@ BEGIN
 
 	RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;--> statement-breakpoint
+$$ LANGUAGE plpgsql;
 CREATE TRIGGER "discount_codes_sync_promotion_trigger"
 BEFORE INSERT OR UPDATE OF "code", "enabled", "valid_from", "valid_until", "updated_at"
 ON "discount_codes"
-FOR EACH ROW EXECUTE FUNCTION "sync_discount_code_to_promotion"();--> statement-breakpoint
+FOR EACH ROW EXECUTE FUNCTION "sync_discount_code_to_promotion"();
 CREATE FUNCTION "sync_promotion_to_discount_code"() RETURNS trigger AS $$
 BEGIN
 	IF pg_trigger_depth() > 1 THEN
@@ -161,11 +164,11 @@ BEGIN
 
 	RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;--> statement-breakpoint
+$$ LANGUAGE plpgsql;
 CREATE TRIGGER "promotion_codes_sync_discount_trigger"
 AFTER UPDATE OF "code", "enabled", "valid_from", "valid_until", "updated_at"
 ON "promotion_codes"
-FOR EACH ROW EXECUTE FUNCTION "sync_promotion_to_discount_code"();--> statement-breakpoint
+FOR EACH ROW EXECUTE FUNCTION "sync_promotion_to_discount_code"();
 CREATE FUNCTION "delete_discount_promotion"() RETURNS trigger AS $$
 BEGIN
 	IF pg_trigger_depth() > 1 THEN
@@ -176,10 +179,10 @@ BEGIN
 	WHERE "id" = OLD."promotion_code_id" AND "kind" = 'discount';
 	RETURN OLD;
 END;
-$$ LANGUAGE plpgsql;--> statement-breakpoint
+$$ LANGUAGE plpgsql;
 CREATE TRIGGER "discount_codes_delete_promotion_trigger"
 AFTER DELETE ON "discount_codes"
-FOR EACH ROW EXECUTE FUNCTION "delete_discount_promotion"();--> statement-breakpoint
+FOR EACH ROW EXECUTE FUNCTION "delete_discount_promotion"();
 CREATE FUNCTION "sync_legacy_discount_code_customer"() RETURNS trigger AS $$
 BEGIN
 	IF pg_trigger_depth() > 1 THEN
@@ -204,10 +207,10 @@ BEGIN
 	) AND "dotypos_customer_id" = OLD."dotypos_customer_id";
 	RETURN OLD;
 END;
-$$ LANGUAGE plpgsql;--> statement-breakpoint
+$$ LANGUAGE plpgsql;
 CREATE TRIGGER "discount_code_customers_sync_promotion_trigger"
 AFTER INSERT OR DELETE ON "discount_code_customers"
-FOR EACH ROW EXECUTE FUNCTION "sync_legacy_discount_code_customer"();--> statement-breakpoint
+FOR EACH ROW EXECUTE FUNCTION "sync_legacy_discount_code_customer"();
 CREATE FUNCTION "sync_promotion_discount_code_customer"() RETURNS trigger AS $$
 BEGIN
 	IF pg_trigger_depth() > 1 THEN
@@ -232,7 +235,10 @@ BEGIN
 	) AND "dotypos_customer_id" = OLD."dotypos_customer_id";
 	RETURN OLD;
 END;
-$$ LANGUAGE plpgsql;--> statement-breakpoint
+$$ LANGUAGE plpgsql;
 CREATE TRIGGER "promotion_code_customers_sync_discount_trigger"
 AFTER INSERT OR DELETE ON "promotion_code_customers"
 FOR EACH ROW EXECUTE FUNCTION "sync_promotion_discount_code_customer"();
+	END IF;
+END;
+$voucher_rollout$;
