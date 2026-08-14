@@ -229,6 +229,15 @@ describe("PaymentLifecycleRepository", () => {
     expect(redeemClaim).toContain(".update(voucherRedemptions)");
   });
 
+  test("matches promotion claim variants explicitly", async () => {
+    const source = await readRepository();
+
+    expect(source).not.toContain('claim?.kind === "discount_code" ?');
+    expect(source).not.toContain('yield* input.claim.kind === "discount_code"');
+    expect(source).not.toContain('yield* stored.kind === "discount_code"');
+    expect(source).not.toContain('yield* claim.kind === "discount"');
+  });
+
   test("rejects inconsistent committed money before opening a transaction", async () => {
     const discountId =
       Schema.decodeUnknownSync(discountIdSchema)("public-discount");

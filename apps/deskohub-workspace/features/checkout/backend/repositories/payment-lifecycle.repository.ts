@@ -9,7 +9,7 @@ import type {
 } from "@deskohub/nexi";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
   WorkspaceDatabase,
@@ -922,8 +922,7 @@ export const validateDiscountCommitment = Effect.fn(
         operation: "reserve",
         reason: "money_mismatch",
         message: "A committed discount application has inconsistent money.",
-        codeId:
-          claim?.kind === "discount_code" ? claim.codeId : claim?.voucherId,
+        codeId: getPromotionClaimId(claim),
       });
     }
 
@@ -993,8 +992,18 @@ const claimError = (
     operation,
     reason,
     message,
-    codeId: claim?.kind === "discount_code" ? claim.codeId : claim?.voucherId,
+    codeId: getPromotionClaimId(claim),
   });
+
+const getPromotionClaimId = (claim: DiscountClaimInstruction | undefined) => {
+  if (!claim) return undefined;
+  return Match.value(claim).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      discount_code: ({ codeId }) => codeId,
+      voucher: ({ voucherId }) => voucherId,
+    })
+  );
+};
 
 const discountAdjustmentsEqual = (
   left: DiscountAdjustment,
@@ -1264,45 +1273,47 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       );
     }
 
-    const stored = yield* input.claim.kind === "discount_code"
-      ? input.tx
-          .select({ promotion: promotionCodes, code: discountCodes })
-          .from(discountCodes)
-          .innerJoin(
-            promotionCodes,
-            eq(promotionCodes.id, discountCodes.promotionCodeId)
-          )
-          .where(eq(discountCodes.id, input.claim.codeId))
-          .limit(1)
-          .for("update")
-          .pipe(
-            Effect.map((rows) =>
-              rows[0]
-                ? ({ kind: "discount_code", ...rows[0] } as const)
-                : undefined
-            )
-          )
-      : input.tx
-          .select({ promotion: promotionCodes, voucher: vouchers })
-          .from(vouchers)
-          .innerJoin(
-            promotionCodes,
-            eq(promotionCodes.id, vouchers.promotionCodeId)
-          )
-          .where(eq(vouchers.id, input.claim.voucherId))
-          .limit(1)
-          .for("update")
-          .pipe(
-            Effect.map((rows) =>
-              rows[0] ? ({ kind: "voucher", ...rows[0] } as const) : undefined
-            )
-          );
+    const stored = yield* Match.value(input.claim).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount_code: (claim) =>
+          Effect.gen(function* () {
+            const rows = yield* input.tx
+              .select({ promotion: promotionCodes, code: discountCodes })
+              .from(discountCodes)
+              .innerJoin(
+                promotionCodes,
+                eq(promotionCodes.id, discountCodes.promotionCodeId)
+              )
+              .where(eq(discountCodes.id, claim.codeId))
+              .limit(1)
+              .for("update");
+            return rows[0]
+              ? ({ kind: "discount_code", claim, ...rows[0] } as const)
+              : undefined;
+          }),
+        voucher: (claim) =>
+          Effect.gen(function* () {
+            const rows = yield* input.tx
+              .select({ promotion: promotionCodes, voucher: vouchers })
+              .from(vouchers)
+              .innerJoin(
+                promotionCodes,
+                eq(promotionCodes.id, vouchers.promotionCodeId)
+              )
+              .where(eq(vouchers.id, claim.voucherId))
+              .limit(1)
+              .for("update");
+            return rows[0]
+              ? ({ kind: "voucher", claim, ...rows[0] } as const)
+              : undefined;
+          }),
+      })
+    );
 
     if (
       !stored ||
       (stored.kind === "discount_code" &&
-        input.claim.kind === "discount_code" &&
-        stored.code.discountId !== input.claim.storedDiscountId)
+        stored.code.discountId !== stored.claim.storedDiscountId)
     ) {
       return yield* claimError(
         "reserve",
@@ -1379,25 +1390,24 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       }
     }
 
-    yield* stored.kind === "discount_code"
-      ? validateStoredDiscountClaim({
-          ...input,
-          claim: input.claim as Extract<
-            DiscountClaimInstruction,
-            { readonly kind: "discount_code" }
-          >,
-          code: stored.code,
-          promotion: stored.promotion,
-        })
-      : validateVoucherClaim({
-          ...input,
-          claim: input.claim as Extract<
-            DiscountClaimInstruction,
-            { readonly kind: "voucher" }
-          >,
-          voucher: stored.voucher,
-          promotion: stored.promotion,
-        });
+    yield* Match.value(stored).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount_code: ({ claim, code, promotion }) =>
+          validateStoredDiscountClaim({
+            ...input,
+            claim,
+            code,
+            promotion,
+          }),
+        voucher: ({ claim, voucher, promotion }) =>
+          validateVoucherClaim({
+            ...input,
+            claim,
+            voucher,
+            promotion,
+          }),
+      })
+    );
 
     if (stored.kind === "discount_code") {
       const [customerUses] = yield* input.tx
@@ -1479,15 +1489,26 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       reservedAt: claimedAt,
       updatedAt: claimedAt,
     };
-    yield* stored.kind === "discount_code"
-      ? input.tx.insert(discountCodeRedemptions).values({
-          ...claimValues,
-          codeId: stored.code.id,
-        })
-      : input.tx.insert(voucherRedemptions).values({
-          ...claimValues,
-          voucherId: stored.voucher.id,
-        });
+    yield* Match.value(stored).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount_code: ({ code }) =>
+          input.tx
+            .insert(discountCodeRedemptions)
+            .values({
+              ...claimValues,
+              codeId: code.id,
+            })
+            .pipe(Effect.asVoid),
+        voucher: ({ voucher }) =>
+          input.tx
+            .insert(voucherRedemptions)
+            .values({
+              ...claimValues,
+              voucherId: voucher.id,
+            })
+            .pipe(Effect.asVoid),
+      })
+    );
     return claimedAt;
   }
 );
@@ -1818,25 +1839,32 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
     const claimableStates = allowReleased
       ? (["reserved", "released"] as const)
       : (["reserved"] as const);
-    yield* claim.kind === "discount"
-      ? tx
-          .update(discountCodeRedemptions)
-          .set(values)
-          .where(
-            and(
-              eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
-              inArray(discountCodeRedemptions.state, claimableStates)
+    yield* Match.value(claim).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount: () =>
+          tx
+            .update(discountCodeRedemptions)
+            .set(values)
+            .where(
+              and(
+                eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
+                inArray(discountCodeRedemptions.state, claimableStates)
+              )
             )
-          )
-      : tx
-          .update(voucherRedemptions)
-          .set(values)
-          .where(
-            and(
-              eq(voucherRedemptions.paymentAttemptId, paymentAttemptId),
-              inArray(voucherRedemptions.state, claimableStates)
+            .pipe(Effect.asVoid),
+        voucher: () =>
+          tx
+            .update(voucherRedemptions)
+            .set(values)
+            .where(
+              and(
+                eq(voucherRedemptions.paymentAttemptId, paymentAttemptId),
+                inArray(voucherRedemptions.state, claimableStates)
+              )
             )
-          );
+            .pipe(Effect.asVoid),
+      })
+    );
   }
 );
 
@@ -1889,25 +1917,32 @@ const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
       releaseReason,
       updatedAt: releasedAt,
     };
-    yield* claim.kind === "discount"
-      ? tx
-          .update(discountCodeRedemptions)
-          .set(values)
-          .where(
-            and(
-              eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
-              eq(discountCodeRedemptions.state, "reserved")
+    yield* Match.value(claim).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount: () =>
+          tx
+            .update(discountCodeRedemptions)
+            .set(values)
+            .where(
+              and(
+                eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
+                eq(discountCodeRedemptions.state, "reserved")
+              )
             )
-          )
-      : tx
-          .update(voucherRedemptions)
-          .set(values)
-          .where(
-            and(
-              eq(voucherRedemptions.paymentAttemptId, paymentAttemptId),
-              eq(voucherRedemptions.state, "reserved")
+            .pipe(Effect.asVoid),
+        voucher: () =>
+          tx
+            .update(voucherRedemptions)
+            .set(values)
+            .where(
+              and(
+                eq(voucherRedemptions.paymentAttemptId, paymentAttemptId),
+                eq(voucherRedemptions.state, "reserved")
+              )
             )
-          );
+            .pipe(Effect.asVoid),
+      })
+    );
   }
 );
 
