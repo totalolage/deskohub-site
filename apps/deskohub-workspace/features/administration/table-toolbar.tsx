@@ -1,6 +1,7 @@
 import { Predicate } from "effect";
 import type { ReactNode } from "react";
 import { Badge } from "@/shared/components/ui/badge";
+import { cn } from "@/shared/utils";
 
 export function AdministrationTableToolbar({
   actions,
@@ -18,7 +19,12 @@ export function AdministrationTableToolbar({
   return (
     <section
       aria-label={`${itemLabel} table controls`}
-      className="mb-5 grid gap-4 rounded-xl border border-navy-blue/10 bg-white p-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center"
+      className={cn(
+        "mb-5 grid gap-4 rounded-xl border border-navy-blue/10 bg-white p-4",
+        filters
+          ? "2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center"
+          : "grid-cols-[minmax(0,1fr)_auto] items-center"
+      )}
     >
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
         {Predicate.isNumber(count) ? (
