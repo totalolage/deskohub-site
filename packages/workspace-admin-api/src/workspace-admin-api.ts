@@ -927,7 +927,9 @@ const administrationPromotionClaimFields = {
   state: Schema.Literals(["reserved", "redeemed", "released"]),
   paymentAttemptId: AdministrationPaymentAttemptId,
   workspaceReservationId: AdministrationWorkspaceReservationId,
-  appliedAmount: AdministrationMoney,
+  appliedAmount: Schema.NullOr(AdministrationMoney).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   reservationExpiresAt: Schema.String,
   reservedAt: Schema.String,
   redeemedAt: Schema.NullOr(Schema.String),
@@ -955,8 +957,12 @@ export const AdministrationCustomerProfile = Schema.Struct({
   discountGroups: Schema.Array(AdministrationDiscountGroup),
   codes: Schema.Array(AdministrationCustomerCode),
   claims: Schema.Array(AdministrationDiscountCodeClaim),
-  vouchers: Schema.Array(AdministrationCustomerVoucher),
-  voucherClaims: Schema.Array(AdministrationVoucherClaim),
+  vouchers: Schema.Array(AdministrationCustomerVoucher).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed([]))
+  ),
+  voucherClaims: Schema.Array(AdministrationVoucherClaim).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed([]))
+  ),
 });
 export type AdministrationCustomerProfile =
   typeof AdministrationCustomerProfile.Type;

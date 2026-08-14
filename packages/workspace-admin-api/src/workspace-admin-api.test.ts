@@ -4,9 +4,11 @@ import {
   AdminCliAdministrationApi,
   AdministrationBookingQuery,
   AdministrationCustomerQuery,
+  AdministrationCustomerProfile,
   AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
   AdministrationDiscountCode,
+  AdministrationDiscountCodeClaim,
   AdministrationDiscountDashboard,
   AdministrationDiscountMutation,
   AdministrationDiscountMutationResult,
@@ -83,6 +85,37 @@ describe("administration contract", () => {
         },
       })
     ).toMatchObject({ vouchers: [] });
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationCustomerProfile)({
+        customer: {
+          id: "customer-id",
+          displayName: "Synthetic Customer",
+          email: null,
+          phone: null,
+          discountGroupId: null,
+        },
+        discountGroups: [],
+        codes: [],
+        claims: [],
+      })
+    ).toMatchObject({ vouchers: [], voucherClaims: [] });
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountCodeClaim)({
+        id: "claim-id",
+        codeId: "01980000-0000-7000-8000-000000000001",
+        dotyposCustomerId: "customer-id",
+        state: "redeemed",
+        paymentAttemptId: "payment-attempt-id",
+        workspaceReservationId: "reservation-id",
+        reservationExpiresAt: "2026-08-10T11:00:00Z",
+        reservedAt: "2026-08-10T10:00:00Z",
+        redeemedAt: "2026-08-10T10:01:00Z",
+        releasedAt: null,
+        releaseReason: null,
+      }).appliedAmount
+    ).toBeNull();
   });
 
   test("keeps discount codes and vouchers as separate read models", () => {

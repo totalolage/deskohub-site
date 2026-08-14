@@ -1425,7 +1425,10 @@ const formatMoney = (money: {
   readonly value: number;
   readonly exponent: number;
   readonly currency: string;
-}) => `${money.value / 10 ** money.exponent} ${money.currency}`;
+} | null) =>
+  money === null
+    ? "Amount unavailable"
+    : `${money.value / 10 ** money.exponent} ${money.currency}`;
 
 const formatCodeBenefit = (
   code: AdministrationDiscountCodeType,
