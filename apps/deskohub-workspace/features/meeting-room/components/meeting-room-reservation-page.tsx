@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
@@ -35,11 +36,13 @@ export async function renderMeetingRoomReservationContent({
   initialReservation,
   locale,
   replacementToken,
+  submittedCode,
 }: {
   readonly checkoutSessionId?: CheckoutSessionId;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly locale: Locale;
   readonly replacementToken?: string;
+  readonly submittedCode?: CanonicalPromotionCode;
 }) {
   const minimumStartDateTime = getEarliestMeetingRoomStartDateTime(
     getMeetingRoomReservationDuration(
@@ -57,6 +60,7 @@ export async function renderMeetingRoomReservationContent({
     getMeetingRoomDurationAdvertisedPriceRequests({
       locale,
       startDateTime: initialValues.startDateTime,
+      submittedCode,
     })
   ).pipe(
     Effect.provide(CheckoutPricingServiceLiveWithDependencies),
@@ -74,6 +78,7 @@ export async function renderMeetingRoomReservationContent({
       initialValues={initialValues}
       locale={locale}
       replacementToken={replacementToken}
+      submittedCode={submittedCode}
     />
   );
 }

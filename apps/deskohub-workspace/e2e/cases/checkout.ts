@@ -73,6 +73,7 @@ export const executeCheckoutFlow = ({
   session,
   state,
   payPageSteps,
+  beforeReservationSubmit,
   expectedDiscounts,
 }: {
   config: WorkspaceE2EConfig;
@@ -86,6 +87,7 @@ export const executeCheckoutFlow = ({
   payPageSteps?: (
     orderId: CheckoutRow["reservation_id"]
   ) => readonly WorkspaceE2EStep<void>[];
+  beforeReservationSubmit?: Effect.Effect<void, WorkspaceE2EError>;
   expectedDiscounts?: readonly ExpectedDiscountApplication[];
 }): Effect.Effect<
   void,
@@ -100,6 +102,7 @@ export const executeCheckoutFlow = ({
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
+        if (beforeReservationSubmit) yield* beforeReservationSubmit;
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
@@ -412,9 +415,7 @@ export const assertFulfilledStatusPage = ({
 
         return (
           /Your reservation is confirmed\./i.test(normalizedText) &&
-          /secure access link has been sent by email/i.test(
-            normalizedText
-          ) &&
+          /secure access link has been sent by email/i.test(normalizedText) &&
           expectedReservationText.every((expected) =>
             normalizedText.includes(
               normalizeBrowserText(expected).toLocaleLowerCase(data.locale)

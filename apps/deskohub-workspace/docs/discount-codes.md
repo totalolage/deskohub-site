@@ -46,9 +46,11 @@ Administration exposes discount codes and vouchers as separate resources. Both t
 
 ## Customer experience
 
-Automatic discounts shown on the reservation page are affirmed again when the order summary is created. Customer-specific discounts may first appear after the customer is identified. A code is applied only after the customer deliberately submits it from the order summary.
+Automatic discounts shown on the reservation page are affirmed again when the order summary is created. Customer-specific discounts may first appear after the customer is identified.
 
-Once shown, a discount cannot disappear, change, or be replaced silently. Checkout presents an updated summary for acceptance before payment begins. A code error does not prevent the customer from paying the prior valid summary without that code.
+An ordinary discount code supplied through the reservation URL's `discountCode` query parameter is provisionally advertised like an automatic sale. The anonymous preview checks the code's public configuration, product eligibility, and global capacity; after reservation submission, checkout performs the complete customer, audience, and usage validation before creating the order summary. Vouchers are never advertised from reservation URLs. Codes may still be entered deliberately on the order summary.
+
+Once shown, a discount cannot disappear, change, or be replaced silently. Checkout presents an updated summary for acceptance before payment begins. If a provisionally advertised code is unavailable to the identified customer, the updated summary removes it for review. A code error does not prevent the customer from paying the prior valid summary without that code.
 
 A bounded discount may show a localized expiry countdown near the end of its active period. Automatic sales use a 24-hour countdown window; bounded codes use a one-hour window. The presentation depends on the declared expiry, not on how the discount was sourced.
 

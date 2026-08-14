@@ -44,6 +44,20 @@ export const buildDiscountCodeAvailabilityQuery = (input: {
       )
     );
 
+export const buildDiscountCodePreviewAvailabilityQuery = (input: {
+  readonly db: WorkspaceDatabaseClient;
+  readonly codeId: DiscountCodeId;
+}) =>
+  input.db
+    .select({ activeUseCount: count() })
+    .from(discountCodeRedemptions)
+    .where(
+      and(
+        eq(discountCodeRedemptions.codeId, input.codeId),
+        inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+      )
+    );
+
 export const buildVoucherAvailabilityQuery = (input: {
   readonly db: WorkspaceDatabaseClient;
   readonly voucherId: VoucherId;

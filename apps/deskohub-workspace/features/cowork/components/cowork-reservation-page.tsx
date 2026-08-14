@@ -25,6 +25,7 @@ export const coworkReservationPage = createReservationPage({
     locale,
     replacementToken,
     searchParams,
+    submittedCode,
   }) => {
     const restoredOrQueryValues = initialReservation
       ? getReservationDefaultValuesFromPayState(initialReservation)
@@ -43,6 +44,7 @@ export const coworkReservationPage = createReservationPage({
         initialValues={initialValues}
         locale={locale}
         replacementToken={replacementToken}
+        submittedCode={submittedCode}
       />
     );
   },

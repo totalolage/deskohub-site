@@ -2,6 +2,7 @@ import type { DotyposDiscountGroupId } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
+import { discountCodeQueryParam } from "@/features/discounts";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
@@ -59,7 +60,7 @@ import {
   prepareDotyposCustomerDiscount,
 } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { assert, log } from "../runtime";
+import { addRedaction, assert, log } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -67,6 +68,7 @@ import type {
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
+import { makeUrl, setSearchParams } from "../urls";
 import { executeCheckoutFlow } from "./checkout";
 import { executeZeroTotalCheckout } from "./checkout-zero-total";
 
@@ -189,11 +191,25 @@ export const makeDiscountE2ECases = ({
     const cases: WorkspaceE2ECase[] = [];
     let nextDateIndex = 0;
 
-    const codeCheckoutData = makeCoworkCheckoutData(
+    const code = discountCodeFixtures.partial.code;
+    addRedaction(code, true);
+    const baseCodeCheckoutData = makeCoworkCheckoutData(
       config.baseUrl,
       yield* requireCheckoutDate(checkoutDates, nextDateIndex),
       "cowork-discount-code"
     );
+    const codeCheckoutUrl = yield* makeUrl(
+      "build query discount checkout URL",
+      baseCodeCheckoutData.checkoutUrl
+    ).pipe(
+      Effect.flatMap((url) =>
+        setSearchParams(url, { [discountCodeQueryParam]: code })
+      )
+    );
+    const codeCheckoutData = {
+      ...baseCodeCheckoutData,
+      checkoutUrl: codeCheckoutUrl.href,
+    };
     nextDateIndex += 1;
     const codeCheckoutState = trackCheckoutState(flowStates, codeCheckoutData);
     cases.push({
@@ -203,12 +219,15 @@ export const makeDiscountE2ECases = ({
           config,
           data: codeCheckoutData,
           datasourceConfig,
-          discountCode: discountCodeFixtures.partial.code,
           expectedDiscounts: [
             ...coworkAutomaticDiscounts,
             codeDiscountExpectation,
           ],
           flowId: "cowork-discount-code",
+          reservationPageDiscounts: [
+            ...coworkAutomaticDiscounts,
+            codeDiscountExpectation,
+          ],
           run,
           runStep,
           session,
@@ -1174,6 +1193,7 @@ export const executeDiscountCheckout = ({
   discountCode,
   expectedDiscounts,
   flowId,
+  reservationPageDiscounts,
   run,
   runStep,
   session,
@@ -1186,6 +1206,7 @@ export const executeDiscountCheckout = ({
   readonly discountCode?: string;
   readonly expectedDiscounts: readonly ExpectedDiscountApplication[];
   readonly flowId: string;
+  readonly reservationPageDiscounts?: readonly ExpectedDiscountApplication[];
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
@@ -1196,6 +1217,14 @@ export const executeDiscountCheckout = ({
   E2EDatabase | HttpClient.HttpClient
 > =>
   executeCheckoutFlow({
+    beforeReservationSubmit: reservationPageDiscounts
+      ? assertDisplayedDiscounts({
+          config,
+          discounts: reservationPageDiscounts,
+          run,
+          session,
+        })
+      : undefined,
     config,
     data,
     datasourceConfig,

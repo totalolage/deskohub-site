@@ -40,7 +40,13 @@ import {
   type CheckoutSessionId,
   promoteCheckoutAttemptToSessionId,
 } from "@/features/checkout/checkout-identifiers";
-import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
+import {
+  type CheckoutSummaryChangedKeys,
+  getCheckoutSummaryChangedKeys,
+} from "@/features/checkout/checkout-summary";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
@@ -138,12 +144,43 @@ const quotePreparedReservation = Effect.fn(
 }) {
   const pricing = yield* CheckoutPricingService;
 
-  return yield* pricing.quoteForCustomer({
+  const prepared = yield* pricing.quoteForCustomer({
     ...input.advertisement,
     dotyposCustomerId: input.dotyposCustomerId,
     locale: input.locale,
     affirmedAdvertisement: input.advertisement.discountQuote,
   });
+  const advertisedSummary = Match.value(input.advertisement).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (advertisement) =>
+        getCoworkCheckoutSummary(
+          advertisement.reservation,
+          advertisement.advertisedQuote
+        ),
+      "meeting-room": (advertisement) =>
+        getMeetingRoomCheckoutSummary(advertisement.advertisedQuote),
+      office: (advertisement) =>
+        getOfficeCheckoutSummary(advertisement.advertisedQuote),
+    })
+  );
+  const preparedSummary = Match.value(prepared).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (customerQuote) =>
+        getCoworkCheckoutSummary(
+          customerQuote.reservation,
+          customerQuote.quote
+        ),
+      "meeting-room": (customerQuote) =>
+        getMeetingRoomCheckoutSummary(customerQuote.quote),
+      office: (customerQuote) => getOfficeCheckoutSummary(customerQuote.quote),
+    })
+  );
+  const changedKeys =
+    input.advertisement.changedKeys || prepared.advertisedPriceChanged
+      ? getCheckoutSummaryChangedKeys(advertisedSummary, preparedSummary)
+      : undefined;
+
+  return { ...prepared, changedKeys };
 });
 
 const DotyposEntityWithIdSchema = Schema.Struct({
@@ -749,7 +786,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         prepared,
         reservationId: reservationDraft.id,
         checkoutSessionId,
-        changedKeys: advertisement.changedKeys,
+        changedKeys: prepared.changedKeys,
       });
     }
 
@@ -790,7 +827,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           prepared: reusedPrepared,
           reservationId: claimConflictReservation.id,
           checkoutSessionId,
-          changedKeys: advertisement.changedKeys,
+          changedKeys: reusedPrepared.changedKeys,
         });
       }
 
@@ -962,7 +999,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       prepared,
       reservationId: reservationDraft.id,
       checkoutSessionId,
-      changedKeys: advertisement.changedKeys,
+      changedKeys: prepared.changedKeys,
     });
   },
   (effect, input) =>

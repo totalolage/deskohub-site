@@ -22,6 +22,7 @@ export {
   isAppliedDiscount,
 } from "./contracts";
 export {
+  type AppliedCustomerDiscountQuote,
   type AppliedDiscountCodeQuote,
   type ApplyCustomerDiscountInput,
   type ApplyDiscountCodeInput,
@@ -30,6 +31,7 @@ export {
   type DisplayedDiscountAffirmation,
   type DisplayedDiscountAffirmationInput,
   type IDiscountService,
+  type PreviewDiscountCodeInput,
 } from "./discount.service";
 export {
   DiscountCalculationError,
@@ -43,4 +45,7 @@ export {
   PromotionCodeUnavailableError,
   type PromotionCodeUnavailableReason,
 } from "./errors";
-export { normalizeSubmittedPromotionCode } from "./promotion-code";
+export {
+  discountCodeQueryParam,
+  normalizeSubmittedPromotionCode,
+} from "./promotion-code";

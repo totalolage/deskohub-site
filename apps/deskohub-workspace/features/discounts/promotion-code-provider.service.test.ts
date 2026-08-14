@@ -27,6 +27,7 @@ import {
 import type { IPromotionCodeRepository } from "./promotion-code.repository";
 import { PromotionCodeRepositoryMock } from "./promotion-code.repository.mock";
 import {
+  type PromotionCodePreviewInput,
   PromotionCodeProvider,
   type PromotionCodeProviderInput,
 } from "./promotion-code-provider.service";
@@ -124,6 +125,8 @@ const defaultFindByCode: IPromotionCodeRepository["findByCode"] = () =>
   Effect.succeed(Option.some(configuration()));
 const defaultLoadAvailability: IPromotionCodeRepository["loadDiscountCodeAvailability"] =
   () => Effect.succeed(availability());
+const defaultLoadPreviewAvailability: IPromotionCodeRepository["loadDiscountCodePreviewAvailability"] =
+  () => Effect.succeed({ activeUseCount: 0 });
 const defaultLoadVoucherAvailability: IPromotionCodeRepository["loadVoucherAvailability"] =
   () => Effect.succeed(voucherAvailability());
 const defaultLoadDefinition: IDiscountDefinitionRepository["loadById"] = () =>
@@ -134,6 +137,7 @@ const runWithProvider = <A, E>(
   options: {
     readonly findByCode?: IPromotionCodeRepository["findByCode"];
     readonly loadAvailability?: IPromotionCodeRepository["loadDiscountCodeAvailability"];
+    readonly loadPreviewAvailability?: IPromotionCodeRepository["loadDiscountCodePreviewAvailability"];
     readonly loadVoucherAvailability?: IPromotionCodeRepository["loadVoucherAvailability"];
     readonly loadDefinition?: IDiscountDefinitionRepository["loadById"];
   } = {}
@@ -148,6 +152,9 @@ const runWithProvider = <A, E>(
                 findByCode: options.findByCode ?? defaultFindByCode,
                 loadDiscountCodeAvailability:
                   options.loadAvailability ?? defaultLoadAvailability,
+                loadDiscountCodePreviewAvailability:
+                  options.loadPreviewAvailability ??
+                  defaultLoadPreviewAvailability,
                 loadVoucherAvailability:
                   options.loadVoucherAvailability ??
                   defaultLoadVoucherAvailability,
@@ -171,7 +178,35 @@ const resolve = (overrides: Partial<PromotionCodeProviderInput> = {}) =>
     return yield* provider.revalidate({ ...input, ...overrides });
   });
 
+const previewInput: PromotionCodePreviewInput = {
+  submittedCode: canonicalCode,
+  locale: input.locale,
+  product,
+  discountableSubtotal: input.discountableSubtotal,
+};
+
 describe("PromotionCodeProvider", () => {
+  test("previews an ordinary code without creating a customer claim", async () => {
+    const loadPreviewAvailability = mock(defaultLoadPreviewAvailability);
+
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(now);
+        const provider = yield* PromotionCodeProvider;
+        return yield* provider.preview(previewInput);
+      }),
+      { loadPreviewAvailability }
+    );
+
+    expect(loadPreviewAvailability).toHaveBeenCalledWith({
+      promotionCodeId,
+      codeId,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0]).not.toHaveProperty("claim");
+    expect(result[0]?.discount.label).toBe("Summer database sale");
+  });
+
   test("returns no candidates and performs no reads when no code is submitted", async () => {
     const findByCode = mock(defaultFindByCode);
     const loadAvailability = mock(defaultLoadAvailability);

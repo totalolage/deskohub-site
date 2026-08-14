@@ -14,6 +14,9 @@ describe("getOfficeSeatAdvertisedPriceRequests", () => {
       endsOn: decodePlainDate("2099-06-12"),
     });
 
+    expect(requests.every((request) => !("submittedCode" in request))).toBe(
+      true
+    );
     expect(
       requests.map(({ reservation }) => reservation.details.seats)
     ).toEqual([1, 2, 3, 4]);

@@ -13,6 +13,7 @@ import type {
 } from "./persistence-contracts";
 import {
   type DiscountCodeAvailability,
+  type DiscountCodePreviewAvailability,
   decodePromotionConfiguration,
   PromotionCodeConfigurationError,
   type SubmittedPromotionConfiguration,
@@ -20,6 +21,7 @@ import {
 } from "./promotion-code";
 import {
   buildDiscountCodeAvailabilityQuery,
+  buildDiscountCodePreviewAvailabilityQuery,
   buildPromotionAudienceQuery,
   buildVoucherAvailabilityQuery,
 } from "./promotion-code.repository-query";
@@ -40,6 +42,10 @@ export interface IPromotionCodeRepository {
     readonly codeId: DiscountCodeId;
     readonly dotyposCustomerId: DotyposCustomerId;
   }) => Effect.Effect<DiscountCodeAvailability, RepositoryError>;
+  readonly loadDiscountCodePreviewAvailability: (input: {
+    readonly promotionCodeId: PromotionCodeId;
+    readonly codeId: DiscountCodeId;
+  }) => Effect.Effect<DiscountCodePreviewAvailability, RepositoryError>;
   readonly loadVoucherAvailability: (input: {
     readonly promotionCodeId: PromotionCodeId;
     readonly voucherId: VoucherId;
@@ -122,6 +128,26 @@ export class PromotionCodeRepository extends Context.Service<
         );
       });
 
+      const loadDiscountCodePreviewAvailability = Effect.fn(
+        "PromotionCodeRepository.loadDiscountCodePreviewAvailability"
+      )(function* (input: {
+        readonly promotionCodeId: PromotionCodeId;
+        readonly codeId: DiscountCodeId;
+      }) {
+        const [row] = yield* buildDiscountCodePreviewAvailabilityQuery({
+          db,
+          ...input,
+        });
+        return yield* Schema.decodeUnknownEffect(
+          discountCodePreviewAvailabilitySchema,
+          { errors: "all", onExcessProperty: "error" }
+        )({ activeUseCount: row?.activeUseCount ?? 0 }).pipe(
+          Effect.mapError((cause) =>
+            malformedAvailability(input.promotionCodeId, cause)
+          )
+        );
+      });
+
       const loadVoucherAvailability = Effect.fn(
         "PromotionCodeRepository.loadVoucherAvailability"
       )(function* (input: {
@@ -154,6 +180,7 @@ export class PromotionCodeRepository extends Context.Service<
       return {
         findByCode,
         loadDiscountCodeAvailability,
+        loadDiscountCodePreviewAvailability,
         loadVoucherAvailability,
       } satisfies IPromotionCodeRepository;
     })
@@ -169,6 +196,10 @@ const discountCodeAvailabilitySchema = Schema.Struct({
   ...availabilityBase,
   activeUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   customerActiveUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+
+const discountCodePreviewAvailabilitySchema = Schema.Struct({
+  activeUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
 });
 
 const voucherAvailabilitySchema = Schema.Struct({

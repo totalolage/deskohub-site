@@ -2,7 +2,9 @@ import { Effect } from "effect";
 import {
   AdvertisedPriceMismatchError,
   CheckoutPricingService,
+  getSubmittedCodeMetadata,
   openSubmittedAdvertisedPriceState,
+  type PayStateSubmittedCodeMetadata,
 } from "@/features/checkout/backend/checkout";
 import {
   type CheckoutSummaryChangedKeys,
@@ -23,14 +25,15 @@ import {
 } from "@/features/reservation/meeting-room-reservation";
 import type { PrepareMeetingRoomPayStateInput } from "./prepare-meeting-room-pay-state.schema";
 
-export type PreparedMeetingRoomAdvertisement = {
+export type PreparedMeetingRoomAdvertisement = PayStateSubmittedCodeMetadata & {
   readonly kind: "meeting-room";
   readonly reservation: NormalizedMeetingRoomReservationOrder;
+  readonly advertisedQuote: MeetingRoomReservationQuote;
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 };
 
-export type PreparedMeetingRoomPayState = {
+export type PreparedMeetingRoomPayState = PayStateSubmittedCodeMetadata & {
   readonly kind: "meeting-room";
   readonly reservation: NormalizedMeetingRoomReservationOrder;
   readonly quote: MeetingRoomReservationQuote;
@@ -74,13 +77,16 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     reservation: getMeetingRoomAdvertisedPriceReservation(reservation),
     locale: input.locale,
     advertisedQuote: state.quote,
+    ...getSubmittedCodeMetadata(state),
   });
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
 
   return {
     kind: input.reservation.kind,
     reservation,
+    advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
+    ...getSubmittedCodeMetadata(affirmed),
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getMeetingRoomCheckoutSummary(state.quote),

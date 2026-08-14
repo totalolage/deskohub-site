@@ -746,6 +746,115 @@ describe("DiscountService", () => {
     expect(codeRevalidate).not.toHaveBeenCalled();
   });
 
+  test("removes a query code that is unavailable to the identified customer", async () => {
+    const codeId = discountId("query-code");
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock(),
+      CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
+      PromotionCodeProviderMock({ revalidate: () => Effect.succeed([]) })
+    );
+    const affirmedAdvertisement = affirmedDiscountAdvertisementQuoteCodec.make({
+      product,
+      discountableSubtotal: money(10_000),
+      discounts: [
+        {
+          discount: percentage("calendar", 1000, "calendar").discount,
+          subtotalBefore: money(10_000),
+          amount: money(1000),
+          subtotalAfter: money(9000),
+        },
+        {
+          discount: percentage("query-code", 1000, "code").discount,
+          subtotalBefore: money(9000),
+          amount: money(900),
+          subtotalAfter: money(8100),
+        },
+      ],
+      totalDiscount: money(1900),
+      discountedSubtotal: money(8100),
+    });
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.applyCustomerDiscount({
+          affirmedAdvertisement,
+          dotyposCustomerId: paymentInput.dotyposCustomerId,
+          locale: paymentInput.locale,
+          submittedCode: paymentInput.submittedCode,
+          submittedCodeDiscountId: codeId,
+        });
+      }),
+      providers
+    );
+
+    expect(result.discounts.map(({ discount }) => discount.id)).toEqual([
+      "calendar",
+    ]);
+    expect(result.advertisedPriceChanged).toBeTrue();
+    expect(result.submittedCodeDiscountId).toBeUndefined();
+  });
+
+  test("keeps a validated query code after the identified customer's discount", async () => {
+    const codeId = discountId("query-code");
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock(),
+      CustomerDiscountProviderMock({
+        resolve: () =>
+          Effect.succeed([percentage("customer", 500, "customer")]),
+      }),
+      PromotionCodeProviderMock({
+        revalidate: () =>
+          Effect.succeed([percentage("query-code", 1000, "code")]),
+      })
+    );
+    const affirmedAdvertisement = affirmedDiscountAdvertisementQuoteCodec.make({
+      product,
+      discountableSubtotal: money(10_000),
+      discounts: [
+        {
+          discount: percentage("calendar", 1000, "calendar").discount,
+          subtotalBefore: money(10_000),
+          amount: money(1000),
+          subtotalAfter: money(9000),
+        },
+        {
+          discount: percentage("query-code", 1000, "code").discount,
+          subtotalBefore: money(9000),
+          amount: money(900),
+          subtotalAfter: money(8100),
+        },
+      ],
+      totalDiscount: money(1900),
+      discountedSubtotal: money(8100),
+    });
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.applyCustomerDiscount({
+          affirmedAdvertisement,
+          dotyposCustomerId: paymentInput.dotyposCustomerId,
+          locale: paymentInput.locale,
+          submittedCode: paymentInput.submittedCode,
+          submittedCodeDiscountId: codeId,
+        });
+      }),
+      providers
+    );
+
+    expect(result.discounts.map(({ discount }) => discount.id)).toEqual([
+      "calendar",
+      "customer",
+      "query-code",
+    ]);
+    expect(result.discounts.map(({ amount }) => amount.value)).toEqual([
+      1000, 450, 855,
+    ]);
+    expect(result.advertisedPriceChanged).toBeFalse();
+    expect(result.submittedCodeDiscountId).toBe(codeId);
+  });
+
   test.each(
     (
       [

@@ -27,7 +27,9 @@ Zero-priced components may appear in the order summary without changing the pric
 
 ## Discount codes
 
-Entering a discount code is an independent action on the order summary:
+An ordinary code in a reservation URL's `discountCode` query parameter is provisionally included in the advertised price. The anonymous preview excludes vouchers and cannot establish customer-specific eligibility. Reservation submission performs the complete validation after identifying the customer; if the code is unavailable, checkout presents the updated summary without it for acceptance.
+
+Entering a discount code on the order summary remains an independent action:
 
 - An invalid or unavailable code is shown as a field error and leaves the existing summary payable.
 - An accepted code produces a new summary for review; it does not start payment or consume the code yet.

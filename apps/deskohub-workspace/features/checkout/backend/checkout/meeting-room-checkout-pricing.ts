@@ -20,12 +20,12 @@ import {
   type ReservationAdvertisementAffirmationInput,
   type ReservationAdvertisementQuote,
   type ReservationAdvertisementQuoteInput,
-  type ReservationCustomerQuote,
   type ReservationCustomerQuoteInput,
   type ReservationDiscountCodePriceInput,
   type ReservationDiscountCodePriceResult,
   type ReservationPaymentPriceAffirmation,
   type ReservationPaymentPriceAffirmationInput,
+  type ReservationPreparedCustomerQuote,
   reservationCheckoutPricing,
 } from "./reservation-checkout-pricing";
 
@@ -68,7 +68,7 @@ export type MeetingRoomAdvertisementAffirmation =
     MeetingRoomReservationQuote
   >;
 
-export type MeetingRoomCustomerQuote = ReservationCustomerQuote<
+export type MeetingRoomCustomerQuote = ReservationPreparedCustomerQuote<
   NormalizedMeetingRoomReservationOrder,
   MeetingRoomReservationQuote
 >;

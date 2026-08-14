@@ -30,7 +30,6 @@ export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
       locale: input.locale,
     });
     const advertisedPriceToken = yield* sealAdvertisedPriceState(state);
-    const { reservation: _, ...advertisedPrice } = advertised;
     const summary = Match.value(advertised).pipe(
       Match.discriminatorsExhaustive("kind")({
         cowork: ({ quote, reservation }) =>
@@ -41,7 +40,7 @@ export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
     );
 
     return {
-      ...advertisedPrice,
+      ...advertised,
       summary,
       advertisedPriceToken,
     } satisfies AdvertisedPrice;
