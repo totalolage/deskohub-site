@@ -7,7 +7,9 @@ import {
   AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
   AdministrationDiscountCode,
+  AdministrationDiscountDashboard,
   AdministrationDiscountMutation,
+  AdministrationDiscountMutationResult,
   AdministrationDotyposCustomerId,
   AdministrationDotyposDiscountGroupId,
   AdministrationDotyposReservationId,
@@ -59,6 +61,30 @@ describe("StartCliAuthentication", () => {
 });
 
 describe("administration contract", () => {
+  test("decodes pre-voucher administration responses", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountMutationResult)({
+        kind: "delete-code",
+        createdDiscountId: null,
+        createdCodeId: null,
+      })
+    ).toMatchObject({ createdVoucherId: null });
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountDashboard)({
+        discounts: [],
+        codes: [],
+        calendar: {
+          events: [],
+          unavailable: false,
+          calendarUrl: "https://calendar.example.test",
+          from: "2026-08-01",
+          to: "2026-08-31",
+        },
+      })
+    ).toMatchObject({ vouchers: [] });
+  });
+
   test("keeps discount codes and vouchers as separate read models", () => {
     const decodeCode = Schema.decodeUnknownSync(AdministrationDiscountCode);
     const decodeVoucher = Schema.decodeUnknownSync(AdministrationVoucher);

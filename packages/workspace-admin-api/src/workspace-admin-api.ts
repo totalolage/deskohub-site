@@ -1,5 +1,5 @@
 import { Temporal } from "@js-temporal/polyfill";
-import { Context, Schema } from "effect";
+import { Context, Effect, Schema } from "effect";
 import {
   HttpApi,
   HttpApiEndpoint,
@@ -1295,7 +1295,9 @@ export const AdministrationDiscountMutationResult = Schema.Struct({
   kind: Schema.Literals(ADMINISTRATION_DISCOUNT_MUTATION_KINDS),
   createdDiscountId: Schema.NullOr(AdministrationStoredDiscountId),
   createdCodeId: Schema.NullOr(AdministrationDiscountCodeId),
-  createdVoucherId: Schema.NullOr(AdministrationVoucherId),
+  createdVoucherId: Schema.NullOr(AdministrationVoucherId).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
 });
 export type AdministrationDiscountMutationResult =
   typeof AdministrationDiscountMutationResult.Type;
@@ -1346,7 +1348,9 @@ export type AdministrationCalendarSale = typeof AdministrationCalendarSale.Type;
 export const AdministrationDiscountDashboard = Schema.Struct({
   discounts: Schema.Array(AdministrationDiscount),
   codes: Schema.Array(AdministrationDiscountCode),
-  vouchers: Schema.Array(AdministrationVoucher),
+  vouchers: Schema.Array(AdministrationVoucher).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed([]))
+  ),
   calendar: Schema.Struct({
     events: Schema.Array(AdministrationCalendarSale),
     unavailable: Schema.Boolean,
