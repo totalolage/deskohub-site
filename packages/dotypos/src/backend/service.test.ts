@@ -346,6 +346,82 @@ describe("DotyposService customer lookup", () => {
     expect(getHeader(searchCall, "Authorization")).toBe("Bearer access-token");
   });
 
+  test("single-flights concurrent token requests", async () => {
+    let releaseToken!: () => void;
+    const tokenGate = new Promise<void>((resolve) => {
+      releaseToken = resolve;
+    });
+    let tokenCalls = 0;
+    const fetchMock = mockDotyposFetch(async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        tokenCalls += 1;
+        if (tokenCalls === 2) releaseToken();
+        await Promise.race([
+          tokenGate,
+          new Promise((resolve) => setTimeout(resolve, 25)),
+        ]);
+        return tokenResponse();
+      }
+      if (url.pathname.startsWith("/clouds/cloud-id/customers/")) {
+        return Response.json(customer({ id: url.pathname.split("/").at(-1) }));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        yield* Effect.all(
+          [
+            dotypos.getCustomer(dotyposCustomerId("customer-1")),
+            dotypos.getCustomer(dotyposCustomerId("customer-2")),
+          ],
+          { concurrency: "unbounded" }
+        );
+      }),
+      fetchMock
+    );
+
+    expect(tokenCalls).toBe(1);
+  });
+
+  test("loads a customer set with one provider request", async () => {
+    const first = customer({ id: "customer-1" });
+    const second = customer({ id: "customer-2" });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [first, second] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        const customers = yield* dotypos.getCustomers([
+          dotyposCustomerId("customer-1"),
+          dotyposCustomerId("customer-2"),
+          dotyposCustomerId("customer-1"),
+        ]);
+        yield* dotypos.getCustomers([]);
+        return customers;
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([first, second]);
+    const customerCalls = fetchMock.mock.calls
+      .map((call) => new URL(getUrl(call as FetchCall)))
+      .filter(({ pathname }) => pathname === "/clouds/cloud-id/customers");
+    expect(customerCalls).toHaveLength(1);
+    expect(customerCalls[0]?.searchParams.get("filter")).toBe(
+      "id|in|customer-1,customer-2;deleted|in|0,1"
+    );
+  });
+
   test("accepts nullable customer tags", async () => {
     const matched = customer({
       id: "email-match",
@@ -1681,6 +1757,10 @@ describe("DotyposService reservation listing", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.listReservations({
+          ids: [
+            dotyposReservationId("reservation-1"),
+            dotyposReservationId("reservation-2"),
+          ],
           customerId: dotyposCustomerId("customer-id"),
           startsAtOrAfter: "2026-08-04T00:00:00+02:00",
           startsBefore: "2026-08-05T00:00:00+02:00",
@@ -1692,7 +1772,7 @@ describe("DotyposService reservation listing", () => {
 
     expect(requestedQueries).toHaveLength(1);
     expect(requestedQueries[0]?.get("filter")).toBe(
-      "_customerId|eq|customer-id;startDate|gteq|2026-08-04T00:00:00+02:00;startDate|lt|2026-08-05T00:00:00+02:00"
+      "id|in|reservation-1,reservation-2;_customerId|eq|customer-id;startDate|gteq|2026-08-04T00:00:00+02:00;startDate|lt|2026-08-05T00:00:00+02:00"
     );
     expect(requestedQueries[0]?.get("sort")).toBe("-startDate");
   });

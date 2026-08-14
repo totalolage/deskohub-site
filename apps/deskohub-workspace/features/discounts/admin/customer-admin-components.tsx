@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import Link from "next/link";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import type {
   AdministrationCustomerActivity,
   AdministrationCustomerMarketingConsent,

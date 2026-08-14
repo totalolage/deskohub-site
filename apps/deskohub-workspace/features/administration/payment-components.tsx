@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   getProviderOrderAbandonmentCutoff,
   getProviderOrderAbandonmentState,
@@ -12,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
+import { AdministrationLink as Link } from "./admin-link";
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";

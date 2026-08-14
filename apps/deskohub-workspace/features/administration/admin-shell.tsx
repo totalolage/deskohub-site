@@ -11,7 +11,6 @@ import {
   Ticket,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   type ComponentType,
@@ -31,6 +30,7 @@ import {
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
 import { cn } from "@/shared/utils";
+import { AdministrationLink as Link } from "./admin-link";
 import { AdministrationBreadcrumbLoading } from "./loading";
 
 type NavItem = {

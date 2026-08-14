@@ -3,7 +3,6 @@ import type {
   DotyposReservationId,
 } from "@deskohub/dotypos";
 import { ArrowRight } from "lucide-react";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { Button } from "@/shared/components/ui/button";
@@ -16,6 +15,7 @@ import {
   TableRow,
 } from "@/shared/components/ui/table";
 import { cn } from "@/shared/utils";
+import { AdministrationLink as Link } from "./admin-link";
 import type {
   AdministrationBookingSummary,
   AdministrationPaymentAttempt,

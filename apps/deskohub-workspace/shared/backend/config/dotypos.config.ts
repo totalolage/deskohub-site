@@ -3,7 +3,7 @@ import {
   DotyposRuntimeConfigSchema,
   DotyposService,
 } from "@deskohub/dotypos";
-import { Layer, Schema } from "effect";
+import { Layer, Schema, Scope } from "effect";
 import { env } from "@/env";
 
 export const DotyposRuntimeConfigLive = Layer.effect(
@@ -21,6 +21,13 @@ export const DotyposRuntimeConfigLive = Layer.effect(
   })
 );
 
-export const DotyposServiceLive = DotyposService.Default.pipe(
+const dotyposServiceLive = DotyposService.Default.pipe(
   Layer.provide(DotyposRuntimeConfigLive)
+);
+
+const processScope = Scope.makeUnsafe();
+const processMemoMap = Layer.makeMemoMapUnsafe();
+
+export const DotyposServiceLive = Layer.fromBuild(() =>
+  Layer.buildWithMemoMap(dotyposServiceLive, processMemoMap, processScope)
 );

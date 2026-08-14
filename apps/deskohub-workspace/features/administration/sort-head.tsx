@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import Link from "next/link";
 import type { MouseEventHandler, ReactNode } from "react";
 import { TableHead } from "@/shared/components/ui/table";
+import { AdministrationLink as Link } from "./admin-link";
 
 export type AdministrationSortDirection = false | "asc" | "desc";
 

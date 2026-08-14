@@ -36,6 +36,7 @@ import {
   sum,
 } from "drizzle-orm";
 import { Context, Effect, Layer, Option, Schema } from "effect";
+import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
@@ -442,6 +443,14 @@ const toCustomer = (
   };
 };
 
+const indexCustomersById = (customers: readonly DotyposCustomer[]) =>
+  new Map(
+    customers.flatMap((customer) => {
+      const id = Option.getOrUndefined(decodeDotyposCustomerId(customer.id));
+      return id ? [[id, customer] as const] : [];
+    })
+  );
+
 type SafePaymentAttemptRow = {
   readonly id: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
@@ -523,6 +532,32 @@ const getReservationDate = (startsAt: string) =>
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
+
+const isReservationInRange = (
+  reservation: DotyposReservation,
+  range: AdministrationReservationDateRange
+) => {
+  const date = getReservationDate(reservation.startDate);
+  return (!range.from || date >= range.from) && (!range.to || date <= range.to);
+};
+
+const countLinkedReservations = (input: {
+  readonly linkedReservationIds: ReadonlySet<DotyposReservationId>;
+  readonly range: AdministrationReservationDateRange;
+  readonly reservations: readonly DotyposReservation[];
+}) =>
+  new Set(
+    input.reservations.flatMap((reservation) => {
+      const id = Option.getOrUndefined(
+        decodeDotyposReservationId(reservation.id)
+      );
+      return id &&
+        input.linkedReservationIds.has(id) &&
+        isReservationInRange(reservation, input.range)
+        ? [id]
+        : [];
+    })
+  ).size;
 
 type LiveReservationDetails = {
   readonly reservation: DotyposReservation | null;
@@ -1191,12 +1226,13 @@ export class AdministrationService extends Context.Service<
               customer,
             })
           ),
-          Effect.catch((cause) =>
-            Effect.logWarning("Live customer details unavailable", {
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Live customer details unavailable", {
               cause,
               workspaceReservationId: row.id,
-            }).pipe(Effect.as({ reservation: null, customer: null } as const))
-          )
+            }).pipe(Effect.as({ reservation: null, customer: null } as const));
+          })
         );
 
         if (!row.dotyposReservationId) return loadCustomer;
@@ -1208,17 +1244,123 @@ export class AdministrationService extends Context.Service<
               reservation,
             })
           ),
-          Effect.catch((cause) =>
-            Effect.logWarning("Live booking details unavailable", {
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Live booking details unavailable", {
               cause,
               workspaceReservationId: row.id,
-            }).pipe(Effect.andThen(loadCustomer))
-          )
+            }).pipe(Effect.andThen(loadCustomer));
+          })
         );
       });
 
+      const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
+        function* (ids: readonly DotyposCustomerId[]) {
+          const uniqueIds = [...new Set(ids)];
+          const customers = yield* dotypos.getCustomers(uniqueIds).pipe(
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Batch customer details unavailable", {
+                cause,
+              }).pipe(Effect.as([] as const));
+            })
+          );
+          const customersById = indexCustomersById(customers);
+          const missingCustomers = yield* Effect.all(
+            uniqueIds
+              .filter((id) => !customersById.has(id))
+              .map((id) =>
+                dotypos.getCustomer(id).pipe(
+                  Effect.map((customer) => [id, customer] as const),
+                  Effect.catch((cause) => {
+                    unstable_rethrow(cause);
+                    return Effect.succeed(null);
+                  })
+                )
+              ),
+            { concurrency: 5 }
+          );
+          for (const customer of missingCustomers) {
+            if (customer) customersById.set(...customer);
+          }
+          return customersById;
+        }
+      );
+
+      const loadLiveReservations = Effect.fn(
+        "AdministrationService.loadLiveReservations"
+      )(function* (
+        rows: readonly SafeReservationRow[],
+        knownReservations?: ReadonlyMap<
+          DotyposReservationId,
+          DotyposReservation
+        >
+      ) {
+        const missingReservationIds = rows.flatMap((row) =>
+          row.dotyposReservationId &&
+          !knownReservations?.has(row.dotyposReservationId)
+            ? [row.dotyposReservationId]
+            : []
+        );
+        const reservations = yield* dotypos
+          .listReservations({ ids: missingReservationIds })
+          .pipe(
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Live booking details unavailable", {
+                cause,
+              }).pipe(Effect.as([] as const));
+            })
+          );
+        const reservationsById = new Map(knownReservations);
+        for (const reservation of reservations) {
+          const id = Option.getOrUndefined(
+            decodeDotyposReservationId(reservation.id)
+          );
+          if (id) reservationsById.set(id, reservation);
+        }
+        const customerIds = [
+          ...new Set(
+            rows.map((row) => {
+              const reservation = row.dotyposReservationId
+                ? reservationsById.get(row.dotyposReservationId)
+                : undefined;
+              return (
+                Option.getOrUndefined(
+                  decodeDotyposCustomerId(reservation?._customerId)
+                ) ?? row.dotyposCustomerId
+              );
+            })
+          ),
+        ];
+        const customersById = yield* loadCustomers(customerIds);
+
+        return rows.map((row) => {
+          const reservation = row.dotyposReservationId
+            ? (reservationsById.get(row.dotyposReservationId) ?? null)
+            : null;
+          const customerId =
+            Option.getOrUndefined(
+              decodeDotyposCustomerId(reservation?._customerId)
+            ) ?? row.dotyposCustomerId;
+          return {
+            live: {
+              reservation,
+              customer: customersById.get(customerId) ?? null,
+            },
+            row,
+          };
+        });
+      });
+
       const enrichRows = Effect.fn("AdministrationService.enrichRows")(
-        function* (rows: readonly SafeReservationRow[]) {
+        function* (
+          rows: readonly SafeReservationRow[],
+          knownReservations?: ReadonlyMap<
+            DotyposReservationId,
+            DotyposReservation
+          >
+        ) {
           if (rows.length === 0) return [];
           const { attemptRows, latePaymentRows, liveRows, recoveryRows } =
             yield* Effect.all(
@@ -1251,14 +1393,7 @@ export class AdministrationService extends Context.Service<
                     )
                   )
                   .orderBy(asc(latePaymentRecoveries.createdAt)),
-                liveRows: Effect.all(
-                  rows.map((row) =>
-                    loadLiveReservation(row).pipe(
-                      Effect.map((live) => ({ live, row }))
-                    )
-                  ),
-                  { concurrency: 5 }
-                ),
+                liveRows: loadLiveReservations(rows, knownReservations),
               },
               { concurrency: 3 }
             );
@@ -1298,11 +1433,12 @@ export class AdministrationService extends Context.Service<
 
       const loadBookingTables = () =>
         dotypos.getTables().pipe(
-          Effect.catch((cause) =>
-            Effect.logWarning("Booking table details unavailable", {
+          Effect.catch((cause) => {
+            unstable_rethrow(cause);
+            return Effect.logWarning("Booking table details unavailable", {
               cause,
-            }).pipe(Effect.as([] as const))
-          )
+            }).pipe(Effect.as([] as const));
+          })
         );
 
       const loadReservationRangeMap = (
@@ -1328,12 +1464,13 @@ export class AdministrationService extends Context.Service<
                   })
                 )
             ),
-            Effect.catch((cause) =>
-              Effect.logWarning("Reservation date filter unavailable", {
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Reservation date filter unavailable", {
                 cause,
                 ...range,
-              }).pipe(Effect.as(null))
-            )
+              }).pipe(Effect.as(null));
+            })
           );
       };
 
@@ -1371,53 +1508,13 @@ export class AdministrationService extends Context.Service<
                 return reservationId ? [reservationId] : [];
               })
             ),
-            Effect.catch((cause) =>
-              Effect.logWarning("Reservation date sorting unavailable", {
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Reservation date sorting unavailable", {
                 cause,
-              }).pipe(Effect.as(null))
-            )
-          );
-      });
-
-      const loadReservationPeriodCount = Effect.fn(
-        "AdministrationService.loadReservationPeriodCount"
-      )(function* (input: {
-        readonly range: ReturnType<
-          typeof getAdministrationOverviewDateRanges
-        >["today"];
-        readonly linkedReservationIds: ReadonlySet<DotyposReservationId>;
-      }) {
-        const reservations = yield* dotypos
-          .listReservations({
-            ...getInclusiveDateRangeBounds(input.range),
-            order: "startDateAscending",
-          })
-          .pipe(
-            Effect.map((items) => ({ kind: "available" as const, items })),
-            Effect.catch((cause) =>
-              Effect.logWarning("Reservation overview period unavailable", {
-                cause,
-                ...input.range,
-              }).pipe(Effect.as({ kind: "unavailable" as const }))
-            )
-          );
-        if (reservations.kind === "unavailable") {
-          return { unavailable: true, value: 0 };
-        }
-        return {
-          unavailable: false,
-          value: new Set(
-            reservations.items.flatMap(({ id }) => {
-              const reservationId = Option.getOrUndefined(
-                decodeDotyposReservationId(id)
-              );
-              return reservationId &&
-                input.linkedReservationIds.has(reservationId)
-                ? [reservationId]
-                : [];
+              }).pipe(Effect.as(null));
             })
-          ).size,
-        };
+          );
       });
 
       const listReservations = Effect.fn(
@@ -1508,7 +1605,7 @@ export class AdministrationService extends Context.Service<
             .offset(pagination.offset);
         }
         return {
-          items: yield* enrichRows(rows),
+          items: yield* enrichRows(rows, dateReservations ?? undefined),
           page: pagination.page,
           pageCount: pagination.pageCount,
           total,
@@ -1967,26 +2064,19 @@ export class AdministrationService extends Context.Service<
             pagination.offset + bookingPageSize
           );
           const bookingIds = pageBookings.map(({ id }) => id);
-          const { customers, rows, tables } = yield* Effect.all(
+          const customerIds = [
+            ...new Set(
+              pageBookings.flatMap((booking) => {
+                const customerId = Option.getOrUndefined(
+                  decodeDotyposCustomerId(booking._customerId)
+                );
+                return customerId ? [customerId] : [];
+              })
+            ),
+          ];
+          const { customersById, rows, tables } = yield* Effect.all(
             {
-              customers: Effect.all(
-                pageBookings.map((booking) => {
-                  const customerId = Option.getOrUndefined(
-                    decodeDotyposCustomerId(booking._customerId)
-                  );
-                  return customerId
-                    ? dotypos.getCustomer(customerId).pipe(
-                        Effect.map(
-                          (customer) => [booking.id, customer] as const
-                        ),
-                        Effect.catch(() =>
-                          Effect.succeed([booking.id, null] as const)
-                        )
-                      )
-                    : Effect.succeed([booking.id, null] as const);
-                }),
-                { concurrency: 5 }
-              ),
+              customersById: loadCustomers(customerIds),
               rows:
                 bookingIds.length > 0
                   ? db
@@ -2003,7 +2093,6 @@ export class AdministrationService extends Context.Service<
             },
             { concurrency: 3 }
           );
-          const customersByBookingId = new Map(customers);
           const rowsByBookingId = new Map(
             rows.flatMap((row) =>
               row.dotyposReservationId
@@ -2024,7 +2113,14 @@ export class AdministrationService extends Context.Service<
             items: pageBookings.map((booking) =>
               toBookingSummary({
                 booking,
-                customer: customersByBookingId.get(booking.id) ?? null,
+                customer: Option.match(
+                  decodeDotyposCustomerId(booking._customerId),
+                  {
+                    onNone: () => null,
+                    onSome: (customerId) =>
+                      customersById.get(customerId) ?? null,
+                  }
+                ),
                 row: rowsByBookingId.get(booking.id) ?? null,
                 table: Option.match(decodeDotyposTableId(booking._tableId), {
                   onNone: () => null,
@@ -2161,23 +2257,20 @@ export class AdministrationService extends Context.Service<
             .orderBy(desc(max(workspaceReservations.updatedAt)))
             .limit(customerPageSize)
             .offset(pagination.offset);
-          const items = yield* Effect.all(
-            rows.map((row) =>
-              dotypos.getCustomer(row.customerId).pipe(
-                Effect.map((customer) => toCustomer(customer, row.customerId)),
-                Effect.catch(() => Effect.succeed(null)),
-                Effect.map((customer) => ({
-                  customer,
-                  customerId: row.customerId,
-                  reservationCount: Number(row.reservationCount),
-                  lastActivityAt: row.lastActivityAt
-                    ? toIsoString(row.lastActivityAt)
-                    : Temporal.Instant.fromEpochMilliseconds(0).toString(),
-                }))
-              )
-            ),
-            { concurrency: 5 }
+          const customersById = yield* loadCustomers(
+            rows.map(({ customerId }) => customerId)
           );
+          const items = rows.map((row) => {
+            const customer = customersById.get(row.customerId);
+            return {
+              customer: customer ? toCustomer(customer, row.customerId) : null,
+              customerId: row.customerId,
+              reservationCount: Number(row.reservationCount),
+              lastActivityAt: row.lastActivityAt
+                ? toIsoString(row.lastActivityAt)
+                : Temporal.Instant.fromEpochMilliseconds(0).toString(),
+            };
+          });
           return {
             items,
             page: pagination.page,
@@ -2437,23 +2530,45 @@ export class AdministrationService extends Context.Service<
           const linkedReservationIds = new Set(
             linkedRows.flatMap(({ id }) => (id ? [id] : []))
           );
-          const { lastSevenDays, today, upcoming } = yield* Effect.all(
-            {
-              today: loadReservationPeriodCount({
-                range: ranges.today,
-                linkedReservationIds,
-              }),
-              upcoming: loadReservationPeriodCount({
-                range: ranges.upcoming,
-                linkedReservationIds,
-              }),
-              lastSevenDays: loadReservationPeriodCount({
-                range: ranges.lastSevenDays,
-                linkedReservationIds,
-              }),
-            },
-            { concurrency: 3 }
-          );
+          const overviewRange = {
+            from: ranges.lastSevenDays.from,
+            to: ranges.upcoming.to,
+          };
+          const reservations = yield* dotypos
+            .listReservations({
+              ...getInclusiveDateRangeBounds(overviewRange),
+              order: "startDateAscending",
+            })
+            .pipe(
+              Effect.map((items) => ({ kind: "available" as const, items })),
+              Effect.catch((cause) => {
+                unstable_rethrow(cause);
+                return Effect.logWarning("Reservation overview unavailable", {
+                  cause,
+                  ...overviewRange,
+                }).pipe(Effect.as({ kind: "unavailable" as const }));
+              })
+            );
+          if (reservations.kind === "unavailable") {
+            const unavailable = { unavailable: true, value: 0 } as const;
+            return {
+              ranges,
+              today: unavailable,
+              upcoming: unavailable,
+              lastSevenDays: unavailable,
+            };
+          }
+          const getMetric = (range: AdministrationReservationDateRange) => ({
+            unavailable: false,
+            value: countLinkedReservations({
+              linkedReservationIds,
+              range,
+              reservations: reservations.items,
+            }),
+          });
+          const today = getMetric(ranges.today);
+          const upcoming = getMetric(ranges.upcoming);
+          const lastSevenDays = getMetric(ranges.lastSevenDays);
           return { ranges, today, upcoming, lastSevenDays };
         }
       );

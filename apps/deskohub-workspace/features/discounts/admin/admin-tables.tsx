@@ -16,7 +16,6 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   type FormEvent,
@@ -26,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { AdministrationSortHead } from "@/features/administration/sort-head";
 import { AdministrationStatusBadge } from "@/features/administration/status-badge";
