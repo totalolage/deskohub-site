@@ -23,7 +23,7 @@ export const getCoworkTierAdvertisedPriceRequests = ({
 }): ReadonlyArray<CoworkAdvertisedPriceRequest> =>
   workspaceCoworkProductTiers.map((tier) => ({
     locale,
-    submittedCode,
+    ...(submittedCode && { submittedCode }),
     reservation: getCoworkAdvertisedPriceReservation({
       entryTier: tier,
       coffee,
@@ -43,7 +43,7 @@ export const getCoworkCoffeeAdvertisedPriceRequest = ({
   readonly tier: WorkspaceCoworkProductTier;
 }): AdvertisedPriceRequest => ({
   locale,
-  submittedCode,
+  ...(submittedCode && { submittedCode }),
   reservation: getCoworkAdvertisedPriceReservation({
     entryTier: tier,
     coffee: true,

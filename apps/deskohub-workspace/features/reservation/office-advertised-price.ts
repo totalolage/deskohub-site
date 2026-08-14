@@ -17,7 +17,9 @@ export const getOfficeAdvertisedPriceRequest = (
   }
 ): OfficeAdvertisedPriceRequest => ({
   locale: reservation.locale,
-  submittedCode: reservation.submittedCode,
+  ...(reservation.submittedCode && {
+    submittedCode: reservation.submittedCode,
+  }),
   reservation: getOfficeAdvertisedPriceReservation(reservation),
 });
 

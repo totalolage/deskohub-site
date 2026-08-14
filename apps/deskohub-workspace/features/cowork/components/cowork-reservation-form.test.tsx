@@ -259,6 +259,15 @@ describe("CoworkReservationForm advertised pricing", () => {
       plus: plusAdvertisedPriceResponse,
       profi: profiAdvertisedPriceResponse,
     } as const;
+    const requests = getCoworkTierAdvertisedPriceRequests({
+      coffee: true,
+      date: "2099-07-30",
+      locale: "en-US",
+    });
+
+    expect(requests.every((request) => !("submittedCode" in request))).toBe(
+      true
+    );
 
     const view = renderForm({
       initialValues: {
@@ -266,11 +275,7 @@ describe("CoworkReservationForm advertised pricing", () => {
         coffee: true,
         date: "2099-07-30",
       },
-      initialAdvertisedPrices: getCoworkTierAdvertisedPriceRequests({
-        coffee: true,
-        date: "2099-07-30",
-        locale: "en-US",
-      }).map((request) => ({
+      initialAdvertisedPrices: requests.map((request) => ({
         request,
         advertisedPrice:
           advertisedPrices[request.reservation.details.entryTier],

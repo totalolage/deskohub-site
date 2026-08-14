@@ -29,7 +29,7 @@ export const getMeetingRoomDurationAdvertisedPriceRequests = ({
     Option.map((reservationDate) =>
       meetingRoomReservationDurations.map((duration) => ({
         locale,
-        submittedCode,
+        ...(submittedCode && { submittedCode }),
         reservation: {
           kind: "meeting-room" as const,
           details: {
