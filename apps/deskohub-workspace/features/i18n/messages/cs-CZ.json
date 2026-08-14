@@ -17,8 +17,6 @@
   "landingCarouselOpenCurrentPhoto": "Otevřít fotku {number} v galerii",
   "landingCarouselShowPhoto": "Zobrazit fotku {number}",
   "landingCarouselShowImage": "Zobrazit obrázek {number}",
-  "landingCarouselPause": "Pozastavit galerii",
-  "landingCarouselPlay": "Spustit galerii",
   "landingCarouselImageAlt": "Fotka Deskohub Workspace {number}",
   "galleryImageFallbackAlt": "Fotka z galerie Deskohub Workspace {number}",
   "galleryOpenImage": "Otevřít obrázek v galerii",

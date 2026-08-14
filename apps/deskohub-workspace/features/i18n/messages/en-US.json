@@ -17,8 +17,6 @@
   "landingCarouselOpenCurrentPhoto": "Open carousel photo {number} in the lightbox",
   "landingCarouselShowPhoto": "Show carousel photo {number}",
   "landingCarouselShowImage": "Show carousel image {number}",
-  "landingCarouselPause": "Pause carousel",
-  "landingCarouselPlay": "Play carousel",
   "landingCarouselImageAlt": "Deskohub Workspace photo {number}",
   "galleryImageFallbackAlt": "Deskohub Workspace gallery photo {number}",
   "galleryOpenImage": "Open image in lightbox",
