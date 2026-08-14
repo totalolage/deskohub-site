@@ -45,6 +45,8 @@ An existing reservation with a pending or completed payment is never silently ca
 
 Every unpaid hold has its own expiry. Expired or abandoned holds are cancelled, with periodic recovery for work that was delayed or failed. A cancellation problem remains visible for operator recovery and must not be presented as a completed cancellation.
 
+Nexi does not publish an expiry guarantee for the current card payment page. Once Nexi has accepted a payment-page order, Workspace therefore keeps the reservation held for a 30-minute local abandonment window. At the end of that window, Workspace may expire and cancel the reservation only after a fresh Nexi lookup reports no operations and no authorized or captured amount. Any provider operation keeps the reservation held for payment reconciliation or operator attention.
+
 Meeting-room checkout remains eligible after its start time while its exclusive end has not passed. A customer may not begin a new payment after the reserved period has ended.
 
 ## Payment and fulfillment
@@ -52,6 +54,8 @@ Meeting-room checkout remains eligible after its start time while its exclusive 
 A positive payable amount uses the external payment flow. A total of exactly zero completes internally without contacting the payment provider. Both paths preserve the same accepted-price, discount-evidence, reservation, and fulfillment guarantees.
 
 Payment notifications are triggers, not sole proof. Workspace confirms the current payment facts before changing a reservation to paid. A duplicate notification must not repeat payment, redemption, confirmation, or delivery work.
+
+A payment that settles after Workspace has expired its local attempt starts durable recovery. Workspace reuses the original hold only after verifying it remains active at the provider; otherwise it recreates the exact accepted reservation only when the interval has not ended, no newer checkout reservation exists, and current capacity is available. Successful recovery atomically re-redeems any released discount-code claim and continues normal paid fulfillment. An unavailable, superseded, or unreconstructable reservation atomically marks the paid Nexi attempt as requiring a refund, using the same refund-work state as operator cancellation, while an ambiguous provider state requires operator review.
 
 After payment succeeds, Workspace confirms the reservation and sends a customer confirmation containing a protected link to the dedicated reservation access page. The email never contains the door PIN. A paid reservation remains paid if confirmation is delayed or fails; the outstanding work is retried or surfaced for operator recovery. In production, required customer delivery is complete only after delivery is confirmed.
 

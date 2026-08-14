@@ -12,6 +12,7 @@ import {
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import type { PaymentAttemptState } from "@/db/schema";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -29,6 +30,7 @@ import {
   WorkspacePaidFulfillmentService,
   WorkspacePaidFulfillmentServiceLiveWithDependencies,
 } from "../fulfillment/paid-fulfillment.service";
+import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import {
   isNexiPaymentAttempt,
   PaymentAttemptRepository,
@@ -40,6 +42,7 @@ import {
   WebhookEventRepository,
   WebhookEventRepositoryLive,
 } from "../repositories/webhook-event.repository";
+import { LatePaymentRecoveryQueueService } from "./late-payment-recovery-queue.service";
 import { getNexiCurrencyOverride } from "./nexi-currency";
 
 type NexiWebhookFailureCode =
@@ -49,6 +52,8 @@ type NexiWebhookFailureCode =
   | "nexi_webhook_invalid_currency"
   | "nexi_webhook_verification_failed"
   | "nexi_webhook_verification_mismatch"
+  | "nexi_webhook_late_payment"
+  | "nexi_webhook_late_payment_recovery_failed"
   | "nexi_webhook_transition_failed"
   | "nexi_webhook_fulfillment_failed";
 
@@ -138,6 +143,8 @@ export const NexiWebhookServiceLive = Layer.effect(
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
     const posthogEvents = yield* PostHogEventService;
+    const latePaymentRecoveries = yield* LatePaymentRecoveryRepository;
+    const latePaymentRecoveryQueue = yield* LatePaymentRecoveryQueueService;
 
     return NexiWebhookService.of({
       processNotification: Effect.fn("nexiWebhook.processNotification")(
@@ -437,7 +444,60 @@ export const NexiWebhookServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ providerMetadata });
           yield* Effect.logDebug("Nexi webhook provider metadata resolved");
 
-          if (verification.status === "success") {
+          if (
+            verification.status === "success" &&
+            isTerminalPaymentAttemptState(attempt.state)
+          ) {
+            yield* Effect.logWarning(
+              "Nexi payment settled after the local payment attempt became terminal",
+              {
+                eventId,
+                paymentAttemptId: attempt.id,
+                paymentAttemptState: attempt.state,
+                providerOrderId,
+                reservationId: reservation.id,
+              }
+            );
+            yield* latePaymentRecoveries
+              .start({
+                paymentAttemptId: attempt.id,
+                workspaceReservationId: reservation.id,
+                webhookEventId: eventId,
+                providerOperationId,
+                providerStatus,
+                verifiedPaidAt: Temporal.Now.instant(),
+              })
+              .pipe(
+                Effect.andThen(
+                  latePaymentRecoveryQueue.enqueue({
+                    paymentAttemptId: attempt.id,
+                  })
+                ),
+                Effect.mapError(
+                  (cause) =>
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_late_payment_recovery_failed",
+                      eventId,
+                      orderId: providerOrderId,
+                      message:
+                        "Nexi late-payment recovery could not be started.",
+                      cause,
+                    })
+                ),
+                Effect.catch((error) =>
+                  failAfterMarkingEvent(
+                    webhookEvents,
+                    { type: "eventId", eventId },
+                    error
+                  )
+                )
+              );
+          }
+
+          if (
+            verification.status === "success" &&
+            !isTerminalPaymentAttemptState(attempt.state)
+          ) {
             yield* Effect.logInfo("Nexi webhook paid transition started");
 
             const transition = yield* paymentLifecycle.markPaid({
@@ -576,11 +636,16 @@ export const NexiWebhookServiceLive = Layer.effect(
   })
 );
 
+const isTerminalPaymentAttemptState = (state: PaymentAttemptState) =>
+  state === "failed" || state === "cancelled" || state === "expired";
+
 export const NexiWebhookServiceLiveWithDependencies =
   NexiWebhookServiceLive.pipe(
     Layer.provide(WebhookEventRepositoryLive),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(PaymentLifecycleRepository.Live),
+    Layer.provide(LatePaymentRecoveryRepository.Live),
+    Layer.provide(LatePaymentRecoveryQueueService.Live),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),

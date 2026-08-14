@@ -45,7 +45,15 @@ export type AdministrationReservationStatus = {
 
 export type ReservationStatusInput = {
   readonly dotyposStatus?: "NEW" | "CONFIRMED" | "CANCELLED";
+  readonly failureCode?: string | null;
   readonly fulfillmentState: FulfillmentState;
+  readonly latePayment?: boolean;
+  readonly latePaymentRecovery?:
+    | "pending"
+    | "processing"
+    | "recovered"
+    | "refund_required"
+    | "review_required";
   readonly paymentState: PaymentState;
   readonly reservationState: ReservationState;
 };
@@ -70,6 +78,34 @@ export type AdministrationReservationLifecycle = {
 export const getAdministrationReservationLifecycle = (
   input: ReservationStatusInput
 ): AdministrationReservationLifecycle => {
+  if (
+    input.latePaymentRecovery === "pending" ||
+    input.latePaymentRecovery === "processing"
+  ) {
+    return {
+      currentStage:
+        input.reservationState === "cancelled" ? "cancelled" : "held",
+      label: "Late payment recovery in progress",
+      reachedStages: ["started", "held"],
+      tone: "attention",
+    };
+  }
+  if (input.latePaymentRecovery === "review_required") {
+    return {
+      currentStage: "cancelled",
+      label: "Late payment recovery needs review",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "attention",
+    };
+  }
+  if (input.latePayment && input.reservationState === "cancelled") {
+    return {
+      currentStage: "cancelled",
+      label: "Late payment — refund required",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "attention",
+    };
+  }
   if (input.reservationState === "cancellation_failed") {
     return {
       currentStage: "cancellation_failed",
@@ -81,7 +117,10 @@ export const getAdministrationReservationLifecycle = (
   if (input.reservationState === "cancelled") {
     return {
       currentStage: "cancelled",
-      label: "Reservation cancelled",
+      label:
+        input.failureCode === "payment_abandoned_after_provider_cutoff"
+          ? "Payment abandoned; hold released"
+          : "Reservation cancelled",
       reachedStages: ["started", "held", "cancelled"],
       tone: "neutral",
     };
@@ -140,6 +179,14 @@ export const getAdministrationReservationLifecycle = (
     };
   }
   if (input.reservationState === "held") {
+    if (input.failureCode === "payment_outcome_unconfirmed_before_cleanup") {
+      return {
+        currentStage: "held",
+        label: "Payment needs review",
+        reachedStages: ["started", "held"],
+        tone: "attention",
+      };
+    }
     const paymentIssue =
       input.paymentState === "failed" || input.paymentState === "expired";
     return {
@@ -167,11 +214,29 @@ export const getAdministrationReservationLifecycle = (
 export const getAdministrationReservationStatus = (
   input: ReservationStatusInput
 ): AdministrationReservationStatus => {
+  if (
+    input.latePaymentRecovery === "pending" ||
+    input.latePaymentRecovery === "processing"
+  ) {
+    return { group: "attention", label: "Recovering payment" };
+  }
+  if (input.latePaymentRecovery === "review_required") {
+    return { group: "attention", label: "Recovery review" };
+  }
+  if (input.latePayment) {
+    return { group: "attention", label: "Refund required" };
+  }
   if (input.reservationState === "cancellation_failed") {
     return { group: "attention", label: "Cancellation issue" };
   }
   if (input.reservationState === "cancelled") {
-    return { group: "cancelled", label: "Cancelled" };
+    return {
+      group: "cancelled",
+      label:
+        input.failureCode === "payment_abandoned_after_provider_cutoff"
+          ? "Abandoned"
+          : "Cancelled",
+    };
   }
   if (input.fulfillmentState === "failed") {
     return { group: "attention", label: "Confirmation issue" };

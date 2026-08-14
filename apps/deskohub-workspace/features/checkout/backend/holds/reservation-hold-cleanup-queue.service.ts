@@ -235,7 +235,7 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
   }
 
   const outcome = yield* cleanup
-    .cancelOrderHold({ orderId: payload.orderId, holdExpiredAt: now })
+    .cancelOrderHold({ orderId: payload.orderId, checkedAt: now })
     .pipe(
       Effect.mapError(
         ReservationHoldCleanupScheduleError.fromError(
@@ -243,6 +243,17 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
         )
       )
     );
+
+  if (outcome === "deferred") {
+    yield* Effect.logInfo(
+      "Reservation hold cleanup queue message deferred until provider cutoff",
+      { payload }
+    );
+    return yield* new ReservationHoldCleanupScheduleError({
+      message:
+        "Reservation hold cleanup is waiting for the provider abandonment cutoff.",
+    });
+  }
 
   return outcome satisfies ReservationHoldCleanupOutcome;
 });

@@ -8,11 +8,69 @@ import type { CheckoutRow } from "../types";
 import {
   assertDiscountApplications,
   assertInternalDiscountApplications,
+  assertLatePaymentRecoveryOutcome,
   assertLegalEvidenceRows,
   getProviderSessionRowDiagnosticCode,
   replayNexiWebhook,
   waitForProviderSessionRowAfterRedirect,
 } from "./database";
+
+test("accepts a recreated late-payment recovery", async () => {
+  await Effect.runPromise(
+    assertLatePaymentRecoveryOutcome(
+      {
+        checkoutRow: {
+          dotypos_reservation_id: "replacement-reservation",
+          failure_code: null,
+          fulfillment_state: "processing",
+          payment_attempt_state: "paid",
+          payment_state: "paid",
+          reservation_state: "confirmed",
+          webhook_state: "processed",
+        } as CheckoutRow,
+        recovery: {
+          completedAt: {} as never,
+          failureCode: null,
+          originalDotyposReservationId: "original-reservation",
+          recoveredDotyposReservationId: "replacement-reservation",
+          state: "recovered",
+        } as never,
+      },
+      "original-reservation" as never,
+      { state: "recovered" }
+    )
+  );
+});
+
+test("accepts a refund-required late-payment recovery", async () => {
+  await Effect.runPromise(
+    assertLatePaymentRecoveryOutcome(
+      {
+        checkoutRow: {
+          dotypos_reservation_id: "original-reservation",
+          failure_code: "late_payment_snapshot_unavailable",
+          fulfillment_state: "not_started",
+          payment_attempt_state: "paid",
+          payment_state: "paid",
+          reservation_state: "cancelled",
+          webhook_state: "processed",
+        } as CheckoutRow,
+        recovery: {
+          completedAt: {} as never,
+          failureCode: "late_payment_snapshot_unavailable",
+          originalDotyposReservationId: "original-reservation",
+          recoveredDotyposReservationId: null,
+          state: "refund_required",
+        } as never,
+      },
+      "original-reservation" as never,
+      {
+        state: "refund_required",
+        failureCode: "late_payment_snapshot_unavailable",
+      }
+    )
+  );
+});
 
 test("accepts reservation terms evidence from payment submission", () => {
   const row = (document_key: string, source: string, accepted = true) => ({

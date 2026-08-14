@@ -111,6 +111,44 @@ describe("administration reservation status", () => {
       label: "Cancellation issue",
     });
   });
+
+  test("labels a locally abandoned payment instead of a generic cancellation", () => {
+    expect(
+      getAdministrationReservationStatus({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toEqual({ group: "cancelled", label: "Abandoned" });
+  });
+
+  test("prioritizes a late payment requiring refund in the primary status", () => {
+    expect(
+      getAdministrationReservationStatus({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toEqual({ group: "attention", label: "Refund required" });
+  });
+
+  test.each([
+    ["pending", "Recovering payment"],
+    ["processing", "Recovering payment"],
+    ["review_required", "Recovery review"],
+  ] as const)("flags %s late-payment recovery", (latePaymentRecovery, label) => {
+    expect(
+      getAdministrationReservationStatus({
+        fulfillmentState: "not_started",
+        latePaymentRecovery,
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toEqual({ group: "attention", label });
+  });
 });
 
 describe("administration reservation lifecycle", () => {
@@ -190,6 +228,83 @@ describe("administration reservation lifecycle", () => {
       label: "Payment expired",
       reachedStages: ["started", "held"],
       tone: "attention",
+    });
+  });
+
+  test("flags unconfirmed provider activity while keeping the hold", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        failureCode: "payment_outcome_unconfirmed_before_cleanup",
+        fulfillmentState: "not_started",
+        paymentState: "pending",
+        reservationState: "held",
+      })
+    ).toEqual({
+      currentStage: "held",
+      label: "Payment needs review",
+      reachedStages: ["started", "held"],
+      tone: "attention",
+    });
+  });
+
+  test("shows abandonment as a completed local release", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toMatchObject({
+      currentStage: "cancelled",
+      label: "Payment abandoned; hold released",
+      tone: "neutral",
+    });
+  });
+
+  test("prioritizes a late payment requiring refund over the released hold", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        failureCode: "payment_abandoned_after_provider_cutoff",
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toMatchObject({
+      currentStage: "cancelled",
+      label: "Late payment — refund required",
+      tone: "attention",
+    });
+  });
+
+  test("shows queued late-payment recovery before the refund fallback", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePaymentRecovery: "processing",
+        paymentState: "expired",
+        reservationState: "cancelled",
+      })
+    ).toMatchObject({
+      label: "Late payment recovery in progress",
+      tone: "attention",
+    });
+  });
+
+  test("keeps an active retry held when an older attempt settles late", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        latePayment: true,
+        paymentState: "pending",
+        reservationState: "held",
+      })
+    ).toEqual({
+      currentStage: "held",
+      label: "Awaiting payment",
+      reachedStages: ["started", "held"],
+      tone: "neutral",
     });
   });
 

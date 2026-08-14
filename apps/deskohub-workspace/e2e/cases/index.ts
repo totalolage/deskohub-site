@@ -29,6 +29,10 @@ import {
   type DiscountAvailabilityE2EPreparation,
   makeDiscountE2ECases,
 } from "./discounts";
+import {
+  executeLatePaymentRecovery,
+  latePaymentRecoveryScenarios,
+} from "./late-payment-recovery";
 import { assertLocaleSwitcher } from "./locale";
 import {
   type MeetingRoomE2EPreparation,
@@ -80,7 +84,10 @@ export const makeWorkspaceE2ECases = ({
       const terminalScenarios = getPaymentTerminalScenarios();
       const checkoutDates = yield* selectCoworkDates(
         discountPreparation.availableBasicDates,
-        checkoutFlows.length + terminalScenarios.length + 2,
+        checkoutFlows.length +
+          terminalScenarios.length +
+          latePaymentRecoveryScenarios.length +
+          2,
         {
           allocation,
           maximumReservationsPerDate:
@@ -146,6 +153,35 @@ export const makeWorkspaceE2ECases = ({
             ),
           id: `payment-${scenario.state}`,
           timeoutMs: config.timeouts.paymentTerminalCase,
+        });
+      }
+
+      for (const scenario of latePaymentRecoveryScenarios) {
+        const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
+        const data = makeCoworkCheckoutData(config.baseUrl, date, scenario.id);
+        nextDateIndex += 1;
+        const state = trackCheckoutState(flowStates, data);
+        cases.push({
+          checkoutStates: [state],
+          execute: ({ runStep, session }) =>
+            executeLatePaymentRecovery({
+              config,
+              data,
+              datasourceConfig,
+              run,
+              runStep,
+              scenario,
+              session,
+              state,
+              submitReservationScript: getSubmitCoworkReservationScript(data),
+            }).pipe(
+              Effect.provideService(HttpClient.HttpClient, httpClient),
+              Effect.mapError((cause) =>
+                toWorkspaceE2EError(`run ${scenario.id} e2e case`, cause)
+              )
+            ),
+          id: scenario.id,
+          timeoutMs: config.timeouts.checkoutCase * 2,
         });
       }
 

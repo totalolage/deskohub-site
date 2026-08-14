@@ -34,6 +34,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(schemaIndex).toContain("./workspace-reservations");
     expect(schemaIndex).toContain("./customer-marketing-consents");
     expect(schemaIndex).toContain("./payment-attempts");
+    expect(schemaIndex).toContain("./late-payment-recoveries");
     expect(schemaIndex).toContain("./webhook-events");
     expect(schemaIndex).toContain("./legal-evidence-events");
     expect(schemaIndex).toContain("./discounts");
@@ -101,6 +102,15 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(invoiceMigration).toContain(
       'DROP COLUMN IF EXISTS "schema_version"'
     );
+  });
+
+  test("late-payment recovery stores identifiers and state without customer data", async () => {
+    const schema = await readAppFile("db/schema/late-payment-recoveries.ts");
+    expect(schema).not.toContain("jsonb(");
+    expect(schema).not.toContain("bytea(");
+    for (const fragment of piiColumnFragments) {
+      expect(schema.toLowerCase()).not.toContain(`"${fragment}"`);
+    }
   });
 
   test("issued invoices remain ciphertext-only, immutable, and source-bound", async () => {
@@ -216,33 +226,55 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
-  test("follows the corrected migration head before issuing invoices", async () => {
-    const [discountJson, invoiceJson, deliveryJson, accessJson, purposeJson] =
-      await Promise.all([
-        readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
-        readAppFile(
-          "db/migrations/20260811173859_issued_invoices/snapshot.json"
-        ),
-        readAppFile(
-          "db/migrations/20260812144849_married_may_parker/snapshot.json"
-        ),
-        readAppFile(
-          "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
-        ),
-        readAppFile(
-          "db/migrations/20260813150734_optimal_sugar_man/snapshot.json"
-        ),
-      ]);
+  test("follows the corrected migration heads through late-payment recovery", async () => {
+    const [
+      discountJson,
+      invoiceJson,
+      deliveryJson,
+      accessJson,
+      purposeJson,
+      reconciliationJson,
+      reconciliationSql,
+    ] = await Promise.all([
+      readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
+      readAppFile("db/migrations/20260811173859_issued_invoices/snapshot.json"),
+      readAppFile(
+        "db/migrations/20260812144849_married_may_parker/snapshot.json"
+      ),
+      readAppFile(
+        "db/migrations/20260813084941_reservation_access_grants/snapshot.json"
+      ),
+      readAppFile(
+        "db/migrations/20260813150734_optimal_sugar_man/snapshot.json"
+      ),
+      readAppFile(
+        "db/migrations/20260813153209_reconcile_late_payment_recovery/snapshot.json"
+      ),
+      readAppFile(
+        "db/migrations/20260813153209_reconcile_late_payment_recovery/migration.sql"
+      ),
+    ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
     const deliverySnapshot = parseMigrationSnapshot(deliveryJson);
     const accessSnapshot = parseMigrationSnapshot(accessJson);
     const purposeSnapshot = parseMigrationSnapshot(purposeJson);
+    const reconciliationSnapshot = parseMigrationSnapshot(reconciliationJson);
 
     expect(invoiceSnapshot.prevIds).toEqual([discountSnapshot.id]);
     expect(deliverySnapshot.prevIds).toEqual([invoiceSnapshot.id]);
     expect(accessSnapshot.prevIds).toEqual([deliverySnapshot.id]);
     expect(purposeSnapshot.prevIds).toEqual([accessSnapshot.id]);
+    expect(reconciliationSnapshot.prevIds).toEqual([purposeSnapshot.id]);
+    expect(reconciliationSql).toContain(
+      'CREATE TABLE IF NOT EXISTS "late_payment_recoveries"'
+    );
+    expect(reconciliationSql).toContain(
+      'CREATE TABLE IF NOT EXISTS "reservation_access_grants"'
+    );
+    expect(reconciliationSql).toContain(
+      'DROP COLUMN IF EXISTS "customer_access_code"'
+    );
     expect(invoiceJson).not.toContain('"schema_version"');
   });
 

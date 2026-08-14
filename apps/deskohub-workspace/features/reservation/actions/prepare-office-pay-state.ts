@@ -17,6 +17,7 @@ import {
   getOfficeAdvertisedPriceReservation,
   getOfficeReservationIntervalInput,
   type NormalizedOfficeReservationOrder,
+  type OfficeReservationDetails,
   officeAdvertisedPriceReservationEquals,
 } from "@/features/reservation/office-reservation";
 import { normalizeReservationIntervalFields } from "@/features/reservation/reservation-interval-normalization";
@@ -91,7 +92,10 @@ export const prepareOfficeAdvertisement = Effect.fn(
 
 export const ensureOfficePayStateAvailable = (input: {
   readonly availability: typeof WorkspaceAvailabilityService.Service;
-  readonly reservation: NormalizedOfficeReservationOrder;
+  readonly reservation: Pick<
+    OfficeReservationDetails,
+    "kind" | "startsOn" | "endsOn" | "seats"
+  >;
 }) =>
   normalizeReservationIntervalFields(
     getOfficeReservationIntervalInput(input.reservation),

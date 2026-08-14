@@ -27,7 +27,7 @@ metadata to the document or a schema-version column to the relational metadata.
 Previously written versioned ciphertext is intentionally rejected rather than
 normalized through a compatibility path.
 
-The snapshot is inserted inside the same transaction that creates either a Nexi attempt or a zero-total internal attempt. PostgreSQL rejects every update. Deletion is permitted only after the owning payment attempt has reached `failed`, `cancelled`, or `expired`, and the terminal payment transaction removes that no-longer-needed snapshot. Paid snapshots cannot be deleted. Existing historical payment attempts are intentionally not backfilled from current customer or catalog data.
+The snapshot is inserted inside the same transaction that creates either a Nexi attempt or a zero-total internal attempt. PostgreSQL rejects every update. Terminal payment transactions retain every snapshot as immutable evidence of the accepted reservation and price facts; provider attempts may also need that evidence for late settlement recovery. Paid snapshots cannot be deleted. Existing historical payment attempts are intentionally not backfilled from current customer or catalog data.
 
 The snapshot deliberately excludes phone, free-form messages, access codes, provider payloads, and payment tokens. New snapshots freeze the reservation purpose, invoice instruction, complete billing identity when applicable, and reservation email inside the encrypted blob. Historical snapshots without the explicit instruction remain valid but are ineligible for automatic issuance; those without a delivery target cannot be delivered automatically. Never infer purpose or invoice intent from mutable Dotypos fields or the legacy source buyer.
 
@@ -45,11 +45,10 @@ customer data.
 
 ### 1. Payment-time source snapshot (implemented)
 
-Continue creating one encrypted,
-immutable source snapshot for every payment attempt, whether or not the
-customer currently wants an invoice. It preserves the accepted price and
-reservation facts needed for a later request. Unsuccessful terminal attempts
-continue to remove their snapshots transactionally.
+Continue creating and retaining one encrypted, immutable source snapshot for
+every payment attempt, whether or not the customer currently wants an invoice.
+It preserves the accepted price and reservation facts as accounting evidence
+and for a later invoice request.
 
 Validate this stage with the preview gate below before beginning document
 issuance.
@@ -316,7 +315,7 @@ After applying the generated migration to an isolated preview database:
 3. Confirm each new payment attempt has exactly one snapshot row and that `encrypted_snapshot` is `bytea` with no plaintext buyer sentinel in a raw database export.
 4. Read each snapshot through `AccountingDocumentSnapshotRepository` and compare it with the accepted quote and reservation-specific buyer input.
 5. Confirm a retry returns the existing payment attempt/snapshot rather than replacing it.
-6. Confirm updates and paid-snapshot deletes are rejected by PostgreSQL, while a terminal unsuccessful attempt removes its snapshot transactionally.
+6. Confirm updates and paid-snapshot deletes are rejected by PostgreSQL and terminal attempts retain their snapshots.
 7. Run a wrong-key failure only in the isolated database after verifying its server logging settings.
 
 Production invoice numbering should begin only when the PDF issuance stage is enabled. Use an annual PostgreSQL counter in the `Europe/Prague` year and the format `WS-FV-YYYY-NNNNNN`. Lock and increment the counter and insert the issued document in one transaction so rolled-back issuance does not consume a number and committed numbers are never reused; a non-transactional PostgreSQL `nextval` sequence does not provide that no-gap rollback behavior.

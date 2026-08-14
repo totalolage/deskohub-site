@@ -60,6 +60,23 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).not.toContain("reservationState:");
   });
 
+  test("only claims paid fulfillment for a usable booking", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "claimPaidFulfillment: Effect.fn(",
+      "markFulfilled: Effect.fn("
+    );
+
+    expect(section).toContain("inArray(workspaceReservations.reservationState");
+    expect(section).toContain('"held"');
+    expect(section).toContain('"confirmed"');
+    expect(section).toContain("notExists(");
+    expect(section).toContain("latePaymentRecoveries.paymentAttemptId");
+    expect(section).toContain("workspaceReservations.activePaymentAttemptId");
+    expect(section).toContain('ne(latePaymentRecoveries.state, "recovered")');
+  });
+
   test("selects expired local Dotypos holds for availability filtering", async () => {
     const source = await readRepository();
     const section = sliceFrom(

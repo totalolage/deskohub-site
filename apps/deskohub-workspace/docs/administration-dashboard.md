@@ -39,6 +39,8 @@ Operator cancellation is available for a held, confirmed, or retryable failed-ca
 
 Payment failure alone does not make a still-held reservation cancelled. A paid reservation with incomplete or failed fulfillment is not shown as complete. If the reservation system reports cancellation while Workspace is stale, administration may show a separate attention warning without rewriting Workspace history or claiming that recovery completed.
 
+Provider-payment cleanup outcomes remain explicit. An empty Nexi order inside the local payment window is shown as waiting until its cutoff. A held reservation whose provider outcome could not be confirmed is flagged for payment review, while an operation-free order abandoned after the cutoff is shown as abandoned with its hold released. If Nexi reports payment after that release, administration shows recovery in progress, recovered, refund required, or recovery review according to the durable recovery result. A refund-required recovery and an operator cancellation both mark the affected paid Nexi attempt in the same refund-work state.
+
 Customer summaries and overview counts must say when current external facts are unavailable. They must not substitute a local measure that answers a different question.
 
 ## History limitations

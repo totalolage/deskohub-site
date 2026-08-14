@@ -795,12 +795,6 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
-              yield* tx
-                .delete(accountingDocumentSnapshots)
-                .where(
-                  eq(accountingDocumentSnapshots.paymentAttemptId, input.id)
-                );
-
               const [reservation] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -1486,15 +1480,17 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
   }
 );
 
-const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
+export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
   function* (
     tx: TransactionClient,
     paymentAttemptId: PaymentAttemptId,
-    redeemedAt: Temporal.Instant
+    redeemedAt: Temporal.Instant,
+    allowReleased = false
   ) {
     const [claim] = yield* tx
       .select({
         codeId: discountCodeRedemptions.codeId,
+        dotyposCustomerId: discountCodeRedemptions.dotyposCustomerId,
         state: discountCodeRedemptions.state,
       })
       .from(discountCodeRedemptions)
@@ -1503,7 +1499,7 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       .for("update");
 
     if (!claim) return;
-    if (claim.state === "released") {
+    if (claim.state === "released" && !allowReleased) {
       return yield* new DiscountClaimError({
         operation: "redeem",
         reason: "claim_conflict",
@@ -1512,18 +1508,85 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
       });
     }
     if (claim.state === "redeemed") return;
+    if (claim.state === "released") {
+      const [code] = yield* tx
+        .select({ maxUses: discountCodes.maxUses })
+        .from(discountCodes)
+        .where(eq(discountCodes.id, claim.codeId))
+        .limit(1)
+        .for("update");
+      if (!code) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason: "unknown_code",
+          message: "The accepted discount code no longer exists.",
+          codeId: claim.codeId,
+        });
+      }
+
+      const [customerUse] = yield* tx
+        .select({ state: discountCodeRedemptions.state })
+        .from(discountCodeRedemptions)
+        .where(
+          and(
+            eq(discountCodeRedemptions.codeId, claim.codeId),
+            eq(
+              discountCodeRedemptions.dotyposCustomerId,
+              claim.dotyposCustomerId
+            ),
+            inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+          )
+        )
+        .limit(1);
+      if (customerUse) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason:
+            customerUse.state === "redeemed"
+              ? "already_redeemed"
+              : "claim_conflict",
+          message: "The customer has another active claim for this code.",
+          codeId: claim.codeId,
+        });
+      }
+
+      if (code.maxUses !== null) {
+        const [uses] = yield* tx
+          .select({ count: count() })
+          .from(discountCodeRedemptions)
+          .where(
+            and(
+              eq(discountCodeRedemptions.codeId, claim.codeId),
+              inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+            )
+          );
+        if ((uses?.count ?? 0) >= code.maxUses) {
+          return yield* new DiscountClaimError({
+            operation: "redeem",
+            reason: "usage_limit_reached",
+            message: "The accepted discount code has no remaining uses.",
+            codeId: claim.codeId,
+          });
+        }
+      }
+    }
 
     yield* tx
       .update(discountCodeRedemptions)
       .set({
         state: "redeemed",
         redeemedAt,
+        releasedAt: null,
+        releaseReason: null,
         updatedAt: redeemedAt,
       })
       .where(
         and(
           eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
-          eq(discountCodeRedemptions.state, "reserved")
+          inArray(
+            discountCodeRedemptions.state,
+            allowReleased ? ["reserved", "released"] : ["reserved"]
+          )
         )
       );
   }

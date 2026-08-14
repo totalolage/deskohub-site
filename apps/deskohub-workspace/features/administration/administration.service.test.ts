@@ -214,9 +214,110 @@ describe("AdministrationService", () => {
       Effect.runPromise
     );
 
-    expect(selectCall).toBe(3);
+    expect(selectCall).toBe(5);
     expect(result.dateSortUnavailable).toBe(true);
     expect(result.items).toHaveLength(1);
+  });
+
+  test("flags queued late-payment recovery ahead of cleanup state", async () => {
+    const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
+    const row = {
+      id: "workspace-reservation",
+      dotyposCustomerId: "dotypos-customer",
+      dotyposReservationId: "dotypos-reservation",
+      reservationState: "held",
+      paymentState: "pending",
+      fulfillmentState: "not_started",
+      failureCode: "payment_outcome_unconfirmed_before_cleanup",
+      reservationDetails: { kind: "meeting-room" },
+      reservationCreatedAt: instant,
+      reservationConfirmedAt: null,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: instant,
+      paidAt: null,
+      fulfilledAt: null,
+      fulfillmentFailedAt: null,
+      createdAt: instant,
+      updatedAt: instant,
+    } as const;
+    const rows = [
+      [{ value: 1 }],
+      [row],
+      [],
+      [],
+      [
+        {
+          paymentAttemptId: "payment-attempt",
+          reservationId: row.id,
+          state: "processing",
+          failureCode: null,
+          verifiedPaidAt: instant,
+          completedAt: null,
+        },
+      ],
+    ] as const;
+    let selectCall = 0;
+    let recoveryOrderByCalls = 0;
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({});
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: {
+                    select: () => {
+                      const call = selectCall++;
+                      const query = makeQuery(rows[call] ?? []);
+                      if (call === 4) {
+                        query.orderBy = () => {
+                          recoveryOrderByCalls += 1;
+                          return query;
+                        };
+                      }
+                      return query;
+                    },
+                  } as never,
+                })
+              ),
+              DotyposServiceMock({
+                getReservation: () =>
+                  Effect.succeed({
+                    customer: { id: "dotypos-customer" },
+                    reservation: {
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "dotypos-customer",
+                      id: "dotypos-reservation",
+                      startDate: "2026-08-10T10:00:00Z",
+                      endDate: "2026-08-10T11:00:00Z",
+                      seats: "1",
+                      status: "CONFIRMED",
+                    },
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.items[0]?.statusNote).toBe("Recovery in progress");
+    expect(result.items[0]?.status.label).toBe("Recovering payment");
+    expect(recoveryOrderByCalls).toBe(1);
   });
 
   test("returns no booking when Dotypos reports it missing", async () => {

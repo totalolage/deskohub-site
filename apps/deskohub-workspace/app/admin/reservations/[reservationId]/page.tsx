@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import {
+  AdministrationAlert,
   AdministrationDetailSection,
   AdministrationFact,
   AdministrationPage,
@@ -50,6 +51,17 @@ export async function ReservationAdministrationDetail({
   return (
     <>
       <h1 className="sr-only">{reservation.typeLabel}</h1>
+
+      {detail.operatorNotice && (
+        <AdministrationAlert
+          className="mb-5"
+          role={detail.operatorNotice.status === "error" ? "alert" : "status"}
+          status={detail.operatorNotice.status}
+        >
+          <p className="font-semibold">{detail.operatorNotice.title}</p>
+          <p>{detail.operatorNotice.message}</p>
+        </AdministrationAlert>
+      )}
 
       <section aria-labelledby="lifecycle-heading">
         <h2 className="sr-only" id="lifecycle-heading">

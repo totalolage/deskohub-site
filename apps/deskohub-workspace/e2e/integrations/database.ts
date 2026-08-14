@@ -25,8 +25,10 @@ import {
 } from "effect/unstable/http";
 import type { DatabaseClient } from "@/db/database-client";
 import {
+  accountingDocumentSnapshots,
   discountApplications,
   discountCodeRedemptions,
+  latePaymentRecoveries,
   legalEvidenceEvents,
   paymentAttempts,
   webhookEvents,
@@ -727,6 +729,254 @@ export const markPaymentTerminalForE2E = (
         assert(row, "terminal checkout row missing");
         return row;
       }
+    );
+  });
+
+const latePaymentAbandonmentFailureCode =
+  "payment_abandoned_after_provider_cutoff";
+
+export const releaseReservationForLatePaymentRecoveryE2E = (
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId,
+  options: { readonly removeAccountingSnapshot: boolean }
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const now = Temporal.Now.instant();
+
+    const result = yield* runDatabaseOperation(
+      "release reservation for late payment recovery",
+      db.transaction((tx) =>
+        Effect.gen(function* () {
+          const [attempt] = yield* tx
+            .update(paymentAttempts)
+            .set({
+              state: "expired",
+              failureCode: latePaymentAbandonmentFailureCode,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(paymentAttempts.id, paymentAttemptId),
+                eq(paymentAttempts.workspaceReservationId, orderId),
+                eq(paymentAttempts.state, "pending")
+              )
+            )
+            .returning({ id: paymentAttempts.id });
+
+          const [reservation] = yield* tx
+            .update(workspaceReservations)
+            .set({
+              reservationState: "cancelled",
+              paymentState: "expired",
+              reservationHoldExpiredAt: now,
+              reservationCancelledAt: now,
+              failureCode: latePaymentAbandonmentFailureCode,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, orderId),
+                eq(
+                  workspaceReservations.activePaymentAttemptId,
+                  paymentAttemptId
+                ),
+                eq(workspaceReservations.reservationState, "held"),
+                eq(workspaceReservations.paymentState, "pending")
+              )
+            )
+            .returning({ id: workspaceReservations.id });
+
+          const removedSnapshots = options.removeAccountingSnapshot
+            ? yield* tx
+                .delete(accountingDocumentSnapshots)
+                .where(
+                  eq(
+                    accountingDocumentSnapshots.paymentAttemptId,
+                    paymentAttemptId
+                  )
+                )
+                .returning({
+                  paymentAttemptId:
+                    accountingDocumentSnapshots.paymentAttemptId,
+                })
+            : [];
+
+          return { attempt, reservation, removedSnapshots };
+        })
+      )
+    );
+
+    yield* tryWorkspaceE2ESync(
+      "assert released late-payment recovery fixture",
+      () => {
+        assert(result.attempt?.id === paymentAttemptId, "attempt not expired");
+        assert(
+          result.reservation?.id === orderId,
+          "reservation was not released"
+        );
+        if (options.removeAccountingSnapshot) {
+          assert(
+            result.removedSnapshots[0]?.paymentAttemptId === paymentAttemptId,
+            "accounting snapshot was not removed"
+          );
+        }
+      }
+    );
+
+    const row = yield* readCheckoutRowFromDatabase(db, orderId);
+    return yield* tryWorkspaceE2ESync(
+      "assert released late-payment checkout row",
+      () => {
+        assert(row, "released late-payment checkout row missing");
+        assert(
+          row.reservation_state === "cancelled",
+          "reservation not cancelled"
+        );
+        assert(row.payment_state === "expired", "payment not expired");
+        assert(
+          row.payment_attempt_state === "expired",
+          "payment attempt not expired"
+        );
+        return row;
+      }
+    );
+  });
+
+type LatePaymentRecoveryExpectation =
+  | { readonly state: "recovered" }
+  | {
+      readonly state: "refund_required";
+      readonly failureCode: string;
+    };
+
+type ObservedLatePaymentRecovery = {
+  readonly checkoutRow: CheckoutRow;
+  readonly recovery: typeof latePaymentRecoveries.$inferSelect;
+};
+
+export const waitForLatePaymentRecoveryOutcome = (
+  config: DatasourceConfig,
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId,
+  originalDotyposReservationId: NonNullable<
+    CheckoutRow["dotypos_reservation_id"]
+  >,
+  expected: LatePaymentRecoveryExpectation
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const observed = yield* pollUntil(
+      Effect.gen(function* () {
+        const [recovery] = yield* runRetrySafeDatabaseOperation(
+          "read late payment recovery",
+          db
+            .select()
+            .from(latePaymentRecoveries)
+            .where(eq(latePaymentRecoveries.paymentAttemptId, paymentAttemptId))
+            .limit(1)
+        );
+        if (recovery?.state !== expected.state) return undefined;
+
+        const checkoutRow = yield* readCheckoutRowFromDatabase(db, orderId);
+        if (!checkoutRow) return undefined;
+        if (
+          expected.state === "recovered" &&
+          checkoutRow.fulfillment_state !== "processing" &&
+          checkoutRow.fulfillment_state !== "fulfilled"
+        ) {
+          return undefined;
+        }
+        return { checkoutRow, recovery };
+      }),
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        label: `late payment recovery for ${orderId}`,
+        timeoutMs: config.timeouts.datasource,
+      }
+    );
+
+    yield* assertLatePaymentRecoveryOutcome(
+      observed,
+      originalDotyposReservationId,
+      expected
+    );
+    log(`Late payment recovery reached ${expected.state}`);
+    return observed.checkoutRow;
+  });
+
+export const assertLatePaymentRecoveryOutcome = (
+  observed: ObservedLatePaymentRecovery,
+  originalDotyposReservationId: NonNullable<
+    CheckoutRow["dotypos_reservation_id"]
+  >,
+  expected: LatePaymentRecoveryExpectation
+): Effect.Effect<void, WorkspaceE2EError> =>
+  tryWorkspaceE2ESync("assert late payment recovery outcome", () => {
+    const { checkoutRow, recovery } = observed;
+    assert(recovery.state === expected.state, "unexpected recovery state");
+    assert(recovery.completedAt, "recovery completion time missing");
+    assert(
+      recovery.originalDotyposReservationId === originalDotyposReservationId,
+      "recovery original reservation mismatch"
+    );
+    assert(checkoutRow.payment_state === "paid", "late payment not recorded");
+    assert(
+      checkoutRow.payment_attempt_state === "paid",
+      "late payment attempt not recorded"
+    );
+    assert(checkoutRow.webhook_state === "processed", "webhook not processed");
+
+    if (expected.state === "recovered") {
+      assert(
+        recovery.failureCode === null,
+        "recovered payment has failure code"
+      );
+      assert(
+        recovery.recoveredDotyposReservationId &&
+          recovery.recoveredDotyposReservationId !==
+            originalDotyposReservationId,
+        "replacement reservation was not recorded"
+      );
+      assert(
+        checkoutRow.dotypos_reservation_id ===
+          recovery.recoveredDotyposReservationId,
+        "checkout replacement reservation mismatch"
+      );
+      assert(
+        checkoutRow.reservation_state === "confirmed",
+        "recovered reservation not confirmed"
+      );
+      assert(
+        checkoutRow.failure_code === null,
+        "recovered checkout has failure"
+      );
+      return;
+    }
+
+    assert(
+      recovery.failureCode === expected.failureCode,
+      "refund recovery failure code mismatch"
+    );
+    assert(
+      recovery.recoveredDotyposReservationId === null,
+      "refund recovery created a reservation"
+    );
+    assert(
+      checkoutRow.dotypos_reservation_id === originalDotyposReservationId,
+      "refund recovery replaced the reservation"
+    );
+    assert(
+      checkoutRow.reservation_state === "cancelled",
+      "refund recovery restored the reservation"
+    );
+    assert(
+      checkoutRow.fulfillment_state === "not_started",
+      "refund recovery started fulfillment"
+    );
+    assert(
+      checkoutRow.failure_code === expected.failureCode,
+      "refund checkout failure code mismatch"
     );
   });
 

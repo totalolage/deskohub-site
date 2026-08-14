@@ -194,7 +194,27 @@ describe("PaymentLifecycleRepository", () => {
     expect(paid).toContain("yield* redeemCodeClaim");
     expect(terminal).toContain("db.transaction");
     expect(terminal).toContain("yield* releaseCodeClaim");
-    expect(terminal).toContain(".delete(accountingDocumentSnapshots)");
+    expect(terminal).not.toContain(".delete(accountingDocumentSnapshots)");
+    expect(terminal).not.toContain(
+      'input.failureCode !== "payment_abandoned_after_provider_cutoff"'
+    );
+  });
+
+  test("rechecks released claim capacity before late-payment redemption", async () => {
+    const source = await readRepository();
+    const redeemClaim = sliceFrom(
+      source,
+      'const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")',
+      "const releaseCodeClaim"
+    );
+
+    expect(redeemClaim).toContain(".from(discountCodes)");
+    expect(redeemClaim).toContain('.for("update")');
+    expect(redeemClaim).toContain("discountCodeRedemptions.dotyposCustomerId");
+    expect(redeemClaim).toContain(
+      'inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])'
+    );
+    expect(redeemClaim).toContain('reason: "usage_limit_reached"');
   });
 
   test("rejects inconsistent committed money before opening a transaction", async () => {

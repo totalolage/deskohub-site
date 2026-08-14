@@ -30,12 +30,15 @@ export class ReservationHoldCleanupError extends Data.TaggedError(
   }
 }
 
-export type ReservationHoldCleanupOutcome = "cancelled" | "skipped";
+export type ReservationHoldCleanupOutcome =
+  | "cancelled"
+  | "deferred"
+  | "skipped";
 
 export interface ReservationHoldCleanupService {
   readonly cancelOrderHold: (input: {
     readonly orderId: WorkspaceReservationId;
-    readonly holdExpiredAt?: Temporal.Instant;
+    readonly checkedAt?: Temporal.Instant;
   }) => Effect.Effect<
     ReservationHoldCleanupOutcome,
     ReservationHoldCleanupError
@@ -70,7 +73,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
     const cancelOrderHold = Effect.fn("reservationHoldCleanup.cancelOrderHold")(
       function* (input: {
         readonly orderId: WorkspaceReservationId;
-        readonly holdExpiredAt?: Temporal.Instant;
+        readonly checkedAt?: Temporal.Instant;
       }) {
         yield* Effect.annotateLogsScoped({ input });
         yield* Effect.logInfo("Reservation hold cancellation started");
@@ -102,6 +105,9 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             .finalizePendingProviderPayment({
               orderId: active.id,
               paymentAttemptId,
+              ...(input.checkedAt && {
+                abandonmentCheckedAt: input.checkedAt,
+              }),
             })
             .pipe(
               Effect.mapError(
@@ -118,11 +124,11 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           );
 
           const recordSkippedCleanupAttempt = () =>
-            input.holdExpiredAt
+            input.checkedAt
               ? reservations
                   .recordHoldCleanupSkipped({
                     id: active.id,
-                    holdExpiredAt: input.holdExpiredAt,
+                    holdExpiredAt: input.checkedAt,
                     failureCode: "payment_outcome_unconfirmed_before_cleanup",
                   })
                   .pipe(
@@ -140,16 +146,23 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             );
             return "skipped";
           }
-          if (result === "not_verifiable") {
+          if (result === "deferred") {
             yield* Effect.logInfo(
-              "Reservation hold cancellation expiring not-verifiable payment attempt"
+              "Reservation hold cancellation deferred: empty provider order is inside abandonment window"
+            );
+            return "deferred";
+          }
+          if (result === "abandoned") {
+            yield* Effect.logInfo(
+              "Reservation hold cancellation expiring payment attempt",
+              { reason: result }
             );
             const expired = yield* paymentLifecycle
               .markTerminal({
                 id: paymentAttemptId,
                 workspaceReservationId: active.id,
                 state: "expired",
-                failureCode: "payment_not_verifiable_before_cleanup",
+                failureCode: "payment_abandoned_after_provider_cutoff",
               })
               .pipe(
                 Effect.tapError((cause) =>
@@ -182,7 +195,8 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
               paymentAttemptExpirationChanged: expired.changed,
             });
             yield* Effect.logInfo(
-              "Reservation hold cancellation expired not-verifiable payment attempt"
+              "Reservation hold cancellation expired payment attempt",
+              { reason: result }
             );
           } else if (result !== "terminal") {
             yield* Effect.logWarning(
@@ -280,7 +294,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           .markCancelled({
             id: claimed.id,
             cancelledAt,
-            holdExpiredAt: input.holdExpiredAt,
+            holdExpiredAt: input.checkedAt,
           })
           .pipe(
             Effect.as(true),
@@ -343,7 +357,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             });
             const result = yield* cancelOrderHold({
               orderId: order.id,
-              holdExpiredAt: input.now,
+              checkedAt: input.now,
             }).pipe(Effect.result);
             yield* Effect.annotateLogsScoped({ order, result });
 
