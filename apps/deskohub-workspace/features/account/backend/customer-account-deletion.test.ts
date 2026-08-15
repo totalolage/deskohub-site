@@ -19,6 +19,7 @@ describe("customer account deletion", () => {
       deleteCustomerIdentity(
         accountId,
         withAccountLock,
+        Effect.succeed(accountId),
         () =>
           Effect.sync(() => {
             operations.push("unlink");
@@ -38,6 +39,7 @@ describe("customer account deletion", () => {
       deleteCustomerIdentity(
         accountId,
         withAccountLock,
+        Effect.succeed(accountId),
         () => Effect.fail("database unavailable"),
         Effect.sync(() => {
           deleted = true;
@@ -49,6 +51,39 @@ describe("customer account deletion", () => {
     expect(deleted).toBe(false);
   });
 
+  test("does not delete after the session changes while waiting for the lock", async () => {
+    let deleted = false;
+    let sessionStillCurrent = true;
+    let unlinked = false;
+    const delayedLock = <A, E, R>(
+      _accountId: typeof accountId,
+      effect: Effect.Effect<A, E, R>
+    ) =>
+      Effect.sync(() => {
+        sessionStillCurrent = false;
+      }).pipe(Effect.andThen(effect));
+
+    const result = await Effect.runPromiseExit(
+      deleteCustomerIdentity(
+        accountId,
+        delayedLock,
+        Effect.sync(() => (sessionStillCurrent ? accountId : null)),
+        () =>
+          Effect.sync(() => {
+            unlinked = true;
+          }),
+        Effect.sync(() => {
+          deleted = true;
+        })
+      )
+    );
+
+    expect(sessionStillCurrent).toBe(false);
+    expect(result._tag).toBe("Failure");
+    expect(unlinked).toBe(false);
+    expect(deleted).toBe(false);
+  });
+
   test("removes a link recreated while Neon deletes the identity", async () => {
     let linked = true;
 
@@ -56,6 +91,7 @@ describe("customer account deletion", () => {
       deleteCustomerIdentity(
         accountId,
         withAccountLock,
+        Effect.succeed(accountId),
         () =>
           Effect.sync(() => {
             linked = false;

@@ -29,6 +29,18 @@ const requireActionUser = (locale: Locale) =>
     Effect.mapError(() => actionError(m.accountSessionExpired({}, { locale })))
   );
 
+const requireActionAccountId = (locale: Locale) =>
+  requireActionUser(locale).pipe(
+    Effect.flatMap((user) => {
+      const accountId = Option.getOrUndefined(
+        Schema.decodeUnknownOption(customerAccountIdSchema)(user.id)
+      );
+      return accountId
+        ? Effect.succeed(accountId)
+        : Effect.fail(actionError(m.accountSessionExpired({}, { locale })));
+    })
+  );
+
 const updateCustomerProfileAction = defineWorkspaceAction(
   {
     operation: "account.update-profile",
@@ -66,21 +78,14 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
   },
   (_input, { locale }) =>
     Effect.gen(function* () {
-      const user = yield* requireActionUser(locale);
-      const accountId = Option.getOrUndefined(
-        Schema.decodeUnknownOption(customerAccountIdSchema)(user.id)
-      );
-      if (!accountId) {
-        return yield* Effect.fail(
-          actionError(m.accountSessionExpired({}, { locale }))
-        );
-      }
+      const accountId = yield* requireActionAccountId(locale);
 
       const links = yield* CustomerAccountLinkRepository;
       const authentication = yield* CustomerAuthentication;
       yield* deleteCustomerIdentity(
         accountId,
         links.withAccountLock,
+        requireActionAccountId(locale),
         links.unlink,
         authentication.deleteUser
       ).pipe(

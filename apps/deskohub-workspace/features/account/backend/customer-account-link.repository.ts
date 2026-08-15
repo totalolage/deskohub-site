@@ -1,9 +1,10 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { withWorkspaceDatabaseAdvisoryLock } from "@/db/database-provider.server";
 import { customerAccountLinks } from "@/db/schema";
 import type { CustomerAccountId } from "../customer-account";
 
@@ -84,12 +85,9 @@ export class CustomerAccountLinkRepository extends Context.Service<
       );
 
       const withAccountLock: CustomerAccountLock = (accountId, effect) =>
-        db.transaction((tx) =>
-          tx
-            .execute(
-              sql`select pg_advisory_xact_lock(hashtextextended(${accountId}, 0))`
-            )
-            .pipe(Effect.andThen(effect))
+        withWorkspaceDatabaseAdvisoryLock(
+          `customer-account:${accountId}`,
+          effect
         );
 
       return {
