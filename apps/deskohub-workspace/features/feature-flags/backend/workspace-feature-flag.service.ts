@@ -30,24 +30,19 @@ export class WorkspaceFeatureFlagService extends Context.Service<
 
   static Default = Layer.unwrap(
     Effect.promise(async () => {
-      const [{ nodeFeatureFlags }, { getCurrentPostHogFeatureFlagSubject }] =
+      const [{ nodeFeatureFlags }, { workspaceReleaseSubject }] =
         await Promise.all([import("./node"), import("./subject")]);
 
       return WorkspaceFeatureFlagService.from({
         evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
           (options) =>
-            getCurrentPostHogFeatureFlagSubject().pipe(
-              Effect.flatMap((subject) =>
-                nodeFeatureFlags.evaluateFlags({ options, subject })
-              )
-            )
+            nodeFeatureFlags.evaluateFlags({
+              options,
+              subject: workspaceReleaseSubject,
+            })
         ),
         isEnabled: Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key) =>
-          getCurrentPostHogFeatureFlagSubject().pipe(
-            Effect.flatMap((subject) =>
-              nodeFeatureFlags.isEnabled({ key, subject })
-            )
-          )
+          nodeFeatureFlags.isEnabled({ key, subject: workspaceReleaseSubject })
         ),
       });
     })

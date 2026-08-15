@@ -14,9 +14,9 @@ Generation uses the dedicated management configuration and writes only definitio
 
 ## Runtime evaluation
 
-Server features resolve the app-owned feature-flag Context capability. That boundary owns the process-scoped typed Node client and request-subject selection. Feature-specific services own fail-closed logging and fallback behavior.
+Server features resolve the app-owned feature-flag Context capability. That boundary owns the process-scoped typed Node client and evaluates release gates against one fixed non-recording Workspace release subject. Feature-specific services own fail-closed logging and fallback behavior.
 
-Use the consented browser identity when one is available. Before analytics consent or browser initialization, global release gates may use an explicit shared release subject with access-event capture disabled. Targeted and percentage rollouts must account for the fact that a stable visitor identity is not available before consent.
+Release gates are global product availability switches, never visitor personalization. A percentage rollout places the fixed release subject into one deterministic cohort for the whole site. Introduce a separately modeled experiment when behavior genuinely needs a consented visitor identity; do not make cached public UI or its server enforcement request-dependent.
 
 React consumers use the generated typed hook under the single provider at the localized application root. Do not add feature-local providers or independently declared flag-key types.
 

@@ -1,6 +1,5 @@
+import { cacheLife } from "next/cache";
 import Link from "next/link";
-import { connection } from "next/server";
-import { Suspense } from "react";
 import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
@@ -139,16 +138,7 @@ export async function PublicSiteFooter() {
         </div>
 
         <div className="mt-10 border-t border-white/10 pt-5 text-sm text-white/56">
-          <Suspense
-            fallback={
-              <span
-                aria-hidden="true"
-                className="inline-block h-5 w-72 max-w-full animate-pulse rounded-full bg-white/8"
-              />
-            }
-          >
-            <FooterCopyright locale={locale} />
-          </Suspense>
+          <FooterCopyright locale={locale} />
         </div>
       </Container>
     </footer>
@@ -156,7 +146,9 @@ export async function PublicSiteFooter() {
 }
 
 async function FooterCopyright({ locale }: { readonly locale: Locale }) {
-  await connection();
+  "use cache";
+  cacheLife({ stale: 3600, revalidate: 3600, expire: 86_400 });
+
   const year = Temporal.Now.zonedDateTimeISO(
     workspaceSiteConstants.location.timeZone
   ).year;

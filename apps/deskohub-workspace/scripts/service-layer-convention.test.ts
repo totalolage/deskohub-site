@@ -65,7 +65,7 @@ test("fully wired capability layers are named Live", async () => {
   expect(offenders.sort()).toEqual([]);
 });
 
-test("request-bound feature flag providers are loaded lazily", async () => {
+test("server-only feature flag providers are loaded lazily", async () => {
   const source = await Bun.file(
     `${repositoryRoot}/apps/deskohub-workspace/features/feature-flags/backend/workspace-feature-flag.service.ts`
   ).text();
