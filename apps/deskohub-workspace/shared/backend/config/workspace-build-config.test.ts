@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-test("keeps the feature flag codegen credential out of production builds", async () => {
+test("uses one PostHog API key for builds and feature flag synchronization", async () => {
   const config = (await Bun.file(
     new URL("../../../turbo.json", import.meta.url)
   ).json()) as {
@@ -10,11 +10,9 @@ test("keeps the feature flag codegen credential out of production builds", async
     };
   };
 
-  expect(config.tasks.build.env).not.toContain("POSTHOG_FEATURE_FLAGS_API_KEY");
+  expect(config.tasks.build.env).toContain("POSTHOG_API_KEY");
   expect(config.tasks.build.env).not.toContain("POSTHOG_HOST");
-  expect(config.tasks["feature-flags:sync"].env).toContain(
-    "POSTHOG_FEATURE_FLAGS_API_KEY"
-  );
+  expect(config.tasks["feature-flags:sync"].env).toContain("POSTHOG_API_KEY");
 });
 
 test("includes runtime feature flag overrides in the Workspace build cache", async () => {

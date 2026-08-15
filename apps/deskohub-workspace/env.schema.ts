@@ -116,7 +116,6 @@ export const workspaceServerEnvSchema = Schema.Struct({
   ),
   POSTHOG_HOST: optionalUrlEnvSchema,
   POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(PostHogProjectId)),
-  POSTHOG_HISTORY_API_KEY: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalStringSchema,
   VERCEL_ENV: toEnvSchema(vercelEnvironmentSchema),
   VERCEL_GIT_COMMIT_SHA: optionalStringSchema,

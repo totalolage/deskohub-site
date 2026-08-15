@@ -10,7 +10,7 @@ After changing flags in PostHog, run:
 bun turbo run feature-flags:sync --filter=deskohub-workspace
 ```
 
-Generation uses the dedicated management configuration and writes only definitions and payload shapes, never live payload values. Keep that dedicated synchronization credential out of runtime application configuration.
+Generation writes only definitions and payload shapes, never live payload values. It uses the same `POSTHOG_API_KEY` as the application; supply that credential explicitly when running the synchronization command.
 
 ## Runtime evaluation
 
