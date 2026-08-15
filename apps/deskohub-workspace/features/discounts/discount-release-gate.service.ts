@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
+import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 
 export type DiscountReleaseGateOperation =
   | "quote"
@@ -43,14 +44,26 @@ export class DiscountReleaseGateService extends Context.Service<
                 ],
               })
             ),
-            Effect.let("calendarSales", ({ snapshot }) =>
-              snapshot.isEnabled("calendar_sales")
+            Effect.bind("calendarSales", ({ snapshot }) =>
+              resolveReleaseGate({
+                flag: "calendar_sales",
+                operation: input.operation,
+                value: snapshot.getFlag("calendar_sales"),
+              })
             ),
-            Effect.let("customerDiscounts", ({ snapshot }) =>
-              snapshot.isEnabled("customer_discounts")
+            Effect.bind("customerDiscounts", ({ snapshot }) =>
+              resolveReleaseGate({
+                flag: "customer_discounts",
+                operation: input.operation,
+                value: snapshot.getFlag("customer_discounts"),
+              })
             ),
-            Effect.let("discountCodes", ({ snapshot }) =>
-              snapshot.isEnabled("discount_codes")
+            Effect.bind("discountCodes", ({ snapshot }) =>
+              resolveReleaseGate({
+                flag: "discount_codes",
+                operation: input.operation,
+                value: snapshot.getFlag("discount_codes"),
+              })
             ),
             Effect.map(
               ({ calendarSales, customerDiscounts, discountCodes }) =>
@@ -91,3 +104,25 @@ const discountReleaseGatesDisabled: DiscountReleaseGates = {
   customerDiscounts: false,
   discountCodes: false,
 };
+
+const resolveReleaseGate = Effect.fn(
+  "DiscountReleaseGateService.resolveReleaseGate"
+)(
+  (input: {
+    readonly flag: PostHogFeatureFlagKey;
+    readonly operation: DiscountReleaseGateOperation;
+    readonly value: boolean | undefined;
+  }) =>
+    input.value === undefined
+      ? Effect.logError("Discount release gate is unavailable").pipe(
+          Effect.annotateLogs({
+            discountBoundary: "release_gate",
+            discountOperation: input.operation,
+            discountFeatureFlag: input.flag,
+            discountErrorTag: "MissingFeatureFlag",
+            discountErrorReason: "missing_flag",
+          }),
+          Effect.as(false)
+        )
+      : Effect.succeed(input.value === true)
+);
