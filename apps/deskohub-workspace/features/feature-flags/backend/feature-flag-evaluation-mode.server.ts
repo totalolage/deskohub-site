@@ -14,21 +14,25 @@ import {
 export async function areWorkspaceFeatureFlagsGlobal(
   keys: readonly PostHogFeatureFlagKey[]
 ) {
-  const globalKeys = new Set(await getGlobalWorkspaceFeatureFlagKeys());
-  return keys.every((key) => globalKeys.has(key));
+  const values = await getGlobalWorkspaceFeatureFlagValues();
+  return keys.every((key) => Object.hasOwn(values, key));
 }
 
-async function getGlobalWorkspaceFeatureFlagKeys() {
-  "use cache";
-  cacheLife("globalRelease");
+export async function getGlobalWorkspaceFeatureFlagValue(
+  key: PostHogFeatureFlagKey
+) {
+  return (await getGlobalWorkspaceFeatureFlagValues())[key];
+}
 
-  const overriddenKeys = postHogFeatureFlags.keys.filter((key) =>
-    Object.hasOwn(postHogRuntimeConfig.featureFlagOverrides ?? {}, key)
-  );
+async function getGlobalWorkspaceFeatureFlagValues() {
+  "use cache";
+  cacheLife("publicContent");
+
+  const overrides = postHogRuntimeConfig.featureFlagOverrides ?? {};
   const apiKey = env.POSTHOG_API_KEY;
   const host = env.POSTHOG_HOST;
   const projectId = env.POSTHOG_PROJECT_ID;
-  if (!(apiKey && host && projectId)) return overriddenKeys;
+  if (!(apiKey && host && projectId)) return overrides;
 
   const definitions = await loadPostHogFeatureFlagDefinitions({
     apiKey,
@@ -43,14 +47,15 @@ async function getGlobalWorkspaceFeatureFlagKeys() {
     runWorkspaceEffect("feature-flags.classify")
   );
 
-  return [
-    ...new Set([
-      ...overriddenKeys,
-      ...definitions.flatMap(({ constantEnabledValue, key }) =>
-        constantEnabledValue === undefined ? [] : [key]
-      ),
-    ]),
-  ].filter((key): key is PostHogFeatureFlagKey =>
-    postHogFeatureFlags.keys.includes(key as PostHogFeatureFlagKey)
-  );
+  const values: Partial<Record<PostHogFeatureFlagKey, boolean>> = {};
+  for (const { constantEnabledValue, key } of definitions) {
+    if (
+      constantEnabledValue !== undefined &&
+      postHogFeatureFlags.keys.includes(key as PostHogFeatureFlagKey)
+    ) {
+      values[key as PostHogFeatureFlagKey] = constantEnabledValue;
+    }
+  }
+
+  return { ...values, ...overrides };
 }

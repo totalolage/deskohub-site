@@ -33,7 +33,7 @@ export class WorkspaceFeatureFlagService extends Context.Service<
   static Default = Layer.unwrap(
     Effect.promise(async () => {
       const [
-        { areWorkspaceFeatureFlagsGlobal },
+        { areWorkspaceFeatureFlagsGlobal, getGlobalWorkspaceFeatureFlagValue },
         { nodeFeatureFlags },
         { getCurrentPostHogFeatureFlagSubject, workspaceReleaseSubject },
       ] = await Promise.all([
@@ -60,31 +60,17 @@ export class WorkspaceFeatureFlagService extends Context.Service<
             )
         ),
         isEnabled: Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key) =>
-          getSubject([key]).pipe(
-            Effect.flatMap((subject) =>
-              nodeFeatureFlags.isEnabled({ key, subject })
+          Effect.promise(() => getGlobalWorkspaceFeatureFlagValue(key)).pipe(
+            Effect.flatMap((globalValue) =>
+              globalValue === undefined
+                ? getCurrentPostHogFeatureFlagSubject().pipe(
+                    Effect.flatMap((subject) =>
+                      nodeFeatureFlags.isEnabled({ key, subject })
+                    )
+                  )
+                : Effect.succeed(globalValue)
             )
           )
-        ),
-      });
-    })
-  );
-
-  static GlobalRelease = Layer.unwrap(
-    Effect.promise(async () => {
-      const [{ nodeFeatureFlags }, { workspaceReleaseSubject }] =
-        await Promise.all([import("./node"), import("./subject")]);
-
-      return WorkspaceFeatureFlagService.from({
-        evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
-          (options) =>
-            nodeFeatureFlags.evaluateFlags({
-              options,
-              subject: workspaceReleaseSubject,
-            })
-        ),
-        isEnabled: Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key) =>
-          nodeFeatureFlags.isEnabled({ key, subject: workspaceReleaseSubject })
         ),
       });
     })

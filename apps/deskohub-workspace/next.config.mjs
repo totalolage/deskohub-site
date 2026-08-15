@@ -30,7 +30,7 @@ const postHogSourceMapConfig =
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   cacheLife: {
-    globalRelease: { stale: 30, revalidate: 60, expire: 300 },
+    publicContent: { stale: 30, revalidate: 60, expire: 300 },
   },
   cacheComponents: true,
   experimental: {

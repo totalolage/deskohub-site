@@ -533,10 +533,6 @@ export class DiscountService extends Context.Service<
   );
 
   static Live = makeDiscountServiceLayer(DiscountReleaseGateService.Live);
-
-  static GlobalRelease = makeDiscountServiceLayer(
-    DiscountReleaseGateService.GlobalRelease
-  );
 }
 
 function makeDiscountServiceLayer(

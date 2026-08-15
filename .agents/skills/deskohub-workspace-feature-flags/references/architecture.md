@@ -16,7 +16,9 @@ Generation uses the dedicated management configuration and writes only definitio
 
 Server features resolve the app-owned feature-flag Context capability. That boundary owns the process-scoped typed Node client. It reads the live management definition through the cached runtime management configuration and proves whether boolean enablement is constant. Inactive flags, unconditional 0% flags, and unconditional 100% flags are constant; partial rollouts, person/group/cohort/dependent conditions, continuity, and unknown definitions require the request subject. A management read failure also requires the request subject.
 
-Constant flags use one fixed non-recording Workspace release subject and can participate in prerendered public UI. Request-dependent flags use the consented PostHog visitor identity, falling back to the fixed subject before consent. A cache boundary may use the explicit global-release layer only after checking that every flag it evaluates is currently constant. Server enforcement stays on the adaptive default so it follows the same classification.
+Boolean lookups return a proven constant directly, without reading request state or asking PostHog to evaluate it. Whole-snapshot evaluation uses one fixed non-recording Workspace release subject when every requested flag is constant. Request-dependent evaluation uses the consented PostHog visitor identity, falling back to the fixed subject before consent.
+
+Public pages use this adaptive capability through one rendering path. Cache request-independent provider reads, such as public calendar or media data, at their own boundaries. Do not cache a parallel global version of the page or duplicate service layers for global and request evaluation: when a flag becomes targeted, the same capability reads the request subject and Next.js makes that route dynamic.
 
 React consumers use the generated typed hook under the single provider at the localized application root. Do not add feature-local providers or independently declared flag-key types.
 
