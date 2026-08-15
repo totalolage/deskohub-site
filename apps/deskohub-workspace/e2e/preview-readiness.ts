@@ -15,6 +15,10 @@ export const assertPreviewEndpointsReady = (
     [
       assertPreviewEndpointReady(config, "/api/webhooks/nexi"),
       assertPreviewEndpointReady(config, "/api/webhooks/resend"),
+      assertPreviewEndpointReady(
+        config,
+        "/api/auth/get-session?disableCookieCache=true"
+      ),
       assertPreviewJpegReady(config, "/workspace-location-map.jpeg"),
     ],
     { concurrency: "unbounded", discard: true }

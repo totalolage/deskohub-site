@@ -25,6 +25,11 @@ const isPrivateReservationPath = (pathname: string) =>
   pathname.includes("/reservation/access/") ||
   pathname.includes("/reservation/invoice/");
 
+const isAccountPath = (pathname: string, locale: string) => {
+  const accountPath = `/${locale}/account`;
+  return pathname === accountPath || pathname.startsWith(`${accountPath}/`);
+};
+
 export function proxy(request: NextRequest) {
   if (isAdministrationPath(request.nextUrl.pathname)) {
     if (
@@ -58,7 +63,10 @@ export function proxy(request: NextRequest) {
 
   if (localeFromUrl) {
     const response = NextResponse.next();
-    if (isPrivateReservationPath(request.nextUrl.pathname)) {
+    if (
+      isPrivateReservationPath(request.nextUrl.pathname) ||
+      isAccountPath(request.nextUrl.pathname, localeFromUrl)
+    ) {
       response.headers.set("Cache-Control", "private, no-store");
     }
     setLocaleCookie(response, localeCookieName, localeFromUrl);
