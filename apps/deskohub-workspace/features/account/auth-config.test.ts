@@ -24,4 +24,16 @@ describe("Neon Auth configuration", () => {
       cookieSecret: "s".repeat(32),
     });
   });
+
+  test("auth pages read configuration at request time", async () => {
+    const page = await Bun.file(
+      new URL(
+        "../../app/[locale]/(minimal-header)/auth/[path]/page.tsx",
+        import.meta.url
+      )
+    ).text();
+
+    expect(page).toContain("export const instant = false");
+    expect(page).toContain("await connection()");
+  });
 });
