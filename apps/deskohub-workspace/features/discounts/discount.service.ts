@@ -532,10 +532,16 @@ export class DiscountService extends Context.Service<
     })
   );
 
-  static Live = makeDiscountServiceLayer();
+  static Live = makeDiscountServiceLayer(DiscountReleaseGateService.Live);
+
+  static GlobalRelease = makeDiscountServiceLayer(
+    DiscountReleaseGateService.GlobalRelease
+  );
 }
 
-function makeDiscountServiceLayer() {
+function makeDiscountServiceLayer(
+  releaseGates: Layer.Layer<DiscountReleaseGateService>
+) {
   const discountRepositories = Layer.mergeAll(
     DiscountDefinitionRepository.Default,
     PromotionCodeRepository.Default
@@ -551,10 +557,7 @@ function makeDiscountServiceLayer() {
     CustomerDiscountProvider.Default,
     PromotionCodeProvider.Default
   ).pipe(Layer.provide(providerDependencies));
-  const dependencies = Layer.merge(
-    discountProviders,
-    DiscountReleaseGateService.Live
-  );
+  const dependencies = Layer.merge(discountProviders, releaseGates);
   const processScope = Scope.makeUnsafe();
   const processMemoMap = Layer.makeMemoMapUnsafe();
 

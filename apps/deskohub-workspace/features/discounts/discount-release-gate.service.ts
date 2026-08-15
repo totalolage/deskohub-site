@@ -80,6 +80,10 @@ export class DiscountReleaseGateService extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(WorkspaceFeatureFlagService.Default)
   );
+
+  static GlobalRelease = this.Default.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.GlobalRelease)
+  );
 }
 
 const discountReleaseGatesDisabled: DiscountReleaseGates = {

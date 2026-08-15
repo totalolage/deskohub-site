@@ -1,5 +1,9 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+} from "effect/unstable/http";
 import { type FeatureFlag, make } from "../generated/effect.gen";
 import type { PostHogProjectId } from "../identifiers";
 import { PostHogFeatureFlagConfig } from "./config";
@@ -8,6 +12,21 @@ import { PostHogFeatureFlagError } from "./errors";
 const pageSize = 100;
 
 const FeatureFlagFilters = Schema.Struct({
+  aggregation_group_type_index: Schema.optionalKey(
+    Schema.Union([Schema.Number, Schema.Null])
+  ),
+  early_exit: Schema.optionalKey(Schema.Boolean),
+  groups: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({
+        aggregation_group_type_index: Schema.optionalKey(
+          Schema.Union([Schema.Number, Schema.Null])
+        ),
+        properties: Schema.optionalKey(Schema.Array(Schema.Unknown)),
+        rollout_percentage: Schema.optionalKey(Schema.Number),
+      })
+    )
+  ),
   multivariate: Schema.optionalKey(
     Schema.Union([
       Schema.Struct({
@@ -23,10 +42,16 @@ const FeatureFlagFilters = Schema.Struct({
 
 type FeatureFlagSummary = Pick<
   FeatureFlag,
-  "archived" | "deleted" | "filters" | "key"
+  | "active"
+  | "archived"
+  | "deleted"
+  | "ensure_experience_continuity"
+  | "filters"
+  | "key"
 >;
 
 export interface PostHogFeatureFlagDefinition {
+  readonly constantEnabledValue?: boolean;
   readonly key: string;
   readonly payloads: Readonly<Record<string, Schema.Json>>;
   readonly variants: readonly string[];
@@ -89,6 +114,18 @@ export class PostHogFeatureFlagService extends Context.Service<
     })
   );
 }
+
+export const loadPostHogFeatureFlagDefinitions = (input: {
+  readonly apiKey: string;
+  readonly host: URL;
+  readonly projectId: PostHogProjectId;
+}) =>
+  PostHogFeatureFlagService.pipe(
+    Effect.flatMap((service) => service.listDefinitions),
+    Effect.provide(PostHogFeatureFlagService.Default),
+    Effect.provide(PostHogFeatureFlagConfig.from(input)),
+    Effect.provide(FetchHttpClient.layer)
+  );
 
 export const listPostHogFeatureFlagDefinitions = (
   projectId: PostHogProjectId,
@@ -156,6 +193,7 @@ const toPostHogFeatureFlagDefinition = (featureFlag: FeatureFlagSummary) =>
     );
 
     return {
+      constantEnabledValue: getConstantEnabledValue(featureFlag, filters),
       key,
       payloads: filters.payloads ?? {},
       variants: [
@@ -167,3 +205,41 @@ const toPostHogFeatureFlagDefinition = (featureFlag: FeatureFlagSummary) =>
       ].toSorted((left, right) => left.localeCompare(right)),
     } satisfies PostHogFeatureFlagDefinition;
   });
+
+const getConstantEnabledValue = (
+  featureFlag: FeatureFlagSummary,
+  filters: typeof FeatureFlagFilters.Type
+): boolean | undefined => {
+  if (featureFlag.active === false) return false;
+  if (
+    featureFlag.active !== true ||
+    featureFlag.ensure_experience_continuity === true
+  ) {
+    return undefined;
+  }
+
+  const groups = filters.groups ?? [];
+  if (
+    groups.length > 0 &&
+    groups.every((group) => (group.rollout_percentage ?? 100) <= 0)
+  ) {
+    return false;
+  }
+  if (filters.aggregation_group_type_index != null) return undefined;
+  if ((filters.multivariate?.variants.length ?? 0) > 0) return undefined;
+
+  const unconditionalIndex = groups.findIndex(
+    (group) =>
+      group.aggregation_group_type_index == null &&
+      (group.properties?.length ?? 0) === 0 &&
+      (group.rollout_percentage ?? 100) >= 100
+  );
+  if (unconditionalIndex < 0) return undefined;
+  if (filters.early_exit !== true) return true;
+
+  return groups
+    .slice(0, unconditionalIndex)
+    .every((group) => (group.rollout_percentage ?? 100) >= 100)
+    ? true
+    : undefined;
+};

@@ -28,6 +28,10 @@ export class OfficeReservationFeatureFlagService extends Context.Service<
   static Live = this.Default.pipe(
     Layer.provide(WorkspaceFeatureFlagService.Default)
   );
+
+  static GlobalRelease = this.Default.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.GlobalRelease)
+  );
 }
 
 export class OfficeReservationsDisabledError extends Data.TaggedError(

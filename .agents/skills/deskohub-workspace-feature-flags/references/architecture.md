@@ -10,13 +10,13 @@ After changing flags in PostHog, run:
 bun turbo run feature-flags:sync --filter=deskohub-workspace
 ```
 
-Generation uses the dedicated management configuration and writes only definitions and payload shapes, never live payload values. Keep the management credential out of runtime application configuration.
+Generation uses the dedicated management configuration and writes only definitions and payload shapes, never live payload values. Keep that dedicated synchronization credential out of runtime application configuration.
 
 ## Runtime evaluation
 
-Server features resolve the app-owned feature-flag Context capability. That boundary owns the process-scoped typed Node client and evaluates release gates against one fixed non-recording Workspace release subject. Feature-specific services own fail-closed logging and fallback behavior.
+Server features resolve the app-owned feature-flag Context capability. That boundary owns the process-scoped typed Node client. It reads the live management definition through the cached runtime management configuration and proves whether boolean enablement is constant. Inactive flags, unconditional 0% flags, and unconditional 100% flags are constant; partial rollouts, person/group/cohort/dependent conditions, continuity, and unknown definitions require the request subject. A management read failure also requires the request subject.
 
-Release gates are global product availability switches, never visitor personalization. A percentage rollout places the fixed release subject into one deterministic cohort for the whole site. Introduce a separately modeled experiment when behavior genuinely needs a consented visitor identity; do not make cached public UI or its server enforcement request-dependent.
+Constant flags use one fixed non-recording Workspace release subject and can participate in prerendered public UI. Request-dependent flags use the consented PostHog visitor identity, falling back to the fixed subject before consent. A cache boundary may use the explicit global-release layer only after checking that every flag it evaluates is currently constant. Server enforcement stays on the adaptive default so it follows the same classification.
 
 React consumers use the generated typed hook under the single provider at the localized application root. Do not add feature-local providers or independently declared flag-key types.
 

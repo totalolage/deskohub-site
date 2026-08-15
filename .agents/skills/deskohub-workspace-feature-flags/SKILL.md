@@ -5,9 +5,9 @@ description: Workspace PostHog feature flags, generated contracts, release subje
 
 # Deskohub Workspace feature flags
 
-Use the Workspace app-owned generated PostHog contract and global-release typed server client. Do not reuse the Boardgame Bar static flag constants.
+Use the Workspace app-owned generated PostHog contract and typed server client. Do not reuse the Boardgame Bar static flag constants.
 
-Server consumers resolve `WorkspaceFeatureFlagService` from Effect Context. Its release gates always use the fixed non-recording Workspace release subject so cached public UI and server enforcement agree for every visitor. Percentage rollouts therefore release to the whole site as one deterministic cohort; use an explicit experiment feature rather than personalizing a release gate. The capability owns the process-scoped typed Node client; feature-specific services own fail-closed logging and fallback behavior. Do not import the Node client or release subject directly from feature code, and do not redeclare generated flag-key or package snapshot types.
+Server consumers resolve `WorkspaceFeatureFlagService` from Effect Context. The default service classifies the current PostHog definition: provably constant boolean flags use the fixed non-recording Workspace release subject, while partial rollouts and conditions use the consented request subject. Classification must fail closed to request-aware evaluation when management configuration or definition loading is unavailable. Never infer this from an evaluated value. Cached public UI may use `GlobalRelease` only after the same definition classifier proves every flag in that cache boundary is constant; matching server enforcement uses the adaptive default. The capability owns the process-scoped typed Node client; feature-specific services own fail-closed logging and fallback behavior. Do not import the Node client or release subject directly from feature code, and do not redeclare generated flag-key or package snapshot types.
 
 Compose a feature-specific fail-closed lookup as `Effect.tapError` followed by
 `Effect.orElseSucceed(() => false)`. Keep logging and fallback as peer

@@ -110,6 +110,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
       Schema.withDecodingDefaultType(Effect.succeed("deskohub"))
     )
   ),
+  POSTHOG_API_KEY: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
   POSTHOG_FEATURE_FLAG_OVERRIDES: toEnvSchema(
     postHogFeatureFlagOverridesSchema
   ),
