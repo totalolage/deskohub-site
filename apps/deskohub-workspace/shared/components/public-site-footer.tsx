@@ -1,6 +1,5 @@
-import { cacheLife } from "next/cache";
 import Link from "next/link";
-import { type Locale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
@@ -138,26 +137,12 @@ export async function PublicSiteFooter() {
         </div>
 
         <div className="mt-10 border-t border-white/10 pt-5 text-sm text-white/56">
-          <FooterCopyright locale={locale} />
+          {m.footerCopyright(
+            { companyName: workspaceSiteConstants.brand.legalName },
+            { locale }
+          )}
         </div>
       </Container>
     </footer>
-  );
-}
-
-async function FooterCopyright({ locale }: { readonly locale: Locale }) {
-  "use cache";
-  cacheLife({ stale: 3600, revalidate: 3600, expire: 86_400 });
-
-  const year = Temporal.Now.zonedDateTimeISO(
-    workspaceSiteConstants.location.timeZone
-  ).year;
-
-  return m.footerCopyright(
-    {
-      year,
-      companyName: workspaceSiteConstants.brand.legalName,
-    },
-    { locale }
   );
 }
