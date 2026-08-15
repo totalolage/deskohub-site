@@ -14,6 +14,20 @@ describe("administration UI boundaries", () => {
     expect(layout).not.toContain("export default async function");
   });
 
+  test("establishes the request boundary in shared page authorization", async () => {
+    for (const path of [
+      "features/administration/page-data.server.ts",
+      "features/discounts/admin/page-data.server.ts",
+    ]) {
+      const source = await readWorkspaceFile(path);
+
+      expect(source.match(/await connection\(\)/g)).toHaveLength(1);
+      expect(source).toMatch(
+        /export const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\);\n}\);/
+      );
+    }
+  });
+
   test("streams data routes through local suspense boundaries", async () => {
     const dataRoutes = [
       "app/admin/page.tsx",

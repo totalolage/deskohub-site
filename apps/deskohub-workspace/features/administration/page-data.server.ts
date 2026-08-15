@@ -84,6 +84,7 @@ export const authorizeAdministrationPage = cache(async () => {
     runWorkspaceEffect("administration.authorize", { boundary: "route" })
   );
   if (!authorized) notFound();
+  await connection();
 });
 
 export const loadAdministrationOverview = async () => {
@@ -98,7 +99,6 @@ const getAdministrationReservationListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
   await authorizeAdministrationPage();
-  await connection();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
   const dateRange = getAdministrationReservationDateRange({

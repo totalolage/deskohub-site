@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { cache } from "react";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -272,6 +273,7 @@ export const authorizeDiscountAdminPage = cache(async () => {
   if (!authorized) {
     notFound();
   }
+  await connection();
 });
 
 const loadNotice = async (searchParams: DiscountAdminSearchParams) => {
