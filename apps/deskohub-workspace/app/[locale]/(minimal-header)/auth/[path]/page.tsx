@@ -1,9 +1,12 @@
 import { AuthView } from "@neondatabase/auth/react/ui";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { isNeonAuthConfigured } from "@/features/account/auth.server";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+
+export const instant = false;
 
 const authPaths = ["sign-in", "sign-out"] as const;
 
@@ -26,6 +29,7 @@ export default async function AuthPage({
 }) {
   const { path } = await params;
   if (!authPaths.some((authPath) => authPath === path)) notFound();
+  await connection();
 
   return runWithRequestLocale((locale) => (
     <main className="relative min-h-[calc(100vh-var(--site-header-height))] overflow-hidden bg-[#f4f3ef] px-4 pb-20 pt-[calc(var(--site-header-height)+4rem)] sm:px-6">
