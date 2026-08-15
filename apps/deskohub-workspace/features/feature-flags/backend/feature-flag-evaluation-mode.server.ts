@@ -20,7 +20,7 @@ export async function areWorkspaceFeatureFlagsGlobal(
 
 async function getGlobalWorkspaceFeatureFlagKeys() {
   "use cache";
-  cacheLife({ stale: 30, revalidate: 60, expire: 300 });
+  cacheLife("globalRelease");
 
   const overriddenKeys = postHogFeatureFlags.keys.filter((key) =>
     Object.hasOwn(postHogRuntimeConfig.featureFlagOverrides ?? {}, key)

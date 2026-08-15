@@ -35,7 +35,7 @@ export async function LandingPageHero({
 
 async function GlobalLandingPageHero(props: LandingPageHeroProps) {
   "use cache";
-  cacheLife({ stale: 30, revalidate: 60, expire: 300 });
+  cacheLife("globalRelease");
 
   return loadLandingPageHero(props, true);
 }

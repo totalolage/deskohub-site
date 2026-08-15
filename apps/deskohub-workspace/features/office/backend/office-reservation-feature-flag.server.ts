@@ -22,7 +22,7 @@ export async function isOfficePageEnabled() {
 
 async function isGlobalOfficePageEnabled() {
   "use cache";
-  cacheLife({ stale: 30, revalidate: 60, expire: 300 });
+  cacheLife("globalRelease");
 
   return OfficeReservationFeatureFlagService.pipe(
     Effect.flatMap((featureFlag) => featureFlag.isEnabled),
