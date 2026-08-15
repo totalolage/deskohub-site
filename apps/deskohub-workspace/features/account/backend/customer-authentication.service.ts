@@ -48,9 +48,9 @@ export class CustomerAuthentication extends Context.Service<
   ICustomerAuthentication
 >()("@deskohub-workspace/account/CustomerAuthentication") {
   static Default = Layer.succeed(this, {
-    currentUser: callNeonAuth((auth) => auth.getSession()).pipe(
-      Effect.map((session) => session?.user ?? null)
-    ),
+    currentUser: callNeonAuth((auth) =>
+      auth.getSession({ query: { disableCookieCache: "true" } })
+    ).pipe(Effect.map((session) => session?.user ?? null)),
     deleteUser: callNeonAuth((auth) => auth.deleteUser()).pipe(Effect.asVoid),
     updateName: (name) =>
       callNeonAuth((auth) => auth.updateUser({ name })).pipe(Effect.asVoid),

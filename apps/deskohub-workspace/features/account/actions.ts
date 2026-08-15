@@ -80,6 +80,7 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
       const authentication = yield* CustomerAuthentication;
       yield* deleteCustomerIdentity(
         accountId,
+        links.withAccountLock,
         links.unlink,
         authentication.deleteUser
       ).pipe(

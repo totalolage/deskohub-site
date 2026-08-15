@@ -1,7 +1,8 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { customerAccountLinks } from "@/db/schema";
 import type { CustomerAccountId } from "../customer-account";
@@ -21,7 +22,13 @@ interface ICustomerAccountLinkRepository {
   readonly unlink: (
     accountId: CustomerAccountId
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
+  readonly withAccountLock: CustomerAccountLock;
 }
+
+export type CustomerAccountLock = <A, E, R>(
+  accountId: CustomerAccountId,
+  effect: Effect.Effect<A, E, R>
+) => Effect.Effect<A, E | EffectDrizzleQueryError | SqlError, R>;
 
 export class CustomerAccountLinkRepository extends Context.Service<
   CustomerAccountLinkRepository,
@@ -76,7 +83,21 @@ export class CustomerAccountLinkRepository extends Context.Service<
             .pipe(Effect.asVoid)
       );
 
-      return { claim, find, unlink } satisfies ICustomerAccountLinkRepository;
+      const withAccountLock: CustomerAccountLock = (accountId, effect) =>
+        db.transaction((tx) =>
+          tx
+            .execute(
+              sql`select pg_advisory_xact_lock(hashtextextended(${accountId}, 0))`
+            )
+            .pipe(Effect.andThen(effect))
+        );
+
+      return {
+        claim,
+        find,
+        unlink,
+        withAccountLock,
+      } satisfies ICustomerAccountLinkRepository;
     })
   );
 

@@ -6,6 +6,10 @@ import { deleteCustomerIdentity } from "./customer-account-deletion";
 const accountId = Schema.decodeUnknownSync(customerAccountIdSchema)(
   "account-1"
 );
+const withAccountLock = <A, E, R>(
+  _accountId: typeof accountId,
+  effect: Effect.Effect<A, E, R>
+) => effect;
 
 describe("customer account deletion", () => {
   test("unlinks the local customer mapping before deleting the auth user", async () => {
@@ -14,6 +18,7 @@ describe("customer account deletion", () => {
     await Effect.runPromise(
       deleteCustomerIdentity(
         accountId,
+        withAccountLock,
         () =>
           Effect.sync(() => {
             operations.push("unlink");
@@ -24,7 +29,7 @@ describe("customer account deletion", () => {
       )
     );
 
-    expect(operations).toEqual(["unlink", "delete-user"]);
+    expect(operations).toEqual(["unlink", "delete-user", "unlink"]);
   });
 
   test("does not delete the auth user when unlinking fails", async () => {
@@ -32,6 +37,7 @@ describe("customer account deletion", () => {
     const result = await Effect.runPromiseExit(
       deleteCustomerIdentity(
         accountId,
+        withAccountLock,
         () => Effect.fail("database unavailable"),
         Effect.sync(() => {
           deleted = true;
@@ -41,5 +47,25 @@ describe("customer account deletion", () => {
 
     expect(result._tag).toBe("Failure");
     expect(deleted).toBe(false);
+  });
+
+  test("removes a link recreated while Neon deletes the identity", async () => {
+    let linked = true;
+
+    await Effect.runPromise(
+      deleteCustomerIdentity(
+        accountId,
+        withAccountLock,
+        () =>
+          Effect.sync(() => {
+            linked = false;
+          }),
+        Effect.sync(() => {
+          linked = true;
+        })
+      )
+    );
+
+    expect(linked).toBe(false);
   });
 });
