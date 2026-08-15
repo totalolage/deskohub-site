@@ -29,6 +29,7 @@ export class WorkspaceFeatureFlagService extends Context.Service<
   static from = (implementation: IWorkspaceFeatureFlagService) =>
     Layer.succeed(this, implementation);
 
+  // Keep providers lazy so Context and test mocks do not initialize server-only modules.
   static Default = Layer.unwrap(
     Effect.promise(async () => {
       const [

@@ -213,7 +213,7 @@
   "footerHomeLink": "Domů",
   "footerContactLink": "Kontakt",
   "footerReservationLink": "Navštivte nás",
-  "footerCopyright": "© {companyName}. Všechna práva vyhrazena.",
+  "footerCopyright": "© {year} {companyName}. Všechna práva vyhrazena.",
   "legalPageEyebrow": "Právní informace",
   "legalPageLastUpdatedLabel": "Naposledy aktualizováno",
   "contactMetadataTitle": "Kontakt Deskohub Workspace | Ozvi se kvůli coworkingu, eventu nebo soukromé místnosti",
