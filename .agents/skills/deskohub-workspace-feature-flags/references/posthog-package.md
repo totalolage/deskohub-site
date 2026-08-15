@@ -48,12 +48,12 @@ import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
 
 const projectId = Schema.decodeUnknownSync(PostHogProjectId)(
-  process.env.WORKSPACE_POSTHOG_PROJECT_ID
+  process.env.POSTHOG_PROJECT_ID
 );
 
 const program = generatePostHogFeatureFlagContract({
-  apiKey: process.env.WORKSPACE_POSTHOG_FEATURE_FLAGS_API_KEY!,
-  host: new URL(process.env.WORKSPACE_POSTHOG_HOST ?? "https://eu.posthog.com"),
+  apiKey: process.env.POSTHOG_API_KEY!,
+  host: new URL(process.env.POSTHOG_HOST ?? "https://eu.posthog.com"),
   outputFile: new URL(
     "../features/feature-flags/generated/contract.ts",
     import.meta.url
