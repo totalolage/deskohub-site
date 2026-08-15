@@ -15,9 +15,10 @@ operators; do not nest a logging pipe inside `catch`. When a release gate
 applies to only one reservation family, dispatch exhaustively by `kind` so
 unrelated families do not even evaluate the gated lookup.
 
-For boolean release gates, only `true` is enabled. Treat both `false` and an
-omitted SDK value for an inactive flag as disabled without error logging. Log
-the evaluation failure itself, not the ordinary off state.
+For boolean release gates, only `true` is enabled. Treat explicit `false` as
+the ordinary off state without error logging. An omitted value means PostHog
+did not evaluate the requested flag, such as when the flag is inactive; fail
+that gate closed and log the missing flag as unavailable.
 
 Keep the package Node service as a thin typed wrapper around one lazily created SDK client. A key/value lookup does not need its own nested Context service, Layer, or ManagedRuntime.
 
