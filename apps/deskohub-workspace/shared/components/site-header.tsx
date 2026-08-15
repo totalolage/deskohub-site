@@ -4,7 +4,10 @@ import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
-import { LocaleSwitcherLinks } from "@/shared/components/locale-switcher-links";
+import {
+  LocaleSwitcherLabels,
+  LocaleSwitcherLinks,
+} from "@/shared/components/locale-switcher-links";
 import { HorizontalLogo } from "@/shared/components/logo";
 import type { SiteHeaderMenuItem } from "@/shared/components/site-header-config";
 import { Button } from "@/shared/components/ui/button";
@@ -82,7 +85,14 @@ export function SiteHeader({
             data-locale-switcher
             className="hidden rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block"
           >
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <LocaleSwitcherLabels
+                  currentLocale={currentLocale}
+                  languageLabels={languageLabels}
+                />
+              }
+            >
               <LocaleSwitcherLinks
                 currentLocale={currentLocale}
                 languageLabels={languageLabels}
@@ -140,7 +150,15 @@ export function SiteHeader({
             data-locale-switcher
             className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72"
           >
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <LocaleSwitcherLabels
+                  currentLocale={currentLocale}
+                  languageLabels={languageLabels}
+                  isMobile
+                />
+              }
+            >
               <LocaleSwitcherLinks
                 currentLocale={currentLocale}
                 languageLabels={languageLabels}
