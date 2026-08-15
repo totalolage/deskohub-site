@@ -49,8 +49,11 @@ description: Workspace customer account, Neon Auth, magic link, profile, account
 - The bare profile changes only the name. Verified email remains read-only
   because it is the reservation-linking trust boundary.
 - Require explicit confirmation for account deletion. Unlink the local mapping
-  before deleting the Neon user. Never delete retained Dotypos reservations,
-  payments, invoices, or legal evidence.
+  before deleting the Neon user. Serialize deletion and link resolution with a
+  database advisory lock for the account ID, revalidate the authoritative
+  session after taking that lock, and unlink again after successful identity
+  deletion so a concurrent resolver cannot leave an orphan. Never delete
+  retained Dotypos reservations, payments, invoices, or legal evidence.
 
 ## Protected-preview E2E
 

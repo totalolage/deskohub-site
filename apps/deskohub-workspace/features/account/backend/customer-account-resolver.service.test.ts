@@ -30,10 +30,11 @@ const user: CustomerAuthUser = {
 const dependencies = (
   overrides: Partial<CustomerAccountResolutionDependencies> = {}
 ): CustomerAccountResolutionDependencies => ({
-  currentUser: Effect.succeed(user),
+  currentUser: () => Effect.succeed(user),
   findLink: () => Effect.succeed(null),
   findCustomer: () => Effect.succeed({ kind: "matched", customerId }),
   claimLink: () => Effect.succeed({ kind: "linked", customerId }),
+  withAccountLock: (_accountId, effect) => effect,
   ...overrides,
 });
 
@@ -44,13 +45,14 @@ describe("customer account resolution", () => {
   test("fails closed when auth is not configured or has no session", async () => {
     const notConfigured = await runError(
       dependencies({
-        currentUser: Effect.fail(
-          new CustomerAccountAccessError({ reason: "not-configured" })
-        ),
+        currentUser: () =>
+          Effect.fail(
+            new CustomerAccountAccessError({ reason: "not-configured" })
+          ),
       })
     );
     const unauthenticated = await runError(
-      dependencies({ currentUser: Effect.succeed(null) })
+      dependencies({ currentUser: () => Effect.succeed(null) })
     );
 
     expect(notConfigured.reason).toBe("not-configured");
@@ -59,11 +61,13 @@ describe("customer account resolution", () => {
 
   test("rejects malformed identities and unverified email addresses", async () => {
     const malformed = await runError(
-      dependencies({ currentUser: Effect.succeed({ ...user, id: "   " }) })
+      dependencies({
+        currentUser: () => Effect.succeed({ ...user, id: "   " }),
+      })
     );
     const unverified = await runError(
       dependencies({
-        currentUser: Effect.succeed({ ...user, emailVerified: false }),
+        currentUser: () => Effect.succeed({ ...user, emailVerified: false }),
       })
     );
 
@@ -88,6 +92,29 @@ describe("customer account resolution", () => {
 
     expect(result).toEqual({ accountId, dotyposCustomerId: customerId });
     expect(lookups).toBe(0);
+  });
+
+  test("does not relink from a session captured before the account lock", async () => {
+    let sessionReads = 0;
+    let claims = 0;
+    const error = await runError(
+      dependencies({
+        currentUser: () =>
+          Effect.sync(() => {
+            sessionReads += 1;
+            return sessionReads === 1 ? user : null;
+          }),
+        claimLink: () =>
+          Effect.sync(() => {
+            claims += 1;
+            return { kind: "linked" as const, customerId };
+          }),
+      })
+    );
+
+    expect(error.reason).toBe("unauthenticated");
+    expect(sessionReads).toBe(2);
+    expect(claims).toBe(0);
   });
 
   test("links the unique active customer found by exact email", async () => {
@@ -167,9 +194,10 @@ describe("customer account resolution", () => {
     switch (failure) {
       case "session":
         overrides = {
-          currentUser: Effect.fail(
-            new CustomerAccountAccessError({ reason: "unavailable" })
-          ),
+          currentUser: () =>
+            Effect.fail(
+              new CustomerAccountAccessError({ reason: "unavailable" })
+            ),
         };
         break;
       case "database":
