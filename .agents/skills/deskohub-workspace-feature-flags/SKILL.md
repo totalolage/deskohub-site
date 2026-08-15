@@ -15,6 +15,10 @@ operators; do not nest a logging pipe inside `catch`. When a release gate
 applies to only one reservation family, dispatch exhaustively by `kind` so
 unrelated families do not even evaluate the gated lookup.
 
+For boolean release gates, only `true` is enabled. Treat both `false` and an
+omitted SDK value for an inactive flag as disabled without error logging. Log
+the evaluation failure itself, not the ordinary off state.
+
 Keep the package Node service as a thin typed wrapper around one lazily created SDK client. A key/value lookup does not need its own nested Context service, Layer, or ManagedRuntime.
 
 Read [the feature-flag architecture](references/architecture.md) for generation, runtime evaluation, subjects, and deployment-scoped overrides. Read [the PostHog package reference](references/posthog-package.md) when changing the shared generated client or typed feature-flag adapters. Keep flag evaluation fail-closed where the feature requires it, and update this skill when developer feedback changes a durable feature-flag convention.

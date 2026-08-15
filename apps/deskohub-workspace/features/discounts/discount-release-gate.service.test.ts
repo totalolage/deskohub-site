@@ -101,17 +101,11 @@ describe("DiscountReleaseGateService", () => {
     ["calendar_sales", "calendarSales"],
     ["customer_discounts", "customerDiscounts"],
     ["discount_codes", "discountCodes"],
-  ] as const)("fails only %s closed when PostHog omits it", async (flag, gate) => {
+  ] as const)("treats omitted %s as disabled without an error", async (flag, gate) => {
     flagValues.delete(flag);
-    const logRecords: {
-      readonly annotations: LogAnnotations;
-      readonly level: string;
-    }[] = [];
+    const logLevels: string[] = [];
     const logger = Logger.make((options) => {
-      logRecords.push({
-        annotations: options.fiber.getRef(References.CurrentLogAnnotations),
-        level: options.logLevel,
-      });
+      logLevels.push(options.logLevel);
     });
 
     const result = await Effect.gen(function* () {
@@ -131,18 +125,7 @@ describe("DiscountReleaseGateService", () => {
       customerDiscounts: gate !== "customerDiscounts",
       discountCodes: gate !== "discountCodes",
     });
-    expect(logRecords).toContainEqual({
-      level: "Error",
-      annotations: expect.objectContaining({
-        discountBoundary: "release_gate",
-        discountOperation: "affirm_displayed_discounts",
-        discountFeatureFlag: flag,
-        discountErrorTag: "MissingFeatureFlag",
-        discountErrorReason: "missing_flag",
-      }),
-    });
-    expect(JSON.stringify(logRecords)).not.toContain("SAVE20");
-    expect(JSON.stringify(logRecords)).not.toContain("customer-1");
+    expect(logLevels).not.toContain("Error");
   });
 
   test("fails every gate closed when evaluation fails", async () => {
