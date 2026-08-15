@@ -55,6 +55,9 @@ describe("getSiteHeaderConfig", () => {
     isMeetingRoomPageEnabled.mockResolvedValue(false);
     const config = await getSiteHeaderConfig("en-US");
 
+    expect(config.accountHref).toBe("/en-US/account");
+    expect(config.accountLabel).toBe("Account");
+
     expect(config.links.map(({ label }) => label)).toEqual([
       "Location",
       "Photos",

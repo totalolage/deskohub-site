@@ -61,6 +61,8 @@ export const env = createEnv({
     NEXI_API_ORIGIN: process.env.NEXI_API_ORIGIN,
     NEXI_CHECKOUT_CURRENCY_OVERRIDE:
       process.env.NEXI_CHECKOUT_CURRENCY_OVERRIDE,
+    NEON_AUTH_BASE_URL: process.env.NEON_AUTH_BASE_URL,
+    NEON_AUTH_COOKIE_SECRET: process.env.NEON_AUTH_COOKIE_SECRET,
     POSTHOG_SERVICE_NAME: process.env.POSTHOG_SERVICE_NAME,
     POSTHOG_SERVICE_NAMESPACE: process.env.POSTHOG_SERVICE_NAMESPACE,
     POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
@@ -112,6 +114,13 @@ export const env = createEnv({
         return {
           ...issue,
           message: "Invalid Igloohome client credential configuration.",
+        };
+      }
+
+      if (hasPath("NEON_AUTH_COOKIE_SECRET")) {
+        return {
+          ...issue,
+          message: "Invalid Neon Auth cookie secret configuration.",
         };
       }
 

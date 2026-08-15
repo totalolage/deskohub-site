@@ -126,6 +126,14 @@ test("prevents private reservation responses from being cached", () => {
   }
 });
 
+test("prevents customer account responses from being cached", () => {
+  for (const path of ["/en-US/account", "/cs-CZ/account/preferences"]) {
+    const response = proxy(new NextRequest(`https://workspace.example${path}`));
+
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  }
+});
+
 test("does not treat a GET with a spoofed action header as a Server Action", () => {
   const request = new NextRequest("https://workspace.example/", {
     headers: {

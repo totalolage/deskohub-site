@@ -25,10 +25,7 @@ test("checks webhook readiness on the exact protected preview origin", async () 
   );
   const httpClientLayer = FetchHttpClient.layer.pipe(
     Layer.provide(
-      Layer.succeed(
-        FetchHttpClient.Fetch,
-        fetchMock as unknown as typeof globalThis.fetch
-      )
+      Layer.succeed(FetchHttpClient.Fetch, fetchMock as typeof globalThis.fetch)
     )
   );
 
@@ -75,7 +72,7 @@ test("starts all preview readiness requests before any request completes", async
   });
   const fetchMock = mock(async (input: URL | RequestInfo) => {
     startedRequestCount += 1;
-    if (startedRequestCount === 3) releaseRequests();
+    if (startedRequestCount === 4) releaseRequests();
     await allRequestsStarted;
 
     return String(input).endsWith(".jpeg")
@@ -92,7 +89,7 @@ test("starts all preview readiness requests before any request completes", async
     )
   );
 
-  expect(startedRequestCount).toBe(3);
+  expect(startedRequestCount).toBe(4);
 });
 
 test("recognizes a rendered feature-gated preview page", async () => {

@@ -119,6 +119,10 @@ export const workspaceServerEnvSchema = Schema.Struct({
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: toEnvSchema(
     Schema.optional(Schema.Literal("EUR"))
   ),
+  NEON_AUTH_BASE_URL: optionalUrlEnvSchema,
+  NEON_AUTH_COOKIE_SECRET: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isMinLength(32)))
+  ),
   POSTHOG_SERVICE_NAME: toEnvSchema(
     Schema.NonEmptyString.pipe(
       Schema.withDecodingDefaultType(Effect.succeed("deskohub-workspace"))

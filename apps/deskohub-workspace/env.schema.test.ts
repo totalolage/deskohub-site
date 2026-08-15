@@ -171,6 +171,24 @@ describe("workspace environment schemas", () => {
     );
   });
 
+  test("keeps Neon Auth optional but validates configured values", () => {
+    const decodeBaseUrl = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.NEON_AUTH_BASE_URL
+    );
+    const decodeCookieSecret = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.NEON_AUTH_COOKIE_SECRET
+    );
+
+    expect(decodeBaseUrl(undefined)).toBeUndefined();
+    expect(decodeCookieSecret(undefined)).toBeUndefined();
+    expect(decodeBaseUrl("https://auth.example.test/neondb/auth")).toBe(
+      "https://auth.example.test/neondb/auth"
+    );
+    expect(decodeCookieSecret("s".repeat(32))).toBe("s".repeat(32));
+    expect(() => decodeBaseUrl("not-a-url")).toThrow();
+    expect(() => decodeCookieSecret("too-short")).toThrow();
+  });
+
   test("validates accounting snapshot key IDs without accepting secrets", () => {
     const decodeKeyId = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID
