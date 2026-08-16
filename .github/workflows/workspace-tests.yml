@@ -62,11 +62,22 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Migrate account repository test database
+      - name: Apply account link migration
         working-directory: apps/deskohub-workspace
         env:
           DATABASE_URL: postgres://workspace_test:workspace_test_password@localhost:5432/workspace_account_tests
-        run: bun db:migrate
+        run: |
+          bun -e '
+            import { Client } from "pg";
+            const client = new Client({ connectionString: process.env.DATABASE_URL });
+            await client.connect();
+            try {
+              const migration = await Bun.file("db/migrations/20260815103004_stormy_wilson_fisk/migration.sql").text();
+              await client.query(migration);
+            } finally {
+              await client.end();
+            }
+          '
 
       - name: Test account repository concurrency
         working-directory: apps/deskohub-workspace
