@@ -279,6 +279,22 @@ export const AdministrationWorkspaceReservationId = Schema.NonEmptyString.pipe(
 export type AdministrationWorkspaceReservationId =
   typeof AdministrationWorkspaceReservationId.Type;
 
+export const AdministrationOrderId = Schema.NonEmptyString.pipe(
+  Schema.brand("OrderId")
+).annotate({
+  identifier: "OrderId",
+  description: "Opaque identifier for a persisted Deskohub order.",
+});
+export type AdministrationOrderId = typeof AdministrationOrderId.Type;
+
+export const AdministrationOrderLineId = Schema.NonEmptyString.pipe(
+  Schema.brand("OrderLineId")
+).annotate({
+  identifier: "OrderLineId",
+  description: "Opaque identifier for an immutable Deskohub order line.",
+});
+export type AdministrationOrderLineId = typeof AdministrationOrderLineId.Type;
+
 export const AdministrationPaymentAttemptId = Schema.NonEmptyString.pipe(
   Schema.brand("PaymentAttemptId")
 ).annotate({
@@ -709,6 +725,110 @@ export const AdministrationMoney = Schema.Struct({
   currency: Schema.String,
 });
 export type AdministrationMoney = typeof AdministrationMoney.Type;
+
+export const AdministrationOrderProduct = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("cowork"),
+    tier: Schema.Literals(["basic", "plus", "profi"]),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("meeting-room"),
+    duration: Schema.Struct({
+      unit: Schema.Literals(["hour", "day"]),
+      amount: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+    }),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("office"),
+    seats: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+    dayCount: Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("goods"),
+    categoryId: AdministrationDotyposCategoryId,
+    productId: AdministrationDotyposProductId,
+  }),
+]);
+export type AdministrationOrderProduct = typeof AdministrationOrderProduct.Type;
+
+export const AdministrationOrderSummary = Schema.Struct({
+  id: AdministrationOrderId,
+  kind: Schema.Literals(["reservation", "goods"]),
+  customerId: AdministrationDotyposCustomerId,
+  paymentState: Schema.Literals([
+    "not_started",
+    "pending",
+    "paid",
+    "failed",
+    "cancelled",
+    "expired",
+  ]),
+  fulfillmentState: Schema.Literals([
+    "not_started",
+    "processing",
+    "fulfilled",
+    "failed",
+  ]),
+  total: Schema.NullOr(AdministrationMoney),
+  invoiceStatus: Schema.Literals(["issued", "not_issued"]),
+  reservationId: Schema.NullOr(AdministrationWorkspaceReservationId),
+  paidAt: Schema.NullOr(Schema.String),
+  fulfilledAt: Schema.NullOr(Schema.String),
+  fulfillmentFailedAt: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+export type AdministrationOrderSummary = typeof AdministrationOrderSummary.Type;
+
+export const AdministrationOrderLine = Schema.Struct({
+  id: AdministrationOrderLineId,
+  sequence: Schema.Number,
+  product: AdministrationOrderProduct,
+  description: Schema.String,
+  quantity: Schema.Number,
+  unitPrice: AdministrationMoney,
+  undiscountedTotal: AdministrationMoney,
+  payableTotal: AdministrationMoney,
+  createdAt: Schema.String,
+});
+export type AdministrationOrderLine = typeof AdministrationOrderLine.Type;
+
+export const AdministrationOrderPaymentAttempt = Schema.Struct({
+  id: AdministrationPaymentAttemptId,
+  provider: Schema.Literals(["nexi", "internal"]),
+  state: Schema.Literals([
+    "created",
+    "pending",
+    "paid",
+    "failed",
+    "cancelled",
+    "expired",
+  ]),
+  refundState: Schema.Literals(["not_required", "required"]),
+  amount: AdministrationMoney,
+  providerOrderCreatedAt: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+export type AdministrationOrderPaymentAttempt =
+  typeof AdministrationOrderPaymentAttempt.Type;
+
+export const AdministrationOrderList = Schema.Struct({
+  items: Schema.Array(AdministrationOrderSummary),
+  truncated: Schema.Boolean,
+});
+export type AdministrationOrderList = typeof AdministrationOrderList.Type;
+
+export const AdministrationOrderDetail = Schema.Struct({
+  order: AdministrationOrderSummary,
+  lines: Schema.Array(AdministrationOrderLine),
+  paymentAttempts: Schema.Array(AdministrationOrderPaymentAttempt),
+  invoice: Schema.Struct({
+    status: Schema.Literals(["issued", "not_issued"]),
+    issuedAt: Schema.NullOr(Schema.String),
+  }),
+});
+export type AdministrationOrderDetail = typeof AdministrationOrderDetail.Type;
 
 export const AdministrationPaymentAttempt = Schema.Struct({
   id: AdministrationPaymentAttemptId,
@@ -1816,6 +1936,18 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
     HttpApiEndpoint.get("getBooking", "/bookings/:bookingId", {
       params: { bookingId: AdministrationDotyposReservationId },
       success: AdministrationBookingDetail,
+      error: CliResourceNotFound.schema,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listDomainOrders", "/domain-orders", {
+      success: AdministrationOrderList,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getDomainOrder", "/domain-orders/:orderId", {
+      params: { orderId: AdministrationOrderId },
+      success: AdministrationOrderDetail,
       error: CliResourceNotFound.schema,
     })
   )

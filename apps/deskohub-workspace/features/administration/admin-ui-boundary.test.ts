@@ -6,15 +6,15 @@ const readWorkspaceFile = (path: string) =>
   Bun.file(`${workspaceRoot}${path}`).text();
 
 describe("administration UI boundaries", () => {
-  test("keeps legacy provider routes usable until domain orders land", async () => {
-    const legacyOrders = await readWorkspaceFile("app/admin/orders/page.tsx");
-    expect(legacyOrders).toContain("getAdministrationRedirectUrl");
-    expect(legacyOrders).toContain('"/admin/nexi/orders"');
-    const legacyDetail = await readWorkspaceFile(
-      "app/admin/orders/[orderId]/page.tsx"
-    );
-    expect(legacyDetail).toContain("redirect(`/admin/nexi/orders/");
-    expect(legacyDetail).toContain("encodeURIComponent(orderId)");
+  test("reserves the generic order route for domain orders", async () => {
+    expect(
+      await Bun.file(`${workspaceRoot}app/admin/orders/page.tsx`).exists()
+    ).toBe(true);
+    expect(
+      await Bun.file(
+        `${workspaceRoot}app/admin/orders/[orderId]/page.tsx`
+      ).exists()
+    ).toBe(true);
     const legacyOperations = await readWorkspaceFile(
       "app/admin/operations/page.tsx"
     );
@@ -79,6 +79,8 @@ describe("administration UI boundaries", () => {
       "app/admin/nexi/operations/[operationId]/page.tsx",
       "app/admin/nexi/orders/page.tsx",
       "app/admin/nexi/orders/[orderId]/page.tsx",
+      "app/admin/orders/page.tsx",
+      "app/admin/orders/[orderId]/page.tsx",
       "app/admin/reservations/page.tsx",
       "app/admin/reservations/[reservationId]/page.tsx",
       "app/admin/sales/page.tsx",
@@ -110,6 +112,7 @@ describe("administration UI boundaries", () => {
       "app/admin/customers/page.tsx",
       "app/admin/nexi/operations/page.tsx",
       "app/admin/nexi/orders/page.tsx",
+      "app/admin/orders/page.tsx",
       "app/admin/reservations/page.tsx",
       "features/discounts/admin/components.tsx",
     ];

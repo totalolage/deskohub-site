@@ -22,6 +22,9 @@ import {
   AdministrationNexiOperationQuery,
   AdministrationNexiOrderId,
   AdministrationNexiOrderQuery,
+  AdministrationOrderDetail,
+  AdministrationOrderId,
+  AdministrationOrderLineId,
   AdministrationPaymentAttempt,
   AdministrationPaymentAttemptId,
   AdministrationReservationAccessGrant,
@@ -241,6 +244,8 @@ describe("administration contract", () => {
       AdministrationPaymentAttemptId,
       AdministrationNexiOrderId,
       AdministrationNexiOperationId,
+      AdministrationOrderId,
+      AdministrationOrderLineId,
       AdministrationDotyposCustomerId,
       AdministrationDotyposReservationId,
       AdministrationDotyposTableId,
@@ -268,6 +273,12 @@ describe("administration contract", () => {
       "GET"
     );
     expect(AdminCliAdministrationApi.endpoints.getBooking?.method).toBe("GET");
+    expect(AdminCliAdministrationApi.endpoints.listDomainOrders?.method).toBe(
+      "GET"
+    );
+    expect(AdminCliAdministrationApi.endpoints.getDomainOrder?.method).toBe(
+      "GET"
+    );
     expect(AdminCliAdministrationApi.endpoints.listNexiOrders?.method).toBe(
       "GET"
     );
@@ -370,6 +381,55 @@ describe("administration contract", () => {
     });
 
     expect(attempt).toMatchObject({ state: "paid", refundState: "required" });
+  });
+
+  test("keeps domain orders provider-agnostic and historical totals unavailable", () => {
+    const detail = Schema.decodeUnknownSync(AdministrationOrderDetail)({
+      order: {
+        id: "order-1",
+        kind: "reservation",
+        customerId: "customer-1",
+        paymentState: "paid",
+        fulfillmentState: "fulfilled",
+        total: null,
+        invoiceStatus: "not_issued",
+        reservationId: "order-1",
+        paidAt: "2026-08-16T12:00:00Z",
+        fulfilledAt: "2026-08-16T12:01:00Z",
+        fulfillmentFailedAt: null,
+        createdAt: "2026-08-16T11:55:00Z",
+        updatedAt: "2026-08-16T12:01:00Z",
+      },
+      lines: [],
+      paymentAttempts: [
+        {
+          id: "attempt-1",
+          provider: "nexi",
+          state: "paid",
+          refundState: "not_required",
+          amount: { value: 5000, exponent: 2, currency: "CZK" },
+          providerOrderCreatedAt: "2026-08-16T11:56:00Z",
+          createdAt: "2026-08-16T11:56:00Z",
+          updatedAt: "2026-08-16T12:00:00Z",
+        },
+      ],
+      invoice: { status: "not_issued", issuedAt: null },
+    });
+
+    expect(detail.order.total).toBeNull();
+    expect(detail.paymentAttempts[0]).not.toHaveProperty("providerOrderId");
+    expect(detail.order).not.toHaveProperty("correlationId");
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationOrderDetail)(
+        {
+          ...detail,
+          paymentAttempts: [
+            { ...detail.paymentAttempts[0], providerOrderId: "provider-1" },
+          ],
+        },
+        { onExcessProperty: "error" }
+      )
+    ).toThrow();
   });
 
   test("exposes access operations without exposing the PIN", () => {
