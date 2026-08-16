@@ -127,7 +127,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
     )
   ),
   POSTHOG_API_KEY: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
-  POSTHOG_API_HOST: optionalUrlEnvSchema,
+  POSTHOG_API_HOST: urlEnvSchema,
   POSTHOG_FEATURE_FLAG_OVERRIDES: toEnvSchema(
     postHogFeatureFlagOverridesSchema
   ),

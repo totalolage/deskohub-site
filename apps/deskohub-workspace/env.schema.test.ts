@@ -131,7 +131,7 @@ describe("workspace environment schemas", () => {
     const databaseUrl = "postgres://user:pass@localhost:5432/workspace";
 
     expect(decodeDatabaseUrl(databaseUrl)).toBe(databaseUrl);
-    expect(decodePostHogApiHost(undefined)).toBeUndefined();
+    expect(() => decodePostHogApiHost(undefined)).toThrow();
     expect(decodePostHogApiHost("https://eu.posthog.com")).toBe(
       "https://eu.posthog.com"
     );

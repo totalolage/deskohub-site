@@ -16,7 +16,7 @@ const loadPostHogFeatureFlagGenerationEnv = Schema.decodeUnknownEffect(
   PostHogFeatureFlagGenerationEnv
 )({
   POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
-  POSTHOG_API_HOST: process.env.POSTHOG_API_HOST ?? "https://eu.posthog.com",
+  POSTHOG_API_HOST: process.env.POSTHOG_API_HOST,
   POSTHOG_PROJECT_ID: process.env.POSTHOG_PROJECT_ID,
 }).pipe(
   Effect.mapError(

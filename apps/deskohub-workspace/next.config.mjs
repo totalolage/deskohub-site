@@ -14,7 +14,7 @@ const postHogSourceMapConfig =
     ? {
         personalApiKey: process.env.POSTHOG_API_KEY,
         projectId: process.env.POSTHOG_PROJECT_ID,
-        host: process.env.POSTHOG_API_HOST ?? "https://eu.posthog.com",
+        host: process.env.POSTHOG_API_HOST,
         sourcemaps: {
           enabled: process.env.VERCEL_ENV === "production",
           releaseName: "deskohub-workspace",
