@@ -32,6 +32,7 @@ const payload = {
 
 const attempt = {
   id: "attempt-id",
+  orderId: "reservation-id",
   workspaceReservationId: "reservation-id",
   provider: "nexi" as const,
   providerOrderId: "provider-order-id",
@@ -239,7 +240,7 @@ describe("NexiWebhookService", () => {
     expect(markPaidForReservation).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "attempt-id",
-        workspaceReservationId: "reservation-id",
+        orderId: "reservation-id",
         webhookEventId: "event-id",
       })
     );

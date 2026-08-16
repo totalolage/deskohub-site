@@ -39,6 +39,43 @@ describe("payment attempt providers", () => {
     expect(nexiOrderIndex?.where).toBeDefined();
   });
 
+  test("links attempts to orders while retaining the nullable reservation compatibility link", async () => {
+    const config = getTableConfig(paymentAttempts);
+    const orderId = config.columns.find(({ name }) => name === "order_id");
+    const reservationId = config.columns.find(
+      ({ name }) => name === "workspace_reservation_id"
+    );
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260816181927_order_payment_ledger_expand/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(orderId?.notNull).toBe(false);
+    expect(reservationId?.notNull).toBe(false);
+    expect(config.checks.map(({ name }) => name)).toEqual(
+      expect.arrayContaining([
+        "payment_attempts_order_reference_check",
+        "payment_attempts_reservation_order_match_check",
+      ])
+    );
+    expect(migration).toContain('ON CONFLICT ("id") DO UPDATE SET');
+    expect(migration).toContain(
+      "RAISE EXCEPTION 'reservation id collides with a non-reservation order'"
+    );
+    expect(migration).not.toContain(
+      'LOCK TABLE "workspace_reservations" IN SHARE MODE'
+    );
+    expect(migration).not.toContain(
+      "reservation order repair did not converge"
+    );
+    expect(migration).toContain('SET "order_id" = "workspace_reservation_id"');
+    expect(migration).toContain(
+      'ADD CONSTRAINT "orders_active_payment_attempt_id_payment_attempts_id_fkey"'
+    );
+  });
+
   test("tracks required refunds separately from successful payment", () => {
     const config = getTableConfig(paymentAttempts);
     const refundState = config.columns.find(

@@ -26,7 +26,7 @@ const sliceFrom = (source: string, startNeedle: string, endNeedle: string) => {
 };
 
 describe("PaymentLifecycleRepository", () => {
-  test("owns attempt, reservation, applications, and claim admission in one transaction", async () => {
+  test("owns attempt, order, reservation, applications, and claim admission in one transaction", async () => {
     const source = await readRepository();
     const createPendingNexiAttempt = sliceFrom(
       source,
@@ -37,6 +37,8 @@ describe("PaymentLifecycleRepository", () => {
     expect(createPendingNexiAttempt).toContain(".transaction");
     expect(createPendingNexiAttempt).toContain('.for("update")');
     expect(createPendingNexiAttempt).toContain(".insert(paymentAttempts)");
+    expect(createPendingNexiAttempt).toContain(".update(orders)");
+    expect(createPendingNexiAttempt).toContain("orderId: input.orderId");
     expect(createPendingNexiAttempt).toContain(
       "persistAccountingDocumentSnapshot"
     );
@@ -77,6 +79,8 @@ describe("PaymentLifecycleRepository", () => {
     expect(completeInternalPayment).toContain('provider: "internal"');
     expect(completeInternalPayment).toContain('state: "paid"');
     expect(completeInternalPayment).toContain(".insert(paymentAttempts)");
+    expect(completeInternalPayment).toContain(".update(orders)");
+    expect(completeInternalPayment).toContain("orderId: input.orderId");
     expect(completeInternalPayment).toContain(
       "persistAccountingDocumentSnapshot"
     );
@@ -200,12 +204,56 @@ describe("PaymentLifecycleRepository", () => {
     );
 
     expect(paid).toContain("db.transaction");
-    expect(paid).toContain("yield* redeemCodeClaim");
+    expect(paid).toContain("yield* mirrorPaidReservation");
+    expect(paid).toContain("yield* redeemCodeClaim(");
     expect(terminal).toContain("db.transaction");
-    expect(terminal).toContain("yield* releaseCodeClaim");
+    expect(terminal).toContain("yield* mirrorTerminalReservation");
+    expect(terminal).toContain("yield* releaseCodeClaim(");
+    expect(source).toContain('Match.when("goods", () => Effect.void)');
+    expect(source).toContain("yield* redeemCodeClaim(");
+    expect(source).toContain("yield* releaseCodeClaim(");
     expect(terminal).not.toContain(".delete(accountingDocumentSnapshots)");
     expect(terminal).not.toContain(
       'input.failureCode !== "payment_abandoned_after_provider_cutoff"'
+    );
+  });
+
+  test("repairs release-skew reservation attempts before paid and terminal writes", async () => {
+    const source = await readRepository();
+    const lockAndRepair = sliceFrom(
+      source,
+      "const lockOrderForPaymentTransition = Effect.fn(",
+      "const mirrorPaidReservation"
+    );
+    const completeInternalPayment = sliceFrom(
+      source,
+      "const completeInternalPayment = Effect.fn(",
+      "      const attachProviderSession"
+    );
+
+    expect(lockAndRepair).toContain("isNull(paymentAttempts.orderId)");
+    expect(lockAndRepair).toContain("paymentAttempts.workspaceReservationId");
+    expect(lockAndRepair).toContain("yield* ensureReservationOrder");
+    expect(lockAndRepair).toContain(".set({ orderId: input.orderId })");
+    expect(lockAndRepair.indexOf("yield* ensureReservationOrder")).toBeLessThan(
+      lockAndRepair.indexOf(".set({ orderId: input.orderId })")
+    );
+    expect(completeInternalPayment).toContain(
+      "yield* lockOrderForPaymentTransition"
+    );
+  });
+
+  test("uses the persisted terminal timestamp when repairing an idempotent retry", async () => {
+    const source = await readRepository();
+    const terminal = sliceFrom(
+      source,
+      'const markTerminal = Effect.fn("PaymentLifecycleRepository.markTerminal")',
+      "      return {\n        createPendingNexiAttempt,"
+    );
+
+    expect(terminal).toContain("terminalAt: consistent.updatedAt");
+    expect(terminal).toContain(
+      "input.id,\n                consistent.updatedAt,"
     );
   });
 

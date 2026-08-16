@@ -274,7 +274,7 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
           }
 
           const reservation = yield* reservations
-            .findById(workspaceReservationId)
+            .findByIdForFulfillment(workspaceReservationId)
             .pipe(
               Effect.mapError(
                 (cause) =>

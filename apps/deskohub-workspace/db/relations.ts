@@ -4,6 +4,11 @@ import * as schema from "./schema";
 export const relations = defineRelations(schema, (r) => ({
   orders: {
     lines: r.many.orderLines(),
+    paymentAttempts: r.many.paymentAttempts(),
+    activePaymentAttempt: r.one.paymentAttempts({
+      from: r.orders.activePaymentAttemptId,
+      to: r.paymentAttempts.id,
+    }),
   },
   orderLines: {
     order: r.one.orders({
@@ -171,6 +176,10 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
   paymentAttempts: {
+    order: r.one.orders({
+      from: r.paymentAttempts.orderId,
+      to: r.orders.id,
+    }),
     accountingDocumentSnapshot: r.one.accountingDocumentSnapshots({
       from: r.paymentAttempts.id,
       to: r.accountingDocumentSnapshots.paymentAttemptId,
@@ -182,7 +191,6 @@ export const relations = defineRelations(schema, (r) => ({
     workspaceReservation: r.one.workspaceReservations({
       from: r.paymentAttempts.workspaceReservationId,
       to: r.workspaceReservations.id,
-      optional: false,
     }),
     latePaymentRecovery: r.one.latePaymentRecoveries({
       from: r.paymentAttempts.id,

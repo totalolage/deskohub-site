@@ -1,21 +1,24 @@
 import type { NexiOrderId } from "@deskohub/nexi";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import {
-  type PaymentAttemptRow,
-  type PaymentState,
-  paymentAttempts,
-} from "@/db/schema";
+import { type PaymentAttemptRow, paymentAttempts } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
-import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import {
+  type OrderId,
+  type OrderPaymentState,
+  orderIdSchema,
+} from "@/features/order";
 
 export const toPaymentAttempt = (attempt: PaymentAttemptRow) => {
-  const { amountExponent, amountValue, currency, ...paymentAttempt } = attempt;
+  const { amountExponent, amountValue, currency, orderId, ...paymentAttempt } =
+    attempt;
+  const persistedOrderId = orderId ?? attempt.workspaceReservationId;
 
   return {
     ...paymentAttempt,
+    orderId: orderIdSchema.make(persistedOrderId!),
     amount: {
       value: amountValue,
       exponent: amountExponent,
@@ -43,10 +46,10 @@ export interface IPaymentAttemptRepository {
   readonly findByProviderOrderId: (
     providerOrderId: NexiOrderId
   ) => Effect.Effect<PaymentAttempt | null, EffectDrizzleQueryError>;
-  readonly findDisplayableForReservation: (input: {
-    readonly workspaceReservationId: WorkspaceReservationId;
+  readonly findDisplayableForOrder: (input: {
+    readonly orderId: OrderId;
     readonly activePaymentAttemptId?: PaymentAttemptId;
-    readonly paymentState: PaymentState;
+    readonly paymentState: OrderPaymentState;
   }) => Effect.Effect<PaymentAttempt | null, EffectDrizzleQueryError>;
 }
 
@@ -86,21 +89,24 @@ export class PaymentAttemptRepository extends Context.Service<
         return attempt ? toPaymentAttempt(attempt) : null;
       });
 
-      const findDisplayableForReservation = Effect.fn(
-        "PaymentAttemptRepository.findDisplayableForReservation"
+      const findDisplayableForOrder = Effect.fn(
+        "PaymentAttemptRepository.findDisplayableForOrder"
       )(function* (input: {
-        readonly workspaceReservationId: WorkspaceReservationId;
+        readonly orderId: OrderId;
         readonly activePaymentAttemptId?: PaymentAttemptId;
-        readonly paymentState: PaymentState;
+        readonly paymentState: OrderPaymentState;
       }) {
         const [attempt] = yield* db
           .select()
           .from(paymentAttempts)
           .where(
             and(
-              eq(
-                paymentAttempts.workspaceReservationId,
-                input.workspaceReservationId
+              or(
+                eq(paymentAttempts.orderId, input.orderId),
+                and(
+                  isNull(paymentAttempts.orderId),
+                  sql`${paymentAttempts.workspaceReservationId} = ${input.orderId}`
+                )
               ),
               or(
                 input.activePaymentAttemptId
@@ -134,7 +140,7 @@ export class PaymentAttemptRepository extends Context.Service<
       return {
         findById,
         findByProviderOrderId,
-        findDisplayableForReservation,
+        findDisplayableForOrder,
       } satisfies IPaymentAttemptRepository;
     })
   );

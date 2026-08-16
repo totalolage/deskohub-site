@@ -51,6 +51,7 @@ const makePaymentAttempt = <Overrides extends object>(
   overrides?: Overrides
 ) => ({
   id: "attempt-provider-return",
+  orderId: "reservation-provider-return",
   workspaceReservationId: "reservation-provider-return",
   provider: "nexi",
   providerOrderId: "provider-order-id",
@@ -129,7 +130,7 @@ describe("CheckoutStatusService", () => {
       ),
     };
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() => Effect.succeed(null)),
+      findDisplayableForOrder: mock(() => Effect.succeed(null)),
     };
 
     const status = await Effect.gen(function* () {
@@ -198,7 +199,7 @@ describe("CheckoutStatusService", () => {
       ),
     };
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() => Effect.succeed(null)),
+      findDisplayableForOrder: mock(() => Effect.succeed(null)),
     };
 
     await Effect.gen(function* () {
@@ -256,7 +257,7 @@ describe("CheckoutStatusService", () => {
       ),
     };
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() =>
+      findDisplayableForOrder: mock(() =>
         Effect.succeed(
           makePaymentAttempt({
             provider: "internal",
@@ -386,8 +387,8 @@ describe("CheckoutStatusService", () => {
     expect(JSON.stringify(status)).not.toContain("email");
     expect(JSON.stringify(status)).not.toContain("phone");
     expect(JSON.stringify(status)).not.toContain("message");
-    expect(paymentAttempts.findDisplayableForReservation).toHaveBeenCalledWith({
-      workspaceReservationId: "reservation-provider-return",
+    expect(paymentAttempts.findDisplayableForOrder).toHaveBeenCalledWith({
+      orderId: "reservation-provider-return",
       activePaymentAttemptId: "attempt-provider-return",
       paymentState: "paid",
     });
@@ -436,9 +437,7 @@ describe("CheckoutStatusService", () => {
       ),
     };
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() =>
-        Effect.succeed(makePaymentAttempt())
-      ),
+      findDisplayableForOrder: mock(() => Effect.succeed(makePaymentAttempt())),
     };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
@@ -554,9 +553,7 @@ describe("CheckoutStatusService", () => {
       ),
     };
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() =>
-        Effect.succeed(makePaymentAttempt())
-      ),
+      findDisplayableForOrder: mock(() => Effect.succeed(makePaymentAttempt())),
     };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
@@ -653,9 +650,7 @@ describe("CheckoutStatusService", () => {
       ),
     };
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() =>
-        Effect.succeed(makePaymentAttempt())
-      ),
+      findDisplayableForOrder: mock(() => Effect.succeed(makePaymentAttempt())),
     };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
@@ -749,7 +744,7 @@ describe("CheckoutStatusService", () => {
       ),
     };
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() =>
+      findDisplayableForOrder: mock(() =>
         Effect.succeed(
           makePaymentAttempt({
             state: "failed",
@@ -828,9 +823,7 @@ describe("CheckoutStatusService", () => {
       ),
     };
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() =>
-        Effect.succeed(makePaymentAttempt())
-      ),
+      findDisplayableForOrder: mock(() => Effect.succeed(makePaymentAttempt())),
     };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),

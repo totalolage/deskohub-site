@@ -91,7 +91,9 @@ describe("WorkspacePaidFulfillmentService", () => {
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
-                findById: mock(() => Effect.succeed(order as never)),
+                findByIdForFulfillment: mock(() =>
+                  Effect.succeed(order as never)
+                ),
                 claimPaidFulfillment,
                 markReservationConfirmed,
                 markFulfilled,
@@ -191,7 +193,9 @@ describe("WorkspacePaidFulfillmentService", () => {
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
-                findById: mock(() => Effect.succeed(order as never)),
+                findByIdForFulfillment: mock(() =>
+                  Effect.succeed(order as never)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),
@@ -253,6 +257,7 @@ describe("WorkspacePaidFulfillmentService", () => {
       paymentState: "paid",
       fulfillmentState: "fulfilled",
     };
+    const findByIdForFulfillment = mock(() => Effect.succeed(order as never));
 
     const result = await Effect.gen(function* () {
       const service = yield* WorkspacePaidFulfillmentService;
@@ -265,7 +270,7 @@ describe("WorkspacePaidFulfillmentService", () => {
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
-                findById: mock(() => Effect.succeed(order as never)),
+                findByIdForFulfillment,
                 markFulfillmentFailed,
               }),
               Layer.mock(DotyposService, {}),
@@ -293,6 +298,7 @@ describe("WorkspacePaidFulfillmentService", () => {
         cause: invoiceFailure,
       },
     });
+    expect(findByIdForFulfillment).toHaveBeenCalledWith("reservation-id");
     expect(markFulfillmentFailed).not.toHaveBeenCalled();
   });
 
@@ -323,7 +329,9 @@ describe("WorkspacePaidFulfillmentService", () => {
           Layer.provide(
             Layer.mergeAll(
               Layer.mock(WorkspaceReservationRepository, {
-                findById: mock(() => Effect.succeed(order as never)),
+                findByIdForFulfillment: mock(() =>
+                  Effect.succeed(order as never)
+                ),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
                 ),

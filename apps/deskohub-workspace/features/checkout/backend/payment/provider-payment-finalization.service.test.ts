@@ -42,6 +42,7 @@ const pendingReservation = {
 
 const pendingAttempt = {
   id: "attempt-id",
+  orderId: "reservation-id",
   workspaceReservationId: "reservation-id",
   provider: "nexi" as const,
   providerOrderId: "provider-order-id",
@@ -328,7 +329,7 @@ describe("ProviderPaymentFinalizationService", () => {
         expect(markPaidForReservation).toHaveBeenCalledWith(
           expect.objectContaining({
             id: "attempt-id",
-            workspaceReservationId: "reservation-id",
+            orderId: "reservation-id",
             webhookEventId: "event-id",
           })
         );
@@ -340,7 +341,7 @@ describe("ProviderPaymentFinalizationService", () => {
         expect(markTerminalForReservation).toHaveBeenCalledWith(
           expect.objectContaining({
             id: "attempt-id",
-            workspaceReservationId: "reservation-id",
+            orderId: "reservation-id",
             state: "failed",
             failureCode: "nexi_payment_failed",
             webhookEventId: "event-id",
