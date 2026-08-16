@@ -549,7 +549,7 @@ function makeDiscountServiceLayer(
     WorkspaceDotyposLayer
   );
   const discountProviders = Layer.mergeAll(
-    CalendarDiscountProvider.Default,
+    CalendarDiscountProvider.Live,
     CustomerDiscountProvider.Default,
     PromotionCodeProvider.Default
   ).pipe(Layer.provide(providerDependencies));

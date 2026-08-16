@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { requireDiscountAdminAuthorization } from "./basic-auth.server";
+import { refreshCalendarDiscountSourceAfterMutation } from "./calendar-discount-source-maintenance.server";
 import {
   type DiscountAdminCustomerSearch,
   type DiscountAdminMutation,
@@ -18,6 +19,7 @@ const executeDiscountAdminActionMutation = Effect.fn(
   "DiscountAdministration.executeActionMutation"
 )(function* (input: DiscountAdminMutation) {
   const result = yield* executeDiscountAdminMutation(input);
+  yield* refreshCalendarDiscountSourceAfterMutation(input);
   let customerPath: string | null = null;
   if (input.kind === "create-customer-code") {
     customerPath = `/admin/customers/${input.customerId}`;

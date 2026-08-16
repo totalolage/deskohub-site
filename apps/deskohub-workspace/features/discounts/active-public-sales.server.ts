@@ -1,7 +1,6 @@
 import "server-only";
 
 import { Clock, Effect } from "effect";
-import { cacheLife } from "next/cache";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -32,9 +31,6 @@ export const getActivePublicSales = Effect.fn("Discounts.getActivePublicSales")(
 async function loadActivePublicSales(input: {
   readonly locale: Locale;
 }): Promise<readonly ActiveSale[]> {
-  "use cache";
-  cacheLife("publicContent");
-
   return Effect.Do.pipe(
     Effect.bind("at", () => Clock.currentTimeMillis),
     Effect.let("currentDate", ({ at }) =>

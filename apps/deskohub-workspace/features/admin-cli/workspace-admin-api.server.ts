@@ -30,6 +30,7 @@ import {
   type ReservationAdministrationError,
   ReservationAdministrationService,
 } from "@/features/administration/reservation-administration.service";
+import { refreshCalendarDiscountSourceAfterMutation } from "@/features/discounts/admin/calendar-discount-source-maintenance.server";
 import {
   type AdminCustomerProfile,
   type AdminDiscountCode,
@@ -378,6 +379,11 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   executeDiscountAdminMutation(payload.mutation).pipe(
                     Effect.provideService(DiscountAdministration, discounts),
                     Effect.mapError(mapDiscountMutationFailure),
+                    Effect.tap(() =>
+                      refreshCalendarDiscountSourceAfterMutation(
+                        payload.mutation
+                      )
+                    ),
                     Effect.tapError((cause) =>
                       cause instanceof CliResourceNotFound ||
                       cause instanceof CliMutationRejected
@@ -395,7 +401,14 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                 completed: ({ result }) =>
                   Schema.decodeUnknownEffect(
                     AdministrationDiscountMutationResult
-                  )(result).pipe(Effect.mapError(makeServiceUnavailable)),
+                  )(result).pipe(
+                    Effect.mapError(makeServiceUnavailable),
+                    Effect.tap(() =>
+                      refreshCalendarDiscountSourceAfterMutation(
+                        payload.mutation
+                      )
+                    )
+                  ),
                 "in-progress": () =>
                   new CliMutationInProgress({
                     requestId: payload.requestId,

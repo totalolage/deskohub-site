@@ -40,6 +40,15 @@ Model Workspace sales calendar events as references to stored discount definitio
 - Cache the complete locale-independent stored definition for Calendar
   advertisement discovery and resolve the concrete label only when creating
   the checkout candidate.
+- Share only complete Calendar-occurrence and stored-definition source
+  snapshots across requests, keyed by reservation date. Give partial or failed
+  loads no cache lifetime.
+- Keep feature-flag evaluation, current-time eligibility, locale and product
+  filtering, checkout revalidation, and advertised-price token sealing outside
+  the shared source cache.
+- Invalidate the shared source after stored discount-definition mutations and
+  prime it best-effort. Calendar edits remain bounded by normal time-based
+  revalidation because Workspace does not own that mutation boundary.
 - Snapshot the resolved string in checkout and application history so later
   translation edits cannot rewrite what a customer saw.
 - Do not reintroduce TOML sale configuration.

@@ -29,6 +29,11 @@ const postHogSourceMapConfig =
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   cacheLife: {
+    advertisedPricingSources: {
+      stale: 30,
+      revalidate: 60,
+      expire: 60 * 60 * 8,
+    },
     publicContent: { stale: 30, revalidate: 60, expire: 300 },
   },
   cacheComponents: true,
