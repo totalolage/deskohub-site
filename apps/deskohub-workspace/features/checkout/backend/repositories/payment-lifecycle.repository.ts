@@ -7,7 +7,7 @@ import type {
   NexiOrderId,
   NexiWebhookEventId,
 } from "@deskohub/nexi";
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -26,6 +26,7 @@ import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
   encodeStoredAccountingDocumentSnapshot,
+  getAccountingDocumentOrderId,
 } from "@/features/accounting/accounting-document-snapshot";
 import {
   AccountingDocumentSnapshotStorageError,
@@ -93,6 +94,28 @@ export interface PaymentLifecycleTransition {
   readonly timestamp: Temporal.Instant;
 }
 
+export type PaymentSessionEvidence =
+  | {
+      readonly mode: "reservation_attempt_commitment";
+      readonly commitment: DiscountCommitment;
+    }
+  | { readonly mode: "order_evidence_committed" };
+
+export type PaymentSessionAdmission =
+  | {
+      readonly status: "paid";
+      readonly attempt: PaymentAttempt;
+      readonly changed: boolean;
+    }
+  | { readonly status: "resume"; readonly attempt: PaymentAttempt }
+  | { readonly status: "in_progress" }
+  | { readonly status: "outstanding_order"; readonly orderId: OrderId }
+  | {
+      readonly status: "created";
+      readonly attempt: PaymentAttempt;
+      readonly correlationId: (typeof orders.$inferSelect)["correlationId"];
+    };
+
 export type PaymentLifecycleRepositoryError =
   | AccountingDocumentSnapshotStorageError
   | DiscountClaimError
@@ -101,6 +124,15 @@ export type PaymentLifecycleRepositoryError =
   | SqlError;
 
 export interface IPaymentLifecycleRepository {
+  readonly admitPaymentSession: (input: {
+    readonly orderId: OrderId;
+    readonly providerOrderId?: NexiOrderId;
+    readonly payerCustomerId: DotyposCustomerId;
+    readonly amount: WorkspaceMoney;
+    readonly evidence: PaymentSessionEvidence;
+    readonly locale: Locale;
+    readonly accountingSnapshot: AccountingDocumentSnapshot;
+  }) => Effect.Effect<PaymentSessionAdmission, PaymentLifecycleRepositoryError>;
   readonly createPendingNexiAttempt: (input: {
     readonly orderId: OrderId;
     readonly providerOrderId: NexiOrderId;
@@ -161,6 +193,365 @@ export class PaymentLifecycleRepository extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const accountingSnapshotKeys = yield* AccountingSnapshotKeyService;
+
+      const admitPaymentSession = Effect.fn(
+        "PaymentLifecycleRepository.admitPaymentSession"
+      )(function* (input: {
+        readonly orderId: OrderId;
+        readonly providerOrderId?: NexiOrderId;
+        readonly payerCustomerId: DotyposCustomerId;
+        readonly amount: WorkspaceMoney;
+        readonly evidence: PaymentSessionEvidence;
+        readonly locale: Locale;
+        readonly accountingSnapshot: AccountingDocumentSnapshot;
+      }) {
+        const accountingSnapshot =
+          yield* validatePaymentSessionAccountingSnapshot(input);
+        const commitment =
+          input.evidence.mode === "reservation_attempt_commitment"
+            ? getDiscountCommitmentPayload(input.evidence.commitment)
+            : undefined;
+        const claimedApplication = commitment
+          ? yield* validatePaymentSessionCommitment(commitment, input.amount)
+          : undefined;
+
+        return yield* db
+          .transaction((tx) =>
+            Effect.gen(function* () {
+              const [order] = yield* tx
+                .select()
+                .from(orders)
+                .where(eq(orders.id, input.orderId))
+                .limit(1)
+                .for("update");
+              if (!order) {
+                return yield* lifecycleStateError(
+                  "admitPaymentSession",
+                  { type: "orderId", id: input.orderId },
+                  "The order was not found."
+                );
+              }
+              if (order.dotyposCustomerId !== input.payerCustomerId) {
+                return yield* lifecycleStateError(
+                  "admitPaymentSession",
+                  { type: "orderId", id: input.orderId },
+                  "The payer does not own the order."
+                );
+              }
+
+              yield* validatePaymentSessionSnapshotOwner({
+                snapshot: accountingSnapshot,
+                order,
+                paymentReference: { type: "orderId", id: input.orderId },
+              });
+
+              if (order.kind === "goods") {
+                const [oldest] = yield* tx
+                  .select({ id: orders.id })
+                  .from(orders)
+                  .where(
+                    and(
+                      eq(orders.kind, "goods"),
+                      eq(orders.dotyposCustomerId, order.dotyposCustomerId),
+                      eq(orders.fulfillmentState, "fulfilled"),
+                      inArray(orders.paymentState, [
+                        "not_started",
+                        "pending",
+                        "failed",
+                        "cancelled",
+                        "expired",
+                      ])
+                    )
+                  )
+                  .orderBy(asc(orders.createdAt), asc(orders.id))
+                  .limit(1)
+                  .for("update");
+                if (oldest && oldest.id !== input.orderId) {
+                  return {
+                    status: "outstanding_order" as const,
+                    orderId: oldest.id,
+                  };
+                }
+              }
+
+              const workspaceReservationId =
+                order.kind === "reservation"
+                  ? workspaceReservationIdSchema.make(input.orderId)
+                  : null;
+              const reservation = workspaceReservationId
+                ? yield* loadPayableReservationForAdmission({
+                    tx,
+                    workspaceReservationId,
+                    order,
+                  })
+                : null;
+              if (
+                (order.kind === "reservation") !==
+                (input.evidence.mode === "reservation_attempt_commitment")
+              ) {
+                return yield* lifecycleStateError(
+                  "admitPaymentSession",
+                  { type: "orderId", id: input.orderId },
+                  "The payment evidence mode does not match the order kind."
+                );
+              }
+
+              const activeAttempt = order.activePaymentAttemptId
+                ? yield* loadActiveAttemptForAdmission({
+                    tx,
+                    orderId: input.orderId,
+                    paymentAttemptId: order.activePaymentAttemptId,
+                  })
+                : null;
+              if (order.paymentState === "paid") {
+                if (
+                  activeAttempt?.state === "paid" &&
+                  workspaceMoneyEquals(activeAttempt.amount, input.amount)
+                ) {
+                  return {
+                    status: "paid" as const,
+                    attempt: activeAttempt,
+                    changed: false,
+                  };
+                }
+                return yield* lifecycleStateError(
+                  "admitPaymentSession",
+                  { type: "orderId", id: input.orderId },
+                  "The paid order has no matching paid attempt."
+                );
+              }
+              if (
+                activeAttempt &&
+                (activeAttempt.state === "created" ||
+                  activeAttempt.state === "pending")
+              ) {
+                if (!workspaceMoneyEquals(activeAttempt.amount, input.amount)) {
+                  return yield* lifecycleStateError(
+                    "admitPaymentSession",
+                    { type: "paymentAttemptId", id: activeAttempt.id },
+                    "The active payment attempt has different money."
+                  );
+                }
+                return activeAttempt.state === "pending" &&
+                  activeAttempt.securityToken &&
+                  activeAttempt.providerRedirectUrl
+                  ? { status: "resume" as const, attempt: activeAttempt }
+                  : { status: "in_progress" as const };
+              }
+              if (
+                order.paymentState === "pending" ||
+                (activeAttempt &&
+                  !["failed", "cancelled", "expired"].includes(
+                    activeAttempt.state
+                  ))
+              ) {
+                return yield* lifecycleStateError(
+                  "admitPaymentSession",
+                  { type: "orderId", id: input.orderId },
+                  "The order payment state is inconsistent."
+                );
+              }
+              if (
+                !["not_started", "failed", "cancelled", "expired"].includes(
+                  order.paymentState
+                ) ||
+                (order.paymentState !== "not_started" && !activeAttempt) ||
+                (activeAttempt && activeAttempt.state !== order.paymentState)
+              ) {
+                return yield* lifecycleStateError(
+                  "admitPaymentSession",
+                  { type: "orderId", id: input.orderId },
+                  "A new attempt requires a terminal prior attempt."
+                );
+              }
+              if (
+                (input.amount.value === 0 && input.providerOrderId) ||
+                (input.amount.value > 0 && !input.providerOrderId)
+              ) {
+                return yield* lifecycleStateError(
+                  "admitPaymentSession",
+                  { type: "orderId", id: input.orderId },
+                  "The provider attempt configuration does not match the amount."
+                );
+              }
+
+              const now = Temporal.Now.instant();
+              const provider = input.amount.value === 0 ? "internal" : "nexi";
+              const state = input.amount.value === 0 ? "paid" : "created";
+              const [attemptRow] = yield* tx
+                .insert(paymentAttempts)
+                .values({
+                  id: postgresUuidV7,
+                  orderId: input.orderId,
+                  workspaceReservationId,
+                  provider,
+                  providerOrderId: input.providerOrderId ?? null,
+                  state,
+                  amountValue: input.amount.value,
+                  amountExponent: input.amount.exponent,
+                  currency: input.amount.currency,
+                  createdAt: now,
+                  updatedAt: now,
+                })
+                .returning();
+              if (!attemptRow) {
+                return yield* Effect.die(
+                  "Payment session attempt insert returned no row."
+                );
+              }
+
+              const accountingSnapshotKey =
+                yield* accountingSnapshotKeys.getActive.pipe(
+                  Effect.mapError(
+                    () =>
+                      new AccountingDocumentSnapshotStorageError({
+                        operation: "encrypt",
+                        paymentReference: {
+                          type: "paymentAttemptId",
+                          id: attemptRow.id,
+                        },
+                        message:
+                          "Accounting snapshot encryption key is unavailable.",
+                      })
+                  )
+                );
+
+              yield* persistAccountingDocumentSnapshot({
+                tx,
+                orderId: input.orderId,
+                paymentAttemptId: attemptRow.id,
+                workspaceReservationId,
+                snapshot: accountingSnapshot,
+                key: accountingSnapshotKey,
+              });
+
+              const nextPaymentState =
+                input.amount.value === 0 ? "paid" : "pending";
+              const [updatedOrder] = yield* tx
+                .update(orders)
+                .set({
+                  activePaymentAttemptId: attemptRow.id,
+                  paymentState: nextPaymentState,
+                  paidAt: input.amount.value === 0 ? now : null,
+                  updatedAt: now,
+                })
+                .where(
+                  and(
+                    eq(orders.id, input.orderId),
+                    inArray(orders.paymentState, [
+                      "not_started",
+                      "failed",
+                      "cancelled",
+                      "expired",
+                    ])
+                  )
+                )
+                .returning({ id: orders.id });
+              if (!updatedOrder) {
+                return yield* lifecycleStateError(
+                  "admitPaymentSession",
+                  { type: "paymentAttemptId", id: attemptRow.id },
+                  "The payment attempt could not be linked to the order."
+                );
+              }
+
+              if (reservation && workspaceReservationId) {
+                const [updatedReservation] = yield* tx
+                  .update(workspaceReservations)
+                  .set({
+                    activePaymentAttemptId: attemptRow.id,
+                    paymentState: nextPaymentState,
+                    paidAt: input.amount.value === 0 ? now : null,
+                    failureCode: null,
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(workspaceReservations.id, workspaceReservationId),
+                      eq(workspaceReservations.reservationState, "held"),
+                      inArray(workspaceReservations.paymentState, [
+                        "not_started",
+                        "failed",
+                        "cancelled",
+                        "expired",
+                      ])
+                    )
+                  )
+                  .returning({ id: workspaceReservations.id });
+                if (!updatedReservation) {
+                  return yield* lifecycleStateError(
+                    "admitPaymentSession",
+                    { type: "paymentAttemptId", id: attemptRow.id },
+                    "The payment attempt could not be linked to the reservation."
+                  );
+                }
+              }
+
+              if (
+                commitment &&
+                reservation &&
+                workspaceReservationId &&
+                input.evidence.mode === "reservation_attempt_commitment"
+              ) {
+                const applicationRows = yield* persistOrderDiscountApplications(
+                  {
+                    tx,
+                    commitment,
+                    owner: {
+                      kind: "reservation_attempt",
+                      orderId: input.orderId,
+                      paymentAttemptId: attemptRow.id,
+                      workspaceReservationId,
+                    },
+                  }
+                );
+                const claimedAt = yield* reserveCommittedCodeClaim({
+                  tx,
+                  claimedApplication,
+                  applicationRows,
+                  orderId: input.orderId,
+                  paymentAttemptId: attemptRow.id,
+                  locale: input.locale,
+                  reservationCustomerId: reservation.dotyposCustomerId,
+                  reservationExpiresAt: reservation.reservationHoldExpiresAt!,
+                });
+                if (claimedAt && input.amount.value === 0) {
+                  yield* redeemAttemptDiscountClaim({
+                    tx,
+                    orderId: input.orderId,
+                    paymentAttemptId: attemptRow.id,
+                    redeemedAt: claimedAt,
+                  });
+                }
+              }
+
+              return input.amount.value === 0
+                ? {
+                    status: "paid" as const,
+                    attempt: toPaymentAttempt(attemptRow),
+                    changed: true,
+                  }
+                : {
+                    status: "created" as const,
+                    attempt: toPaymentAttempt(attemptRow),
+                    correlationId: order.correlationId,
+                  };
+            })
+          )
+          .pipe(
+            Effect.catchIf(isActiveClaimUniqueViolation, (cause) =>
+              Effect.fail(
+                new DiscountClaimError({
+                  operation: "reserve",
+                  reason: "claim_conflict",
+                  message:
+                    "The discount code was claimed by another payment attempt.",
+                  cause,
+                })
+              )
+            )
+          );
+      });
 
       const createPendingNexiAttempt = Effect.fn(
         "PaymentLifecycleRepository.createPendingNexiAttempt"
@@ -1000,6 +1391,7 @@ export class PaymentLifecycleRepository extends Context.Service<
       );
 
       return {
+        admitPaymentSession,
         createPendingNexiAttempt,
         completeInternalPayment,
         attachProviderSession,
@@ -1239,6 +1631,14 @@ export const validateInternalPaymentCommitment = Effect.fn(
   return claimedApplication;
 });
 
+const validatePaymentSessionCommitment = (
+  commitment: CommitmentPayload,
+  amount: WorkspaceMoney
+) =>
+  amount.value === 0
+    ? validateInternalPaymentCommitment(commitment, amount)
+    : validateOrderDiscountCommitment(commitment);
+
 const lifecycleStateError = (
   operation: string,
   paymentReference: PaymentLifecycleReference,
@@ -1281,6 +1681,144 @@ const decodeAccountingDocumentSnapshot = Schema.decodeUnknownEffect(
   accountingDocumentSnapshotSchema,
   { onExcessProperty: "error" }
 );
+
+const validatePaymentSessionAccountingSnapshot = Effect.fn(
+  "PaymentLifecycle.validatePaymentSessionAccountingSnapshot"
+)(function* (input: {
+  readonly orderId: OrderId;
+  readonly amount: WorkspaceMoney;
+  readonly locale: Locale;
+  readonly accountingSnapshot: AccountingDocumentSnapshot;
+}) {
+  const snapshot = yield* decodeAccountingDocumentSnapshot(
+    input.accountingSnapshot
+  ).pipe(
+    Effect.mapError(
+      () =>
+        new AccountingDocumentSnapshotStorageError({
+          operation: "validate",
+          paymentReference: { type: "orderId", id: input.orderId },
+          message: "Accounting snapshot schema is invalid.",
+        })
+    )
+  );
+  const snapshotAmount =
+    "orderId" in snapshot
+      ? snapshot.totals.payable
+      : snapshot.quote.payment.expectedPrice;
+  if (
+    getAccountingDocumentOrderId(snapshot) !== input.orderId ||
+    snapshot.locale !== input.locale ||
+    !workspaceMoneyEquals(snapshotAmount, input.amount) ||
+    (!("orderId" in snapshot) && !accountingSnapshotMoneyReconciles(snapshot))
+  ) {
+    return yield* new AccountingDocumentSnapshotStorageError({
+      operation: "validate",
+      paymentReference: { type: "orderId", id: input.orderId },
+      message: "Accounting snapshot does not match the payment session.",
+    });
+  }
+  return snapshot;
+});
+
+const validatePaymentSessionSnapshotOwner = Effect.fn(
+  "PaymentLifecycle.validatePaymentSessionSnapshotOwner"
+)(function* (input: {
+  readonly snapshot: AccountingDocumentSnapshot;
+  readonly order: typeof orders.$inferSelect;
+  readonly paymentReference: AccountingPaymentReference;
+}) {
+  if (
+    input.snapshot.dotyposCustomerId !== input.order.dotyposCustomerId ||
+    "orderId" in input.snapshot !== (input.order.kind === "goods")
+  ) {
+    return yield* new AccountingDocumentSnapshotStorageError({
+      operation: "validate",
+      paymentReference: input.paymentReference,
+      message: "Accounting snapshot ownership is inconsistent.",
+    });
+  }
+  if (
+    "orderId" in input.snapshot &&
+    (input.order.fulfillmentState !== "fulfilled" ||
+      !input.order.fulfilledAt ||
+      !Temporal.Instant.from(input.snapshot.fulfilledAt).equals(
+        input.order.fulfilledAt
+      ))
+  ) {
+    return yield* new AccountingDocumentSnapshotStorageError({
+      operation: "validate",
+      paymentReference: input.paymentReference,
+      message: "Goods fulfilment evidence does not match the order.",
+    });
+  }
+});
+
+const loadPayableReservationForAdmission = Effect.fn(
+  "PaymentLifecycle.loadPayableReservationForAdmission"
+)(function* (input: {
+  readonly tx: TransactionClient;
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly order: typeof orders.$inferSelect;
+}) {
+  const [reservation] = yield* input.tx
+    .select()
+    .from(workspaceReservations)
+    .where(eq(workspaceReservations.id, input.workspaceReservationId))
+    .limit(1)
+    .for("update");
+  const now = Temporal.Now.instant();
+  if (
+    !reservation ||
+    reservation.reservationState !== "held" ||
+    !reservation.reservationHoldExpiresAt ||
+    Temporal.Instant.compare(reservation.reservationHoldExpiresAt, now) <= 0 ||
+    reservation.dotyposCustomerId !== input.order.dotyposCustomerId ||
+    reservation.paymentState !== input.order.paymentState ||
+    reservation.activePaymentAttemptId !== input.order.activePaymentAttemptId
+  ) {
+    return yield* lifecycleStateError(
+      "admitPaymentSession",
+      { type: "orderId", id: input.order.id },
+      "Reservation payment admission requires a current held reservation."
+    );
+  }
+  return reservation;
+});
+
+const loadActiveAttemptForAdmission = Effect.fn(
+  "PaymentLifecycle.loadActiveAttemptForAdmission"
+)(function* (input: {
+  readonly tx: TransactionClient;
+  readonly orderId: OrderId;
+  readonly paymentAttemptId: PaymentAttemptId;
+}) {
+  const [attempt] = yield* input.tx
+    .select()
+    .from(paymentAttempts)
+    .where(
+      and(
+        eq(paymentAttempts.id, input.paymentAttemptId),
+        or(
+          eq(paymentAttempts.orderId, input.orderId),
+          and(
+            isNull(paymentAttempts.orderId),
+            sql`${paymentAttempts.workspaceReservationId} = ${input.orderId}`
+          )
+        )
+      )
+    )
+    .limit(1)
+    .for("update");
+  if (!attempt) {
+    return yield* lifecycleStateError(
+      "admitPaymentSession",
+      { type: "paymentAttemptId", id: input.paymentAttemptId },
+      "The active payment attempt is missing or belongs to another order."
+    );
+  }
+  return toPaymentAttempt(attempt);
+});
 
 const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
   "PaymentLifecycle.validateAccountingDocumentSnapshotForAttempt"
@@ -1389,7 +1927,7 @@ const persistAccountingDocumentSnapshot = Effect.fn(
   readonly tx: TransactionClient;
   readonly orderId: OrderId;
   readonly paymentAttemptId: PaymentAttemptId;
-  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly workspaceReservationId: WorkspaceReservationId | null;
   readonly snapshot: AccountingDocumentSnapshot;
   readonly key: AccountingSnapshotKey;
 }) {
