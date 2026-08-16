@@ -7,7 +7,7 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 
-export const instant = false;
+export const instant = true;
 
 export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) => {
