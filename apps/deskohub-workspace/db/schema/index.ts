@@ -4,6 +4,7 @@ export * from "./customer-account-links";
 export * from "./customer-marketing-consents";
 export * from "./discount-applications";
 export * from "./discounts";
+export * from "./goods-carts";
 export * from "./invoice-email-deliveries";
 export * from "./invoice-number-counters";
 export * from "./invoices";
