@@ -1,9 +1,11 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, index, pgTable, text } from "drizzle-orm/pg-core";
 import type { LegalEvidenceEventId } from "@/features/checkout/legal-evidence";
+import type { OrderId } from "@/features/order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import { orders } from "./orders";
 import { workspaceReservations } from "./workspace-reservations";
 
 export const legalEvidenceEvents = pgTable(
@@ -16,6 +18,9 @@ export const legalEvidenceEvents = pgTable(
     workspaceReservationId: text("workspace_reservation_id")
       .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id, { onDelete: "set null" }),
+    orderId: text("order_id")
+      .$type<OrderId>()
+      .references(() => orders.id, { onDelete: "set null" }),
     documentKey: text("document_key").notNull(),
     documentPath: text("document_path").notNull(),
     documentHash: text("document_hash").notNull(),
@@ -28,12 +33,17 @@ export const legalEvidenceEvents = pgTable(
   },
   (t) => [
     check(
+      "legal_evidence_events_order_ownership_check",
+      sql`${t.orderId} is not null or ${t.workspaceReservationId} is not null`
+    ),
+    check(
       "legal_evidence_events_hash_algorithm_check",
       sql`${t.hashAlgorithm} = 'sha256'`
     ),
     index("legal_evidence_events_workspace_reservation_idx").on(
       t.workspaceReservationId
     ),
+    index("legal_evidence_events_order_idx").on(t.orderId),
   ]
 );
 

@@ -17,6 +17,14 @@ const readRepository = () =>
     new URL("./payment-lifecycle.repository.ts", import.meta.url)
   ).text();
 
+const readDiscountEvidence = () =>
+  Bun.file(
+    new URL(
+      "../../../discounts/backend/order-discount-evidence.ts",
+      import.meta.url
+    )
+  ).text();
+
 const sliceFrom = (source: string, startNeedle: string, endNeedle: string) => {
   const start = source.indexOf(startNeedle);
   const end = source.indexOf(endNeedle, start);
@@ -46,7 +54,7 @@ describe("PaymentLifecycleRepository", () => {
       ".update(workspaceReservations)"
     );
     expect(createPendingNexiAttempt).toContain(
-      "yield* persistDiscountApplications"
+      "yield* persistOrderDiscountApplications"
     );
     expect(createPendingNexiAttempt).toContain(
       "yield* reserveCommittedCodeClaim"
@@ -57,10 +65,14 @@ describe("PaymentLifecycleRepository", () => {
     expect(
       createPendingNexiAttempt.indexOf(".insert(paymentAttempts)")
     ).toBeLessThan(
-      createPendingNexiAttempt.indexOf("yield* persistDiscountApplications")
+      createPendingNexiAttempt.indexOf(
+        "yield* persistOrderDiscountApplications"
+      )
     );
     expect(
-      createPendingNexiAttempt.indexOf("yield* persistDiscountApplications")
+      createPendingNexiAttempt.indexOf(
+        "yield* persistOrderDiscountApplications"
+      )
     ).toBeLessThan(
       createPendingNexiAttempt.indexOf("yield* reserveCommittedCodeClaim")
     );
@@ -86,43 +98,44 @@ describe("PaymentLifecycleRepository", () => {
     );
     expect(completeInternalPayment).toContain(".update(workspaceReservations)");
     expect(completeInternalPayment).toContain(
-      "yield* persistDiscountApplications"
+      "yield* persistOrderDiscountApplications"
     );
     expect(completeInternalPayment).toContain(
       "yield* reserveCommittedCodeClaim"
     );
-    expect(completeInternalPayment).toContain("yield* redeemCodeClaim");
+    expect(completeInternalPayment).toContain(
+      "yield* redeemAttemptDiscountClaim"
+    );
     expect(
       completeInternalPayment.indexOf("Temporal.Now.instant()")
     ).toBeGreaterThan(completeInternalPayment.indexOf('.for("update")'));
     expect(
       completeInternalPayment.indexOf("yield* reserveCommittedCodeClaim")
-    ).toBeLessThan(completeInternalPayment.indexOf("yield* redeemCodeClaim"));
+    ).toBeLessThan(
+      completeInternalPayment.indexOf("yield* redeemAttemptDiscountClaim")
+    );
   });
 
   test("uses the admitted claim timestamp for immediate internal redemption", async () => {
     const source = await readRepository();
+    const evidence = await readDiscountEvidence();
     const completeInternalPayment = sliceFrom(
       source,
       "const completeInternalPayment = Effect.fn(",
       "      const attachProviderSession"
     );
     const reserveClaim = sliceFrom(
-      source,
-      'const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")',
-      "const validateStoredDiscountClaim = Effect.fn("
+      evidence,
+      "export const admitOrderDiscountClaim",
+      "const repairAttemptEvidenceOrder"
     );
 
     expect(reserveClaim).toContain("return claimedAt");
     expect(completeInternalPayment).toContain(
       "const claimedAt = yield* reserveCommittedCodeClaim"
     );
-    expect(completeInternalPayment).toContain(
-      "yield* redeemCodeClaim(tx, attemptRow.id, claimedAt)"
-    );
-    expect(completeInternalPayment).not.toContain(
-      "yield* redeemCodeClaim(tx, attemptRow.id, paidAt)"
-    );
+    expect(completeInternalPayment).toContain("redeemedAt: claimedAt");
+    expect(completeInternalPayment).not.toContain("redeemedAt: paidAt");
   });
 
   test("sets the provider order creation timestamp when the Nexi session attaches", async () => {
@@ -142,11 +155,11 @@ describe("PaymentLifecycleRepository", () => {
   });
 
   test("locks the code and leaves claim release to owning terminal transitions", async () => {
-    const source = await readRepository();
+    const source = await readDiscountEvidence();
     const reserveClaim = sliceFrom(
       source,
-      'const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")',
-      'export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")'
+      "export const admitOrderDiscountClaim",
+      "const repairAttemptEvidenceOrder"
     );
 
     expect(reserveClaim).toContain(".from(discountCodes)");
@@ -158,9 +171,7 @@ describe("PaymentLifecycleRepository", () => {
     expect(reserveClaim.indexOf("Temporal.Now.instant()")).toBeGreaterThan(
       reserveClaim.indexOf('.for("update")')
     );
-    expect(reserveClaim).toContain(
-      "Temporal.Instant.compare(input.reservationExpiresAt, claimedAt)"
-    );
+    expect(reserveClaim).toContain("input.ownership.reservationExpiresAt");
     expect(reserveClaim).toContain(
       "getPromotionTiming(input.promotion.validUntil)"
     );
@@ -205,13 +216,13 @@ describe("PaymentLifecycleRepository", () => {
 
     expect(paid).toContain("db.transaction");
     expect(paid).toContain("yield* mirrorPaidReservation");
-    expect(paid).toContain("yield* redeemCodeClaim(");
+    expect(paid).toContain("yield* redeemAttemptDiscountClaim({");
     expect(terminal).toContain("db.transaction");
     expect(terminal).toContain("yield* mirrorTerminalReservation");
-    expect(terminal).toContain("yield* releaseCodeClaim(");
+    expect(terminal).toContain("yield* releaseAttemptDiscountClaim({");
     expect(source).toContain('Match.when("goods", () => Effect.void)');
-    expect(source).toContain("yield* redeemCodeClaim(");
-    expect(source).toContain("yield* releaseCodeClaim(");
+    expect(source).toContain("yield* redeemAttemptDiscountClaim({");
+    expect(source).toContain("yield* releaseAttemptDiscountClaim({");
     expect(terminal).not.toContain(".delete(accountingDocumentSnapshots)");
     expect(terminal).not.toContain(
       'input.failureCode !== "payment_abandoned_after_provider_cutoff"'
@@ -252,17 +263,15 @@ describe("PaymentLifecycleRepository", () => {
     );
 
     expect(terminal).toContain("terminalAt: consistent.updatedAt");
-    expect(terminal).toContain(
-      "input.id,\n                consistent.updatedAt,"
-    );
+    expect(terminal).toContain("releasedAt: consistent.updatedAt");
   });
 
   test("rechecks released claim capacity before late-payment redemption", async () => {
-    const source = await readRepository();
+    const source = await readDiscountEvidence();
     const redeemClaim = sliceFrom(
       source,
-      'export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")',
-      "const releaseCodeClaim"
+      "export const redeemAttemptDiscountClaim",
+      "export const releaseAttemptDiscountClaim"
     );
 
     expect(redeemClaim).toContain(".from(discountCodes)");

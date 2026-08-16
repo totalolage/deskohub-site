@@ -329,6 +329,7 @@ describe("discount persistence contracts", () => {
     expect(columns).not.toContain("updated_at");
     expect(namesOf(config.checks)).toEqual([
       "discount_applications_sequence_check",
+      "discount_applications_ownership_check",
       "discount_applications_identity_check",
       "discount_applications_money_values_check",
       "discount_applications_money_exponents_check",
@@ -374,6 +375,12 @@ describe("discount persistence contracts", () => {
     expect(namesOf(codeConfig.checks)).toContain(
       "discount_code_redemptions_lifecycle_check"
     );
+    expect(namesOf(codeConfig.checks)).toContain(
+      "discount_code_redemptions_ownership_check"
+    );
+    expect(namesOf(voucherConfig.checks)).toContain(
+      "voucher_redemptions_ownership_check"
+    );
     expect(
       voucherConfig.indexes.map(({ config: index }) => ({
         name: index.name,
@@ -385,5 +392,51 @@ describe("discount persistence contracts", () => {
       unique: true,
       partial: true,
     });
+  });
+
+  test("expands discount evidence to order ownership with explicit compatibility shapes", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260816191757_order_discount_legal_evidence/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    for (const table of [
+      discountApplications,
+      discountCodeRedemptions,
+      voucherRedemptions,
+    ]) {
+      const config = configOf(table);
+      expect(
+        config.columns.find(({ name }) => name === "order_id")?.notNull
+      ).toBe(false);
+    }
+    expect(
+      configOf(discountApplications).columns.find(
+        ({ name }) => name === "payment_attempt_id"
+      )?.notNull
+    ).toBe(false);
+    expect(migration).toContain(
+      'COALESCE(attempt."order_id", application_row."workspace_reservation_id")'
+    );
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "discount_applications_issued_order_sequence_unique_idx"'
+    );
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "discount_code_redemptions_issued_order_unique_idx"'
+    );
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "voucher_redemptions_issued_order_unique_idx"'
+    );
+    expect(migration).toContain(
+      'ADD CONSTRAINT "discount_applications_ownership_check"'
+    );
+    expect(migration).toContain(
+      'ADD CONSTRAINT "discount_code_redemptions_ownership_check"'
+    );
+    expect(migration).toContain("and \"state\" = 'redeemed'");
+    expect(migration).not.toContain("customer_email");
+    expect(migration).not.toContain("customer_name");
   });
 });

@@ -979,7 +979,7 @@ export class DiscountAdministration extends Context.Service<
                 discountLabel: row.discount.labels["en-US"],
                 customers,
                 claims: row.redemptions
-                  .map(toAdminDiscountCodeClaim)
+                  .flatMap(toAdminDiscountCodeClaim)
                   .toSorted((left, right) =>
                     Temporal.Instant.compare(right.reservedAt, left.reservedAt)
                   ),
@@ -1173,7 +1173,7 @@ export class DiscountAdministration extends Context.Service<
               voucher: toAdminVoucher(row),
               customers,
               claims: row.redemptions
-                .map(toAdminVoucherClaim)
+                .flatMap(toAdminVoucherClaim)
                 .toSorted((left, right) =>
                   Temporal.Instant.compare(right.reservedAt, left.reservedAt)
                 ),
@@ -1244,7 +1244,7 @@ export class DiscountAdministration extends Context.Service<
                     ({ dotyposCustomerId }) =>
                       dotyposCustomerId === input.customerId
                   )
-                  .map(toAdminDiscountCodeClaim)
+                  .flatMap(toAdminDiscountCodeClaim)
               )
               .toSorted((left, right) =>
                 Temporal.Instant.compare(right.reservedAt, left.reservedAt)
@@ -1265,7 +1265,7 @@ export class DiscountAdministration extends Context.Service<
                     ({ dotyposCustomerId }) =>
                       dotyposCustomerId === input.customerId
                   )
-                  .map(toAdminVoucherClaim)
+                  .flatMap(toAdminVoucherClaim)
               )
               .toSorted((left, right) =>
                 Temporal.Instant.compare(right.reservedAt, left.reservedAt)
@@ -1908,58 +1908,82 @@ const toAdminDiscountGroup = (
 const toAdminDiscountCodeClaim = (
   row: DiscountCodeRedemption & {
     readonly application: {
-      readonly workspaceReservationId: WorkspaceReservationId;
+      readonly workspaceReservationId: WorkspaceReservationId | null;
       readonly appliedAmountValue: number;
       readonly appliedAmountExponent: number;
       readonly appliedAmountCurrency: string;
     };
   }
-): AdminDiscountCodeClaim => ({
-  id: row.id,
-  codeId: row.codeId,
-  dotyposCustomerId: row.dotyposCustomerId,
-  state: row.state,
-  paymentAttemptId: row.paymentAttemptId,
-  workspaceReservationId: row.application.workspaceReservationId,
-  appliedAmount: {
-    value: row.application.appliedAmountValue,
-    exponent: row.application.appliedAmountExponent,
-    currency: row.application.appliedAmountCurrency,
-  },
-  reservationExpiresAt: row.reservationExpiresAt,
-  reservedAt: row.reservedAt,
-  redeemedAt: row.redeemedAt,
-  releasedAt: row.releasedAt,
-  releaseReason: row.releaseReason,
-});
+): readonly AdminDiscountCodeClaim[] => {
+  if (
+    !row.paymentAttemptId ||
+    !row.reservationExpiresAt ||
+    !row.application.workspaceReservationId
+  ) {
+    return [];
+  }
+
+  return [
+    {
+      id: row.id,
+      codeId: row.codeId,
+      dotyposCustomerId: row.dotyposCustomerId,
+      state: row.state,
+      paymentAttemptId: row.paymentAttemptId,
+      workspaceReservationId: row.application.workspaceReservationId,
+      appliedAmount: {
+        value: row.application.appliedAmountValue,
+        exponent: row.application.appliedAmountExponent,
+        currency: row.application.appliedAmountCurrency,
+      },
+      reservationExpiresAt: row.reservationExpiresAt,
+      reservedAt: row.reservedAt,
+      redeemedAt: row.redeemedAt,
+      releasedAt: row.releasedAt,
+      releaseReason: row.releaseReason,
+    },
+  ];
+};
 
 const toAdminVoucherClaim = (
   row: VoucherRedemption & {
     readonly application: {
-      readonly workspaceReservationId: WorkspaceReservationId;
+      readonly workspaceReservationId: WorkspaceReservationId | null;
       readonly appliedAmountValue: number;
       readonly appliedAmountExponent: number;
       readonly appliedAmountCurrency: string;
     };
   }
-): AdminVoucherClaim => ({
-  id: row.id,
-  voucherId: row.voucherId,
-  dotyposCustomerId: row.dotyposCustomerId,
-  state: row.state,
-  paymentAttemptId: row.paymentAttemptId,
-  workspaceReservationId: row.application.workspaceReservationId,
-  appliedAmount: {
-    value: row.application.appliedAmountValue,
-    exponent: row.application.appliedAmountExponent,
-    currency: row.application.appliedAmountCurrency,
-  },
-  reservationExpiresAt: row.reservationExpiresAt,
-  reservedAt: row.reservedAt,
-  redeemedAt: row.redeemedAt,
-  releasedAt: row.releasedAt,
-  releaseReason: row.releaseReason,
-});
+): readonly AdminVoucherClaim[] => {
+  if (
+    !row.paymentAttemptId ||
+    !row.reservationExpiresAt ||
+    !row.application.workspaceReservationId
+  ) {
+    return [];
+  }
+
+  return [
+    {
+      id: row.id,
+      voucherId: row.voucherId,
+      dotyposCustomerId: row.dotyposCustomerId,
+      state: row.state,
+      paymentAttemptId: row.paymentAttemptId,
+      workspaceReservationId: row.application.workspaceReservationId,
+      appliedAmount: {
+        value: row.application.appliedAmountValue,
+        exponent: row.application.appliedAmountExponent,
+        currency: row.application.appliedAmountCurrency,
+      },
+      reservationExpiresAt: row.reservationExpiresAt,
+      reservedAt: row.reservedAt,
+      redeemedAt: row.redeemedAt,
+      releasedAt: row.releasedAt,
+      releaseReason: row.releaseReason,
+    },
+  ];
+};
 
 const toDiscountAdjustment = (
   row: Pick<

@@ -433,8 +433,8 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(source).toContain("paymentLifecycle.markPaid");
     expect(source).toContain("paymentLifecycle.markTerminal");
     expect(repository).toContain(".transaction(");
-    expect(repository).toContain("yield* redeemCodeClaim");
-    expect(repository).toContain("yield* releaseCodeClaim");
+    expect(repository).toContain("yield* redeemAttemptDiscountClaim");
+    expect(repository).toContain("yield* releaseAttemptDiscountClaim");
     expect(repository).toContain(
       "Only the active pending attempt can mark an order paid."
     );

@@ -15,11 +15,11 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import { redeemAttemptDiscountClaim } from "@/features/discounts/backend/order-discount-evidence";
 import type { DiscountClaimError } from "@/features/discounts/errors";
 import { orderIdSchema } from "@/features/order";
 import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { redeemCodeClaim } from "./payment-lifecycle.repository";
 
 export class LatePaymentRecoveryStateError extends Data.TaggedError(
   "LatePaymentRecoveryStateError"
@@ -282,12 +282,13 @@ export class LatePaymentRecoveryRepository extends Context.Service<
               }
 
               if (input.state === "recovered") {
-                yield* redeemCodeClaim(
+                yield* redeemAttemptDiscountClaim({
                   tx,
-                  input.paymentAttemptId,
-                  recovery.verifiedPaidAt,
-                  true
-                );
+                  orderId: orderIdSchema.make(input.workspaceReservationId),
+                  paymentAttemptId: input.paymentAttemptId,
+                  redeemedAt: recovery.verifiedPaidAt,
+                  allowReleased: true,
+                });
               }
 
               if (isActiveAttempt) {

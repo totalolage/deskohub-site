@@ -7,6 +7,10 @@ export const relations = defineRelations(schema, (r) => ({
     paymentAttempts: r.many.paymentAttempts(),
     accountingDocumentSnapshots: r.many.accountingDocumentSnapshots(),
     invoices: r.many.invoices(),
+    discountApplications: r.many.discountApplications(),
+    discountCodeRedemptions: r.many.discountCodeRedemptions(),
+    voucherRedemptions: r.many.voucherRedemptions(),
+    legalEvidenceEvents: r.many.legalEvidenceEvents(),
     activePaymentAttempt: r.one.paymentAttempts({
       from: r.orders.activePaymentAttemptId,
       to: r.paymentAttempts.id,
@@ -132,15 +136,17 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
   discountApplications: {
+    order: r.one.orders({
+      from: r.discountApplications.orderId,
+      to: r.orders.id,
+    }),
     paymentAttempt: r.one.paymentAttempts({
       from: r.discountApplications.paymentAttemptId,
       to: r.paymentAttempts.id,
-      optional: false,
     }),
     workspaceReservation: r.one.workspaceReservations({
       from: r.discountApplications.workspaceReservationId,
       to: r.workspaceReservations.id,
-      optional: false,
     }),
     codeRedemption: r.one.discountCodeRedemptions({
       from: r.discountApplications.id,
@@ -152,6 +158,10 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
   voucherRedemptions: {
+    order: r.one.orders({
+      from: r.voucherRedemptions.orderId,
+      to: r.orders.id,
+    }),
     voucher: r.one.vouchers({
       from: r.voucherRedemptions.voucherId,
       to: r.vouchers.id,
@@ -165,10 +175,13 @@ export const relations = defineRelations(schema, (r) => ({
     paymentAttempt: r.one.paymentAttempts({
       from: r.voucherRedemptions.paymentAttemptId,
       to: r.paymentAttempts.id,
-      optional: false,
     }),
   },
   discountCodeRedemptions: {
+    order: r.one.orders({
+      from: r.discountCodeRedemptions.orderId,
+      to: r.orders.id,
+    }),
     code: r.one.discountCodes({
       from: r.discountCodeRedemptions.codeId,
       to: r.discountCodes.id,
@@ -182,7 +195,16 @@ export const relations = defineRelations(schema, (r) => ({
     paymentAttempt: r.one.paymentAttempts({
       from: r.discountCodeRedemptions.paymentAttemptId,
       to: r.paymentAttempts.id,
-      optional: false,
+    }),
+  },
+  legalEvidenceEvents: {
+    order: r.one.orders({
+      from: r.legalEvidenceEvents.orderId,
+      to: r.orders.id,
+    }),
+    workspaceReservation: r.one.workspaceReservations({
+      from: r.legalEvidenceEvents.workspaceReservationId,
+      to: r.workspaceReservations.id,
     }),
   },
   paymentAttempts: {
