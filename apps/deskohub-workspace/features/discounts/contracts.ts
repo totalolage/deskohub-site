@@ -208,6 +208,7 @@ export type GoodsDiscountBasketInput = {
 
 export type GoodsDiscountBasketQuote = {
   readonly lines: readonly DiscountQuote[];
+  readonly discountIds: readonly DiscountId[];
   readonly discountableSubtotal: WorkspaceMoney;
   readonly totalDiscount: WorkspaceMoney;
   readonly discountedSubtotal: WorkspaceMoney;
