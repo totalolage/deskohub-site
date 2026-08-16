@@ -280,6 +280,7 @@ describe("Workspace Admin API", () => {
         paidAt: null,
         fulfilledAt: timestamp,
         fulfillmentFailedAt: null,
+        writtenOffAt: null,
         createdAt: timestamp,
         updatedAt: timestamp,
       },
@@ -292,6 +293,11 @@ describe("Workspace Admin API", () => {
         Effect.succeed({ items: [detail.order], truncated: false } as never),
       loadOrder: (id) =>
         Effect.succeed(id === detail.order.id ? (detail as never) : null),
+      writeOffOrder: (id) =>
+        Effect.succeed({
+          orderId: id,
+          writtenOffAt: "2026-08-16T13:00:00Z",
+        }),
     });
 
     const result = await Effect.gen(function* () {
@@ -302,10 +308,13 @@ describe("Workspace Admin API", () => {
       const order = yield* client.administration.getDomainOrder({
         params: { orderId: "order-1" },
       });
+      const writeOff = yield* client.administration.writeOffDomainOrder({
+        params: { orderId: "order-1" },
+      });
       const missing = yield* client.administration
         .getDomainOrder({ params: { orderId: "missing" } })
         .pipe(Effect.flip);
-      return { missing, order, orders };
+      return { missing, order, orders, writeOff };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
@@ -329,6 +338,7 @@ describe("Workspace Admin API", () => {
 
     expect(result.orders.items[0]?.id).toBe("order-1");
     expect(result.order.paymentAttempts).toEqual([]);
+    expect(result.writeOff.writtenOffAt).toBe("2026-08-16T13:00:00Z");
     expect(result.missing).toBeInstanceOf(CliResourceNotFound);
   });
 

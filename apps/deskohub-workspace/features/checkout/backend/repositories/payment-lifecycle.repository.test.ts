@@ -258,6 +258,31 @@ describe("PaymentLifecycleRepository", () => {
     );
   });
 
+  test("excludes written-off goods from oldest-unpaid payment admission", async () => {
+    const source = await readRepository();
+    const admission = sliceFrom(
+      source,
+      "const admitPaymentSession = Effect.fn(",
+      "      const createPendingNexiAttempt"
+    );
+
+    expect(admission).toContain("isNull(orders.writtenOffAt)");
+    expect(admission).toContain("if (order.writtenOffAt)");
+    expect(admission).toContain('.for("update")');
+  });
+
+  test("late provider success retains write-off audit history", async () => {
+    const source = await readRepository();
+    const paid = sliceFrom(
+      source,
+      'const markPaid = Effect.fn("PaymentLifecycleRepository.markPaid")',
+      "      const markTerminal"
+    );
+
+    expect(paid).toContain('paymentState: "paid"');
+    expect(paid).not.toContain("writtenOffAt:");
+  });
+
   test("uses the persisted terminal timestamp when repairing an idempotent retry", async () => {
     const source = await readRepository();
     const terminal = sliceFrom(

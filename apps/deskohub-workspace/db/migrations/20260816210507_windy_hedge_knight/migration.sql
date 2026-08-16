@@ -1,0 +1,2 @@
+ALTER TABLE "orders" ADD COLUMN "written_off_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "orders" ADD CONSTRAINT "orders_written_off_goods_check" CHECK ("written_off_at" is null or "kind" = 'goods');

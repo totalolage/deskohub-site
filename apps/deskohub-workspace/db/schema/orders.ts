@@ -52,6 +52,7 @@ export const orders = pgTable(
     fulfilledAt: instant("fulfilled_at"),
     fulfillmentFailedAt: instant("fulfillment_failed_at"),
     fulfillmentFailureCode: text("fulfillment_failure_code"),
+    writtenOffAt: instant("written_off_at"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
@@ -88,6 +89,10 @@ export const orders = pgTable(
     check(
       "orders_fulfillment_failed_check",
       sql`${t.fulfillmentState} <> 'failed' or (${t.fulfillmentFailedAt} is not null and ${t.fulfillmentFailureCode} is not null)`
+    ),
+    check(
+      "orders_written_off_goods_check",
+      sql`${t.writtenOffAt} is null or ${t.kind} = 'goods'`
     ),
     index("orders_customer_created_idx").on(t.dotyposCustomerId, t.createdAt),
     index("orders_states_idx").on(t.paymentState, t.fulfillmentState),

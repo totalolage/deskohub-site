@@ -26,7 +26,10 @@ import {
 import { ManualInvoiceConflictError } from "@/features/accounting/backend/invoice.repository";
 import { ManualInvoiceValidationError } from "@/features/accounting/manual-invoice";
 import { AdministrationService } from "@/features/administration/administration.service";
-import { OrderAdministrationService } from "@/features/administration/order-administration.service";
+import {
+  OrderAdministrationService,
+  OrderWriteOffError,
+} from "@/features/administration/order-administration.service";
 import {
   getAdministrationNexiOperationFilters,
   getAdministrationNexiOrderDateTimeBounds,
@@ -315,6 +318,11 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   })
             )
           )
+        )
+        .handle("writeOffDomainOrder", ({ params }) =>
+          orderAdministration
+            .writeOffOrder(params.orderId)
+            .pipe(Effect.mapError(mapOrderWriteOffFailure))
         )
         .handle("listNexiOrders", ({ query }) => listNexiOrders(query))
         .handle("getNexiOrder", ({ params }) =>
@@ -620,6 +628,15 @@ const mapReservationCancellationFailure = (
   }
   if (cause.code === "not_cancellable") {
     return new CliMutationRejected({ message: cause.message });
+  }
+  return makeServiceUnavailable();
+};
+
+const mapOrderWriteOffFailure = (cause: OrderWriteOffError | unknown) => {
+  if (cause instanceof OrderWriteOffError) {
+    return cause.reason === "not_found"
+      ? new CliResourceNotFound({ message: cause.message })
+      : new CliMutationRejected({ message: cause.message });
   }
   return makeServiceUnavailable();
 };
