@@ -41,6 +41,9 @@ const meetingRoomProduct = {
 const officeProduct = {
   kind: "office",
 } satisfies WorkspaceProductTarget;
+const goodsProduct = {
+  kind: "goods",
+} satisfies WorkspaceProductTarget;
 
 const sale = (
   products: readonly WorkspaceProductTarget[],
@@ -125,6 +128,22 @@ describe("getActiveLandingPageSaleBanner", () => {
     const { banner } = await getBanner([]);
 
     expect(banner).toBeUndefined();
+  });
+
+  test("renders no reservation banner for a goods-only sale", async () => {
+    const { banner } = await getBanner([sale([goodsProduct])]);
+
+    expect(banner).toBeUndefined();
+  });
+
+  test("keeps a reservation CTA for a mixed reservation and goods sale", async () => {
+    const { banner } = await getBanner([
+      sale([goodsProduct, meetingRoomProduct]),
+    ]);
+
+    expect(banner?.href).toBe(
+      "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
+    );
   });
 
   test("renders no office-only banner while office reservations are disabled", async () => {
