@@ -52,10 +52,16 @@ export const loadCustomerAccountPage = cache(
         (authentication) => authentication.currentUser
       ).pipe(
         Effect.provide(CustomerAuthentication.Default),
+        Effect.tapError((error) =>
+          Effect.logError("Account authentication failed", { error })
+        ),
         Effect.result,
         runWorkspaceEffect("account.profile", { boundary: "page" })
       ),
       resolveCurrentCustomerAccount().pipe(
+        Effect.tapError((error) =>
+          Effect.logError("Account resolution failed", { error })
+        ),
         Effect.result,
         runWorkspaceEffect("account.resolve", { boundary: "page" })
       ),

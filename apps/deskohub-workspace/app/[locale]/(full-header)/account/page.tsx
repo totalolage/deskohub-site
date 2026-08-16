@@ -20,10 +20,9 @@ export default async function CustomerAccountPage() {
   await connection();
   return runWithRequestLocale(async (locale) => {
     const data = await loadCustomerAccountPage(locale);
-    return data.kind === "available" ? (
-      <AccountPage locale={locale} {...data} />
-    ) : (
-      <AccountUnavailable locale={locale} />
-    );
+    if (data.kind !== "available") {
+      return <AccountUnavailable locale={locale} />;
+    }
+    return <AccountPage locale={locale} {...data} />;
   });
 }

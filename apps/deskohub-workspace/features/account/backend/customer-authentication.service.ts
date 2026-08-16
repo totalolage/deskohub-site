@@ -1,6 +1,11 @@
 import { Context, Effect, Layer } from "effect";
 import { getNeonAuth } from "../auth.server";
-import { CustomerAccountAccessError } from "../customer-account";
+import {
+  CustomerAccountAccessError,
+  type CustomerAccountFailureCode,
+  customerAccountUnavailable,
+  mapCustomerAccountFailure,
+} from "../customer-account";
 
 interface ICustomerAuthentication {
   readonly currentUser: Effect.Effect<
@@ -20,10 +25,8 @@ export type CustomerAuthUser = {
   readonly name: string;
 };
 
-const unavailable = () =>
-  new CustomerAccountAccessError({ reason: "unavailable" });
-
 const callNeonAuth = <A>(
+  failureCode: CustomerAccountFailureCode,
   request: (
     auth: NonNullable<ReturnType<typeof getNeonAuth>>
   ) => Promise<{ readonly data: A | null; readonly error: unknown }>
@@ -36,10 +39,15 @@ const callNeonAuth = <A>(
       );
     }
 
-    return Effect.tryPromise({ try: () => request(auth), catch: unavailable });
+    return Effect.tryPromise({
+      try: () => request(auth),
+      catch: mapCustomerAccountFailure(failureCode),
+    });
   }).pipe(
     Effect.flatMap((result) =>
-      result.error ? Effect.fail(unavailable()) : Effect.succeed(result.data)
+      result.error
+        ? Effect.fail(customerAccountUnavailable(failureCode))
+        : Effect.succeed(result.data)
     )
   );
 
@@ -48,11 +56,15 @@ export class CustomerAuthentication extends Context.Service<
   ICustomerAuthentication
 >()("@deskohub-workspace/account/CustomerAuthentication") {
   static Default = Layer.succeed(this, {
-    currentUser: callNeonAuth((auth) =>
+    currentUser: callNeonAuth("authentication.session", (auth) =>
       auth.getSession({ query: { disableCookieCache: "true" } })
     ).pipe(Effect.map((session) => session?.user ?? null)),
-    deleteUser: callNeonAuth((auth) => auth.deleteUser()).pipe(Effect.asVoid),
+    deleteUser: callNeonAuth("authentication.account-delete", (auth) =>
+      auth.deleteUser()
+    ).pipe(Effect.asVoid),
     updateName: (name) =>
-      callNeonAuth((auth) => auth.updateUser({ name })).pipe(Effect.asVoid),
+      callNeonAuth("authentication.profile-update", (auth) =>
+        auth.updateUser({ name })
+      ).pipe(Effect.asVoid),
   });
 }

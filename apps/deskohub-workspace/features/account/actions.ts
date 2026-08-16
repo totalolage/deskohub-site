@@ -2,7 +2,7 @@
 
 import { Effect, Option, Schema } from "effect";
 import { revalidatePath } from "next/cache";
-import { type Locale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { deleteCustomerIdentity } from "./backend/customer-account-deletion";
@@ -12,11 +12,15 @@ import {
   deleteCustomerAccountStandardSchema,
   updateCustomerProfileStandardSchema,
 } from "./contracts";
-import { customerAccountIdSchema } from "./customer-account";
+import {
+  CustomerAccountAccessError,
+  customerAccountIdSchema,
+} from "./customer-account";
 
-const actionError = (message: string) => new PublicSafeActionError({ message });
+const actionError = (message: string, cause: CustomerAccountAccessError) =>
+  new PublicSafeActionError({ message, cause });
 
-const requireActionUser = (locale: Locale) =>
+const requireActionUser = () =>
   Effect.flatMap(
     CustomerAuthentication,
     (authentication) => authentication.currentUser
@@ -24,20 +28,23 @@ const requireActionUser = (locale: Locale) =>
     Effect.flatMap((user) =>
       user
         ? Effect.succeed(user)
-        : Effect.fail(actionError(m.accountSessionExpired({}, { locale })))
-    ),
-    Effect.mapError(() => actionError(m.accountSessionExpired({}, { locale })))
+        : Effect.fail(
+            new CustomerAccountAccessError({ reason: "unauthenticated" })
+          )
+    )
   );
 
-const requireActionAccountId = (locale: Locale) =>
-  requireActionUser(locale).pipe(
+const requireActionAccountId = () =>
+  requireActionUser().pipe(
     Effect.flatMap((user) => {
       const accountId = Option.getOrUndefined(
         Schema.decodeUnknownOption(customerAccountIdSchema)(user.id)
       );
       return accountId
         ? Effect.succeed(accountId)
-        : Effect.fail(actionError(m.accountSessionExpired({}, { locale })));
+        : Effect.fail(
+            new CustomerAccountAccessError({ reason: "unauthenticated" })
+          );
     })
   );
 
@@ -49,18 +56,22 @@ const updateCustomerProfileAction = defineWorkspaceAction(
   },
   (input, { locale }) =>
     Effect.gen(function* () {
-      yield* requireActionUser(locale);
+      yield* requireActionUser();
       const authentication = yield* CustomerAuthentication;
-      yield* authentication
-        .updateName(input.name)
-        .pipe(
-          Effect.mapError(() =>
-            actionError(m.accountProfileError({}, { locale }))
-          )
-        );
+      yield* authentication.updateName(input.name);
       yield* Effect.sync(() => revalidatePath(`/${locale}/account`));
       return { status: "updated" as const };
-    }).pipe(Effect.provide(CustomerAuthentication.Default))
+    }).pipe(
+      Effect.mapError((cause) =>
+        actionError(
+          cause.reason === "unauthenticated"
+            ? m.accountSessionExpired({}, { locale })
+            : m.accountProfileError({}, { locale }),
+          cause
+        )
+      ),
+      Effect.provide(CustomerAuthentication.Default)
+    )
 );
 
 export const updateCustomerProfile: typeof updateCustomerProfileAction = async (
@@ -78,21 +89,27 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
   },
   (_input, { locale }) =>
     Effect.gen(function* () {
-      const accountId = yield* requireActionAccountId(locale);
+      const accountId = yield* requireActionAccountId();
 
       const links = yield* CustomerAccountLinkRepository;
       const authentication = yield* CustomerAuthentication;
       yield* deleteCustomerIdentity(
         accountId,
         links.withAccountLock,
-        requireActionAccountId(locale),
+        requireActionAccountId(),
         links.unlink,
         authentication.deleteUser
-      ).pipe(
-        Effect.mapError(() => actionError(m.accountDeleteError({}, { locale })))
       );
       return { status: "deleted" as const };
     }).pipe(
+      Effect.mapError((cause) =>
+        actionError(
+          cause.reason === "unauthenticated"
+            ? m.accountSessionExpired({}, { locale })
+            : m.accountDeleteError({}, { locale }),
+          cause
+        )
+      ),
       Effect.provide(CustomerAuthentication.Default),
       Effect.provide(CustomerAccountLinkRepository.Live)
     )
