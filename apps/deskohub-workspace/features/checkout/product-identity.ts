@@ -31,6 +31,10 @@ export const workspaceProductIdentitySchema = Schema.Union([
 export type WorkspaceProductIdentity =
   typeof workspaceProductIdentitySchema.Type;
 
+export const workspaceProductIdentityEquals = Schema.toEquivalence(
+  workspaceProductIdentitySchema
+);
+
 export const workspaceProductKeySchema = Schema.Union([
   workspaceCoworkProductKeySchema,
   workspaceMeetingRoomProductKeySchema,

@@ -2,7 +2,7 @@ import {
   DotyposCategoryIdSchema,
   DotyposProductIdSchema,
 } from "@deskohub/dotypos";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 
 export const workspaceGoodsProductIdentitySchema = Schema.Struct({
   kind: Schema.Literal("goods"),
@@ -47,13 +47,31 @@ export const workspaceGoodsTargetSchema = Schema.Union([
 
 export type WorkspaceGoodsTarget = typeof workspaceGoodsTargetSchema.Type;
 
+const workspaceGoodsProductKeyPrefix = "goods:";
+const decodeWorkspaceGoodsProductKeyParts = Schema.decodeUnknownOption(
+  Schema.Tuple([DotyposCategoryIdSchema, DotyposProductIdSchema])
+);
+
 export const workspaceGoodsProductKeySchema = Schema.TemplateLiteral([
-  workspaceGoodsProductIdentitySchema.fields.kind,
-  ":",
-  workspaceGoodsProductIdentitySchema.fields.categoryId,
-  ":",
-  workspaceGoodsProductIdentitySchema.fields.productId,
-]);
+  workspaceGoodsProductKeyPrefix,
+  Schema.String,
+]).check(
+  Schema.makeFilter((key) => {
+    try {
+      const identity = decodeWorkspaceGoodsProductKeyParts(
+        JSON.parse(key.slice(workspaceGoodsProductKeyPrefix.length)) as unknown
+      );
+      if (Option.isNone(identity)) return false;
+
+      return (
+        JSON.stringify(identity.value) ===
+        key.slice(workspaceGoodsProductKeyPrefix.length)
+      );
+    } catch {
+      return false;
+    }
+  })
+);
 
 export type WorkspaceGoodsProductKey =
   typeof workspaceGoodsProductKeySchema.Type;
@@ -61,7 +79,10 @@ export type WorkspaceGoodsProductKey =
 export const getWorkspaceGoodsProductKey = (
   product: WorkspaceGoodsProductIdentity
 ): WorkspaceGoodsProductKey =>
-  `${product.kind}:${product.categoryId}:${product.productId}`;
+  `${workspaceGoodsProductKeyPrefix}${JSON.stringify([
+    product.categoryId,
+    product.productId,
+  ])}`;
 
 export const getCanonicalWorkspaceGoodsProductIdentity = (
   product: WorkspaceGoodsProductIdentity

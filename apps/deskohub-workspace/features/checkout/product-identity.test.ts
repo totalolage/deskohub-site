@@ -6,6 +6,7 @@ import {
 import { Schema } from "effect";
 import {
   getWorkspaceProductKey,
+  workspaceProductIdentityEquals,
   workspaceProductKeySchema,
 } from "@/features/checkout/product-identity";
 
@@ -29,7 +30,22 @@ describe("workspace product identities", () => {
         categoryId: DotyposCategoryIdSchema.make("category-1"),
         productId: DotyposProductIdSchema.make("product-1"),
       })
-    ).toBe("goods:category-1:product-1");
+    ).toBe('goods:["category-1","product-1"]');
+  });
+
+  test("compares opaque goods identity fields structurally", () => {
+    const first = {
+      kind: "goods" as const,
+      categoryId: DotyposCategoryIdSchema.make("a:b"),
+      productId: DotyposProductIdSchema.make("c"),
+    };
+    const second = {
+      kind: "goods" as const,
+      categoryId: DotyposCategoryIdSchema.make("a"),
+      productId: DotyposProductIdSchema.make("b:c"),
+    };
+
+    expect(workspaceProductIdentityEquals(first, second)).toBe(false);
   });
 
   test("rejects non-canonical product keys", () => {
@@ -45,5 +61,6 @@ describe("workspace product identities", () => {
     expect(() => decode("office:1.5:2")).toThrow();
     expect(() => decode("office:3:0")).toThrow();
     expect(() => decode("goods:category-1")).toThrow();
+    expect(() => decode("goods:category-1:product-1")).toThrow();
   });
 });
