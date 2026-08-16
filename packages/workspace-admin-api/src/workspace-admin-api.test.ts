@@ -578,6 +578,21 @@ describe("administration contract", () => {
         products: [definition.products[0], definition.products[0]],
       })
     ).toThrow();
+    expect(() =>
+      decode({
+        ...definition,
+        products: [{ kind: "goods", productId: "   " }],
+      })
+    ).toThrow();
+    expect(() =>
+      decode({
+        ...definition,
+        products: [
+          { kind: "goods", productId: "product-1" },
+          { kind: "goods", productId: " product-1 " },
+        ],
+      })
+    ).toThrow();
   });
   test("rejects invalid reservation filters before service execution", () => {
     expect(() =>

@@ -314,21 +314,25 @@ export const AdministrationDotyposCustomerId = Schema.NonEmptyString.pipe(
 export type AdministrationDotyposCustomerId =
   typeof AdministrationDotyposCustomerId.Type;
 
-export const AdministrationDotyposProductId = Schema.NonEmptyString.pipe(
-  Schema.brand("DotyposProductId")
-).annotate({
-  identifier: "DotyposProductId",
-  description: "Opaque product identifier assigned by Dotypos.",
-});
+export const AdministrationDotyposProductId = Schema.Trim.check(
+  Schema.isNonEmpty()
+)
+  .pipe(Schema.brand("DotyposProductId"))
+  .annotate({
+    identifier: "DotyposProductId",
+    description: "Opaque product identifier assigned by Dotypos.",
+  });
 export type AdministrationDotyposProductId =
   typeof AdministrationDotyposProductId.Type;
 
-export const AdministrationDotyposCategoryId = Schema.NonEmptyString.pipe(
-  Schema.brand("DotyposCategoryId")
-).annotate({
-  identifier: "DotyposCategoryId",
-  description: "Opaque product-category identifier assigned by Dotypos.",
-});
+export const AdministrationDotyposCategoryId = Schema.Trim.check(
+  Schema.isNonEmpty()
+)
+  .pipe(Schema.brand("DotyposCategoryId"))
+  .annotate({
+    identifier: "DotyposCategoryId",
+    description: "Opaque product-category identifier assigned by Dotypos.",
+  });
 export type AdministrationDotyposCategoryId =
   typeof AdministrationDotyposCategoryId.Type;
 

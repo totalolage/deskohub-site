@@ -19,6 +19,7 @@ import {
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
+  getWorkspaceProductKey,
   workspaceProductIdentityEquals,
   workspaceProductIdentitySchema,
 } from "@/features/checkout/product-identity";

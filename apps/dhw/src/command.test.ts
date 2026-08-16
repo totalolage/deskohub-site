@@ -444,6 +444,31 @@ describe("dhw mutation commands", () => {
     expect(mutations).toHaveLength(0);
   });
 
+  test("rejects whitespace-only goods target IDs before making a request", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    const error = await runCommand(
+      [
+        "--json",
+        "discounts",
+        "create",
+        "percentage",
+        "--label-en",
+        "Goods sale",
+        "--label-cs",
+        "Sleva na zbozi",
+        "--percentage",
+        "10",
+        "--product",
+        "goods:product: ",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toBeDefined();
+    expect(mutations).toHaveLength(0);
+  });
+
   test("creates reusable voucher credit", async () => {
     const { layer, mutations } = makeCommandLayer();
 
