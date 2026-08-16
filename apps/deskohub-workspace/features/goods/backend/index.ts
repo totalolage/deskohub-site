@@ -16,3 +16,11 @@ export {
   getGoodsQuoteFingerprint,
 } from "./goods-quote.service";
 export { GoodsQuoteTokenError } from "./goods-quote-state";
+export {
+  GoodsOrderCartChangedError,
+  GoodsOrderIssuanceConflictError,
+  GoodsOrderNotFoundError,
+  GoodsOrderService,
+  GoodsOrderUnavailableError,
+  type IssueGoodsOrderInput,
+} from "./goods-order.service";

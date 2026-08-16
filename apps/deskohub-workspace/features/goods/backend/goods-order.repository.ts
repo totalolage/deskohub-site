@@ -1,0 +1,432 @@
+import "server-only";
+
+import type { DotyposCustomerId } from "@deskohub/dotypos";
+import {
+  type NexiCorrelationId,
+  NexiCorrelationIdSchema,
+} from "@deskohub/nexi";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { Context, Data, Effect, Layer, Schema } from "effect";
+import type { SqlError } from "effect/unstable/sql/SqlError";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
+import {
+  goodsCartItems,
+  goodsCarts,
+  type OrderRow,
+  orderLines,
+  orders,
+} from "@/db/schema";
+import {
+  type LegalEvidenceEventInputError,
+  persistLegalEvidenceEvents,
+} from "@/features/checkout/backend/repositories/legal-evidence-event.repository";
+import type { GoodsBasketDiscountCommitment } from "@/features/discounts";
+import {
+  type OrderDiscountEvidenceStateError,
+  persistIssuedGoodsDiscountEvidence,
+} from "@/features/discounts/backend/order-discount-evidence";
+import type { DiscountClaimError } from "@/features/discounts/errors";
+import type { OrderId } from "@/features/order";
+import { temporalInstantToIsoString } from "@/shared/utils/temporal";
+import {
+  emptyGoodsCart,
+  type GoodsCart,
+  type GoodsCartId,
+  type GoodsCartRevision,
+} from "../goods-cart";
+import {
+  type GoodsOrderDetail,
+  type GoodsOrderIssuanceFacts,
+  type GoodsOrderLine,
+  type GoodsOrderSummary,
+  goodsOrderDetailSchema,
+  goodsOrderIssueLegalEvidenceSource,
+} from "../goods-order";
+import { workspaceGoodsProductIdentitySchema } from "../goods-product";
+
+export class GoodsOrderCartChangedError extends Data.TaggedError(
+  "GoodsOrderCartChangedError"
+)<{ readonly current: GoodsCart }> {}
+
+export class GoodsOrderIssuanceConflictError extends Data.TaggedError(
+  "GoodsOrderIssuanceConflictError"
+)<{ readonly message: string }> {}
+
+export class GoodsOrderNotFoundError extends Data.TaggedError(
+  "GoodsOrderNotFoundError"
+)<{ readonly orderId: OrderId }> {}
+
+export class GoodsOrderStoredDataError extends Data.TaggedError(
+  "GoodsOrderStoredDataError"
+)<{ readonly message: string; readonly cause?: unknown }> {}
+
+type GoodsOrderRepositoryError =
+  | EffectDrizzleQueryError
+  | SqlError
+  | GoodsOrderCartChangedError
+  | GoodsOrderIssuanceConflictError
+  | GoodsOrderNotFoundError
+  | GoodsOrderStoredDataError
+  | DiscountClaimError
+  | OrderDiscountEvidenceStateError
+  | LegalEvidenceEventInputError;
+
+export type IssueGoodsOrderRepositoryInput = GoodsOrderIssuanceFacts & {
+  readonly customerId: DotyposCustomerId;
+  readonly issuedAt: Temporal.Instant;
+  readonly discountCommitment?: GoodsBasketDiscountCommitment;
+};
+
+interface IGoodsOrderRepository {
+  readonly issue: (
+    input: IssueGoodsOrderRepositoryInput
+  ) => Effect.Effect<GoodsOrderDetail, GoodsOrderRepositoryError>;
+  readonly list: (
+    customerId: DotyposCustomerId
+  ) => Effect.Effect<readonly GoodsOrderSummary[], GoodsOrderRepositoryError>;
+  readonly get: (
+    customerId: DotyposCustomerId,
+    orderId: OrderId
+  ) => Effect.Effect<GoodsOrderDetail, GoodsOrderRepositoryError>;
+}
+
+export class GoodsOrderRepository extends Context.Service<
+  GoodsOrderRepository,
+  IGoodsOrderRepository
+>()("@deskohub-workspace/goods/GoodsOrderRepository") {
+  static Default = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const { db } = yield* WorkspaceDatabase;
+
+      return {
+        issue: Effect.fn("GoodsOrderRepository.issue")((input) =>
+          db.transaction((tx) => issueGoodsOrder(tx, input))
+        ),
+        list: Effect.fn("GoodsOrderRepository.list")((customerId) =>
+          db.transaction((tx) => listGoodsOrders(tx, customerId))
+        ),
+        get: Effect.fn("GoodsOrderRepository.get")((customerId, orderId) =>
+          db.transaction((tx) => getGoodsOrder(tx, customerId, orderId))
+        ),
+      } satisfies IGoodsOrderRepository;
+    })
+  );
+
+  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
+}
+
+type GoodsOrderTransaction = Parameters<
+  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
+>[0];
+
+const issueGoodsOrder = Effect.fn("GoodsOrderRepository.issueTransaction")(
+  function* (tx: GoodsOrderTransaction, input: IssueGoodsOrderRepositoryInput) {
+    const correlationId = NexiCorrelationIdSchema.make(input.issuanceId);
+    const [inserted] = yield* tx
+      .insert(orders)
+      .values({
+        kind: "goods",
+        correlationId,
+        dotyposCustomerId: input.customerId,
+        paymentState: "not_started",
+        fulfillmentState: "fulfilled",
+        fulfilledAt: input.issuedAt,
+        createdAt: input.issuedAt,
+        updatedAt: input.issuedAt,
+      })
+      .onConflictDoNothing({ target: orders.correlationId })
+      .returning();
+
+    if (!inserted) {
+      return yield* loadIdempotentOrder(tx, input.customerId, correlationId);
+    }
+
+    const [cart] = yield* tx
+      .select({ id: goodsCarts.id, revision: goodsCarts.revision })
+      .from(goodsCarts)
+      .where(eq(goodsCarts.dotyposCustomerId, input.customerId))
+      .limit(1)
+      .for("update");
+    const current = cart
+      ? yield* loadCartItems(tx, cart.id, cart.revision)
+      : emptyGoodsCart;
+    if (!goodsCartsEqual(current, input.expectedCart)) {
+      return yield* new GoodsOrderCartChangedError({ current });
+    }
+    if (!cart) {
+      return yield* new GoodsOrderCartChangedError({ current });
+    }
+
+    yield* tx.insert(orderLines).values(
+      input.lines.map((line, sequence) => ({
+        orderId: inserted.id,
+        sequence,
+        productIdentity: line.product,
+        description: line.description,
+        quantity: line.quantity,
+        unitPriceValue: line.unitPrice.value,
+        undiscountedTotalValue: line.undiscountedTotal.value,
+        payableTotalValue: line.payableTotal.value,
+        amountExponent: line.unitPrice.exponent,
+        currency: line.unitPrice.currency,
+        createdAt: input.issuedAt,
+      }))
+    );
+
+    if (input.discountCommitment) {
+      yield* persistIssuedGoodsDiscountEvidence({
+        tx,
+        orderId: inserted.id,
+        commitment: input.discountCommitment,
+        locale: input.locale,
+        issuedAt: input.issuedAt,
+      });
+    }
+
+    yield* persistLegalEvidenceEvents({
+      tx,
+      events: input.legalDocuments.map(
+        ({ documentKey, document, acknowledgements }) => ({
+          orderId: inserted.id,
+          evidence: {
+            documentKey,
+            documentHash: document.hash,
+            accepted: true,
+            acceptedAt: input.issuedAt.toString(),
+            locale: input.locale,
+            source: goodsOrderIssueLegalEvidenceSource,
+            document,
+            ...(acknowledgements && { acknowledgements }),
+          },
+        })
+      ),
+    });
+
+    yield* tx.delete(goodsCartItems).where(eq(goodsCartItems.cartId, cart.id));
+    yield* tx
+      .update(goodsCarts)
+      .set({ revision: cart.revision + 1, updatedAt: input.issuedAt })
+      .where(eq(goodsCarts.id, cart.id));
+
+    return yield* makeGoodsOrderDetail(inserted, input.lines);
+  }
+);
+
+const loadIdempotentOrder = Effect.fn(
+  "GoodsOrderRepository.loadIdempotentOrder"
+)(function* (
+  tx: GoodsOrderTransaction,
+  customerId: DotyposCustomerId,
+  correlationId: NexiCorrelationId
+) {
+  const [order] = yield* tx
+    .select()
+    .from(orders)
+    .where(eq(orders.correlationId, correlationId))
+    .limit(1)
+    .for("share");
+  if (
+    !order ||
+    order.kind !== "goods" ||
+    order.dotyposCustomerId !== customerId
+  ) {
+    return yield* new GoodsOrderIssuanceConflictError({
+      message: "The issuance identifier belongs to another order.",
+    });
+  }
+  return yield* loadGoodsOrderDetail(tx, order);
+});
+
+const listGoodsOrders = Effect.fn("GoodsOrderRepository.listTransaction")(
+  function* (tx: GoodsOrderTransaction, customerId: DotyposCustomerId) {
+    const rows = yield* tx
+      .select()
+      .from(orders)
+      .where(
+        and(eq(orders.kind, "goods"), eq(orders.dotyposCustomerId, customerId))
+      )
+      .orderBy(desc(orders.createdAt));
+    if (rows.length === 0) return [];
+
+    const lines = yield* loadGoodsOrderLines(
+      tx,
+      rows.map(({ id }) => id)
+    );
+    return yield* Effect.forEach(rows, (row) =>
+      makeGoodsOrderDetail(row, lines.get(row.id) ?? []).pipe(
+        Effect.map(({ lines: _lines, ...summary }) => summary)
+      )
+    );
+  }
+);
+
+const getGoodsOrder = Effect.fn("GoodsOrderRepository.getTransaction")(
+  function* (
+    tx: GoodsOrderTransaction,
+    customerId: DotyposCustomerId,
+    orderId: OrderId
+  ) {
+    const [order] = yield* tx
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.id, orderId),
+          eq(orders.kind, "goods"),
+          eq(orders.dotyposCustomerId, customerId)
+        )
+      )
+      .limit(1)
+      .for("share");
+    if (!order) return yield* new GoodsOrderNotFoundError({ orderId });
+    return yield* loadGoodsOrderDetail(tx, order);
+  }
+);
+
+const loadGoodsOrderDetail = Effect.fn("GoodsOrderRepository.loadDetail")(
+  function* (tx: GoodsOrderTransaction, order: OrderRow) {
+    const lines = yield* loadGoodsOrderLines(tx, [order.id]);
+    return yield* makeGoodsOrderDetail(order, lines.get(order.id) ?? []);
+  }
+);
+
+const loadGoodsOrderLines = Effect.fn("GoodsOrderRepository.loadLines")(
+  function* (tx: GoodsOrderTransaction, orderIds: readonly OrderId[]) {
+    const rows = yield* tx
+      .select()
+      .from(orderLines)
+      .where(inArray(orderLines.orderId, [...orderIds]))
+      .orderBy(asc(orderLines.orderId), asc(orderLines.sequence));
+    const result = new Map<OrderId, GoodsOrderLine[]>();
+    for (const row of rows) {
+      const product = yield* Schema.decodeUnknownEffect(
+        workspaceGoodsProductIdentitySchema,
+        { onExcessProperty: "error" }
+      )(row.productIdentity).pipe(
+        Effect.mapError(
+          (cause) =>
+            new GoodsOrderStoredDataError({
+              message: "Stored goods product identity is invalid.",
+              cause,
+            })
+        )
+      );
+      const line: GoodsOrderLine = {
+        product,
+        description: row.description,
+        quantity: row.quantity,
+        unitPrice: {
+          value: row.unitPriceValue,
+          exponent: row.amountExponent,
+          currency: row.currency,
+        },
+        undiscountedTotal: {
+          value: row.undiscountedTotalValue,
+          exponent: row.amountExponent,
+          currency: row.currency,
+        },
+        payableTotal: {
+          value: row.payableTotalValue,
+          exponent: row.amountExponent,
+          currency: row.currency,
+        },
+      };
+      const existing = result.get(row.orderId);
+      if (existing) existing.push(line);
+      else result.set(row.orderId, [line]);
+    }
+    return result;
+  }
+);
+
+const makeGoodsOrderDetail = Effect.fn("GoodsOrderRepository.makeDetail")(
+  function* (order: OrderRow, lines: readonly GoodsOrderLine[]) {
+    const first = lines[0];
+    if (!first || !order.fulfilledAt) {
+      return yield* new GoodsOrderStoredDataError({
+        message: "Stored goods order is incomplete.",
+      });
+    }
+    if (
+      lines.some(
+        ({ unitPrice }) =>
+          unitPrice.currency !== first.unitPrice.currency ||
+          unitPrice.exponent !== first.unitPrice.exponent
+      )
+    ) {
+      return yield* new GoodsOrderStoredDataError({
+        message: "Stored goods order mixes monetary units.",
+      });
+    }
+
+    return yield* Schema.decodeUnknownEffect(goodsOrderDetailSchema, {
+      onExcessProperty: "error",
+    })({
+      id: order.id,
+      paymentState: order.paymentState,
+      fulfillmentState: order.fulfillmentState,
+      fulfilledAt: temporalInstantToIsoString(order.fulfilledAt),
+      createdAt: temporalInstantToIsoString(order.createdAt),
+      undiscountedTotal: {
+        value: lines.reduce(
+          (sum, line) => sum + line.undiscountedTotal.value,
+          0
+        ),
+        exponent: first.unitPrice.exponent,
+        currency: first.unitPrice.currency,
+      },
+      payableTotal: {
+        value: lines.reduce((sum, line) => sum + line.payableTotal.value, 0),
+        exponent: first.unitPrice.exponent,
+        currency: first.unitPrice.currency,
+      },
+      lines,
+    }).pipe(
+      Effect.mapError(
+        (cause) =>
+          new GoodsOrderStoredDataError({
+            message: "Stored goods order is invalid.",
+            cause,
+          })
+      )
+    );
+  }
+);
+
+const loadCartItems = Effect.fn("GoodsOrderRepository.loadCartItems")(
+  function* (
+    tx: GoodsOrderTransaction,
+    cartId: GoodsCartId,
+    revision: GoodsCartRevision
+  ) {
+    const items = yield* tx
+      .select({
+        productId: goodsCartItems.productId,
+        quantity: goodsCartItems.quantity,
+      })
+      .from(goodsCartItems)
+      .where(eq(goodsCartItems.cartId, cartId))
+      .orderBy(asc(goodsCartItems.productId));
+    return { revision, items } satisfies GoodsCart;
+  }
+);
+
+const goodsCartsEqual = (left: GoodsCart, right: GoodsCart) => {
+  if (
+    left.revision !== right.revision ||
+    left.items.length !== right.items.length
+  ) {
+    return false;
+  }
+  const rightItems = new Map(
+    right.items.map(({ productId, quantity }) => [productId, quantity])
+  );
+  return left.items.every(
+    ({ productId, quantity }) => rightItems.get(productId) === quantity
+  );
+};

@@ -24,6 +24,20 @@ export {
   goodsCatalogSchema,
 } from "./goods-catalog";
 export {
+  type GoodsOrderDetail,
+  type GoodsOrderIssuanceFacts,
+  type GoodsOrderIssuanceId,
+  type GoodsOrderLegalDocument,
+  type GoodsOrderLine,
+  type GoodsOrderSummary,
+  goodsOrderDetailSchema,
+  goodsOrderIssuanceFactsSchema,
+  goodsOrderIssuanceIdSchema,
+  goodsOrderLegalDocumentSchema,
+  goodsOrderLineSchema,
+  goodsOrderSummarySchema,
+} from "./goods-order";
+export {
   getCanonicalWorkspaceGoodsProductIdentity,
   getWorkspaceGoodsProductKey,
   getWorkspaceGoodsProductTarget,
