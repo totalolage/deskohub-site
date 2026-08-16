@@ -1044,6 +1044,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             );
             yield* legalEvidenceEvents.recordMany(
               Object.values(checkoutDetails.legal).map((evidence) => ({
+                orderId: reservation.id,
                 workspaceReservationId: reservation.id,
                 evidence,
               }))

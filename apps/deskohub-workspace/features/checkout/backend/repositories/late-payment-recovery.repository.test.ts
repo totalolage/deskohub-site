@@ -76,7 +76,7 @@ test("redeems the attempt's discount claim in recovered settlements", async () =
     new URL("./late-payment-recovery.repository.ts", import.meta.url)
   ).text();
 
-  expect(source).toContain("yield* redeemCodeClaim(");
+  expect(source).toContain("yield* redeemAttemptDiscountClaim({");
 });
 
 test("repairs release-skew attempts before recovery starts or settles idempotently", async () => {
