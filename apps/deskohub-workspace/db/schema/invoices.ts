@@ -12,10 +12,12 @@ import {
 import type { AccountingSnapshotKeyId } from "@/features/accounting/accounting-document-snapshot";
 import type { InvoiceNumber } from "@/features/accounting/invoice";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { OrderId } from "@/features/order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { accountingDocumentSnapshots } from "./accounting-document-snapshots";
+import { orders } from "./orders";
 import { workspaceReservations } from "./workspace-reservations";
 
 export const invoices = pgTable(
@@ -23,9 +25,11 @@ export const invoices = pgTable(
   {
     id: text("id").primaryKey().default(postgresUuidV7),
     workspaceReservationId: text("workspace_reservation_id")
-      .notNull()
       .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id),
+    orderId: text("order_id")
+      .$type<OrderId>()
+      .references(() => orders.id),
     paymentAttemptId: text("payment_attempt_id")
       .notNull()
       .$type<PaymentAttemptId>()
@@ -45,6 +49,14 @@ export const invoices = pgTable(
       "invoices_dotypos_customer_id_check",
       sql`btrim(${t.dotyposCustomerId}) <> ''`
     ),
+    check(
+      "invoices_order_reference_check",
+      sql`${t.orderId} is not null or ${t.workspaceReservationId} is not null`
+    ),
+    check(
+      "invoices_reservation_order_match_check",
+      sql`${t.workspaceReservationId} is null or ${t.orderId} is null or ${t.workspaceReservationId} = ${t.orderId}`
+    ),
     check("invoices_numbering_sequence_check", sql`${t.numberingSequence} > 0`),
     check("invoices_key_id_check", sql`${t.keyId} ~ '^[A-Z][A-Z0-9_]{2,31}$'`),
     check(
@@ -52,6 +64,9 @@ export const invoices = pgTable(
       sql`${t.numberingYear} = extract(year from ${t.issuedAt} at time zone 'Europe/Prague')::integer`
     ),
     uniqueIndex("invoices_reservation_unique_idx").on(t.workspaceReservationId),
+    uniqueIndex("invoices_order_unique_idx")
+      .on(t.orderId)
+      .where(sql`${t.orderId} is not null`),
     uniqueIndex("invoices_payment_attempt_unique_idx").on(t.paymentAttemptId),
     uniqueIndex("invoices_number_unique_idx").on(t.invoiceNumber),
     uniqueIndex("invoices_year_sequence_unique_idx").on(

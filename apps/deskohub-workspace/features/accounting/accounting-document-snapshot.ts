@@ -10,6 +10,7 @@ import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-qu
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
 import { officeReservationQuoteSchema } from "@/features/checkout/reservation-quote-office";
 import type { Locale } from "@/features/i18n";
+import { type OrderId, orderIdSchema } from "@/features/order";
 import { officeReservationDetailsSchema } from "@/features/reservation/office-reservation";
 import {
   type WorkspaceReservationId,
@@ -153,6 +154,10 @@ export const accountingDocumentSnapshotSchema = Schema.Union([
 
 export type AccountingDocumentSnapshot =
   typeof accountingDocumentSnapshotSchema.Type;
+
+export const getAccountingDocumentOrderId = (
+  snapshot: AccountingDocumentSnapshot
+): OrderId => orderIdSchema.make(snapshot.workspaceReservationId);
 
 export const encodeStoredAccountingDocumentSnapshot = Schema.encodeSync(
   accountingDocumentSnapshotSchema

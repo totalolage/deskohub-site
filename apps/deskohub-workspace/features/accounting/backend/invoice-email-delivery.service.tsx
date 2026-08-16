@@ -86,7 +86,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
       }) {
         const messageInput = {
           invoiceNumber: input.invoice.invoiceNumber,
-          orderId: input.invoice.workspaceReservationId,
+          orderId: input.invoice.orderId,
         };
         const content = Match.value(input.audience).pipe(
           Match.when("customer", () => {
@@ -182,6 +182,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           metadata: {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-invoice-delivery",
+            orderId: input.invoice.orderId,
             workspaceReservationId: input.invoice.workspaceReservationId,
             invoiceId: input.invoice.id,
             audience: input.audience,

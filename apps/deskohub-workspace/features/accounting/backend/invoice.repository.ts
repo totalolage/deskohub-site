@@ -6,9 +6,10 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   invoiceNumberCounters,
   invoices,
+  orders,
   paymentAttempts,
-  workspaceReservations,
 } from "@/db/schema";
+import { getAccountingDocumentOrderId } from "@/features/accounting/accounting-document-snapshot";
 import {
   decodeInvoiceDocument,
   formatInvoiceNumber,
@@ -51,6 +52,7 @@ export class InvoiceStorageError extends Data.TaggedError(
 
 export interface Invoice {
   readonly id: string;
+  readonly orderId: string;
   readonly workspaceReservationId: string;
   readonly paymentAttemptId: string;
   readonly dotyposCustomerId: string;
@@ -123,6 +125,7 @@ export class InvoiceRepository extends Context.Service<
         const [row] = yield* db
           .select({
             id: invoices.id,
+            orderId: invoices.orderId,
             workspaceReservationId: invoices.workspaceReservationId,
             paymentAttemptId: invoices.paymentAttemptId,
             dotyposCustomerId: invoices.dotyposCustomerId,
@@ -181,7 +184,8 @@ export class InvoiceRepository extends Context.Service<
 
         return {
           id: row.id,
-          workspaceReservationId: row.workspaceReservationId,
+          orderId: row.orderId ?? document.workspaceReservationId,
+          workspaceReservationId: document.workspaceReservationId,
           paymentAttemptId: row.paymentAttemptId,
           dotyposCustomerId: row.dotyposCustomerId,
           invoiceNumber: document.invoiceNumber,
@@ -227,25 +231,19 @@ export class InvoiceRepository extends Context.Service<
           Effect.gen(function* () {
             const [locked] = yield* tx
               .select({
-                reservationId: workspaceReservations.id,
-                reservationPaymentState: workspaceReservations.paymentState,
-                activePaymentAttemptId:
-                  workspaceReservations.activePaymentAttemptId,
-                dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                dotyposReservationId:
-                  workspaceReservations.dotyposReservationId,
-                paidAt: workspaceReservations.paidAt,
-                fulfillmentState: workspaceReservations.fulfillmentState,
-                fulfilledAt: workspaceReservations.fulfilledAt,
+                orderId: orders.id,
+                orderPaymentState: orders.paymentState,
+                activePaymentAttemptId: orders.activePaymentAttemptId,
+                dotyposCustomerId: orders.dotyposCustomerId,
+                paidAt: orders.paidAt,
+                fulfillmentState: orders.fulfillmentState,
+                fulfilledAt: orders.fulfilledAt,
                 paymentAttemptState: paymentAttempts.state,
               })
               .from(paymentAttempts)
               .innerJoin(
-                workspaceReservations,
-                eq(
-                  workspaceReservations.id,
-                  paymentAttempts.workspaceReservationId
-                )
+                orders,
+                sql`${orders.id} = coalesce(${paymentAttempts.orderId}, ${paymentAttempts.workspaceReservationId})`
               )
               .where(eq(paymentAttempts.id, paymentAttemptId))
               .limit(1)
@@ -261,14 +259,16 @@ export class InvoiceRepository extends Context.Service<
             const [existing] = yield* tx
               .select({ paymentAttemptId: invoices.paymentAttemptId })
               .from(invoices)
-              .where(eq(invoices.workspaceReservationId, locked.reservationId))
+              .where(
+                sql`coalesce(${invoices.orderId}, ${invoices.workspaceReservationId}) = ${locked.orderId}`
+              )
               .limit(1);
 
             if (existing) {
               if (existing.paymentAttemptId !== paymentAttemptId) {
                 return yield* wrapInvoiceEligibilityError(
                   paymentAttemptId,
-                  "The reservation was invoiced from a different payment attempt."
+                  "The order was invoiced from a different payment attempt."
                 );
               }
 
@@ -280,13 +280,13 @@ export class InvoiceRepository extends Context.Service<
 
             if (
               locked.paymentAttemptState !== "paid" ||
-              locked.reservationPaymentState !== "paid" ||
+              locked.orderPaymentState !== "paid" ||
               locked.activePaymentAttemptId !== paymentAttemptId ||
               locked.paidAt === null
             ) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
-                "Only the active paid attempt of a paid reservation can be invoiced."
+                "Only the active paid attempt of a paid order can be invoiced."
               );
             }
 
@@ -296,18 +296,17 @@ export class InvoiceRepository extends Context.Service<
             ) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
-                "Only a reservation whose access code has been delivered can be invoiced."
+                "Only a fulfilled order can be invoiced."
               );
             }
 
             if (
-              source.workspaceReservationId !== locked.reservationId ||
-              source.dotyposCustomerId !== locked.dotyposCustomerId ||
-              source.dotyposReservationId !== locked.dotyposReservationId
+              getAccountingDocumentOrderId(source) !== locked.orderId ||
+              source.dotyposCustomerId !== locked.dotyposCustomerId
             ) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
-                "The accounting snapshot does not match the paid reservation."
+                "The accounting snapshot does not match the paid order."
               );
             }
 
@@ -376,7 +375,8 @@ export class InvoiceRepository extends Context.Service<
             yield* tx
               .insert(invoices)
               .values({
-                workspaceReservationId: locked.reservationId,
+                orderId: locked.orderId,
+                workspaceReservationId: source.workspaceReservationId,
                 paymentAttemptId,
                 dotyposCustomerId: locked.dotyposCustomerId,
                 invoiceNumber,
@@ -432,7 +432,8 @@ const validateStoredInvoice = Effect.fn(
   "InvoiceRepository.validateStoredInvoice"
 )(function* (input: {
   readonly row: {
-    readonly workspaceReservationId: string;
+    readonly orderId: string | null;
+    readonly workspaceReservationId: string | null;
     readonly paymentAttemptId: string;
     readonly dotyposCustomerId: string;
     readonly invoiceNumber: string;
@@ -442,7 +443,10 @@ const validateStoredInvoice = Effect.fn(
 }) {
   const { document, row } = input;
   if (
-    document.workspaceReservationId !== row.workspaceReservationId ||
+    (row.orderId ?? row.workspaceReservationId) !==
+      document.workspaceReservationId ||
+    (row.workspaceReservationId !== null &&
+      document.workspaceReservationId !== row.workspaceReservationId) ||
     document.paymentAttemptId !== row.paymentAttemptId ||
     document.dotyposCustomerId !== row.dotyposCustomerId ||
     document.invoiceNumber !== row.invoiceNumber ||

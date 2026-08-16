@@ -105,6 +105,23 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
+  test("moves encrypted accounting ownership to orders without rewriting ciphertext", async () => {
+    const migration = await readAppFile(
+      "db/migrations/20260816190818_order-accounting/migration.sql"
+    );
+
+    expect(migration).toContain('ADD COLUMN "order_id" text');
+    expect(migration).toContain('SET "order_id" = COALESCE(');
+    expect(migration).not.toContain('encrypted_snapshot" =');
+    expect(migration).not.toContain('encrypted_document" =');
+    expect(migration).toContain(
+      "snapshot.order_id, snapshot.workspace_reservation_id"
+    );
+    expect(migration).toContain("fulfillment_state = 'fulfilled'");
+    expect(migration).toContain("accounting document snapshots are immutable");
+    expect(migration).not.toContain("OLD.payment_attempt_id");
+  });
+
   test("late-payment recovery stores identifiers and state without customer data", async () => {
     const schema = await readAppFile("db/schema/late-payment-recoveries.ts");
     expect(schema).not.toContain("jsonb(");
