@@ -17,6 +17,12 @@ import type {
   CheckoutSessionKey,
   PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
+import {
+  type OrderFulfillmentState,
+  type OrderPaymentState,
+  orderFulfillmentStates,
+  orderPaymentStates,
+} from "@/features/order";
 import type {
   StoredWorkspaceReservationDetails,
   WorkspaceReservationId,
@@ -44,25 +50,13 @@ export const reservationStates = [
   "cancellation_failed",
 ] as const;
 
-export const paymentStates = [
-  "not_started",
-  "pending",
-  "paid",
-  "failed",
-  "cancelled",
-  "expired",
-] as const;
+export const paymentStates = orderPaymentStates;
 
-export const fulfillmentStates = [
-  "not_started",
-  "processing",
-  "fulfilled",
-  "failed",
-] as const;
+export const fulfillmentStates = orderFulfillmentStates;
 
 export type ReservationState = (typeof reservationStates)[number];
-export type PaymentState = (typeof paymentStates)[number];
-export type FulfillmentState = (typeof fulfillmentStates)[number];
+export type PaymentState = OrderPaymentState;
+export type FulfillmentState = OrderFulfillmentState;
 
 const reservationStatesRequiringDotyposReservationId = [
   "held",
