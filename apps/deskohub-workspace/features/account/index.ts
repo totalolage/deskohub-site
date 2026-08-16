@@ -1,4 +1,7 @@
-export { resolveCurrentCustomerAccount } from "./backend/customer-account-resolver.service";
+export {
+  CustomerAccountResolver,
+  resolveCurrentCustomerAccount,
+} from "./backend/customer-account-resolver.service";
 export {
   CustomerAccountAccessError,
   type CustomerAccountId,
