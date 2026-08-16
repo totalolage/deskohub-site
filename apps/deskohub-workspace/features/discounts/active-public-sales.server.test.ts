@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 
-test("enters request time before reading the active-sale clock", async () => {
+test("reads the active-sale clock inside a cache boundary", async () => {
   const source = await Bun.file(
     new URL("./active-public-sales.server.ts", import.meta.url)
   ).text();
-  const connection = source.indexOf("await connection()");
+  const cacheBoundary = source.indexOf('"use cache"');
 
-  expect(connection).toBeGreaterThan(-1);
-  expect(connection).toBeLessThan(source.indexOf("Clock.currentTimeMillis"));
+  expect(cacheBoundary).toBeGreaterThan(-1);
+  expect(cacheBoundary).toBeLessThan(source.indexOf("Date.now()"));
+  expect(source).not.toContain("await connection()");
 });

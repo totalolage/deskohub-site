@@ -1,7 +1,7 @@
 import "server-only";
 
-import { Clock, Effect } from "effect";
-import { connection } from "next/server";
+import { Effect } from "effect";
+import { cacheLife } from "next/cache";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -32,10 +32,10 @@ export const getActivePublicSales = Effect.fn("Discounts.getActivePublicSales")(
 async function loadActivePublicSales(input: {
   readonly locale: Locale;
 }): Promise<readonly ActiveSale[]> {
-  await connection();
-
   return Effect.Do.pipe(
-    Effect.bind("at", () => Clock.currentTimeMillis),
+    Effect.bind("at", () =>
+      Effect.promise(() => loadActivePublicSalesEvaluationTime())
+    ),
     Effect.let("currentDate", ({ at }) =>
       getCurrentWorkspaceDate(Temporal.Instant.fromEpochMilliseconds(at))
     ),
@@ -57,4 +57,10 @@ async function loadActivePublicSales(input: {
     Effect.provide(CalendarDiscountProvider.Live),
     runWorkspaceEffect("discounts.active-public-sales.load")
   );
+}
+
+async function loadActivePublicSalesEvaluationTime(): Promise<number> {
+  "use cache";
+  cacheLife("publicContent");
+  return Date.now();
 }
