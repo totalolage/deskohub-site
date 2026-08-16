@@ -8,6 +8,7 @@ import {
 import type {
   Category,
   Customer,
+  Product,
   Reservation,
   Table,
 } from "../generated/effect.gen";
@@ -16,6 +17,7 @@ import {
   DotyposCustomerIdSchema,
   DotyposCustomerSchema,
   DotyposDiscountGroupIdSchema,
+  DotyposProductSchema,
   DotyposReservationIdSchema,
   DotyposReservationSchema,
   DotyposTableIdSchema,
@@ -94,6 +96,16 @@ const category = (overrides: Partial<Category> = {}) =>
     _cloudId: config.cloudId,
     name: "Coffee",
     tags: null,
+    ...overrides,
+  });
+
+const product = (overrides: Partial<Product> = {}) =>
+  Schema.decodeUnknownSync(DotyposProductSchema)({
+    id: "product-id",
+    _categoryId: "category-id",
+    name: "Coffee",
+    priceWithoutVat: "50.00",
+    vat: "0",
     ...overrides,
   });
 
@@ -1249,6 +1261,79 @@ describe("DotyposService reservations", () => {
 });
 
 describe("DotyposService categories", () => {
+  test("loads every product and category page", async () => {
+    const requestedPages: string[] = [];
+    let productPageTwoAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/products" ||
+        url.pathname === "/clouds/cloud-id/categories"
+      ) {
+        const page = url.searchParams.get("page") ?? "1";
+        requestedPages.push(`${url.pathname}:${page}`);
+        const isProducts = url.pathname.endsWith("/products");
+        if (isProducts && page === "2") {
+          productPageTwoAttempts += 1;
+          if (productPageTwoAttempts === 1) {
+            return Response.json(
+              {
+                error: "rate_limited",
+                error_description: "Too many requests",
+                code: 429,
+              },
+              { status: 429 }
+            );
+          }
+        }
+        return Response.json(
+          page === "1"
+            ? {
+                data: [isProducts ? product() : category()],
+                nextPage: "2",
+              }
+            : {
+                data: [
+                  isProducts
+                    ? product({ id: "product-2" })
+                    : category({ id: "category-2" }),
+                ],
+                nextPage: null,
+              }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        const products = yield* dotypos.getProducts({});
+        const categories = yield* dotypos.getCategories();
+        return { products, categories };
+      }),
+      fetchMock
+    );
+
+    expect(result.products.map(({ id }) => id)).toEqual([
+      "product-id",
+      "product-2",
+    ]);
+    expect(result.categories.map(({ id }) => id)).toEqual([
+      "category-id",
+      "category-2",
+    ]);
+    expect(requestedPages).toEqual([
+      "/clouds/cloud-id/products:1",
+      "/clouds/cloud-id/products:2",
+      "/clouds/cloud-id/products:1",
+      "/clouds/cloud-id/products:2",
+      "/clouds/cloud-id/categories:1",
+      "/clouds/cloud-id/categories:2",
+    ]);
+  });
+
   test("accepts nullable category tags", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
