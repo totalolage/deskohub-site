@@ -18,11 +18,18 @@ mock.module("server-only", () => ({}));
 mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationCustomers: () =>
     Promise.resolve({
+      input: { direction: "desc", page: 1, sort: "activity" },
+      result: { items: [], page: 1, pageCount: 1, total: 24 },
+    }),
+  loadAdministrationCustomersPage: () => ({
+    input: Promise.resolve({ direction: "desc", page: 1, sort: "activity" }),
+    result: Promise.resolve({
       items: [],
       page: 1,
       pageCount: 1,
       total: 24,
     }),
+  }),
 }));
 
 mock.module("@/features/discounts/admin/customer-admin-client", () => ({

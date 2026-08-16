@@ -1,70 +1,102 @@
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
+"use client";
+
 import { AdministrationLink as Link } from "./admin-link";
-import type { AdministrationCustomerSummary } from "./administration.service";
+import type {
+  AdministrationCustomerSort,
+  AdministrationCustomerSummary,
+} from "./administration.service";
+import {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "./data-table";
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
-import { AdministrationResponsiveTable } from "./table-frame";
+import {
+  type AdministrationTableSorting,
+  getAdministrationTableSortHref,
+} from "./table-sort";
+
+const columns: readonly AdministrationDataTableColumn<AdministrationCustomerSummary>[] =
+  [
+    {
+      accessorFn: (item) => item.customer?.displayName ?? "Details unavailable",
+      cell: ({ row }) => (
+        <Link
+          className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
+          href={`/admin/customers/${row.original.customerId}`}
+        >
+          {row.original.customer?.displayName ?? "Details unavailable"}
+        </Link>
+      ),
+      enableSorting: false,
+      header: "Name",
+      id: "name",
+    },
+    {
+      accessorFn: (item) => item.customer?.email ?? "—",
+      enableSorting: false,
+      header: "Email",
+      id: "email",
+      meta: { cellClassName: "text-navy-blue/68" },
+    },
+    {
+      accessorFn: (item) => item.customer?.phone ?? "—",
+      enableSorting: false,
+      header: "Phone",
+      id: "phone",
+      meta: { cellClassName: "text-navy-blue/68" },
+    },
+    {
+      accessorKey: "reservationCount",
+      cell: ({ row }) => (
+        <>
+          <span className="font-semibold">{row.original.reservationCount}</span>{" "}
+          <span className="text-navy-blue/60">
+            {row.original.reservationCount === 1
+              ? "reservation"
+              : "reservations"}
+          </span>
+        </>
+      ),
+      header: "Reservations",
+      id: "reservations",
+    },
+    {
+      accessorKey: "lastActivityAt",
+      cell: ({ row }) =>
+        formatAdministrationDateTime(row.original.lastActivityAt),
+      header: "Last activity",
+      id: "activity",
+      meta: { cellClassName: "text-navy-blue/68" },
+    },
+  ];
 
 export function AdministrationCustomerTable({
   customers,
+  sorting,
 }: {
   readonly customers: readonly AdministrationCustomerSummary[];
+  readonly sorting?: AdministrationTableSorting<AdministrationCustomerSort>;
 }) {
   if (customers.length === 0) {
     return <EmptyState message="No customers have reservations yet." />;
   }
   return (
-    <AdministrationResponsiveTable
-      desktop={
-        <Table aria-label="Customers" className="min-w-[860px]">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Reservations</TableHead>
-              <TableHead>Last activity</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {customers.map((item) => (
-              <TableRow className="relative" key={item.customerId}>
-                <TableCell>
-                  <Link
-                    className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-                    href={`/admin/customers/${item.customerId}`}
-                  >
-                    {item.customer?.displayName ?? "Details unavailable"}
-                  </Link>
-                </TableCell>
-                <TableCell className="text-navy-blue/68">
-                  {item.customer?.email ?? "—"}
-                </TableCell>
-                <TableCell className="text-navy-blue/68">
-                  {item.customer?.phone ?? "—"}
-                </TableCell>
-                <TableCell>
-                  <span className="font-semibold">{item.reservationCount}</span>{" "}
-                  <span className="text-navy-blue/60">
-                    {item.reservationCount === 1
-                      ? "reservation"
-                      : "reservations"}
-                  </span>
-                </TableCell>
-                <TableCell className="text-navy-blue/68">
-                  {formatAdministrationDateTime(item.lastActivityAt)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <AdministrationDataTable
+      ariaLabel="Customers"
+      columns={columns}
+      data={customers}
+      getRowId={(item) => item.customerId}
+      getSortHref={
+        sorting
+          ? (field, direction) =>
+              getAdministrationTableSortHref({
+                basePath: "/admin/customers",
+                direction,
+                field,
+                params: sorting.params,
+              })
+          : undefined
       }
       mobile={
         <ul className="divide-y divide-navy-blue/10">
@@ -92,6 +124,12 @@ export function AdministrationCustomerTable({
           ))}
         </ul>
       }
+      sorting={
+        sorting
+          ? [{ id: sorting.field, desc: sorting.direction === "desc" }]
+          : undefined
+      }
+      tableClassName="min-w-[860px]"
     />
   );
 }

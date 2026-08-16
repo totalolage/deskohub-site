@@ -8,6 +8,8 @@ import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/ba
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
+  type AdministrationBookingListInput,
+  type AdministrationCustomerListInput,
   type AdministrationReservationListInput,
   AdministrationService,
 } from "./administration.service";
@@ -62,10 +64,25 @@ const parseReservationSort = (
     ? value
     : "created";
 
+const parseBookingSort = (
+  value: string | undefined
+): NonNullable<AdministrationBookingListInput["sort"]> =>
+  value === "status" ? value : "booking";
+
+const parseCustomerSort = (
+  value: string | undefined
+): NonNullable<AdministrationCustomerListInput["sort"]> =>
+  value === "reservations" ? value : "activity";
+
 const parseSortDirection = (
   value: string | undefined
 ): NonNullable<AdministrationReservationListInput["direction"]> =>
   value === "asc" ? "asc" : "desc";
+
+const parseBookingSortDirection = (
+  value: string | undefined
+): NonNullable<AdministrationBookingListInput["direction"]> =>
+  value === "desc" ? "desc" : "asc";
 
 const runAdministration =
   (operation: string) =>
@@ -180,8 +197,10 @@ const getAdministrationBookingListInput = async (
   const params = await searchParams;
   return {
     date: parseDate(firstParam(params.date)),
+    direction: parseBookingSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),
-  };
+    sort: parseBookingSort(firstParam(params.sort)),
+  } satisfies AdministrationBookingListInput;
 };
 
 const loadAdministrationBookingList = async (
@@ -238,17 +257,43 @@ export const loadAdministrationBookingBreadcrumbLabel = cache(
   }
 );
 
+const getAdministrationCustomerListInput = async (
+  searchParams: AdministrationSearchParams
+) => {
+  const params = await searchParams;
+  return {
+    direction: parseSortDirection(firstParam(params.direction)),
+    page: parsePage(firstParam(params.page)),
+    sort: parseCustomerSort(firstParam(params.sort)),
+  } satisfies AdministrationCustomerListInput;
+};
+
+const loadAdministrationCustomerList = async (
+  input: ReturnType<typeof getAdministrationCustomerListInput>
+) => {
+  const [, resolvedInput] = await Promise.all([
+    authorizeAdministrationPage(),
+    input,
+  ]);
+  return Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.listCustomers(resolvedInput);
+  }).pipe(runAdministration("administration.customers"));
+};
+
+export const loadAdministrationCustomersPage = (
+  searchParams: AdministrationSearchParams
+) => {
+  const input = getAdministrationCustomerListInput(searchParams);
+  return { input, result: loadAdministrationCustomerList(input) };
+};
+
 export const loadAdministrationCustomers = async (
   searchParams: AdministrationSearchParams
 ) => {
-  await authorizeAdministrationPage();
-  const params = await searchParams;
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.listCustomers({
-      page: parsePage(firstParam(params.page)),
-    });
-  }).pipe(runAdministration("administration.customers"));
+  const page = loadAdministrationCustomersPage(searchParams);
+  const [input, result] = await Promise.all([page.input, page.result]);
+  return { input, result };
 };
 
 export const loadAdministrationCustomerReservations = async (

@@ -80,10 +80,17 @@ test("does not prefetch live administration routes", async () => {
             reservationCount: 1,
           },
         ]}
+        sorting={{ direction: "desc", field: "activity" }}
       />
     </AdminShell>
   );
 
   expect(capturedLinks.length).toBeGreaterThan(0);
   expect(capturedLinks.every(({ prefetch }) => prefetch === false)).toBe(true);
+  expect(capturedLinks.map(({ href }) => href)).toContain(
+    "/admin/customers?sort=reservations&direction=asc"
+  );
+  expect(capturedLinks.map(({ href }) => href)).toContain(
+    "/admin/customers?sort=activity&direction=asc"
+  );
 });

@@ -135,15 +135,31 @@ export type AdministrationReservationSort =
   | "reservation"
   | "status";
 
-export type AdministrationReservationSortDirection = "asc" | "desc";
+export type AdministrationSortDirection = "asc" | "desc";
+
+export type AdministrationReservationSortDirection =
+  AdministrationSortDirection;
 
 type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
 };
 
 export type AdministrationCustomerListInput = {
+  readonly direction?: AdministrationSortDirection;
   readonly page?: number;
+  readonly sort?: AdministrationCustomerSort;
 };
+
+export type AdministrationCustomerSort = "reservations" | "activity";
+
+export type AdministrationBookingListInput = {
+  readonly date: string;
+  readonly direction?: AdministrationSortDirection;
+  readonly page?: number;
+  readonly sort?: AdministrationBookingSort;
+};
+
+export type AdministrationBookingSort = "booking" | "status";
 
 export type AdministrationCustomer = {
   readonly id: DotyposCustomerId;
@@ -1172,10 +1188,9 @@ export class AdministrationService extends Context.Service<
     readonly findReservationId: (
       identifier: string
     ) => Effect.Effect<WorkspaceReservationId | null, unknown>;
-    readonly listBookings: (input: {
-      readonly date: string;
-      readonly page?: number;
-    }) => Effect.Effect<AdministrationBookingPage, unknown>;
+    readonly listBookings: (
+      input: AdministrationBookingListInput
+    ) => Effect.Effect<AdministrationBookingPage, unknown>;
     readonly loadBooking: (
       id: DotyposReservationId
     ) => Effect.Effect<AdministrationBookingDetail | null, unknown>;
@@ -2045,7 +2060,7 @@ export class AdministrationService extends Context.Service<
       });
 
       const listBookings = Effect.fn("AdministrationService.listBookings")(
-        function* (input: { readonly date: string; readonly page?: number }) {
+        function* (input: AdministrationBookingListInput) {
           const bookings = (yield* dotypos.listReservations({
             ...getDateBounds(input.date),
             order: "startDateAscending",
@@ -2055,12 +2070,25 @@ export class AdministrationService extends Context.Service<
             );
             return id ? [{ ...booking, id }] : [];
           });
+          const direction = input.direction === "desc" ? -1 : 1;
+          const sortedBookings = bookings.toSorted((left, right) => {
+            const primary =
+              input.sort === "status"
+                ? left.status.localeCompare(right.status)
+                : left.startDate.localeCompare(right.startDate);
+            return (
+              direction *
+              (primary ||
+                left.startDate.localeCompare(right.startDate) ||
+                left.id.localeCompare(right.id))
+            );
+          });
           const pagination = getAdministrationPagination({
             pageSize: bookingPageSize,
             requestedPage: input.page,
-            total: bookings.length,
+            total: sortedBookings.length,
           });
-          const pageBookings = bookings.slice(
+          const pageBookings = sortedBookings.slice(
             pagination.offset,
             pagination.offset + bookingPageSize
           );
@@ -2131,7 +2159,7 @@ export class AdministrationService extends Context.Service<
             ),
             page: pagination.page,
             pageCount: pagination.pageCount,
-            total: bookings.length,
+            total: sortedBookings.length,
           } satisfies AdministrationBookingPage;
         }
       );
@@ -2247,15 +2275,25 @@ export class AdministrationService extends Context.Service<
             requestedPage: input.page,
             total,
           });
+          const reservationCount = count();
+          const lastActivityAt = max(workspaceReservations.updatedAt);
+          const order = input.direction === "asc" ? asc : desc;
           const rows = yield* db
             .select({
               customerId: workspaceReservations.dotyposCustomerId,
-              reservationCount: count(),
-              lastActivityAt: max(workspaceReservations.updatedAt),
+              reservationCount,
+              lastActivityAt,
             })
             .from(workspaceReservations)
             .groupBy(workspaceReservations.dotyposCustomerId)
-            .orderBy(desc(max(workspaceReservations.updatedAt)))
+            .orderBy(
+              order(
+                input.sort === "reservations"
+                  ? reservationCount
+                  : lastActivityAt
+              ),
+              asc(workspaceReservations.dotyposCustomerId)
+            )
             .limit(customerPageSize)
             .offset(pagination.offset);
           const customersById = yield* loadCustomers(

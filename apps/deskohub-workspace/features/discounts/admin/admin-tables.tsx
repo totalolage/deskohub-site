@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  type ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  type SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
+import type { ColumnDef } from "@tanstack/react-table";
 import {
   ArrowUpRight,
   Pencil,
@@ -19,17 +12,15 @@ import {
 import { useRouter } from "next/navigation";
 import {
   type FormEvent,
-  Fragment,
   type ReactNode,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { AdministrationDataTable } from "@/features/administration/data-table";
 import { AdministrationAlert } from "@/features/administration/notice";
-import { AdministrationSortHead } from "@/features/administration/sort-head";
 import { AdministrationStatusBadge } from "@/features/administration/status-badge";
-import { AdministrationTableFrame } from "@/features/administration/table-frame";
 import {
   formatWorkspaceMoney,
   type WorkspaceMoney,
@@ -46,20 +37,11 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
-import {
   defaultWorkspaceCurrency,
   findWorkspaceCurrencyDefinition,
   workspaceCurrencyDefinitions,
 } from "@/shared/money/currencies";
 import {
-  cn,
   temporalInstantToLocalDateTimeString,
   workspaceSiteConstants,
 } from "@/shared/utils";
@@ -113,10 +95,6 @@ export type VoucherTableItem = {
   readonly reservedUses: number;
   readonly redeemedUses: number;
 };
-
-const isTableRowControl = (target: EventTarget | null) =>
-  target instanceof Element &&
-  Boolean(target.closest("a, button, input, select, textarea, label, summary"));
 
 const getCodeBenefitLabel = (
   code: DiscountCodeTableItem,
@@ -203,12 +181,12 @@ export function DiscountCodesAdminTable({
   );
 
   return (
-    <AdminDataTable
+    <AdministrationDataTable
       ariaLabel="Discount codes"
       columns={columns}
       data={codes}
       expandedId={expandedId}
-      getId={(code) => code.id}
+      getRowId={(code) => code.id}
       onRowActivate={(code, expanded) =>
         setExpandedId(expanded ? null : code.id)
       }
@@ -223,7 +201,7 @@ export function DiscountCodesAdminTable({
           onEdit={() => setExpandedId(expanded ? null : code.id)}
         />
       )}
-      renderEditor={(code) => (
+      renderExpanded={(code) => (
         <CodeAndDiscountEditor
           code={code}
           discount={discounts.find(({ id }) => id === code.discountId)}
@@ -295,12 +273,12 @@ export function VouchersAdminTable({
   );
 
   return (
-    <AdminDataTable
+    <AdministrationDataTable
       ariaLabel="Vouchers"
       columns={columns}
       data={items}
       expandedId={expandedId}
-      getId={(voucher) => voucher.id}
+      getRowId={(voucher) => voucher.id}
       onRowActivate={(voucher, expanded) =>
         setExpandedId(expanded ? null : voucher.id)
       }
@@ -315,7 +293,7 @@ export function VouchersAdminTable({
           onEdit={() => setExpandedId(expanded ? null : voucher.id)}
         />
       )}
-      renderEditor={(voucher) => <VoucherEditor voucher={voucher} />}
+      renderExpanded={(voucher) => <VoucherEditor voucher={voucher} />}
     />
   );
 }
@@ -415,126 +393,123 @@ export function CalendarSalesAdminTable({
     () => new Map(discounts.map((discount) => [discount.id, discount])),
     [discounts]
   );
+  const columns = useMemo<ColumnDef<AdminCalendarSale>[]>(
+    () => [
+      {
+        accessorKey: "title",
+        header: "Event",
+        cell: ({ row }) => (
+          <>
+            <p className="font-semibold">{row.original.title}</p>
+            <code className="mt-1 block max-w-64 truncate text-xs text-navy-blue/65">
+              {row.original.description || "Empty description"}
+            </code>
+          </>
+        ),
+      },
+      {
+        accessorKey: "start",
+        header: "Dates",
+        cell: ({ row }) => (
+          <>
+            {row.original.start} → {row.original.end}
+          </>
+        ),
+        meta: {
+          cellClassName: "whitespace-nowrap text-sm text-navy-blue/70",
+        },
+      },
+      {
+        accessorKey: "status",
+        header: "Calendar status",
+        cell: ({ row }) => (
+          <AdministrationStatusBadge tone="neutral">
+            {row.original.status}
+          </AdministrationStatusBadge>
+        ),
+      },
+      {
+        accessorFn: (event) =>
+          event.association.kind === "associated"
+            ? event.association.discountLabel
+            : event.association.kind,
+        id: "association",
+        header: "Association",
+        cell: ({ row }) => (
+          <CalendarAssociationBadge association={row.original.association} />
+        ),
+      },
+    ],
+    []
+  );
+  const getRowReference = (event: AdminCalendarSale, index: number) =>
+    event.eventReference ?? `${event.start}:${event.title}:${index}`;
+  const getDiscount = (event: AdminCalendarSale) =>
+    event.association.kind === "associated"
+      ? discountsById.get(event.association.discountId)
+      : undefined;
 
   return (
-    <AdministrationTableFrame className="overflow-x-auto">
-      <Table aria-label="Calendar sales" className="min-w-[760px]">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Event</TableHead>
-            <TableHead>Dates</TableHead>
-            <TableHead>Calendar status</TableHead>
-            <TableHead>Association</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {events.map((event, index) => {
-            const discount =
-              event.association.kind === "associated"
-                ? discountsById.get(event.association.discountId)
-                : undefined;
-            const rowReference =
-              event.eventReference ?? `${event.start}:${event.title}:${index}`;
-            const expanded = expandedReference === rowReference;
-            const toggleEditor = () =>
-              setExpandedReference((current) =>
-                current === rowReference ? null : rowReference
-              );
-            return (
-              <Fragment key={rowReference}>
-                <TableRow
-                  aria-expanded={discount ? expanded : undefined}
-                  className={cn(
-                    discount &&
-                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange",
-                    expanded && "bg-navy-blue/[0.025]"
-                  )}
-                  onClick={(clickEvent) => {
-                    if (!discount || isTableRowControl(clickEvent.target)) {
-                      return;
-                    }
-                    toggleEditor();
-                  }}
-                  onKeyDown={(keyboardEvent) => {
-                    if (
-                      !discount ||
-                      keyboardEvent.target !== keyboardEvent.currentTarget ||
-                      (keyboardEvent.key !== "Enter" &&
-                        keyboardEvent.key !== " ")
-                    ) {
-                      return;
-                    }
-                    keyboardEvent.preventDefault();
-                    toggleEditor();
-                  }}
-                  tabIndex={discount ? 0 : undefined}
-                >
-                  <TableCell>
-                    <p className="font-semibold">{event.title}</p>
-                    <code className="mt-1 block max-w-64 truncate text-xs text-navy-blue/65">
-                      {event.description || "Empty description"}
-                    </code>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-sm text-navy-blue/70">
-                    {event.start} → {event.end}
-                  </TableCell>
-                  <TableCell>
-                    <AdministrationStatusBadge tone="neutral">
-                      {event.status}
-                    </AdministrationStatusBadge>
-                  </TableCell>
-                  <TableCell>
-                    <CalendarAssociationBadge association={event.association} />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-1">
-                      <Button asChild size="icon" variant="ghost">
-                        <a
-                          aria-label={`Open ${event.title} in Google Calendar`}
-                          href={event.eventUrl}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          <ArrowUpRight aria-hidden className="size-4" />
-                        </a>
-                      </Button>
-                      {discount && (
-                        <Button
-                          aria-expanded={expanded}
-                          aria-label={`Edit discount for ${event.title}`}
-                          aria-pressed={expanded}
-                          onClick={toggleEditor}
-                          size="icon"
-                          type="button"
-                          variant="ghost"
-                        >
-                          <Pencil aria-hidden className="size-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-                {expanded && discount && (
-                  <TableRow className="bg-[#fafafd] hover:bg-[#fafafd]">
-                    <TableCell
-                      className="border-t border-navy-blue/10 p-5"
-                      colSpan={5}
-                    >
-                      <DiscountEditor
-                        deletable={false}
-                        discount={discount}
-                        onDeleted={() => setExpandedReference(null)}
-                      />
-                    </TableCell>
-                  </TableRow>
-                )}
-              </Fragment>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </AdministrationTableFrame>
+    <AdministrationDataTable
+      ariaLabel="Calendar sales"
+      canRowActivate={(event) => Boolean(getDiscount(event))}
+      columns={columns}
+      data={events}
+      expandedId={expandedReference}
+      getRowId={getRowReference}
+      onRowActivate={(event, expanded) =>
+        setExpandedReference(
+          expanded ? null : getRowReference(event, events.indexOf(event))
+        )
+      }
+      renderActions={(event, expanded) => {
+        const discount = getDiscount(event);
+        return (
+          <div className="flex justify-end gap-1">
+            <Button asChild size="icon" variant="ghost">
+              <a
+                aria-label={`Open ${event.title} in Google Calendar`}
+                href={event.eventUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <ArrowUpRight aria-hidden className="size-4" />
+              </a>
+            </Button>
+            {discount && (
+              <Button
+                aria-expanded={expanded}
+                aria-label={`Edit discount for ${event.title}`}
+                aria-pressed={expanded}
+                onClick={() =>
+                  setExpandedReference(
+                    expanded
+                      ? null
+                      : getRowReference(event, events.indexOf(event))
+                  )
+                }
+                size="icon"
+                type="button"
+                variant="ghost"
+              >
+                <Pencil aria-hidden className="size-4" />
+              </Button>
+            )}
+          </div>
+        );
+      }}
+      renderExpanded={(event) => {
+        const discount = getDiscount(event);
+        return discount ? (
+          <DiscountEditor
+            deletable={false}
+            discount={discount}
+            onDeleted={() => setExpandedReference(null)}
+          />
+        ) : null;
+      }}
+      tableClassName="min-w-[760px]"
+    />
   );
 }
 
@@ -621,127 +596,6 @@ export function CreateVoucherForm({
         <DiscountCodeConfigurationFields showMaxUses={false} />
       </div>
     </MutationForm>
-  );
-}
-
-function AdminDataTable<T>({
-  ariaLabel,
-  columns,
-  data,
-  expandedId,
-  getId,
-  renderActions,
-  renderEditor,
-  onRowActivate,
-}: {
-  readonly ariaLabel: string;
-  readonly columns: readonly ColumnDef<T>[];
-  readonly data: readonly T[];
-  readonly expandedId: string | null;
-  readonly getId: (item: T) => string;
-  readonly renderActions: (item: T, expanded: boolean) => ReactNode;
-  readonly renderEditor: (item: T) => ReactNode;
-  readonly onRowActivate?: (item: T, expanded: boolean) => void;
-}) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const tableColumns = useMemo(() => [...columns], [columns]);
-  const tableData = useMemo(() => [...data], [data]);
-  // TanStack Table intentionally returns dynamic accessors; this component is
-  // kept outside memoized boundaries.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
-    columns: tableColumns,
-    data: tableData,
-    getCoreRowModel: getCoreRowModel(),
-    getRowId: (item) => getId(item),
-    getSortedRowModel: getSortedRowModel(),
-    onSortingChange: setSorting,
-    state: { sorting },
-  });
-
-  return (
-    <AdministrationTableFrame>
-      <Table aria-label={ariaLabel} className="min-w-[760px]">
-        <TableHeader>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <TableRow className="hover:bg-transparent" key={headerGroup.id}>
-              {headerGroup.headers.map((header) => {
-                const sorted = header.column.getIsSorted();
-                return (
-                  <AdministrationSortHead
-                    direction={sorted}
-                    key={header.id}
-                    onToggle={header.column.getToggleSortingHandler()}
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext()
-                    )}
-                  </AdministrationSortHead>
-                );
-              })}
-              <TableHead className="w-24 text-right">Actions</TableHead>
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {table.getRowModel().rows.map((row) => {
-            const expanded = row.id === expandedId;
-            return (
-              <Fragment key={row.id}>
-                <TableRow
-                  aria-expanded={onRowActivate ? expanded : undefined}
-                  className={cn(
-                    onRowActivate &&
-                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange",
-                    expanded && "bg-navy-blue/[0.025]"
-                  )}
-                  onClick={(event) => {
-                    if (!onRowActivate) return;
-                    if (isTableRowControl(event.target)) return;
-                    onRowActivate(row.original, expanded);
-                  }}
-                  onKeyDown={(event) => {
-                    if (
-                      !onRowActivate ||
-                      event.target !== event.currentTarget ||
-                      (event.key !== "Enter" && event.key !== " ")
-                    ) {
-                      return;
-                    }
-                    event.preventDefault();
-                    onRowActivate(row.original, expanded);
-                  }}
-                  tabIndex={onRowActivate ? 0 : undefined}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
-                  <TableCell className="text-right">
-                    {renderActions(row.original, expanded)}
-                  </TableCell>
-                </TableRow>
-                {expanded && (
-                  <TableRow className="bg-[#fafafd] hover:bg-[#fafafd]">
-                    <TableCell
-                      className="border-t border-navy-blue/10 p-5"
-                      colSpan={row.getVisibleCells().length + 1}
-                    >
-                      {renderEditor(row.original)}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </Fragment>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </AdministrationTableFrame>
   );
 }
 

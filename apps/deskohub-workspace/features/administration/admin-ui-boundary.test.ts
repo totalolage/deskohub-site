@@ -147,4 +147,21 @@ describe("administration UI boundaries", () => {
       sources.filter((source) => source.includes("function SortIcon("))
     ).toHaveLength(0);
   });
+
+  test("routes every administration table through the shared data table", async () => {
+    for (const path of [
+      "features/admin-cli/cli-sessions-table.tsx",
+      "features/administration/booking-table.tsx",
+      "features/administration/customer-table.tsx",
+      "features/administration/payment-tables.tsx",
+      "features/administration/reservation-table.tsx",
+      "features/discounts/admin/admin-tables.tsx",
+      "features/discounts/admin/customer-admin-tables.tsx",
+    ]) {
+      const source = await readWorkspaceFile(path);
+
+      expect(source).toContain("AdministrationDataTable");
+      expect(source).not.toContain("@/shared/components/ui/table");
+    }
+  });
 });

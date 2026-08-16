@@ -841,6 +841,21 @@ describe("discount administration pages", () => {
       expect.stringContaining("OPEN"),
       expect.stringContaining("AADISABLED"),
     ]);
+    fireEvent.click(
+      within(table).getByRole("button", {
+        name: "Code",
+      })
+    );
+    expect(
+      within(table)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => row.textContent)
+    ).toEqual([
+      expect.stringContaining("AADISABLED"),
+      expect.stringContaining("ONLYME"),
+      expect.stringContaining("OPEN"),
+    ]);
     expect(within(table).getAllByText("Enabled")).toHaveLength(2);
     expect(within(table).getByText("Disabled")).toBeDefined();
     expect(within(table).getByText("Only me discount · 10%")).toBeDefined();

@@ -8,6 +8,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import {
   workspaceRouterPush,
@@ -37,11 +38,10 @@ import {
   loadFixtureReservations,
 } from "./fixtures";
 import {
-  OperationTable,
-  OrderTable,
   ProviderStatusBadge,
   ReservationOrderList,
 } from "./payment-components";
+import { OperationTable, OrderTable } from "./payment-tables";
 import { ReservationAccessAdministration } from "./reservation-access-administration";
 import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
 
@@ -579,6 +579,31 @@ describe("administration reservation components", () => {
     ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
   });
 
+  test("sorts Nexi orders by raw order ID", () => {
+    const order = loadFixtureReservation("0198-admin-fixture-attention")
+      ?.orders[0];
+    expect(order).toBeDefined();
+    if (!order) return;
+    const view = render(
+      <OrderTable
+        orders={[
+          { ...order, orderId: NexiOrderIdSchema.make("Z-ORDER") },
+          { ...order, orderId: NexiOrderIdSchema.make("A-ORDER") },
+        ]}
+      />
+    );
+    const table = view.getByRole("table", { name: "Nexi orders" });
+
+    fireEvent.click(within(table).getByRole("button", { name: "Order" }));
+
+    expect(
+      within(table)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("link")[0]?.textContent)
+    ).toEqual(["A-ORDER", "Z-ORDER"]);
+  });
+
   test("renders both Nexi cancellation spellings as warnings", () => {
     const view = render(<ProviderStatusBadge value="CANCELLED" />);
     expect(view.getByText("Cancelled").className).toContain(
@@ -646,7 +671,14 @@ describe("administration reservation components", () => {
 
   test("renders Dotypos bookings with linked customers and reservations", () => {
     const view = render(
-      <BookingTable bookings={loadFixtureBookings().items} />
+      <BookingTable
+        bookings={loadFixtureBookings().items}
+        sorting={{
+          direction: "asc",
+          field: "booking",
+          params: { date: "2026-08-10" },
+        }}
+      />
     );
     const table = view.getByRole("table", { name: "Bookings" });
 
@@ -661,6 +693,12 @@ describe("administration reservation components", () => {
         .getByRole("link", { name: "Cowork Basic" })
         .getAttribute("href")
     ).toBe("/admin/reservations/0198-admin-fixture-complete");
+    expect(
+      within(table).getByRole("link", { name: "Booking" }).getAttribute("href")
+    ).toBe("/admin/bookings?date=2026-08-10&sort=booking&direction=desc");
+    expect(
+      within(table).getByRole("link", { name: "Status" }).getAttribute("href")
+    ).toBe("/admin/bookings?date=2026-08-10&sort=status&direction=asc");
   });
 
   test("identifies customer and reservation entities in breadcrumbs", () => {
