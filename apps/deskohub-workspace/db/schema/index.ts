@@ -9,6 +9,7 @@ export * from "./invoice-number-counters";
 export * from "./invoices";
 export * from "./late-payment-recoveries";
 export * from "./legal-evidence-events";
+export * from "./orders";
 export * from "./payment-attempts";
 export * from "./reservation-access-grants";
 export * from "./webhook-events";

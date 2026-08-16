@@ -37,6 +37,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(schemaIndex).toContain("./late-payment-recoveries");
     expect(schemaIndex).toContain("./webhook-events");
     expect(schemaIndex).toContain("./legal-evidence-events");
+    expect(schemaIndex).toContain("./orders");
     expect(schemaIndex).toContain("./discounts");
     expect(schemaIndex).toContain("./discount-applications");
     expect(schemaIndex).toContain("./accounting-document-snapshots");

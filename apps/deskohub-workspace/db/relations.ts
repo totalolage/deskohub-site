@@ -2,6 +2,16 @@ import { defineRelations } from "drizzle-orm";
 import * as schema from "./schema";
 
 export const relations = defineRelations(schema, (r) => ({
+  orders: {
+    lines: r.many.orderLines(),
+  },
+  orderLines: {
+    order: r.one.orders({
+      from: r.orderLines.orderId,
+      to: r.orders.id,
+      optional: false,
+    }),
+  },
   cliSessions: {
     authenticationRequest: r.one.cliAuthenticationRequests({
       from: r.cliSessions.id,
