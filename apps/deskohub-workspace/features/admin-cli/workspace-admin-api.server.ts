@@ -17,6 +17,7 @@ import { Effect, Layer, Match, Redacted, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AdministrationService } from "@/features/administration/administration.service";
+import { OrderAdministrationService } from "@/features/administration/order-administration.service";
 import {
   getAdministrationNexiOperationFilters,
   getAdministrationNexiOrderDateTimeBounds,
@@ -102,6 +103,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
+      const orderAdministration = yield* OrderAdministrationService;
       const reservationAdministration = yield* ReservationAdministrationService;
       const reservationAccess = yield* ReservationAccessAdministration;
       const authentication = yield* CliAuthentication;
@@ -284,6 +286,21 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                 ? Effect.succeed(detail)
                 : new CliResourceNotFound({
                     message: "The booking was not found.",
+                  })
+            )
+          )
+        )
+        .handle("listDomainOrders", () =>
+          orderAdministration.listOrders().pipe(mapServiceFailure)
+        )
+        .handle("getDomainOrder", ({ params }) =>
+          orderAdministration.loadOrder(params.orderId).pipe(
+            mapServiceFailure,
+            Effect.flatMap((detail) =>
+              detail
+                ? Effect.succeed(detail)
+                : new CliResourceNotFound({
+                    message: "The order was not found.",
                   })
             )
           )
@@ -637,6 +654,7 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(AdministrationService.Live),
+    Layer.provide(OrderAdministrationService.Live),
     Layer.provide(ReservationAdministrationService.Live),
     Layer.provide(ReservationAccessAdministration.Live),
     Layer.provide(DiscountAdministration.Live),

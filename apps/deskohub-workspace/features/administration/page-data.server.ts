@@ -12,6 +12,7 @@ import {
   AdministrationService,
 } from "./administration.service";
 import { formatAdministrationDateTime } from "./formatters";
+import { OrderAdministrationService } from "./order-administration.service";
 import {
   getAdministrationNexiOperationFilters,
   getAdministrationNexiOrderDateTimeBounds,
@@ -24,6 +25,7 @@ import {
   requireDotyposReservationRouteId,
   requireNexiOperationRouteId,
   requireNexiOrderRouteId,
+  requireOrderRouteId,
   requireWorkspaceReservationRouteId,
 } from "./route-identifiers.server";
 
@@ -72,6 +74,14 @@ const runAdministration =
   <A, E>(effect: Effect.Effect<A, E, AdministrationService>) =>
     effect.pipe(
       Effect.provide(AdministrationService.Live),
+      runWorkspaceEffect(operation, { boundary: "route" })
+    );
+
+const runOrderAdministration =
+  (operation: string) =>
+  <A, E>(effect: Effect.Effect<A, E, OrderAdministrationService>) =>
+    effect.pipe(
+      Effect.provide(OrderAdministrationService.Live),
       runWorkspaceEffect(operation, { boundary: "route" })
     );
 
@@ -237,6 +247,25 @@ export const loadAdministrationBookingBreadcrumbLabel = cache(
       : undefined;
   }
 );
+
+export const loadAdministrationOrders = async () => {
+  await authorizeAdministrationPage();
+  return Effect.gen(function* () {
+    const administration = yield* OrderAdministrationService;
+    return yield* administration.listOrders();
+  }).pipe(runOrderAdministration("administration.orders"));
+};
+
+export const loadAdministrationOrder = cache(async (id: string) => {
+  await authorizeAdministrationPage();
+  const orderId = requireOrderRouteId(id);
+  const detail = await Effect.gen(function* () {
+    const administration = yield* OrderAdministrationService;
+    return yield* administration.loadOrder(orderId);
+  }).pipe(runOrderAdministration("administration.order"));
+  if (!detail) notFound();
+  return detail;
+});
 
 export const loadAdministrationCustomers = async (
   searchParams: AdministrationSearchParams

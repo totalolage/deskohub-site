@@ -6,6 +6,7 @@ import {
   AdministrationNexiOperationId,
   AdministrationNexiOperationRecord,
   AdministrationNexiOrderRecord,
+  AdministrationOrderDetail,
   AdministrationReservationSummary,
   AdministrationStoredDiscountId,
   CliAccessToken,
@@ -147,6 +148,26 @@ describe("WorkspaceAdminApiClient", () => {
       providerAvailable: false,
       providerStatus: "unavailable" as const,
       link: null,
+    });
+    const domainOrder = Schema.decodeUnknownSync(AdministrationOrderDetail)({
+      order: {
+        id: "domain-order-1",
+        kind: "goods",
+        customerId: "customer-1",
+        paymentState: "pending",
+        fulfillmentState: "fulfilled",
+        total: { value: 5000, exponent: 2, currency: "CZK" },
+        invoiceStatus: "not_issued",
+        reservationId: null,
+        paidAt: null,
+        fulfilledAt: expiresAt,
+        fulfillmentFailedAt: null,
+        createdAt: expiresAt,
+        updatedAt: expiresAt,
+      },
+      lines: [],
+      paymentAttempts: [],
+      invoice: { status: "not_issued", issuedAt: null },
     });
     const operationId = Schema.decodeUnknownSync(AdministrationNexiOperationId)(
       "operation-1"
@@ -322,6 +343,21 @@ describe("WorkspaceAdminApiClient", () => {
             page: 2,
             pageCount: 3,
             total: 50,
+          });
+        }
+        if (url.pathname === "/api/v1/cli/domain-orders/domain-order-1") {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json(domainOrder);
+        }
+        if (url.pathname === "/api/v1/cli/domain-orders") {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            items: [domainOrder.order],
+            truncated: false,
           });
         }
         if (url.pathname.endsWith("/orders/order-1")) {
@@ -580,6 +616,11 @@ describe("WorkspaceAdminApiClient", () => {
           page: 2,
         });
         yield* client.getBooking(Redacted.make(accessToken), booking.id);
+        yield* client.listOrders(Redacted.make(accessToken));
+        yield* client.getOrder(
+          Redacted.make(accessToken),
+          domainOrder.order.id
+        );
         yield* client.listNexiOrders(Redacted.make(accessToken), {
           from: "2026-08-01",
           to: "2026-08-10",
@@ -653,6 +694,11 @@ describe("WorkspaceAdminApiClient", () => {
         { method: "GET", path: "/api/v1/cli/reservations/find" },
         { method: "GET", path: "/api/v1/cli/bookings" },
         { method: "GET", path: "/api/v1/cli/bookings/booking-1" },
+        { method: "GET", path: "/api/v1/cli/domain-orders" },
+        {
+          method: "GET",
+          path: "/api/v1/cli/domain-orders/domain-order-1",
+        },
         { method: "GET", path: "/api/v1/cli/nexi/orders" },
         { method: "GET", path: "/api/v1/cli/nexi/orders/order-1" },
         { method: "GET", path: "/api/v1/cli/nexi/operations" },

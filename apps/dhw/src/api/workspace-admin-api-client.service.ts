@@ -25,6 +25,9 @@ import {
   type AdministrationNexiOrderListType,
   type AdministrationNexiOrderQueryType,
   type AdministrationNexiOrderRecordType,
+  type AdministrationOrderDetailType,
+  type AdministrationOrderIdType,
+  type AdministrationOrderListType,
   type AdministrationOverviewType,
   type AdministrationReservationAccessGrantType,
   type AdministrationReservationAccessMutationType,
@@ -173,6 +176,22 @@ interface IWorkspaceAdminApiClient {
     bookingId: AdministrationDotyposReservationIdType
   ) => Effect.Effect<
     AdministrationBookingDetailType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly listOrders: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    AdministrationOrderListType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getOrder: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    orderId: AdministrationOrderIdType
+  ) => Effect.Effect<
+    AdministrationOrderDetailType,
     | CliApiRequestError
     | CliResourceNotFound
     | CliSessionUnauthorized
@@ -454,6 +473,27 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.getBooking({ params: { bookingId } })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    listOrders: Effect.fn("WorkspaceAdminApiClient.listOrders")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listDomainOrders({})
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    getOrder: Effect.fn("WorkspaceAdminApiClient.getOrder")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        orderId: AdministrationOrderIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getDomainOrder({ params: { orderId } })
           ),
           Effect.mapError(sanitizeResourceError)
         )

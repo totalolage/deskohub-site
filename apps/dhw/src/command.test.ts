@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   AdministrationDiscountCodeId,
+  AdministrationDotyposCustomerId,
   AdministrationVoucherId,
   AdministrationWorkspaceReservationId,
   CliAccessToken,
@@ -27,6 +28,9 @@ const voucherId = Schema.decodeUnknownSync(AdministrationVoucherId)(
 const reservationId = Schema.decodeUnknownSync(
   AdministrationWorkspaceReservationId
 )("reservation-test");
+const customerId = Schema.decodeUnknownSync(AdministrationDotyposCustomerId)(
+  "customer-1"
+);
 const session = {
   id: sessionId,
   clientName: "test client",
@@ -500,6 +504,19 @@ describe("dhw mutation commands", () => {
       ["get-operation", "nexi-operation-1"],
     ]);
   });
+
+  test("dispatches Deskohub order reads through the generic orders group", async () => {
+    const { layer, orderRequests } = makeCommandLayer();
+
+    await runCommand(["--json", "orders", "list"], layer).pipe(
+      Effect.runPromise
+    );
+    await runCommand(["--json", "orders", "get", "order-1"], layer).pipe(
+      Effect.runPromise
+    );
+
+    expect(orderRequests).toEqual([["list"], ["get", "order-1"]]);
+  });
 });
 
 const runCommand = <R>(
@@ -523,6 +540,7 @@ const makeCommandLayer = ({
   const mutations: unknown[] = [];
   const accessMutations: unknown[] = [];
   const nexiRequests: unknown[] = [];
+  const orderRequests: unknown[] = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
     cancelReservation,
@@ -530,6 +548,35 @@ const makeCommandLayer = ({
       Effect.succeed({
         accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
       } as never),
+    listOrders: () =>
+      Effect.sync(() => {
+        orderRequests.push(["list"]);
+        return { items: [], truncated: false };
+      }),
+    getOrder: (_accessToken, orderId) =>
+      Effect.sync(() => {
+        orderRequests.push(["get", orderId]);
+        return {
+          order: {
+            id: orderId,
+            kind: "goods" as const,
+            customerId,
+            paymentState: "pending" as const,
+            fulfillmentState: "fulfilled" as const,
+            total: { value: 5000, exponent: 2, currency: "CZK" },
+            invoiceStatus: "not_issued" as const,
+            reservationId: null,
+            paidAt: null,
+            fulfilledAt: "2026-08-16T12:00:00Z",
+            fulfillmentFailedAt: null,
+            createdAt: "2026-08-16T12:00:00Z",
+            updatedAt: "2026-08-16T12:00:00Z",
+          },
+          lines: [],
+          paymentAttempts: [],
+          invoice: { status: "not_issued" as const, issuedAt: null },
+        };
+      }),
     getNexiOperation: (_accessToken, operationId) =>
       Effect.sync(() => {
         nexiRequests.push(["get-operation", operationId]);
@@ -629,6 +676,7 @@ const makeCommandLayer = ({
     accessMutations,
     mutations,
     nexiRequests,
+    orderRequests,
     layer: Layer.mergeAll(BunServices.layer, api, authentication, config),
   };
 };

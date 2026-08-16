@@ -21,6 +21,7 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
 import { AdministrationService } from "@/features/administration/administration.service";
+import { OrderAdministrationService } from "@/features/administration/order-administration.service";
 import {
   ReservationAccessAdministration,
   ReservationAccessAdministrationError,
@@ -49,6 +50,10 @@ const UnusedCliAuthentication = Layer.succeed(
 const UnusedReservationAdministration = Layer.succeed(
   ReservationAdministrationService,
   {} as ReservationAdministrationService["Service"]
+);
+const UnusedOrderAdministration = Layer.succeed(
+  OrderAdministrationService,
+  {} as OrderAdministrationService["Service"]
 );
 const AllowCliAuthenticationStarts = Layer.succeed(CliAuthenticationAdmission, {
   isStartAllowed: Effect.succeed(true),
@@ -158,6 +163,72 @@ describe("Workspace Admin API", () => {
 
     expect(results.filter(Result.isFailure)).toHaveLength(1);
     expect(starts).toBe(10);
+  });
+
+  test("serves provider-agnostic domain order reads", async () => {
+    const timestamp = "2026-08-16T12:00:00Z";
+    const detail = {
+      order: {
+        id: "order-1",
+        kind: "goods" as const,
+        customerId: "customer-1",
+        paymentState: "pending" as const,
+        fulfillmentState: "fulfilled" as const,
+        total: { value: 5000, exponent: 2, currency: "CZK" },
+        invoiceStatus: "not_issued" as const,
+        reservationId: null,
+        paidAt: null,
+        fulfilledAt: timestamp,
+        fulfillmentFailedAt: null,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      lines: [],
+      paymentAttempts: [],
+      invoice: { status: "not_issued" as const, issuedAt: null },
+    };
+    const orderAdministration = Layer.succeed(OrderAdministrationService, {
+      listOrders: () =>
+        Effect.succeed({ items: [detail.order], truncated: false } as never),
+      loadOrder: (id) =>
+        Effect.succeed(id === detail.order.id ? (detail as never) : null),
+    });
+
+    const result = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      const orders = yield* client.administration.listDomainOrders({});
+      const order = yield* client.administration.getDomainOrder({
+        params: { orderId: "order-1" },
+      });
+      const missing = yield* client.administration
+        .getDomainOrder({ params: { orderId: "missing" } })
+        .pipe(Effect.flip);
+      return { missing, order, orders };
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(
+        Layer.succeed(
+          AdministrationService,
+          {} as AdministrationService["Service"]
+        )
+      ),
+      Effect.provide(orderAdministration),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.runPromise
+    );
+
+    expect(result.orders.items[0]?.id).toBe("order-1");
+    expect(result.order.paymentAttempts).toEqual([]);
+    expect(result.missing).toBeInstanceOf(CliResourceNotFound);
   });
 
   test("invokes the same administration service used by the UI", async () => {
@@ -551,6 +622,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(discounts),
       Effect.provide(authentication),
       Effect.provide(administration),
+      Effect.provide(UnusedOrderAdministration),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
@@ -741,6 +813,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
       Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedOrderAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
       Effect.provide(
@@ -950,6 +1023,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
       Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedOrderAdministration),
       Effect.provide(UnusedDiscountAdministration),
       Effect.provide(UnusedCliAuthentication),
       Effect.provide(
@@ -1054,6 +1128,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
       Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedOrderAdministration),
       Effect.provide(discounts),
       Effect.provide(UnusedCliAuthentication),
       Effect.provide(

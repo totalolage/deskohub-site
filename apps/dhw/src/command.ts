@@ -17,6 +17,7 @@ import {
   type AdministrationNexiOperationQueryType,
   AdministrationNexiOrderId,
   type AdministrationNexiOrderQueryType,
+  AdministrationOrderId,
   type AdministrationOverviewMetricType,
   type AdministrationReservationAccessGrantType,
   type AdministrationReservationAccessMutationType,
@@ -456,6 +457,69 @@ const administrationDateRangeFlags = {
     Flag.withDescription("End date (YYYY-MM-DD)")
   ),
 };
+
+const ordersListCommand = Command.make("list", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const result = yield* api.listOrders(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(result));
+        return;
+      }
+      yield* Console.log(
+        `Orders: ${result.items.length}${result.truncated ? "+" : ""}`
+      );
+      for (const order of result.items) {
+        yield* Console.log(
+          [
+            order.id,
+            order.kind,
+            order.paymentState,
+            order.fulfillmentState,
+            formatMoney(order.total),
+          ].join("\t")
+        );
+      }
+    })
+  )
+).pipe(Command.withDescription("List Deskohub orders"));
+
+const ordersGetCommand = Command.make(
+  "get",
+  {
+    orderId: Argument.string("order-id").pipe(
+      Argument.withSchema(AdministrationOrderId)
+    ),
+  },
+  ({ orderId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const detail = yield* api.getOrder(accessToken, orderId);
+        if (json) {
+          yield* Console.log(JSON.stringify(detail));
+          return;
+        }
+        const order = detail.order;
+        yield* Console.log(
+          [
+            order.id,
+            order.kind,
+            order.paymentState,
+            order.fulfillmentState,
+            formatMoney(order.total),
+          ].join("\t")
+        );
+        yield* Console.log(
+          `${detail.lines.length} lines · ${detail.paymentAttempts.length} payment attempts · invoice ${detail.invoice.status.replace("_", " ")}`
+        );
+      })
+    )
+).pipe(Command.withDescription("Show a Deskohub order"));
+
+const ordersCommand = Command.make("orders").pipe(
+  Command.withDescription("Inspect Deskohub orders"),
+  Command.withSubcommands([ordersListCommand, ordersGetCommand])
+);
 
 const nexiOrdersListCommand = Command.make(
   "list",
@@ -1888,6 +1952,7 @@ export const dhwCommand = rootCommand.pipe(
     discountsCommand,
     nexiCommand,
     overviewCommand,
+    ordersCommand,
     reservationsCommand,
     salesCommand,
     sessionsCommand,

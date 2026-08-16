@@ -9,12 +9,12 @@ describe("administration UI boundaries", () => {
   test("reserves the generic order route for domain orders", async () => {
     expect(
       await Bun.file(`${workspaceRoot}app/admin/orders/page.tsx`).exists()
-    ).toBe(false);
+    ).toBe(true);
     expect(
       await Bun.file(
         `${workspaceRoot}app/admin/orders/[orderId]/page.tsx`
       ).exists()
-    ).toBe(false);
+    ).toBe(true);
     expect(await readWorkspaceFile("app/admin/operations/page.tsx")).toContain(
       'redirect("/admin/nexi/operations")'
     );
@@ -58,6 +58,8 @@ describe("administration UI boundaries", () => {
       "app/admin/nexi/operations/[operationId]/page.tsx",
       "app/admin/nexi/orders/page.tsx",
       "app/admin/nexi/orders/[orderId]/page.tsx",
+      "app/admin/orders/page.tsx",
+      "app/admin/orders/[orderId]/page.tsx",
       "app/admin/reservations/page.tsx",
       "app/admin/reservations/[reservationId]/page.tsx",
       "app/admin/sales/page.tsx",
@@ -89,6 +91,7 @@ describe("administration UI boundaries", () => {
       "app/admin/customers/page.tsx",
       "app/admin/nexi/operations/page.tsx",
       "app/admin/nexi/orders/page.tsx",
+      "app/admin/orders/page.tsx",
       "app/admin/reservations/page.tsx",
       "features/discounts/admin/components.tsx",
     ];
