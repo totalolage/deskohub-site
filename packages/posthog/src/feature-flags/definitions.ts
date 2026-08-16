@@ -128,13 +128,14 @@ export class PostHogFeatureFlagService extends Context.Service<
     );
 }
 
-export const loadPostHogFeatureFlagDefinitions = (
-  input: PostHogFeatureFlagConfigInput
-) =>
-  PostHogFeatureFlagService.pipe(
-    Effect.flatMap((service) => service.listDefinitions),
-    Effect.provide(PostHogFeatureFlagService.Live(input))
-  );
+export const loadPostHogFeatureFlagDefinitions = Effect.fn(
+  function* (_input: PostHogFeatureFlagConfigInput) {
+    const featureFlagService = yield* PostHogFeatureFlagService;
+    return yield* featureFlagService.listDefinitions;
+  },
+  (effect, input) =>
+    effect.pipe(Effect.provide(PostHogFeatureFlagService.Live(input)))
+);
 
 export const listPostHogFeatureFlagDefinitions = (
   projectId: PostHogProjectId,
