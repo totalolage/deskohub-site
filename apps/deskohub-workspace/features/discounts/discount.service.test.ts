@@ -166,6 +166,7 @@ describe("DiscountService", () => {
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
         return yield* discounts.discoverActiveSales({
+          at: Temporal.Instant.from("2026-07-20T12:00:00Z"),
           currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
         });
@@ -211,6 +212,7 @@ describe("DiscountService", () => {
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
         return yield* discounts.discoverActiveSales({
+          at: Temporal.Instant.from("2026-07-20T12:00:00Z"),
           currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
         });

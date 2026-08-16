@@ -94,6 +94,7 @@ export type ActiveSale = {
 };
 
 export type ActiveSaleDiscoveryInput = {
+  readonly at: Temporal.Instant;
   readonly locale: Locale;
   readonly currentDate: Temporal.PlainDate;
 };

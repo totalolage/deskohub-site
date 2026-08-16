@@ -33,16 +33,17 @@ async function loadActivePublicSales(input: {
   readonly locale: Locale;
 }): Promise<readonly ActiveSale[]> {
   return Effect.Do.pipe(
-    Effect.bind("at", () =>
+    Effect.bind("atMillis", () =>
       Effect.promise(() => loadActivePublicSalesEvaluationTime())
     ),
-    Effect.let("currentDate", ({ at }) =>
-      getCurrentWorkspaceDate(Temporal.Instant.fromEpochMilliseconds(at))
+    Effect.let("at", ({ atMillis }) =>
+      Temporal.Instant.fromEpochMilliseconds(atMillis)
     ),
-    Effect.flatMap(({ currentDate }) =>
+    Effect.let("currentDate", ({ at }) => getCurrentWorkspaceDate(at)),
+    Effect.flatMap(({ at, currentDate }) =>
       CalendarDiscountProvider.pipe(
         Effect.flatMap((provider) =>
-          provider.discoverActiveSales({ ...input, currentDate })
+          provider.discoverActiveSales({ ...input, at, currentDate })
         )
       )
     ),

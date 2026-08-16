@@ -142,6 +142,7 @@ describe("CalendarDiscountProvider", () => {
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
         return yield* provider.discoverActiveSales({
+          at: Temporal.Instant.from("2026-07-20T12:00:00Z"),
           currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "cs-CZ",
         });
@@ -806,6 +807,7 @@ describe("CalendarDiscountProvider", () => {
           reservationDate: "2026-07-20",
         });
         const activeSalesAfterExpiry = yield* provider.discoverActiveSales({
+          at: Temporal.Instant.from("2026-08-01T22:00:00.500Z"),
           currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
         });

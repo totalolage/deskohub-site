@@ -172,11 +172,6 @@ function makeCalendarDiscountProviderLayer(useSharedDiscovery: boolean) {
             Effect.bind("resolvedSales", ({ cacheKey }) =>
               Cache.get(salesCache, cacheKey)
             ),
-            Effect.bind("at", () =>
-              Clock.currentTimeMillis.pipe(
-                Effect.map(Temporal.Instant.fromEpochMilliseconds)
-              )
-            ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.map(toActiveCalendarSales)
           ),
