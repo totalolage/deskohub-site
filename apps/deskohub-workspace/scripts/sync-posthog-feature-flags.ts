@@ -8,7 +8,7 @@ import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-worksp
 
 const PostHogFeatureFlagGenerationEnv = Schema.Struct({
   POSTHOG_API_KEY: Schema.NonEmptyString,
-  POSTHOG_HOST: Schema.URLFromString,
+  POSTHOG_API_HOST: Schema.URLFromString,
   POSTHOG_PROJECT_ID: PostHogProjectId,
 });
 
@@ -16,7 +16,7 @@ const loadPostHogFeatureFlagGenerationEnv = Schema.decodeUnknownEffect(
   PostHogFeatureFlagGenerationEnv
 )({
   POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
-  POSTHOG_HOST: process.env.POSTHOG_HOST ?? "https://eu.posthog.com",
+  POSTHOG_API_HOST: process.env.POSTHOG_API_HOST ?? "https://eu.posthog.com",
   POSTHOG_PROJECT_ID: process.env.POSTHOG_PROJECT_ID,
 }).pipe(
   Effect.mapError(
@@ -34,7 +34,7 @@ const syncPostHogFeatureFlags = Effect.Do.pipe(
   Effect.bind("result", ({ env }) =>
     generatePostHogFeatureFlagContract({
       apiKey: env.POSTHOG_API_KEY,
-      host: env.POSTHOG_HOST,
+      host: env.POSTHOG_API_HOST,
       outputFile: new URL(
         "../features/feature-flags/generated/contract.ts",
         import.meta.url

@@ -47,7 +47,7 @@ The Overview activity counts use live Dotypos booking start dates intersected wi
 
 Historical analytics enrichment is optional. Configure all three server-only variables to enable it:
 
-- `POSTHOG_HOST`
+- `POSTHOG_API_HOST`
 - `POSTHOG_PROJECT_ID`
 - `POSTHOG_API_KEY`
 

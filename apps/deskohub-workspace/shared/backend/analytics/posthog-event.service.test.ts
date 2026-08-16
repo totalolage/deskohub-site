@@ -11,7 +11,7 @@ import { CENSORED_LOG_VALUE } from "@/shared/backend/logging/censorship";
 
 const config = {
   environment: "development",
-  host: "https://posthog.example",
+  ingestHost: "https://posthog.example",
   projectToken: "phc_test",
   serviceName: "workspace-test",
   serviceNamespace: "deskohub-test",

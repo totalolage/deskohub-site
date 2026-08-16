@@ -53,7 +53,7 @@ const projectId = Schema.decodeUnknownSync(PostHogProjectId)(
 
 const program = generatePostHogFeatureFlagContract({
   apiKey: process.env.POSTHOG_API_KEY!,
-  host: new URL(process.env.POSTHOG_HOST ?? "https://eu.posthog.com"),
+  host: new URL(process.env.POSTHOG_API_HOST ?? "https://eu.posthog.com"),
   outputFile: new URL(
     "../features/feature-flags/generated/contract.ts",
     import.meta.url
@@ -102,7 +102,7 @@ export const nodeFeatureFlags = makePostHogNodeFeatureFlagService(
   postHogFeatureFlags,
   {
     clientOptions: {
-      host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
+      host: process.env.POSTHOG_INGEST_HOST!,
     },
     defaultEvaluationOptions: {
       disableGeoip: true,

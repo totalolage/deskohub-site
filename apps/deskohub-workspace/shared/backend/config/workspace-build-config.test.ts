@@ -11,8 +11,10 @@ test("uses one PostHog API key for builds and feature flag synchronization", asy
   };
 
   expect(config.tasks.build.env).toContain("POSTHOG_API_KEY");
-  expect(config.tasks.build.env).not.toContain("POSTHOG_HOST");
+  expect(config.tasks.build.env).toContain("POSTHOG_API_HOST");
+  expect(config.tasks.build.env).toContain("POSTHOG_INGEST_HOST");
   expect(config.tasks["feature-flags:sync"].env).toContain("POSTHOG_API_KEY");
+  expect(config.tasks["feature-flags:sync"].env).toContain("POSTHOG_API_HOST");
 });
 
 test("includes runtime feature flag overrides in the Workspace build cache", async () => {

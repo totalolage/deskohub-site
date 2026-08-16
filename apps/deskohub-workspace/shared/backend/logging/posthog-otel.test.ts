@@ -8,7 +8,7 @@ import {
 
 describe("PostHog OTel logs", () => {
   test("builds the PostHog OTLP logs endpoint", () => {
-    expect(getPostHogLogsEndpoint()).toBe("https://us.i.posthog.com/i/v1/logs");
+    expect(getPostHogLogsEndpoint()).toBe("https://eu.i.posthog.com/i/v1/logs");
     expect(getPostHogLogsEndpoint("https://eu.i.posthog.com")).toBe(
       "https://eu.i.posthog.com/i/v1/logs"
     );

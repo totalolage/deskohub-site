@@ -6,7 +6,7 @@ import {
 } from "@opentelemetry/sdk-logs";
 import { workspaceServiceResourceAttributes } from "../observability/workspace-service";
 
-const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
+const DEFAULT_POSTHOG_HOST = "https://eu.i.posthog.com";
 const POSTHOG_LOGS_PATH = "/i/v1/logs";
 
 type PostHogLoggerProviderOptions = {

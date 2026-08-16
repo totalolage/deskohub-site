@@ -55,11 +55,11 @@ export class PostHogEventService extends Context.Service<
 }
 
 const createPostHogCaptureClient = ({
-  host,
+  ingestHost,
   projectToken,
 }: PostHogRuntimeConfigObj): PostHogCaptureClient | undefined => {
   if (!projectToken) return undefined;
-  return new PostHog(projectToken, { host });
+  return new PostHog(projectToken, { host: ingestHost });
 };
 
 const collectContextProperties = Effect.gen(function* () {

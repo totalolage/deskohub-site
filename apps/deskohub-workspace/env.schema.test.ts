@@ -101,8 +101,11 @@ describe("workspace environment schemas", () => {
     const decodeDatabaseUrl = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.DATABASE_URL
     );
-    const decodePostHogHost = Schema.decodeUnknownSync(
-      workspaceServerEnvSchema.fields.POSTHOG_HOST
+    const decodePostHogApiHost = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.POSTHOG_API_HOST
+    );
+    const decodePostHogIngestHost = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.POSTHOG_INGEST_HOST
     );
     const decodeE2EBaseUrl = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.WORKSPACE_E2E_BASE_URL
@@ -110,12 +113,16 @@ describe("workspace environment schemas", () => {
     const databaseUrl = "postgres://user:pass@localhost:5432/workspace";
 
     expect(decodeDatabaseUrl(databaseUrl)).toBe(databaseUrl);
-    expect(decodePostHogHost(undefined)).toBeUndefined();
-    expect(decodePostHogHost("https://eu.posthog.com")).toBe(
+    expect(decodePostHogApiHost(undefined)).toBeUndefined();
+    expect(decodePostHogApiHost("https://eu.posthog.com")).toBe(
       "https://eu.posthog.com"
     );
+    expect(decodePostHogIngestHost("https://eu.i.posthog.com")).toBe(
+      "https://eu.i.posthog.com"
+    );
     expect(() => decodeDatabaseUrl("not a URL")).toThrow();
-    expect(() => decodePostHogHost("not a URL")).toThrow();
+    expect(() => decodePostHogApiHost("not a URL")).toThrow();
+    expect(() => decodePostHogIngestHost("not a URL")).toThrow();
     expect(decodeE2EBaseUrl(undefined)).toBeUndefined();
     expect(decodeE2EBaseUrl("https://workspace.example")).toBe(
       "https://workspace.example"

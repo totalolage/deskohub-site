@@ -30,7 +30,7 @@ async function getGlobalWorkspaceFeatureFlagValues() {
 
   const overrides = postHogRuntimeConfig.featureFlagOverrides ?? {};
   const apiKey = env.POSTHOG_API_KEY;
-  const host = env.POSTHOG_HOST;
+  const host = env.POSTHOG_API_HOST;
   const projectId = env.POSTHOG_PROJECT_ID;
   if (!(apiKey && host && projectId)) return overrides;
 

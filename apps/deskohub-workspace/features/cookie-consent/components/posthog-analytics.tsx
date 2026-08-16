@@ -14,7 +14,7 @@ import {
 } from "@/shared/utils/posthog-session-cookies";
 import { preparePostHogEvent } from "../utils/posthog-event";
 
-const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
+const DEFAULT_POSTHOG_HOST = "https://eu.i.posthog.com";
 
 let hasInitializedPostHog = false;
 let analyticsSendingEnabled = false;

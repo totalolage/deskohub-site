@@ -22,6 +22,11 @@ that gate closed and log the missing flag as unavailable.
 
 Keep the package Node service as a thin typed wrapper around one lazily created SDK client. A key/value lookup does not need its own nested Context service, Layer, or ManagedRuntime.
 
+Keep PostHog origins role-specific: `POSTHOG_API_HOST` is the server-only
+management/query origin, `POSTHOG_INGEST_HOST` is the direct server SDK and
+OTLP origin, and `NEXT_PUBLIC_POSTHOG_HOST` is the browser-facing ingest proxy.
+Do not route server clients through the public proxy.
+
 Read [the feature-flag architecture](references/architecture.md) for generation, runtime evaluation, subjects, and deployment-scoped overrides. Read [the PostHog package reference](references/posthog-package.md) when changing the shared generated client or typed feature-flag adapters. Keep flag evaluation fail-closed where the feature requires it, and update this skill when developer feedback changes a durable feature-flag convention.
 
 Deployment-scoped overrides use the optional server-only `POSTHOG_FEATURE_FLAG_OVERRIDES` value, decoded against the generated Workspace contract. Only preview and development deployments may configure a non-empty map; production configuration must fail validation. Apply the map once to the process-scoped Node client and pass that identical typed map from the server layout to the consent-aware browser boundary. Never derive overrides from a request, cookie, header, URL, or visitor identity. After browser initialization, replace the complete override set and explicitly clear persisted overrides when the map is absent. Do not initialize PostHog before analytics consent merely to apply an override.

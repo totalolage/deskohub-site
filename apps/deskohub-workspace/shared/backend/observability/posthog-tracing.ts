@@ -7,7 +7,7 @@ import {
 import { createCensoredOtelSpanExporter } from "../logging/censorship";
 import { workspaceServiceResourceAttributes } from "./workspace-service";
 
-const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
+const DEFAULT_POSTHOG_HOST = "https://eu.i.posthog.com";
 const POSTHOG_TRACES_PATH = "/i/v1/traces";
 const postHogTraceExportTimeoutMs = 2_000;
 
