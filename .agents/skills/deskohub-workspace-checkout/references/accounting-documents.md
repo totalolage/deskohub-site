@@ -27,6 +27,14 @@ metadata to the document or a schema-version column to the relational metadata.
 Previously written versioned ciphertext is intentionally rejected rather than
 normalized through a compatibility path.
 
+The authoritative snapshot union also accepts goods orders by generic `orderId`.
+A goods snapshot freezes the exact fulfilled order timestamp, immutable goods
+lines, allocated displayed discounts and reconciled totals. Its buyer and
+delivery identity must be projected from the server-fetched linked Dotypos
+customer under a PII-free billing instruction; never accept those PII fields
+from a goods client request. Reservation snapshot shapes remain unchanged and
+continue to decode without a generic discriminator.
+
 The snapshot is inserted inside the same transaction that creates either a Nexi attempt or a zero-total internal attempt. PostgreSQL rejects every update. Terminal payment transactions retain every snapshot as immutable evidence of the accepted reservation and price facts; provider attempts may also need that evidence for late settlement recovery. Paid snapshots cannot be deleted. Existing historical payment attempts are intentionally not backfilled from current customer or catalog data.
 
 The snapshot deliberately excludes phone, free-form messages, access codes, provider payloads, and payment tokens. New snapshots freeze the reservation purpose, invoice instruction, complete billing identity when applicable, and reservation email inside the encrypted blob. Historical snapshots without the explicit instruction remain valid but are ineligible for automatic issuance; those without a delivery target cannot be delivered automatically. Never infer purpose or invoice intent from mutable Dotypos fields or the legacy source buyer.
@@ -82,6 +90,9 @@ Do not issue before access-code delivery completes. Freeze
 Prague calendar date as the invoice fulfilment date. In production this is the
 timestamp recorded after the Resend delivery webhook confirms the customer
 access email; it is not the cowork, meeting-room, or office reservation date.
+For goods, use the exact `fulfilledAt` already frozen in the payment-time source
+snapshot; do not replace it with payment, invoice issuance, cart, or rounded
+calendar time.
 
 Generate the PDF dynamically from the issued document JSON. Do not persist the
 rendered PDF. Keep rendering free of current catalog, supplier, customer, or

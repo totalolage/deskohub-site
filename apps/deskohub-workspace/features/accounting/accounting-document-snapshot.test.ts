@@ -20,12 +20,17 @@ import {
   decodeStoredAccountingDocumentSnapshot,
   encodeStoredAccountingDocumentSnapshot,
   getAccountingDocumentOrderId,
-  makeAccountingDocumentSnapshot,
+  makeGoodsAccountingDocumentSnapshot,
+  makeReservationAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import {
   decryptAccountingSnapshot,
   encryptAccountingSnapshot,
 } from "./backend/accounting-snapshot-sql";
+import {
+  makeGoodsAccountingDocumentSnapshotForTest,
+  makeGoodsAccountingDocumentSnapshotInputForTest,
+} from "./invoice.test-utils";
 
 const coworkOrder = {
   entryTier: "basic",
@@ -46,7 +51,7 @@ const prepared = {
 } as PreparedCustomerQuote;
 
 const makeSnapshot = () =>
-  makeAccountingDocumentSnapshot({
+  makeReservationAccountingDocumentSnapshot({
     workspaceReservationId: "reservation-id",
     dotyposReservationId: "dotypos-reservation-id",
     dotyposCustomerId: "dotypos-customer-id",
@@ -109,8 +114,109 @@ describe("accounting document snapshot", () => {
     expect(serialized).not.toContain('"message"');
   });
 
+  test("freezes reconciled goods facts and server-fetched customer identity", () => {
+    const snapshot = makeGoodsAccountingDocumentSnapshotForTest();
+
+    expect(getAccountingDocumentOrderId(snapshot)).toBe("goods-order-1");
+    expect(snapshot).toMatchObject({
+      orderId: "goods-order-1",
+      dotyposCustomerId: "goods-customer-1",
+      fulfilledAt: "2026-08-11T23:30:00.000Z",
+      billing: { purpose: "personal", invoice: "requested" },
+      buyer: {
+        kind: "person",
+        legalName: "Synthetic Customer",
+        address: { line1: "Synthetic 1", country: "CZ" },
+      },
+      delivery: { email: "goods-invoice@example.test" },
+      totals: {
+        undiscounted: { value: 15_000, exponent: 2, currency: "CZK" },
+        discount: { value: 2500, exponent: 2, currency: "CZK" },
+        payable: { value: 12_500, exponent: 2, currency: "CZK" },
+      },
+    });
+    expect(snapshot.lines[0]).toMatchObject({
+      description: "Sparkling water",
+      quantity: 2,
+      undiscountedTotal: { value: 10_000 },
+      payableTotal: { value: 7500 },
+      discounts: [
+        { discount: { label: "Member price" }, amount: { value: 2500 } },
+      ],
+    });
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain("+420 700 000 000");
+    expect(serialized).not.toContain('"phone"');
+  });
+
+  test("rejects goods price drift and incomplete provider billing identity", async () => {
+    const input = makeGoodsAccountingDocumentSnapshotInputForTest();
+    await expect(
+      Effect.runPromise(
+        makeGoodsAccountingDocumentSnapshot({
+          ...input,
+          displayedQuote: {
+            ...input.displayedQuote,
+            discountedSubtotal: {
+              ...input.displayedQuote.discountedSubtotal,
+              value: 12_499,
+            },
+          },
+        })
+      )
+    ).rejects.toMatchObject({
+      _tag: "GoodsAccountingDocumentSnapshotInputError",
+    });
+    await expect(
+      Effect.runPromise(
+        makeGoodsAccountingDocumentSnapshot({
+          ...input,
+          customer: {
+            ...input.customer,
+            companyName: null,
+            companyId: null,
+          },
+          billing: { purpose: "business", invoice: "required" },
+        })
+      )
+    ).rejects.toMatchObject({
+      _tag: "GoodsAccountingDocumentSnapshotInputError",
+    });
+  });
+
+  test("rejects stored goods totals that do not reconcile", async () => {
+    const snapshot = makeGoodsAccountingDocumentSnapshotForTest();
+
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          totals: {
+            ...snapshot.totals,
+            payable: { ...snapshot.totals.payable, value: 12_499 },
+          },
+        })
+      )
+    ).rejects.toBeDefined();
+  });
+
+  test("keeps frozen goods PII out of SQL and uncensored query parameters", () => {
+    const snapshotJson = JSON.stringify(
+      makeGoodsAccountingDocumentSnapshotForTest()
+    );
+    const query = new PgDialect().sqlToQuery(
+      encryptAccountingSnapshot(snapshotJson, "synthetic-encryption-key")
+    );
+
+    expect(query.sql).not.toContain("Synthetic Customer");
+    expect(query.sql).not.toContain("goods-invoice@example.test");
+    expect(censorDatabaseQueryParams(query.sql, query.params)).not.toContain(
+      snapshotJson
+    );
+  });
+
   test("freezes office reservation and accepted quote facts", async () => {
-    const snapshot = makeAccountingDocumentSnapshot({
+    const snapshot = makeReservationAccountingDocumentSnapshot({
       workspaceReservationId: "office-reservation-id",
       dotyposReservationId: "dotypos-office-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
@@ -153,7 +259,7 @@ describe("accounting document snapshot", () => {
         country: "CZ",
       },
     };
-    const snapshot = makeAccountingDocumentSnapshot({
+    const snapshot = makeReservationAccountingDocumentSnapshot({
       workspaceReservationId: "business-reservation",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",

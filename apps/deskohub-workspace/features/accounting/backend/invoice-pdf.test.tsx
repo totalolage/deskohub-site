@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   makeCoworkInvoiceDocument,
+  makeGoodsInvoiceDocument,
   makeMeetingRoomInvoiceDocument,
   makeOfficeInvoiceDocument,
   makeTestManualInvoiceDocument,
@@ -35,6 +36,7 @@ const cases = [
     makeTestManualInvoiceDocument("cs-CZ"),
     "Účet: 2303459272/2010",
   ],
+  ["goods en-US", makeGoodsInvoiceDocument(), "Sparkling water"],
 ] as const;
 
 describe("invoice PDF", () => {

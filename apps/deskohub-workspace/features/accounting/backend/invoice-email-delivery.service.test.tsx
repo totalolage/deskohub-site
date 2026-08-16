@@ -22,6 +22,8 @@ import {
 import { isManualInvoiceDocument } from "@/features/accounting/invoice";
 import {
   makeCoworkInvoiceDocument,
+  makeGoodsAccountingDocumentSnapshotForTest,
+  makeGoodsInvoiceDocument,
   makeTestManualInvoiceDocument,
 } from "@/features/accounting/invoice.test-utils";
 import type { InvoiceEmailDeliveryAudience } from "@/features/accounting/invoice-email-delivery";
@@ -43,6 +45,7 @@ mock.module("server-only", () => ({}));
 const document = makeCoworkInvoiceDocument("en-US");
 const invoice = {
   id: "invoice-id",
+  orderId: document.workspaceReservationId,
   workspaceReservationId: document.workspaceReservationId,
   paymentAttemptId: document.paymentAttemptId,
   dotyposCustomerId: document.dotyposCustomerId,
@@ -213,6 +216,7 @@ describe("invoice email delivery", () => {
     const manualDocument = makeTestManualInvoiceDocument("en-US");
     const manualInvoice: Invoice = {
       id: manualDocument.invoiceId,
+      orderId: null,
       workspaceReservationId: null,
       paymentAttemptId: null,
       dotyposCustomerId: manualDocument.dotyposCustomerId,
@@ -244,6 +248,7 @@ describe("invoice email delivery", () => {
     });
     const manualInvoice: Invoice = {
       id: manualDocument.invoiceId,
+      orderId: null,
       workspaceReservationId: null,
       paymentAttemptId: null,
       dotyposCustomerId: manualDocument.dotyposCustomerId,
@@ -268,6 +273,7 @@ describe("invoice email delivery", () => {
     const manualDocument = makeTestManualInvoiceDocument("en-US", "0");
     const manualInvoice: Invoice = {
       id: manualDocument.invoiceId,
+      orderId: null,
       workspaceReservationId: null,
       paymentAttemptId: null,
       dotyposCustomerId: manualDocument.dotyposCustomerId,
@@ -286,13 +292,46 @@ describe("invoice email delivery", () => {
     );
     expect(sentMessages[0]?.html).not.toContain("with payment details");
   });
+
+  test("delivers goods invoices by generic order without reservation metadata", async () => {
+    const goodsDocument = makeGoodsInvoiceDocument();
+    const goodsInvoice: Invoice = {
+      id: "goods-invoice-id",
+      orderId: goodsDocument.orderId,
+      workspaceReservationId: null,
+      paymentAttemptId: goodsDocument.paymentAttemptId,
+      dotyposCustomerId: goodsDocument.dotyposCustomerId,
+      invoiceNumber: goodsDocument.invoiceNumber,
+      issuedAt: Temporal.Instant.from(goodsDocument.issuedAt),
+      document: goodsDocument,
+    };
+    const sentMessages: EmailMessage[] = [];
+    const harness = makeHarness({
+      invoice: goodsInvoice,
+      source: makeGoodsAccountingDocumentSnapshotForTest(),
+      sentMessages,
+    });
+
+    await runDelivery(harness, goodsInvoice.paymentAttemptId);
+
+    expect(sentMessages[0]?.metadata).toMatchObject({
+      orderId: "goods-order-1",
+      invoiceId: "goods-invoice-id",
+    });
+    expect(sentMessages[0]?.metadata).not.toHaveProperty(
+      "workspaceReservationId"
+    );
+  });
 });
 
-const runDelivery = (harness: ReturnType<typeof makeHarness>) =>
+const runDelivery = (
+  harness: ReturnType<typeof makeHarness>,
+  paymentAttemptId = document.paymentAttemptId
+) =>
   Effect.gen(function* () {
     const service = yield* InvoiceEmailDeliveryService;
     return yield* service.deliverByPaymentAttemptId({
-      paymentAttemptId: document.paymentAttemptId,
+      paymentAttemptId,
     });
   }).pipe(
     Effect.provide(

@@ -126,6 +126,7 @@ export class ReservationInvoiceService extends Context.Service<
           yield* accountingSnapshots.findByPaymentAttemptId(paymentAttemptId);
         if (
           !source?.delivery ||
+          "orderId" in source ||
           source.workspaceReservationId !== reservation.id ||
           source.dotyposCustomerId !== reservation.dotyposCustomerId
         ) {
@@ -155,7 +156,7 @@ export class ReservationInvoiceService extends Context.Service<
         )(function* ({ paymentAttemptId }) {
           const source =
             yield* accountingSnapshots.findByPaymentAttemptId(paymentAttemptId);
-          if (!source?.billing) return;
+          if (!source || "orderId" in source || !source.billing) return;
 
           const billingDetails = getDotyposCustomerBillingDetails(
             source.billing

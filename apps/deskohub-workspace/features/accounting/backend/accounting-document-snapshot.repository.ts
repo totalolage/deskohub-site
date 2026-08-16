@@ -153,7 +153,11 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
 
           if (
             getAccountingDocumentOrderId(snapshot) !==
-            (metadata.orderId ?? metadata.workspaceReservationId)
+              (metadata.orderId ?? metadata.workspaceReservationId) ||
+            metadata.workspaceReservationId !==
+              ("workspaceReservationId" in snapshot
+                ? snapshot.workspaceReservationId
+                : null)
           ) {
             return yield* new AccountingDocumentSnapshotStorageError({
               operation: "validate",
