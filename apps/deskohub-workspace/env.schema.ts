@@ -131,7 +131,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   POSTHOG_FEATURE_FLAG_OVERRIDES: toEnvSchema(
     postHogFeatureFlagOverridesSchema
   ),
-  POSTHOG_INGEST_HOST: optionalUrlEnvSchema,
+  POSTHOG_INGEST_HOST: urlEnvSchema,
   POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(PostHogProjectId)),
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalStringSchema,
   VERCEL_ENV: toEnvSchema(vercelEnvironmentSchema),

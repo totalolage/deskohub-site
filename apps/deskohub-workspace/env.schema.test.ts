@@ -135,6 +135,7 @@ describe("workspace environment schemas", () => {
     expect(decodePostHogApiHost("https://eu.posthog.com")).toBe(
       "https://eu.posthog.com"
     );
+    expect(() => decodePostHogIngestHost(undefined)).toThrow();
     expect(decodePostHogIngestHost("https://eu.i.posthog.com")).toBe(
       "https://eu.i.posthog.com"
     );
