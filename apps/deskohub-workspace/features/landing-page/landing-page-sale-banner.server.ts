@@ -30,6 +30,14 @@ const getEligibleLandingPageSaleBanner = Effect.fn(
 
   const sale = input.activeSales[0];
   if (!sale) return undefined;
+  if (
+    !sale.products.some(
+      ({ kind }) =>
+        kind === "cowork" || kind === "meeting-room" || kind === "office"
+    )
+  ) {
+    return undefined;
+  }
   if (sale.products.some(({ kind }) => kind === "office")) {
     const officeFeatureFlag = yield* OfficeReservationFeatureFlagService;
     if (!(yield* officeFeatureFlag.isEnabled)) return undefined;
