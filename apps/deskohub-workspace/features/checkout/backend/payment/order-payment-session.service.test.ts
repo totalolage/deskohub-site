@@ -199,4 +199,98 @@ describe("OrderPaymentSessionService", () => {
     expect(admission).toContain('mode === "reservation_attempt_commitment"');
     expect(admission).not.toContain("persistIssuedGoodsDiscountEvidence");
   });
+
+  test("resolves newer paid and active goods orders before checking older debt", async () => {
+    const source = await Bun.file(
+      new URL(
+        "../repositories/payment-lifecycle.repository.ts",
+        import.meta.url
+      )
+    ).text();
+    const start = source.indexOf("const admitPaymentSession = Effect.fn(");
+    const end = source.indexOf("const createPendingNexiAttempt", start);
+    const admission = source.slice(start, end);
+    const paidResolution = admission.indexOf(
+      'if (order.paymentState === "paid")'
+    );
+    const activeResolution = admission.indexOf(
+      "activeAttempt &&",
+      paidResolution
+    );
+    const outstandingDebtGate = admission.indexOf(
+      'if (order.kind === "goods")',
+      activeResolution
+    );
+
+    expect(paidResolution).toBeGreaterThanOrEqual(0);
+    expect(activeResolution).toBeGreaterThan(paidResolution);
+    expect(outstandingDebtGate).toBeGreaterThan(activeResolution);
+  });
+
+  test("resolves paid and pending reservation retries before checking hold expiry", async () => {
+    const source = await Bun.file(
+      new URL(
+        "../repositories/payment-lifecycle.repository.ts",
+        import.meta.url
+      )
+    ).text();
+    const start = source.indexOf("const admitPaymentSession = Effect.fn(");
+    const end = source.indexOf("const createPendingNexiAttempt", start);
+    const admission = source.slice(start, end);
+    const paidResolution = admission.indexOf(
+      'if (order.paymentState === "paid")'
+    );
+    const activeResolution = admission.indexOf(
+      "activeAttempt &&",
+      paidResolution
+    );
+    const payableReservationGate = admission.indexOf(
+      "yield* validatePayableReservationForAdmission"
+    );
+    const gateStart = source.indexOf(
+      "const validatePayableReservationForAdmission = Effect.fn("
+    );
+    const gateEnd = source.indexOf(
+      "const loadActiveAttemptForAdmission",
+      gateStart
+    );
+    const payableReservation = source.slice(gateStart, gateEnd);
+
+    expect(payableReservationGate).toBeGreaterThan(activeResolution);
+    expect(payableReservation).toContain(
+      "Temporal.Instant.compare(reservation.reservationHoldExpiresAt, now) <= 0"
+    );
+  });
+
+  test("locks a reservation before its canonical order during admission", async () => {
+    const source = await Bun.file(
+      new URL(
+        "../repositories/payment-lifecycle.repository.ts",
+        import.meta.url
+      )
+    ).text();
+    const start = source.indexOf("const admitPaymentSession = Effect.fn(");
+    const end = source.indexOf("const createPendingNexiAttempt", start);
+    const admission = source.slice(start, end);
+    const reservationLock = admission.indexOf(
+      "yield* lockReservationForAdmission"
+    );
+    const orderLock = admission.indexOf("const [order] = yield* tx");
+    const lockHelperStart = source.indexOf(
+      "const lockReservationForAdmission = Effect.fn("
+    );
+    const lockHelperEnd = source.indexOf(
+      "const validatePayableReservationForAdmission",
+      lockHelperStart
+    );
+    const lockHelper = source.slice(lockHelperStart, lockHelperEnd);
+
+    expect(admission).toContain(
+      'input.evidence.mode === "reservation_attempt_commitment"'
+    );
+    expect(reservationLock).toBeGreaterThanOrEqual(0);
+    expect(orderLock).toBeGreaterThan(reservationLock);
+    expect(lockHelper).toContain(".from(workspaceReservations)");
+    expect(lockHelper).toContain('.for("update")');
+  });
 });
