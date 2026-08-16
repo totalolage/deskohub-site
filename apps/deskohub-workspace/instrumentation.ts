@@ -10,7 +10,7 @@ import {
 } from "./shared/backend/observability/workspace-service";
 
 export const postHogLoggerProvider = createPostHogLoggerProvider({
-  posthogHost: env.NEXT_PUBLIC_POSTHOG_HOST,
+  posthogHost: env.POSTHOG_INGEST_HOST,
   posthogProjectToken: env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
   vercelEnv: env.VERCEL_ENV,
   vercelGitCommitSha: env.VERCEL_GIT_COMMIT_SHA,

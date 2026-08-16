@@ -1,8 +1,6 @@
 import "server-only";
 
 import { Effect } from "effect";
-import { connection } from "next/server";
-import { cache } from "react";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
@@ -14,14 +12,12 @@ const meetingRoomPageFeatureFlag = Effect.gen(function* () {
     Effect.logWarning(error.message, { cause: error.cause }).pipe(
       Effect.as(false)
     )
-  ),
-  Effect.provide(WorkspaceFeatureFlagService.Default)
+  )
 );
 
-export const isMeetingRoomPageEnabled = cache(async () => {
-  await connection();
-
+export async function isMeetingRoomPageEnabled() {
   return meetingRoomPageFeatureFlag.pipe(
+    Effect.provide(WorkspaceFeatureFlagService.Default),
     runWorkspaceEffect("meeting-room.page-enabled")
   );
-});
+}

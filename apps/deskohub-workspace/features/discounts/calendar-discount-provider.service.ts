@@ -10,6 +10,7 @@ import {
   Layer,
   Option,
 } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   getWorkspaceProductKey,
   type WorkspaceProductIdentity,
@@ -19,6 +20,7 @@ import {
   CalendarResourceConfig,
   type SalesCalendarId,
 } from "@/shared/backend/config/calendar-resource.config";
+import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
 import type {
   ActiveSale,
@@ -247,6 +249,18 @@ export class CalendarDiscountProvider extends Context.Service<
         revalidate,
       } satisfies ICalendarDiscountProvider;
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        WorkspaceGoogleCalendarLayer,
+        CalendarResourceConfig.Default,
+        DiscountDefinitionRepository.Default.pipe(
+          Layer.provide(WorkspaceDatabase.Default)
+        )
+      )
+    )
   );
 }
 

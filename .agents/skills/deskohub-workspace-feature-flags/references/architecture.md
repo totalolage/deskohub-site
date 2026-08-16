@@ -10,13 +10,15 @@ After changing flags in PostHog, run:
 bun turbo run feature-flags:sync --filter=deskohub-workspace
 ```
 
-Generation uses the dedicated management configuration and writes only definitions and payload shapes, never live payload values. Keep the management credential out of runtime application configuration.
+Generation writes only definitions and payload shapes, never live payload values. It uses the same `POSTHOG_API_KEY` as the application; supply that credential explicitly when running the synchronization command.
 
 ## Runtime evaluation
 
-Server features resolve the app-owned feature-flag Context capability. That boundary owns the process-scoped typed Node client and request-subject selection. Feature-specific services own fail-closed logging and fallback behavior.
+Server features resolve the app-owned feature-flag Context capability. That boundary owns the process-scoped typed Node client. It reads the live management definition through the cached runtime management configuration and proves whether boolean enablement is constant. Inactive flags, unconditional 0% flags, and unconditional 100% flags are constant; partial rollouts, person/group/cohort/dependent conditions, continuity, and unknown definitions require the request subject. A management read failure also requires the request subject.
 
-Use the consented browser identity when one is available. Before analytics consent or browser initialization, global release gates may use an explicit shared release subject with access-event capture disabled. Targeted and percentage rollouts must account for the fact that a stable visitor identity is not available before consent.
+Boolean lookups return a proven constant directly, without reading request state or asking PostHog to evaluate it. Whole-snapshot evaluation uses one fixed non-recording Workspace release subject when every requested flag is constant. Request-dependent evaluation uses the consented PostHog visitor identity, falling back to the fixed subject before consent.
+
+Public pages use this adaptive capability through one rendering path. Cache request-independent provider reads, such as public calendar or media data, at their own boundaries. Do not cache a parallel global version of the page or duplicate service layers for global and request evaluation: when a flag becomes targeted, the same capability reads the request subject and Next.js makes that route dynamic.
 
 React consumers use the generated typed hook under the single provider at the localized application root. Do not add feature-local providers or independently declared flag-key types.
 

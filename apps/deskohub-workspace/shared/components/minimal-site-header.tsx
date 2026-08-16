@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import type { Locale } from "@/features/i18n";
-import { LocaleSwitcherLinks } from "@/shared/components/locale-switcher-links";
+import {
+  LocaleSwitcherLabels,
+  LocaleSwitcherLinks,
+} from "@/shared/components/locale-switcher-links";
 import { HorizontalLogo } from "@/shared/components/logo";
 
 type MinimalSiteHeaderProps = {
@@ -32,7 +35,14 @@ export function MinimalSiteHeader({
           data-locale-switcher
           className="rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72"
         >
-          <Suspense fallback={null}>
+          <Suspense
+            fallback={
+              <LocaleSwitcherLabels
+                currentLocale={currentLocale}
+                languageLabels={languageLabels}
+              />
+            }
+          >
             <LocaleSwitcherLinks
               currentLocale={currentLocale}
               languageLabels={languageLabels}

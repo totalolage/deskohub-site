@@ -72,6 +72,20 @@ afterAll(() => {
   unregisterWorkspaceComponentTestEnv();
 });
 
+test("reserves both language labels before request-aware links resolve", async () => {
+  const { LocaleSwitcherLabels } = await import("./locale-switcher-links");
+  const view = render(
+    <LocaleSwitcherLabels
+      currentLocale="en-US"
+      languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
+    />
+  );
+
+  expect(view.getByText("English").tagName).toBe("STRONG");
+  expect(view.getByText("Czech").tagName).toBe("SPAN");
+  expect(view.container.querySelectorAll("a")).toHaveLength(0);
+});
+
 test("uses document navigation for every alternate-locale full-header link", async () => {
   const { SiteHeader } = await import("./site-header");
 

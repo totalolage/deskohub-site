@@ -7,8 +7,10 @@ import {
 } from "@deskohub/cloudinary";
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
+import { cacheTag } from "next/cache";
 import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
   type CloudinaryAsset,
   WorkspaceCloudinaryLayer,
@@ -25,6 +27,9 @@ export async function getCloudinaryImages({
   sortBy,
   sortDirection,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
+  "use cache";
+  cacheTag(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults ?? 50));
+
   return getGalleryImages(normalizeExpression(tags), {
     maxResults,
     sortBy,

@@ -9,9 +9,7 @@ import {
   References,
   Schema,
 } from "effect";
-import { TestClock } from "effect/testing";
 import { type ActiveSale, discountIdSchema } from "@/features/discounts";
-import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 
 type LogAnnotations = Context.Service.Shape<
@@ -19,6 +17,12 @@ type LogAnnotations = Context.Service.Shape<
 >;
 
 mock.module("server-only", () => ({}));
+
+let activePublicSales: readonly ActiveSale[] = [];
+const getActivePublicSales = mock(() => Effect.succeed(activePublicSales));
+mock.module("@/features/discounts/active-public-sales.server", () => ({
+  getActivePublicSales,
+}));
 
 const { OfficeReservationFeatureFlagService } = await import(
   "@/features/office/backend/office-reservation-feature-flag.service"
@@ -55,22 +59,18 @@ const getBannerEffect = (
   locale: "en-US" | "cs-CZ" = "en-US",
   officePageEnabled = true
 ) => {
-  const discoverActiveSales = mock(() => Effect.succeed(activeSales));
+  activePublicSales = activeSales;
+  getActivePublicSales.mockClear();
 
   return Effect.gen(function* () {
-    yield* TestClock.setTime(
-      Temporal.Instant.from("2026-07-19T22:30:00Z").epochMilliseconds
-    );
     const banner = yield* getActiveLandingPageSaleBanner({ locale });
-    return { banner, discoverActiveSales };
+    return { banner };
   }).pipe(
-    Effect.provide(DiscountServiceMock({ discoverActiveSales })),
     Effect.provide(
       Layer.succeed(OfficeReservationFeatureFlagService, {
         isEnabled: Effect.succeed(officePageEnabled),
       })
-    ),
-    Effect.provide(TestClock.layer())
+    )
   );
 };
 
@@ -111,17 +111,14 @@ describe("getActiveLandingPageSaleBanner", () => {
       "/en-US/reservation/office?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
     ],
   ] as const)("builds the %s sale CTA", async (_label, products, href) => {
-    const { banner, discoverActiveSales } = await getBanner([sale(products)]);
+    const { banner } = await getBanner([sale(products)]);
 
     expect(banner).toMatchObject({
       adjustmentKind: "percentage",
       href,
       label: expect.stringContaining("Summer focus"),
     });
-    expect(discoverActiveSales).toHaveBeenCalledWith({
-      currentDate: Temporal.PlainDate.from("2026-07-20"),
-      locale: "en-US",
-    });
+    expect(getActivePublicSales).toHaveBeenCalledWith({ locale: "en-US" });
   });
 
   test("renders no banner when there is no active sale", async () => {
