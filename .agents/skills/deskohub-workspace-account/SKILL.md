@@ -21,9 +21,11 @@ description: Workspace customer account, Neon Auth, magic link, profile, account
 
 ## Resolution contract
 
-- `resolveCurrentCustomerAccount()` is the only public identity-to-customer
-  operation. It returns `CustomerAccountId` and `DotyposCustomerId` without
-  exposing session or profile data.
+- Keep `CustomerAccountResolver` as the public, replaceable
+  identity-to-customer capability for authenticated route composition and
+  provider-independent tests. `resolveCurrentCustomerAccount()` is the
+  Live-wired page convenience. Both return only `CustomerAccountId` and
+  `DotyposCustomerId`, without exposing session or profile data.
 - Require the authoritative current session and verified email. Existing links
   are authoritative. New links require one exact-email match to one active
   Dotypos customer with a valid ID.

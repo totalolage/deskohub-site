@@ -3,8 +3,9 @@ import {
   type DotyposCustomerId,
   DotyposCustomerIdSchema,
 } from "@deskohub/dotypos";
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
+import { CustomerAccountResolver } from "../index";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
@@ -44,6 +45,23 @@ const runError = (input: CustomerAccountResolutionDependencies) =>
   Effect.runPromise(Effect.flip(resolveCustomerAccount(input)));
 
 describe("customer account resolution", () => {
+  test("exposes a provider-independent resolver service", async () => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(CustomerAccountResolver, (resolver) =>
+        resolver.resolve()
+      ).pipe(
+        Effect.provide(
+          Layer.mock(CustomerAccountResolver, {
+            resolve: () =>
+              Effect.succeed({ accountId, dotyposCustomerId: customerId }),
+          })
+        )
+      )
+    );
+
+    expect(result).toEqual({ accountId, dotyposCustomerId: customerId });
+  });
+
   test("fails closed when auth is not configured or has no session", async () => {
     const notConfigured = await runError(
       dependencies({
