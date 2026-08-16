@@ -213,7 +213,7 @@
   "footerHomeLink": "Home",
   "footerContactLink": "Contact",
   "footerReservationLink": "Visit Us",
-  "footerCopyright": "© {companyName}. All rights reserved.",
+  "footerCopyright": "© {year} {companyName}. All rights reserved.",
   "legalPageEyebrow": "Legal information",
   "legalPageLastUpdatedLabel": "Last updated",
   "contactMetadataTitle": "Contact Deskohub Workspace | Reach out about cowork, events, and private rooms",
