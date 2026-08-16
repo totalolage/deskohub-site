@@ -1,5 +1,11 @@
 import { Match, Schema } from "effect";
 import {
+  getCanonicalWorkspaceGoodsProductIdentity,
+  getWorkspaceGoodsProductKey,
+  workspaceGoodsProductIdentitySchema,
+  workspaceGoodsProductKeySchema,
+} from "@/features/goods";
+import {
   getWorkspaceCoworkProductKey,
   workspaceCoworkProductIdentitySchema,
   workspaceCoworkProductKeySchema,
@@ -19,6 +25,7 @@ export const workspaceProductIdentitySchema = Schema.Union([
   workspaceCoworkProductIdentitySchema,
   workspaceMeetingRoomProductIdentitySchema,
   workspaceOfficeProductIdentitySchema,
+  workspaceGoodsProductIdentitySchema,
 ]);
 
 export type WorkspaceProductIdentity =
@@ -28,6 +35,7 @@ export const workspaceProductKeySchema = Schema.Union([
   workspaceCoworkProductKeySchema,
   workspaceMeetingRoomProductKeySchema,
   workspaceOfficeProductKeySchema,
+  workspaceGoodsProductKeySchema,
 ]);
 
 export type WorkspaceProductKey = typeof workspaceProductKeySchema.Type;
@@ -38,6 +46,7 @@ export const getWorkspaceProductKey = (
   Match.value(product).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: getWorkspaceCoworkProductKey,
+      goods: getWorkspaceGoodsProductKey,
       "meeting-room": getWorkspaceMeetingRoomProductKey,
       office: getWorkspaceOfficeProductKey,
     })
@@ -49,6 +58,7 @@ export const getCanonicalWorkspaceProductIdentity = (
   Match.value(product).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: ({ kind, tier }) => ({ kind, tier }),
+      goods: getCanonicalWorkspaceGoodsProductIdentity,
       "meeting-room": ({ duration, kind }) => ({
         kind,
         duration,

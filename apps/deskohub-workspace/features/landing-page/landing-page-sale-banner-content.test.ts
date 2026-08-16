@@ -14,6 +14,9 @@ const meetingRoomProduct = {
 const officeProduct = {
   kind: "office",
 } as const satisfies WorkspaceProductTarget;
+const goodsProduct = {
+  kind: "goods",
+} as const satisfies WorkspaceProductTarget;
 
 const formatLabel = (
   products: readonly WorkspaceProductTarget[],
@@ -38,7 +41,7 @@ const formatLabel = (
   );
 
 describe("formatLandingPageSaleBannerLabel", () => {
-  test("describes a sale on every product without clarification", () => {
+  test("describes a sale on every reservation product without clarification", () => {
     expect(
       formatLabel([coworkProduct, meetingRoomProduct, officeProduct])
     ).toBe("Summer focus: 20% off!");
@@ -64,6 +67,12 @@ describe("formatLandingPageSaleBannerLabel", () => {
 
   test("does not omit office from a mixed sale label", () => {
     expect(formatLabel([coworkProduct, officeProduct])).toBe(
+      "Summer focus: 20% off chosen products!"
+    );
+  });
+
+  test("does not count goods as a missing reservation product family", () => {
+    expect(formatLabel([coworkProduct, meetingRoomProduct, goodsProduct])).toBe(
       "Summer focus: 20% off chosen products!"
     );
   });

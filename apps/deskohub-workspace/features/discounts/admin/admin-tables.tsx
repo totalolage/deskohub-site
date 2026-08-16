@@ -40,7 +40,10 @@ import type {
   StoredDiscountId,
   VoucherId,
 } from "@/features/discounts/persistence-contracts";
-import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import {
+  getWorkspaceProductTargetKey,
+  type WorkspaceProductTarget,
+} from "@/features/discounts/product-target";
 import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -1043,7 +1046,15 @@ export function DiscountDefinitionFields({
 }: {
   readonly discount?: DiscountTableItem;
 }) {
-  const selectedProducts = new Set(discount?.products.map(({ kind }) => kind));
+  const selectedProducts = new Set(
+    discount?.products.map(getWorkspaceProductTargetKey)
+  );
+  const goodsCategoryIds = discount?.products.flatMap((target) =>
+    target.kind === "goods" && "categoryId" in target ? [target.categoryId] : []
+  );
+  const goodsProductIds = discount?.products.flatMap((target) =>
+    target.kind === "goods" && "productId" in target ? [target.productId] : []
+  );
   const adjustment = discount?.adjustment;
   const [kind, setKind] = useState<"fixed" | "percentage">(
     adjustment?.kind ?? "percentage"
@@ -1179,6 +1190,22 @@ export function DiscountDefinitionFields({
               {product.label}
             </label>
           ))}
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <FormField label="Dotypos goods category IDs">
+            <Input
+              defaultValue={goodsCategoryIds?.join(", ")}
+              name="goodsCategoryIds"
+              placeholder="category-id, another-category-id"
+            />
+          </FormField>
+          <FormField label="Dotypos goods product IDs">
+            <Input
+              defaultValue={goodsProductIds?.join(", ")}
+              name="goodsProductIds"
+              placeholder="product-id, another-product-id"
+            />
+          </FormField>
         </div>
       </fieldset>
     </div>
@@ -1410,4 +1437,5 @@ const productOptions = [
   { key: "cowork", label: "Cowork" },
   { key: "meeting-room", label: "Meeting room" },
   { key: "office", label: "Private office" },
+  { key: "goods", label: "All goods" },
 ];

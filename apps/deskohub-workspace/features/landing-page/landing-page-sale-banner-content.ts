@@ -48,7 +48,11 @@ export function formatLandingPageSaleBannerLabel(
     adjustment: formatDiscountAdjustment(sale.adjustment, locale),
   };
 
-  if (productKinds.size === 3) {
+  if (
+    productKinds.has("cowork") &&
+    productKinds.has("meeting-room") &&
+    productKinds.has("office")
+  ) {
     return m.landingSaleBannerAllProducts(values, { locale });
   }
 

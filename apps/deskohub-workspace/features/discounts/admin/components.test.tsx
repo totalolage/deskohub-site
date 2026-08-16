@@ -186,7 +186,7 @@ describe("discount administration pages", () => {
       within(percentage.closest("form")!)
         .getAllByRole("checkbox")
         .map((checkbox) => checkbox.closest("label")?.textContent?.trim())
-    ).toEqual(["Cowork", "Meeting room", "Private office"]);
+    ).toEqual(["Cowork", "Meeting room", "Private office", "All goods"]);
     expect(view.queryByText("Cowork Basic")).toBeNull();
 
     const save = view.getByRole("button", { name: "Save discount" });
