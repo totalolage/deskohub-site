@@ -30,6 +30,14 @@ export const goodsOrderIssuanceIdSchema = Schema.String.check(
 
 export type GoodsOrderIssuanceId = typeof goodsOrderIssuanceIdSchema.Type;
 
+export const issueGoodsOrderRequestSchema = Schema.Struct({
+  issuanceId: goodsOrderIssuanceIdSchema,
+  quoteToken: Schema.NonEmptyString,
+  acknowledged: Schema.Literal(true),
+});
+
+export type IssueGoodsOrderRequest = typeof issueGoodsOrderRequestSchema.Type;
+
 const goodsOrderMoneySchema = nonNegativeWorkspaceMoneyCodec.check(
   Schema.makeFilter((money) => money.value <= 2_147_483_647, {
     message: "Goods order money must fit the PostgreSQL integer boundary.",

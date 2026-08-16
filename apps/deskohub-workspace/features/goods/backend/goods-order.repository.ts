@@ -7,7 +7,7 @@ import {
 } from "@deskohub/nexi";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
   WorkspaceDatabase,
@@ -41,6 +41,7 @@ import {
 import {
   type GoodsOrderDetail,
   type GoodsOrderIssuanceFacts,
+  type GoodsOrderIssuanceId,
   type GoodsOrderLine,
   type GoodsOrderSummary,
   goodsOrderDetailSchema,
@@ -81,13 +82,20 @@ export type IssueGoodsOrderRepositoryInput = GoodsOrderIssuanceFacts & {
   readonly discountCommitment?: GoodsBasketDiscountCommitment;
 };
 
-interface IGoodsOrderRepository {
+export interface IGoodsOrderRepository {
   readonly issue: (
     input: IssueGoodsOrderRepositoryInput
   ) => Effect.Effect<GoodsOrderDetail, GoodsOrderRepositoryError>;
   readonly list: (
     customerId: DotyposCustomerId
   ) => Effect.Effect<readonly GoodsOrderSummary[], GoodsOrderRepositoryError>;
+  readonly findByIssuanceId: (
+    customerId: DotyposCustomerId,
+    issuanceId: GoodsOrderIssuanceId
+  ) => Effect.Effect<
+    Option.Option<GoodsOrderDetail>,
+    GoodsOrderRepositoryError
+  >;
   readonly get: (
     customerId: DotyposCustomerId,
     orderId: OrderId
@@ -109,6 +117,12 @@ export class GoodsOrderRepository extends Context.Service<
         ),
         list: Effect.fn("GoodsOrderRepository.list")((customerId) =>
           db.transaction((tx) => listGoodsOrders(tx, customerId))
+        ),
+        findByIssuanceId: Effect.fn("GoodsOrderRepository.findByIssuanceId")(
+          (customerId, issuanceId) =>
+            db.transaction((tx) =>
+              findGoodsOrderByIssuanceId(tx, customerId, issuanceId)
+            )
         ),
         get: Effect.fn("GoodsOrderRepository.get")((customerId, orderId) =>
           db.transaction((tx) => getGoodsOrder(tx, customerId, orderId))
@@ -264,6 +278,28 @@ const listGoodsOrders = Effect.fn("GoodsOrderRepository.listTransaction")(
     );
   }
 );
+
+const findGoodsOrderByIssuanceId = Effect.fn(
+  "GoodsOrderRepository.findByIssuanceIdTransaction"
+)(function* (
+  tx: GoodsOrderTransaction,
+  customerId: DotyposCustomerId,
+  issuanceId: GoodsOrderIssuanceId
+) {
+  const [order] = yield* tx
+    .select()
+    .from(orders)
+    .where(eq(orders.correlationId, NexiCorrelationIdSchema.make(issuanceId)))
+    .limit(1)
+    .for("share");
+  if (!order) return Option.none<GoodsOrderDetail>();
+  if (order.kind !== "goods" || order.dotyposCustomerId !== customerId) {
+    return yield* new GoodsOrderIssuanceConflictError({
+      message: "The issuance identifier belongs to another order.",
+    });
+  }
+  return Option.some(yield* loadGoodsOrderDetail(tx, order));
+});
 
 const getGoodsOrder = Effect.fn("GoodsOrderRepository.getTransaction")(
   function* (

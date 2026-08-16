@@ -1,5 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Clock, Context, Data, Effect, Layer } from "effect";
+import { Clock, Context, Data, Effect, Layer, type Option } from "effect";
 import {
   DiscountClaimError,
   type GoodsBasketDiscountCommitment,
@@ -8,6 +8,7 @@ import type { OrderId } from "@/features/order";
 import type {
   GoodsOrderDetail,
   GoodsOrderIssuanceFacts,
+  GoodsOrderIssuanceId,
   GoodsOrderSummary,
 } from "../goods-order";
 import {
@@ -39,6 +40,13 @@ interface IGoodsOrderService {
   readonly list: (
     customerId: DotyposCustomerId
   ) => Effect.Effect<readonly GoodsOrderSummary[], GoodsOrderUnavailableError>;
+  readonly findByIssuanceId: (
+    customerId: DotyposCustomerId,
+    issuanceId: GoodsOrderIssuanceId
+  ) => Effect.Effect<
+    Option.Option<GoodsOrderDetail>,
+    GoodsOrderIssuanceConflictError | GoodsOrderUnavailableError
+  >;
   readonly get: (
     customerId: DotyposCustomerId,
     orderId: OrderId
@@ -81,6 +89,18 @@ export class GoodsOrderService extends Context.Service<
                 (cause) => new GoodsOrderUnavailableError({ cause })
               )
             )
+        ),
+        findByIssuanceId: Effect.fn("GoodsOrderService.findByIssuanceId")(
+          (customerId, issuanceId) =>
+            repository
+              .findByIssuanceId(customerId, issuanceId)
+              .pipe(
+                Effect.mapError((error) =>
+                  error instanceof GoodsOrderIssuanceConflictError
+                    ? error
+                    : new GoodsOrderUnavailableError({ cause: error })
+                )
+              )
         ),
         get: Effect.fn("GoodsOrderService.get")((customerId, orderId) =>
           repository
