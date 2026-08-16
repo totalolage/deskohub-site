@@ -6,14 +6,6 @@ import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
 import { cn } from "@/shared/utils";
 import { AdministrationLink as Link } from "./admin-link";
 import type {
@@ -22,17 +14,19 @@ import type {
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
-import { EmptyState } from "./empty-state";
 import {
   formatAdministrationDateTime,
   formatAdministrationMoney,
   formatAdministrationReservationDate,
 } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";
-import { AdministrationStatusBadge } from "./status-badge";
-import { AdministrationResponsiveTable } from "./table-frame";
 
+export { BookingStatusBadge, BookingTable } from "./booking-table";
 export { AdministrationCustomerTable } from "./customer-table";
+export {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "./data-table";
 export {
   AdministrationDetailSection,
   AdministrationFact,
@@ -183,142 +177,6 @@ export function PaymentAttemptList({
         </li>
       ))}
     </ul>
-  );
-}
-
-export function BookingStatusBadge({
-  booking,
-}: {
-  readonly booking: Pick<
-    AdministrationBookingSummary,
-    "status" | "statusLabel"
-  >;
-}) {
-  return (
-    <AdministrationStatusBadge
-      tone={
-        {
-          CANCELLED: "neutral",
-          CONFIRMED: "positive",
-          NEW: "progress",
-        }[booking.status] as "neutral" | "positive" | "progress"
-      }
-    >
-      {booking.statusLabel}
-    </AdministrationStatusBadge>
-  );
-}
-
-export function BookingTable({
-  bookings,
-  emptyMessage = "No bookings match this date.",
-}: {
-  readonly bookings: readonly AdministrationBookingSummary[];
-  readonly emptyMessage?: string;
-}) {
-  if (bookings.length === 0) return <EmptyState message={emptyMessage} />;
-  return (
-    <AdministrationResponsiveTable
-      desktop={
-        <Table aria-label="Bookings" className="min-w-[820px]">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Booking</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Table</TableHead>
-              <TableHead>Reservation</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {bookings.map((booking) => (
-              <TableRow className="relative" key={booking.id}>
-                <TableCell>
-                  <Link
-                    className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-                    href={`/admin/bookings/${booking.id}`}
-                  >
-                    {formatAdministrationDateTime(booking.startsAt)}
-                  </Link>
-                  <p className="mt-1 text-xs text-navy-blue/65">
-                    {booking.seats} {booking.seats === "1" ? "guest" : "guests"}
-                  </p>
-                </TableCell>
-                <TableCell>
-                  {booking.customer && booking.customerId ? (
-                    <Link
-                      className="relative z-10 font-medium hover:underline"
-                      href={`/admin/customers/${booking.customerId}`}
-                    >
-                      {booking.customer.displayName}
-                    </Link>
-                  ) : (
-                    <span className="text-sm text-navy-blue/65">
-                      Details unavailable
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <p className="font-medium">
-                    {booking.tableName ?? "Not assigned"}
-                  </p>
-                  {booking.tableLocation && (
-                    <p className="mt-1 text-xs text-navy-blue/65">
-                      {booking.tableLocation}
-                    </p>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {booking.linkedReservation ? (
-                    <Link
-                      className="relative z-10 font-medium hover:underline"
-                      href={`/admin/reservations/${booking.linkedReservation.id}`}
-                    >
-                      {booking.linkedReservation.label}
-                    </Link>
-                  ) : (
-                    <span className="text-sm text-navy-blue/65">
-                      Not linked
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <BookingStatusBadge booking={booking} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      }
-      mobile={
-        <ul className="divide-y divide-navy-blue/10">
-          {bookings.map((booking) => (
-            <li key={booking.id}>
-              <Link
-                className="block px-4 py-4 hover:bg-navy-blue/[0.025]"
-                href={`/admin/bookings/${booking.id}`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold">
-                      {formatAdministrationDateTime(booking.startsAt)}
-                    </p>
-                    <p className="mt-1 text-sm text-navy-blue/65">
-                      {booking.customer?.displayName ?? "Customer unavailable"}
-                    </p>
-                  </div>
-                  <BookingStatusBadge booking={booking} />
-                </div>
-                <p className="mt-3 text-xs text-navy-blue/65">
-                  {booking.tableName ?? "No table assigned"} · {booking.seats}{" "}
-                  {booking.seats === "1" ? "guest" : "guests"}
-                </p>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      }
-    />
   );
 }
 

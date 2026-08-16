@@ -1,18 +1,16 @@
+"use client";
+
 import type { NexiOrderId } from "@deskohub/nexi";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
+import { useMemo } from "react";
 import { AdministrationLink as Link } from "./admin-link";
 import type {
   AdministrationReservationSort,
-  AdministrationReservationSortDirection,
   AdministrationReservationSummary,
 } from "./administration.service";
+import {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "./data-table";
 import { EmptyState } from "./empty-state";
 import {
   formatAdministrationDateTime,
@@ -21,9 +19,11 @@ import {
 } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";
 import type { AdministrationReservationStatus } from "./reservation-status";
-import { AdministrationSortHead } from "./sort-head";
 import { AdministrationStatusBadge } from "./status-badge";
-import { AdministrationResponsiveTable } from "./table-frame";
+import {
+  type AdministrationTableSorting,
+  getAdministrationTableSortHref,
+} from "./table-sort";
 
 export function ReservationStatusBadge({
   status,
@@ -46,12 +46,10 @@ export function ReservationStatusBadge({
   );
 }
 
-export type ReservationTableSorting = {
-  readonly basePath: string;
-  readonly direction: AdministrationReservationSortDirection;
-  readonly field: AdministrationReservationSort;
-  readonly params?: Readonly<Record<string, string | undefined>>;
-};
+export type ReservationTableSorting =
+  AdministrationTableSorting<AdministrationReservationSort> & {
+    readonly basePath: string;
+  };
 
 export function ReservationTable({
   emptyMessage = "No reservations match this view.",
@@ -64,64 +62,84 @@ export function ReservationTable({
   readonly showCustomer?: boolean;
   readonly sorting?: ReservationTableSorting;
 }) {
+  const columns = useMemo<
+    AdministrationDataTableColumn<AdministrationReservationSummary>[]
+  >(
+    () => [
+      {
+        accessorFn: (reservation) =>
+          reservation.date ?? reservation.startsAt ?? "",
+        cell: ({ row }) => <ReservationDate reservation={row.original} />,
+        header: "Date",
+        id: "date",
+      },
+      {
+        accessorFn: (reservation) => reservation.status.label,
+        cell: ({ row }) => <ReservationStatus reservation={row.original} />,
+        header: "Status",
+        id: "status",
+      },
+      ...(showCustomer
+        ? [
+            {
+              accessorFn: (reservation) =>
+                reservation.customer?.displayName ?? "",
+              cell: ({ row }) => (
+                <ReservationCustomer reservation={row.original} />
+              ),
+              enableSorting: false,
+              header: "Customer",
+              id: "customer",
+            } satisfies AdministrationDataTableColumn<AdministrationReservationSummary>,
+          ]
+        : []),
+      {
+        accessorKey: "typeLabel",
+        cell: ({ row }) => <ReservationReference reservation={row.original} />,
+        header: "Reservation",
+        id: "reservation",
+      },
+      {
+        accessorKey: "createdAt",
+        cell: ({ row }) => (
+          <span className="text-sm text-navy-blue/65">
+            {formatAdministrationDateTime(row.original.createdAt)}
+          </span>
+        ),
+        header: "Created",
+        id: "created",
+      },
+      {
+        accessorFn: (reservation) => reservation.latestPayment?.amount.value,
+        cell: ({ row }) => <ReservationPayment reservation={row.original} />,
+        enableSorting: false,
+        header: "Payment",
+        id: "payment",
+      },
+    ],
+    [showCustomer]
+  );
+
   if (reservations.length === 0) {
     return <EmptyState message={emptyMessage} />;
   }
 
   return (
-    <AdministrationResponsiveTable
-      desktop={
-        <Table
-          aria-label="Reservations"
-          className={showCustomer ? "min-w-[1060px]" : "min-w-[880px]"}
-        >
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <ReservationSortHead field="date" sorting={sorting}>
-                Date
-              </ReservationSortHead>
-              <ReservationSortHead field="status" sorting={sorting}>
-                Status
-              </ReservationSortHead>
-              {showCustomer && <TableHead>Customer</TableHead>}
-              <ReservationSortHead field="reservation" sorting={sorting}>
-                Reservation
-              </ReservationSortHead>
-              <ReservationSortHead field="created" sorting={sorting}>
-                Created
-              </ReservationSortHead>
-              <TableHead>Payment</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reservations.map((reservation) => (
-              <TableRow className="relative" key={reservation.id}>
-                <TableCell>
-                  <ReservationDate reservation={reservation} />
-                </TableCell>
-                <TableCell>
-                  <ReservationStatus reservation={reservation} />
-                </TableCell>
-                {showCustomer && (
-                  <TableCell>
-                    <ReservationCustomer reservation={reservation} />
-                  </TableCell>
-                )}
-                <TableCell>
-                  <ReservationReference reservation={reservation} />
-                </TableCell>
-                <TableCell>
-                  <span className="text-sm text-navy-blue/65">
-                    {formatAdministrationDateTime(reservation.createdAt)}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <ReservationPayment reservation={reservation} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+    <AdministrationDataTable
+      ariaLabel="Reservations"
+      columns={columns}
+      data={reservations}
+      getRowId={(reservation) => reservation.id}
+      getSortHref={
+        sorting
+          ? (field, direction) =>
+              getAdministrationTableSortHref({
+                basePath: sorting.basePath,
+                direction,
+                field,
+                params: sorting.params,
+              })
+          : undefined
       }
       mobile={
         <ul className="divide-y divide-navy-blue/10">
@@ -171,34 +189,13 @@ export function ReservationTable({
           ))}
         </ul>
       }
+      sorting={
+        sorting
+          ? [{ id: sorting.field, desc: sorting.direction === "desc" }]
+          : undefined
+      }
+      tableClassName={showCustomer ? "min-w-[1060px]" : "min-w-[880px]"}
     />
-  );
-}
-
-function ReservationSortHead({
-  children,
-  field,
-  sorting,
-}: {
-  readonly children: string;
-  readonly field: AdministrationReservationSort;
-  readonly sorting: ReservationTableSorting | undefined;
-}) {
-  if (!sorting) return <TableHead>{children}</TableHead>;
-  const sorted = sorting.field === field ? sorting.direction : false;
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(sorting.params ?? {})) {
-    if (value) search.set(key, value);
-  }
-  search.set("sort", field);
-  search.set("direction", sorted === "asc" ? "desc" : "asc");
-  return (
-    <AdministrationSortHead
-      direction={sorted}
-      href={`${sorting.basePath}?${search.toString()}`}
-    >
-      {children}
-    </AdministrationSortHead>
   );
 }
 

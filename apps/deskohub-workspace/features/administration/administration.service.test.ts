@@ -29,6 +29,60 @@ const makeQuery = <A>(rows: readonly A[]) => {
 };
 
 describe("AdministrationService", () => {
+  test("sorts bookings before selecting a page", async () => {
+    const bookings = Array.from({ length: 25 }, (_, index) => ({
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: null,
+      id: `booking-${String(index).padStart(2, "0")}`,
+      startDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:00:00Z`,
+      endDate: `2026-08-10T${String(index % 24).padStart(2, "0")}:30:00Z`,
+      seats: "1",
+      status: index === 24 ? ("CANCELLED" as const) : ("NEW" as const),
+    }));
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listBookings({
+        date: "2026-08-10",
+        direction: "asc",
+        page: 1,
+        sort: "status",
+      });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: { select: () => makeQuery([]) } as never,
+                })
+              ),
+              DotyposServiceMock({
+                getCustomers: () => Effect.succeed([]),
+                getTables: () => Effect.succeed([]),
+                listReservations: () => Effect.succeed(bookings),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.items).toHaveLength(24);
+    expect(result.items[0]?.status).toBe("CANCELLED");
+  });
+
   test("filters reservations by an inclusive provider date range", async () => {
     const listInputs: unknown[] = [];
     const rows = [[{ value: 0 }], []] as const;

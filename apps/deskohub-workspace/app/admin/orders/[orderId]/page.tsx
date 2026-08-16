@@ -13,10 +13,10 @@ import {
   formatOrderMoney,
   formatProviderDateTime,
   formatProviderMoney,
-  OperationTable,
   ProviderStatusBadge,
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
+import { OperationTable } from "@/features/administration/payment-tables";
 
 export default function OrderAdministrationDetailPage({
   params,

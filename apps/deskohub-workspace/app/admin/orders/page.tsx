@@ -18,7 +18,7 @@ import {
   type loadAdministrationOrders,
   loadAdministrationOrdersPage,
 } from "@/features/administration/page-data.server";
-import { OrderTable } from "@/features/administration/payment-components";
+import { OrderTable } from "@/features/administration/payment-tables";
 import { Button } from "@/shared/components/ui/button";
 
 export default function OrdersAdministrationPage({

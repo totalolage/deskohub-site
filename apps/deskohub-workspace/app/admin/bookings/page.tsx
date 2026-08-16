@@ -101,6 +101,8 @@ function BookingFilters({ input }: { readonly input: BookingsData["input"] }) {
           type="date"
         />
       </AdministrationFilterField>
+      <input name="sort" type="hidden" value={input.sort} />
+      <input name="direction" type="hidden" value={input.direction} />
       <Button className="min-h-10" size="sm" type="submit">
         Show bookings
       </Button>
@@ -111,12 +113,23 @@ function BookingFilters({ input }: { readonly input: BookingsData["input"] }) {
 function BookingResults({ input, result }: BookingsData) {
   return (
     <>
-      <BookingTable bookings={result.items} />
+      <BookingTable
+        bookings={result.items}
+        sorting={{
+          direction: input.direction ?? "asc",
+          field: input.sort ?? "booking",
+          params: { date: input.date },
+        }}
+      />
       <Pagination
         basePath="/admin/bookings"
         page={result.page}
         pageCount={result.pageCount}
-        params={{ date: input.date }}
+        params={{
+          date: input.date,
+          direction: input.direction,
+          sort: input.sort,
+        }}
       />
     </>
   );

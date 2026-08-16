@@ -7,11 +7,13 @@ export type AdministrationSortDirection = false | "asc" | "desc";
 
 export function AdministrationSortHead({
   children,
+  className,
   direction = false,
   href,
   onToggle,
 }: {
   readonly children: ReactNode;
+  readonly className?: string;
   readonly direction?: AdministrationSortDirection;
   readonly href?: string;
   readonly onToggle?: MouseEventHandler<HTMLButtonElement>;
@@ -21,7 +23,9 @@ export function AdministrationSortHead({
     desc: "descending",
     false: "none",
   }[String(direction)] as "ascending" | "descending" | "none";
-  if (!(href || onToggle)) return <TableHead>{children}</TableHead>;
+  if (!(href || onToggle)) {
+    return <TableHead className={className}>{children}</TableHead>;
+  }
 
   const content = (
     <>
@@ -30,7 +34,7 @@ export function AdministrationSortHead({
     </>
   );
   return (
-    <TableHead aria-sort={ariaSort}>
+    <TableHead aria-sort={ariaSort} className={className}>
       {href ? (
         <Link
           className="-ml-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-left hover:bg-navy-blue/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"

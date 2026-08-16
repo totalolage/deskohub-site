@@ -12,31 +12,26 @@ import {
   AdministrationPage,
   AdministrationPageHeader,
   AdministrationStatusBadge,
-  AdministrationTableFrame,
   EmptyState,
   formatAdministrationDateTime,
   formatAdministrationMoney,
-  NexiOrderLink,
   ReservationTable,
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
 import { VoucherEditor } from "./admin-tables";
 import {
   AddCodeCustomerForm,
   AddVoucherCustomerForm,
   AdminMutationButton,
-  CustomerCodeAction,
   CustomerDiscountGroupForm,
 } from "./customer-admin-client";
+import {
+  ClaimHistoryTable,
+  CustomerCodeEligibilityTable,
+  CustomerTransactionHistoryTable,
+  CustomerVoucherEligibilityTable,
+} from "./customer-admin-tables";
 import type {
   AdminCustomerProfile,
   AdminDiscountCode,
@@ -50,29 +45,6 @@ import type {
 type Notice = {
   readonly message: string;
   readonly status: "error" | "success";
-};
-
-const getCustomerCodeAvailability = (
-  code: AdminCustomerProfile["codes"][number]
-) => {
-  if (!code.eligible) return "Available to all";
-  if (code.audienceSize === 1) return "Only this customer";
-  return `${code.audienceSize} selected customers`;
-};
-
-const getDiscountLabel = (code: AdminCustomerProfile["codes"][number]) =>
-  `${code.discountLabel} · ${
-    code.discountAdjustment.kind === "percentage"
-      ? `${code.discountAdjustment.basisPoints / 100}%`
-      : formatAdministrationMoney(code.discountAdjustment.amount)
-  }`;
-
-const getCustomerVoucherAvailability = (
-  voucher: AdminCustomerProfile["vouchers"][number]
-) => {
-  if (voucher.audienceSize === 0) return "Available to all";
-  if (voucher.eligible) return `${voucher.audienceSize} selected customers`;
-  return "Restricted";
 };
 
 export function CodeAdministrationDetailPage({
@@ -449,63 +421,29 @@ export function CustomerAdministrationDetailPage({
             {visibleCodes.length === 0 ? (
               <EmptyState message="No discount codes are available to this customer." />
             ) : (
-              <AdministrationTableFrame className="overflow-x-auto">
-                <Table
-                  aria-label="Customer code eligibility"
-                  className="min-w-[720px]"
-                >
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Discount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Availability</TableHead>
-                      <TableHead>
-                        <span className="sr-only">Manage eligibility</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleCodes.map((code) => {
-                      return (
-                        <TableRow className="relative" key={code.id}>
-                          <TableCell>
-                            <Link
-                              className="font-mono font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-                              href={`/admin/codes/${code.id}`}
-                            >
-                              {code.code}
-                            </Link>
-                          </TableCell>
-                          <TableCell className="break-words">
-                            {getDiscountLabel(code)}
-                          </TableCell>
-                          <TableCell>
-                            <AdministrationStatusBadge
-                              tone={code.enabled ? "positive" : "neutral"}
-                            >
-                              {code.enabled ? "Enabled" : "Disabled"}
-                            </AdministrationStatusBadge>
-                          </TableCell>
-                          <TableCell>
-                            {getCustomerCodeAvailability(code)}
-                          </TableCell>
-                          <TableCell className="relative z-10 text-right">
-                            <CustomerCodeAction
-                              audienceSize={code.audienceSize}
-                              code={code.code}
-                              codeId={code.id}
-                              customerId={profile.customer.id}
-                              customerName={profile.customer.displayName}
-                              eligible={code.eligible}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </AdministrationTableFrame>
+              <CustomerCodeEligibilityTable
+                codes={visibleCodes.map(
+                  ({
+                    audienceSize,
+                    code,
+                    discountAdjustment,
+                    discountLabel,
+                    eligible,
+                    enabled,
+                    id,
+                  }) => ({
+                    audienceSize,
+                    code,
+                    discountAdjustment,
+                    discountLabel,
+                    eligible,
+                    enabled,
+                    id,
+                  })
+                )}
+                customerId={profile.customer.id}
+                customerName={profile.customer.displayName}
+              />
             )}
           </section>
 
@@ -519,41 +457,25 @@ export function CustomerAdministrationDetailPage({
             {visibleVouchers.length === 0 ? (
               <EmptyState message="No vouchers are available to this customer." />
             ) : (
-              <AdministrationTableFrame className="overflow-x-auto">
-                <Table aria-label="Customer voucher eligibility">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Voucher</TableHead>
-                      <TableHead>Issued</TableHead>
-                      <TableHead>Remaining</TableHead>
-                      <TableHead>Availability</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleVouchers.map((voucher) => (
-                      <TableRow key={voucher.id}>
-                        <TableCell>
-                          <Link
-                            className="font-mono font-semibold underline underline-offset-4"
-                            href={`/admin/vouchers/${voucher.id}`}
-                          >
-                            {voucher.code}
-                          </Link>
-                        </TableCell>
-                        <TableCell>
-                          {formatAdministrationMoney(voucher.issuedCredit)}
-                        </TableCell>
-                        <TableCell>
-                          {formatAdministrationMoney(voucher.remainingCredit)}
-                        </TableCell>
-                        <TableCell>
-                          {getCustomerVoucherAvailability(voucher)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </AdministrationTableFrame>
+              <CustomerVoucherEligibilityTable
+                vouchers={visibleVouchers.map(
+                  ({
+                    audienceSize,
+                    code,
+                    eligible,
+                    id,
+                    issuedCredit,
+                    remainingCredit,
+                  }) => ({
+                    audienceSize,
+                    code,
+                    eligible,
+                    id,
+                    issuedCredit,
+                    remainingCredit,
+                  })
+                )}
+              />
             )}
           </section>
 
@@ -715,61 +637,7 @@ function CustomerTransactionHistory({
   if (transactions.length === 0) {
     return <EmptyState message="This customer has no payments." />;
   }
-  return (
-    <AdministrationTableFrame className="overflow-x-auto">
-      <Table
-        aria-label="Customer transaction history"
-        className="min-w-[760px]"
-      >
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Reservation</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Payment ID</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {transactions.map(({ attempt, reservation }) => (
-            <TableRow key={attempt.id}>
-              <TableCell className="whitespace-nowrap text-navy-blue/68">
-                {formatAdministrationDateTime(attempt.updatedAt)}
-              </TableCell>
-              <TableCell>
-                <AdministrationStatusBadge
-                  tone={attempt.state === "paid" ? "positive" : "neutral"}
-                >
-                  {attempt.stateLabel}
-                </AdministrationStatusBadge>
-              </TableCell>
-              <TableCell>
-                <Link
-                  className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
-                  href={`/admin/reservations/${reservation.id}`}
-                >
-                  {reservation.typeLabel}
-                </Link>
-              </TableCell>
-              <TableCell className="whitespace-nowrap font-semibold">
-                {formatAdministrationMoney(attempt.amount)}
-              </TableCell>
-              <TableCell>
-                {attempt.providerOrderId ? (
-                  <NexiOrderLink
-                    className="font-mono text-xs"
-                    orderId={attempt.providerOrderId}
-                  />
-                ) : (
-                  <span className="font-mono text-xs">{attempt.id}</span>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </AdministrationTableFrame>
-  );
+  return <CustomerTransactionHistoryTable transactions={transactions} />;
 }
 
 const formatMoneyTotals = (totals: readonly AdministrationMoney[]) =>
@@ -876,7 +744,6 @@ function ClaimHistory({
   readonly resource: "code" | "code-customer" | "voucher" | "voucher-customer";
 }) {
   const isVoucher = resource.startsWith("voucher");
-  const showsCustomer = resource.endsWith("customer");
   const subjectLabel = isVoucher ? "Voucher" : "Discount code";
   if (claims.length === 0) {
     return (
@@ -885,87 +752,25 @@ function ClaimHistory({
   }
 
   return (
-    <AdministrationTableFrame className="overflow-x-auto">
-      <Table
-        aria-label={`${subjectLabel} claim history`}
-        className="min-w-[820px]"
-      >
-        <TableHeader>
-          <TableRow>
-            <TableHead>{showsCustomer ? "Customer" : subjectLabel}</TableHead>
-            <TableHead>State</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Reserved</TableHead>
-            <TableHead>Completed</TableHead>
-            <TableHead>Reservation</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {claims.map((claim) => (
-            <TableRow key={claim.id}>
-              {!showsCustomer ? (
-                <TableCell>
-                  <Link
-                    className="font-semibold underline underline-offset-4"
-                    href={getClaimSubjectHref(claim)}
-                  >
-                    View {resource}
-                  </Link>
-                </TableCell>
-              ) : (
-                <TableCell>
-                  <Link
-                    className="font-semibold underline underline-offset-4"
-                    href={`/admin/customers/${claim.dotyposCustomerId}`}
-                  >
-                    View customer
-                  </Link>
-                </TableCell>
-              )}
-              <TableCell>
-                <AdministrationStatusBadge
-                  tone={claim.state === "released" ? "neutral" : "positive"}
-                >
-                  {claim.state[0]?.toUpperCase()}
-                  {claim.state.slice(1)}
-                </AdministrationStatusBadge>
-                {claim.releaseReason && (
-                  <p className="mt-1 max-w-48 text-xs text-navy-blue/65">
-                    {claim.releaseReason}
-                  </p>
-                )}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                {formatAdministrationMoney(claim.appliedAmount)}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                {formatInstant(claim.reservedAt)}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                {formatInstant(claim.redeemedAt ?? claim.releasedAt)}
-              </TableCell>
-              <TableCell>
-                <Link
-                  className="font-semibold underline underline-offset-4"
-                  href={`/admin/reservations/${claim.workspaceReservationId}`}
-                >
-                  Open reservation
-                </Link>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </AdministrationTableFrame>
+    <ClaimHistoryTable
+      claims={claims.map((claim) => ({
+        id: claim.id,
+        appliedAmount: claim.appliedAmount,
+        ...("codeId" in claim
+          ? { codeId: claim.codeId }
+          : { voucherId: claim.voucherId }),
+        dotyposCustomerId: claim.dotyposCustomerId,
+        redeemedAt: claim.redeemedAt?.toString() ?? null,
+        releasedAt: claim.releasedAt?.toString() ?? null,
+        releaseReason: claim.releaseReason,
+        reservedAt: claim.reservedAt.toString(),
+        state: claim.state,
+        workspaceReservationId: claim.workspaceReservationId,
+      }))}
+      resource={resource}
+    />
   );
 }
-
-const getClaimSubjectHref = (
-  claim: AdminDiscountCodeClaim | AdminVoucherClaim
-) =>
-  "codeId" in claim
-    ? `/admin/codes/${claim.codeId}`
-    : `/admin/vouchers/${claim.voucherId}`;
 
 const formatInstant = (instant: Temporal.Instant | null) =>
   instant
