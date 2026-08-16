@@ -20,6 +20,22 @@ const optionalNonEmptyStringSchema = toEnvSchema(
 );
 const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
 
+const postHogBrowserEnvironmentCheck = Schema.makeFilter<{
+  readonly NEXT_PUBLIC_POSTHOG_HOST?: string | undefined;
+  readonly NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN?: string | undefined;
+}>((environment) =>
+  environment.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN !== undefined &&
+  environment.NEXT_PUBLIC_POSTHOG_HOST === undefined
+    ? [
+        {
+          path: ["NEXT_PUBLIC_POSTHOG_HOST"],
+          issue:
+            "NEXT_PUBLIC_POSTHOG_HOST is required when browser PostHog is enabled.",
+        },
+      ]
+    : undefined
+);
+
 const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
   readonly VERCEL_ENV: "production" | "preview" | "development";
   readonly IGLOOHOME_CLIENT_ID?: string | undefined;
@@ -139,7 +155,7 @@ export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_VERCEL_ENV: toEnvSchema(
     Schema.optional(Schema.Literals(["production", "preview", "development"]))
   ),
-});
+}).check(postHogBrowserEnvironmentCheck);
 
 /**
  * T3 Env normally validates the field dictionary, which cannot retain checks
@@ -151,7 +167,7 @@ export const createEnvironmentSchema = (
     typeof workspaceClientEnvSchema.fields,
   isServer: boolean
 ) => {
-  const schema = Schema.Struct(fields);
+  const schema = Schema.Struct(fields).check(postHogBrowserEnvironmentCheck);
 
   return Schema.toStandardSchemaV1(
     isServer

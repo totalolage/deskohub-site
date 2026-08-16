@@ -46,6 +46,24 @@ const validateMissingIgloohomeEnvironment = (
     stdout: "pipe",
   });
 
+const validateMissingBrowserPostHogHost = () =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      'delete process.env.NEXT_PUBLIC_POSTHOG_HOST; await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: "phc_test",
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
     const decodeTimeout = Schema.decodeUnknownSync(
@@ -192,6 +210,15 @@ describe("workspace environment schemas", () => {
     expect(decodeVercelEnvironment("preview")).toBe("preview");
     expect(decodeVercelEnvironment("production")).toBe("production");
     expect(() => decodeVercelEnvironment("staging")).toThrow();
+  });
+
+  test("requires the browser PostHog proxy when browser analytics is enabled", () => {
+    const validation = validateMissingBrowserPostHogHost();
+
+    expect(validation.exitCode).toBe(1);
+    expect(validation.stderr.toString()).toContain(
+      "NEXT_PUBLIC_POSTHOG_HOST is required when browser PostHog is enabled."
+    );
   });
 
   test("retains server cross-field checks through T3 Env composition", () => {

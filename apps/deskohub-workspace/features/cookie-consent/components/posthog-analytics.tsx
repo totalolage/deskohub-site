@@ -14,8 +14,6 @@ import {
 } from "@/shared/utils/posthog-session-cookies";
 import { preparePostHogEvent } from "../utils/posthog-event";
 
-const DEFAULT_POSTHOG_HOST = "https://eu.i.posthog.com";
-
 let hasInitializedPostHog = false;
 let analyticsSendingEnabled = false;
 
@@ -44,17 +42,24 @@ export function PostHogAnalytics({
 }: PostHogAnalyticsProps) {
   const posthogProjectToken = env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 
+  if (!posthogProjectToken) return children;
+
+  const posthogHost = env.NEXT_PUBLIC_POSTHOG_HOST;
+  if (!posthogHost) {
+    throw new Error(
+      "NEXT_PUBLIC_POSTHOG_HOST is required when browser PostHog is enabled."
+    );
+  }
+
   return (
     <>
-      {posthogProjectToken && (
-        <PostHogClient
-          analyticsAccepted={analyticsAccepted}
-          featureFlagOverrides={featureFlagOverrides}
-          posthogEnvironment={posthogEnvironment}
-          posthogHost={env.NEXT_PUBLIC_POSTHOG_HOST ?? DEFAULT_POSTHOG_HOST}
-          posthogProjectToken={posthogProjectToken}
-        />
-      )}
+      <PostHogClient
+        analyticsAccepted={analyticsAccepted}
+        featureFlagOverrides={featureFlagOverrides}
+        posthogEnvironment={posthogEnvironment}
+        posthogHost={posthogHost}
+        posthogProjectToken={posthogProjectToken}
+      />
       {children}
     </>
   );
