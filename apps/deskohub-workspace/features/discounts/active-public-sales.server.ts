@@ -1,11 +1,12 @@
 import "server-only";
 
 import { Clock, Effect } from "effect";
-import { cacheLife } from "next/cache";
+import { cacheLife, cacheTag } from "next/cache";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { activePublicSalesCacheTag } from "@/shared/utils/cache-tags";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import type { ActiveSale } from "./contracts";
 import { logDiscountResolutionFailure } from "./resolution-logging";
@@ -34,6 +35,7 @@ async function loadActivePublicSales(input: {
 }): Promise<readonly ActiveSale[]> {
   "use cache";
   cacheLife("publicContent");
+  cacheTag(activePublicSalesCacheTag);
 
   return Effect.Do.pipe(
     Effect.bind("at", () => Clock.currentTimeMillis),

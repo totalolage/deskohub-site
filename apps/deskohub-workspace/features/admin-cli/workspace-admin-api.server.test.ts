@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import {
   AdministrationCanonicalPromotionCode,
   AdministrationDiscountCodeId,
@@ -20,6 +20,7 @@ import {
 import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
+import * as nextCache from "next/cache";
 import { AdministrationService } from "@/features/administration/administration.service";
 import {
   ReservationAccessAdministration,
@@ -34,13 +35,21 @@ import {
   type DiscountAdminDashboard,
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
+import { activePublicSalesCacheTag } from "@/shared/utils/cache-tags";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
-import {
-  AdminCliAdministrationApiHandlers,
-  AdminCliApiHandlers,
-} from "./workspace-admin-api.server";
+
+const revalidations: unknown[][] = [];
+
+mock.module("next/cache", () => ({
+  ...nextCache,
+  revalidateTag: (...input: unknown[]) => revalidations.push(input),
+}));
+
+const { AdminCliAdministrationApiHandlers, AdminCliApiHandlers } = await import(
+  "./workspace-admin-api.server"
+);
 
 const UnusedCliAuthentication = Layer.succeed(
   CliAuthentication,
@@ -583,6 +592,7 @@ describe("Workspace Admin API", () => {
   });
 
   test("invokes the same mutation services used by the Admin UI", async () => {
+    revalidations.length = 0;
     const discountId = Schema.decodeUnknownSync(AdministrationStoredDiscountId)(
       "01980000-0000-7000-8000-000000000001"
     );
@@ -738,6 +748,12 @@ describe("Workspace Admin API", () => {
       "renameSession",
       "revokeSession",
     ]);
+    expect(revalidations).toEqual(
+      Array.from({ length: 3 }, () => [
+        activePublicSalesCacheTag,
+        { expire: 0 },
+      ])
+    );
   });
 
   test("returns safe access metadata and maps invalid recovery", async () => {

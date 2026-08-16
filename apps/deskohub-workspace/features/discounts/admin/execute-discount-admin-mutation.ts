@@ -1,5 +1,7 @@
 import type { AdministrationDiscountMutationResultType } from "@deskohub/workspace-admin-api";
 import { Effect, Match } from "effect";
+import { revalidateTag } from "next/cache";
+import { activePublicSalesCacheTag } from "@/shared/utils/cache-tags";
 import type { DiscountAdminMutation } from "./contracts";
 import { DiscountAdministration } from "./discount-administration.service";
 
@@ -8,7 +10,7 @@ export const executeDiscountAdminMutation = Effect.fn(
 )(function* (input: DiscountAdminMutation) {
   const administration = yield* DiscountAdministration;
 
-  return yield* Match.value(input).pipe(
+  const result = yield* Match.value(input).pipe(
     Match.discriminatorsExhaustive("kind")({
       "create-discount": ({ discount, kind }) =>
         administration.createDiscount(discount).pipe(
@@ -186,4 +188,16 @@ export const executeDiscountAdminMutation = Effect.fn(
         ),
     })
   );
+
+  if (
+    input.kind === "create-discount" ||
+    input.kind === "update-discount" ||
+    input.kind === "delete-discount"
+  ) {
+    yield* Effect.sync(() =>
+      revalidateTag(activePublicSalesCacheTag, { expire: 0 })
+    );
+  }
+
+  return result;
 });
