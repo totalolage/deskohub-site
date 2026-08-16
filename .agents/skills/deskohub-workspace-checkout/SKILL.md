@@ -82,3 +82,7 @@ customer on the server, and freeze that identity into the accounting snapshot
 inside the generic payment admission. Keep oldest-unpaid-goods selection in
 that same atomic admission and reuse the authenticated goods order detail as
 the hosted-payment return/status resource.
+
+Exclude written-off goods orders from oldest-unpaid payment admission. A later
+provider success may still settle an already-written-off order normally; retain
+`writtenOffAt` as audit history rather than clearing or reclassifying it.

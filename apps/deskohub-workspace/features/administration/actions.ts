@@ -1,6 +1,9 @@
 "use server";
 
-import { AdministrationWorkspaceReservationId } from "@deskohub/workspace-admin-api";
+import {
+  AdministrationOrderId,
+  AdministrationWorkspaceReservationId,
+} from "@deskohub/workspace-admin-api";
 import { Effect, Schema } from "effect";
 import { revalidatePath } from "next/cache";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
@@ -13,6 +16,10 @@ import {
   reservationCancellationStandardSchema,
   reservationLookupStandardSchema,
 } from "./contracts";
+import {
+  OrderAdministrationService,
+  OrderWriteOffError,
+} from "./order-administration.service";
 import {
   ReservationAccessAdministration,
   ReservationAccessAdministrationError,
@@ -96,6 +103,44 @@ export const cancelAdministrationReservation: typeof cancelAdministrationReserva
     "use server";
     return await cancelAdministrationReservationAction(...args);
   };
+
+const writeOffOrderAction = defineWorkspaceAction(
+  {
+    operation: "administration.write-off-order",
+    schema: Schema.toStandardSchemaV1(
+      Schema.Struct({ orderId: AdministrationOrderId })
+    ),
+  },
+  ({ orderId }) =>
+    requireDiscountAdminAuthorization().pipe(
+      Effect.andThen(
+        Effect.gen(function* () {
+          const administration = yield* OrderAdministrationService;
+          const result = yield* administration.writeOffOrder(orderId);
+          yield* Effect.sync(() => revalidatePath(`/admin/orders/${orderId}`));
+          return result;
+        })
+      ),
+      Effect.provide(OrderAdministrationService.Live),
+      Effect.mapError(
+        (cause) =>
+          new PublicSafeActionError({
+            message:
+              cause instanceof OrderWriteOffError
+                ? cause.message
+                : "The order could not be written off.",
+            cause: cause instanceof Error ? cause : undefined,
+          })
+      )
+    )
+);
+
+export const writeOffOrder: typeof writeOffOrderAction = async (
+  ...args: Parameters<typeof writeOffOrderAction>
+) => {
+  "use server";
+  return await writeOffOrderAction(...args);
+};
 
 const reservationAccessMutationSchema = Schema.toStandardSchemaV1(
   Schema.Union([

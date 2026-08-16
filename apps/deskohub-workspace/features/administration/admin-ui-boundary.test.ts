@@ -20,6 +20,20 @@ describe("administration UI boundaries", () => {
     );
   });
 
+  test("keeps goods write-off explicit and separate from lifecycle state", async () => {
+    const control = await readWorkspaceFile(
+      "features/administration/goods-order-writeoff.tsx"
+    );
+    const detail = await readWorkspaceFile(
+      "features/administration/order-administration-components.tsx"
+    );
+
+    expect(control).toContain("Write off this order?");
+    expect(control).toContain("Confirm write-off");
+    expect(control).toContain("does not cancel the order or mark it as paid");
+    expect(detail).toContain("<GoodsOrderWriteOff");
+  });
+
   test("keeps the administration frame in the instant shell", async () => {
     const layout = await readWorkspaceFile("app/admin/layout.tsx");
 

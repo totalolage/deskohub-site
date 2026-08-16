@@ -162,6 +162,7 @@ describe("WorkspaceAdminApiClient", () => {
         paidAt: null,
         fulfilledAt: expiresAt,
         fulfillmentFailedAt: null,
+        writtenOffAt: null,
         createdAt: expiresAt,
         updatedAt: expiresAt,
       },
@@ -343,6 +344,15 @@ describe("WorkspaceAdminApiClient", () => {
             page: 2,
             pageCount: 3,
             total: 50,
+          });
+        }
+        if (
+          url.pathname === "/api/v1/cli/domain-orders/domain-order-1/write-off"
+        ) {
+          expect(request.method).toBe("POST");
+          return Response.json({
+            orderId: domainOrder.order.id,
+            writtenOffAt: expiresAt,
           });
         }
         if (url.pathname === "/api/v1/cli/domain-orders/domain-order-1") {
@@ -621,6 +631,10 @@ describe("WorkspaceAdminApiClient", () => {
           Redacted.make(accessToken),
           domainOrder.order.id
         );
+        yield* client.writeOffOrder(
+          Redacted.make(accessToken),
+          domainOrder.order.id
+        );
         yield* client.listNexiOrders(Redacted.make(accessToken), {
           from: "2026-08-01",
           to: "2026-08-10",
@@ -698,6 +712,10 @@ describe("WorkspaceAdminApiClient", () => {
         {
           method: "GET",
           path: "/api/v1/cli/domain-orders/domain-order-1",
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/domain-orders/domain-order-1/write-off",
         },
         { method: "GET", path: "/api/v1/cli/nexi/orders" },
         { method: "GET", path: "/api/v1/cli/nexi/orders/order-1" },

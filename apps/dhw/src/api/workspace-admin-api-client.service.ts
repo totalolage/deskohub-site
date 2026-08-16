@@ -28,6 +28,7 @@ import {
   type AdministrationOrderDetailType,
   type AdministrationOrderIdType,
   type AdministrationOrderListType,
+  type AdministrationOrderWriteOffResultType,
   type AdministrationOverviewType,
   type AdministrationReservationAccessGrantType,
   type AdministrationReservationAccessMutationType,
@@ -193,6 +194,17 @@ interface IWorkspaceAdminApiClient {
   ) => Effect.Effect<
     AdministrationOrderDetailType,
     | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly writeOffOrder: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    orderId: AdministrationOrderIdType
+  ) => Effect.Effect<
+    AdministrationOrderWriteOffResultType,
+    | CliApiRequestError
+    | CliMutationRejected
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
@@ -496,6 +508,20 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
             authorized.administration.getDomainOrder({ params: { orderId } })
           ),
           Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    writeOffOrder: Effect.fn("WorkspaceAdminApiClient.writeOffOrder")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        orderId: AdministrationOrderIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.writeOffDomainOrder({
+              params: { orderId },
+            })
+          ),
+          Effect.mapError(sanitizeReservationMutationError)
         )
     ),
     listNexiOrders: Effect.fn("WorkspaceAdminApiClient.listNexiOrders")(

@@ -6,6 +6,10 @@ const migrationUrl = new URL(
   "../migrations/20260816180946_order_architecture_foundation/migration.sql",
   import.meta.url
 );
+const writeOffMigrationUrl = new URL(
+  "../migrations/20260816210507_windy_hedge_knight/migration.sql",
+  import.meta.url
+);
 
 describe("generic orders", () => {
   test("stores generic lifecycle and immutable line price facts", () => {
@@ -24,6 +28,7 @@ describe("generic orders", () => {
       "fulfilled_at",
       "fulfillment_failed_at",
       "fulfillment_failure_code",
+      "written_off_at",
       "created_at",
       "updated_at",
     ]);
@@ -51,6 +56,16 @@ describe("generic orders", () => {
         "order_lines_currency_check",
       ])
     );
+  });
+
+  test("adds write-off as a goods-only additive fact", async () => {
+    const migration = await Bun.file(writeOffMigrationUrl).text();
+
+    expect(migration).toContain('ADD COLUMN "written_off_at"');
+    expect(migration).toContain('"written_off_at" is null');
+    expect(migration).toContain("\"kind\" = 'goods'");
+    expect(migration).not.toContain("DROP COLUMN");
+    expect(migration).not.toContain('UPDATE "orders"');
   });
 
   test("backfills reservation parents without inventing historical lines", async () => {

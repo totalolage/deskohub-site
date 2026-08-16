@@ -346,6 +346,13 @@ export class PaymentLifecycleRepository extends Context.Service<
               }
 
               if (order.kind === "goods") {
+                if (order.writtenOffAt) {
+                  return yield* lifecycleStateError(
+                    "admitPaymentSession",
+                    { type: "orderId", id: input.orderId },
+                    "A written-off order cannot start a new payment session."
+                  );
+                }
                 const [oldest] = yield* tx
                   .select({ id: orders.id })
                   .from(orders)
@@ -354,6 +361,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                       eq(orders.kind, "goods"),
                       eq(orders.dotyposCustomerId, order.dotyposCustomerId),
                       eq(orders.fulfillmentState, "fulfilled"),
+                      isNull(orders.writtenOffAt),
                       inArray(orders.paymentState, [
                         "not_started",
                         "pending",

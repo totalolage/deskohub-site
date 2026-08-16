@@ -530,6 +530,7 @@ export const AdministrationOrderSummary = Schema.Struct({
   paidAt: Schema.NullOr(Schema.String),
   fulfilledAt: Schema.NullOr(Schema.String),
   fulfillmentFailedAt: Schema.NullOr(Schema.String),
+  writtenOffAt: Schema.NullOr(Schema.String),
   createdAt: Schema.String,
   updatedAt: Schema.String,
 });
@@ -584,6 +585,13 @@ export const AdministrationOrderDetail = Schema.Struct({
   }),
 });
 export type AdministrationOrderDetail = typeof AdministrationOrderDetail.Type;
+
+export const AdministrationOrderWriteOffResult = Schema.Struct({
+  orderId: AdministrationOrderId,
+  writtenOffAt: Schema.String,
+});
+export type AdministrationOrderWriteOffResult =
+  typeof AdministrationOrderWriteOffResult.Type;
 
 export const AdministrationPaymentAttempt = Schema.Struct({
   id: AdministrationPaymentAttemptId,
@@ -1705,6 +1713,21 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       success: AdministrationOrderDetail,
       error: CliResourceNotFound.schema,
     })
+  )
+  .add(
+    HttpApiEndpoint.post(
+      "writeOffDomainOrder",
+      "/domain-orders/:orderId/write-off",
+      {
+        params: { orderId: AdministrationOrderId },
+        success: AdministrationOrderWriteOffResult,
+        error: [
+          CliMutationRejected.schema,
+          CliResourceNotFound.schema,
+          CliServiceUnavailable.schema,
+        ],
+      }
+    )
   )
   .add(
     HttpApiEndpoint.get("listNexiOrders", "/nexi/orders", {
