@@ -257,7 +257,7 @@ export class OrderAdministrationService extends Context.Service<
               workspaceReservations,
               eq(workspaceReservations.id, orders.id)
             )
-            .orderBy(desc(orders.createdAt))
+            .orderBy(desc(orders.createdAt), desc(orders.id))
             .limit(pageSize + 1);
           const visibleRows = rows.slice(0, pageSize);
           if (visibleRows.length === 0) {
@@ -321,7 +321,10 @@ export class OrderAdministrationService extends Context.Service<
                 .select(safePaymentAttemptSelection)
                 .from(paymentAttempts)
                 .where(eq(paymentAttempts.orderId, id))
-                .orderBy(desc(paymentAttempts.createdAt)),
+                .orderBy(
+                  desc(paymentAttempts.createdAt),
+                  desc(paymentAttempts.id)
+                ),
               db
                 .select({ issuedAt: invoices.issuedAt })
                 .from(invoices)
