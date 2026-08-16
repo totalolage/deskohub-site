@@ -30,6 +30,7 @@ import type {
   CheckoutAttemptKey,
   CheckoutSessionKey,
 } from "@/features/checkout/checkout-identifiers";
+import { ensureReservationOrder } from "@/features/order/backend/reservation-order";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -80,13 +81,23 @@ export interface IWorkspaceReservationRepository {
     input: CreateWorkspaceReservationInput
   ) => Effect.Effect<
     WorkspaceReservation,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError
   >;
   readonly findById: (
     id: WorkspaceReservationId
   ) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
+  readonly findByIdForFulfillment: (
+    id: WorkspaceReservationId
+  ) => Effect.Effect<
+    WorkspaceReservation | null,
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError
   >;
   readonly findByAttemptKey: (
     checkoutAttemptKey: CheckoutAttemptKey
@@ -215,14 +226,16 @@ export interface IWorkspaceReservationRepository {
     readonly staleProcessingBefore: Temporal.Instant;
   }) => Effect.Effect<
     WorkspaceReservation | null,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError
   >;
   readonly markFulfilled: (input: {
     readonly id: WorkspaceReservationId;
     readonly fulfilledAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
+    EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
   >;
   readonly markFulfillmentFailed: (input: {
     readonly id: WorkspaceReservationId;
@@ -230,7 +243,7 @@ export interface IWorkspaceReservationRepository {
     readonly failedAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
+    EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
   >;
   readonly markFulfillmentDeliveryFailed: (input: {
     readonly id: WorkspaceReservationId;
@@ -238,7 +251,7 @@ export interface IWorkspaceReservationRepository {
     readonly failedAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
+    EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
   >;
   readonly markReservationConfirmed: (input: {
     readonly id: WorkspaceReservationId;
@@ -297,68 +310,109 @@ export class WorkspaceReservationRepository extends Context.Service<
           effect.pipe(Effect.annotateLogs({ reservationId }))
       );
 
+      const findByIdForFulfillment = Effect.fn(
+        "workspaceReservations.findByIdForFulfillment"
+      )(
+        function* (id: WorkspaceReservationId) {
+          const reservation = yield* db.transaction((tx) =>
+            Effect.gen(function* () {
+              const [row] = yield* tx
+                .select()
+                .from(workspaceReservations)
+                .where(eq(workspaceReservations.id, id))
+                .limit(1)
+                .for("update");
+              if (row) {
+                yield* ensureReservationOrder({ tx, reservation: row });
+              }
+              return row;
+            })
+          );
+          return yield* decodeOptionalWorkspaceReservation(reservation);
+        },
+        (effect, reservationId) =>
+          effect.pipe(Effect.annotateLogs({ reservationId }))
+      );
+
       return {
         createDraft: Effect.fn("workspaceReservations.createDraft")(
           function* (input) {
-            const row = {
-              id: postgresUuidV7,
-              checkoutSessionKey: input.checkoutSessionKey,
-              checkoutAttemptKey: input.checkoutAttemptKey,
-              correlationId: postgresUuidV7,
-              dotyposCustomerId: input.dotyposCustomerId,
-              reservationPurpose: input.reservationPurpose,
-              reservationState: "draft" as const,
-              paymentState: "not_started" as const,
-              fulfillmentState: "not_started" as const,
-              reservationDetails: input.reservationDetails,
-              locale: input.locale,
-              reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-            };
+            const reservation = yield* db.transaction((tx) =>
+              Effect.gen(function* () {
+                const [inserted] = yield* tx
+                  .insert(workspaceReservations)
+                  .values({
+                    id: postgresUuidV7,
+                    checkoutSessionKey: input.checkoutSessionKey,
+                    checkoutAttemptKey: input.checkoutAttemptKey,
+                    correlationId: postgresUuidV7,
+                    dotyposCustomerId: input.dotyposCustomerId,
+                    reservationPurpose: input.reservationPurpose,
+                    reservationState: "draft",
+                    paymentState: "not_started",
+                    fulfillmentState: "not_started",
+                    reservationDetails: input.reservationDetails,
+                    locale: input.locale,
+                    reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+                  })
+                  .onConflictDoNothing()
+                  .returning();
 
-            const [inserted] = yield* db
-              .insert(workspaceReservations)
-              .values(row)
-              .onConflictDoNothing()
-              .returning();
+                if (inserted) {
+                  yield* ensureReservationOrder({ tx, reservation: inserted });
+                  return inserted;
+                }
 
-            if (inserted) return yield* decodeWorkspaceReservation(inserted);
+                const [existingAttempt] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    eq(
+                      workspaceReservations.checkoutAttemptKey,
+                      input.checkoutAttemptKey
+                    )
+                  )
+                  .limit(1)
+                  .for("update");
 
-            const [existingAttempt] = yield* db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                eq(
-                  workspaceReservations.checkoutAttemptKey,
-                  input.checkoutAttemptKey
-                )
-              )
-              .limit(1);
+                if (existingAttempt) {
+                  yield* ensureReservationOrder({
+                    tx,
+                    reservation: existingAttempt,
+                  });
+                  return existingAttempt;
+                }
 
-            if (existingAttempt) {
-              return yield* decodeWorkspaceReservation(existingAttempt);
-            }
+                const [currentAttempt] = yield* tx
+                  .select()
+                  .from(workspaceReservations)
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.checkoutSessionKey,
+                        input.checkoutSessionKey
+                      ),
+                      sql`${workspaceReservations.reservationState} <> 'cancelled'`
+                    )
+                  )
+                  .orderBy(desc(workspaceReservations.createdAt))
+                  .limit(1)
+                  .for("update");
 
-            const [currentAttempt] = yield* db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                and(
-                  eq(
-                    workspaceReservations.checkoutSessionKey,
-                    input.checkoutSessionKey
-                  ),
-                  sql`${workspaceReservations.reservationState} <> 'cancelled'`
-                )
-              )
-              .orderBy(desc(workspaceReservations.createdAt))
-              .limit(1);
+                if (!currentAttempt) {
+                  return yield* Effect.die(
+                    "Workspace reservation insert returned no row."
+                  );
+                }
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: currentAttempt,
+                });
+                return currentAttempt;
+              })
+            );
 
-            if (!currentAttempt) {
-              return yield* Effect.die(
-                "Workspace reservation insert returned no row."
-              );
-            }
-            return yield* decodeWorkspaceReservation(currentAttempt);
+            return yield* decodeWorkspaceReservation(reservation);
           },
           (effect, input) =>
             effect.pipe(
@@ -370,6 +424,7 @@ export class WorkspaceReservationRepository extends Context.Service<
             )
         ),
         findById,
+        findByIdForFulfillment,
         findByAttemptKey: Effect.fn("workspaceReservations.findByAttemptKey")(
           function* (checkoutAttemptKey) {
             const [reservation] = yield* db
@@ -802,6 +857,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                 );
               }
 
+              yield* ensureReservationOrder({ tx, reservation: replacement });
               return replacement;
             })
           );
@@ -892,137 +948,173 @@ export class WorkspaceReservationRepository extends Context.Service<
         claimPaidFulfillment: Effect.fn(
           "workspaceReservations.claimPaidFulfillment"
         )(function* (input) {
-          const [claimed] = yield* db
-            .update(workspaceReservations)
-            .set({
-              fulfillmentState: "processing",
-              updatedAt: Temporal.Now.instant(),
-            })
-            .where(
-              and(
-                eq(workspaceReservations.id, input.id),
-                eq(workspaceReservations.paymentState, "paid"),
-                inArray(workspaceReservations.reservationState, [
-                  "held",
-                  "confirmed",
-                ]),
-                notExists(
-                  db
-                    .select({
-                      paymentAttemptId: latePaymentRecoveries.paymentAttemptId,
-                    })
-                    .from(latePaymentRecoveries)
-                    .where(
+          const claimed = yield* db.transaction((tx) =>
+            Effect.gen(function* () {
+              const [reservation] = yield* tx
+                .update(workspaceReservations)
+                .set({
+                  fulfillmentState: "processing",
+                  updatedAt: Temporal.Now.instant(),
+                })
+                .where(
+                  and(
+                    eq(workspaceReservations.id, input.id),
+                    eq(workspaceReservations.paymentState, "paid"),
+                    inArray(workspaceReservations.reservationState, [
+                      "held",
+                      "confirmed",
+                    ]),
+                    notExists(
+                      tx
+                        .select({
+                          paymentAttemptId:
+                            latePaymentRecoveries.paymentAttemptId,
+                        })
+                        .from(latePaymentRecoveries)
+                        .where(
+                          and(
+                            eq(
+                              latePaymentRecoveries.workspaceReservationId,
+                              workspaceReservations.id
+                            ),
+                            eq(
+                              latePaymentRecoveries.paymentAttemptId,
+                              workspaceReservations.activePaymentAttemptId
+                            ),
+                            ne(latePaymentRecoveries.state, "recovered")
+                          )
+                        )
+                    ),
+                    or(
+                      inArray(workspaceReservations.fulfillmentState, [
+                        "not_started",
+                        "failed",
+                      ]),
                       and(
                         eq(
-                          latePaymentRecoveries.workspaceReservationId,
-                          workspaceReservations.id
+                          workspaceReservations.fulfillmentState,
+                          "processing"
                         ),
-                        eq(
-                          latePaymentRecoveries.paymentAttemptId,
-                          workspaceReservations.activePaymentAttemptId
-                        ),
-                        ne(latePaymentRecoveries.state, "recovered")
+                        lte(
+                          workspaceReservations.updatedAt,
+                          input.staleProcessingBefore
+                        )
                       )
-                    )
-                ),
-                or(
-                  inArray(workspaceReservations.fulfillmentState, [
-                    "not_started",
-                    "failed",
-                  ]),
-                  and(
-                    eq(workspaceReservations.fulfillmentState, "processing"),
-                    lte(
-                      workspaceReservations.updatedAt,
-                      input.staleProcessingBefore
                     )
                   )
                 )
-              )
-            )
-            .returning();
+                .returning();
+              if (reservation) {
+                yield* ensureReservationOrder({ tx, reservation });
+              }
+              return reservation;
+            })
+          );
           return yield* decodeOptionalWorkspaceReservation(claimed);
         }),
         markFulfilled: Effect.fn("workspaceReservations.markFulfilled")(
           function* (input) {
-            const updated = yield* db
-              .update(workspaceReservations)
-              .set({
-                fulfillmentState: "fulfilled",
-                fulfilledAt: input.fulfilledAt,
-                updatedAt: Temporal.Now.instant(),
+            yield* db.transaction((tx) =>
+              Effect.gen(function* () {
+                const updated = yield* tx
+                  .update(workspaceReservations)
+                  .set({
+                    fulfillmentState: "fulfilled",
+                    fulfilledAt: input.fulfilledAt,
+                    updatedAt: Temporal.Now.instant(),
+                  })
+                  .where(
+                    and(
+                      eq(workspaceReservations.id, input.id),
+                      eq(workspaceReservations.paymentState, "paid"),
+                      eq(workspaceReservations.fulfillmentState, "processing")
+                    )
+                  )
+                  .returning();
+                yield* ensureUpdated(
+                  updated,
+                  "workspaceReservations.markFulfilled",
+                  input.id,
+                  "Only processing paid reservations can be marked fulfilled."
+                );
+                yield* ensureReservationOrder({
+                  tx,
+                  reservation: updated[0]!,
+                });
               })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.paymentState, "paid"),
-                  eq(workspaceReservations.fulfillmentState, "processing")
-                )
-              )
-              .returning({ id: workspaceReservations.id });
-            yield* ensureUpdated(
-              updated,
-              "workspaceReservations.markFulfilled",
-              input.id,
-              "Only processing paid reservations can be marked fulfilled."
             );
           }
         ),
         markFulfillmentFailed: Effect.fn(
           "workspaceReservations.markFulfillmentFailed"
         )(function* (input) {
-          const updated = yield* db
-            .update(workspaceReservations)
-            .set({
-              fulfillmentState: "failed",
-              fulfillmentFailedAt: input.failedAt,
-              fulfillmentFailureCode: input.failureCode,
-              updatedAt: Temporal.Now.instant(),
+          yield* db.transaction((tx) =>
+            Effect.gen(function* () {
+              const updated = yield* tx
+                .update(workspaceReservations)
+                .set({
+                  fulfillmentState: "failed",
+                  fulfillmentFailedAt: input.failedAt,
+                  fulfillmentFailureCode: input.failureCode,
+                  updatedAt: Temporal.Now.instant(),
+                })
+                .where(
+                  and(
+                    eq(workspaceReservations.id, input.id),
+                    eq(workspaceReservations.paymentState, "paid"),
+                    eq(workspaceReservations.fulfillmentState, "processing")
+                  )
+                )
+                .returning();
+              yield* ensureUpdated(
+                updated,
+                "workspaceReservations.markFulfillmentFailed",
+                input.id,
+                "Only processing paid reservations can be marked fulfillment failed."
+              );
+              yield* ensureReservationOrder({
+                tx,
+                reservation: updated[0]!,
+              });
             })
-            .where(
-              and(
-                eq(workspaceReservations.id, input.id),
-                eq(workspaceReservations.paymentState, "paid"),
-                eq(workspaceReservations.fulfillmentState, "processing")
-              )
-            )
-            .returning({ id: workspaceReservations.id });
-          yield* ensureUpdated(
-            updated,
-            "workspaceReservations.markFulfillmentFailed",
-            input.id,
-            "Only processing paid reservations can be marked fulfillment failed."
           );
         }),
         markFulfillmentDeliveryFailed: Effect.fn(
           "workspaceReservations.markFulfillmentDeliveryFailed"
         )(function* (input) {
-          const updated = yield* db
-            .update(workspaceReservations)
-            .set({
-              fulfillmentState: "failed",
-              fulfilledAt: null,
-              fulfillmentFailedAt: input.failedAt,
-              fulfillmentFailureCode: input.failureCode,
-              updatedAt: Temporal.Now.instant(),
+          yield* db.transaction((tx) =>
+            Effect.gen(function* () {
+              const updated = yield* tx
+                .update(workspaceReservations)
+                .set({
+                  fulfillmentState: "failed",
+                  fulfilledAt: null,
+                  fulfillmentFailedAt: input.failedAt,
+                  fulfillmentFailureCode: input.failureCode,
+                  updatedAt: Temporal.Now.instant(),
+                })
+                .where(
+                  and(
+                    eq(workspaceReservations.id, input.id),
+                    eq(workspaceReservations.paymentState, "paid"),
+                    inArray(workspaceReservations.fulfillmentState, [
+                      "processing",
+                      "fulfilled",
+                    ])
+                  )
+                )
+                .returning();
+              yield* ensureUpdated(
+                updated,
+                "workspaceReservations.markFulfillmentDeliveryFailed",
+                input.id,
+                "Only processing or fulfilled paid reservations can be marked delivery failed."
+              );
+              yield* ensureReservationOrder({
+                tx,
+                reservation: updated[0]!,
+              });
             })
-            .where(
-              and(
-                eq(workspaceReservations.id, input.id),
-                eq(workspaceReservations.paymentState, "paid"),
-                inArray(workspaceReservations.fulfillmentState, [
-                  "processing",
-                  "fulfilled",
-                ])
-              )
-            )
-            .returning({ id: workspaceReservations.id });
-          yield* ensureUpdated(
-            updated,
-            "workspaceReservations.markFulfillmentDeliveryFailed",
-            input.id,
-            "Only processing or fulfilled paid reservations can be marked delivery failed."
           );
         }),
         markReservationConfirmed: Effect.fn(

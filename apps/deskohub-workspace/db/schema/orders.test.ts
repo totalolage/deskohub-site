@@ -19,6 +19,7 @@ describe("generic orders", () => {
       "dotypos_customer_id",
       "payment_state",
       "fulfillment_state",
+      "active_payment_attempt_id",
       "paid_at",
       "fulfilled_at",
       "fulfillment_failed_at",

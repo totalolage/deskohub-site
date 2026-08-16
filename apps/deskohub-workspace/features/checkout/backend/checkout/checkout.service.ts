@@ -43,6 +43,7 @@ import {
   getLegalAcceptanceSnapshot,
 } from "@/features/legal/acceptance-snapshot";
 import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
+import { orderIdSchema } from "@/features/order";
 import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
@@ -494,7 +495,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
               Effect.gen(function* () {
                 const transition = yield* paymentLifecycle.markTerminal({
                   id: input.attempt.id,
-                  workspaceReservationId: input.workspaceReservationId,
+                  orderId: orderIdSchema.make(input.workspaceReservationId),
                   state: "failed",
                   failureCode: "nexi_hpp_create_failed",
                   providerStatus: "hpp_create_failed",
@@ -593,7 +594,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           yield* Effect.logDebug("Checkout provider session inputs prepared");
 
           const attempt = yield* paymentLifecycle.createPendingNexiAttempt({
-            workspaceReservationId: input.workspaceReservationId,
+            orderId: orderIdSchema.make(input.workspaceReservationId),
             providerOrderId,
             amount: input.total,
             commitment: input.commitment,
@@ -680,7 +681,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
         yield* revalidatePayableReservation(input);
 
         const transition = yield* paymentLifecycle.completeInternalPayment({
-          workspaceReservationId: input.workspaceReservationId,
+          orderId: orderIdSchema.make(input.workspaceReservationId),
           amount: input.total,
           commitment: input.commitment,
           locale: input.locale,

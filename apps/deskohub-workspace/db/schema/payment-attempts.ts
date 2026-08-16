@@ -5,6 +5,7 @@ import type {
 } from "@deskohub/nexi";
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   check,
   index,
   integer,
@@ -13,9 +14,11 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { OrderId } from "@/features/order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import { orders } from "./orders";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
 
@@ -51,8 +54,10 @@ export const paymentAttempts = pgTable(
       .primaryKey()
       .default(postgresUuidV7)
       .$type<PaymentAttemptId>(),
+    orderId: text("order_id")
+      .$type<OrderId>()
+      .references((): AnyPgColumn => orders.id, { onDelete: "cascade" }),
     workspaceReservationId: text("workspace_reservation_id")
-      .notNull()
       .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),
     provider: text("provider").notNull().$type<PaymentProvider>(),
@@ -109,12 +114,21 @@ export const paymentAttempts = pgTable(
       "payment_attempts_failure_code_check",
       sql`${t.state} not in (${quotedSqlList(paymentAttemptStatesRequiringFailureCode)}) or ${t.failureCode} is not null`
     ),
+    check(
+      "payment_attempts_order_reference_check",
+      sql`${t.orderId} is not null or ${t.workspaceReservationId} is not null`
+    ),
+    check(
+      "payment_attempts_reservation_order_match_check",
+      sql`${t.workspaceReservationId} is null or ${t.orderId} is null or ${t.workspaceReservationId} = ${t.orderId}`
+    ),
     uniqueIndex("payment_attempts_nexi_order_unique_idx")
       .on(t.providerOrderId)
       .where(sql`${t.provider} = 'nexi'`),
     index("payment_attempts_workspace_reservation_idx").on(
       t.workspaceReservationId
     ),
+    index("payment_attempts_order_idx").on(t.orderId),
     index("payment_attempts_state_created_idx").on(t.state, t.createdAt),
   ]
 );

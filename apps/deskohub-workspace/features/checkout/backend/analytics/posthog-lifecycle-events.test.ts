@@ -21,6 +21,7 @@ describe("PostHog lifecycle events", () => {
       capturePaymentCompleted({
         attempt: {
           id: attemptId,
+          orderId: reservationId,
           workspaceReservationId: reservationId,
           provider: "nexi",
           providerOrderId: "provider-order-id",
@@ -56,6 +57,7 @@ describe("PostHog lifecycle events", () => {
       amount_value: 35_000,
       currency: "CZK",
       payment_attempt_id: attemptId,
+      order_id: reservationId,
       provider: "nexi",
       provider_order_id: "provider-order-id",
       reservation_id: reservationId,
@@ -78,6 +80,7 @@ describe("PostHog lifecycle events", () => {
       capturePaymentCompleted({
         attempt: {
           id: attemptId,
+          orderId: reservationId,
           workspaceReservationId: reservationId,
           provider: "internal",
           providerOrderId: null,
@@ -105,6 +108,7 @@ describe("PostHog lifecycle events", () => {
       amount_exponent: 2,
       amount_value: 0,
       currency: "CZK",
+      order_id: reservationId,
       reservation_id: reservationId,
       payment_attempt_id: attemptId,
       provider: "internal",

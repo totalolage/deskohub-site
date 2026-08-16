@@ -1,6 +1,7 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { orderIdSchema } from "@/features/order";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
@@ -167,7 +168,7 @@ function makeReservationHoldCleanupServiceLayer(
               const expired = yield* paymentLifecycle
                 .markTerminal({
                   id: paymentAttemptId,
-                  workspaceReservationId: active.id,
+                  orderId: orderIdSchema.make(active.id),
                   state: "expired",
                   failureCode: "payment_abandoned_after_provider_cutoff",
                 })

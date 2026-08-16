@@ -152,7 +152,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
               "Paid fulfillment reservation lookup started"
             );
             const reservation = yield* reservations
-              .findById(input.orderId)
+              .findByIdForFulfillment(input.orderId)
               .pipe(
                 Effect.mapError(
                   (cause) =>

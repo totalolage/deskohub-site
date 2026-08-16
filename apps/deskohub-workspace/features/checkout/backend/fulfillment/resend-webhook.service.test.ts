@@ -235,7 +235,7 @@ describe("ResendWebhookService", () => {
     );
     const processInvoice = mock(() => Effect.void);
     const reservations = {
-      findById: mock(() =>
+      findByIdForFulfillment: mock(() =>
         Effect.succeed({
           id: "reservation-id",
           activePaymentAttemptId: "payment-attempt-id",
@@ -261,7 +261,9 @@ describe("ResendWebhookService", () => {
 
     expect(result).toEqual({ status: "processed" });
     expect(constructResend).toHaveBeenCalledWith("re_test");
-    expect(reservations.findById).toHaveBeenCalledWith("reservation-id");
+    expect(reservations.findByIdForFulfillment).toHaveBeenCalledWith(
+      "reservation-id"
+    );
     expect(markFulfillmentDeliveryFailed).not.toHaveBeenCalled();
 
     const [updateInput] = markFulfilled.mock.calls[0] ?? [];
@@ -278,7 +280,7 @@ describe("ResendWebhookService", () => {
     const processInvoice = mock(() => Effect.fail(invoiceFailure));
     const markFulfilled = mock(() => Effect.void);
     const reservations = {
-      findById: mock(() =>
+      findByIdForFulfillment: mock(() =>
         Effect.succeed({
           id: "reservation-id",
           activePaymentAttemptId: "payment-attempt-id",
@@ -312,13 +314,18 @@ describe("ResendWebhookService", () => {
     expect(processInvoice).toHaveBeenCalledWith({
       paymentAttemptId: "payment-attempt-id",
     });
+    expect(reservations.findByIdForFulfillment).toHaveBeenCalledWith(
+      "reservation-id"
+    );
     expect(markFulfilled).not.toHaveBeenCalled();
   });
 
   test("fails Resend webhook processing without an API key", async () => {
     verifiedPayload = customerDeliveredPayload;
     const reservations = {
-      findById: mock(() => Effect.die("should not load reservation")),
+      findByIdForFulfillment: mock(() =>
+        Effect.die("should not load reservation")
+      ),
     };
 
     const error = await processWebhookError({
@@ -336,13 +343,15 @@ describe("ResendWebhookService", () => {
     });
     expect(constructResend).not.toHaveBeenCalled();
     expect(verifyWebhook).not.toHaveBeenCalled();
-    expect(reservations.findById).not.toHaveBeenCalled();
+    expect(reservations.findByIdForFulfillment).not.toHaveBeenCalled();
   });
 
   test("fails Resend webhook processing for invalid payloads", async () => {
     verifiedPayload = { data: { tags: [] }, type: 42 };
     const reservations = {
-      findById: mock(() => Effect.die("should not load reservation")),
+      findByIdForFulfillment: mock(() =>
+        Effect.die("should not load reservation")
+      ),
     };
 
     const error = await processWebhookError({
@@ -355,12 +364,14 @@ describe("ResendWebhookService", () => {
       eventId: "webhook-event-id",
     });
     expect(verifyWebhook).toHaveBeenCalled();
-    expect(reservations.findById).not.toHaveBeenCalled();
+    expect(reservations.findByIdForFulfillment).not.toHaveBeenCalled();
   });
 
   test("rejects an empty raw webhook event ID at the header boundary", async () => {
     const reservations = {
-      findById: mock(() => Effect.die("should not load reservation")),
+      findByIdForFulfillment: mock(() =>
+        Effect.die("should not load reservation")
+      ),
     };
 
     const error = await processWebhookError({
@@ -381,7 +392,9 @@ describe("ResendWebhookService", () => {
 
   test("rejects an empty raw webhook body at the payload boundary", async () => {
     const reservations = {
-      findById: mock(() => Effect.die("should not load reservation")),
+      findByIdForFulfillment: mock(() =>
+        Effect.die("should not load reservation")
+      ),
     };
 
     const error = await processWebhookError({
@@ -404,7 +417,9 @@ describe("ResendWebhookService", () => {
       data: { ...customerDeliveredPayload.data, email_id: "" },
     };
     const reservations = {
-      findById: mock(() => Effect.die("should not load reservation")),
+      findByIdForFulfillment: mock(() =>
+        Effect.die("should not load reservation")
+      ),
     };
 
     const error = await processWebhookError({ reservations });
@@ -415,14 +430,14 @@ describe("ResendWebhookService", () => {
       eventId: "webhook-event-id",
     });
     expect(verifyWebhook).toHaveBeenCalled();
-    expect(reservations.findById).not.toHaveBeenCalled();
+    expect(reservations.findByIdForFulfillment).not.toHaveBeenCalled();
   });
 
   test("marks customer reservation access delivery failures failed", async () => {
     verifiedPayload = customerFailurePayload;
     const markFulfillmentDeliveryFailed = mock(() => Effect.void);
     const reservations = {
-      findById: mock(() =>
+      findByIdForFulfillment: mock(() =>
         Effect.succeed({
           id: "reservation-id",
           paymentState: "paid",
@@ -446,7 +461,9 @@ describe("ResendWebhookService", () => {
       },
       webhookSecret: "whsec_test",
     });
-    expect(reservations.findById).toHaveBeenCalledWith("reservation-id");
+    expect(reservations.findByIdForFulfillment).toHaveBeenCalledWith(
+      "reservation-id"
+    );
 
     const [updateInput] = markFulfillmentDeliveryFailed.mock.calls[0] ?? [];
     expect(updateInput).toMatchObject({
@@ -460,7 +477,7 @@ describe("ResendWebhookService", () => {
     verifiedPayload = customerBouncedPayload;
     const markFulfillmentDeliveryFailed = mock(() => Effect.void);
     const reservations = {
-      findById: mock(() =>
+      findByIdForFulfillment: mock(() =>
         Effect.succeed({
           id: "reservation-id",
           paymentState: "paid",
@@ -486,7 +503,9 @@ describe("ResendWebhookService", () => {
   test("ignores internal notification delivery failures", async () => {
     verifiedPayload = internalFailurePayload;
     const reservations = {
-      findById: mock(() => Effect.die("should not load reservation")),
+      findByIdForFulfillment: mock(() =>
+        Effect.die("should not load reservation")
+      ),
       markFulfillmentDeliveryFailed: mock(() =>
         Effect.die("should not update")
       ),
@@ -498,7 +517,7 @@ describe("ResendWebhookService", () => {
       status: "ignored",
       reason: "unrelated_email",
     });
-    expect(reservations.findById).not.toHaveBeenCalled();
+    expect(reservations.findByIdForFulfillment).not.toHaveBeenCalled();
     expect(reservations.markFulfillmentDeliveryFailed).not.toHaveBeenCalled();
   });
 
@@ -515,7 +534,9 @@ describe("ResendWebhookService", () => {
       },
     };
     const reservations = {
-      findById: mock(() => Effect.die("should not load reservation")),
+      findByIdForFulfillment: mock(() =>
+        Effect.die("should not load reservation")
+      ),
       markFulfilled: mock(() => Effect.die("should not update")),
     };
 
@@ -525,7 +546,7 @@ describe("ResendWebhookService", () => {
       status: "ignored",
       reason: "deployment_environment_mismatch",
     });
-    expect(reservations.findById).not.toHaveBeenCalled();
+    expect(reservations.findByIdForFulfillment).not.toHaveBeenCalled();
     expect(reservations.markFulfilled).not.toHaveBeenCalled();
   });
 
@@ -894,7 +915,9 @@ describe("ResendWebhookService", () => {
     };
     const markFulfilled = mock(() => Effect.void);
     const reservations = {
-      findById: mock(() => Effect.succeed(existingReservation as never)),
+      findByIdForFulfillment: mock(() =>
+        Effect.succeed(existingReservation as never)
+      ),
       claimPaidFulfillment: mock(() =>
         Effect.succeed(claimedReservation as never)
       ),

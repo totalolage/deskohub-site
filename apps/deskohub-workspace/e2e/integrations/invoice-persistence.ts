@@ -15,6 +15,7 @@ import {
   invoiceEmailDeliveries,
   invoiceNumberCounters,
   invoices,
+  orders,
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
@@ -51,6 +52,7 @@ import {
   checkoutSessionKeySchema,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
+import { orderIdSchema } from "@/features/order";
 import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
@@ -513,6 +515,7 @@ const createPaidFixture = (
     const fulfilled = options.fulfilled ?? paid;
     const reservationId = workspaceReservationIdSchema.make(randomUUID());
     const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
+    const orderId = orderIdSchema.make(reservationId);
     const dotyposCustomerId = DotyposCustomerIdSchema.make(
       `synthetic-customer-${randomUUID()}`
     );
@@ -522,6 +525,7 @@ const createPaidFixture = (
     const now = Temporal.Instant.from(
       temporalInstantToIsoString(Temporal.Now.instant())
     );
+    const correlationId = NexiCorrelationIdSchema.make(randomUUID());
     const source = makeAccountingDocumentSnapshot({
       workspaceReservationId: reservationId,
       dotyposReservationId,
@@ -532,11 +536,25 @@ const createPaidFixture = (
 
     yield* db.transaction((tx) =>
       Effect.gen(function* () {
+        yield* tx.insert(orders).values({
+          id: orderId,
+          kind: "reservation",
+          correlationId,
+          dotyposCustomerId,
+          paymentState: paid ? "paid" : "pending",
+          fulfillmentState: fulfilled
+            ? "fulfilled"
+            : paid
+              ? "processing"
+              : "not_started",
+          paidAt: paid ? now : null,
+          fulfilledAt: fulfilled ? now : null,
+        });
         yield* tx.insert(workspaceReservations).values({
           id: reservationId,
           checkoutSessionKey: checkoutSessionKeySchema.make(randomUUID()),
           checkoutAttemptKey: checkoutAttemptKeySchema.make(randomUUID()),
-          correlationId: NexiCorrelationIdSchema.make(randomUUID()),
+          correlationId,
           dotyposCustomerId,
           dotyposReservationId,
           reservationState: paid ? "confirmed" : "held",
@@ -560,6 +578,7 @@ const createPaidFixture = (
         });
         yield* tx.insert(paymentAttempts).values({
           id: paymentAttemptId,
+          orderId,
           workspaceReservationId: reservationId,
           provider: "nexi",
           providerOrderId: NexiOrderIdSchema.make(
@@ -570,6 +589,10 @@ const createPaidFixture = (
           amountExponent: source.quote.payment.expectedPrice.exponent,
           currency: source.quote.payment.expectedPrice.currency,
         });
+        yield* tx
+          .update(orders)
+          .set({ activePaymentAttemptId: paymentAttemptId })
+          .where(eq(orders.id, orderId));
         yield* tx.insert(accountingDocumentSnapshots).values({
           paymentAttemptId,
           workspaceReservationId: reservationId,
@@ -581,6 +604,17 @@ const createPaidFixture = (
         });
       })
     );
+
+    const [[persistedOrder], [persistedAttempt]] = yield* Effect.all([
+      db.select().from(orders).where(eq(orders.id, orderId)).limit(1),
+      db
+        .select()
+        .from(paymentAttempts)
+        .where(eq(paymentAttempts.id, paymentAttemptId))
+        .limit(1),
+    ]);
+    equal(persistedOrder?.activePaymentAttemptId, paymentAttemptId);
+    equal(persistedAttempt?.orderId, orderId);
 
     return {
       paymentAttemptId,
@@ -613,6 +647,7 @@ const createAdditionalFailedAttempt = (
       Effect.gen(function* () {
         yield* tx.insert(paymentAttempts).values({
           id: paymentAttemptId,
+          orderId: orderIdSchema.make(fixture.reservationId),
           workspaceReservationId: fixture.reservationId,
           provider: "nexi",
           providerOrderId: NexiOrderIdSchema.make(

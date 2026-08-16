@@ -13,6 +13,7 @@ import {
   SeatingMapFeatureFlagService,
   WorkspaceFeatureFlagService,
 } from "@/features/feature-flags/backend";
+import { orderIdSchema } from "@/features/order";
 import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
@@ -257,8 +258,8 @@ const implementation = Effect.gen(function* () {
         return emptyReconstruction;
       }
 
-      const attempt = yield* paymentAttempts.findDisplayableForReservation({
-        workspaceReservationId: reservation.id,
+      const attempt = yield* paymentAttempts.findDisplayableForOrder({
+        orderId: orderIdSchema.make(reservation.id),
         activePaymentAttemptId: reservation.activePaymentAttemptId ?? undefined,
         paymentState: reservation.paymentState,
       });
