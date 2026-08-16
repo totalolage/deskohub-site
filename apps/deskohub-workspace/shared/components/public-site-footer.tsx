@@ -1,16 +1,14 @@
 import { cacheLife } from "next/cache";
 import Link from "next/link";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 export async function PublicSiteFooter() {
-  const [locale, copyrightYear] = await Promise.all([
-    getRequestLocale(),
-    getCopyrightYear(),
-  ]);
+  const locale = await getRequestLocale();
+  const copyrightYear = await getCopyrightYear(locale);
   const localePath = `/${locale}`;
   const reservationPath = getCoworkReservationPath(locale);
   const companyExtractPath = "/official-company-extract";
@@ -154,11 +152,11 @@ export async function PublicSiteFooter() {
   );
 }
 
-async function getCopyrightYear() {
+async function getCopyrightYear(locale: Locale) {
   "use cache";
   cacheLife("publicContent");
 
-  return new Intl.DateTimeFormat("en", {
+  return new Intl.DateTimeFormat(locale, {
     timeZone: workspaceSiteConstants.location.timeZone,
     year: "numeric",
   }).format();

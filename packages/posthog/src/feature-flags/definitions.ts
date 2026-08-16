@@ -6,7 +6,10 @@ import {
 } from "effect/unstable/http";
 import { type FeatureFlag, make } from "../generated/effect.gen";
 import type { PostHogProjectId } from "../identifiers";
-import { PostHogFeatureFlagConfig } from "./config";
+import {
+  PostHogFeatureFlagConfig,
+  type PostHogFeatureFlagConfigInput,
+} from "./config";
 import { PostHogFeatureFlagError } from "./errors";
 
 const pageSize = 100;
@@ -113,18 +116,24 @@ export class PostHogFeatureFlagService extends Context.Service<
       } satisfies IPostHogFeatureFlagService;
     })
   );
+
+  static Live = (input: PostHogFeatureFlagConfigInput) =>
+    this.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          PostHogFeatureFlagConfig.from(input),
+          FetchHttpClient.layer
+        )
+      )
+    );
 }
 
-export const loadPostHogFeatureFlagDefinitions = (input: {
-  readonly apiKey: string;
-  readonly host: URL;
-  readonly projectId: PostHogProjectId;
-}) =>
+export const loadPostHogFeatureFlagDefinitions = (
+  input: PostHogFeatureFlagConfigInput
+) =>
   PostHogFeatureFlagService.pipe(
     Effect.flatMap((service) => service.listDefinitions),
-    Effect.provide(PostHogFeatureFlagService.Default),
-    Effect.provide(PostHogFeatureFlagConfig.from(input)),
-    Effect.provide(FetchHttpClient.layer)
+    Effect.provide(PostHogFeatureFlagService.Live(input))
   );
 
 export const listPostHogFeatureFlagDefinitions = (
