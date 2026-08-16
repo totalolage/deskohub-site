@@ -716,12 +716,31 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           return yield* db.transaction((tx) =>
             Effect.gen(function* () {
-              yield* lockOrderForPaymentTransition({
+              const lockedOrder = yield* lockOrderForPaymentTransition({
                 tx,
                 orderId: input.orderId,
                 paymentAttemptId: input.id,
                 operation: "markPaid",
               });
+              const payableAttemptStates = Match.value(lockedOrder.kind).pipe(
+                Match.when(
+                  "reservation",
+                  () => ["created", "pending", "paid"] as const
+                ),
+                Match.when(
+                  "goods",
+                  () =>
+                    [
+                      "created",
+                      "pending",
+                      "paid",
+                      "failed",
+                      "cancelled",
+                      "expired",
+                    ] as const
+                ),
+                Match.exhaustive
+              );
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -736,11 +755,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                   and(
                     eq(paymentAttempts.id, input.id),
                     eq(paymentAttempts.orderId, input.orderId),
-                    inArray(paymentAttempts.state, [
-                      "created",
-                      "pending",
-                      "paid",
-                    ])
+                    inArray(paymentAttempts.state, payableAttemptStates)
                   )
                 )
                 .returning();
@@ -749,7 +764,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 return yield* lifecycleStateError(
                   "markPaid",
                   { type: "paymentAttemptId", id: input.id },
-                  "Only a created, pending, or already-paid attempt can mark an order paid."
+                  "Only an eligible provider attempt can mark an order paid."
                 );
               }
 
@@ -763,7 +778,20 @@ export class PaymentLifecycleRepository extends Context.Service<
                 .where(
                   and(
                     eq(orders.id, input.orderId),
-                    eq(orders.paymentState, "pending"),
+                    Match.value(lockedOrder.kind).pipe(
+                      Match.when("reservation", () =>
+                        eq(orders.paymentState, "pending")
+                      ),
+                      Match.when("goods", () =>
+                        inArray(orders.paymentState, [
+                          "pending",
+                          "failed",
+                          "cancelled",
+                          "expired",
+                        ])
+                      ),
+                      Match.exhaustive
+                    ),
                     eq(orders.activePaymentAttemptId, input.id)
                   )
                 )

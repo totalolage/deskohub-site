@@ -8,9 +8,8 @@ import {
 import { Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
-import { orderIdSchema } from "@/features/order";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { type OrderId, orderIdSchema } from "@/features/order";
+import { OrderRepository } from "@/features/order/backend/order.repository";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import { getProviderOrderAbandonmentState } from "../../provider-order-abandonment";
@@ -19,7 +18,7 @@ import {
   capturePaymentCompleted,
   capturePaymentFailed,
 } from "../analytics/posthog-lifecycle-events";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { PaidOrderCompletionService } from "../fulfillment/paid-order-completion.service";
 import {
   isNexiPaymentAttempt,
   PaymentAttemptRepository,
@@ -44,7 +43,7 @@ export type ProviderPaymentFinalizationResult =
 
 export interface IProviderPaymentFinalizationService {
   readonly finalizePendingProviderPayment: (input: {
-    readonly orderId: WorkspaceReservationId;
+    readonly orderId: OrderId;
     readonly paymentAttemptId?: PaymentAttemptId;
     readonly webhookEventId?: NexiWebhookEventId;
     readonly abandonmentCheckedAt?: Temporal.Instant;
@@ -64,9 +63,9 @@ export class ProviderPaymentFinalizationService extends Context.Service<
     Layer.provide(PaymentAttemptRepository.Default),
     Layer.provide(PaymentLifecycleRepository.Default),
     Layer.provide(PostHogEventService.Live),
-    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(OrderRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspacePaidFulfillmentService.Live),
+    Layer.provide(PaidOrderCompletionService.Live),
     Layer.provide(WorkspaceNexiLayer)
   );
 }
@@ -77,11 +76,11 @@ function makeProviderPaymentFinalizationServiceLayer(
   return Layer.effect(
     service,
     Effect.gen(function* () {
-      const reservations = yield* WorkspaceReservationRepository;
+      const orders = yield* OrderRepository;
       const paymentAttempts = yield* PaymentAttemptRepository;
       const paymentLifecycle = yield* PaymentLifecycleRepository;
       const nexi = yield* NexiService;
-      const fulfillment = yield* WorkspacePaidFulfillmentService;
+      const completion = yield* PaidOrderCompletionService;
       const posthogEvents = yield* PostHogEventService;
 
       return ProviderPaymentFinalizationService.of({
@@ -92,49 +91,48 @@ function makeProviderPaymentFinalizationServiceLayer(
             yield* Effect.annotateLogsScoped({ input });
             yield* Effect.logInfo("Provider payment finalization started");
 
-            const reservation = yield* reservations
-              .findById(input.orderId)
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logError(
-                    "Payment finalization reservation lookup failed",
-                    {
-                      orderId: input.orderId,
-                      cause,
-                    }
-                  )
-                ),
-                Effect.orElseSucceed(() => null)
-              );
+            const order = yield* orders.findById(input.orderId).pipe(
+              Effect.tapError((cause) =>
+                Effect.logError("Payment finalization order lookup failed", {
+                  orderId: input.orderId,
+                  cause,
+                })
+              ),
+              Effect.orElseSucceed(() => null)
+            );
             const paymentAttemptId =
-              input.paymentAttemptId ?? reservation?.activePaymentAttemptId;
-            yield* Effect.annotateLogsScoped({ reservation, paymentAttemptId });
+              input.paymentAttemptId ?? order?.activePaymentAttemptId;
+            yield* Effect.annotateLogsScoped({ order, paymentAttemptId });
             yield* Effect.logDebug(
-              "Payment finalization reservation lookup completed"
+              "Payment finalization order lookup completed"
             );
 
-            if (!reservation || !paymentAttemptId) {
+            if (!order || !paymentAttemptId) {
               yield* Effect.logInfo("Payment finalization returned not_found");
               return "not_found";
             }
-            if (reservation.paymentState !== "pending") {
+            if (order.paymentState !== "pending") {
               if (
-                reservation.paymentState === "paid" &&
-                (reservation.fulfillmentState === "not_started" ||
-                  reservation.fulfillmentState === "processing" ||
-                  reservation.fulfillmentState === "fulfilled")
+                order.paymentState === "paid" &&
+                (order.fulfillmentState === "not_started" ||
+                  order.fulfillmentState === "processing" ||
+                  order.fulfillmentState === "fulfilled")
               ) {
                 yield* Effect.logWarning(
-                  "Payment finalization invoking fulfillment for already-paid reservation"
+                  "Payment finalization invoking completion for already-paid order"
                 );
-                yield* fulfillment
-                  .fulfillPaidOrder({ orderId: reservation.id })
+                yield* completion
+                  .complete({
+                    orderId: order.id,
+                    kind: order.kind,
+                    paymentAttemptId,
+                  })
                   .pipe(
                     Effect.tapError((cause) =>
                       Effect.logFatal(
-                        "Paid order fulfillment failed during finalization",
+                        "Paid order completion failed during finalization",
                         {
-                          orderId: reservation.id,
+                          orderId: order.id,
                           cause,
                         }
                       )
@@ -142,7 +140,7 @@ function makeProviderPaymentFinalizationServiceLayer(
                     Effect.ignore
                   );
                 yield* Effect.logInfo(
-                  "Payment finalization fulfillment completed for already-paid reservation"
+                  "Payment finalization completion finished for already-paid order"
                 );
                 return "paid";
               }
@@ -160,7 +158,7 @@ function makeProviderPaymentFinalizationServiceLayer(
                   Effect.logError(
                     "Payment finalization attempt lookup failed",
                     {
-                      orderId: reservation.id,
+                      orderId: order.id,
                       paymentAttemptId,
                       cause,
                     }
@@ -189,7 +187,7 @@ function makeProviderPaymentFinalizationServiceLayer(
               Effect.tapError((cause) =>
                 Effect.logError("Payment finalization currency decode failed", {
                   input,
-                  reservation,
+                  order,
                   attempt,
                   cause,
                 })
@@ -211,7 +209,7 @@ function makeProviderPaymentFinalizationServiceLayer(
             const verification = yield* nexi
               .verifyPaymentOutcome({
                 orderId: attempt.providerOrderId,
-                correlationId: reservation.correlationId,
+                correlationId: order.correlationId,
                 amount: String(attempt.amount.value),
                 currency: getNexiCurrencyOverride() ?? currency,
                 securityToken: attempt.securityToken,
@@ -219,7 +217,7 @@ function makeProviderPaymentFinalizationServiceLayer(
               .pipe(
                 Effect.tapError((cause) =>
                   Effect.logError("Nexi payment outcome verification failed", {
-                    orderId: reservation.id,
+                    orderId: order.id,
                     paymentAttemptId: attempt.id,
                     providerOrderId: attempt.providerOrderId,
                     cause,
@@ -260,7 +258,7 @@ function makeProviderPaymentFinalizationServiceLayer(
               const paidSuccess = yield* paymentLifecycle
                 .markPaid({
                   id: attempt.id,
-                  orderId: orderIdSchema.make(reservation.id),
+                  orderId: orderIdSchema.make(order.id),
                   webhookEventId: input.webhookEventId,
                   providerOperationId,
                   providerStatus,
@@ -293,15 +291,19 @@ function makeProviderPaymentFinalizationServiceLayer(
                 "Payment finalization mark paid completed"
               );
 
-              yield* Effect.logInfo("Payment finalization fulfillment invoked");
-              yield* fulfillment
-                .fulfillPaidOrder({ orderId: reservation.id })
+              yield* Effect.logInfo("Payment finalization completion invoked");
+              yield* completion
+                .complete({
+                  orderId: order.id,
+                  kind: order.kind,
+                  paymentAttemptId: attempt.id,
+                })
                 .pipe(
                   Effect.tapError((cause) =>
                     Effect.logFatal(
-                      "Paid order fulfillment failed during finalization",
+                      "Paid order completion failed during finalization",
                       {
-                        orderId: reservation.id,
+                        orderId: order.id,
                         paymentAttemptId: attempt.id,
                         cause,
                       }
@@ -309,9 +311,7 @@ function makeProviderPaymentFinalizationServiceLayer(
                   ),
                   Effect.ignore
                 );
-              yield* Effect.logInfo(
-                "Payment finalization fulfillment completed"
-              );
+              yield* Effect.logInfo("Payment finalization completion finished");
               return "paid";
             }
 
@@ -326,7 +326,7 @@ function makeProviderPaymentFinalizationServiceLayer(
               const terminalSuccess = yield* paymentLifecycle
                 .markTerminal({
                   id: attempt.id,
-                  orderId: orderIdSchema.make(reservation.id),
+                  orderId: orderIdSchema.make(order.id),
                   state: terminalState,
                   failureCode: "nexi_payment_failed",
                   webhookEventId: input.webhookEventId,
