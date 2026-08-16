@@ -439,4 +439,31 @@ describe("discount persistence contracts", () => {
     expect(migration).not.toContain("customer_email");
     expect(migration).not.toContain("customer_name");
   });
+
+  test("stores aggregate basket claim amounts without a representative allocation", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260816201632_order-basket-discount-evidence/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    for (const table of [discountCodeRedemptions, voucherRedemptions]) {
+      const config = configOf(table);
+      expect(
+        config.columns.find(({ name }) => name === "application_id")?.notNull
+      ).toBe(false);
+      expect(
+        config.columns.find(({ name }) => name === "applied_amount_value")
+      ).toBeDefined();
+    }
+    expect(migration.match(/SET "applied_amount_value"/g)).toHaveLength(2);
+    expect(migration).toContain(
+      '"application_id" is not null or (\n        "order_id" is not null'
+    );
+    expect(migration).toContain('and "payment_attempt_id" is null');
+    expect(migration).toContain('and "applied_amount_value" > 0');
+    expect(migration).not.toContain("customer_email");
+    expect(migration).not.toContain("customer_name");
+  });
 });
