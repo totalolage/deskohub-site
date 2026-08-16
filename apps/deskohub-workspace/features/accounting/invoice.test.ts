@@ -9,7 +9,7 @@ import {
 } from "@/features/checkout/checkout-quote.test-utils";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
-import { makeAccountingDocumentSnapshot } from "./accounting-document-snapshot";
+import { makeReservationAccountingDocumentSnapshot } from "./accounting-document-snapshot";
 import {
   decodeInvoiceDocument,
   formatInvoiceNumber,
@@ -18,6 +18,10 @@ import {
   invoiceNumberSchema,
   makeInvoiceDocument,
 } from "./invoice";
+import {
+  makeGoodsAccountingDocumentSnapshotForTest,
+  makeGoodsInvoiceDocument,
+} from "./invoice.test-utils";
 
 const coworkOrder = {
   entryTier: "basic",
@@ -37,7 +41,7 @@ const prepared = {
   quote: buildCoworkReservationQuote(coworkOrder),
 } as PreparedCustomerQuote;
 
-const source = makeAccountingDocumentSnapshot({
+const source = makeReservationAccountingDocumentSnapshot({
   workspaceReservationId: "reservation-id",
   dotyposReservationId: "dotypos-reservation-id",
   dotyposCustomerId: "dotypos-customer-id",
@@ -277,7 +281,7 @@ describe("invoice", () => {
       email: "office-buyer@example.test",
       phone: "+420 700 000 000",
     });
-    const officeSource = makeAccountingDocumentSnapshot({
+    const officeSource = makeReservationAccountingDocumentSnapshot({
       workspaceReservationId: "office-reservation-id",
       dotyposReservationId: "dotypos-office-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
@@ -313,6 +317,27 @@ describe("invoice", () => {
           onExcessProperty: "error",
         })(document)
       )
+    ).resolves.toEqual(document);
+  });
+
+  test("issues a goods invoice from frozen totals and exact fulfilment", async () => {
+    const source = makeGoodsAccountingDocumentSnapshotForTest();
+    const document = makeGoodsInvoiceDocument();
+
+    expect(document).toMatchObject({
+      orderId: "goods-order-1",
+      paymentAttemptId: "goods-payment-attempt-1",
+      fulfilledAt: source.fulfilledAt,
+      lines: source.lines,
+      totals: source.totals,
+      buyer: source.buyer,
+    });
+    expect(document.fulfilledAt).toBe("2026-08-11T23:30:00.000Z");
+    expect(document).not.toHaveProperty("billing");
+    expect(document).not.toHaveProperty("delivery");
+    expect(document).not.toHaveProperty("workspaceReservationId");
+    await expect(
+      Effect.runPromise(decodeInvoiceDocument(document))
     ).resolves.toEqual(document);
   });
 });

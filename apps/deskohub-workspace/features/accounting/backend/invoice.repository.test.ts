@@ -64,14 +64,17 @@ describe("invoice repository persistence contract", () => {
     expect(issue).toContain("existing.paymentAttemptId !== paymentAttemptId");
   });
 
-  test("requires and validates complete buyer details instead of using the source buyer", async () => {
+  test("uses submitted reservation buyers and only frozen goods buyers", async () => {
     const source = await readRepository();
     const issue = source.slice(
       source.indexOf('const issue = Effect.fn("InvoiceRepository.issue")')
     );
 
-    expect(issue).toContain("readonly buyer: InvoiceBuyer");
-    expect(issue).toContain("Schema.decodeUnknownEffect(invoiceBuyerSchema");
-    expect(issue).not.toContain("input.buyer ?? source.buyer");
+    expect(issue).toContain("readonly buyer?: InvoiceBuyer");
+    expect(issue).toContain("getInvoiceBuyer({");
+    expect(source).toContain('if ("orderId" in input.source)');
+    expect(source).toContain("input.submittedBuyer !== undefined");
+    expect(source).toContain(")(input.source.buyer)");
+    expect(source).toContain(")(input.submittedBuyer)");
   });
 });

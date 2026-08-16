@@ -77,19 +77,22 @@ type OfficeSnapshot = Extract<
 
 const isCoworkSnapshot = (
   snapshot: AccountingDocumentSnapshot
-): snapshot is CoworkSnapshot => snapshot.reservation.kind === "cowork";
+): snapshot is CoworkSnapshot =>
+  "reservation" in snapshot && snapshot.reservation.kind === "cowork";
 const isMeetingRoomSnapshot = (
   snapshot: AccountingDocumentSnapshot
 ): snapshot is MeetingRoomSnapshot =>
-  snapshot.reservation.kind === "meeting-room";
+  "reservation" in snapshot && snapshot.reservation.kind === "meeting-room";
 const isOfficeSnapshot = (
   snapshot: AccountingDocumentSnapshot
-): snapshot is OfficeSnapshot => snapshot.reservation.kind === "office";
+): snapshot is OfficeSnapshot =>
+  "reservation" in snapshot && snapshot.reservation.kind === "office";
 
 const reconstructReservation = (
   row: WorkspaceReservation,
   snapshot: AccountingDocumentSnapshot
 ): RecreatedReservation | null => {
+  if (!("reservation" in snapshot)) return null;
   if (row.reservationDetails.kind !== snapshot.reservation.kind) return null;
 
   if (isCoworkSnapshot(snapshot)) {

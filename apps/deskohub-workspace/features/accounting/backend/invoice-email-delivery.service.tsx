@@ -183,7 +183,9 @@ export class InvoiceEmailDeliveryService extends Context.Service<
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-invoice-delivery",
             orderId: input.invoice.orderId,
-            workspaceReservationId: input.invoice.workspaceReservationId,
+            ...(input.invoice.workspaceReservationId && {
+              workspaceReservationId: input.invoice.workspaceReservationId,
+            }),
             invoiceId: input.invoice.id,
             audience: input.audience,
           },

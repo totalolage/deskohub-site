@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import { orderIdSchema } from "@/features/order";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
@@ -8,6 +9,7 @@ import {
   type AccountingDocumentSnapshot,
   accountingDocumentIdentitySchema,
   coworkAccountingDocumentSnapshotSchema,
+  goodsAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
   officeAccountingDocumentSnapshotSchema,
 } from "./accounting-document-snapshot";
@@ -58,8 +60,9 @@ const storedInvoiceBuyerSchema = Schema.Union([
   }),
 ]);
 
-const invoiceIdentitySchema = Schema.Struct({
-  ...accountingDocumentIdentitySchema.fields,
+const invoiceRecordSchema = Schema.Struct({
+  dotyposCustomerId: accountingDocumentIdentitySchema.fields.dotyposCustomerId,
+  locale: accountingDocumentIdentitySchema.fields.locale,
   buyer: storedInvoiceBuyerSchema,
   supplier: Schema.Struct({
     ...accountingDocumentIdentitySchema.fields.supplier.fields,
@@ -78,28 +81,42 @@ const invoiceIdentitySchema = Schema.Struct({
   paidAt: Schema.optional(instantStringSchema),
 });
 
+const reservationInvoiceIdentitySchema = Schema.Struct({
+  ...accountingDocumentIdentitySchema.fields,
+  ...invoiceRecordSchema.fields,
+});
+
 const coworkInvoiceDocumentSchema = Schema.Struct({
-  ...invoiceIdentitySchema.fields,
+  ...reservationInvoiceIdentitySchema.fields,
   reservation: coworkAccountingDocumentSnapshotSchema.fields.reservation,
   quote: coworkAccountingDocumentSnapshotSchema.fields.quote,
 });
 
 const meetingRoomInvoiceDocumentSchema = Schema.Struct({
-  ...invoiceIdentitySchema.fields,
+  ...reservationInvoiceIdentitySchema.fields,
   reservation: meetingRoomAccountingDocumentSnapshotSchema.fields.reservation,
   quote: meetingRoomAccountingDocumentSnapshotSchema.fields.quote,
 });
 
 const officeInvoiceDocumentSchema = Schema.Struct({
-  ...invoiceIdentitySchema.fields,
+  ...reservationInvoiceIdentitySchema.fields,
   reservation: officeAccountingDocumentSnapshotSchema.fields.reservation,
   quote: officeAccountingDocumentSnapshotSchema.fields.quote,
+});
+
+const goodsInvoiceDocumentSchema = Schema.Struct({
+  ...invoiceRecordSchema.fields,
+  orderId: goodsAccountingDocumentSnapshotSchema.fields.orderId,
+  fulfilledAt: goodsAccountingDocumentSnapshotSchema.fields.fulfilledAt,
+  lines: goodsAccountingDocumentSnapshotSchema.fields.lines,
+  totals: goodsAccountingDocumentSnapshotSchema.fields.totals,
 });
 
 export const invoiceDocumentSchema = Schema.Union([
   coworkInvoiceDocumentSchema,
   meetingRoomInvoiceDocumentSchema,
   officeInvoiceDocumentSchema,
+  goodsInvoiceDocumentSchema,
 ]).annotate({
   identifier: "InvoiceDocument",
   description:
@@ -107,6 +124,11 @@ export const invoiceDocumentSchema = Schema.Union([
 });
 
 export type InvoiceDocument = typeof invoiceDocumentSchema.Type;
+
+export const getInvoiceOrderId = (document: InvoiceDocument) =>
+  "orderId" in document
+    ? document.orderId
+    : orderIdSchema.make(document.workspaceReservationId);
 
 const decodeInvoiceNumber = Schema.decodeUnknownSync(invoiceNumberSchema);
 export const decodeInvoiceDocument = Schema.decodeUnknownEffect(
@@ -143,8 +165,7 @@ export const makeInvoiceDocument = (input: {
   readonly fulfilledAt: Temporal.Instant;
   readonly paidAt: Temporal.Instant;
 }): InvoiceDocument => {
-  return invoiceDocumentSchema.make({
-    ...input.source,
+  const issuedFacts = {
     supplier: {
       ...input.source.supplier,
       commercialRegister: workspaceSiteConstants.company.commercialRegister,
@@ -155,9 +176,19 @@ export const makeInvoiceDocument = (input: {
     issuedAt: instantStringSchema.make(
       temporalInstantToIsoString(input.issuedAt)
     ),
-    fulfilledAt: instantStringSchema.make(
-      temporalInstantToIsoString(input.fulfilledAt)
-    ),
     paidAt: instantStringSchema.make(temporalInstantToIsoString(input.paidAt)),
-  });
+  };
+  return "orderId" in input.source
+    ? goodsInvoiceDocumentSchema.make({
+        ...input.source,
+        ...issuedFacts,
+        fulfilledAt: input.source.fulfilledAt,
+      })
+    : invoiceDocumentSchema.make({
+        ...input.source,
+        ...issuedFacts,
+        fulfilledAt: instantStringSchema.make(
+          temporalInstantToIsoString(input.fulfilledAt)
+        ),
+      });
 };

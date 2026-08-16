@@ -6,6 +6,7 @@ import { discountIdSchema } from "@/features/discounts/contracts";
 import type { InvoiceDocument } from "./invoice";
 import {
   makeCoworkInvoiceDocument,
+  makeGoodsInvoiceDocument,
   makeMeetingRoomInvoiceDocument,
   makeOfficeInvoiceDocument,
 } from "./invoice.test-utils";
@@ -183,6 +184,36 @@ describe("invoice presentation", () => {
       amount: "−CZK 175",
     });
     expect(normalize(presentation.total)).toBe("CZK 225");
+  });
+
+  test("projects allocated goods discounts and the exact fulfilment date", () => {
+    const presentation = getInvoicePresentation(makeGoodsInvoiceDocument());
+
+    expect(presentation.factColumns).toEqual([
+      [
+        { label: "Invoice number", value: "WS-FV-2026-000004" },
+        { label: "Order number", value: "goods-order-1" },
+      ],
+      [
+        { label: "Issuance date", value: "Aug 12, 2026" },
+        { label: "Fulfilment date", value: "Aug 12, 2026" },
+        { label: "Payment date", value: "Aug 10, 2026" },
+      ],
+    ]);
+    expect(presentation.lines).toEqual([
+      {
+        kind: "item",
+        description: "Sparkling water × 2",
+        amount: "CZK 100",
+      },
+      { kind: "item", description: "Sandwich × 1", amount: "CZK 50" },
+      {
+        kind: "discount",
+        description: "Discount: Member price",
+        amount: "−CZK 25",
+      },
+    ]);
+    expect(normalize(presentation.total)).toBe("CZK 125");
   });
 
   test("does not fabricate facts absent from a legacy issued invoice", () => {

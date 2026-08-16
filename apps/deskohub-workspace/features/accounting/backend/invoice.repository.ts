@@ -9,11 +9,15 @@ import {
   orders,
   paymentAttempts,
 } from "@/db/schema";
-import { getAccountingDocumentOrderId } from "@/features/accounting/accounting-document-snapshot";
+import {
+  type AccountingDocumentSnapshot,
+  getAccountingDocumentOrderId,
+} from "@/features/accounting/accounting-document-snapshot";
 import {
   decodeInvoiceDocument,
   formatInvoiceNumber,
   getInvoiceNumberingYear,
+  getInvoiceOrderId,
   type InvoiceBuyer,
   type InvoiceDocument,
   type InvoiceNumber,
@@ -53,7 +57,7 @@ export class InvoiceStorageError extends Data.TaggedError(
 export interface Invoice {
   readonly id: string;
   readonly orderId: string;
-  readonly workspaceReservationId: string;
+  readonly workspaceReservationId: string | null;
   readonly paymentAttemptId: string;
   readonly dotyposCustomerId: string;
   readonly invoiceNumber: InvoiceNumber;
@@ -82,7 +86,7 @@ export interface IInvoiceRepository {
   >;
   readonly issue: (input: {
     readonly paymentAttemptId: string;
-    readonly buyer: InvoiceBuyer;
+    readonly buyer?: InvoiceBuyer;
   }) => Effect.Effect<InvoiceIssuance, InvoiceRepositoryError>;
 }
 
@@ -184,8 +188,11 @@ export class InvoiceRepository extends Context.Service<
 
         return {
           id: row.id,
-          orderId: row.orderId ?? document.workspaceReservationId,
-          workspaceReservationId: document.workspaceReservationId,
+          orderId: row.orderId ?? getInvoiceOrderId(document),
+          workspaceReservationId:
+            "workspaceReservationId" in document
+              ? document.workspaceReservationId
+              : null,
           paymentAttemptId: row.paymentAttemptId,
           dotyposCustomerId: row.dotyposCustomerId,
           invoiceNumber: document.invoiceNumber,
@@ -196,7 +203,7 @@ export class InvoiceRepository extends Context.Service<
 
       const issue = Effect.fn("InvoiceRepository.issue")(function* (input: {
         readonly paymentAttemptId: string;
-        readonly buyer: InvoiceBuyer;
+        readonly buyer?: InvoiceBuyer;
       }) {
         const paymentAttemptId = paymentAttemptIdSchema.make(
           input.paymentAttemptId
@@ -215,17 +222,11 @@ export class InvoiceRepository extends Context.Service<
           });
         }
 
-        const buyer = yield* Schema.decodeUnknownEffect(invoiceBuyerSchema, {
-          onExcessProperty: "error",
-        })(input.buyer).pipe(
-          Effect.mapError(
-            () =>
-              new InvoiceEligibilityError({
-                paymentAttemptId,
-                message: "Complete invoice buyer billing details are required.",
-              })
-          )
-        );
+        const buyer = yield* getInvoiceBuyer({
+          source,
+          submittedBuyer: input.buyer,
+          paymentAttemptId,
+        });
 
         const outcome = yield* db.transaction((tx) =>
           Effect.gen(function* () {
@@ -302,7 +303,12 @@ export class InvoiceRepository extends Context.Service<
 
             if (
               getAccountingDocumentOrderId(source) !== locked.orderId ||
-              source.dotyposCustomerId !== locked.dotyposCustomerId
+              source.dotyposCustomerId !== locked.dotyposCustomerId ||
+              ("orderId" in source &&
+                Temporal.Instant.compare(
+                  Temporal.Instant.from(source.fulfilledAt),
+                  locked.fulfilledAt
+                ) !== 0)
             ) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
@@ -376,7 +382,10 @@ export class InvoiceRepository extends Context.Service<
               .insert(invoices)
               .values({
                 orderId: locked.orderId,
-                workspaceReservationId: source.workspaceReservationId,
+                workspaceReservationId:
+                  "workspaceReservationId" in source
+                    ? source.workspaceReservationId
+                    : null,
                 paymentAttemptId,
                 dotyposCustomerId: locked.dotyposCustomerId,
                 invoiceNumber,
@@ -428,6 +437,46 @@ const wrapInvoiceEligibilityError = (
   message: string
 ) => new InvoiceEligibilityError({ paymentAttemptId, message });
 
+const getInvoiceBuyer = Effect.fn("InvoiceRepository.getInvoiceBuyer")(
+  function* (input: {
+    readonly source: AccountingDocumentSnapshot;
+    readonly submittedBuyer?: InvoiceBuyer;
+    readonly paymentAttemptId: string;
+  }) {
+    if ("orderId" in input.source) {
+      if (
+        input.source.billing.invoice === "none" ||
+        input.submittedBuyer !== undefined
+      ) {
+        return yield* wrapInvoiceEligibilityError(
+          input.paymentAttemptId,
+          "Goods invoice identity must come from its frozen billing instruction."
+        );
+      }
+      return yield* Schema.decodeUnknownEffect(invoiceBuyerSchema, {
+        onExcessProperty: "error",
+      })(input.source.buyer).pipe(
+        Effect.mapError(() =>
+          wrapInvoiceEligibilityError(
+            input.paymentAttemptId,
+            "Complete frozen goods invoice buyer details are required."
+          )
+        )
+      );
+    }
+    return yield* Schema.decodeUnknownEffect(invoiceBuyerSchema, {
+      onExcessProperty: "error",
+    })(input.submittedBuyer).pipe(
+      Effect.mapError(() =>
+        wrapInvoiceEligibilityError(
+          input.paymentAttemptId,
+          "Complete invoice buyer billing details are required."
+        )
+      )
+    );
+  }
+);
+
 const validateStoredInvoice = Effect.fn(
   "InvoiceRepository.validateStoredInvoice"
 )(function* (input: {
@@ -442,11 +491,14 @@ const validateStoredInvoice = Effect.fn(
   readonly document: InvoiceDocument;
 }) {
   const { document, row } = input;
+  const workspaceReservationId =
+    "workspaceReservationId" in document
+      ? document.workspaceReservationId
+      : null;
   if (
     (row.orderId ?? row.workspaceReservationId) !==
-      document.workspaceReservationId ||
-    (row.workspaceReservationId !== null &&
-      document.workspaceReservationId !== row.workspaceReservationId) ||
+      getInvoiceOrderId(document) ||
+    row.workspaceReservationId !== workspaceReservationId ||
     document.paymentAttemptId !== row.paymentAttemptId ||
     document.dotyposCustomerId !== row.dotyposCustomerId ||
     document.invoiceNumber !== row.invoiceNumber ||

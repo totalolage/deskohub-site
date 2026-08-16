@@ -22,7 +22,7 @@ import {
 import {
   accountingSnapshotKeyIdSchema,
   companyRegistrationIdSchema,
-  makeAccountingDocumentSnapshot,
+  makeReservationAccountingDocumentSnapshot,
   vatRegistrationIdSchema,
 } from "@/features/accounting/accounting-document-snapshot";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
@@ -52,11 +52,11 @@ import {
   checkoutSessionKeySchema,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
-import { orderIdSchema } from "@/features/order";
 import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { orderIdSchema } from "@/features/order";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { toWorkspaceE2EError } from "../errors";
@@ -526,7 +526,7 @@ const createPaidFixture = (
       temporalInstantToIsoString(Temporal.Now.instant())
     );
     const correlationId = NexiCorrelationIdSchema.make(randomUUID());
-    const source = makeAccountingDocumentSnapshot({
+    const source = makeReservationAccountingDocumentSnapshot({
       workspaceReservationId: reservationId,
       dotyposReservationId,
       dotyposCustomerId,
@@ -635,7 +635,7 @@ const createAdditionalFailedAttempt = (
 ) =>
   Effect.gen(function* () {
     const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
-    const source = makeAccountingDocumentSnapshot({
+    const source = makeReservationAccountingDocumentSnapshot({
       workspaceReservationId: fixture.reservationId,
       dotyposReservationId: fixture.dotyposReservationId,
       dotyposCustomerId: fixture.dotyposCustomerId,
