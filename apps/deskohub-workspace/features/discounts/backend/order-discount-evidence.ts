@@ -14,23 +14,25 @@ import {
   orders,
   promotionCodeCustomers,
   promotionCodes,
+  voucherRedemptionAppliedAmountValue,
   voucherRedemptions,
   vouchers,
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
-  getWorkspaceProductKey,
   workspaceProductIdentityEquals,
   workspaceProductIdentitySchema,
 } from "@/features/checkout/product-identity";
 import {
+  type WorkspaceMoney,
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
 import {
-  type DiscountCommitment,
   type DiscountCommitmentPayload,
-  getDiscountCommitmentPayload,
+  type GoodsBasketDiscountCommitment,
+  type GoodsBasketDiscountCommitmentPayload,
+  getGoodsBasketDiscountCommitmentPayload,
 } from "@/features/discounts/commitment";
 import type {
   AppliedDiscount,
@@ -85,6 +87,19 @@ export type ClaimedDiscountApplication = {
   readonly claim: DiscountClaimInstruction;
 };
 
+type DiscountApplicationEvidence = {
+  readonly application: AppliedDiscount;
+  readonly product: DiscountCommitmentPayload["product"];
+  readonly provenance: DiscountCommitmentPayload["applications"][number]["provenance"];
+};
+
+type ClaimedGoodsBasketDiscountApplication = {
+  readonly application: AppliedDiscount;
+  readonly appliedAmount: WorkspaceMoney;
+  readonly claim: DiscountClaimInstruction;
+  readonly products: readonly DiscountCommitmentPayload["product"][];
+};
+
 export const validateOrderDiscountCommitment = Effect.fn(
   "OrderDiscountEvidence.validateCommitment"
 )(function* (commitment: DiscountCommitmentPayload) {
@@ -107,26 +122,7 @@ export const validateOrderDiscountCommitment = Effect.fn(
   }
 
   for (const { application, claim } of commitment.applications) {
-    const amountInSubtotalUnit = workspaceMoneyWithValue(
-      application.amount.value,
-      application.subtotalBefore
-    );
-    const expectedSubtotalAfter = workspaceMoneyWithValue(
-      application.subtotalBefore.value - application.amount.value,
-      application.subtotalBefore
-    );
-
-    if (
-      !workspaceMoneyEquals(amountInSubtotalUnit, application.amount) ||
-      !workspaceMoneyEquals(expectedSubtotalAfter, application.subtotalAfter)
-    ) {
-      return yield* new DiscountClaimError({
-        operation: "reserve",
-        reason: "money_mismatch",
-        message: "A committed discount application has inconsistent money.",
-        codeId: getPromotionClaimId(claim),
-      });
-    }
+    yield* validateAppliedDiscountMoney(application, claim);
 
     if (
       claim?.kind === "discount_code" &&
@@ -164,11 +160,31 @@ export const persistOrderDiscountApplications = Effect.fn(
     return [] satisfies PersistedDiscountApplication[];
   }
 
+  return yield* persistDiscountApplicationRows({
+    tx: input.tx,
+    owner: input.owner,
+    applications: input.commitment.applications.map(
+      ({ application, provenance }) => ({
+        application,
+        product: input.commitment.product,
+        provenance,
+      })
+    ),
+  });
+});
+
+const persistDiscountApplicationRows = Effect.fn(
+  "OrderDiscountEvidence.persistApplicationRows"
+)(function* (input: {
+  readonly tx: DiscountEvidenceTransaction;
+  readonly applications: readonly DiscountApplicationEvidence[];
+  readonly owner: DiscountEvidenceOwner;
+}) {
   return yield* input.tx
     .insert(discountApplications)
     .values(
-      input.commitment.applications.map(
-        ({ application, provenance }, sequence) => ({
+      input.applications.map(
+        ({ application, product, provenance }, sequence) => ({
           orderId: input.owner.orderId,
           paymentAttemptId:
             input.owner.kind === "reservation_attempt"
@@ -182,7 +198,7 @@ export const persistOrderDiscountApplications = Effect.fn(
           publicDiscountId: application.discount.id,
           label: application.discount.label,
           adjustment: application.discount.adjustment,
-          productIdentity: input.commitment.product,
+          productIdentity: product,
           subtotalBeforeValue: application.subtotalBefore.value,
           subtotalBeforeExponent: application.subtotalBefore.exponent,
           subtotalBeforeCurrency: application.subtotalBefore.currency,
@@ -220,23 +236,28 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
 )(function* (input: {
   readonly tx: DiscountEvidenceTransaction;
   readonly orderId: OrderId;
-  readonly commitment: DiscountCommitment;
+  readonly commitment: GoodsBasketDiscountCommitment;
   readonly locale: Locale;
   readonly issuedAt: Temporal.Instant;
 }) {
-  const commitment = getDiscountCommitmentPayload(input.commitment);
-  const claimedApplication = yield* validateOrderDiscountCommitment(commitment);
+  const commitment = getGoodsBasketDiscountCommitmentPayload(input.commitment);
 
   const [order] = yield* input.tx
     .select({
       dotyposCustomerId: orders.dotyposCustomerId,
+      fulfilledAt: orders.fulfilledAt,
       kind: orders.kind,
     })
     .from(orders)
     .where(eq(orders.id, input.orderId))
     .limit(1)
     .for("update");
-  if (!order || order.kind !== "goods") {
+  if (
+    !order ||
+    order.kind !== "goods" ||
+    !order.fulfilledAt ||
+    Temporal.Instant.compare(order.fulfilledAt, input.issuedAt) !== 0
+  ) {
     return yield* new OrderDiscountEvidenceStateError({
       orderId: input.orderId,
       message: "Issued-goods discount evidence requires a goods order.",
@@ -245,6 +266,7 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
 
   const lines = yield* input.tx
     .select({
+      sequence: orderLines.sequence,
       productIdentity: orderLines.productIdentity,
       undiscountedTotalValue: orderLines.undiscountedTotalValue,
       payableTotalValue: orderLines.payableTotalValue,
@@ -253,71 +275,12 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
     })
     .from(orderLines)
     .where(eq(orderLines.orderId, input.orderId))
+    .orderBy(orderLines.sequence)
     .for("update");
-  const committedProductKey = getWorkspaceProductKey(commitment.product);
-  const matchingLines = lines.filter(({ productIdentity }) => {
-    const product = Option.getOrUndefined(
-      Schema.decodeUnknownOption(workspaceProductIdentitySchema, {
-        onExcessProperty: "error",
-      })(productIdentity)
-    );
-    return product
-      ? getWorkspaceProductKey(product) === committedProductKey
-      : false;
+  const validated = yield* validateIssuedGoodsBasketDiscountCommitment({
+    commitment,
+    lines,
   });
-  if (matchingLines.length === 0) {
-    return yield* new DiscountClaimError({
-      operation: "redeem",
-      reason: "product_ineligible",
-      message: "The committed product is not present in the issued order.",
-      codeId: getPromotionClaimId(claimedApplication?.claim),
-    });
-  }
-
-  const firstSubtotal = commitment.applications[0]?.application.subtotalBefore;
-  const finalSubtotal =
-    commitment.applications.at(-1)?.application.subtotalAfter;
-  const lineUnit = matchingLines[0];
-  const undiscountedTotal = matchingLines.reduce(
-    (total, line) => total + line.undiscountedTotalValue,
-    0
-  );
-  const payableTotal = matchingLines.reduce(
-    (total, line) => total + line.payableTotalValue,
-    0
-  );
-  if (
-    (firstSubtotal &&
-      (!lineUnit ||
-        firstSubtotal.currency !== lineUnit.currency ||
-        firstSubtotal.exponent !== lineUnit.amountExponent ||
-        firstSubtotal.value !== undiscountedTotal ||
-        !finalSubtotal ||
-        finalSubtotal.currency !== lineUnit.currency ||
-        finalSubtotal.exponent !== lineUnit.amountExponent ||
-        finalSubtotal.value !== payableTotal ||
-        matchingLines.some(
-          (line) =>
-            line.currency !== lineUnit.currency ||
-            line.amountExponent !== lineUnit.amountExponent
-        ))) ||
-    commitment.applications.some(
-      ({ application }, index) =>
-        index > 0 &&
-        !workspaceMoneyEquals(
-          application.subtotalBefore,
-          commitment.applications[index - 1]?.application.subtotalAfter ??
-            application.subtotalBefore
-        )
-    )
-  ) {
-    return yield* new DiscountClaimError({
-      operation: "redeem",
-      reason: "money_mismatch",
-      message: "The discount commitment does not reconcile with the order.",
-      codeId: getPromotionClaimId(claimedApplication?.claim),
-    });
-  }
 
   const storedApplicationRows = yield* input.tx
     .select()
@@ -332,7 +295,10 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
 
   if (
     storedApplicationRows.length > 0 &&
-    !storedApplicationsMatchCommitment(storedApplicationRows, commitment)
+    !storedApplicationsMatchEvidence(
+      storedApplicationRows,
+      validated.applications
+    )
   ) {
     return yield* new OrderDiscountEvidenceStateError({
       orderId: input.orderId,
@@ -342,30 +308,22 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
 
   const persistedRows =
     storedApplicationRows.length === 0
-      ? yield* persistOrderDiscountApplications({
+      ? yield* persistDiscountApplicationRows({
           tx: input.tx,
-          commitment,
+          applications: validated.applications,
           owner: { kind: "issued_goods", orderId: input.orderId },
         })
       : storedApplicationRows.map(({ id, sequence }) => ({ id, sequence }));
-  if (!claimedApplication) return persistedRows;
-
-  const applicationId = persistedRows.find(
-    ({ sequence }) => sequence === claimedApplication.index
-  )?.id;
-  if (!applicationId) {
-    return yield* new OrderDiscountEvidenceStateError({
-      orderId: input.orderId,
-      message: "The claimed discount application was not persisted.",
-    });
-  }
 
   const [existingDiscountClaims, existingVoucherClaims] = yield* Effect.all([
     input.tx
       .select({
         applicationId: discountCodeRedemptions.applicationId,
+        appliedAmountValue: discountCodeRedemptions.appliedAmountValue,
         codeId: discountCodeRedemptions.codeId,
         dotyposCustomerId: discountCodeRedemptions.dotyposCustomerId,
+        redeemedAt: discountCodeRedemptions.redeemedAt,
+        reservedAt: discountCodeRedemptions.reservedAt,
         state: discountCodeRedemptions.state,
       })
       .from(discountCodeRedemptions)
@@ -379,8 +337,11 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
     input.tx
       .select({
         applicationId: voucherRedemptions.applicationId,
+        appliedAmountValue: voucherRedemptions.appliedAmountValue,
         voucherId: voucherRedemptions.voucherId,
         dotyposCustomerId: voucherRedemptions.dotyposCustomerId,
+        redeemedAt: voucherRedemptions.redeemedAt,
+        reservedAt: voucherRedemptions.reservedAt,
         state: voucherRedemptions.state,
       })
       .from(voucherRedemptions)
@@ -392,6 +353,16 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
       )
       .limit(1),
   ]);
+  const claimedApplication = validated.claimedApplication;
+  if (!claimedApplication) {
+    if (existingDiscountClaims[0] || existingVoucherClaims[0]) {
+      return yield* new OrderDiscountEvidenceStateError({
+        orderId: input.orderId,
+        message: "Issued promotion claim conflicts with the stored order.",
+      });
+    }
+    return persistedRows;
+  }
   if (existingDiscountClaims[0] || existingVoucherClaims[0]) {
     const existing =
       claimedApplication.claim.kind === "discount_code"
@@ -409,9 +380,12 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
     if (
       !existing ||
       existingDiscountClaims.length + existingVoucherClaims.length !== 1 ||
-      existing.applicationId !== applicationId ||
+      existing.applicationId !== null ||
+      existing.appliedAmountValue !== claimedApplication.appliedAmount.value ||
       existing.dotyposCustomerId !== order.dotyposCustomerId ||
       existing.state !== "redeemed" ||
+      existing.reservedAt.toString() !== input.issuedAt.toString() ||
+      existing.redeemedAt?.toString() !== input.issuedAt.toString() ||
       actualClaimId !== expectedClaimId
     ) {
       return yield* new OrderDiscountEvidenceStateError({
@@ -426,7 +400,9 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
     tx: input.tx,
     claim: claimedApplication.claim,
     application: claimedApplication.application,
-    applicationId,
+    products: claimedApplication.products,
+    appliedAmount: claimedApplication.appliedAmount,
+    applicationId: null,
     orderId: input.orderId,
     ownership: { kind: "issued_goods", issuedAt: input.issuedAt },
     locale: input.locale,
@@ -435,18 +411,283 @@ export const persistIssuedGoodsDiscountEvidence = Effect.fn(
   return persistedRows;
 });
 
+export const validateIssuedGoodsBasketDiscountCommitment = Effect.fn(
+  "OrderDiscountEvidence.validateIssuedGoodsBasket"
+)(function* (input: {
+  readonly commitment: GoodsBasketDiscountCommitmentPayload;
+  readonly lines: readonly {
+    readonly sequence: number;
+    readonly productIdentity: unknown;
+    readonly undiscountedTotalValue: number;
+    readonly payableTotalValue: number;
+    readonly amountExponent: number;
+    readonly currency: string;
+  }[];
+}) {
+  const claims = input.commitment.applications.flatMap(({ claim }) =>
+    claim ? [claim] : []
+  );
+  if (claims.length > 1) {
+    return yield* claimError(
+      "redeem",
+      "claim_conflict",
+      "An order can consume at most one promotion claim.",
+      claims[1]
+    );
+  }
+  if (
+    input.lines.length === 0 ||
+    input.lines.length !== input.commitment.lines.length
+  ) {
+    return yield* goodsMoneyMismatch(claims[0]);
+  }
+
+  const storedProducts: DiscountCommitmentPayload["product"][] = [];
+  for (const [index, line] of input.lines.entries()) {
+    const product = Option.getOrUndefined(
+      Schema.decodeUnknownOption(workspaceProductIdentitySchema, {
+        onExcessProperty: "error",
+      })(line.productIdentity)
+    );
+    const committedLine = input.commitment.lines[index];
+    if (
+      !product ||
+      product.kind !== "goods" ||
+      !committedLine ||
+      committedLine.product.kind !== "goods" ||
+      line.sequence !== index ||
+      !workspaceProductIdentityEquals(product, committedLine.product)
+    ) {
+      return yield* claimError(
+        "redeem",
+        "product_ineligible",
+        "A committed goods product does not match its issued order line.",
+        claims[0]
+      );
+    }
+    if (
+      !moneyMatchesLine(
+        committedLine.undiscountedSubtotal,
+        line.undiscountedTotalValue,
+        line
+      ) ||
+      !moneyMatchesLine(
+        committedLine.payableSubtotal,
+        line.payableTotalValue,
+        line
+      )
+    ) {
+      return yield* goodsMoneyMismatch(claims[0]);
+    }
+    storedProducts.push(product);
+  }
+
+  const firstLine = input.lines[0]!;
+  const undiscountedTotal = input.lines.reduce(
+    (total, line) => total + BigInt(line.undiscountedTotalValue),
+    0n
+  );
+  const payableTotal = input.lines.reduce(
+    (total, line) => total + BigInt(line.payableTotalValue),
+    0n
+  );
+  const committedLineUndiscountedTotal = input.commitment.lines.reduce(
+    (total, line) => total + BigInt(line.undiscountedSubtotal.value),
+    0n
+  );
+  const committedLinePayableTotal = input.commitment.lines.reduce(
+    (total, line) => total + BigInt(line.payableSubtotal.value),
+    0n
+  );
+  if (
+    !moneyMatchesLine(
+      input.commitment.undiscountedTotal,
+      Number(undiscountedTotal),
+      firstLine
+    ) ||
+    !moneyMatchesLine(
+      input.commitment.payableTotal,
+      Number(payableTotal),
+      firstLine
+    ) ||
+    BigInt(input.commitment.undiscountedTotal.value) !==
+      committedLineUndiscountedTotal ||
+    BigInt(input.commitment.payableTotal.value) !== committedLinePayableTotal ||
+    input.lines.some(
+      (line) =>
+        line.currency !== firstLine.currency ||
+        line.amountExponent !== firstLine.amountExponent
+    )
+  ) {
+    return yield* goodsMoneyMismatch(claims[0]);
+  }
+
+  const remaining = input.lines.map(({ undiscountedTotalValue }) =>
+    BigInt(undiscountedTotalValue)
+  );
+  const applications: DiscountApplicationEvidence[] = [];
+  let totalApplied = 0n;
+  let claimedApplication: ClaimedGoodsBasketDiscountApplication | undefined;
+
+  for (const candidate of input.commitment.applications) {
+    const lineApplications = candidate.lineApplications.toSorted(
+      (left, right) => left.lineIndex - right.lineIndex
+    );
+    const firstApplication = lineApplications[0]?.application;
+    if (!firstApplication) return yield* goodsMoneyMismatch(candidate.claim);
+
+    const seenLineIndexes = new Set<number>();
+    let candidateApplied = 0n;
+    for (const lineApplication of lineApplications) {
+      const line = input.lines[lineApplication.lineIndex];
+      const storedProduct = storedProducts[lineApplication.lineIndex];
+      if (
+        !line ||
+        !storedProduct ||
+        seenLineIndexes.has(lineApplication.lineIndex) ||
+        !workspaceProductIdentityEquals(
+          lineApplication.product,
+          storedProduct
+        ) ||
+        !discountApplicationMetadataEquals(
+          lineApplication.application,
+          firstApplication
+        )
+      ) {
+        return yield* claimError(
+          "redeem",
+          "product_ineligible",
+          "A committed discount allocation does not match its goods line.",
+          candidate.claim
+        );
+      }
+      seenLineIndexes.add(lineApplication.lineIndex);
+      yield* validateAppliedDiscountMoney(
+        lineApplication.application,
+        candidate.claim
+      );
+      if (
+        !moneyMatchesLine(
+          lineApplication.application.subtotalBefore,
+          Number(remaining[lineApplication.lineIndex]),
+          line
+        )
+      ) {
+        return yield* goodsMoneyMismatch(candidate.claim);
+      }
+
+      remaining[lineApplication.lineIndex] = BigInt(
+        lineApplication.application.subtotalAfter.value
+      );
+      candidateApplied += BigInt(lineApplication.application.amount.value);
+      totalApplied += BigInt(lineApplication.application.amount.value);
+      applications.push({
+        application: lineApplication.application,
+        product: lineApplication.product,
+        provenance: candidate.provenance,
+      });
+    }
+
+    const candidateClaim = candidate.claim;
+    if (candidateClaim) {
+      if (
+        candidateClaim.kind === "discount_code" &&
+        !lineApplications.some(({ product }) =>
+          workspaceProductIdentityEquals(product, candidateClaim.product)
+        )
+      ) {
+        return yield* claimError(
+          "redeem",
+          "product_ineligible",
+          "The discount-code claim does not identify an allocated product.",
+          candidateClaim
+        );
+      }
+      if (candidateApplied > BigInt(Number.MAX_SAFE_INTEGER)) {
+        return yield* goodsMoneyMismatch(candidateClaim);
+      }
+      claimedApplication = {
+        application: firstApplication,
+        appliedAmount: workspaceMoneyWithValue(
+          Number(candidateApplied),
+          firstApplication.amount
+        ),
+        claim: candidateClaim,
+        products: lineApplications.map(({ product }) => product),
+      };
+    }
+  }
+
+  if (
+    input.lines.some(
+      (line, index) => remaining[index] !== BigInt(line.payableTotalValue)
+    ) ||
+    undiscountedTotal - payableTotal !== totalApplied
+  ) {
+    return yield* goodsMoneyMismatch(claims[0]);
+  }
+
+  return { applications, claimedApplication };
+});
+
+const moneyMatchesLine = (
+  money: WorkspaceMoney,
+  value: number,
+  line: { readonly amountExponent: number; readonly currency: string }
+) =>
+  Number.isSafeInteger(value) &&
+  money.value === value &&
+  money.exponent === line.amountExponent &&
+  money.currency === line.currency;
+
+const goodsMoneyMismatch = (claim?: DiscountClaimInstruction) =>
+  claimError(
+    "redeem",
+    "money_mismatch",
+    "The basket discount commitment does not reconcile with the order.",
+    claim
+  );
+
+const discountApplicationMetadataEquals = (
+  left: AppliedDiscount,
+  right: AppliedDiscount
+) =>
+  left.discount.id === right.discount.id &&
+  left.discount.label === right.discount.label &&
+  discountAdjustmentsEqual(
+    left.discount.adjustment,
+    right.discount.adjustment
+  ) &&
+  left.discount.expiresAt === right.discount.expiresAt &&
+  left.discount.countdownStartsAt === right.discount.countdownStartsAt;
+
 export const admitOrderDiscountClaim = Effect.fn(
   "OrderDiscountEvidence.admitClaim"
 )(function* (input: {
   readonly tx: DiscountEvidenceTransaction;
   readonly claim: DiscountClaimInstruction;
   readonly application: AppliedDiscount;
-  readonly applicationId: DiscountApplicationId;
+  readonly products?: readonly DiscountCommitmentPayload["product"][];
+  readonly appliedAmount?: WorkspaceMoney;
+  readonly applicationId: DiscountApplicationId | null;
   readonly orderId: OrderId;
   readonly ownership: DiscountClaimOwnership;
   readonly locale: Locale;
   readonly orderCustomerId: DotyposCustomerId;
 }) {
+  if (
+    (input.ownership.kind === "reservation_attempt" &&
+      input.applicationId === null) ||
+    (input.ownership.kind === "issued_goods" &&
+      (input.applicationId !== null || !input.appliedAmount))
+  ) {
+    return yield* claimError(
+      "reserve",
+      "claim_conflict",
+      "The promotion claim ownership is inconsistent.",
+      input.claim
+    );
+  }
   if (input.orderCustomerId !== input.claim.dotyposCustomerId) {
     return yield* claimError(
       "reserve",
@@ -589,6 +830,7 @@ export const admitOrderDiscountClaim = Effect.fn(
           claim,
           code,
           promotion,
+          products: input.products ?? [claim.product],
         }),
       voucher: ({ claim, voucher, promotion }) =>
         validateVoucherClaim({
@@ -596,6 +838,7 @@ export const admitOrderDiscountClaim = Effect.fn(
           claim,
           voucher,
           promotion,
+          appliedAmount: input.appliedAmount ?? input.application.amount,
         }),
     })
   );
@@ -673,6 +916,10 @@ export const admitOrderDiscountClaim = Effect.fn(
 
   const claimValues = {
     applicationId: input.applicationId,
+    appliedAmountValue:
+      input.ownership.kind === "issued_goods"
+        ? input.appliedAmount?.value
+        : null,
     orderId: input.orderId,
     paymentAttemptId:
       input.ownership.kind === "reservation_attempt"
@@ -726,6 +973,7 @@ const validateStoredDiscountClaim = Effect.fn(
   readonly promotion: typeof promotionCodes.$inferSelect;
   readonly application: AppliedDiscount;
   readonly locale: Locale;
+  readonly products: readonly DiscountCommitmentPayload["product"][];
 }) {
   const [definition] = yield* input.tx
     .select()
@@ -769,8 +1017,10 @@ const validateStoredDiscountClaim = Effect.fn(
     )
   );
   if (
-    !currentDefinition.products.some((productTarget) =>
-      workspaceProductTargetMatches(productTarget, input.claim.product)
+    !input.products.every((product) =>
+      currentDefinition.products.some((productTarget) =>
+        workspaceProductTargetMatches(productTarget, product)
+      )
     )
   ) {
     return yield* claimError(
@@ -810,14 +1060,15 @@ const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
     readonly voucher: typeof vouchers.$inferSelect;
     readonly promotion: typeof promotionCodes.$inferSelect;
     readonly application: AppliedDiscount;
+    readonly appliedAmount: WorkspaceMoney;
     readonly locale: Locale;
   }) {
     const [usage] = yield* input.tx
       .select({
-        value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+        value: sql<number>`coalesce(sum(${voucherRedemptionAppliedAmountValue}), 0)::integer`,
       })
       .from(voucherRedemptions)
-      .innerJoin(
+      .leftJoin(
         discountApplications,
         eq(discountApplications.id, voucherRedemptions.applicationId)
       )
@@ -842,7 +1093,14 @@ const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
       !workspaceMoneyEquals(availableAmount, input.claim.availableAmount) ||
       adjustment.kind !== "fixed" ||
       !workspaceMoneyEquals(adjustment.amount, availableAmount) ||
-      input.application.amount.value > availableAmount.value ||
+      !workspaceMoneyEquals(
+        workspaceMoneyWithValue(
+          input.appliedAmount.value,
+          input.application.amount
+        ),
+        input.appliedAmount
+      ) ||
+      input.appliedAmount.value > availableAmount.value ||
       input.application.discount.id !== discountId ||
       input.application.discount.label !==
         m.checkoutVoucherLabel({}, { locale: input.locale }) ||
@@ -1024,6 +1282,14 @@ export const redeemAttemptDiscountClaim = Effect.fn(
       });
     }
 
+    if (claim.applicationId === null) {
+      return yield* new DiscountClaimError({
+        operation: "redeem",
+        reason: "claim_conflict",
+        message: "A releasable voucher claim must reference its application.",
+        codeId: claim.id,
+      });
+    }
     const [[application], [usage]] = yield* Effect.all([
       input.tx
         .select({
@@ -1036,10 +1302,10 @@ export const redeemAttemptDiscountClaim = Effect.fn(
         .limit(1),
       input.tx
         .select({
-          value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+          value: sql<number>`coalesce(sum(${voucherRedemptionAppliedAmountValue}), 0)::integer`,
         })
         .from(voucherRedemptions)
-        .innerJoin(
+        .leftJoin(
           discountApplications,
           eq(discountApplications.id, voucherRedemptions.applicationId)
         )
@@ -1202,22 +1468,48 @@ const claimError = (
     codeId: getPromotionClaimId(claim),
   });
 
-const storedApplicationsMatchCommitment = (
+const validateAppliedDiscountMoney = Effect.fn(
+  "OrderDiscountEvidence.validateAppliedMoney"
+)(function* (application: AppliedDiscount, claim?: DiscountClaimInstruction) {
+  const amountInSubtotalUnit = workspaceMoneyWithValue(
+    application.amount.value,
+    application.subtotalBefore
+  );
+  const expectedSubtotalAfter = workspaceMoneyWithValue(
+    application.subtotalBefore.value - application.amount.value,
+    application.subtotalBefore
+  );
+  if (
+    application.subtotalBefore.value <= 0 ||
+    application.amount.value <= 0 ||
+    application.subtotalAfter.value < 0 ||
+    !workspaceMoneyEquals(amountInSubtotalUnit, application.amount) ||
+    !workspaceMoneyEquals(expectedSubtotalAfter, application.subtotalAfter)
+  ) {
+    return yield* claimError(
+      "reserve",
+      "money_mismatch",
+      "A committed discount application has inconsistent money.",
+      claim
+    );
+  }
+});
+
+const storedApplicationsMatchEvidence = (
   rows: readonly (typeof discountApplications.$inferSelect)[],
-  commitment: DiscountCommitmentPayload
+  applications: readonly DiscountApplicationEvidence[]
 ): boolean =>
-  rows.length === commitment.applications.length &&
+  rows.length === applications.length &&
   rows.every((row) => {
-    const committed = commitment.applications[row.sequence];
+    const committed = applications[row.sequence];
     if (!committed) return false;
-    const { application, provenance } = committed;
+    const { application, product, provenance } = committed;
     return (
       row.publicDiscountId === application.discount.id &&
       row.label === application.discount.label &&
       JSON.stringify(row.adjustment) ===
         JSON.stringify(application.discount.adjustment) &&
-      JSON.stringify(row.productIdentity) ===
-        JSON.stringify(commitment.product) &&
+      JSON.stringify(row.productIdentity) === JSON.stringify(product) &&
       row.subtotalBeforeValue === application.subtotalBefore.value &&
       row.subtotalBeforeExponent === application.subtotalBefore.exponent &&
       row.subtotalBeforeCurrency === application.subtotalBefore.currency &&

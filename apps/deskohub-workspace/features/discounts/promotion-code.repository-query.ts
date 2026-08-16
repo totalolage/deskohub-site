@@ -5,6 +5,7 @@ import {
   discountApplications,
   discountCodeRedemptions,
   promotionCodeCustomers,
+  voucherRedemptionAppliedAmountValue,
   voucherRedemptions,
 } from "@/db/schema";
 import type {
@@ -66,10 +67,10 @@ export const buildVoucherAvailabilityQuery = (input: {
   input.db
     .select({
       customerHasReserved: sql<boolean>`coalesce(bool_or(${voucherRedemptions.dotyposCustomerId} = ${input.dotyposCustomerId} and ${voucherRedemptions.state} = 'reserved'), false)`,
-      usedValue: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+      usedValue: sql<number>`coalesce(sum(${voucherRedemptionAppliedAmountValue}), 0)::integer`,
     })
     .from(voucherRedemptions)
-    .innerJoin(
+    .leftJoin(
       discountApplications,
       eq(discountApplications.id, voucherRedemptions.applicationId)
     )

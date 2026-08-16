@@ -14,6 +14,7 @@ import {
   promotionCodeCustomers,
   promotionCodes,
   voucherRedemptions,
+  voucherRedemptionAppliedAmountValue,
   vouchers,
 } from "@/db/schema";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
@@ -279,10 +280,10 @@ export const seedDiscountE2EFixtures: Effect.Effect<
         ]) {
           const [voucherUsage] = yield* tx
             .select({
-              usedValue: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+              usedValue: sql<number>`coalesce(sum(${voucherRedemptionAppliedAmountValue}), 0)::integer`,
             })
             .from(voucherRedemptions)
-            .innerJoin(
+            .leftJoin(
               discountApplications,
               eq(discountApplications.id, voucherRedemptions.applicationId)
             )

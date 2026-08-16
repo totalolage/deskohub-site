@@ -4,7 +4,7 @@ import {
 } from "@/features/checkout/product-identity";
 import type { CalculatedGoodsBasketDiscountApplication } from "./basket-calculator";
 import type { CalculatedDiscountApplication } from "./calculator";
-import type { AppliedDiscount } from "./contracts";
+import type { AppliedDiscount, GoodsDiscountBasketQuote } from "./contracts";
 import type { DiscountClaimInstruction, DiscountProvenance } from "./provider";
 
 export interface DiscountCommitmentApplication {
@@ -35,6 +35,13 @@ class DiscountCommitmentValue {
 export type DiscountCommitment = DiscountCommitmentValue;
 
 export interface GoodsBasketDiscountCommitmentPayload {
+  readonly lines: readonly {
+    readonly product: WorkspaceProductIdentity;
+    readonly undiscountedSubtotal: GoodsDiscountBasketQuote["lines"][number]["discountableSubtotal"];
+    readonly payableSubtotal: GoodsDiscountBasketQuote["lines"][number]["discountedSubtotal"];
+  }[];
+  readonly undiscountedTotal: GoodsDiscountBasketQuote["discountableSubtotal"];
+  readonly payableTotal: GoodsDiscountBasketQuote["discountedSubtotal"];
   readonly applications: readonly {
     readonly lineApplications: CalculatedGoodsBasketDiscountApplication["lineApplications"];
     readonly provenance: DiscountProvenance;
@@ -79,9 +86,17 @@ export const getDiscountCommitmentPayload = (
 ): DiscountCommitmentPayload => commitment[readDiscountCommitment]();
 
 export const makeGoodsBasketDiscountCommitment = (input: {
+  readonly quote: GoodsDiscountBasketQuote;
   readonly applications: readonly CalculatedGoodsBasketDiscountApplication[];
 }): GoodsBasketDiscountCommitment =>
   new GoodsBasketDiscountCommitmentValue({
+    lines: input.quote.lines.map((line) => ({
+      product: getCanonicalWorkspaceProductIdentity(line.product),
+      undiscountedSubtotal: line.discountableSubtotal,
+      payableSubtotal: line.discountedSubtotal,
+    })),
+    undiscountedTotal: input.quote.discountableSubtotal,
+    payableTotal: input.quote.discountedSubtotal,
     applications: input.applications.map(({ candidate, lineApplications }) => ({
       lineApplications,
       provenance: candidate.provenance,
