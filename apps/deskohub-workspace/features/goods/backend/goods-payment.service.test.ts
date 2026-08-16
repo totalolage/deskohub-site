@@ -3,7 +3,9 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
+import { AccountingDocumentSnapshotStorageError } from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import { makeGoodsAccountingDocumentSnapshotInputForTest } from "@/features/accounting/invoice.test-utils";
+import { PaidOrderCompletionService } from "@/features/checkout/backend/fulfillment/paid-order-completion.service";
 import { OrderPaymentSessionService } from "@/features/checkout/backend/payment";
 import {
   GoodsOrderRepository,
@@ -51,14 +53,16 @@ const runPayment = async (
   result:
     | { readonly status: "redirect"; readonly redirectUrl: string }
     | { readonly status: "in_progress" }
-    | { readonly status: "paid" }
+    | { readonly status: "paid"; readonly changed?: boolean }
     | {
         readonly status: "outstanding_order";
         readonly orderId: typeof fixture.order.id;
       },
-  customer = fixture.customer
+  customer = fixture.customer,
+  paymentFailure?: AccountingDocumentSnapshotStorageError
 ) => {
   const startOrResume = mock(() => {
+    if (paymentFailure) return Effect.fail(paymentFailure);
     if (result.status === "redirect" || result.status === "in_progress") {
       return Effect.succeed(
         result.status === "redirect"
@@ -73,9 +77,10 @@ const runPayment = async (
     return Effect.succeed({
       status: "paid" as const,
       attempt: { id: "attempt-1" } as never,
-      changed: true,
+      changed: result.status === "paid" ? (result.changed ?? true) : true,
     });
   });
+  const complete = mock(() => Effect.void);
   const layer = GoodsPaymentService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -90,7 +95,8 @@ const runPayment = async (
         Layer.mock(DotyposService, {
           getCustomer: () => Effect.succeed(customer),
         }),
-        Layer.mock(OrderPaymentSessionService, { startOrResume })
+        Layer.mock(OrderPaymentSessionService, { startOrResume }),
+        Layer.mock(PaidOrderCompletionService, { complete })
       )
     )
   );
@@ -103,7 +109,7 @@ const runPayment = async (
       billing: fixture.billing,
     });
   }).pipe(Effect.provide(layer), Effect.runPromise);
-  return { actual, startOrResume };
+  return { actual, complete, startOrResume };
 };
 
 describe("GoodsPaymentService", () => {
@@ -179,6 +185,30 @@ describe("GoodsPaymentService", () => {
 
     const paid = await runPayment({ status: "paid" });
     expect(paid.actual).toEqual({ status: "paid" });
+    expect(paid.complete).toHaveBeenCalledWith({
+      kind: "goods",
+      orderId: fixture.order.id,
+      paymentAttemptId: "attempt-1",
+    });
+
+    const retry = await runPayment({ status: "paid", changed: false });
+    expect(retry.actual).toEqual({ status: "paid" });
+    expect(retry.complete).toHaveBeenCalledTimes(1);
+  });
+
+  test("maps accounting snapshot storage failures to unavailable", async () => {
+    const failure = new AccountingDocumentSnapshotStorageError({
+      operation: "encrypt",
+      paymentReference: { type: "orderId", id: fixture.order.id },
+      message: "Synthetic key outage.",
+    });
+
+    await expect(
+      runPayment({ status: "in_progress" }, fixture.customer, failure)
+    ).rejects.toMatchObject({
+      _tag: "GoodsPaymentUnavailableError",
+      cause: failure,
+    });
   });
 
   test("requires server-side customer details before creating a session", async () => {

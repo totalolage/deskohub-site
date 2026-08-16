@@ -420,6 +420,74 @@ describe("NexiWebhookService", () => {
     expect(start).not.toHaveBeenCalled();
   });
 
+  test("does not complete a second successful goods attempt marked for refund", async () => {
+    const markPaid = mock(() =>
+      Effect.succeed({
+        attempt: {
+          ...attempt,
+          state: "paid" as const,
+          refundState: "required" as const,
+        },
+        changed: false,
+        timestamp: Temporal.Now.instant(),
+      })
+    );
+    const complete = mock(() => Effect.void);
+
+    await Effect.runPromise(
+      await buildWebhookEffect({
+        webhookEvents: {
+          insertReceived: mock(() =>
+            Effect.succeed({ status: "inserted", event: receivedEvent })
+          ),
+          linkPaymentAttempt: mock(() => Effect.void),
+          markProcessed: mock(() => Effect.void),
+          markFailed: mock(() => Effect.void),
+          claimRetry: mock(() => Effect.die("unused")),
+        },
+        paymentAttempts: {
+          findByProviderOrderId: mock(() =>
+            Effect.succeed({
+              ...attempt,
+              orderId: "goods-order-id",
+              workspaceReservationId: null,
+              state: "expired" as const,
+              failureCode: "superseded_by_paid_attempt",
+            })
+          ),
+        },
+        paymentLifecycle: {
+          createPendingNexiAttempt: mock(() => Effect.die("unused")),
+          attachProviderSession: mock(() => Effect.die("unused")),
+          markPaid,
+          markTerminal: mock(() => Effect.die("unused")),
+        },
+        orders: {
+          findById: mock(() =>
+            Effect.succeed({
+              ...order,
+              id: "goods-order-id",
+              kind: "goods" as const,
+              paymentState: "paid" as const,
+              fulfillmentState: "fulfilled" as const,
+              fulfilledAt: Temporal.Now.instant(),
+            })
+          ),
+        },
+        reservations: {
+          findById: mock(() => Effect.die("unused")),
+        },
+        nexi: {
+          verifyPaymentOutcome: mock(() => Effect.succeed(verification)),
+        },
+        completion: { complete },
+      })
+    );
+
+    expect(markPaid).toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   test("does not run goods completion for a terminal payment failure", async () => {
     const markTerminal = mock(() =>
       Effect.succeed({

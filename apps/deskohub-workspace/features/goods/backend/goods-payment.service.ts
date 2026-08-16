@@ -9,8 +9,8 @@ import {
   type GoodsBillingIntent,
   makeGoodsAccountingDocumentSnapshot,
 } from "@/features/accounting/accounting-document-snapshot";
-import { AccountingDocumentSnapshotStorageError } from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/checkout/vercel-preview-protection-bypass";
+import { PaidOrderCompletionService } from "@/features/checkout/backend/fulfillment/paid-order-completion.service";
 import {
   OrderPaymentSessionError,
   OrderPaymentSessionService,
@@ -64,6 +64,7 @@ export class GoodsPaymentService extends Context.Service<
     this,
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
+      const completion = yield* PaidOrderCompletionService;
       const orders = yield* GoodsOrderRepository;
       const payments = yield* OrderPaymentSessionService;
 
@@ -112,18 +113,33 @@ export class GoodsPaymentService extends Context.Service<
               })
               .pipe(Effect.mapError(mapPaymentSessionError));
 
-            return Match.value(result).pipe(
+            return yield* Match.value(result).pipe(
               Match.discriminatorsExhaustive("status")({
-                paid: () => ({ status: "paid" as const }),
-                redirect: ({ redirectUrl }) => ({
-                  status: "redirect" as const,
-                  redirectUrl,
-                }),
-                in_progress: () => ({ status: "in_progress" as const }),
-                outstanding_order: ({ orderId }) => ({
-                  status: "outstanding_order" as const,
-                  orderId,
-                }),
+                paid: ({ attempt }) =>
+                  completion
+                    .complete({
+                      kind: "goods",
+                      orderId: input.orderId,
+                      paymentAttemptId: attempt.id,
+                    })
+                    .pipe(
+                      Effect.mapError(
+                        (cause) => new GoodsPaymentUnavailableError({ cause })
+                      ),
+                      Effect.as({ status: "paid" as const })
+                    ),
+                redirect: ({ redirectUrl }) =>
+                  Effect.succeed({
+                    status: "redirect" as const,
+                    redirectUrl,
+                  }),
+                in_progress: () =>
+                  Effect.succeed({ status: "in_progress" as const }),
+                outstanding_order: ({ orderId }) =>
+                  Effect.succeed({
+                    status: "outstanding_order" as const,
+                    orderId,
+                  }),
               })
             );
           }
@@ -137,7 +153,8 @@ export class GoodsPaymentService extends Context.Service<
       Layer.mergeAll(
         WorkspaceDotyposLayer,
         GoodsOrderRepository.Live,
-        OrderPaymentSessionService.Live
+        OrderPaymentSessionService.Live,
+        PaidOrderCompletionService.Live
       )
     )
   );
@@ -205,7 +222,6 @@ const mapOrderEvidenceError = (cause: unknown) => {
 
 const mapPaymentSessionError = (cause: unknown) =>
   cause instanceof PaymentLifecycleStateError ||
-  cause instanceof AccountingDocumentSnapshotStorageError ||
   cause instanceof OrderPaymentSessionError
     ? new GoodsPaymentConflictError({ cause })
     : new GoodsPaymentUnavailableError({ cause });

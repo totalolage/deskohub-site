@@ -1146,10 +1146,40 @@ export class PaymentLifecycleRepository extends Context.Service<
                 ),
                 Match.exhaustive
               );
+              const isSupersededGoodsAttempt =
+                lockedOrder.kind === "goods" &&
+                lockedOrder.activePaymentAttemptId !== input.id;
+              const requiresRefund =
+                isSupersededGoodsAttempt && lockedOrder.paymentState === "paid";
+              const replacesActiveAttempt =
+                isSupersededGoodsAttempt && lockedOrder.paymentState !== "paid";
+              if (
+                replacesActiveAttempt &&
+                !["failed", "cancelled", "expired", "paid"].includes(
+                  (yield* tx
+                    .select({ state: paymentAttempts.state })
+                    .from(paymentAttempts)
+                    .where(
+                      and(
+                        eq(paymentAttempts.id, input.id),
+                        eq(paymentAttempts.orderId, input.orderId)
+                      )
+                    )
+                    .limit(1)
+                    .for("update"))[0]?.state ?? ""
+                )
+              ) {
+                return yield* lifecycleStateError(
+                  "markPaid",
+                  { type: "paymentAttemptId", id: input.id },
+                  "Only a terminal superseded goods attempt can replace the active attempt."
+                );
+              }
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
                   state: "paid",
+                  ...(requiresRefund && { refundState: "required" }),
                   lastWebhookEventId: input.webhookEventId,
                   lastProviderOperationId: input.providerOperationId,
                   lastProviderStatus: input.providerStatus,
@@ -1173,9 +1203,47 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
+              if (requiresRefund) {
+                return {
+                  attempt: toPaymentAttempt(attempt),
+                  changed: false,
+                  timestamp: lockedOrder.paidAt ?? input.paidAt,
+                };
+              }
+
+              if (replacesActiveAttempt) {
+                if (!lockedOrder.activePaymentAttemptId) {
+                  return yield* lifecycleStateError(
+                    "markPaid",
+                    { type: "paymentAttemptId", id: input.id },
+                    "A superseded goods payment has no active replacement attempt."
+                  );
+                }
+                yield* tx
+                  .update(paymentAttempts)
+                  .set({
+                    state: "expired",
+                    failureCode: "superseded_by_paid_attempt",
+                    updatedAt: input.paidAt,
+                  })
+                  .where(
+                    and(
+                      eq(
+                        paymentAttempts.id,
+                        lockedOrder.activePaymentAttemptId
+                      ),
+                      eq(paymentAttempts.orderId, input.orderId),
+                      inArray(paymentAttempts.state, ["created", "pending"])
+                    )
+                  );
+              }
+
               const [changedOrder] = yield* tx
                 .update(orders)
                 .set({
+                  ...(replacesActiveAttempt && {
+                    activePaymentAttemptId: input.id,
+                  }),
                   paymentState: "paid",
                   paidAt: input.paidAt,
                   updatedAt: input.paidAt,
@@ -1197,7 +1265,12 @@ export class PaymentLifecycleRepository extends Context.Service<
                       ),
                       Match.exhaustive
                     ),
-                    eq(orders.activePaymentAttemptId, input.id)
+                    eq(
+                      orders.activePaymentAttemptId,
+                      replacesActiveAttempt
+                        ? lockedOrder.activePaymentAttemptId!
+                        : input.id
+                    )
                   )
                 )
                 .returning({ kind: orders.kind, paidAt: orders.paidAt });
@@ -1281,12 +1354,16 @@ export class PaymentLifecycleRepository extends Context.Service<
 
           return yield* db.transaction((tx) =>
             Effect.gen(function* () {
-              yield* lockOrderForPaymentTransition({
+              const lockedOrder = yield* lockOrderForPaymentTransition({
                 tx,
                 orderId: input.orderId,
                 paymentAttemptId: input.id,
                 operation: "markTerminal",
               });
+              const isSupersededPaidGoodsAttempt =
+                lockedOrder.kind === "goods" &&
+                lockedOrder.paymentState === "paid" &&
+                lockedOrder.activePaymentAttemptId !== input.id;
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -1301,11 +1378,18 @@ export class PaymentLifecycleRepository extends Context.Service<
                   and(
                     eq(paymentAttempts.id, input.id),
                     eq(paymentAttempts.orderId, input.orderId),
-                    inArray(paymentAttempts.state, [
-                      "created",
-                      "pending",
-                      input.state,
-                    ])
+                    inArray(
+                      paymentAttempts.state,
+                      isSupersededPaidGoodsAttempt
+                        ? [
+                            "created",
+                            "pending",
+                            "failed",
+                            "cancelled",
+                            "expired",
+                          ]
+                        : ["created", "pending", input.state]
+                    )
                   )
                 )
                 .returning();
@@ -1316,6 +1400,14 @@ export class PaymentLifecycleRepository extends Context.Service<
                   { type: "paymentAttemptId", id: input.id },
                   "Only a non-terminal or matching terminal attempt can mark an order terminal."
                 );
+              }
+
+              if (isSupersededPaidGoodsAttempt) {
+                return {
+                  attempt: toPaymentAttempt(attempt),
+                  changed: false,
+                  timestamp: attempt.updatedAt,
+                };
               }
 
               const [changedOrder] = yield* tx
