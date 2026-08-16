@@ -63,7 +63,7 @@ export function LandingPageHeroScrollScene({
       <Container
         className={cn(
           "mx-auto flex min-h-[calc(100dvh-var(--site-header-height)-var(--hero-bottom-section-height))] w-full flex-col items-center justify-center pb-28 text-center",
-          saleBanner && "pt-16 sm:pt-10"
+          "group-has-[[data-landing-page-sale-banner]]:pt-16 sm:group-has-[[data-landing-page-sale-banner]]:pt-10"
         )}
       >
         <motion.div
