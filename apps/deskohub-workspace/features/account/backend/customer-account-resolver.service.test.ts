@@ -5,12 +5,12 @@ import {
 } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
-import { CustomerAccountResolver } from "../index";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
   customerAccountUnavailable,
 } from "../customer-account";
+import { CustomerAccountResolver } from "../index";
 import {
   type CustomerAccountResolutionDependencies,
   resolveCustomerAccount,
