@@ -142,7 +142,6 @@ describe("CalendarDiscountProvider", () => {
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
         return yield* provider.discoverActiveSales({
-          at: Temporal.Instant.from("2026-07-20T12:00:00Z"),
           currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "cs-CZ",
         });
@@ -165,21 +164,24 @@ describe("CalendarDiscountProvider", () => {
       from: "2026-07-20",
       to: "2026-07-20",
     });
-    expect(result).toEqual([
-      expect.objectContaining({
-        discount: {
-          id: expect.any(String),
-          label: "Databázová sleva",
-          adjustment: {
-            kind: "fixed",
-            amount: { value: 5000, exponent: 2, currency: "CZK" },
+    expect(result).toEqual({
+      activeSales: [
+        expect.objectContaining({
+          discount: {
+            id: expect.any(String),
+            label: "Databázová sleva",
+            adjustment: {
+              kind: "fixed",
+              amount: { value: 5000, exponent: 2, currency: "CZK" },
+            },
+            countdownStartsAt: expect.any(String),
+            expiresAt: expect.any(String),
           },
-          countdownStartsAt: expect.any(String),
-          expiresAt: expect.any(String),
-        },
-        products,
-      }),
-    ]);
+          products,
+        }),
+      ],
+      complete: true,
+    });
     expect(JSON.stringify(result)).not.toContain("Operator calendar title");
     expect(JSON.stringify(result)).not.toContain(discountIdA);
   });
@@ -807,7 +809,6 @@ describe("CalendarDiscountProvider", () => {
           reservationDate: "2026-07-20",
         });
         const activeSalesAfterExpiry = yield* provider.discoverActiveSales({
-          at: Temporal.Instant.from("2026-08-01T22:00:00.500Z"),
           currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
         });
@@ -829,7 +830,7 @@ describe("CalendarDiscountProvider", () => {
 
     expect(result.beforeExpiry).toHaveLength(1);
     expect(result.cachedAfterExpiry).toEqual([]);
-    expect(result.activeSalesAfterExpiry).toEqual([]);
+    expect(result.activeSalesAfterExpiry.activeSales).toEqual([]);
     expect(result.freshAfterExpiry).toEqual([]);
     expect(listEvents).toHaveBeenCalledTimes(2);
   });

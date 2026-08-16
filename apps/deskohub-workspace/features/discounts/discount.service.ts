@@ -182,7 +182,10 @@ export class DiscountService extends Context.Service<
               enabled: releaseGates.calendarSales,
               operation: "discover_active_sales",
               provider: "calendar",
-              resolve: () => calendar.discoverActiveSales(input),
+              resolve: () =>
+                calendar
+                  .discoverActiveSales(input)
+                  .pipe(Effect.map(({ activeSales }) => activeSales)),
             })
           ),
           Effect.map(({ activeSales }) => activeSales)

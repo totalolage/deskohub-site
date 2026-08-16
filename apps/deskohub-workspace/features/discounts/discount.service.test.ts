@@ -148,7 +148,9 @@ describe("DiscountService", () => {
     true,
     false,
   ])("discovers active sales when the Calendar gate is %s", async (calendarSales) => {
-    const discoverActiveSales = mock(() => Effect.succeed([activeSale]));
+    const discoverActiveSales = mock(() =>
+      Effect.succeed({ activeSales: [activeSale], complete: true })
+    );
     const evaluate = mock(() =>
       Effect.succeed({
         calendarSales,
@@ -166,7 +168,6 @@ describe("DiscountService", () => {
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
         return yield* discounts.discoverActiveSales({
-          at: Temporal.Instant.from("2026-07-20T12:00:00Z"),
           currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
         });
@@ -212,7 +213,6 @@ describe("DiscountService", () => {
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
         return yield* discounts.discoverActiveSales({
-          at: Temporal.Instant.from("2026-07-20T12:00:00Z"),
           currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
         });

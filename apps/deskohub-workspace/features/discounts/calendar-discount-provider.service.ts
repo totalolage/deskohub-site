@@ -44,10 +44,15 @@ export type CalendarDiscountProviderInput = Pick<
   "locale" | "product" | "reservationDate"
 >;
 
+export interface ActiveSaleDiscoveryResult {
+  readonly activeSales: readonly ActiveSale[];
+  readonly complete: boolean;
+}
+
 export interface ICalendarDiscountProvider {
   readonly discoverActiveSales: (
     input: ActiveSaleDiscoveryInput
-  ) => Effect.Effect<readonly ActiveSale[], DiscountProviderError>;
+  ) => Effect.Effect<ActiveSaleDiscoveryResult, DiscountProviderError>;
   readonly discover: (
     input: CalendarDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
@@ -172,8 +177,16 @@ function makeCalendarDiscountProviderLayer(useSharedDiscovery: boolean) {
             Effect.bind("resolvedSales", ({ cacheKey }) =>
               Cache.get(salesCache, cacheKey)
             ),
+            Effect.bind("at", () =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map(Temporal.Instant.fromEpochMilliseconds)
+              )
+            ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
-            Effect.map(toActiveCalendarSales)
+            Effect.map(({ resolvedSales, ...activeSalesInput }) => ({
+              activeSales: toActiveCalendarSales(activeSalesInput),
+              complete: resolvedSales.complete,
+            }))
           ),
         (effect) =>
           effect.pipe(
