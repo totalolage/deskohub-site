@@ -8,6 +8,14 @@ export {
   GoodsCatalogUnavailableError,
 } from "./goods-catalog.service";
 export {
+  GoodsOrderCartChangedError,
+  GoodsOrderIssuanceConflictError,
+  GoodsOrderNotFoundError,
+  GoodsOrderService,
+  GoodsOrderUnavailableError,
+  type IssueGoodsOrderInput,
+} from "./goods-order.service";
+export {
   type GoodsQuoteAffirmation,
   GoodsQuoteChangedError,
   GoodsQuoteCustomerMismatchError,
@@ -16,11 +24,3 @@ export {
   getGoodsQuoteFingerprint,
 } from "./goods-quote.service";
 export { GoodsQuoteTokenError } from "./goods-quote-state";
-export {
-  GoodsOrderCartChangedError,
-  GoodsOrderIssuanceConflictError,
-  GoodsOrderNotFoundError,
-  GoodsOrderService,
-  GoodsOrderUnavailableError,
-  type IssueGoodsOrderInput,
-} from "./goods-order.service";
