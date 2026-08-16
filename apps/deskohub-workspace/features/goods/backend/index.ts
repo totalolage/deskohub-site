@@ -16,6 +16,12 @@ export {
   type IssueGoodsOrderInput,
 } from "./goods-order.service";
 export {
+  GoodsPaymentConflictError,
+  type GoodsPaymentResult,
+  GoodsPaymentService,
+  GoodsPaymentUnavailableError,
+} from "./goods-payment.service";
+export {
   type GoodsQuoteAffirmation,
   GoodsQuoteChangedError,
   GoodsQuoteCustomerMismatchError,

@@ -34,4 +34,18 @@ describe("getNexiHostedPaymentCustomer", () => {
       nationalNumber: "2025550123",
     });
   });
+
+  test("keeps provider phone optional", () => {
+    expect(
+      getNexiHostedPaymentCustomer({
+        id: "dotypos-customer-id",
+        name: "Katherine Johnson",
+        email: "katherine@example.com",
+      })
+    ).toEqual({
+      id: "dotypos-customer-id",
+      name: "Katherine Johnson",
+      email: "katherine@example.com",
+    });
+  });
 });

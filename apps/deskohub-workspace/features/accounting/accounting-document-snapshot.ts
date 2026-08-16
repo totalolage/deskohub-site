@@ -350,7 +350,10 @@ export const makeReservationAccountingDocumentSnapshot = (input: {
 
 export class GoodsAccountingDocumentSnapshotInputError extends Data.TaggedError(
   "GoodsAccountingDocumentSnapshotInputError"
-)<{ readonly message: string }> {}
+)<{
+  readonly reason: "billing_details_required" | "evidence_conflict";
+  readonly message: string;
+}> {}
 
 export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
   "AccountingDocumentSnapshot.makeGoods"
@@ -382,6 +385,7 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
     input.order.fulfilledAt === null
   ) {
     return yield* goodsSnapshotInputError(
+      "evidence_conflict",
       "A fulfilled goods order is required for an accounting snapshot."
     );
   }
@@ -391,6 +395,7 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
     input.lines.length !== input.displayedQuote.lines.length
   ) {
     return yield* goodsSnapshotInputError(
+      "evidence_conflict",
       "The goods order, customer, lines, and displayed quote do not match."
     );
   }
@@ -399,13 +404,17 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
     onExcessProperty: "error",
   })(input.billing).pipe(
     Effect.mapError(() =>
-      goodsSnapshotInputError("The goods billing intent is invalid.")
+      goodsSnapshotInputError(
+        "billing_details_required",
+        "The goods billing intent is invalid."
+      )
     )
   );
   const buyer = yield* getGoodsAccountingBuyer(input.customer, billing);
   const deliveryEmail = input.customer.email?.trim();
   if (!deliveryEmail) {
     return yield* goodsSnapshotInputError(
+      "billing_details_required",
       "The Dotypos customer has no invoice delivery email."
     );
   }
@@ -424,6 +433,7 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
           line.sequence !== sequence
         ) {
           return yield* goodsSnapshotInputError(
+            "evidence_conflict",
             "Goods order lines are incomplete or out of sequence."
           );
         }
@@ -433,6 +443,7 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
         )(line.productIdentity).pipe(
           Effect.mapError(() =>
             goodsSnapshotInputError(
+              "evidence_conflict",
               "A stored goods product identity is invalid."
             )
           )
@@ -457,6 +468,7 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
           })
         ) {
           return yield* goodsSnapshotInputError(
+            "evidence_conflict",
             "Displayed goods pricing does not match the immutable order lines."
           );
         }
@@ -488,6 +500,7 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
     )
   ) {
     return yield* goodsSnapshotInputError(
+      "evidence_conflict",
       "Displayed goods totals do not match the immutable order."
     );
   }
@@ -510,13 +523,18 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
     totals,
   }).pipe(
     Effect.mapError(() =>
-      goodsSnapshotInputError("The goods accounting snapshot is invalid.")
+      goodsSnapshotInputError(
+        "evidence_conflict",
+        "The goods accounting snapshot is invalid."
+      )
     )
   );
 });
 
-const goodsSnapshotInputError = (message: string) =>
-  new GoodsAccountingDocumentSnapshotInputError({ message });
+const goodsSnapshotInputError = (
+  reason: GoodsAccountingDocumentSnapshotInputError["reason"],
+  message: string
+) => new GoodsAccountingDocumentSnapshotInputError({ reason, message });
 
 const getGoodsAccountingBuyer = Effect.fn(
   "AccountingDocumentSnapshot.getGoodsBuyer"
@@ -528,6 +546,7 @@ const getGoodsAccountingBuyer = Effect.fn(
   if (billing.purpose === "personal" && billing.invoice === "none") {
     if (!personalName) {
       return yield* goodsSnapshotInputError(
+        "billing_details_required",
         "The Dotypos customer has no personal legal name."
       );
     }
@@ -559,6 +578,7 @@ const getGoodsAccountingBuyer = Effect.fn(
   })(candidate).pipe(
     Effect.mapError(() =>
       goodsSnapshotInputError(
+        "billing_details_required",
         "The Dotypos customer has incomplete invoice billing details."
       )
     )

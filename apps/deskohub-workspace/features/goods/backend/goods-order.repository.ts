@@ -5,7 +5,7 @@ import {
   type NexiCorrelationId,
   NexiCorrelationIdSchema,
 } from "@deskohub/nexi";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -14,6 +14,7 @@ import {
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
 import {
+  discountApplications,
   goodsCartItems,
   goodsCarts,
   type OrderRow,
@@ -24,7 +25,12 @@ import {
   type LegalEvidenceEventInputError,
   persistLegalEvidenceEvents,
 } from "@/features/checkout/backend/repositories/legal-evidence-event.repository";
-import type { GoodsBasketDiscountCommitment } from "@/features/discounts";
+import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
+import {
+  appliedDiscountCodec,
+  type GoodsBasketDiscountCommitment,
+  type GoodsDiscountBasketQuote,
+} from "@/features/discounts";
 import {
   type OrderDiscountEvidenceStateError,
   persistIssuedGoodsDiscountEvidence,
@@ -82,6 +88,15 @@ export type IssueGoodsOrderRepositoryInput = GoodsOrderIssuanceFacts & {
   readonly discountCommitment?: GoodsBasketDiscountCommitment;
 };
 
+export type GoodsOrderPaymentFacts = {
+  readonly order: Pick<
+    OrderRow,
+    "id" | "kind" | "dotyposCustomerId" | "fulfillmentState" | "fulfilledAt"
+  >;
+  readonly lines: readonly (typeof orderLines.$inferSelect)[];
+  readonly displayedQuote: GoodsDiscountBasketQuote;
+};
+
 export interface IGoodsOrderRepository {
   readonly issue: (
     input: IssueGoodsOrderRepositoryInput
@@ -100,6 +115,10 @@ export interface IGoodsOrderRepository {
     customerId: DotyposCustomerId,
     orderId: OrderId
   ) => Effect.Effect<GoodsOrderDetail, GoodsOrderRepositoryError>;
+  readonly getPaymentFacts: (
+    customerId: DotyposCustomerId,
+    orderId: OrderId
+  ) => Effect.Effect<GoodsOrderPaymentFacts, GoodsOrderRepositoryError>;
 }
 
 export class GoodsOrderRepository extends Context.Service<
@@ -126,6 +145,12 @@ export class GoodsOrderRepository extends Context.Service<
         ),
         get: Effect.fn("GoodsOrderRepository.get")((customerId, orderId) =>
           db.transaction((tx) => getGoodsOrder(tx, customerId, orderId))
+        ),
+        getPaymentFacts: Effect.fn("GoodsOrderRepository.getPaymentFacts")(
+          (customerId, orderId) =>
+            db.transaction((tx) =>
+              getGoodsOrderPaymentFacts(tx, customerId, orderId)
+            )
         ),
       } satisfies IGoodsOrderRepository;
     })
@@ -324,6 +349,236 @@ const getGoodsOrder = Effect.fn("GoodsOrderRepository.getTransaction")(
   }
 );
 
+const getGoodsOrderPaymentFacts = Effect.fn(
+  "GoodsOrderRepository.getPaymentFactsTransaction"
+)(function* (
+  tx: GoodsOrderTransaction,
+  customerId: DotyposCustomerId,
+  orderId: OrderId
+) {
+  const [order] = yield* tx
+    .select()
+    .from(orders)
+    .where(
+      and(
+        eq(orders.id, orderId),
+        eq(orders.kind, "goods"),
+        eq(orders.dotyposCustomerId, customerId)
+      )
+    )
+    .limit(1)
+    .for("share");
+  if (!order) return yield* new GoodsOrderNotFoundError({ orderId });
+
+  const [lines, applications] = yield* Effect.all([
+    tx
+      .select()
+      .from(orderLines)
+      .where(eq(orderLines.orderId, orderId))
+      .orderBy(orderLines.sequence),
+    tx
+      .select()
+      .from(discountApplications)
+      .where(
+        and(
+          eq(discountApplications.orderId, orderId),
+          isNull(discountApplications.paymentAttemptId)
+        )
+      )
+      .orderBy(discountApplications.sequence),
+  ]);
+
+  return {
+    order,
+    lines,
+    displayedQuote: yield* reconstructGoodsPaymentQuote({
+      orderId,
+      lines,
+      applications,
+    }),
+  } satisfies GoodsOrderPaymentFacts;
+});
+
+export const reconstructGoodsPaymentQuote = Effect.fn(
+  "GoodsOrderRepository.reconstructPaymentQuote"
+)(function* (input: {
+  readonly orderId: OrderId;
+  readonly lines: readonly (typeof orderLines.$inferSelect)[];
+  readonly applications: readonly (typeof discountApplications.$inferSelect)[];
+}) {
+  const lines = input.lines.toSorted(
+    (left, right) => left.sequence - right.sequence
+  );
+  if (
+    lines.length === 0 ||
+    lines.some(
+      (line, sequence) =>
+        line.orderId !== input.orderId || line.sequence !== sequence
+    ) ||
+    input.applications.some(
+      (application, sequence) =>
+        application.orderId !== input.orderId ||
+        application.paymentAttemptId !== null ||
+        application.workspaceReservationId !== null ||
+        application.sequence !== sequence
+    )
+  ) {
+    return yield* new GoodsOrderStoredDataError({
+      message: "Stored goods payment evidence is incomplete.",
+    });
+  }
+
+  const decodedApplications = yield* Effect.forEach(
+    input.applications,
+    (application) =>
+      decodeStoredGoodsProduct(application.productIdentity).pipe(
+        Effect.map((product) => ({ application, product }))
+      )
+  );
+  const decodedLines = yield* Effect.forEach(lines, (line) =>
+    decodeStoredGoodsProduct(line.productIdentity).pipe(
+      Effect.map((product) => ({ line, product }))
+    )
+  );
+  const productKey = (product: (typeof decodedLines)[number]["product"]) =>
+    JSON.stringify([product.categoryId, product.productId]);
+  const lineProductKeys = new Set(
+    decodedLines.map(({ product }) => productKey(product))
+  );
+  if (
+    lineProductKeys.size !== decodedLines.length ||
+    decodedApplications.some(
+      ({ product }) => !lineProductKeys.has(productKey(product))
+    )
+  ) {
+    return yield* new GoodsOrderStoredDataError({
+      message: "Stored goods payment products are inconsistent.",
+    });
+  }
+
+  const displayedLines = yield* Effect.forEach(
+    decodedLines,
+    ({ line, product }) =>
+      Effect.gen(function* () {
+        const applications = decodedApplications
+          .filter(
+            ({ product: candidate }) =>
+              candidate.categoryId === product.categoryId &&
+              candidate.productId === product.productId
+          )
+          .map(({ application }) => application);
+        const discounts = yield* Effect.forEach(applications, (application) =>
+          Schema.decodeUnknownEffect(appliedDiscountCodec, {
+            onExcessProperty: "error",
+          })({
+            discount: {
+              id: application.publicDiscountId,
+              label: application.label,
+              adjustment: application.adjustment,
+              ...(application.expiresAt && {
+                expiresAt: temporalInstantToIsoString(application.expiresAt),
+              }),
+              ...(application.countdownStartsAt && {
+                countdownStartsAt: temporalInstantToIsoString(
+                  application.countdownStartsAt
+                ),
+              }),
+            },
+            subtotalBefore: {
+              value: application.subtotalBeforeValue,
+              exponent: application.subtotalBeforeExponent,
+              currency: application.subtotalBeforeCurrency,
+            },
+            amount: {
+              value: application.appliedAmountValue,
+              exponent: application.appliedAmountExponent,
+              currency: application.appliedAmountCurrency,
+            },
+            subtotalAfter: {
+              value: application.subtotalAfterValue,
+              exponent: application.subtotalAfterExponent,
+              currency: application.subtotalAfterCurrency,
+            },
+          }).pipe(
+            Effect.mapError(
+              (cause) =>
+                new GoodsOrderStoredDataError({
+                  message: "Stored goods discount evidence is invalid.",
+                  cause,
+                })
+            )
+          )
+        );
+        const money = (value: number) => ({
+          value,
+          exponent: line.amountExponent,
+          currency: line.currency,
+        });
+        let remaining = money(line.undiscountedTotalValue);
+        for (const discount of discounts) {
+          if (!workspaceMoneyEquals(discount.subtotalBefore, remaining)) {
+            return yield* new GoodsOrderStoredDataError({
+              message: "Stored goods discount chain is inconsistent.",
+            });
+          }
+          remaining = discount.subtotalAfter;
+        }
+        if (!workspaceMoneyEquals(remaining, money(line.payableTotalValue))) {
+          return yield* new GoodsOrderStoredDataError({
+            message: "Stored goods discount total is inconsistent.",
+          });
+        }
+        return {
+          product,
+          discountableSubtotal: money(line.undiscountedTotalValue),
+          discounts,
+          totalDiscount: money(
+            line.undiscountedTotalValue - line.payableTotalValue
+          ),
+          discountedSubtotal: money(line.payableTotalValue),
+        };
+      })
+  );
+  const first = displayedLines[0]!;
+  const money = (value: number) => ({
+    value,
+    exponent: first.discountableSubtotal.exponent,
+    currency: first.discountableSubtotal.currency,
+  });
+  const undiscounted = displayedLines.reduce(
+    (sum, line) => sum + line.discountableSubtotal.value,
+    0
+  );
+  const payable = displayedLines.reduce(
+    (sum, line) => sum + line.discountedSubtotal.value,
+    0
+  );
+  return {
+    lines: displayedLines,
+    discountIds: [
+      ...new Set(
+        input.applications.map(({ publicDiscountId }) => publicDiscountId)
+      ),
+    ],
+    discountableSubtotal: money(undiscounted),
+    totalDiscount: money(undiscounted - payable),
+    discountedSubtotal: money(payable),
+  } satisfies GoodsDiscountBasketQuote;
+});
+
+const decodeStoredGoodsProduct = <T>(input: T) =>
+  Schema.decodeUnknownEffect(workspaceGoodsProductIdentitySchema, {
+    onExcessProperty: "error",
+  })(input).pipe(
+    Effect.mapError(
+      (cause) =>
+        new GoodsOrderStoredDataError({
+          message: "Stored goods product identity is invalid.",
+          cause,
+        })
+    )
+  );
+
 const loadGoodsOrderDetail = Effect.fn("GoodsOrderRepository.loadDetail")(
   function* (tx: GoodsOrderTransaction, order: OrderRow) {
     const lines = yield* loadGoodsOrderLines(tx, [order.id]);
@@ -340,18 +595,7 @@ const loadGoodsOrderLines = Effect.fn("GoodsOrderRepository.loadLines")(
       .orderBy(asc(orderLines.orderId), asc(orderLines.sequence));
     const result = new Map<OrderId, GoodsOrderLine[]>();
     for (const row of rows) {
-      const product = yield* Schema.decodeUnknownEffect(
-        workspaceGoodsProductIdentitySchema,
-        { onExcessProperty: "error" }
-      )(row.productIdentity).pipe(
-        Effect.mapError(
-          (cause) =>
-            new GoodsOrderStoredDataError({
-              message: "Stored goods product identity is invalid.",
-              cause,
-            })
-        )
-      );
+      const product = yield* decodeStoredGoodsProduct(row.productIdentity);
       const line: GoodsOrderLine = {
         product,
         description: row.description,

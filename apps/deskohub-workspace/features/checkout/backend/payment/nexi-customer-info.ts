@@ -9,16 +9,18 @@ export const getNexiHostedPaymentCustomer = (input: {
   readonly id: DotyposCustomerId;
   readonly name: string;
   readonly email: string;
-  readonly phone: string;
+  readonly phone?: string;
 }): HostedPaymentCustomer => {
-  const phone = parsePhoneNumber(input.phone, "CZ");
+  const phone = input.phone ? parsePhoneNumber(input.phone, "CZ") : undefined;
   return {
     id: NexiCustomerReferenceSchema.make(input.id),
     name: input.name,
     email: input.email,
-    mobilePhone: {
-      countryCallingCode: phone.countryCallingCode,
-      nationalNumber: phone.nationalNumber,
-    },
+    ...(phone && {
+      mobilePhone: {
+        countryCallingCode: phone.countryCallingCode,
+        nationalNumber: phone.nationalNumber,
+      },
+    }),
   };
 };
