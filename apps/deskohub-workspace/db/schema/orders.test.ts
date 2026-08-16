@@ -11,7 +11,7 @@ const issuanceFingerprintMigrationUrl = new URL(
   import.meta.url
 );
 const writeOffMigrationUrl = new URL(
-  "../migrations/20260816210507_windy_hedge_knight/migration.sql",
+  "../migrations/20260821225605_melodic_ulik/migration.sql",
   import.meta.url
 );
 

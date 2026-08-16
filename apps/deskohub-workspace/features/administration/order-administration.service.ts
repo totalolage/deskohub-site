@@ -420,6 +420,13 @@ export class OrderAdministrationService extends Context.Service<
                 message: "Only fulfilled goods orders can be written off.",
               });
             }
+            if (order.paymentState === "pending") {
+              return yield* new OrderWriteOffError({
+                reason: "payment_in_progress",
+                message:
+                  "An order with payment in progress cannot be written off.",
+              });
+            }
             if (order.paymentState === "paid") {
               return yield* new OrderWriteOffError({
                 reason: "paid",

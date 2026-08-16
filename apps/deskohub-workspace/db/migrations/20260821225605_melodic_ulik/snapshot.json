@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "bf3649b2-8248-43e9-8008-5605c58a38d1",
+  "id": "0b1d5561-86a2-4d61-a882-df1563930ff0",
   "prevIds": [
-    "0055593e-6d9d-470a-ad8d-86949436ec89"
+    "fc609662-b577-4413-a5ec-6f1c0468dec8"
   ],
   "ddl": [
     {
@@ -141,6 +141,12 @@
     {
       "isRlsEnabled": false,
       "name": "legal_evidence_events",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "manual_invoice_creation_requests",
       "entityType": "tables",
       "schema": "public"
     },
@@ -383,6 +389,19 @@
       "default": null,
       "generated": null,
       "identity": null,
+      "name": "approved_by",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_authentication_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
       "name": "grant_token",
       "entityType": "columns",
       "schema": "public",
@@ -514,6 +533,19 @@
       "generated": null,
       "identity": null,
       "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "approved_by",
       "entityType": "columns",
       "schema": "public",
       "table": "cli_sessions"
@@ -2224,7 +2256,7 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": true,
+      "notNull": false,
       "dimensions": 0,
       "default": null,
       "generated": null,
@@ -2668,6 +2700,71 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "invoice_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "key_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "request_digest",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "claimed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
       "default": "uuid_generate_v7()",
       "generated": null,
       "identity": null,
@@ -2867,6 +2964,19 @@
       "generated": null,
       "identity": null,
       "name": "dotypos_customer_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "issuance_fingerprint",
       "entityType": "columns",
       "schema": "public",
       "table": "orders"
@@ -5942,7 +6052,7 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
+      "onDelete": "NO ACTION",
       "name": "order_lines_order_id_orders_id_fkey",
       "entityType": "fks",
       "schema": "public",
@@ -6270,6 +6380,16 @@
     },
     {
       "columns": [
+        "invoice_id"
+      ],
+      "nameExplicit": false,
+      "name": "manual_invoice_creation_requests_pkey",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -6451,7 +6571,7 @@
       "table": "cli_authentication_requests"
     },
     {
-      "value": "(\n        \"approved_at\" is null\n        and \"grant_token\" is null\n        and \"grant_expires_at\" is null\n      ) or (\n        \"approved_at\" is not null\n        and \"grant_expires_at\" is not null\n      )",
+      "value": "(\n        \"approved_at\" is null\n        and \"approved_by\" is null\n        and \"grant_token\" is null\n        and \"grant_expires_at\" is null\n      ) or (\n        \"approved_at\" is not null\n        and \"grant_expires_at\" is not null\n      )",
       "name": "cli_authentication_requests_approval_check",
       "entityType": "checks",
       "schema": "public",
@@ -6516,6 +6636,13 @@
     {
       "value": "\"revoked_at\" is null or \"revoked_at\" >= \"created_at\"",
       "name": "cli_sessions_revoked_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "value": "\"approved_by\" is null or char_length(btrim(\"approved_by\")) between 1 and 80",
+      "name": "cli_sessions_approved_by_check",
       "entityType": "checks",
       "schema": "public",
       "table": "cli_sessions"
@@ -6619,7 +6746,7 @@
       "table": "discount_code_redemptions"
     },
     {
-      "value": "\"application_id\" is not null or (\n        \"order_id\" is not null\n        and \"payment_attempt_id\" is null\n        and \"applied_amount_value\" > 0\n      )",
+      "value": "\"application_id\" is not null or (\n        \"order_id\" is not null\n        and \"payment_attempt_id\" is null\n        and \"applied_amount_value\" is not null\n        and \"applied_amount_value\" > 0\n      )",
       "name": "discount_code_redemptions_application_check",
       "entityType": "checks",
       "schema": "public",
@@ -6668,7 +6795,7 @@
       "table": "voucher_redemptions"
     },
     {
-      "value": "\"application_id\" is not null or (\n        \"order_id\" is not null\n        and \"payment_attempt_id\" is null\n        and \"applied_amount_value\" > 0\n      )",
+      "value": "\"application_id\" is not null or (\n        \"order_id\" is not null\n        and \"payment_attempt_id\" is null\n        and \"applied_amount_value\" is not null\n        and \"applied_amount_value\" > 0\n      )",
       "name": "voucher_redemptions_application_check",
       "entityType": "checks",
       "schema": "public",
@@ -6871,13 +6998,6 @@
       "table": "invoices"
     },
     {
-      "value": "\"order_id\" is not null or \"workspace_reservation_id\" is not null",
-      "name": "invoices_order_reference_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "invoices"
-    },
-    {
       "value": "\"workspace_reservation_id\" is null or \"order_id\" is null or \"workspace_reservation_id\" = \"order_id\"",
       "name": "invoices_reservation_order_match_check",
       "entityType": "checks",
@@ -6887,6 +7007,13 @@
     {
       "value": "\"numbering_sequence\" > 0",
       "name": "invoices_numbering_sequence_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
+      "value": "(\"payment_attempt_id\" is null and \"order_id\" is null and \"workspace_reservation_id\" is null) or (\"payment_attempt_id\" is not null and (\"order_id\" is not null or \"workspace_reservation_id\" is not null))",
+      "name": "invoices_source_reference_check",
       "entityType": "checks",
       "schema": "public",
       "table": "invoices"
@@ -6948,6 +7075,34 @@
       "table": "legal_evidence_events"
     },
     {
+      "value": "\"invoice_id\" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'",
+      "name": "manual_invoice_creation_requests_invoice_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"key_id\" ~ '^[A-Z][A-Z0-9_]{2,31}$'",
+      "name": "manual_invoice_creation_requests_key_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"request_digest\" ~ '^[A-Za-z0-9_-]{43}$'",
+      "name": "manual_invoice_creation_requests_digest_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"completed_at\" is null or \"completed_at\" >= \"claimed_at\"",
+      "name": "manual_invoice_creation_requests_completion_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
       "value": "\"sequence\" >= 0",
       "name": "order_lines_sequence_check",
       "entityType": "checks",
@@ -6983,14 +7138,14 @@
       "table": "order_lines"
     },
     {
-      "value": "\"amount_exponent\" between 0 and 20",
+      "value": "\"amount_exponent\" = 2",
       "name": "order_lines_amount_exponent_check",
       "entityType": "checks",
       "schema": "public",
       "table": "order_lines"
     },
     {
-      "value": "\"currency\" ~ '^[A-Z]{3}$'",
+      "value": "\"currency\" = 'CZK'",
       "name": "order_lines_currency_check",
       "entityType": "checks",
       "schema": "public",
@@ -7020,6 +7175,13 @@
     {
       "value": "btrim(\"dotypos_customer_id\") <> ''",
       "name": "orders_dotypos_customer_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "orders"
+    },
+    {
+      "value": "(\"kind\" = 'goods' and \"issuance_fingerprint\" ~ '^[a-f0-9]{64}$')\n        or (\"kind\" <> 'goods' and \"issuance_fingerprint\" is null)",
+      "name": "orders_issuance_fingerprint_check",
       "entityType": "checks",
       "schema": "public",
       "table": "orders"

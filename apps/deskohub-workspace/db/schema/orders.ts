@@ -140,10 +140,7 @@ export const orderLines = pgTable(
         and ${t.payableTotalValue} >= 0
         and ${t.payableTotalValue} <= ${t.undiscountedTotalValue}`
     ),
-    check(
-      "order_lines_amount_exponent_check",
-      sql`${t.amountExponent} = 2`
-    ),
+    check("order_lines_amount_exponent_check", sql`${t.amountExponent} = 2`),
     check("order_lines_currency_check", sql`${t.currency} = 'CZK'`),
   ]
 );
