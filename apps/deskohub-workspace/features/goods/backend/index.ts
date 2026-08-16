@@ -7,3 +7,12 @@ export {
   GoodsCatalogService,
   GoodsCatalogUnavailableError,
 } from "./goods-catalog.service";
+export {
+  type GoodsQuoteAffirmation,
+  GoodsQuoteChangedError,
+  GoodsQuoteCustomerMismatchError,
+  GoodsQuoteService,
+  GoodsQuoteUnavailableError,
+  getGoodsQuoteFingerprint,
+} from "./goods-quote.service";
+export { GoodsQuoteTokenError } from "./goods-quote-state";
