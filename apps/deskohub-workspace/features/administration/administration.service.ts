@@ -76,9 +76,9 @@ import {
   getAdministrationPagination,
 } from "./listing";
 import {
-  type AdministrationOrder,
-  type IPaymentAdministrationService,
-  PaymentAdministrationService,
+  type AdministrationNexiOrderRecord,
+  type INexiAdministrationService,
+  NexiAdministrationService,
 } from "./payment-administration.service";
 import {
   getProviderOperationTimelineTone,
@@ -313,7 +313,7 @@ export type AdministrationReservationDetail = {
   } | null;
   readonly timeline: readonly AdministrationTimelineItem[];
   readonly paymentAttempts: readonly AdministrationPaymentAttempt[];
-  readonly orders: readonly AdministrationOrder[];
+  readonly orders: readonly AdministrationNexiOrderRecord[];
   readonly discounts: readonly AdministrationDiscountApplication[];
   readonly accessGrant: AdministrationReservationAccessGrant | null;
   readonly otherCustomerReservations: readonly AdministrationReservationSummary[];
@@ -1101,7 +1101,7 @@ const getOperationTimelineTitle = (
 };
 
 const getOrderTimeline = (
-  orders: readonly AdministrationOrder[]
+  orders: readonly AdministrationNexiOrderRecord[]
 ): readonly AdministrationTimelineItem[] => {
   const items: AdministrationTimelineItem[] = [];
   for (const order of orders) {
@@ -1216,10 +1216,10 @@ export class AdministrationService extends Context.Service<
     readonly loadCustomerActivity: (
       customerId: DotyposCustomerId
     ) => Effect.Effect<AdministrationCustomerActivity, unknown>;
-    readonly listOrders: IPaymentAdministrationService["listOrders"];
-    readonly loadOrder: IPaymentAdministrationService["loadOrder"];
-    readonly listOperations: IPaymentAdministrationService["listOperations"];
-    readonly loadOperation: IPaymentAdministrationService["loadOperation"];
+    readonly listNexiOrders: INexiAdministrationService["listNexiOrders"];
+    readonly loadNexiOrder: INexiAdministrationService["loadNexiOrder"];
+    readonly listNexiOperations: INexiAdministrationService["listNexiOperations"];
+    readonly loadNexiOperation: INexiAdministrationService["loadNexiOperation"];
   }
 >()("@deskohub-workspace/administration/AdministrationService") {
   static Default = Layer.effect(
@@ -1228,7 +1228,7 @@ export class AdministrationService extends Context.Service<
       const { db } = yield* WorkspaceDatabase;
       const dotypos = yield* DotyposService;
       const reservationHistory = yield* PostHogReservationHistory;
-      const paymentAdministration = yield* PaymentAdministrationService;
+      const nexiAdministration = yield* NexiAdministrationService;
 
       const loadLiveReservation = Effect.fn(
         "AdministrationService.loadLiveReservation"
@@ -1734,7 +1734,7 @@ export class AdministrationService extends Context.Service<
               .where(eq(latePaymentRecoveries.workspaceReservationId, row.id))
               .orderBy(latePaymentRecoveries.createdAt),
             live: loadLiveReservation(row),
-            orders: paymentAdministration.loadReservationOrders(row.id),
+            orders: nexiAdministration.loadReservationNexiOrders(row.id),
             tables: loadBookingTables(),
             otherRows: db
               .select(safeReservationSelection)
@@ -2644,10 +2644,10 @@ export class AdministrationService extends Context.Service<
         listCustomers,
         loadCustomerReservations,
         loadCustomerActivity,
-        listOrders: paymentAdministration.listOrders,
-        loadOrder: paymentAdministration.loadOrder,
-        listOperations: paymentAdministration.listOperations,
-        loadOperation: paymentAdministration.loadOperation,
+        listNexiOrders: nexiAdministration.listNexiOrders,
+        loadNexiOrder: nexiAdministration.loadNexiOrder,
+        listNexiOperations: nexiAdministration.listNexiOperations,
+        loadNexiOperation: nexiAdministration.loadNexiOperation,
       };
     })
   );
@@ -2657,7 +2657,7 @@ export class AdministrationService extends Context.Service<
       Layer.mergeAll(
         WorkspaceDatabase.Default,
         WorkspaceDotyposLayer,
-        PaymentAdministrationService.Live,
+        NexiAdministrationService.Live,
         PostHogReservationHistory.Live
       )
     )

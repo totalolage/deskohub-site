@@ -7,7 +7,7 @@ import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";
 import { AdministrationAlert } from "./notice";
-import type { AdministrationOrder } from "./payment-administration.service";
+import type { AdministrationNexiOrderRecord } from "./payment-administration.service";
 import { getProviderValueLabel } from "./payment-presentation";
 import {
   AdministrationStatusBadge,
@@ -27,7 +27,7 @@ export const formatProviderMoney = (
     : `${amount} ${currency}`;
 };
 
-export const formatOrderMoney = (order: AdministrationOrder) => {
+export const formatNexiOrderMoney = (order: AdministrationNexiOrderRecord) => {
   if (order.provider) {
     return formatProviderMoney(order.provider.amount, order.provider.currency);
   }
@@ -78,10 +78,10 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
   );
 }
 
-export function ReservationOrderList({
+export function ReservationNexiOrderList({
   orders,
 }: {
-  readonly orders: readonly AdministrationOrder[];
+  readonly orders: readonly AdministrationNexiOrderRecord[];
 }) {
   if (orders.length === 0) {
     return (
@@ -131,7 +131,7 @@ export function ReservationOrderList({
                 />
               </div>
               <div className="sm:text-right">
-                <p className="font-semibold">{formatOrderMoney(order)}</p>
+                <p className="font-semibold">{formatNexiOrderMoney(order)}</p>
                 <p className="mt-1 text-xs text-navy-blue/60">
                   {order.link?.stateLabel ?? "No local payment attempt"}
                 </p>

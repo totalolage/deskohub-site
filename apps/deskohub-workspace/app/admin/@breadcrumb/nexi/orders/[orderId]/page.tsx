@@ -6,5 +6,5 @@ export default async function OrderBreadcrumb({
   readonly params: Promise<{ readonly orderId: string }>;
 }) {
   const { orderId } = await params;
-  return <AdministrationBreadcrumb segments={["orders", orderId]} />;
+  return <AdministrationBreadcrumb segments={["nexi", "orders", orderId]} />;
 }

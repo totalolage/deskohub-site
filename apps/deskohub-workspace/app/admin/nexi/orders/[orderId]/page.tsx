@@ -8,17 +8,17 @@ import {
   NexiOrderLink,
 } from "@/features/administration/components";
 import { AdministrationDetailLoading } from "@/features/administration/loading";
-import { loadAdministrationOrder } from "@/features/administration/page-data.server";
+import { loadAdministrationNexiOrder } from "@/features/administration/page-data.server";
 import {
-  formatOrderMoney,
+  formatNexiOrderMoney,
   formatProviderDateTime,
   formatProviderMoney,
   ProviderStatusBadge,
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
-import { OperationTable } from "@/features/administration/payment-tables";
+import { NexiOperationTable } from "@/features/administration/payment-tables";
 
-export default function OrderAdministrationDetailPage({
+export default function NexiOrderAdministrationDetailPage({
   params,
 }: {
   readonly params: Promise<{ readonly orderId: string }>;
@@ -28,19 +28,19 @@ export default function OrderAdministrationDetailPage({
       <Suspense
         fallback={<AdministrationDetailLoading label="order details" />}
       >
-        <OrderAdministrationDetail params={params} />
+        <NexiOrderAdministrationDetail params={params} />
       </Suspense>
     </AdministrationPage>
   );
 }
 
-export async function OrderAdministrationDetail({
+export async function NexiOrderAdministrationDetail({
   params,
 }: {
   readonly params: Promise<{ readonly orderId: string }>;
 }) {
   const { orderId } = await params;
-  const order = await loadAdministrationOrder(orderId);
+  const order = await loadAdministrationNexiOrder(orderId);
   const operations = (order.provider?.operations ?? []).map((operation) => ({
     ...operation,
     linkedReservationId: order.link?.reservationId ?? null,
@@ -79,7 +79,7 @@ export async function OrderAdministrationDetail({
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <AdministrationFact
                 label="Amount"
-                value={formatOrderMoney(order)}
+                value={formatNexiOrderMoney(order)}
               />
               <AdministrationFact
                 label="Authorized"
@@ -130,7 +130,7 @@ export async function OrderAdministrationDetail({
                 Live, sanitized operation facts returned by Nexi.
               </p>
             </div>
-            <OperationTable operations={operations} />
+            <NexiOperationTable operations={operations} />
           </section>
         </div>
         <aside className="space-y-5 xl:sticky xl:top-24 xl:h-fit">

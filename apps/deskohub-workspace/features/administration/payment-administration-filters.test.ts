@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
-  getAdministrationOperationFilters,
-  getAdministrationOrderDateTimeBounds,
+  getAdministrationNexiOperationFilters,
+  getAdministrationNexiOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
 
 describe("payment administration filters", () => {
   test("orders a reversed date range before querying Nexi", () => {
-    const range = getAdministrationOrderDateTimeBounds(
+    const range = getAdministrationNexiOrderDateTimeBounds(
       "2026-08-10",
       "2026-08-01",
       Temporal.PlainDate.from("2026-08-06")
@@ -21,7 +21,7 @@ describe("payment administration filters", () => {
   });
 
   test("caps provider queries to Nexi's one-month maximum", () => {
-    const range = getAdministrationOrderDateTimeBounds(
+    const range = getAdministrationNexiOrderDateTimeBounds(
       "2026-06-01",
       "2026-08-01",
       Temporal.PlainDate.from("2026-08-06")
@@ -45,7 +45,7 @@ describe("payment administration filters", () => {
 
   test("drops unsupported provider filters from deep links", () => {
     expect(
-      getAdministrationOperationFilters({
+      getAdministrationNexiOperationFilters({
         channel: "arbitrary-channel",
         operationType: "arbitrary-operation",
       })
@@ -54,7 +54,7 @@ describe("payment administration filters", () => {
 
   test("preserves filters offered by the UI", () => {
     expect(
-      getAdministrationOperationFilters({
+      getAdministrationNexiOperationFilters({
         channel: "BACKOFFICE",
         operationType: "REFUND",
       })

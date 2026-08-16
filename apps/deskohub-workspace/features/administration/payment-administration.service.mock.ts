@@ -1,6 +1,6 @@
 import { Layer } from "effect";
-import { PaymentAdministrationService } from "./payment-administration.service";
+import { NexiAdministrationService } from "./payment-administration.service";
 
-export const PaymentAdministrationServiceMock = Layer.mock(
-  PaymentAdministrationService
+export const NexiAdministrationServiceMock = Layer.mock(
+  NexiAdministrationService
 );

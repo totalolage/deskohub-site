@@ -15,18 +15,18 @@ import {
 } from "@/features/administration/loading";
 import type { AdministrationSearchParams } from "@/features/administration/page-data.server";
 import {
-  type loadAdministrationOrders,
-  loadAdministrationOrdersPage,
+  type loadAdministrationNexiOrders,
+  loadAdministrationNexiOrdersPage,
 } from "@/features/administration/page-data.server";
-import { OrderTable } from "@/features/administration/payment-tables";
+import { NexiOrderTable } from "@/features/administration/payment-tables";
 import { Button } from "@/shared/components/ui/button";
 
-export default function OrdersAdministrationPage({
+export default function NexiOrdersAdministrationPage({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
-  const { range, result } = loadAdministrationOrdersPage(searchParams);
+  const { range, result } = loadAdministrationNexiOrdersPage(searchParams);
 
   return (
     <AdministrationPage>
@@ -55,7 +55,7 @@ export default function OrdersAdministrationPage({
   );
 }
 
-type OrdersData = Awaited<ReturnType<typeof loadAdministrationOrders>>;
+type OrdersData = Awaited<ReturnType<typeof loadAdministrationNexiOrders>>;
 
 async function OrderCount({
   result,
@@ -113,7 +113,7 @@ function OrderResults({ result }: { readonly result: OrdersData["result"] }) {
           older activity.
         </p>
       )}
-      <OrderTable orders={result.items} />
+      <NexiOrderTable orders={result.items} />
     </>
   );
 }
