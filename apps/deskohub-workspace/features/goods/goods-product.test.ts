@@ -24,13 +24,33 @@ describe("Workspace goods products", () => {
   test("owns an exact Dotypos category and product identity", () => {
     expect(product).toEqual({ kind: "goods", categoryId, productId });
     expect(getWorkspaceGoodsProductKey(product)).toBe(
-      "goods:category-1:product-1"
+      'goods:["category-1","product-1"]'
     );
     expect(
       Schema.decodeUnknownSync(workspaceGoodsProductKeySchema)(
-        "goods:category-1:product-1"
+        'goods:["category-1","product-1"]'
       )
-    ).toBe("goods:category-1:product-1");
+    ).toBe('goods:["category-1","product-1"]');
+  });
+
+  test("keeps opaque category and product boundaries unambiguous", () => {
+    const first = workspaceGoodsProductIdentitySchema.make({
+      kind: "goods",
+      categoryId: DotyposCategoryIdSchema.make("a:b"),
+      productId: DotyposProductIdSchema.make("c"),
+    });
+    const second = workspaceGoodsProductIdentitySchema.make({
+      kind: "goods",
+      categoryId: DotyposCategoryIdSchema.make("a"),
+      productId: DotyposProductIdSchema.make("b:c"),
+    });
+
+    expect(getWorkspaceGoodsProductKey(first)).not.toBe(
+      getWorkspaceGoodsProductKey(second)
+    );
+    expect(() =>
+      Schema.decodeUnknownSync(workspaceGoodsProductKeySchema)("goods:a:b:c")
+    ).toThrow();
   });
 
   test("accepts broad, category, and product targets but rejects both IDs", () => {

@@ -19,7 +19,7 @@ import {
 } from "@/db/schema";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
-  getWorkspaceProductKey,
+  workspaceProductIdentityEquals,
   workspaceProductIdentitySchema,
 } from "@/features/checkout/product-identity";
 import {
@@ -129,8 +129,7 @@ export const validateOrderDiscountCommitment = Effect.fn(
 
     if (
       claim?.kind === "discount_code" &&
-      getWorkspaceProductKey(claim.product) !==
-        getWorkspaceProductKey(commitment.product)
+      !workspaceProductIdentityEquals(claim.product, commitment.product)
     ) {
       return yield* claimError(
         "reserve",
