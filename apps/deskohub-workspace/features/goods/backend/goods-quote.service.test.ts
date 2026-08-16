@@ -235,6 +235,66 @@ describe("GoodsQuoteService", () => {
     );
   });
 
+  test("rejects totals that do not fit persisted order money", async () => {
+    const unpersistableCatalog: GoodsCatalog = {
+      categories: [
+        {
+          categoryId,
+          name: "Food",
+          products: [
+            {
+              ...product,
+              unitPrice: money(2_147_483_648),
+            },
+          ],
+        },
+      ],
+    };
+    const layer = makeLayer({
+      getCart: () => Effect.succeed(initialCart),
+      getCatalog: () => Effect.succeed(unpersistableCatalog),
+    });
+
+    await expect(
+      run(
+        Effect.flatMap(GoodsQuoteService, (service) =>
+          service.quote(customerId, { locale: "en-US" })
+        ),
+        layer
+      )
+    ).rejects.toEqual(
+      new GoodsQuoteUnavailableError({ reason: "unsafe_total" })
+    );
+  });
+
+  test("rejects discount pricing that does not fit persisted order money", async () => {
+    const layer = makeLayer({
+      getCart: () => Effect.succeed(initialCart),
+      getCatalog: () => Effect.succeed(initialCatalog),
+      quote: (basket) => {
+        const quoted = price(basket);
+        return Effect.succeed({
+          ...quoted,
+          lines: quoted.lines.map((line) => ({
+            ...line,
+            totalDiscount: money(2_147_483_648),
+          })),
+        });
+      },
+    });
+
+    await expect(
+      run(
+        Effect.flatMap(GoodsQuoteService, (service) =>
+          service.quote(customerId, { locale: "en-US" })
+        ),
+        layer
+      )
+    ).rejects.toEqual(
+      new GoodsQuoteUnavailableError({ reason: "unsafe_total" })
+    );
+  });
+
   test("freshly affirms displayed discounts and returns a fresh token on drift", async () => {
     let catalog = initialCatalog;
     const affirm = mock(

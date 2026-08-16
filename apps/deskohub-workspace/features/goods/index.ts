@@ -36,6 +36,9 @@ export {
   goodsOrderLegalDocumentSchema,
   goodsOrderLineSchema,
   goodsOrderSummarySchema,
+  type IssueGoodsOrderRequest,
+  issueGoodsOrderRequestSchema,
+  maximumGoodsOrderMoneyValue,
 } from "./goods-order";
 export {
   getCanonicalWorkspaceGoodsProductIdentity,

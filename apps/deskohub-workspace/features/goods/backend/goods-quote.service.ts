@@ -7,7 +7,11 @@ import {
   type GoodsBasketDiscountCommitment,
   type GoodsDiscountBasketQuote,
 } from "@/features/discounts";
-import type { GoodsCart, GoodsCatalogProduct } from "@/features/goods";
+import {
+  type GoodsCart,
+  type GoodsCatalogProduct,
+  maximumGoodsOrderMoneyValue,
+} from "@/features/goods";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
@@ -141,7 +145,7 @@ export class GoodsQuoteService extends Context.Service<
             lines.reduce(
               (total, line) => total + BigInt(line.undiscountedSubtotal.value),
               0n
-            ) > BigInt(Number.MAX_SAFE_INTEGER)
+            ) > BigInt(maximumGoodsOrderMoneyValue)
           ) {
             return yield* new GoodsQuoteUnavailableError({
               reason: "unsafe_total",
@@ -299,7 +303,7 @@ const getPricedLine = Effect.fn("GoodsQuoteService.priceLine")(function* (
   quantity: GoodsCart["items"][number]["quantity"]
 ) {
   const value = BigInt(product.unitPrice.value) * BigInt(quantity);
-  if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+  if (value > BigInt(maximumGoodsOrderMoneyValue)) {
     return yield* new GoodsQuoteUnavailableError({ reason: "unsafe_total" });
   }
   return {
@@ -320,6 +324,9 @@ const buildGoodsQuote = Effect.fn("GoodsQuoteService.buildQuote")(
     readonly pricing: GoodsDiscountBasketQuote;
     readonly legalDocuments: GoodsQuote["legalDocuments"];
   }) {
+    if (!goodsPricingFitsPersistence(input.pricing)) {
+      return yield* new GoodsQuoteUnavailableError({ reason: "unsafe_total" });
+    }
     if (input.products.length !== input.pricing.lines.length) {
       return yield* new GoodsQuoteUnavailableError({
         reason: "dependency_unavailable",
@@ -372,6 +379,27 @@ const buildGoodsQuote = Effect.fn("GoodsQuoteService.buildQuote")(
     })({ ...unsigned, fingerprint }).pipe(Effect.mapError(toUnavailable));
   }
 );
+
+const goodsMoneyFitsPersistence = (money: { readonly value: number }) =>
+  Number.isSafeInteger(money.value) &&
+  money.value <= maximumGoodsOrderMoneyValue;
+
+const goodsPricingFitsPersistence = (pricing: GoodsDiscountBasketQuote) =>
+  [
+    pricing.discountableSubtotal,
+    pricing.totalDiscount,
+    pricing.discountedSubtotal,
+    ...pricing.lines.flatMap((line) => [
+      line.discountableSubtotal,
+      line.totalDiscount,
+      line.discountedSubtotal,
+      ...line.discounts.flatMap((discount) => [
+        discount.subtotalBefore,
+        discount.amount,
+        discount.subtotalAfter,
+      ]),
+    ]),
+  ].every(goodsMoneyFitsPersistence);
 
 export const getGoodsQuoteFingerprint = (
   quote: Omit<GoodsQuote, "fingerprint">

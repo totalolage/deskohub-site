@@ -1,5 +1,5 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { Clock, Context, Data, Effect, Layer } from "effect";
+import { Clock, Context, Data, Effect, Layer, type Option } from "effect";
 import {
   DiscountClaimError,
   type GoodsBasketDiscountCommitment,
@@ -9,6 +9,7 @@ import type {
   GoodsOrderDetail,
   GoodsOrderIssuanceFacts,
   GoodsOrderSummary,
+  IssueGoodsOrderRequest,
 } from "../goods-order";
 import {
   GoodsOrderCartChangedError,
@@ -16,6 +17,7 @@ import {
   GoodsOrderNotFoundError,
   GoodsOrderRepository,
 } from "./goods-order.repository";
+import { getGoodsOrderIssuanceFingerprint } from "./goods-order-issuance-fingerprint";
 
 export class GoodsOrderUnavailableError extends Data.TaggedError(
   "GoodsOrderUnavailableError"
@@ -23,6 +25,7 @@ export class GoodsOrderUnavailableError extends Data.TaggedError(
 
 export type IssueGoodsOrderInput = GoodsOrderIssuanceFacts & {
   readonly customerId: DotyposCustomerId;
+  readonly request: Pick<IssueGoodsOrderRequest, "acknowledged" | "quoteToken">;
   readonly discountCommitment?: GoodsBasketDiscountCommitment;
 };
 
@@ -39,6 +42,13 @@ interface IGoodsOrderService {
   readonly list: (
     customerId: DotyposCustomerId
   ) => Effect.Effect<readonly GoodsOrderSummary[], GoodsOrderUnavailableError>;
+  readonly findByIssuanceRequest: (
+    customerId: DotyposCustomerId,
+    request: IssueGoodsOrderRequest
+  ) => Effect.Effect<
+    Option.Option<GoodsOrderDetail>,
+    GoodsOrderIssuanceConflictError | GoodsOrderUnavailableError
+  >;
   readonly get: (
     customerId: DotyposCustomerId,
     orderId: OrderId
@@ -61,9 +71,14 @@ export class GoodsOrderService extends Context.Service<
         issue: Effect.fn("GoodsOrderService.issue")((input) =>
           Clock.currentTimeMillis.pipe(
             Effect.map(Temporal.Instant.fromEpochMilliseconds),
-            Effect.flatMap((issuedAt) =>
-              repository.issue({ ...input, issuedAt })
-            ),
+            Effect.flatMap((issuedAt) => {
+              const { request, ...facts } = input;
+              return repository.issue({
+                ...facts,
+                issuedAt,
+                issuanceFingerprint: getGoodsOrderIssuanceFingerprint(request),
+              });
+            }),
             Effect.mapError((error) =>
               error instanceof GoodsOrderCartChangedError ||
               error instanceof GoodsOrderIssuanceConflictError ||
@@ -79,6 +94,23 @@ export class GoodsOrderService extends Context.Service<
             .pipe(
               Effect.mapError(
                 (cause) => new GoodsOrderUnavailableError({ cause })
+              )
+            )
+        ),
+        findByIssuanceRequest: Effect.fn(
+          "GoodsOrderService.findByIssuanceRequest"
+        )((customerId, request) =>
+          repository
+            .findByIssuanceId(
+              customerId,
+              request.issuanceId,
+              getGoodsOrderIssuanceFingerprint(request)
+            )
+            .pipe(
+              Effect.mapError((error) =>
+                error instanceof GoodsOrderIssuanceConflictError
+                  ? error
+                  : new GoodsOrderUnavailableError({ cause: error })
               )
             )
         ),
