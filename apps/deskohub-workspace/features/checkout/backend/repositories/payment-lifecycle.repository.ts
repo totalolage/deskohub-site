@@ -218,6 +218,16 @@ export class PaymentLifecycleRepository extends Context.Service<
         return yield* db
           .transaction((tx) =>
             Effect.gen(function* () {
+              const workspaceReservationId =
+                input.evidence.mode === "reservation_attempt_commitment"
+                  ? workspaceReservationIdSchema.make(input.orderId)
+                  : null;
+              const lockedReservation = workspaceReservationId
+                ? yield* lockReservationForAdmission({
+                    tx,
+                    workspaceReservationId,
+                  })
+                : null;
               const [order] = yield* tx
                 .select()
                 .from(orders)
@@ -242,49 +252,10 @@ export class PaymentLifecycleRepository extends Context.Service<
               yield* validatePaymentSessionSnapshotOwner({
                 snapshot: accountingSnapshot,
                 order,
+                reservation: lockedReservation,
                 paymentReference: { type: "orderId", id: input.orderId },
               });
 
-              if (order.kind === "goods") {
-                const [oldest] = yield* tx
-                  .select({ id: orders.id })
-                  .from(orders)
-                  .where(
-                    and(
-                      eq(orders.kind, "goods"),
-                      eq(orders.dotyposCustomerId, order.dotyposCustomerId),
-                      eq(orders.fulfillmentState, "fulfilled"),
-                      inArray(orders.paymentState, [
-                        "not_started",
-                        "pending",
-                        "failed",
-                        "cancelled",
-                        "expired",
-                      ])
-                    )
-                  )
-                  .orderBy(asc(orders.createdAt), asc(orders.id))
-                  .limit(1)
-                  .for("update");
-                if (oldest && oldest.id !== input.orderId) {
-                  return {
-                    status: "outstanding_order" as const,
-                    orderId: oldest.id,
-                  };
-                }
-              }
-
-              const workspaceReservationId =
-                order.kind === "reservation"
-                  ? workspaceReservationIdSchema.make(input.orderId)
-                  : null;
-              const reservation = workspaceReservationId
-                ? yield* loadPayableReservationForAdmission({
-                    tx,
-                    workspaceReservationId,
-                    order,
-                  })
-                : null;
               if (
                 (order.kind === "reservation") !==
                 (input.evidence.mode === "reservation_attempt_commitment")
@@ -374,6 +345,42 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "The provider attempt configuration does not match the amount."
                 );
               }
+
+              if (order.kind === "goods") {
+                const [oldest] = yield* tx
+                  .select({ id: orders.id })
+                  .from(orders)
+                  .where(
+                    and(
+                      eq(orders.kind, "goods"),
+                      eq(orders.dotyposCustomerId, order.dotyposCustomerId),
+                      eq(orders.fulfillmentState, "fulfilled"),
+                      inArray(orders.paymentState, [
+                        "not_started",
+                        "pending",
+                        "failed",
+                        "cancelled",
+                        "expired",
+                      ])
+                    )
+                  )
+                  .orderBy(asc(orders.createdAt), asc(orders.id))
+                  .limit(1)
+                  .for("update");
+                if (oldest && oldest.id !== input.orderId) {
+                  return {
+                    status: "outstanding_order" as const,
+                    orderId: oldest.id,
+                  };
+                }
+              }
+
+              const reservation = workspaceReservationId
+                ? yield* validatePayableReservationForAdmission({
+                    reservation: lockedReservation,
+                    order,
+                  })
+                : null;
 
               const now = Temporal.Now.instant();
               const provider = input.amount.value === 0 ? "internal" : "nexi";
@@ -1726,11 +1733,15 @@ const validatePaymentSessionSnapshotOwner = Effect.fn(
 )(function* (input: {
   readonly snapshot: AccountingDocumentSnapshot;
   readonly order: typeof orders.$inferSelect;
+  readonly reservation: typeof workspaceReservations.$inferSelect | null;
   readonly paymentReference: AccountingPaymentReference;
 }) {
   if (
     input.snapshot.dotyposCustomerId !== input.order.dotyposCustomerId ||
-    "orderId" in input.snapshot !== (input.order.kind === "goods")
+    "orderId" in input.snapshot !== (input.order.kind === "goods") ||
+    (!("orderId" in input.snapshot) &&
+      input.reservation?.dotyposReservationId !==
+        input.snapshot.dotyposReservationId)
   ) {
     return yield* new AccountingDocumentSnapshotStorageError({
       operation: "validate",
@@ -1754,12 +1765,11 @@ const validatePaymentSessionSnapshotOwner = Effect.fn(
   }
 });
 
-const loadPayableReservationForAdmission = Effect.fn(
-  "PaymentLifecycle.loadPayableReservationForAdmission"
+const lockReservationForAdmission = Effect.fn(
+  "PaymentLifecycle.lockReservationForAdmission"
 )(function* (input: {
   readonly tx: TransactionClient;
   readonly workspaceReservationId: WorkspaceReservationId;
-  readonly order: typeof orders.$inferSelect;
 }) {
   const [reservation] = yield* input.tx
     .select()
@@ -1767,6 +1777,16 @@ const loadPayableReservationForAdmission = Effect.fn(
     .where(eq(workspaceReservations.id, input.workspaceReservationId))
     .limit(1)
     .for("update");
+  return reservation ?? null;
+});
+
+const validatePayableReservationForAdmission = Effect.fn(
+  "PaymentLifecycle.validatePayableReservationForAdmission"
+)(function* (input: {
+  readonly reservation: typeof workspaceReservations.$inferSelect | null;
+  readonly order: typeof orders.$inferSelect;
+}) {
+  const { reservation } = input;
   const now = Temporal.Now.instant();
   if (
     !reservation ||
