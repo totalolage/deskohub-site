@@ -10,7 +10,10 @@ function Skeleton({ className, ref, ...props }: SkeletonProps) {
     <div
       ref={ref}
       data-slot="skeleton"
-      className={cn("skeleton-glimmer rounded-md bg-navy-blue/8", className)}
+      className={cn(
+        "relative overflow-hidden rounded-md bg-navy-blue/8 after:pointer-events-none after:absolute after:inset-y-0 after:left-0 after:w-1/2 after:animate-skeleton-glimmer after:bg-linear-to-r after:from-transparent after:via-white/55 after:to-transparent after:content-[''] motion-reduce:after:hidden",
+        className
+      )}
       {...props}
     />
   );

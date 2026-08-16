@@ -1,7 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "../shared/styles/glow-border.css";
-@import "../shared/styles/skeleton.css";
 
 @theme inline {
   --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
@@ -23,6 +22,7 @@
   --radius-lg: var(--radius);
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-skeleton-glimmer: skeleton-glimmer 1.5s ease-out infinite;
   --container-8xl: 100rem;
 
   @keyframes accordion-down {
@@ -40,6 +40,16 @@
     }
     to {
       height: 0;
+    }
+  }
+
+  @keyframes skeleton-glimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    66.667%,
+    100% {
+      transform: translateX(200%);
     }
   }
 }
