@@ -1,4 +1,7 @@
-export type { DiscountCommitment } from "./commitment";
+export type {
+  DiscountCommitment,
+  GoodsBasketDiscountCommitment,
+} from "./commitment";
 export {
   type ActiveSale,
   type ActiveSaleDiscoveryInput,
@@ -19,6 +22,9 @@ export {
   discountIdSchema,
   discountProductTargetSchema,
   discountQuoteCodec,
+  type GoodsDiscountBasketInput,
+  type GoodsDiscountBasketLineInput,
+  type GoodsDiscountBasketQuote,
   isAppliedDiscount,
 } from "./contracts";
 export {
@@ -30,6 +36,8 @@ export {
   DiscountService,
   type DisplayedDiscountAffirmation,
   type DisplayedDiscountAffirmationInput,
+  type DisplayedGoodsBasketDiscountAffirmation,
+  type DisplayedGoodsBasketDiscountAffirmationInput,
   type IDiscountService,
   type PreviewDiscountCodeInput,
 } from "./discount.service";

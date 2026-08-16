@@ -8,7 +8,11 @@ import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
 import { m } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import type { CanonicalPromotionCode, DiscountQuoteInput } from "./contracts";
+import type {
+  CanonicalPromotionCode,
+  DiscountQuoteInput,
+  GoodsDiscountBasketInput,
+} from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
@@ -28,7 +32,12 @@ import {
   type VoucherAvailability,
 } from "./promotion-code";
 import { PromotionCodeRepository } from "./promotion-code.repository";
-import type { DiscountCandidate } from "./provider";
+import {
+  allGoodsBasketLinesEligible,
+  type DiscountCandidate,
+  type GoodsBasketDiscountCandidate,
+  getEligibleGoodsBasketLineIndexes,
+} from "./provider";
 
 export type PromotionCodeProviderInput = Pick<
   DiscountQuoteInput,
@@ -37,6 +46,11 @@ export type PromotionCodeProviderInput = Pick<
   | "locale"
   | "product"
   | "submittedCode"
+>;
+
+export type PromotionCodeGoodsBasketProviderInput = Pick<
+  GoodsDiscountBasketInput,
+  "dotyposCustomerId" | "lines" | "locale" | "submittedCode"
 >;
 
 export type PromotionCodePreviewInput = Omit<
@@ -55,6 +69,12 @@ export interface IPromotionCodeProvider {
   readonly revalidate: (
     input: PromotionCodeProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], PromotionCodeProviderError>;
+  readonly revalidateGoodsBasket: (
+    input: PromotionCodeGoodsBasketProviderInput
+  ) => Effect.Effect<
+    readonly GoodsBasketDiscountCandidate[],
+    PromotionCodeProviderError
+  >;
 }
 
 export class PromotionCodeProvider extends Context.Service<
@@ -255,7 +275,123 @@ export class PromotionCodeProvider extends Context.Service<
         withProviderAnnotations("preview")
       );
 
-      return { preview, revalidate } satisfies IPromotionCodeProvider;
+      const resolveConfiguredGoodsBasketCode = Effect.fn(
+        "PromotionCodeProvider.resolveConfiguredGoodsBasketCode"
+      )(
+        (
+          input: PromotionCodeGoodsBasketProviderInput & {
+            readonly configuration: SubmittedPromotionConfiguration;
+          }
+        ) =>
+          Match.value(input.configuration).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              discount: (configuration) =>
+                promotions
+                  .loadDiscountCodeAvailability({
+                    promotionCodeId: configuration.promotionCodeId,
+                    codeId: configuration.id,
+                    dotyposCustomerId: input.dotyposCustomerId,
+                  })
+                  .pipe(
+                    Effect.mapError(toPromotionCodeProviderError),
+                    Effect.map((availability) => ({
+                      ...input,
+                      availability,
+                      configuration,
+                    })),
+                    Effect.tap(validateCustomerAllowed),
+                    Effect.tap(validateUsageAvailable),
+                    Effect.tap(validateCustomerUsageAvailable),
+                    Effect.bind("definition", loadDiscountDefinition),
+                    Effect.let(
+                      "eligibleLineIndexes",
+                      toEligibleGoodsBasketLineIndexes
+                    ),
+                    Effect.tap(validateGoodsBasketProduct),
+                    Effect.let(
+                      "discountableSubtotal",
+                      toGoodsBasketDiscountableSubtotal
+                    ),
+                    Effect.tap(validateFixedAdjustmentCompatibility),
+                    Effect.map(({ definition, eligibleLineIndexes }) => ({
+                      candidate: toDiscountCodeCandidate({
+                        configuration,
+                        definition,
+                        dotyposCustomerId: input.dotyposCustomerId,
+                        locale: input.locale,
+                        product:
+                          input.lines[eligibleLineIndexes[0] ?? 0]?.product ??
+                          input.lines[0]!.product,
+                      }),
+                      eligibleLineIndexes,
+                    }))
+                  ),
+              voucher: (configuration) =>
+                promotions
+                  .loadVoucherAvailability({
+                    promotionCodeId: configuration.promotionCodeId,
+                    voucherId: configuration.id,
+                    dotyposCustomerId: input.dotyposCustomerId,
+                  })
+                  .pipe(
+                    Effect.mapError(toPromotionCodeProviderError),
+                    Effect.map((availability) => ({
+                      ...input,
+                      availability,
+                      configuration,
+                    })),
+                    Effect.tap(validateCustomerNotReserved),
+                    Effect.tap(validateCustomerAllowed),
+                    Effect.let(
+                      "discountableSubtotal",
+                      toGoodsBasketDiscountableSubtotal
+                    ),
+                    Effect.flatMap((basketInput) =>
+                      toVoucherCandidate(basketInput).pipe(
+                        Effect.map((candidate) => ({
+                          candidate,
+                          eligibleLineIndexes: allGoodsBasketLinesEligible(
+                            input.lines
+                          ),
+                        }))
+                      )
+                    )
+                  ),
+            })
+          )
+      );
+
+      const revalidateGoodsBasket = Effect.fn(
+        "PromotionCodeProvider.revalidateGoodsBasket"
+      )((input: PromotionCodeGoodsBasketProviderInput) => {
+        const firstLine = input.lines[0];
+        if (!firstLine) return Effect.succeed([]);
+
+        return Option.fromNullishOr(input.submittedCode).pipe(
+          Option.map((submittedCode) =>
+            Effect.succeed({ ...input, code: submittedCode }).pipe(
+              Effect.bind("at", () =>
+                Clock.currentTimeMillis.pipe(
+                  Effect.map(Temporal.Instant.fromEpochMilliseconds)
+                )
+              ),
+              Effect.bind("configuration", loadCodeConfiguration),
+              Effect.tap(validatePromotionEnabled),
+              Effect.tap(validatePromotionStarted),
+              Effect.tap(validateDiscountCodeUnexpired),
+              Effect.flatMap(resolveConfiguredGoodsBasketCode)
+            )
+          ),
+          Effect.transposeOption,
+          Effect.map(Option.toArray)
+        );
+      });
+
+      return {
+        preview,
+        revalidate,
+        revalidateGoodsBasket,
+      } satisfies IPromotionCodeProvider;
     })
   );
 }
@@ -349,6 +485,40 @@ const validateDiscountCodeProduct = (input: {
   )
     ? Effect.void
     : unavailable(input.configuration, "product_ineligible");
+
+const toEligibleGoodsBasketLineIndexes = (input: {
+  readonly definition: DiscountDefinition;
+  readonly lines: PromotionCodeGoodsBasketProviderInput["lines"];
+}) =>
+  getEligibleGoodsBasketLineIndexes({
+    lines: input.lines,
+    targets: input.definition.products,
+  });
+
+const validateGoodsBasketProduct = (input: {
+  readonly configuration: DiscountCodeConfiguration;
+  readonly eligibleLineIndexes: readonly number[];
+}) =>
+  input.eligibleLineIndexes.length > 0
+    ? Effect.void
+    : unavailable(input.configuration, "product_ineligible");
+
+const toGoodsBasketDiscountableSubtotal = (input: {
+  readonly lines: PromotionCodeGoodsBasketProviderInput["lines"];
+  readonly eligibleLineIndexes?: readonly number[];
+}) => {
+  const firstLine = input.lines[0]!;
+  const eligibleLineIndexes =
+    input.eligibleLineIndexes ?? allGoodsBasketLinesEligible(input.lines);
+  return workspaceMoneyWithValue(
+    eligibleLineIndexes.reduce(
+      (sum, index) =>
+        sum + (input.lines[index]?.discountableSubtotal.value ?? 0),
+      0
+    ),
+    firstLine.discountableSubtotal
+  );
+};
 
 const validateFixedAdjustmentCompatibility = (input: {
   readonly configuration: DiscountCodeConfiguration;

@@ -13,6 +13,7 @@ import {
   type WorkspaceProductTarget,
   workspaceProductTargetSchema,
 } from "@/features/discounts/product-target";
+import type { WorkspaceGoodsProductIdentity } from "@/features/goods";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { instantStringSchema } from "@/shared/utils/temporal";
@@ -190,4 +191,24 @@ export type DiscountQuoteInput = {
   readonly locale: Locale;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly submittedCode?: CanonicalPromotionCode;
+};
+
+export type GoodsDiscountBasketLineInput = {
+  readonly product: WorkspaceGoodsProductIdentity;
+  readonly discountableSubtotal: WorkspaceMoney;
+};
+
+export type GoodsDiscountBasketInput = {
+  readonly lines: readonly GoodsDiscountBasketLineInput[];
+  readonly reservationDate: string;
+  readonly locale: Locale;
+  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly submittedCode?: CanonicalPromotionCode;
+};
+
+export type GoodsDiscountBasketQuote = {
+  readonly lines: readonly DiscountQuote[];
+  readonly discountableSubtotal: WorkspaceMoney;
+  readonly totalDiscount: WorkspaceMoney;
+  readonly discountedSubtotal: WorkspaceMoney;
 };
