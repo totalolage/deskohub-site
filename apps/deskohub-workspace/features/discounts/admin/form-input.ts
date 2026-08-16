@@ -48,6 +48,16 @@ export const readDiscountForm = (
       .getAll("products")
       .flatMap((value) =>
         Predicate.isString(value) ? (productTargets[value] ?? []) : []
+      )
+      .concat(
+        readTargetIds(formData, "goodsCategoryIds").map(
+          (categoryId) =>
+            ({ kind: "goods", categoryId }) as WorkspaceProductTarget
+        ),
+        readTargetIds(formData, "goodsProductIds").map(
+          (productId) =>
+            ({ kind: "goods", productId }) as WorkspaceProductTarget
+        )
       ) as [WorkspaceProductTarget, ...WorkspaceProductTarget[]],
   };
 };
@@ -129,6 +139,12 @@ const readOptionalNumber = (formData: FormData, field: string) => {
   const value = readOptionalString(formData, field);
   return value === null ? null : Number(value);
 };
+
+const readTargetIds = (formData: FormData, field: string) =>
+  readString(formData, field)
+    .split(/[\n,]/)
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 
 const productTargets: Readonly<
   Record<string, readonly WorkspaceProductTarget[]>

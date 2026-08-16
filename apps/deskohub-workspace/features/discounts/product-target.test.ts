@@ -1,16 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DotyposCategoryIdSchema,
+  DotyposProductIdSchema,
+} from "@deskohub/dotypos";
+import {
   getWorkspaceProductTarget,
+  getWorkspaceProductTargetKey,
   workspaceProductTargetMatches,
   workspaceProductTargets,
 } from "./product-target";
 
 describe("workspace product targets", () => {
-  test("defines one target for each reservation family", () => {
+  test("defines each broad product target", () => {
     expect(workspaceProductTargets).toEqual([
       { kind: "cowork" },
       { kind: "meeting-room" },
       { kind: "office" },
+      { kind: "goods" },
     ]);
   });
 
@@ -27,6 +33,13 @@ describe("workspace product targets", () => {
     expect(
       getWorkspaceProductTarget({ kind: "office", seats: 4, dayCount: 3 })
     ).toEqual({ kind: "office" });
+    expect(
+      getWorkspaceProductTarget({
+        kind: "goods",
+        categoryId: DotyposCategoryIdSchema.make("category-1"),
+        productId: DotyposProductIdSchema.make("product-1"),
+      })
+    ).toEqual({ kind: "goods", productId: "product-1" });
   });
 
   test("targets every exact cowork product through the cowork family", () => {
@@ -88,5 +101,54 @@ describe("workspace product targets", () => {
         { kind: "office", seats: 1, dayCount: 1 }
       )
     ).toBe(false);
+  });
+
+  test("matches broad and precise goods targets", () => {
+    const product = {
+      kind: "goods" as const,
+      categoryId: DotyposCategoryIdSchema.make("category-1"),
+      productId: DotyposProductIdSchema.make("product-1"),
+    };
+
+    expect(workspaceProductTargetMatches({ kind: "goods" }, product)).toBe(
+      true
+    );
+    expect(
+      workspaceProductTargetMatches(
+        { kind: "goods", categoryId: product.categoryId },
+        product
+      )
+    ).toBe(true);
+    expect(
+      workspaceProductTargetMatches(
+        { kind: "goods", productId: product.productId },
+        product
+      )
+    ).toBe(true);
+    expect(
+      workspaceProductTargetMatches(
+        {
+          kind: "goods",
+          productId: DotyposProductIdSchema.make("product-2"),
+        },
+        product
+      )
+    ).toBe(false);
+  });
+
+  test("keys distinct goods targets by their full targeting scope", () => {
+    expect(getWorkspaceProductTargetKey({ kind: "goods" })).toBe("goods");
+    expect(
+      getWorkspaceProductTargetKey({
+        kind: "goods",
+        categoryId: DotyposCategoryIdSchema.make("category-1"),
+      })
+    ).toBe("goods:category:category-1");
+    expect(
+      getWorkspaceProductTargetKey({
+        kind: "goods",
+        productId: DotyposProductIdSchema.make("product-1"),
+      })
+    ).toBe("goods:product:product-1");
   });
 });

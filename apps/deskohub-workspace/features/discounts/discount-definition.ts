@@ -5,6 +5,7 @@ import type {
   StoredDiscount,
 } from "@/db/schema";
 import {
+  getWorkspaceProductTargetKey,
   type WorkspaceProductTarget,
   workspaceProductTargetSchema,
 } from "@/features/discounts/product-target";
@@ -85,8 +86,11 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
     ),
     Schema.makeFilter(
       (targets) =>
-        new Set(targets.map(({ productTarget }) => productTarget.kind)).size ===
-          targets.length || {
+        new Set(
+          targets.map(({ productTarget }) =>
+            getWorkspaceProductTargetKey(productTarget)
+          )
+        ).size === targets.length || {
           path: [],
           issue: "product targets must be unique",
         }
