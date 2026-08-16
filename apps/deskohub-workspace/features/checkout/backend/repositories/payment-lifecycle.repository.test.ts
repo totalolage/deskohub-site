@@ -179,9 +179,7 @@ describe("PaymentLifecycleRepository", () => {
       "currentDefinition.labels[input.locale] !=="
     );
     expect(reserveClaim).toContain("discountProductTargets.productTarget");
-    expect(reserveClaim).toContain(
-      "getWorkspaceProductTarget(input.claim.product)"
-    );
+    expect(reserveClaim).toContain("workspaceProductTargetMatches(");
     expect(reserveClaim).not.toContain(
       "eq(discountProductTargets.productTarget, input.claim.product)"
     );

@@ -39,7 +39,7 @@ import { decodeDiscountDefinition } from "@/features/discounts/discount-definiti
 import { DiscountClaimError } from "@/features/discounts/errors";
 import { deriveOpaqueDiscountId } from "@/features/discounts/opaque-discount-id";
 import type { DiscountApplicationId } from "@/features/discounts/persistence-contracts";
-import { getWorkspaceProductTarget } from "@/features/discounts/product-target";
+import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
 import { getPromotionTiming } from "@/features/discounts/promotion-code";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import { type Locale, m } from "@/features/i18n";
@@ -742,38 +742,19 @@ const validateStoredDiscountClaim = Effect.fn(
     );
   }
 
-  const [target] = yield* input.tx
-    .select({ discountId: discountProductTargets.discountId })
+  const targets = yield* input.tx
+    .select({
+      discountId: discountProductTargets.discountId,
+      productTarget: discountProductTargets.productTarget,
+    })
     .from(discountProductTargets)
-    .where(
-      and(
-        eq(discountProductTargets.discountId, input.claim.storedDiscountId),
-        eq(
-          discountProductTargets.productTarget,
-          getWorkspaceProductTarget(input.claim.product)
-        )
-      )
-    )
-    .limit(1)
+    .where(eq(discountProductTargets.discountId, input.claim.storedDiscountId))
     .for("update");
-  if (!target) {
-    return yield* claimError(
-      "reserve",
-      "product_ineligible",
-      "The accepted discount code no longer targets this product.",
-      input.claim
-    );
-  }
 
   const currentDefinition = yield* decodeDiscountDefinition({
     row: {
       ...definition,
-      productTargets: [
-        {
-          discountId: target.discountId,
-          productTarget: getWorkspaceProductTarget(input.claim.product),
-        },
-      ],
+      productTargets: targets,
     },
   }).pipe(
     Effect.mapError(
@@ -787,6 +768,18 @@ const validateStoredDiscountClaim = Effect.fn(
         })
     )
   );
+  if (
+    !currentDefinition.products.some((productTarget) =>
+      workspaceProductTargetMatches(productTarget, input.claim.product)
+    )
+  ) {
+    return yield* claimError(
+      "reserve",
+      "product_ineligible",
+      "The accepted discount code no longer targets this product.",
+      input.claim
+    );
+  }
   const timing = getPromotionTiming(input.promotion.validUntil);
   if (
     !discountAdjustmentsEqual(
