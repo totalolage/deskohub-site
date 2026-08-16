@@ -2,7 +2,7 @@ import type { DotyposDiscountGroupId } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
-import { discountCodeQueryParam } from "@/features/discounts";
+import { discountCodeQueryParam } from "@/features/discounts/promotion-code";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
