@@ -37,10 +37,10 @@ import {
   loadFixtureReservations,
 } from "./fixtures";
 import {
-  OperationTable,
-  OrderTable,
+  NexiOperationTable,
+  NexiOrderTable,
   ProviderStatusBadge,
-  ReservationOrderList,
+  ReservationNexiOrderList,
 } from "./payment-components";
 import { ReservationAccessAdministration } from "./reservation-access-administration";
 import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
@@ -435,7 +435,7 @@ describe("administration reservation components", () => {
     expect(detail).not.toBeNull();
     if (!detail) return;
 
-    const view = render(<ReservationOrderList orders={detail.orders} />);
+    const view = render(<ReservationNexiOrderList orders={detail.orders} />);
     expect(
       view
         .getByRole("link", {
@@ -446,9 +446,11 @@ describe("administration reservation components", () => {
       "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
     );
     expect(view.getByText("DADMINFIXTUREOPERATION")).toBeDefined();
-    expect(view.container.querySelector('a[href^="/admin/orders"]')).toBeNull();
     expect(
-      view.container.querySelector('a[href^="/admin/operations"]')
+      view.container.querySelector('a[href^="/admin/nexi/orders"]')
+    ).toBeNull();
+    expect(
+      view.container.querySelector('a[href^="/admin/nexi/operations"]')
     ).toBeNull();
   });
 
@@ -478,14 +480,16 @@ describe("administration reservation components", () => {
           .toString(),
       },
     };
-    const openWindow = render(<ReservationOrderList orders={[emptyOrder]} />);
+    const openWindow = render(
+      <ReservationNexiOrderList orders={[emptyOrder]} />
+    );
     expect(
       openWindow.getByText(/local payment window is open until/i)
     ).toBeDefined();
     openWindow.unmount();
 
     const overdue = render(
-      <ReservationOrderList
+      <ReservationNexiOrderList
         orders={[
           {
             ...emptyOrder,
@@ -505,7 +509,7 @@ describe("administration reservation components", () => {
     overdue.unmount();
 
     const activity = render(
-      <ReservationOrderList
+      <ReservationNexiOrderList
         orders={[
           {
             ...order,
@@ -541,12 +545,12 @@ describe("administration reservation components", () => {
     const detail = loadFixtureReservation("0198-admin-fixture-attention");
     expect(detail).not.toBeNull();
     if (!detail) return;
-    const orderView = render(<OrderTable orders={detail.orders} />);
+    const orderView = render(<NexiOrderTable orders={detail.orders} />);
     expect(
       orderView
         .getByRole("link", { name: "DADMINFIXTUREPAYMENT" })
         .getAttribute("href")
-    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+    ).toBe("/admin/nexi/orders/DADMINFIXTUREPAYMENT");
     expect(
       orderView
         .getByRole("link", { name: "View reservation" })
@@ -558,7 +562,7 @@ describe("administration reservation components", () => {
     expect(operation).toBeDefined();
     if (!operation) return;
     const operationView = render(
-      <OperationTable
+      <NexiOperationTable
         operations={[
           {
             ...operation,
@@ -571,12 +575,12 @@ describe("administration reservation components", () => {
       operationView
         .getByRole("link", { name: "DADMINFIXTUREOPERATION" })
         .getAttribute("href")
-    ).toBe("/admin/operations/DADMINFIXTUREOPERATION");
+    ).toBe("/admin/nexi/operations/DADMINFIXTUREOPERATION");
     expect(
       operationView
         .getByRole("link", { name: "DADMINFIXTUREPAYMENT" })
         .getAttribute("href")
-    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+    ).toBe("/admin/nexi/orders/DADMINFIXTUREPAYMENT");
   });
 
   test("renders both Nexi cancellation spellings as warnings", () => {

@@ -107,11 +107,13 @@ describe("discount administration server authorization", () => {
           "customer-id",
           searchParams
         ),
-      () => administration.loadAdministrationOrders(searchParams),
-      () => administration.loadAdministrationOrdersPage(searchParams).result,
-      () => administration.loadAdministrationOperations(searchParams),
+      () => administration.loadAdministrationNexiOrders(searchParams),
       () =>
-        administration.loadAdministrationOperationsPage(searchParams).result,
+        administration.loadAdministrationNexiOrdersPage(searchParams).result,
+      () => administration.loadAdministrationNexiOperations(searchParams),
+      () =>
+        administration.loadAdministrationNexiOperationsPage(searchParams)
+          .result,
       discounts.authorizeDiscountAdminPage,
       () => discounts.loadDiscountAdminPageData(searchParams),
       () => discounts.loadDiscountAdminCodesPageData(searchParams),

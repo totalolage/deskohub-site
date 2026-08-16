@@ -36,7 +36,7 @@ const paymentAttemptStateLabels = {
   expired: "Unsuccessful",
 } satisfies Record<PaymentAttemptState, string>;
 
-export type AdministrationOrderLink = {
+export type AdministrationNexiOrderLink = {
   readonly paymentAttemptId: PaymentAttemptId;
   readonly reservationId: WorkspaceReservationId;
   readonly state: PaymentAttemptState;
@@ -51,7 +51,7 @@ export type AdministrationOrderLink = {
   readonly providerOrderCreatedAtEstimated: boolean;
 };
 
-export type AdministrationOrder = {
+export type AdministrationNexiOrderRecord = {
   readonly orderId: NexiOrderId;
   readonly provider: NexiOrder | null;
   readonly providerAvailable: boolean;
@@ -60,32 +60,33 @@ export type AdministrationOrder = {
     | "not_found"
     | "not_returned"
     | "unavailable";
-  readonly link: AdministrationOrderLink | null;
+  readonly link: AdministrationNexiOrderLink | null;
 };
 
-export type AdministrationOperation = NexiOperation & {
+export type AdministrationNexiOperationRecord = NexiOperation & {
   readonly linkedReservationId: WorkspaceReservationId | null;
 };
 
-export type AdministrationOrderListInput = {
+export type AdministrationNexiOrderListInput = {
   readonly fromTime?: string;
   readonly toTime?: string;
   readonly maxRecords?: number;
 };
 
-export type AdministrationOperationListInput = AdministrationOrderListInput & {
-  readonly channel?: string;
-  readonly operationType?: string;
-};
+export type AdministrationNexiOperationListInput =
+  AdministrationNexiOrderListInput & {
+    readonly channel?: string;
+    readonly operationType?: string;
+  };
 
-export type AdministrationOrderList = {
-  readonly items: readonly AdministrationOrder[];
+export type AdministrationNexiOrderList = {
+  readonly items: readonly AdministrationNexiOrderRecord[];
   readonly providerAvailable: boolean;
   readonly truncated: boolean;
 };
 
-export type AdministrationOperationList = {
-  readonly items: readonly AdministrationOperation[];
+export type AdministrationNexiOperationList = {
+  readonly items: readonly AdministrationNexiOperationRecord[];
   readonly providerAvailable: boolean;
   readonly truncated: boolean;
 };
@@ -114,7 +115,7 @@ type ProviderOperationLookup =
   | { readonly kind: "not_found" }
   | { readonly kind: "unavailable" };
 
-const toOrderLink = (row: LocalOrderRow): AdministrationOrderLink => {
+const toOrderLink = (row: LocalOrderRow): AdministrationNexiOrderLink => {
   const providerOrderCreatedAt =
     row.providerOrderCreatedAt ??
     (row.providerSessionAttached ? row.attemptCreatedAt : null);
@@ -173,17 +174,17 @@ const toLocalOrderRows = (
       : []
   );
 
-export interface IPaymentAdministrationService {
-  readonly listOrders: (
-    input: AdministrationOrderListInput
-  ) => Effect.Effect<AdministrationOrderList, unknown>;
-  readonly loadOrder: (
+export interface INexiAdministrationService {
+  readonly listNexiOrders: (
+    input: AdministrationNexiOrderListInput
+  ) => Effect.Effect<AdministrationNexiOrderList, unknown>;
+  readonly loadNexiOrder: (
     orderId: NexiOrderId
-  ) => Effect.Effect<AdministrationOrder, unknown>;
-  readonly listOperations: (
-    input: AdministrationOperationListInput
-  ) => Effect.Effect<AdministrationOperationList, unknown>;
-  readonly loadOperation: (operationId: NexiOperationId) => Effect.Effect<
+  ) => Effect.Effect<AdministrationNexiOrderRecord, unknown>;
+  readonly listNexiOperations: (
+    input: AdministrationNexiOperationListInput
+  ) => Effect.Effect<AdministrationNexiOperationList, unknown>;
+  readonly loadNexiOperation: (operationId: NexiOperationId) => Effect.Effect<
     {
       readonly operationId: NexiOperationId;
       readonly operation: NexiOperation | null;
@@ -193,22 +194,22 @@ export interface IPaymentAdministrationService {
     },
     unknown
   >;
-  readonly loadReservationOrders: (
+  readonly loadReservationNexiOrders: (
     reservationId: WorkspaceReservationId
-  ) => Effect.Effect<readonly AdministrationOrder[], unknown>;
+  ) => Effect.Effect<readonly AdministrationNexiOrderRecord[], unknown>;
 }
 
-export class PaymentAdministrationService extends Context.Service<
-  PaymentAdministrationService,
-  IPaymentAdministrationService
->()("@deskohub-workspace/administration/PaymentAdministrationService") {
+export class NexiAdministrationService extends Context.Service<
+  NexiAdministrationService,
+  INexiAdministrationService
+>()("@deskohub-workspace/administration/NexiAdministrationService") {
   static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const nexi = yield* NexiService;
 
-      const loadLocalOrderRows = (input: AdministrationOrderListInput) => {
+      const loadLocalOrderRows = (input: AdministrationNexiOrderListInput) => {
         const orderCreatedAt = sql<Temporal.Instant>`coalesce(${paymentAttempts.providerOrderCreatedAt}, ${paymentAttempts.createdAt})`;
         const conditions: SQL[] = [
           eq(paymentAttempts.provider, "nexi"),
@@ -233,10 +234,10 @@ export class PaymentAdministrationService extends Context.Service<
       };
 
       const loadLinksByOrderIds = Effect.fn(
-        "PaymentAdministrationService.loadLinksByOrderIds"
+        "NexiAdministrationService.loadLinksByOrderIds"
       )(function* (orderIds: readonly NexiOrderId[]) {
         if (orderIds.length === 0) {
-          return new Map<NexiOrderId, AdministrationOrderLink>();
+          return new Map<NexiOrderId, AdministrationNexiOrderLink>();
         }
         const rows = toLocalOrderRows(
           yield* db
@@ -288,131 +289,131 @@ export class PaymentAdministrationService extends Context.Service<
             )
           );
 
-      const listOrders = Effect.fn("PaymentAdministrationService.listOrders")(
-        function* (input: AdministrationOrderListInput) {
-          const maxRecords = normalizeMaximumRecords(input.maxRecords);
-          const [localRows, providerResult] = yield* Effect.all(
-            [
-              loadLocalOrderRows({ ...input, maxRecords }),
-              nexi
-                .listOrders({
-                  correlationId: NexiCorrelationIdSchema.make(
-                    crypto.randomUUID()
-                  ),
-                  fromTime: input.fromTime,
-                  toTime: input.toTime,
-                  maxRecords,
-                })
-                .pipe(
-                  Effect.map((items) => ({
-                    kind: "available" as const,
-                    items,
-                  })),
-                  Effect.catch((cause) =>
-                    Effect.logWarning("Nexi order list unavailable", {
-                      cause,
-                    }).pipe(Effect.as({ kind: "unavailable" as const }))
-                  )
+      const listNexiOrders = Effect.fn(
+        "NexiAdministrationService.listNexiOrders"
+      )(function* (input: AdministrationNexiOrderListInput) {
+        const maxRecords = normalizeMaximumRecords(input.maxRecords);
+        const [localRows, providerResult] = yield* Effect.all(
+          [
+            loadLocalOrderRows({ ...input, maxRecords }),
+            nexi
+              .listOrders({
+                correlationId: NexiCorrelationIdSchema.make(
+                  crypto.randomUUID()
                 ),
-            ],
-            { concurrency: 2 }
-          );
-          const localOrders = toLocalOrderRows(localRows);
-          const providerItems =
-            providerResult.kind === "available" ? providerResult.items : [];
-          const localOrderIds = new Set(
-            localOrders.map(({ providerOrderId }) => providerOrderId)
-          );
-          const links = yield* loadLinksByOrderIds(
-            providerItems.flatMap((provider) =>
-              localOrderIds.has(provider.orderId) ? [] : [provider.orderId]
-            )
-          );
-          for (const row of localOrders) {
-            links.set(row.providerOrderId, toOrderLink(row));
-          }
-          const orders = new Map<NexiOrderId, AdministrationOrder>();
-          for (const provider of providerItems) {
-            orders.set(provider.orderId, {
-              orderId: provider.orderId,
-              provider,
-              providerAvailable: true,
-              providerStatus: "available",
-              link: links.get(provider.orderId) ?? null,
+                fromTime: input.fromTime,
+                toTime: input.toTime,
+                maxRecords,
+              })
+              .pipe(
+                Effect.map((items) => ({
+                  kind: "available" as const,
+                  items,
+                })),
+                Effect.catch((cause) =>
+                  Effect.logWarning("Nexi order list unavailable", {
+                    cause,
+                  }).pipe(Effect.as({ kind: "unavailable" as const }))
+                )
+              ),
+          ],
+          { concurrency: 2 }
+        );
+        const localOrders = toLocalOrderRows(localRows);
+        const providerItems =
+          providerResult.kind === "available" ? providerResult.items : [];
+        const localOrderIds = new Set(
+          localOrders.map(({ providerOrderId }) => providerOrderId)
+        );
+        const links = yield* loadLinksByOrderIds(
+          providerItems.flatMap((provider) =>
+            localOrderIds.has(provider.orderId) ? [] : [provider.orderId]
+          )
+        );
+        for (const row of localOrders) {
+          links.set(row.providerOrderId, toOrderLink(row));
+        }
+        const orders = new Map<NexiOrderId, AdministrationNexiOrderRecord>();
+        for (const provider of providerItems) {
+          orders.set(provider.orderId, {
+            orderId: provider.orderId,
+            provider,
+            providerAvailable: true,
+            providerStatus: "available",
+            link: links.get(provider.orderId) ?? null,
+          });
+        }
+        for (const row of localOrders) {
+          if (!orders.has(row.providerOrderId)) {
+            orders.set(row.providerOrderId, {
+              orderId: row.providerOrderId,
+              provider: null,
+              providerAvailable: providerResult.kind === "available",
+              providerStatus:
+                providerResult.kind === "available"
+                  ? "not_returned"
+                  : "unavailable",
+              link: toOrderLink(row),
             });
           }
-          for (const row of localOrders) {
-            if (!orders.has(row.providerOrderId)) {
-              orders.set(row.providerOrderId, {
-                orderId: row.providerOrderId,
-                provider: null,
-                providerAvailable: providerResult.kind === "available",
-                providerStatus:
-                  providerResult.kind === "available"
-                    ? "not_returned"
-                    : "unavailable",
-                link: toOrderLink(row),
-              });
-            }
-          }
-          const items = [...orders.values()].toSorted((left, right) => {
-            const leftTime =
-              left.provider?.lastOperationTime ??
-              left.link?.providerOrderCreatedAt ??
-              left.link?.attemptCreatedAt ??
-              "";
-            const rightTime =
-              right.provider?.lastOperationTime ??
-              right.link?.providerOrderCreatedAt ??
-              right.link?.attemptCreatedAt ??
-              "";
-            return rightTime.localeCompare(leftTime);
-          });
-          return {
-            items,
-            providerAvailable: providerResult.kind === "available",
-            truncated:
-              providerItems.length >= maxRecords ||
-              localOrders.length >= maxRecords,
-          };
         }
-      );
+        const items = [...orders.values()].toSorted((left, right) => {
+          const leftTime =
+            left.provider?.lastOperationTime ??
+            left.link?.providerOrderCreatedAt ??
+            left.link?.attemptCreatedAt ??
+            "";
+          const rightTime =
+            right.provider?.lastOperationTime ??
+            right.link?.providerOrderCreatedAt ??
+            right.link?.attemptCreatedAt ??
+            "";
+          return rightTime.localeCompare(leftTime);
+        });
+        return {
+          items,
+          providerAvailable: providerResult.kind === "available",
+          truncated:
+            providerItems.length >= maxRecords ||
+            localOrders.length >= maxRecords,
+        };
+      });
 
-      const loadOrder = Effect.fn("PaymentAdministrationService.loadOrder")(
-        function* (orderId: NexiOrderId) {
-          const [localRows, providerResult] = yield* Effect.all(
-            [
-              db
-                .select(localOrderSelection)
-                .from(paymentAttempts)
-                .where(
-                  and(
-                    eq(paymentAttempts.provider, "nexi"),
-                    eq(paymentAttempts.providerOrderId, orderId)
-                  )
+      const loadNexiOrder = Effect.fn(
+        "NexiAdministrationService.loadNexiOrder"
+      )(function* (orderId: NexiOrderId) {
+        const [localRows, providerResult] = yield* Effect.all(
+          [
+            db
+              .select(localOrderSelection)
+              .from(paymentAttempts)
+              .where(
+                and(
+                  eq(paymentAttempts.provider, "nexi"),
+                  eq(paymentAttempts.providerOrderId, orderId)
                 )
-                .limit(1),
-              getProviderOrder(orderId),
-            ],
-            { concurrency: 2 }
-          );
-          const local = toLocalOrderRows(localRows)[0];
-          return {
-            orderId,
-            provider:
-              providerResult.kind === "available"
-                ? providerResult.provider
-                : null,
-            providerAvailable: providerResult.kind === "available",
-            providerStatus: providerResult.kind,
-            link: local ? toOrderLink(local) : null,
-          };
-        }
-      );
+              )
+              .limit(1),
+            getProviderOrder(orderId),
+          ],
+          { concurrency: 2 }
+        );
+        const local = toLocalOrderRows(localRows)[0];
+        return {
+          orderId,
+          provider:
+            providerResult.kind === "available"
+              ? providerResult.provider
+              : null,
+          providerAvailable: providerResult.kind === "available",
+          providerStatus: providerResult.kind,
+          link: local ? toOrderLink(local) : null,
+        };
+      });
 
-      const listOperations = Effect.fn(
-        "PaymentAdministrationService.listOperations"
-      )(function* (input: AdministrationOperationListInput) {
+      const listNexiOperations = Effect.fn(
+        "NexiAdministrationService.listNexiOperations"
+      )(function* (input: AdministrationNexiOperationListInput) {
         const maxRecords = normalizeMaximumRecords(input.maxRecords);
         const providerResult = yield* nexi
           .listOperations({
@@ -455,8 +456,8 @@ export class PaymentAdministrationService extends Context.Service<
         };
       });
 
-      const loadOperation = Effect.fn(
-        "PaymentAdministrationService.loadOperation"
+      const loadNexiOperation = Effect.fn(
+        "NexiAdministrationService.loadNexiOperation"
       )(function* (operationId: NexiOperationId) {
         const result: ProviderOperationLookup = yield* nexi
           .getOperation({
@@ -509,8 +510,8 @@ export class PaymentAdministrationService extends Context.Service<
         };
       });
 
-      const loadReservationOrders = Effect.fn(
-        "PaymentAdministrationService.loadReservationOrders"
+      const loadReservationNexiOrders = Effect.fn(
+        "NexiAdministrationService.loadReservationNexiOrders"
       )(function* (reservationId: WorkspaceReservationId) {
         const localRows = toLocalOrderRows(
           yield* db
@@ -529,7 +530,7 @@ export class PaymentAdministrationService extends Context.Service<
           localRows.map((row) =>
             getProviderOrder(row.providerOrderId).pipe(
               Effect.map(
-                (providerResult): AdministrationOrder => ({
+                (providerResult): AdministrationNexiOrderRecord => ({
                   orderId: row.providerOrderId,
                   provider:
                     providerResult.kind === "available"
@@ -547,11 +548,11 @@ export class PaymentAdministrationService extends Context.Service<
       });
 
       return {
-        listOrders,
-        loadOrder,
-        listOperations,
-        loadOperation,
-        loadReservationOrders,
+        listNexiOrders,
+        loadNexiOrder,
+        listNexiOperations,
+        loadNexiOperation,
+        loadReservationNexiOrders,
       };
     })
   );

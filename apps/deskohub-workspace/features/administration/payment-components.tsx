@@ -17,8 +17,8 @@ import { formatAdministrationDateTime } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";
 import { AdministrationAlert } from "./notice";
 import type {
-  AdministrationOperation,
-  AdministrationOrder,
+  AdministrationNexiOperationRecord,
+  AdministrationNexiOrderRecord,
 } from "./payment-administration.service";
 import { getProviderValueLabel } from "./payment-presentation";
 import {
@@ -40,7 +40,7 @@ export const formatProviderMoney = (
     : `${amount} ${currency}`;
 };
 
-export const formatOrderMoney = (order: AdministrationOrder) => {
+export const formatNexiOrderMoney = (order: AdministrationNexiOrderRecord) => {
   if (order.provider) {
     return formatProviderMoney(order.provider.amount, order.provider.currency);
   }
@@ -62,7 +62,7 @@ export const formatProviderDateTime = (value: string | undefined) => {
   }
 };
 
-const getReconciliationLabel = (order: AdministrationOrder) => {
+const getReconciliationLabel = (order: AdministrationNexiOrderRecord) => {
   if (order.providerStatus === "available") return "Provider only";
   if (order.providerStatus === "not_found") return "Not found";
   if (order.providerStatus === "not_returned") return "Not returned";
@@ -98,10 +98,10 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
   );
 }
 
-export function ReservationOrderList({
+export function ReservationNexiOrderList({
   orders,
 }: {
-  readonly orders: readonly AdministrationOrder[];
+  readonly orders: readonly AdministrationNexiOrderRecord[];
 }) {
   if (orders.length === 0) {
     return (
@@ -151,7 +151,7 @@ export function ReservationOrderList({
                 />
               </div>
               <div className="sm:text-right">
-                <p className="font-semibold">{formatOrderMoney(order)}</p>
+                <p className="font-semibold">{formatNexiOrderMoney(order)}</p>
                 <p className="mt-1 text-xs text-navy-blue/60">
                   {order.link?.stateLabel ?? "No local payment attempt"}
                 </p>
@@ -259,10 +259,10 @@ export function ReservationOrderList({
   );
 }
 
-export function OrderTable({
+export function NexiOrderTable({
   orders,
 }: {
-  readonly orders: readonly AdministrationOrder[];
+  readonly orders: readonly AdministrationNexiOrderRecord[];
 }) {
   if (orders.length === 0) {
     return <EmptyState message="No Nexi orders match this period." />;
@@ -285,7 +285,7 @@ export function OrderTable({
               <TableCell>
                 <Link
                   className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                  href={`/admin/orders/${encodeURIComponent(order.orderId)}`}
+                  href={`/admin/nexi/orders/${encodeURIComponent(order.orderId)}`}
                 >
                   {order.orderId}
                 </Link>
@@ -303,7 +303,7 @@ export function OrderTable({
                 )}
               </TableCell>
               <TableCell className="font-medium">
-                {formatOrderMoney(order)}
+                {formatNexiOrderMoney(order)}
               </TableCell>
               <TableCell>
                 {order.provider?.lastOperationType ? (
@@ -343,10 +343,10 @@ export function OrderTable({
   );
 }
 
-export function OperationTable({
+export function NexiOperationTable({
   operations,
 }: {
-  readonly operations: readonly AdministrationOperation[];
+  readonly operations: readonly AdministrationNexiOperationRecord[];
 }) {
   if (operations.length === 0) {
     return <EmptyState message="No Nexi operations match these filters." />;
@@ -377,7 +377,7 @@ export function OperationTable({
                 {operation.operationId ? (
                   <Link
                     className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                    href={`/admin/operations/${encodeURIComponent(operation.operationId)}`}
+                    href={`/admin/nexi/operations/${encodeURIComponent(operation.operationId)}`}
                   >
                     {operation.operationId}
                   </Link>
@@ -396,7 +396,7 @@ export function OperationTable({
                 {operation.orderId ? (
                   <Link
                     className="font-mono text-xs hover:underline"
-                    href={`/admin/orders/${encodeURIComponent(operation.orderId)}`}
+                    href={`/admin/nexi/orders/${encodeURIComponent(operation.orderId)}`}
                   >
                     {operation.orderId}
                   </Link>

@@ -6,6 +6,20 @@ const readWorkspaceFile = (path: string) =>
   Bun.file(`${workspaceRoot}${path}`).text();
 
 describe("administration UI boundaries", () => {
+  test("reserves the generic order route for domain orders", async () => {
+    expect(
+      await Bun.file(`${workspaceRoot}app/admin/orders/page.tsx`).exists()
+    ).toBe(false);
+    expect(
+      await Bun.file(
+        `${workspaceRoot}app/admin/orders/[orderId]/page.tsx`
+      ).exists()
+    ).toBe(false);
+    expect(await readWorkspaceFile("app/admin/operations/page.tsx")).toContain(
+      'redirect("/admin/nexi/operations")'
+    );
+  });
+
   test("keeps the administration frame in the instant shell", async () => {
     const layout = await readWorkspaceFile("app/admin/layout.tsx");
 
@@ -40,10 +54,10 @@ describe("administration UI boundaries", () => {
       "app/admin/customers/page.tsx",
       "app/admin/customers/[customerId]/page.tsx",
       "app/admin/customers/[customerId]/create-code/page.tsx",
-      "app/admin/operations/page.tsx",
-      "app/admin/operations/[operationId]/page.tsx",
-      "app/admin/orders/page.tsx",
-      "app/admin/orders/[orderId]/page.tsx",
+      "app/admin/nexi/operations/page.tsx",
+      "app/admin/nexi/operations/[operationId]/page.tsx",
+      "app/admin/nexi/orders/page.tsx",
+      "app/admin/nexi/orders/[orderId]/page.tsx",
       "app/admin/reservations/page.tsx",
       "app/admin/reservations/[reservationId]/page.tsx",
       "app/admin/sales/page.tsx",
@@ -73,8 +87,8 @@ describe("administration UI boundaries", () => {
       "app/admin/bookings/page.tsx",
       "app/admin/cli/sessions/page.tsx",
       "app/admin/customers/page.tsx",
-      "app/admin/operations/page.tsx",
-      "app/admin/orders/page.tsx",
+      "app/admin/nexi/operations/page.tsx",
+      "app/admin/nexi/orders/page.tsx",
       "app/admin/reservations/page.tsx",
       "features/discounts/admin/components.tsx",
     ];
@@ -90,8 +104,8 @@ describe("administration UI boundaries", () => {
     const streamedCollections = [
       "app/admin/bookings/page.tsx",
       "app/admin/customers/page.tsx",
-      "app/admin/operations/page.tsx",
-      "app/admin/orders/page.tsx",
+      "app/admin/nexi/operations/page.tsx",
+      "app/admin/nexi/orders/page.tsx",
       "app/admin/reservations/page.tsx",
     ];
 

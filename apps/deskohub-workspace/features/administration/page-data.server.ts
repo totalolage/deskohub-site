@@ -13,8 +13,8 @@ import {
 } from "./administration.service";
 import { formatAdministrationDateTime } from "./formatters";
 import {
-  getAdministrationOperationFilters,
-  getAdministrationOrderDateTimeBounds,
+  getAdministrationNexiOperationFilters,
+  getAdministrationNexiOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
 import { getAdministrationReservationDateRange } from "./reservation-date-range";
@@ -279,18 +279,18 @@ export const loadAdministrationCustomerActivity = cache(
   }
 );
 
-const getAdministrationOrderRange = async (
+const getAdministrationNexiOrderRange = async (
   searchParams: AdministrationSearchParams
 ) => {
   const params = await searchParams;
-  return getAdministrationOrderDateTimeBounds(
+  return getAdministrationNexiOrderDateTimeBounds(
     firstParam(params.from),
     firstParam(params.to)
   );
 };
 
-const loadAdministrationOrderList = async (
-  range: ReturnType<typeof getAdministrationOrderRange>
+const loadAdministrationNexiOrderList = async (
+  range: ReturnType<typeof getAdministrationNexiOrderRange>
 ) => {
   const [, resolvedRange] = await Promise.all([
     authorizeAdministrationPage(),
@@ -298,39 +298,39 @@ const loadAdministrationOrderList = async (
   ]);
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.listOrders({
+    return yield* administration.listNexiOrders({
       fromTime: resolvedRange.fromTime,
       toTime: resolvedRange.toTime,
       maxRecords: 50,
     });
-  }).pipe(runAdministration("administration.orders"));
+  }).pipe(runAdministration("administration.nexi-orders"));
 };
 
-export const loadAdministrationOrdersPage = (
+export const loadAdministrationNexiOrdersPage = (
   searchParams: AdministrationSearchParams
 ) => {
-  const range = getAdministrationOrderRange(searchParams);
-  return { range, result: loadAdministrationOrderList(range) };
+  const range = getAdministrationNexiOrderRange(searchParams);
+  return { range, result: loadAdministrationNexiOrderList(range) };
 };
 
-export const loadAdministrationOrders = async (
+export const loadAdministrationNexiOrders = async (
   searchParams: AdministrationSearchParams
 ) => {
-  const page = loadAdministrationOrdersPage(searchParams);
+  const page = loadAdministrationNexiOrdersPage(searchParams);
   const [range, result] = await Promise.all([page.range, page.result]);
   return { range, result };
 };
 
-export const loadAdministrationOrder = cache(async (orderId: string) => {
+export const loadAdministrationNexiOrder = cache(async (orderId: string) => {
   await authorizeAdministrationPage();
   const decodedOrderId = requireNexiOrderRouteId(orderId);
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.loadOrder(decodedOrderId);
-  }).pipe(runAdministration("administration.order"));
+    return yield* administration.loadNexiOrder(decodedOrderId);
+  }).pipe(runAdministration("administration.nexi-order"));
 });
 
-const getAdministrationOperationListInput = async (
+const getAdministrationNexiOperationListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
   const params = await searchParams;
@@ -338,15 +338,15 @@ const getAdministrationOperationListInput = async (
     firstParam(params.from),
     firstParam(params.to)
   );
-  const { channel, operationType } = getAdministrationOperationFilters({
+  const { channel, operationType } = getAdministrationNexiOperationFilters({
     channel: firstParam(params.channel),
     operationType: firstParam(params.operationType),
   });
   return { input: { channel, operationType }, range };
 };
 
-const loadAdministrationOperationList = async (
-  criteria: ReturnType<typeof getAdministrationOperationListInput>
+const loadAdministrationNexiOperationList = async (
+  criteria: ReturnType<typeof getAdministrationNexiOperationListInput>
 ) => {
   const [, resolvedCriteria] = await Promise.all([
     authorizeAdministrationPage(),
@@ -355,27 +355,27 @@ const loadAdministrationOperationList = async (
   const { input, range } = resolvedCriteria;
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.listOperations({
+    return yield* administration.listNexiOperations({
       fromTime: range.fromTime,
       toTime: range.toTime,
       maxRecords: 100,
       channel: input.channel,
       operationType: input.operationType,
     });
-  }).pipe(runAdministration("administration.operations"));
+  }).pipe(runAdministration("administration.nexi-operations"));
 };
 
-export const loadAdministrationOperationsPage = (
+export const loadAdministrationNexiOperationsPage = (
   searchParams: AdministrationSearchParams
 ) => {
-  const criteria = getAdministrationOperationListInput(searchParams);
-  return { criteria, result: loadAdministrationOperationList(criteria) };
+  const criteria = getAdministrationNexiOperationListInput(searchParams);
+  return { criteria, result: loadAdministrationNexiOperationList(criteria) };
 };
 
-export const loadAdministrationOperations = async (
+export const loadAdministrationNexiOperations = async (
   searchParams: AdministrationSearchParams
 ) => {
-  const page = loadAdministrationOperationsPage(searchParams);
+  const page = loadAdministrationNexiOperationsPage(searchParams);
   const [{ input, range }, result] = await Promise.all([
     page.criteria,
     page.result,
@@ -383,13 +383,13 @@ export const loadAdministrationOperations = async (
   return { input, range, result };
 };
 
-export const loadAdministrationOperation = cache(
+export const loadAdministrationNexiOperation = cache(
   async (operationId: string) => {
     await authorizeAdministrationPage();
     const decodedOperationId = requireNexiOperationRouteId(operationId);
     return Effect.gen(function* () {
       const administration = yield* AdministrationService;
-      return yield* administration.loadOperation(decodedOperationId);
-    }).pipe(runAdministration("administration.operation"));
+      return yield* administration.loadNexiOperation(decodedOperationId);
+    }).pipe(runAdministration("administration.nexi-operation"));
   }
 );

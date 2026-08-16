@@ -6,5 +6,7 @@ export default async function OperationBreadcrumb({
   readonly params: Promise<{ readonly operationId: string }>;
 }) {
   const { operationId } = await params;
-  return <AdministrationBreadcrumb segments={["operations", operationId]} />;
+  return (
+    <AdministrationBreadcrumb segments={["nexi", "operations", operationId]} />
+  );
 }

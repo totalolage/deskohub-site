@@ -472,6 +472,34 @@ describe("dhw mutation commands", () => {
       { kind: "delete-voucher", id: voucherId },
     ]);
   });
+
+  test("dispatches Nexi diagnostics through the Nexi command group", async () => {
+    const { layer, nexiRequests } = makeCommandLayer();
+
+    await runCommand(
+      ["--json", "nexi", "orders", "list", "--from", "2026-08-01"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      ["--json", "nexi", "orders", "get", "nexi-order-1"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      ["--json", "nexi", "operations", "list", "--channel", "ECOMMERCE"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      ["--json", "nexi", "operations", "get", "nexi-operation-1"],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(nexiRequests).toEqual([
+      ["list-orders", { from: "2026-08-01" }],
+      ["get-order", "nexi-order-1"],
+      ["list-operations", { channel: "ECOMMERCE" }],
+      ["get-operation", "nexi-operation-1"],
+    ]);
+  });
 });
 
 const runCommand = <R>(
@@ -494,6 +522,7 @@ const makeCommandLayer = ({
 } = {}) => {
   const mutations: unknown[] = [];
   const accessMutations: unknown[] = [];
+  const nexiRequests: unknown[] = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
     cancelReservation,
@@ -501,6 +530,38 @@ const makeCommandLayer = ({
       Effect.succeed({
         accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
       } as never),
+    getNexiOperation: (_accessToken, operationId) =>
+      Effect.sync(() => {
+        nexiRequests.push(["get-operation", operationId]);
+        return {
+          operationId,
+          operation: null,
+          providerAvailable: false,
+          providerStatus: "unavailable" as const,
+          linkedReservationId: null,
+        };
+      }),
+    getNexiOrder: (_accessToken, orderId) =>
+      Effect.sync(() => {
+        nexiRequests.push(["get-order", orderId]);
+        return {
+          orderId,
+          provider: null,
+          providerAvailable: false,
+          providerStatus: "unavailable" as const,
+          link: null,
+        };
+      }),
+    listNexiOperations: (_accessToken, query) =>
+      Effect.sync(() => {
+        nexiRequests.push(["list-operations", query]);
+        return { items: [], providerAvailable: false, truncated: false };
+      }),
+    listNexiOrders: (_accessToken, query) =>
+      Effect.sync(() => {
+        nexiRequests.push(["list-orders", query]);
+        return { items: [], providerAvailable: false, truncated: false };
+      }),
     mutateDiscounts: (_accessToken, _requestId, mutation) =>
       Effect.sync(() => {
         mutations.push(mutation);
@@ -567,6 +628,7 @@ const makeCommandLayer = ({
   return {
     accessMutations,
     mutations,
+    nexiRequests,
     layer: Layer.mergeAll(BunServices.layer, api, authentication, config),
   };
 };

@@ -4,8 +4,8 @@ import {
   AdministrationCanonicalPromotionCode,
   AdministrationDiscountCodeId,
   AdministrationNexiOperationId,
-  AdministrationOperation,
-  AdministrationOrder,
+  AdministrationNexiOperationRecord,
+  AdministrationNexiOrderRecord,
   AdministrationReservationSummary,
   AdministrationStoredDiscountId,
   CliAccessToken,
@@ -141,7 +141,7 @@ describe("WorkspaceAdminApiClient", () => {
       latestPayment: null,
       updatedAt: expiresAt,
     });
-    const order = Schema.decodeUnknownSync(AdministrationOrder)({
+    const order = Schema.decodeUnknownSync(AdministrationNexiOrderRecord)({
       orderId: "order-1",
       provider: null,
       providerAvailable: false,
@@ -151,7 +151,9 @@ describe("WorkspaceAdminApiClient", () => {
     const operationId = Schema.decodeUnknownSync(AdministrationNexiOperationId)(
       "operation-1"
     );
-    const operation = Schema.decodeUnknownSync(AdministrationOperation)({
+    const operation = Schema.decodeUnknownSync(
+      AdministrationNexiOperationRecord
+    )({
       operationId,
       operationType: "CAPTURE",
       operationResult: "AUTHORIZED",
@@ -578,16 +580,16 @@ describe("WorkspaceAdminApiClient", () => {
           page: 2,
         });
         yield* client.getBooking(Redacted.make(accessToken), booking.id);
-        yield* client.listOrders(Redacted.make(accessToken), {
+        yield* client.listNexiOrders(Redacted.make(accessToken), {
           from: "2026-08-01",
           to: "2026-08-10",
         });
-        yield* client.getOrder(Redacted.make(accessToken), order.orderId);
-        yield* client.listOperations(Redacted.make(accessToken), {
+        yield* client.getNexiOrder(Redacted.make(accessToken), order.orderId);
+        yield* client.listNexiOperations(Redacted.make(accessToken), {
           channel: "ECOMMERCE",
           operationType: "CAPTURE",
         });
-        yield* client.getOperation(Redacted.make(accessToken), operationId);
+        yield* client.getNexiOperation(Redacted.make(accessToken), operationId);
         yield* client.listCustomers(Redacted.make(accessToken), { page: 3 });
         yield* client.searchCustomers(Redacted.make(accessToken), {
           query: "Ada",
@@ -651,10 +653,13 @@ describe("WorkspaceAdminApiClient", () => {
         { method: "GET", path: "/api/v1/cli/reservations/find" },
         { method: "GET", path: "/api/v1/cli/bookings" },
         { method: "GET", path: "/api/v1/cli/bookings/booking-1" },
-        { method: "GET", path: "/api/v1/cli/orders" },
-        { method: "GET", path: "/api/v1/cli/orders/order-1" },
-        { method: "GET", path: "/api/v1/cli/operations" },
-        { method: "GET", path: "/api/v1/cli/operations/operation-1" },
+        { method: "GET", path: "/api/v1/cli/nexi/orders" },
+        { method: "GET", path: "/api/v1/cli/nexi/orders/order-1" },
+        { method: "GET", path: "/api/v1/cli/nexi/operations" },
+        {
+          method: "GET",
+          path: "/api/v1/cli/nexi/operations/operation-1",
+        },
         { method: "GET", path: "/api/v1/cli/customers" },
         { method: "GET", path: "/api/v1/cli/customers/search" },
         { method: "GET", path: "/api/v1/cli/customers/customer-1" },

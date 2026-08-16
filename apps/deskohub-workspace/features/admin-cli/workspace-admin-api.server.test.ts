@@ -375,7 +375,7 @@ describe("Workspace Admin API", () => {
           },
           marketingConsent: null,
         }),
-      listOrders: (input) =>
+      listNexiOrders: (input) =>
         Effect.sync(() => {
           orderInputs.push(input);
           return {
@@ -384,8 +384,8 @@ describe("Workspace Admin API", () => {
             truncated: false,
           };
         }),
-      loadOrder: () => Effect.succeed(order),
-      listOperations: (input) =>
+      loadNexiOrder: () => Effect.succeed(order),
+      listNexiOperations: (input) =>
         Effect.sync(() => {
           operationInputs.push(input);
           return {
@@ -394,7 +394,7 @@ describe("Workspace Admin API", () => {
             truncated: false,
           };
         }),
-      loadOperation: (operationId) =>
+      loadNexiOperation: (operationId) =>
         Effect.succeed({
           operationId,
           operation,
@@ -460,13 +460,13 @@ describe("Workspace Admin API", () => {
       const missingBooking = yield* client.administration
         .getBooking({ params: { bookingId: "missing" } })
         .pipe(Effect.flip);
-      const orders = yield* client.administration.listOrders({
+      const orders = yield* client.administration.listNexiOrders({
         query: { from: "2026-08-01", to: "2026-08-10" },
       });
-      const orderDetail = yield* client.administration.getOrder({
+      const orderDetail = yield* client.administration.getNexiOrder({
         params: { orderId: order.orderId },
       });
-      const operations = yield* client.administration.listOperations({
+      const operations = yield* client.administration.listNexiOperations({
         query: {
           from: "2026-08-01",
           to: "2026-08-10",
@@ -474,9 +474,30 @@ describe("Workspace Admin API", () => {
           operationType: "CAPTURE",
         },
       });
-      const operationDetail = yield* client.administration.getOperation({
+      const operationDetail = yield* client.administration.getNexiOperation({
         params: { operationId: "operation-1" },
       });
+      const legacyOrders = yield* client.administration.listLegacyNexiOrders({
+        query: { from: "2026-08-01", to: "2026-08-10" },
+      });
+      const legacyOrderDetail = yield* client.administration.getLegacyNexiOrder(
+        {
+          params: { orderId: order.orderId },
+        }
+      );
+      const legacyOperations =
+        yield* client.administration.listLegacyNexiOperations({
+          query: {
+            from: "2026-08-01",
+            to: "2026-08-10",
+            channel: "ECOMMERCE",
+            operationType: "CAPTURE",
+          },
+        });
+      const legacyOperationDetail =
+        yield* client.administration.getLegacyNexiOperation({
+          params: { operationId: "operation-1" },
+        });
       const customers = yield* client.administration.listCustomers({
         query: { page: 3 },
       });
@@ -507,6 +528,10 @@ describe("Workspace Admin API", () => {
         customers,
         discountCodeResult,
         discountDashboardResult,
+        legacyOperationDetail,
+        legacyOperations,
+        legacyOrderDetail,
+        legacyOrders,
         missingBooking,
         operationDetail,
         operations,
@@ -555,6 +580,10 @@ describe("Workspace Admin API", () => {
     expect(result.orderDetail.orderId).toBe(order.orderId);
     expect(result.operations.items[0]?.operationId).toBe("operation-1");
     expect(result.operationDetail.providerStatus).toBe("available");
+    expect(result.legacyOrders).toEqual(result.orders);
+    expect(result.legacyOrderDetail).toEqual(result.orderDetail);
+    expect(result.legacyOperations).toEqual(result.operations);
+    expect(result.legacyOperationDetail).toEqual(result.operationDetail);
     expect(result.customers.page).toBe(3);
     expect(result.customerSearch.kind).toBe("not-found");
     expect(result.customer.profile).toBeNull();
@@ -572,8 +601,16 @@ describe("Workspace Admin API", () => {
     expect(customerReservationInputs).toEqual([
       { customerId: reservation.customerId, page: 5 },
     ]);
-    expect(orderInputs).toEqual([expect.objectContaining({ maxRecords: 50 })]);
+    expect(orderInputs).toEqual([
+      expect.objectContaining({ maxRecords: 50 }),
+      expect.objectContaining({ maxRecords: 50 }),
+    ]);
     expect(operationInputs).toEqual([
+      expect.objectContaining({
+        channel: "ECOMMERCE",
+        maxRecords: 100,
+        operationType: "CAPTURE",
+      }),
       expect.objectContaining({
         channel: "ECOMMERCE",
         maxRecords: 100,

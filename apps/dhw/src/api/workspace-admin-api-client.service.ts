@@ -17,14 +17,14 @@ import {
   type AdministrationDiscountMutationType,
   type AdministrationDotyposCustomerIdType,
   type AdministrationDotyposReservationIdType,
+  type AdministrationNexiOperationDetailType,
   type AdministrationNexiOperationIdType,
+  type AdministrationNexiOperationListType,
+  type AdministrationNexiOperationQueryType,
   type AdministrationNexiOrderIdType,
-  type AdministrationOperationDetailType,
-  type AdministrationOperationListType,
-  type AdministrationOperationQueryType,
-  type AdministrationOrderListType,
-  type AdministrationOrderQueryType,
-  type AdministrationOrderType,
+  type AdministrationNexiOrderListType,
+  type AdministrationNexiOrderQueryType,
+  type AdministrationNexiOrderRecordType,
   type AdministrationOverviewType,
   type AdministrationReservationAccessGrantType,
   type AdministrationReservationAccessMutationType,
@@ -178,32 +178,32 @@ interface IWorkspaceAdminApiClient {
     | CliSessionUnauthorized
     | CliServiceUnavailable
   >;
-  readonly listOrders: (
+  readonly listNexiOrders: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    query: AdministrationOrderQueryType
+    query: AdministrationNexiOrderQueryType
   ) => Effect.Effect<
-    AdministrationOrderListType,
+    AdministrationNexiOrderListType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
-  readonly getOrder: (
+  readonly getNexiOrder: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
     orderId: AdministrationNexiOrderIdType
   ) => Effect.Effect<
-    AdministrationOrderType,
+    AdministrationNexiOrderRecordType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
-  readonly listOperations: (
+  readonly listNexiOperations: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    query: AdministrationOperationQueryType
+    query: AdministrationNexiOperationQueryType
   ) => Effect.Effect<
-    AdministrationOperationListType,
+    AdministrationNexiOperationListType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
-  readonly getOperation: (
+  readonly getNexiOperation: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
     operationId: AdministrationNexiOperationIdType
   ) => Effect.Effect<
-    AdministrationOperationDetailType,
+    AdministrationNexiOperationDetailType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly listCustomers: (
@@ -458,50 +458,50 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.mapError(sanitizeResourceError)
         )
     ),
-    listOrders: Effect.fn("WorkspaceAdminApiClient.listOrders")(
+    listNexiOrders: Effect.fn("WorkspaceAdminApiClient.listNexiOrders")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        query: AdministrationOrderQueryType
+        query: AdministrationNexiOrderQueryType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
-            authorized.administration.listOrders({ query })
+            authorized.administration.listNexiOrders({ query })
           ),
           Effect.mapError(sanitizeSessionError)
         )
     ),
-    getOrder: Effect.fn("WorkspaceAdminApiClient.getOrder")(
+    getNexiOrder: Effect.fn("WorkspaceAdminApiClient.getNexiOrder")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
         orderId: AdministrationNexiOrderIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
-            authorized.administration.getOrder({ params: { orderId } })
+            authorized.administration.getNexiOrder({ params: { orderId } })
           ),
           Effect.mapError(sanitizeSessionError)
         )
     ),
-    listOperations: Effect.fn("WorkspaceAdminApiClient.listOperations")(
+    listNexiOperations: Effect.fn("WorkspaceAdminApiClient.listNexiOperations")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        query: AdministrationOperationQueryType
+        query: AdministrationNexiOperationQueryType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
-            authorized.administration.listOperations({ query })
+            authorized.administration.listNexiOperations({ query })
           ),
           Effect.mapError(sanitizeSessionError)
         )
     ),
-    getOperation: Effect.fn("WorkspaceAdminApiClient.getOperation")(
+    getNexiOperation: Effect.fn("WorkspaceAdminApiClient.getNexiOperation")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
         operationId: AdministrationNexiOperationIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
-            authorized.administration.getOperation({
+            authorized.administration.getNexiOperation({
               params: { operationId },
             })
           ),

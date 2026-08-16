@@ -5,7 +5,7 @@ import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Cause, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { AdministrationService } from "./administration.service";
-import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
+import { NexiAdministrationServiceMock } from "./payment-administration.service.mock";
 import { PostHogReservationHistory } from "./posthog-reservation-history";
 
 const makeQuery = <A>(rows: readonly A[]) => {
@@ -65,7 +65,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -117,7 +117,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -196,7 +196,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -298,7 +298,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -380,7 +380,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -441,7 +441,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -500,7 +500,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -573,7 +573,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -620,7 +620,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -658,7 +658,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -712,7 +712,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
@@ -765,7 +765,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )

@@ -69,7 +69,7 @@ export const getAdministrationPaymentDateTimeBounds = (
   current = getCurrentWorkspaceDate()
 ) => getPaymentDateTimeBounds(from, to, current);
 
-export const getAdministrationOrderDateTimeBounds = (
+export const getAdministrationNexiOrderDateTimeBounds = (
   from: string | undefined,
   to: string | undefined,
   current = getCurrentWorkspaceDate()
@@ -83,7 +83,7 @@ const parseProviderFilter = <Value extends string>(
   return allowedValues.find((allowed) => allowed === normalized);
 };
 
-export const getAdministrationOperationFilters = (input: {
+export const getAdministrationNexiOperationFilters = (input: {
   readonly channel?: string;
   readonly operationType?: string;
 }) => ({
