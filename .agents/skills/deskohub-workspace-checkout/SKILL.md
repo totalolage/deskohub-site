@@ -73,3 +73,12 @@ Administration may overlay a live Dotypos `CANCELLED` status as an
 operator-facing attention-state cancellation when the local row is stale. Keep
 that overlay read-only: it must not persist a lifecycle transition, authorize
 access, trigger recovery, or claim that Deskohub completed cancellation.
+
+Start goods payments only from an authenticated, customer-owned issued order.
+Reconstruct its displayed quote from ordered immutable `order_lines` and
+order-owned attemptless `discount_applications`; never reprice from the cart or
+Dotypos catalog. Accept only a PII-free billing intent, fetch the linked Dotypos
+customer on the server, and freeze that identity into the accounting snapshot
+inside the generic payment admission. Keep oldest-unpaid-goods selection in
+that same atomic admission and reuse the authenticated goods order detail as
+the hosted-payment return/status resource.
