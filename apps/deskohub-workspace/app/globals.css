@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "../shared/styles/glow-border.css";
+@import "../shared/styles/skeleton.css";
 
 @theme inline {
   --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,

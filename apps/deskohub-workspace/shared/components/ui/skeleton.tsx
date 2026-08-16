@@ -10,7 +10,7 @@ function Skeleton({ className, ref, ...props }: SkeletonProps) {
     <div
       ref={ref}
       data-slot="skeleton"
-      className={cn("animate-pulse rounded-md bg-navy-blue/8", className)}
+      className={cn("skeleton-glimmer rounded-md bg-navy-blue/8", className)}
       {...props}
     />
   );
