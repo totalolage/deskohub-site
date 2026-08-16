@@ -28,11 +28,16 @@ import type {
   ActiveSale,
   ActiveSaleDiscoveryInput,
   DiscountQuoteInput,
+  GoodsDiscountBasketInput,
 } from "./contracts";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
-import type { DiscountCandidate } from "./provider";
+import type {
+  DiscountCandidate,
+  GoodsBasketDiscountCandidate,
+} from "./provider";
+import { getEligibleGoodsBasketLineIndexes } from "./provider";
 
 const providerNamespace = "google-calendar-sales";
 
@@ -46,6 +51,11 @@ export interface ActiveSaleDiscoveryResult {
   readonly complete: boolean;
 }
 
+export type CalendarGoodsBasketDiscountProviderInput = Pick<
+  GoodsDiscountBasketInput,
+  "lines" | "locale" | "reservationDate"
+>;
+
 export interface ICalendarDiscountProvider {
   readonly discoverActiveSales: (
     input: ActiveSaleDiscoveryInput
@@ -56,6 +66,12 @@ export interface ICalendarDiscountProvider {
   readonly revalidate: (
     input: CalendarDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
+  readonly revalidateGoodsBasket: (
+    input: CalendarGoodsBasketDiscountProviderInput
+  ) => Effect.Effect<
+    readonly GoodsBasketDiscountCandidate[],
+    DiscountProviderError
+  >;
 }
 
 export class CalendarDiscountProvider extends Context.Service<
@@ -212,10 +228,36 @@ function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {
         withProviderAnnotations("revalidate")
       );
 
+      const revalidateGoodsBasket = Effect.fn(
+        "CalendarDiscountProvider.revalidateGoodsBasket"
+      )((input: CalendarGoodsBasketDiscountProviderInput) =>
+        Effect.succeed(input).pipe(
+          Effect.let(
+            "sourceInput",
+            ({ reservationDate }) =>
+              ({
+                calendarId: salesCalendarId,
+                reservationDate,
+              }) satisfies CalendarSalesSourceInput
+          ),
+          Effect.bind("resolvedSales", ({ sourceInput }) =>
+            loadDirectCalendarSalesSource(sourceInput)
+          ),
+          Effect.bind("at", () =>
+            Clock.currentTimeMillis.pipe(
+              Effect.map(Temporal.Instant.fromEpochMilliseconds)
+            )
+          ),
+          Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
+          Effect.map(toEligibleCalendarGoodsBasketCandidates)
+        )
+      );
+
       return {
         discoverActiveSales,
         discover,
         revalidate,
+        revalidateGoodsBasket,
       } satisfies ICalendarDiscountProvider;
     })
   );
@@ -293,6 +335,37 @@ const toCalendarDiscountCandidate = (input: {
     },
   },
 });
+
+const toEligibleCalendarGoodsBasketCandidates = (input: {
+  readonly at: Temporal.Instant;
+  readonly lines: CalendarGoodsBasketDiscountProviderInput["lines"];
+  readonly locale: CalendarGoodsBasketDiscountProviderInput["locale"];
+  readonly sales: readonly ResolvedCalendarSale[];
+}): readonly GoodsBasketDiscountCandidate[] =>
+  input.sales
+    .filter(
+      ({ sale }) => Temporal.Instant.compare(input.at, sale.expiresAt) < 0
+    )
+    .flatMap((resolvedSale) => {
+      const eligibleLineIndexes = getEligibleGoodsBasketLineIndexes({
+        lines: input.lines,
+        targets: resolvedSale.definition.products,
+      });
+      return eligibleLineIndexes.length === 0
+        ? []
+        : [
+            {
+              candidate: toCalendarDiscountCandidate({
+                locale: input.locale,
+                resolvedSale,
+              }),
+              eligibleLineIndexes,
+            },
+          ];
+    })
+    .toSorted((left, right) =>
+      left.candidate.discount.id.localeCompare(right.candidate.discount.id)
+    );
 
 const withProviderAnnotations =
   (operation: "discover" | "revalidate") =>

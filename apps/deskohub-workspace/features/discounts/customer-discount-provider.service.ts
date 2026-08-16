@@ -4,21 +4,36 @@ import { Context, Data, Effect, Layer, Option } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { type Locale, m } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import type { DiscountQuoteInput } from "./contracts";
+import type { DiscountQuoteInput, GoodsDiscountBasketInput } from "./contracts";
 import { toDotyposDiscountBasisPoints } from "./dotypos-discount-percentage";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
-import type { DiscountCandidate } from "./provider";
+import {
+  allGoodsBasketLinesEligible,
+  type DiscountCandidate,
+  type GoodsBasketDiscountCandidate,
+} from "./provider";
 
 export type CustomerDiscountProviderInput = Pick<
   DiscountQuoteInput,
   "dotyposCustomerId" | "locale" | "product"
 >;
 
+export type CustomerGoodsBasketDiscountProviderInput = Pick<
+  GoodsDiscountBasketInput,
+  "dotyposCustomerId" | "lines" | "locale"
+>;
+
 export interface ICustomerDiscountProvider {
   readonly resolve: (
     input: CustomerDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
+  readonly resolveGoodsBasket: (
+    input: CustomerGoodsBasketDiscountProviderInput
+  ) => Effect.Effect<
+    readonly GoodsBasketDiscountCandidate[],
+    DiscountProviderError
+  >;
 }
 
 export class CustomerDiscountConfigurationError extends Data.TaggedError(
@@ -47,6 +62,26 @@ export class CustomerDiscountProvider extends Context.Service<
           )
       );
 
+      const resolveGoodsBasket = Effect.fn(
+        "CustomerDiscountProvider.resolveGoodsBasket"
+      )((input: CustomerGoodsBasketDiscountProviderInput) => {
+        const firstLine = input.lines[0];
+        if (!firstLine) return Effect.succeed([]);
+
+        return resolve({
+          dotyposCustomerId: input.dotyposCustomerId,
+          locale: input.locale,
+          product: firstLine.product,
+        }).pipe(
+          Effect.map((candidates) =>
+            candidates.map((candidate) => ({
+              candidate,
+              eligibleLineIndexes: allGoodsBasketLinesEligible(input.lines),
+            }))
+          )
+        );
+      });
+
       const loadCustomerDiscountGroup = Effect.fn(
         "CustomerDiscountProvider.loadCustomerDiscountGroup"
       )((input: Pick<CustomerDiscountProviderInput, "dotyposCustomerId">) =>
@@ -64,7 +99,10 @@ export class CustomerDiscountProvider extends Context.Service<
           )
       );
 
-      return { resolve } satisfies ICustomerDiscountProvider;
+      return {
+        resolve,
+        resolveGoodsBasket,
+      } satisfies ICustomerDiscountProvider;
     })
   );
 }
