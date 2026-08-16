@@ -11,7 +11,6 @@ import { Container } from "@/shared/components/container";
 import { cn } from "@/shared/utils";
 
 type LandingPageHeroScrollSceneProps = {
-  ariaBusy: boolean;
   ariaLabelledBy: string;
   id: string;
   className?: string;
@@ -22,7 +21,6 @@ type LandingPageHeroScrollSceneProps = {
 };
 
 export function LandingPageHeroScrollScene({
-  ariaBusy,
   ariaLabelledBy,
   id,
   className,
@@ -44,7 +42,6 @@ export function LandingPageHeroScrollScene({
 
   return (
     <section
-      aria-busy={ariaBusy}
       aria-labelledby={ariaLabelledBy}
       className={className}
       id={id}

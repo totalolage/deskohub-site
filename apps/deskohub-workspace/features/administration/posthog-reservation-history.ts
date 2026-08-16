@@ -104,9 +104,9 @@ export class PostHogHistoryRuntimeConfig extends Context.Service<
   PostHogHistoryConfig
 >()("@deskohub-workspace/administration/PostHogHistoryRuntimeConfig") {
   static Default = Layer.succeed(this, {
-    apiKey: env.POSTHOG_HISTORY_API_KEY,
+    apiKey: env.POSTHOG_API_KEY,
     environment: env.VERCEL_ENV,
-    host: env.POSTHOG_HOST,
+    host: env.POSTHOG_API_HOST,
     projectId: env.POSTHOG_PROJECT_ID,
     serviceName: env.POSTHOG_SERVICE_NAME,
   });

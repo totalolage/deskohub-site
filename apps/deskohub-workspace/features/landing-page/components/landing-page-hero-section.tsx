@@ -20,7 +20,6 @@ import {
 } from "./landing-page-sale-banner";
 
 type LandingPageHeroSectionProps = {
-  isPending: boolean;
   locale: Locale;
   meetingRoomPageEnabled: boolean;
   overviewSectionId: string;
@@ -33,7 +32,6 @@ export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
   };
 
 export function LandingPageHeroSection({
-  isPending,
   locale,
   meetingRoomPageEnabled,
   overviewSectionId,
@@ -138,7 +136,6 @@ export function LandingPageHeroSection({
 
   return (
     <LandingPageHeroScrollScene
-      ariaBusy={isPending}
       ariaLabelledBy="landing-page-heading"
       background={<Background locale={locale} />}
       bottomSection={orangeMaskSection}

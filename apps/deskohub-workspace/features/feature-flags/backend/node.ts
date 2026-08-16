@@ -9,7 +9,7 @@ export const nodeFeatureFlags = makePostHogNodeFeatureFlagService(
   {
     clientOptions: {
       featureFlagsRequestTimeoutMs: 2_000,
-      host: postHogRuntimeConfig.host,
+      host: postHogRuntimeConfig.ingestHost,
     },
     defaultEvaluationOptions: { disableGeoip: true },
     featureFlagOverrides: postHogRuntimeConfig.featureFlagOverrides,

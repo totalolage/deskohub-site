@@ -8,7 +8,6 @@ import {
 
 describe("PostHog OTel logs", () => {
   test("builds the PostHog OTLP logs endpoint", () => {
-    expect(getPostHogLogsEndpoint()).toBe("https://us.i.posthog.com/i/v1/logs");
     expect(getPostHogLogsEndpoint("https://eu.i.posthog.com")).toBe(
       "https://eu.i.posthog.com/i/v1/logs"
     );
@@ -20,12 +19,25 @@ describe("PostHog OTel logs", () => {
 
   test("requires VERCEL_ENV when logging is enabled", () => {
     expect(() =>
-      createPostHogLoggerProvider({ posthogProjectToken: "phc_test" })
+      createPostHogLoggerProvider({
+        posthogHost: "https://ingest.posthog.example",
+        posthogProjectToken: "phc_test",
+      })
     ).toThrow("VERCEL_ENV is required");
+  });
+
+  test("requires the ingest host when logging is enabled", () => {
+    expect(() =>
+      createPostHogLoggerProvider({
+        posthogProjectToken: "phc_test",
+        vercelEnv: "development",
+      })
+    ).toThrow("POSTHOG_INGEST_HOST is required");
   });
 
   test("creates a flushable logger provider with a project token", async () => {
     const provider = createPostHogLoggerProvider({
+      posthogHost: "https://ingest.posthog.example",
       posthogProjectToken: "phc_test",
       vercelEnv: "development",
     });

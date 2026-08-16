@@ -2,6 +2,7 @@ import "server-only";
 
 import { Data, Effect } from "effect";
 import { headers } from "next/headers";
+import { unstable_rethrow } from "next/navigation";
 
 export class RequestHeadersError extends Data.TaggedError(
   "RequestHeadersError"
@@ -13,10 +14,12 @@ export class RequestHeadersError extends Data.TaggedError(
 export const getRequestHeaders = Effect.fn("getRequestHeaders")(() =>
   Effect.tryPromise({
     try: () => headers(),
-    catch: (cause) =>
-      new RequestHeadersError({
+    catch: (cause) => {
+      unstable_rethrow(cause);
+      return new RequestHeadersError({
         message: "Could not load the current request headers.",
         cause,
-      }),
+      });
+    },
   })
 );

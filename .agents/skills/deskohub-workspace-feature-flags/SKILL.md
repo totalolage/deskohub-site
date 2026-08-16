@@ -5,9 +5,9 @@ description: Workspace PostHog feature flags, generated contracts, release subje
 
 # Deskohub Workspace feature flags
 
-Use the Workspace app-owned generated PostHog contract and request-subject-aware typed clients. Do not reuse the Boardgame Bar static flag constants.
+Use the Workspace app-owned generated PostHog contract and typed server client. Do not reuse the Boardgame Bar static flag constants.
 
-Server consumers resolve `WorkspaceFeatureFlagService` from Effect Context. The capability owns request-subject selection and the process-scoped typed Node client; feature-specific services own fail-closed logging and fallback behavior. Do not import the Node client or request-subject resolver directly from feature code, and do not redeclare generated flag-key or package snapshot types.
+Server consumers resolve `WorkspaceFeatureFlagService` from Effect Context. The default service classifies the current PostHog definition: boolean lookups return a provably constant value directly, while partial rollouts and conditions use the consented request subject. Whole-snapshot evaluation uses the fixed non-recording Workspace release subject only when every requested flag is constant. Classification must fail closed to request-aware evaluation when management configuration or definition loading is unavailable. Never infer this from an evaluated value. Keep public pages on one adaptive rendering path and cache their request-independent provider data separately; do not introduce parallel global and request layers or page implementations. The capability owns the process-scoped typed Node client; feature-specific services own fail-closed logging and fallback behavior. Do not import the Node client or release subject directly from feature code, and do not redeclare generated flag-key or package snapshot types.
 
 Compose a feature-specific fail-closed lookup as `Effect.tapError` followed by
 `Effect.orElseSucceed(() => false)`. Keep logging and fallback as peer
@@ -21,6 +21,11 @@ did not evaluate the requested flag, such as when the flag is inactive; fail
 that gate closed and log the missing flag as unavailable.
 
 Keep the package Node service as a thin typed wrapper around one lazily created SDK client. A key/value lookup does not need its own nested Context service, Layer, or ManagedRuntime.
+
+Keep PostHog origins role-specific: `POSTHOG_API_HOST` is the server-only
+management/query origin, `POSTHOG_INGEST_HOST` is the direct server SDK and
+OTLP origin, and `NEXT_PUBLIC_POSTHOG_HOST` is the browser-facing ingest proxy.
+Do not route server clients through the public proxy.
 
 Read [the feature-flag architecture](references/architecture.md) for generation, runtime evaluation, subjects, and deployment-scoped overrides. Read [the PostHog package reference](references/posthog-package.md) when changing the shared generated client or typed feature-flag adapters. Keep flag evaluation fail-closed where the feature requires it, and update this skill when developer feedback changes a durable feature-flag convention.
 

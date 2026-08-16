@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
+import { Fragment, type ReactNode } from "react";
 import {
   type Locale,
   locales,
@@ -27,17 +28,35 @@ export function LocaleSwitcherLinks({
   const getLocaleHref = (locale: Locale) =>
     withLocalePrefixAndSearch(pathname, locale, searchParams);
 
+  return (
+    <LocaleSwitcherLabels
+      currentLocale={currentLocale}
+      languageLabels={languageLabels}
+      closeMenu={closeMenu}
+      getLocaleHref={getLocaleHref}
+      isMobile={isMobile}
+    />
+  );
+}
+
+export function LocaleSwitcherLabels({
+  currentLocale,
+  languageLabels,
+  closeMenu,
+  getLocaleHref,
+  isMobile = false,
+}: LocaleSwitcherLinksProps & {
+  readonly getLocaleHref?: (locale: Locale) => string;
+}) {
   return locales.map((locale, index) => {
     const isCurrent = locale === currentLocale;
+    let label: ReactNode = languageLabels[locale];
 
-    if (isMobile) {
-      return isCurrent ? (
-        <strong key={locale} className="text-white">
-          {languageLabels[locale]}
-        </strong>
-      ) : (
+    if (isCurrent) {
+      label = <strong className="text-white">{languageLabels[locale]}</strong>;
+    } else if (getLocaleHref) {
+      label = (
         <a
-          key={locale}
           href={getLocaleHref(locale)}
           onClick={closeMenu}
           className="transition-colors hover:text-sunset-yellow"
@@ -45,6 +64,10 @@ export function LocaleSwitcherLinks({
           {languageLabels[locale]}
         </a>
       );
+    }
+
+    if (isMobile) {
+      return <Fragment key={locale}>{label}</Fragment>;
     }
 
     return (
@@ -56,16 +79,7 @@ export function LocaleSwitcherLinks({
         )}
       >
         {index > 0 && <br />}
-        {isCurrent ? (
-          <strong className="text-white">{languageLabels[locale]}</strong>
-        ) : (
-          <a
-            href={getLocaleHref(locale)}
-            className="transition-colors hover:text-sunset-yellow"
-          >
-            {languageLabels[locale]}
-          </a>
-        )}
+        {label}
       </span>
     );
   });

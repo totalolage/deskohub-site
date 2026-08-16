@@ -1,5 +1,3 @@
-import { connection } from "next/server";
-import { Suspense } from "react";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { type Locale, m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
@@ -26,12 +24,16 @@ export const LandingPagePhotoCarouselBackgroundNoise = ({
   />
 );
 
-export function LandingPagePhotoCarouselSection({
+export async function LandingPagePhotoCarouselSection({
   locale,
 }: {
   locale: Locale;
 }) {
   const ariaLabel = m.landingCarouselAriaLabel({}, { locale });
+  const images = await getCloudinaryImages({
+    tags: ["landing-carousel"],
+    maxResults: 20,
+  });
 
   return (
     <section
@@ -58,53 +60,12 @@ export function LandingPagePhotoCarouselSection({
       </div>
 
       <Container className="relative z-10">
-        <Suspense
-          fallback={<LandingPagePhotoCarouselFallback ariaLabel={ariaLabel} />}
-        >
-          <LandingPagePhotoCarouselContent locale={locale} />
-        </Suspense>
+        <LandingPagePhotoCarousel
+          ariaLabel={ariaLabel}
+          locale={locale}
+          images={images}
+        />
       </Container>
-    </section>
-  );
-}
-
-async function LandingPagePhotoCarouselContent({ locale }: { locale: Locale }) {
-  await connection();
-  const images = await getCloudinaryImages({
-    tags: ["landing-carousel"],
-    maxResults: 20,
-  });
-
-  return (
-    <LandingPagePhotoCarousel
-      ariaLabel={m.landingCarouselAriaLabel({}, { locale })}
-      locale={locale}
-      images={images}
-    />
-  );
-}
-
-function LandingPagePhotoCarouselFallback({
-  ariaLabel,
-}: {
-  ariaLabel: string;
-}) {
-  return (
-    <section
-      aria-busy="true"
-      aria-label={ariaLabel}
-      className="overflow-visible space-y-8"
-    >
-      <div className="relative mx-auto h-72 max-w-6xl sm:h-112 lg:h-136">
-        <div className="absolute left-1/2 top-1/2 aspect-16/10 w-[min(78%,54rem)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[1.8rem] border border-white/35 bg-white/18 p-2 shadow-[0_30px_90px_-48px_rgba(0,2,79,0.95)] backdrop-blur-sm sm:rounded-[2.5rem] sm:p-3">
-          <div className="size-full animate-pulse rounded-[1.25rem] bg-linear-to-br from-navy-blue/82 via-navy-blue/48 to-sunset-yellow/36 motion-reduce:animate-none sm:rounded-[1.85rem]" />
-        </div>
-      </div>
-      <div aria-hidden="true" className="flex justify-center gap-2">
-        <span className="size-2 rounded-full bg-navy-blue" />
-        <span className="size-2 rounded-full bg-navy-blue/28" />
-        <span className="size-2 rounded-full bg-navy-blue/28" />
-      </div>
     </section>
   );
 }

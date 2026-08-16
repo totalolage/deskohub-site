@@ -15,6 +15,16 @@ test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
 });
 
+test("serves the resolved homepage on direct navigation", async ({ page }) => {
+  const response = await page.goto(homePath);
+  if (!response) throw new Error("Homepage navigation returned no response");
+
+  expect(response.ok()).toBe(true);
+  expect(await response.text()).not.toContain('aria-busy="true"');
+  await expectPublicSiteShell(page);
+  await expectHomePage(page);
+});
+
 test("serves the resolved header and gallery on direct navigation", async ({
   page,
 }) => {
@@ -106,7 +116,7 @@ test.describe("client navigation", () => {
     });
   }
 
-  test("uses the prefetched homepage shell for section navigation", async ({
+  test("uses the resolved prefetched homepage for section navigation", async ({
     page,
   }) => {
     await page.goto(galleryPath);
@@ -130,21 +140,14 @@ test.describe("client navigation", () => {
         )
         .toBe(galleryPath);
       await expectPublicSiteShell(page);
-      await expectHomeShell(page);
+      await expectHomePage(page);
     });
-
-    await expect(
-      page.getByRole("region", { name: homeHeading })
-    ).not.toHaveAttribute("aria-busy", "true");
-    await expect(
-      page.locator(`[aria-label="${carouselName}"][aria-busy="true"]`)
-    ).toHaveCount(0);
   });
 
   for (const navigation of [
     {
       destinationPath: homePath,
-      expectDestination: expectHomeShell,
+      expectDestination: expectHomePage,
       linkName: "Home",
     },
     {
@@ -192,9 +195,8 @@ test.describe("client navigation", () => {
 });
 
 const homeHeading = "The first self-service workspace on Palmovka.";
-const carouselName = "Deskohub Workspace photo carousel";
 
-async function expectHomeShell(page: Page) {
+async function expectHomePage(page: Page) {
   await expect(
     page.getByRole("heading", { level: 1, name: homeHeading })
   ).toBeVisible();
@@ -209,6 +211,7 @@ async function expectHomeShell(page: Page) {
     })
   ).toBeVisible();
   await expect(page.locator("#hero-gallery")).toBeVisible();
+  await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
 }
 
 async function expectGalleryShell(page: Page) {

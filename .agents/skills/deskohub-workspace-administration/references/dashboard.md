@@ -47,11 +47,11 @@ The Overview activity counts use live Dotypos booking start dates intersected wi
 
 Historical analytics enrichment is optional. Configure all three server-only variables to enable it:
 
-- `POSTHOG_HOST`
+- `POSTHOG_API_HOST`
 - `POSTHOG_PROJECT_ID`
-- `POSTHOG_HISTORY_API_KEY`
+- `POSTHOG_API_KEY`
 
-The host and project ID are shared with the existing PostHog setup. The history API key must be a dedicated least-privilege personal API key with `query:read`. Do not reuse the public ingest token or the API key used for source-map upload.
+The application uses one personal API key for PostHog management reads, source-map uploads, and history queries. It requires `feature_flag:read`, `error_tracking:write`, and `query:read`. Do not use the public ingest token as this credential.
 
 Queries are limited to the app-owned reservation lifecycle event names, the local Workspace reservation ID, the current deployment environment, and the Workspace service name. Only normalized event name, time, event identifier, payment-attempt identifier, and provider are decoded; React never receives the raw event object.
 

@@ -6,7 +6,6 @@ import {
 } from "@opentelemetry/sdk-logs";
 import { workspaceServiceResourceAttributes } from "../observability/workspace-service";
 
-const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 const POSTHOG_LOGS_PATH = "/i/v1/logs";
 
 type PostHogLoggerProviderOptions = {
@@ -25,7 +24,7 @@ type PostHogLogsFlushOptions = {
 
 const postHogLogsFlushTimeoutMs = 2_000;
 
-export function getPostHogLogsEndpoint(posthogHost = DEFAULT_POSTHOG_HOST) {
+export function getPostHogLogsEndpoint(posthogHost: string) {
   return new URL(POSTHOG_LOGS_PATH, posthogHost).toString();
 }
 
@@ -36,6 +35,11 @@ export function createPostHogLoggerProvider({
   vercelGitCommitSha,
 }: PostHogLoggerProviderOptions) {
   if (!posthogProjectToken) return undefined;
+  if (!posthogHost) {
+    throw new Error(
+      "POSTHOG_INGEST_HOST is required when PostHog logging is enabled"
+    );
+  }
   if (!vercelEnv) {
     throw new Error("VERCEL_ENV is required when PostHog logging is enabled");
   }

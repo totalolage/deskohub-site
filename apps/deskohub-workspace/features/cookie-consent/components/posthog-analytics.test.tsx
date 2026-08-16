@@ -14,6 +14,7 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN = "phc_test";
+process.env.NEXT_PUBLIC_POSTHOG_HOST = "https://posthog.example";
 
 const featureFlagListeners = new Set<() => void>();
 let featureFlagOverrides: Readonly<Record<string, boolean | string>> = {};

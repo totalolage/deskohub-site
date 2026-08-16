@@ -8,6 +8,7 @@ import type {
   PostHogFeatureFlagDefinitions,
   PostHogFeatureFlagKey,
 } from "../generated/contract";
+import { postHogFeatureFlags } from "../generated/contract";
 
 export interface IWorkspaceFeatureFlagService {
   readonly evaluateFlags: (
@@ -28,24 +29,46 @@ export class WorkspaceFeatureFlagService extends Context.Service<
   static from = (implementation: IWorkspaceFeatureFlagService) =>
     Layer.succeed(this, implementation);
 
+  // Keep providers lazy so Context and test mocks do not initialize server-only modules.
   static Default = Layer.unwrap(
     Effect.promise(async () => {
-      const [{ nodeFeatureFlags }, { getCurrentPostHogFeatureFlagSubject }] =
-        await Promise.all([import("./node"), import("./subject")]);
+      const [
+        { areWorkspaceFeatureFlagsGlobal, getGlobalWorkspaceFeatureFlagValue },
+        { nodeFeatureFlags },
+        { getCurrentPostHogFeatureFlagSubject, workspaceReleaseSubject },
+      ] = await Promise.all([
+        import("./feature-flag-evaluation-mode.server"),
+        import("./node"),
+        import("./subject"),
+      ]);
+      const getSubject = (keys: readonly PostHogFeatureFlagKey[]) =>
+        Effect.promise(() => areWorkspaceFeatureFlagsGlobal(keys)).pipe(
+          Effect.flatMap((global) =>
+            global
+              ? Effect.succeed(workspaceReleaseSubject)
+              : getCurrentPostHogFeatureFlagSubject()
+          )
+        );
 
       return WorkspaceFeatureFlagService.from({
         evaluateFlags: Effect.fn("WorkspaceFeatureFlagService.evaluateFlags")(
           (options) =>
-            getCurrentPostHogFeatureFlagSubject().pipe(
+            getSubject(options?.flagKeys ?? postHogFeatureFlags.keys).pipe(
               Effect.flatMap((subject) =>
                 nodeFeatureFlags.evaluateFlags({ options, subject })
               )
             )
         ),
         isEnabled: Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key) =>
-          getCurrentPostHogFeatureFlagSubject().pipe(
-            Effect.flatMap((subject) =>
-              nodeFeatureFlags.isEnabled({ key, subject })
+          Effect.promise(() => getGlobalWorkspaceFeatureFlagValue(key)).pipe(
+            Effect.flatMap((globalValue) =>
+              globalValue === undefined
+                ? getCurrentPostHogFeatureFlagSubject().pipe(
+                    Effect.flatMap((subject) =>
+                      nodeFeatureFlags.isEnabled({ key, subject })
+                    )
+                  )
+                : Effect.succeed(globalValue)
             )
           )
         ),

@@ -78,7 +78,7 @@ describe("PostHog reservation history", () => {
     });
   });
 
-  test("is unavailable without a dedicated read credential", async () => {
+  test("is unavailable without the PostHog API key", async () => {
     const layer = PostHogReservationHistory.Default.pipe(
       Layer.provide(
         Layer.succeed(PostHogHistoryRuntimeConfig, {
