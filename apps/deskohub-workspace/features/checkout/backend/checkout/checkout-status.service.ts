@@ -514,7 +514,7 @@ const implementation = Effect.gen(function* () {
         }
 
         const result = yield* finalization.finalizePendingProviderPayment({
-          orderId: reservation.id,
+          orderId: orderIdSchema.make(reservation.id),
           paymentAttemptId: reservation.activePaymentAttemptId,
         });
         yield* Effect.annotateLogsScoped({ result });
