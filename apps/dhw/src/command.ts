@@ -24,6 +24,7 @@ import {
   type AdministrationReservationSummaryType,
   AdministrationStoredDiscountId,
   AdministrationVoucherId,
+  AdministrationWorkspaceProductTarget,
   type AdministrationWorkspaceProductTargetType,
   AdministrationWorkspaceReservationId,
   type AdministrationWorkspaceReservationIdType,
@@ -801,6 +802,45 @@ const customersCommand = Command.make("customers").pipe(
   ])
 );
 
+const administrationProductTargetArgument = Schema.String.check(
+  Schema.isPattern(
+    /^(?:cowork|meeting-room|office|goods|goods:(?:category|product):.+)$/
+  )
+).pipe(
+  Schema.decodeTo(AdministrationWorkspaceProductTarget, {
+    decode: SchemaGetter.transform(
+      (value): AdministrationWorkspaceProductTargetType => {
+        if (
+          value === "cowork" ||
+          value === "meeting-room" ||
+          value === "office" ||
+          value === "goods"
+        ) {
+          return { kind: value } as AdministrationWorkspaceProductTargetType;
+        }
+        if (value.startsWith("goods:category:")) {
+          return {
+            kind: "goods" as const,
+            categoryId: value.slice("goods:category:".length),
+          } as AdministrationWorkspaceProductTargetType;
+        }
+        return {
+          kind: "goods" as const,
+          productId: value.slice("goods:product:".length),
+        } as AdministrationWorkspaceProductTargetType;
+      }
+    ),
+    encode: SchemaGetter.transform((target) => {
+      if (target.kind !== "goods") return target.kind;
+      if ("categoryId" in target) {
+        return `goods:category:${target.categoryId}`;
+      }
+      if ("productId" in target) return `goods:product:${target.productId}`;
+      return target.kind;
+    }),
+  })
+);
+
 const discountDefinitionFlags = {
   labelCs: Flag.string("label-cs").pipe(
     Flag.withSchema(Schema.Trim.check(Schema.isNonEmpty())),
@@ -810,14 +850,11 @@ const discountDefinitionFlags = {
     Flag.withSchema(Schema.Trim.check(Schema.isNonEmpty())),
     Flag.withDescription("English customer-facing label")
   ),
-  products: Flag.choiceWithValue("product", [
-    ["cowork", { kind: "cowork" }],
-    ["meeting-room", { kind: "meeting-room" }],
-    ["office", { kind: "office" }],
-  ] as const).pipe(
+  products: Flag.string("product").pipe(
+    Flag.withSchema(administrationProductTargetArgument),
     Flag.atLeast(1),
     Flag.withDescription(
-      "Eligible reservation family; repeat for multiple families"
+      "Eligible target: cowork, meeting-room, office, goods, goods:category:<id>, or goods:product:<id>; repeat for multiple targets"
     )
   ),
 };

@@ -10,6 +10,7 @@ import {
   AdministrationDiscountCode,
   AdministrationDiscountCodeClaim,
   AdministrationDiscountDashboard,
+  AdministrationDiscountDefinitionInput,
   AdministrationDiscountMutation,
   AdministrationDiscountMutationResult,
   AdministrationDotyposCustomerId,
@@ -362,9 +363,14 @@ describe("administration contract", () => {
       { kind: "cowork" },
       { kind: "meeting-room" },
       { kind: "office" },
+      { kind: "goods" },
+      { kind: "goods", categoryId: "category-1" },
+      { kind: "goods", productId: "product-1" },
     ] as const) {
       expect(
-        Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)(target)
+        Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)(
+          target
+        ) as unknown
       ).toEqual(target);
     }
     expect(() =>
@@ -372,6 +378,13 @@ describe("administration contract", () => {
         { kind: "cowork", tier: "basic" },
         { onExcessProperty: "error" }
       )
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)({
+        kind: "goods",
+        categoryId: "category-1",
+        productId: "product-1",
+      })
     ).toThrow();
   });
 
@@ -477,6 +490,30 @@ describe("administration contract", () => {
       kind: "create-voucher",
       voucher: { credit: { value: 10_000 } },
     });
+  });
+
+  test("allows distinct goods targets and rejects exact duplicates", () => {
+    const decode = Schema.decodeUnknownSync(
+      AdministrationDiscountDefinitionInput
+    );
+    const definition = {
+      labels: { "cs-CZ": "Zbozi", "en-US": "Goods" },
+      adjustment: { kind: "percentage" as const, basisPoints: 1000 },
+      products: [
+        { kind: "goods" as const, categoryId: "category-1" },
+        { kind: "goods" as const, productId: "product-1" },
+      ],
+    };
+
+    expect(decode(definition).products as readonly unknown[]).toEqual(
+      definition.products
+    );
+    expect(() =>
+      decode({
+        ...definition,
+        products: [definition.products[0], definition.products[0]],
+      })
+    ).toThrow();
   });
   test("rejects invalid reservation filters before service execution", () => {
     expect(() =>
