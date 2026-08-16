@@ -15,10 +15,7 @@ import {
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
 import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
-import {
-  CalendarResourceConfig,
-  type SalesCalendarId,
-} from "@/shared/backend/config/calendar-resource.config";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import {
   type CalendarSalesSourceInput,
@@ -84,14 +81,14 @@ export class CalendarDiscountProvider extends Context.Service<
   );
 }
 
-const loadSharedCalendarSalesSource = Effect.fn(
-  "CalendarDiscountSource.loadShared"
+const loadRemoteCalendarSalesSource = Effect.fn(
+  "CalendarDiscountSource.loadRemote"
 )((input: CalendarSalesSourceInput) =>
   Effect.tryPromise({
     try: () => loadCalendarDiscountSource(input.reservationDate),
     catch: DiscountProviderError.fromCause({
       reason: "provider_failure",
-      message: "Cached Calendar sales could not be loaded.",
+      message: "Remote Calendar sales could not be loaded.",
     }),
   }).pipe(
     Effect.flatMap((result) =>
@@ -107,7 +104,7 @@ const loadSharedCalendarSalesSource = Effect.fn(
   )
 );
 
-function makeCalendarDiscountProviderLayer(useSharedDiscovery: boolean) {
+function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {
   return Layer.effect(
     CalendarDiscountProvider,
     Effect.gen(function* () {
@@ -124,30 +121,34 @@ function makeCalendarDiscountProviderLayer(useSharedDiscovery: boolean) {
             discountDefinitions
           )
         );
-      const loadDiscoverySales = useSharedDiscovery
-        ? loadSharedCalendarSalesSource
-        : loadDirectCalendarSalesSource;
-      const salesCache = yield* Cache.makeWith(loadDiscoverySales, {
-        capacity: 512,
-        timeToLive: (exit) =>
-          Exit.isSuccess(exit) && exit.value.complete
-            ? Duration.seconds(60)
-            : Duration.zero,
-      });
+      const loadDiscoverySales = useRemoteDiscovery
+        ? loadRemoteCalendarSalesSource
+        : yield* Cache.makeWith(loadDirectCalendarSalesSource, {
+            capacity: 512,
+            timeToLive: (exit) =>
+              Exit.isSuccess(exit) && exit.value.complete
+                ? Duration.seconds(60)
+                : Duration.zero,
+          }).pipe(
+            Effect.map(
+              (cache) => (input: CalendarSalesSourceInput) =>
+                Cache.get(cache, new CalendarSalesCacheKey(input))
+            )
+          );
 
       const discover = Effect.fn("CalendarDiscountProvider.discover")(
         (input: CalendarDiscountProviderInput) =>
           Effect.succeed(input).pipe(
             Effect.let(
-              "cacheKey",
+              "sourceInput",
               ({ reservationDate }) =>
-                new CalendarSalesCacheKey({
+                ({
                   calendarId: salesCalendarId,
                   reservationDate,
-                })
+                }) satisfies CalendarSalesSourceInput
             ),
-            Effect.bind("resolvedSales", ({ cacheKey }) =>
-              Cache.get(salesCache, cacheKey)
+            Effect.bind("resolvedSales", ({ sourceInput }) =>
+              loadDiscoverySales(sourceInput)
             ),
             Effect.bind("at", () =>
               Clock.currentTimeMillis.pipe(
@@ -167,15 +168,15 @@ function makeCalendarDiscountProviderLayer(useSharedDiscovery: boolean) {
         (input: ActiveSaleDiscoveryInput) =>
           Effect.succeed(input).pipe(
             Effect.let(
-              "cacheKey",
+              "sourceInput",
               ({ currentDate }) =>
-                new CalendarSalesCacheKey({
+                ({
                   calendarId: salesCalendarId,
                   reservationDate: currentDate.toString(),
-                })
+                }) satisfies CalendarSalesSourceInput
             ),
-            Effect.bind("resolvedSales", ({ cacheKey }) =>
-              Cache.get(salesCache, cacheKey)
+            Effect.bind("resolvedSales", ({ sourceInput }) =>
+              loadDiscoverySales(sourceInput)
             ),
             Effect.bind("at", () =>
               Clock.currentTimeMillis.pipe(
@@ -200,15 +201,15 @@ function makeCalendarDiscountProviderLayer(useSharedDiscovery: boolean) {
         (input: CalendarDiscountProviderInput) =>
           Effect.succeed(input).pipe(
             Effect.let(
-              "cacheKey",
+              "sourceInput",
               ({ reservationDate }) =>
-                new CalendarSalesCacheKey({
+                ({
                   calendarId: salesCalendarId,
                   reservationDate,
-                })
+                }) satisfies CalendarSalesSourceInput
             ),
-            Effect.bind("resolvedSales", ({ cacheKey }) =>
-              loadDirectCalendarSalesSource(cacheKey)
+            Effect.bind("resolvedSales", ({ sourceInput }) =>
+              loadDirectCalendarSalesSource(sourceInput)
             ),
             Effect.bind("at", () =>
               Clock.currentTimeMillis.pipe(
@@ -231,10 +232,7 @@ function makeCalendarDiscountProviderLayer(useSharedDiscovery: boolean) {
   );
 }
 
-class CalendarSalesCacheKey extends Data.Class<{
-  readonly calendarId: SalesCalendarId;
-  readonly reservationDate: string;
-}> {}
+class CalendarSalesCacheKey extends Data.Class<CalendarSalesSourceInput> {}
 
 const toEligibleCalendarCandidates = (input: {
   readonly at: Temporal.Instant;

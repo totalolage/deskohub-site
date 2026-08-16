@@ -134,6 +134,22 @@ const invalidEventCases = [
 ] as const;
 
 describe("CalendarDiscountProvider", () => {
+  test("routes Live discovery through the Next cache boundary", async () => {
+    const providerSource = await Bun.file(
+      new URL("./calendar-discount-provider.service.ts", import.meta.url)
+    ).text();
+    const cacheSource = await Bun.file(
+      new URL("./calendar-discount-source.server.ts", import.meta.url)
+    ).text();
+
+    expect(providerSource).toContain(
+      "useRemoteDiscovery\n        ? loadRemoteCalendarSalesSource\n        : yield* Cache.makeWith"
+    );
+    expect(cacheSource).toContain('"use cache: remote"');
+    expect(cacheSource).toContain('cacheLife("advertisedPricingSources")');
+    expect(cacheSource).toContain("cacheTag(calendarDiscountSourceTag)");
+  });
+
   test("discovers localized active sales with their complete product targets", async () => {
     const products = [coworkTarget, { kind: "meeting-room" } as const];
     const listEvents = mock(() => Effect.succeed([saleEvent()]));

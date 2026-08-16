@@ -41,8 +41,10 @@ Model Workspace sales calendar events as references to stored discount definitio
   advertisement discovery and resolve the concrete label only when creating
   the checkout candidate.
 - Share only complete Calendar-occurrence and stored-definition source
-  snapshots across requests, keyed by reservation date. Give partial or failed
-  loads no cache lifetime.
+  snapshots across requests, keyed by reservation date, through `use cache:
+  remote`. Give partial or failed loads no cache lifetime, and do not put a
+  process-memory cache in front of the remote boundary because it can hide
+  invalidation and cannot share entries across Vercel instances.
 - Keep feature-flag evaluation, current-time eligibility, locale and product
   filtering, checkout revalidation, and advertised-price token sealing outside
   the shared source cache.

@@ -141,7 +141,7 @@ const CalendarDiscountSourceLive = Layer.mergeAll(
 export async function loadCalendarDiscountSource(
   reservationDate: string
 ): Promise<CalendarDiscountSourceResult> {
-  "use cache";
+  "use cache: remote";
 
   let result: CalendarDiscountSourceResult;
   try {
