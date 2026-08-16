@@ -84,9 +84,10 @@ jobs:
         env:
           DATABASE_URL: postgres://workspace_test:workspace_test_password@localhost:5432/workspace_account_tests
           WORKSPACE_ACCOUNT_DATABASE_TESTS: "true"
-        run: >-
-          bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1
-          features/account/backend/customer-account-link.repository.database.test.ts
+        run: |
+          bun run i18n:compile
+          bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 \
+            features/account/backend/customer-account-link.repository.database.test.ts
 
       - name: Validate Workspace E2E allocation bundle
         run: |
