@@ -1,5 +1,9 @@
 import { Effect } from "effect";
-import type { CustomerAccountId } from "../customer-account";
+import {
+  CustomerAccountAccessError,
+  type CustomerAccountId,
+  mapCustomerAccountFailure,
+} from "../customer-account";
 import type { CustomerAccountLock } from "./customer-account-link.repository";
 
 export const deleteCustomerIdentity = <E, R, E2, R2, E3, R3>(
@@ -12,12 +16,24 @@ export const deleteCustomerIdentity = <E, R, E2, R2, E3, R3>(
   withAccountLock(
     accountId,
     Effect.gen(function* () {
-      const lockedAccountId = yield* currentAccountId;
+      const lockedAccountId = yield* currentAccountId.pipe(
+        Effect.mapError(mapCustomerAccountFailure("authentication.session"))
+      );
       if (lockedAccountId !== accountId) {
-        return yield* Effect.fail("session-changed" as const);
+        return yield* Effect.fail(
+          new CustomerAccountAccessError({ reason: "unauthenticated" })
+        );
       }
-      yield* unlink(accountId);
-      yield* deleteUser;
-      yield* unlink(accountId);
+      yield* unlink(accountId).pipe(
+        Effect.mapError(mapCustomerAccountFailure("account-link.unlink"))
+      );
+      yield* deleteUser.pipe(
+        Effect.mapError(
+          mapCustomerAccountFailure("authentication.account-delete")
+        )
+      );
+      yield* unlink(accountId).pipe(
+        Effect.mapError(mapCustomerAccountFailure("account-link.unlink"))
+      );
     })
-  );
+  ).pipe(Effect.mapError(mapCustomerAccountFailure("account-link.lock")));

@@ -117,10 +117,10 @@ export const env = createEnv({
         };
       }
 
-      if (hasPath("NEON_AUTH_COOKIE_SECRET")) {
+      if (hasPath("NEON_AUTH_BASE_URL") || hasPath("NEON_AUTH_COOKIE_SECRET")) {
         return {
           ...issue,
-          message: "Invalid Neon Auth cookie secret configuration.",
+          message: "Invalid Neon Auth configuration.",
         };
       }
 

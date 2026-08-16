@@ -27,9 +27,39 @@ export type CustomerAccountAccessFailure =
 
 export type CustomerAccountLinkFailure = "not-found" | "ambiguous" | "claimed";
 
+export type CustomerAccountFailureCode =
+  | "account-link.claim"
+  | "account-link.lock"
+  | "account-link.read"
+  | "account-link.unlink"
+  | "authentication.account-delete"
+  | "authentication.profile-update"
+  | "authentication.session"
+  | "dotypos.customer-lookup";
+
+export class CustomerAccountFailureCause extends Data.TaggedError(
+  "CustomerAccountFailureCause"
+)<{
+  readonly code: CustomerAccountFailureCode;
+}> {}
+
 export class CustomerAccountAccessError extends Data.TaggedError(
   "CustomerAccountAccessError"
 )<{
   readonly reason: CustomerAccountAccessFailure;
   readonly linkReason?: CustomerAccountLinkFailure;
+  readonly cause?: CustomerAccountFailureCause;
 }> {}
+
+export const customerAccountUnavailable = (code: CustomerAccountFailureCode) =>
+  new CustomerAccountAccessError({
+    reason: "unavailable",
+    cause: new CustomerAccountFailureCause({ code }),
+  });
+
+export const mapCustomerAccountFailure =
+  (code: CustomerAccountFailureCode) =>
+  <E>(error: E): CustomerAccountAccessError =>
+    error instanceof CustomerAccountAccessError
+      ? error
+      : customerAccountUnavailable(code);

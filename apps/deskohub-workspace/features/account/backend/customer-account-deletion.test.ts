@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import { customerAccountIdSchema } from "../customer-account";
+import {
+  CustomerAccountAccessError,
+  customerAccountIdSchema,
+} from "../customer-account";
 import { deleteCustomerIdentity } from "./customer-account-deletion";
 
 const accountId = Schema.decodeUnknownSync(customerAccountIdSchema)(
@@ -35,20 +38,63 @@ describe("customer account deletion", () => {
 
   test("does not delete the auth user when unlinking fails", async () => {
     let deleted = false;
-    const result = await Effect.runPromiseExit(
-      deleteCustomerIdentity(
-        accountId,
-        withAccountLock,
-        Effect.succeed(accountId),
-        () => Effect.fail("database unavailable"),
-        Effect.sync(() => {
-          deleted = true;
-        })
+    const error = await Effect.runPromise(
+      Effect.flip(
+        deleteCustomerIdentity(
+          accountId,
+          withAccountLock,
+          Effect.succeed(accountId),
+          () => Effect.fail(new Error("sensitive-database-payload")),
+          Effect.sync(() => {
+            deleted = true;
+          })
+        )
       )
     );
 
-    expect(result._tag).toBe("Failure");
+    expect(error).toMatchObject({
+      reason: "unavailable",
+      cause: { code: "account-link.unlink" },
+    });
+    expect(JSON.stringify(error)).not.toContain("sensitive-database-payload");
     expect(deleted).toBe(false);
+  });
+
+  test("distinguishes lock and auth deletion failures", async () => {
+    const lockError = await Effect.runPromise(
+      Effect.flip(
+        deleteCustomerIdentity(
+          accountId,
+          () => Effect.fail(new Error("sensitive-lock-payload")),
+          Effect.succeed(accountId),
+          () => Effect.void,
+          Effect.void
+        )
+      )
+    );
+    const authError = await Effect.runPromise(
+      Effect.flip(
+        deleteCustomerIdentity(
+          accountId,
+          withAccountLock,
+          Effect.succeed(accountId),
+          () => Effect.void,
+          Effect.fail(new Error("sensitive-auth-payload"))
+        )
+      )
+    );
+
+    expect(lockError).toMatchObject({
+      reason: "unavailable",
+      cause: { code: "account-link.lock" },
+    });
+    expect(authError).toMatchObject({
+      reason: "unavailable",
+      cause: { code: "authentication.account-delete" },
+    });
+    expect(lockError).toBeInstanceOf(CustomerAccountAccessError);
+    expect(authError).toBeInstanceOf(CustomerAccountAccessError);
+    expect(JSON.stringify([lockError, authError])).not.toContain("sensitive-");
   });
 
   test("does not delete after the session changes while waiting for the lock", async () => {

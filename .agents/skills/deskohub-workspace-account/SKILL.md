@@ -30,9 +30,10 @@ description: Workspace customer account, Neon Auth, magic link, profile, account
 - Claim links with database uniqueness and conflict rereads so same-account
   races are idempotent and a customer claimed by another account is rejected.
 - Keep authentication-not-configured, unauthenticated, unverified-email,
-  link-required, and unavailable as a closed error contract. Missing or partial
-  Auth configuration must fail closed without breaking unrelated routes or
-  builds.
+  link-required, and unavailable as a closed public error contract. Attach only
+  fixed, non-PII internal failure codes so Auth, link reads, Dotypos lookup,
+  claims, locks, and deletion remain distinguishable in operator logs. Never
+  retain raw provider or database failures as account error causes.
 - Do not create a Dotypos customer from Auth data; Dotypos customer creation
   requires additional contact input.
 
@@ -40,7 +41,9 @@ description: Workspace customer account, Neon Auth, magic link, profile, account
 
 - Configure the lazy server client with the integration's
   `NEON_AUTH_BASE_URL` and a stable `NEON_AUTH_COOKIE_SECRET` of at least 32
-  characters. Keep `SameSite=Lax` for top-level magic-link returns.
+  characters. Both absent means Auth is disabled; exactly one present is a
+  deployment configuration error. Keep `SameSite=Lax` for top-level magic-link
+  returns.
 - Proxy all supported provider methods through `/api/auth/[...path]`. Use a
   single magic-link form for sign-in and implicit sign-up.
 - Render account and auth pages dynamically. The account page and every Server
@@ -50,10 +53,11 @@ description: Workspace customer account, Neon Auth, magic link, profile, account
   because it is the reservation-linking trust boundary.
 - Require explicit confirmation for account deletion. Unlink the local mapping
   before deleting the Neon user. Serialize deletion and link resolution with a
-  session-level database advisory lock for the account ID, revalidate the authoritative
-  session after taking that lock, and unlink again after successful identity
-  deletion so a concurrent resolver cannot leave an orphan. Never delete
-  retained Dotypos reservations, payments, invoices, or legal evidence.
+  session-level database advisory lock for the account ID, revalidate the
+  authoritative session after taking that lock, and unlink again after
+  successful identity deletion so a concurrent resolver cannot leave an
+  orphan. Never delete retained Dotypos reservations, payments, invoices, or
+  legal evidence.
 
 ## Protected-preview E2E
 
@@ -74,26 +78,12 @@ description: Workspace customer account, Neon Auth, magic link, profile, account
   sign-up, current history, profile update, logout, returning login, past
   history, confirmation-gated deletion, session/link removal, and fresh sign-up
   after deletion.
+- Keep provider-independent Postgres tests for same-account convergence, two
+  accounts claiming one Dotypos customer, and deletion racing resolution. Run
+  them against migrated schema so the repository, unique constraints, and real
+  advisory lock are all exercised.
 - Until Neon Auth is provisioned, credential-dependent protected-preview E2E is
   deferred and is not a prerequisite for the goods-order migration.
-
-## Open prerequisite review findings
-
-Do not use this branch as the goods-order migration base until these
-provider-independent findings are resolved:
-
-- Reject partial Auth configuration explicitly. Neither Auth variable means
-  disabled; both mean enabled; exactly one is a configuration error rather than
-  silently disabled Auth.
-- Preserve provider and database failures as non-PII causes with a fixed
-  internal stage or code. The public error may remain `unavailable`, but Auth,
-  link-read, Dotypos lookup, claim, lock, and deletion failures must remain
-  distinguishable for operators.
-- Exercise the real link repository, unique constraints, and advisory lock in
-  database-backed concurrency tests. Cover same-account convergence, two
-  accounts claiming one Dotypos customer, and deletion racing resolution; the
-  existing fake lock and repository tests do not prove those guarantees.
-- Rebase onto current `origin/main` and rerun the provider-independent gates.
 
 ## Deployment checklist
 

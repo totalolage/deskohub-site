@@ -2,18 +2,18 @@ import { describe, expect, test } from "bun:test";
 import { resolveNeonAuthConfiguration } from "./auth-config";
 
 describe("Neon Auth configuration", () => {
-  test("is enabled only when the branch URL and cookie secret are both present", () => {
+  test("is disabled only when the branch URL and cookie secret are both absent", () => {
     expect(resolveNeonAuthConfiguration({})).toBeUndefined();
-    expect(
+    expect(() =>
       resolveNeonAuthConfiguration({
         NEON_AUTH_BASE_URL: "https://auth.example.test/neondb/auth",
       })
-    ).toBeUndefined();
-    expect(
+    ).toThrow("Neon Auth configuration requires both environment variables.");
+    expect(() =>
       resolveNeonAuthConfiguration({
         NEON_AUTH_COOKIE_SECRET: "s".repeat(32),
       })
-    ).toBeUndefined();
+    ).toThrow("Neon Auth configuration requires both environment variables.");
     expect(
       resolveNeonAuthConfiguration({
         NEON_AUTH_BASE_URL: "https://auth.example.test/neondb/auth",

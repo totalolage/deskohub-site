@@ -7,6 +7,7 @@ import {
   type CustomerAccountId,
   customerAccountIdSchema,
   type LinkedCustomerAccount,
+  mapCustomerAccountFailure,
 } from "../customer-account";
 import {
   type CustomerAccountLinkClaim,
@@ -76,7 +77,7 @@ export type CustomerAccountResolutionDependencies = {
   readonly withAccountLock: <A, E, R>(
     accountId: CustomerAccountId,
     effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E | CustomerAccountAccessError, R>;
+  ) => Effect.Effect<A, unknown, R>;
 };
 
 export const resolveCustomerAccount = (
@@ -87,50 +88,64 @@ export const resolveCustomerAccount = (
     if (!user) return yield* Effect.fail(accessError("unauthenticated"));
     const identity = yield* decodeSessionIdentity(user);
 
-    return yield* dependencies.withAccountLock(
-      identity.accountId,
-      Effect.gen(function* () {
-        const lockedUser = yield* dependencies.currentUser();
-        if (!lockedUser) {
-          return yield* Effect.fail(accessError("unauthenticated"));
-        }
-        const lockedIdentity = yield* decodeSessionIdentity(lockedUser);
-        if (lockedIdentity.accountId !== identity.accountId) {
-          return yield* Effect.fail(accessError("unauthenticated"));
-        }
+    return yield* dependencies
+      .withAccountLock(
+        identity.accountId,
+        Effect.gen(function* () {
+          const lockedUser = yield* dependencies.currentUser();
+          if (!lockedUser) {
+            return yield* Effect.fail(accessError("unauthenticated"));
+          }
+          const lockedIdentity = yield* decodeSessionIdentity(lockedUser);
+          if (lockedIdentity.accountId !== identity.accountId) {
+            return yield* Effect.fail(accessError("unauthenticated"));
+          }
 
-        const existingCustomerId = yield* dependencies
-          .findLink(lockedIdentity.accountId)
-          .pipe(Effect.mapError(() => accessError("unavailable")));
-        if (existingCustomerId) {
+          const existingCustomerId = yield* dependencies
+            .findLink(lockedIdentity.accountId)
+            .pipe(
+              Effect.mapError(mapCustomerAccountFailure("account-link.read"))
+            );
+          if (existingCustomerId) {
+            return {
+              accountId: lockedIdentity.accountId,
+              dotyposCustomerId: existingCustomerId,
+            };
+          }
+
+          const match = yield* dependencies
+            .findCustomer(lockedIdentity.email, lockedIdentity.name)
+            .pipe(
+              Effect.mapError(
+                mapCustomerAccountFailure("dotypos.customer-lookup")
+              )
+            );
+          if (match.kind === "not-found") {
+            return yield* Effect.fail(
+              accessError("link-required", "not-found")
+            );
+          }
+          if (match.kind === "ambiguous") {
+            return yield* Effect.fail(
+              accessError("link-required", "ambiguous")
+            );
+          }
+
+          const claimed = yield* dependencies
+            .claimLink(lockedIdentity.accountId, match.customerId)
+            .pipe(
+              Effect.mapError(mapCustomerAccountFailure("account-link.claim"))
+            );
+          if (claimed.kind === "claimed") {
+            return yield* Effect.fail(accessError("link-required", "claimed"));
+          }
           return {
             accountId: lockedIdentity.accountId,
-            dotyposCustomerId: existingCustomerId,
+            dotyposCustomerId: claimed.customerId,
           };
-        }
-
-        const match = yield* dependencies
-          .findCustomer(lockedIdentity.email, lockedIdentity.name)
-          .pipe(Effect.mapError(() => accessError("unavailable")));
-        if (match.kind === "not-found") {
-          return yield* Effect.fail(accessError("link-required", "not-found"));
-        }
-        if (match.kind === "ambiguous") {
-          return yield* Effect.fail(accessError("link-required", "ambiguous"));
-        }
-
-        const claimed = yield* dependencies
-          .claimLink(lockedIdentity.accountId, match.customerId)
-          .pipe(Effect.mapError(() => accessError("unavailable")));
-        if (claimed.kind === "claimed") {
-          return yield* Effect.fail(accessError("link-required", "claimed"));
-        }
-        return {
-          accountId: lockedIdentity.accountId,
-          dotyposCustomerId: claimed.customerId,
-        };
-      })
-    );
+        })
+      )
+      .pipe(Effect.mapError(mapCustomerAccountFailure("account-link.lock")));
   });
 
 export class CustomerAccountResolver extends Context.Service<
@@ -164,16 +179,7 @@ export class CustomerAccountResolver extends Context.Service<
                 })
               ),
           claimLink: links.claim,
-          withAccountLock: (accountId, effect) =>
-            links
-              .withAccountLock(accountId, effect)
-              .pipe(
-                Effect.mapError((error) =>
-                  error instanceof CustomerAccountAccessError
-                    ? error
-                    : accessError("unavailable")
-                )
-              ),
+          withAccountLock: links.withAccountLock,
         })
       );
 
@@ -196,9 +202,5 @@ export const resolveCurrentCustomerAccount = (): Effect.Effect<
     resolver.resolve()
   ).pipe(
     Effect.provide(CustomerAccountResolver.Live),
-    Effect.mapError((error) =>
-      error instanceof CustomerAccountAccessError
-        ? error
-        : accessError("unavailable")
-    )
+    Effect.mapError(mapCustomerAccountFailure("account-link.lock"))
   );

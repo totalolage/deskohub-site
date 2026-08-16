@@ -4,9 +4,11 @@ import {
   DotyposCustomerIdSchema,
 } from "@deskohub/dotypos";
 import { Effect, Schema } from "effect";
+import { censorLogValue } from "@/shared/backend/logging/censorship";
 import {
   CustomerAccountAccessError,
   customerAccountIdSchema,
+  customerAccountUnavailable,
 } from "../customer-account";
 import {
   type CustomerAccountResolutionDependencies,
@@ -184,20 +186,20 @@ describe("customer account resolution", () => {
   });
 
   test.each([
-    "session",
-    "database",
-    "lookup",
-    "claim",
-  ] as const)("maps a %s provider failure to unavailable", async (failure) => {
-    const failed = Effect.fail("provider failure");
+    ["session", "authentication.session"],
+    ["database", "account-link.read"],
+    ["lookup", "dotypos.customer-lookup"],
+    ["claim", "account-link.claim"],
+    ["lock", "account-link.lock"],
+  ] as const)("maps a %s provider failure to a sanitized unavailable cause", async (failure, code) => {
+    const rawFailure = new Error("sensitive-provider-payload");
+    const failed = Effect.fail(rawFailure);
     let overrides: Partial<CustomerAccountResolutionDependencies>;
     switch (failure) {
       case "session":
         overrides = {
           currentUser: () =>
-            Effect.fail(
-              new CustomerAccountAccessError({ reason: "unavailable" })
-            ),
+            Effect.fail(customerAccountUnavailable("authentication.session")),
         };
         break;
       case "database":
@@ -209,10 +211,15 @@ describe("customer account resolution", () => {
       case "claim":
         overrides = { claimLink: () => failed };
         break;
+      case "lock":
+        overrides = { withAccountLock: () => failed };
+        break;
     }
 
     const error = await runError(dependencies(overrides));
-    expect(error.reason).toBe("unavailable");
+    expect(error).toMatchObject({ reason: "unavailable", cause: { code } });
+    expect(censorLogValue(error)).toMatchObject({ cause: { code } });
+    expect(JSON.stringify(error)).not.toContain("sensitive-provider-payload");
   });
 
   test("keeps account IDs opaque", () => {
