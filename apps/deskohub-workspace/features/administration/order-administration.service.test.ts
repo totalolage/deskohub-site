@@ -154,7 +154,10 @@ describe("OrderAdministrationService", () => {
   });
 
   test("writes off an eligible goods order without changing lifecycle state", async () => {
-    const { layer, updates } = makeWriteOffLayer(order);
+    const { layer, updates } = makeWriteOffLayer({
+      ...order,
+      paymentState: "not_started",
+    });
     const result = await Effect.gen(function* () {
       const administration = yield* OrderAdministrationService;
       return yield* administration.writeOffOrder("order-1");
@@ -187,12 +190,16 @@ describe("OrderAdministrationService", () => {
     expect(updates).toEqual([]);
   });
 
-  test("rejects reservations and orders with live payment attempts", async () => {
+  test("rejects reservations and orders with payment in progress", async () => {
     const reservation = makeWriteOffLayer({
       ...order,
       kind: "reservation",
     });
-    const livePayment = makeWriteOffLayer(order, [{ id: "attempt-1" }]);
+    const livePayment = makeWriteOffLayer(
+      { ...order, paymentState: "not_started" },
+      [{ id: "attempt-1" }]
+    );
+    const pendingWithoutAttempt = makeWriteOffLayer(order);
 
     const run = (layer: ReturnType<typeof makeWriteOffLayer>["layer"]) =>
       Effect.gen(function* () {
@@ -202,6 +209,11 @@ describe("OrderAdministrationService", () => {
 
     expect((await run(reservation.layer)).reason).toBe("not_goods");
     expect((await run(livePayment.layer)).reason).toBe("payment_in_progress");
+    expect((await run(pendingWithoutAttempt.layer)).reason).toBe(
+      "payment_in_progress"
+    );
+    expect(pendingWithoutAttempt.liveAttemptLookups()).toBe(0);
+    expect(pendingWithoutAttempt.updates).toEqual([]);
   });
 });
 
@@ -212,12 +224,13 @@ const makeWriteOffLayer = (
   > & {
     readonly kind: "goods" | "reservation";
     readonly paidAt: Temporal.Instant | null;
-    readonly paymentState: "paid" | "pending";
+    readonly paymentState: "not_started" | "paid" | "pending";
     readonly writtenOffAt: Temporal.Instant | null;
   },
   liveAttempts: readonly { readonly id: string }[] = []
 ) => {
   const updates: WriteOffUpdate[] = [];
+  let liveAttemptLookupCount = 0;
   const query = <A>(rows: readonly A[]) => {
     const result = Effect.succeed(rows);
     return Object.assign(result, {
@@ -228,8 +241,11 @@ const makeWriteOffLayer = (
     });
   };
   const tx = {
-    select: (selection?: TestSelection) =>
-      selection ? query(liveAttempts) : query([selectedOrder]),
+    select: (selection?: TestSelection) => {
+      if (!selection) return query([selectedOrder]);
+      liveAttemptLookupCount += 1;
+      return query(liveAttempts);
+    },
     update: () => ({
       set: (values: WriteOffUpdate) => {
         updates.push(values);
@@ -254,5 +270,9 @@ const makeWriteOffLayer = (
       )
     )
   );
-  return { layer, updates };
+  return {
+    layer,
+    liveAttemptLookups: () => liveAttemptLookupCount,
+    updates,
+  };
 };
