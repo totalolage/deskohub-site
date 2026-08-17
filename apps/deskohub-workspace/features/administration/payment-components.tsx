@@ -3,29 +3,16 @@ import {
   getProviderOrderAbandonmentState,
   hasProviderPaymentActivity,
 } from "@/features/checkout/provider-order-abandonment";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
-import { AdministrationLink as Link } from "./admin-link";
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";
 import { AdministrationAlert } from "./notice";
-import type {
-  AdministrationOperation,
-  AdministrationOrder,
-} from "./payment-administration.service";
+import type { AdministrationOrder } from "./payment-administration.service";
 import { getProviderValueLabel } from "./payment-presentation";
 import {
   AdministrationStatusBadge,
   type AdministrationStatusTone,
 } from "./status-badge";
-import { AdministrationTableFrame } from "./table-frame";
 
 export const formatProviderMoney = (
   amount: string | undefined,
@@ -60,13 +47,6 @@ export const formatProviderDateTime = (value: string | undefined) => {
   } catch {
     return "Invalid provider timestamp";
   }
-};
-
-const getReconciliationLabel = (order: AdministrationOrder) => {
-  if (order.providerStatus === "available") return "Provider only";
-  if (order.providerStatus === "not_found") return "Not found";
-  if (order.providerStatus === "not_returned") return "Not returned";
-  return "Provider unavailable";
 };
 
 export function ProviderStatusBadge({ value }: { readonly value: string }) {
@@ -256,194 +236,5 @@ export function ReservationOrderList({
         );
       })}
     </div>
-  );
-}
-
-export function OrderTable({
-  orders,
-}: {
-  readonly orders: readonly AdministrationOrder[];
-}) {
-  if (orders.length === 0) {
-    return <EmptyState message="No Nexi orders match this period." />;
-  }
-  return (
-    <AdministrationTableFrame className="overflow-x-auto">
-      <Table aria-label="Nexi orders" className="min-w-[780px]">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Order</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Last operation</TableHead>
-            <TableHead>Reservation</TableHead>
-            <TableHead>Reconciliation</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {orders.map((order) => (
-            <TableRow key={order.orderId}>
-              <TableCell>
-                <Link
-                  className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                  href={`/admin/orders/${encodeURIComponent(order.orderId)}`}
-                >
-                  {order.orderId}
-                </Link>
-                {(order.provider?.lastOperationTime ||
-                  order.link?.providerOrderCreatedAt ||
-                  order.link?.attemptCreatedAt) && (
-                  <p className="mt-1 text-xs text-navy-blue/65">
-                    {formatProviderDateTime(
-                      order.provider?.lastOperationTime ??
-                        order.link?.providerOrderCreatedAt ??
-                        order.link?.attemptCreatedAt ??
-                        ""
-                    )}
-                  </p>
-                )}
-              </TableCell>
-              <TableCell className="font-medium">
-                {formatOrderMoney(order)}
-              </TableCell>
-              <TableCell>
-                {order.provider?.lastOperationType ? (
-                  <span className="font-medium">
-                    {getProviderValueLabel(order.provider.lastOperationType)}
-                  </span>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">
-                    None reported
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                {order.link ? (
-                  <Link
-                    className="font-medium hover:underline"
-                    href={`/admin/reservations/${order.link.reservationId}`}
-                  >
-                    View reservation
-                  </Link>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">Not linked</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {order.provider && order.link ? (
-                  <ProviderStatusBadge value={order.link.state} />
-                ) : (
-                  <ProviderStatusBadge value={getReconciliationLabel(order)} />
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </AdministrationTableFrame>
-  );
-}
-
-export function OperationTable({
-  operations,
-}: {
-  readonly operations: readonly AdministrationOperation[];
-}) {
-  if (operations.length === 0) {
-    return <EmptyState message="No Nexi operations match these filters." />;
-  }
-  return (
-    <AdministrationTableFrame className="overflow-x-auto">
-      <Table aria-label="Nexi operations" className="min-w-[880px]">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Operation</TableHead>
-            <TableHead>Order</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Result</TableHead>
-            <TableHead>Origin</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Reservation</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {operations.map((operation, index) => (
-            <TableRow
-              key={
-                operation.operationId ??
-                `${operation.orderId ?? "unknown"}-${operation.operationTime ?? index}`
-              }
-            >
-              <TableCell>
-                {operation.operationId ? (
-                  <Link
-                    className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                    href={`/admin/operations/${encodeURIComponent(operation.operationId)}`}
-                  >
-                    {operation.operationId}
-                  </Link>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">
-                    Not reported
-                  </span>
-                )}
-                {operation.operationTime && (
-                  <p className="mt-1 text-xs text-navy-blue/65">
-                    {formatProviderDateTime(operation.operationTime)}
-                  </p>
-                )}
-              </TableCell>
-              <TableCell>
-                {operation.orderId ? (
-                  <Link
-                    className="font-mono text-xs hover:underline"
-                    href={`/admin/orders/${encodeURIComponent(operation.orderId)}`}
-                  >
-                    {operation.orderId}
-                  </Link>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">
-                    Not reported
-                  </span>
-                )}
-              </TableCell>
-              <TableCell className="font-medium">
-                {operation.operationType
-                  ? getProviderValueLabel(operation.operationType)
-                  : "Not reported"}
-              </TableCell>
-              <TableCell>
-                {operation.operationResult ? (
-                  <ProviderStatusBadge value={operation.operationResult} />
-                ) : (
-                  <span className="text-sm text-navy-blue/65">
-                    Not reported
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                {operation.channel
-                  ? getProviderValueLabel(operation.channel)
-                  : "Not reported"}
-              </TableCell>
-              <TableCell className="font-medium">
-                {formatProviderMoney(operation.amount, operation.currency)}
-              </TableCell>
-              <TableCell>
-                {operation.linkedReservationId ? (
-                  <Link
-                    className="font-medium hover:underline"
-                    href={`/admin/reservations/${operation.linkedReservationId}`}
-                  >
-                    View reservation
-                  </Link>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">Not linked</span>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </AdministrationTableFrame>
   );
 }

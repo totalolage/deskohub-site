@@ -23,7 +23,7 @@ import {
   nexiOperationChannels,
   nexiOperationTypes,
 } from "@/features/administration/payment-administration-filters";
-import { OperationTable } from "@/features/administration/payment-components";
+import { OperationTable } from "@/features/administration/payment-tables";
 import { Button } from "@/shared/components/ui/button";
 
 export default function OperationsAdministrationPage({
