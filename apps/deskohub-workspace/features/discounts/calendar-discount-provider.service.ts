@@ -90,18 +90,7 @@ const loadRemoteCalendarSalesSource = Effect.fn(
       reason: "provider_failure",
       message: "Remote Calendar sales could not be loaded.",
     }),
-  }).pipe(
-    Effect.flatMap((result) =>
-      result.kind === "loaded"
-        ? Effect.succeed(result.source)
-        : Effect.fail(
-            new DiscountProviderError({
-              reason: result.reason,
-              message: result.message,
-            })
-          )
-    )
-  )
+  })
 );
 
 function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {

@@ -14,10 +14,7 @@ import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
-import {
-  DiscountProviderError,
-  type DiscountProviderFailureReason,
-} from "./errors";
+import { DiscountProviderError } from "./errors";
 import { logDiscountResolutionFailure } from "./resolution-logging";
 
 export const calendarDiscountSourceTag = "workspace-calendar-discounts";
@@ -36,17 +33,6 @@ export interface CalendarSalesSourceResult {
   readonly sales: readonly ResolvedCalendarSale[];
   readonly complete: boolean;
 }
-
-export type CalendarDiscountSourceResult =
-  | {
-      readonly kind: "loaded";
-      readonly source: CalendarSalesSourceResult;
-    }
-  | {
-      readonly kind: "failed";
-      readonly reason: DiscountProviderFailureReason;
-      readonly message: string;
-    };
 
 const loadDiscountDefinitions = Effect.fn(
   "CalendarDiscountSource.loadDiscountDefinitions"
@@ -140,43 +126,31 @@ const CalendarDiscountSourceLive = Layer.mergeAll(
 
 export async function loadCalendarDiscountSource(
   reservationDate: string
-): Promise<CalendarDiscountSourceResult> {
+): Promise<CalendarSalesSourceResult> {
   "use cache: remote";
 
-  let result: CalendarDiscountSourceResult;
   try {
-    result = await Effect.gen(function* () {
+    const source = await Effect.gen(function* () {
       const { salesCalendarId } = yield* CalendarResourceConfig;
       return yield* loadCalendarSalesSource({
         calendarId: salesCalendarId,
         reservationDate,
       });
     }).pipe(
-      Effect.map(
-        (source): CalendarDiscountSourceResult => ({ kind: "loaded", source })
-      ),
-      Effect.catch((error) =>
-        Effect.succeed({
-          kind: "failed" as const,
-          reason: error.reason,
-          message: error.message,
-        })
-      ),
       Effect.provide(CalendarDiscountSourceLive),
       runWorkspaceEffect("discounts.calendar-source.load")
     );
+
+    if (source.complete) {
+      cacheLife("advertisedPricingSources");
+      cacheTag(calendarDiscountSourceTag);
+    } else {
+      cacheLife({ expire: 0 });
+    }
+
+    return source;
   } catch (cause) {
     cacheLife({ expire: 0 });
     throw cause;
   }
-
-  const complete = result.kind === "loaded" && result.source.complete;
-  if (complete) {
-    cacheLife("advertisedPricingSources");
-    cacheTag(calendarDiscountSourceTag);
-  } else {
-    cacheLife({ expire: 0 });
-  }
-
-  return result;
 }

@@ -14,26 +14,28 @@ import type { DiscountAdminMutation } from "./contracts";
 export const refreshCalendarDiscountSourceAfterMutation = Effect.fn(
   "DiscountAdministration.refreshCalendarSource"
 )((input: DiscountAdminMutation) =>
-  discountMutationChangesCalendarSource(input)
-    ? Effect.try({
-        try: () => {
-          revalidateTag(calendarDiscountSourceTag, { expire: 0 });
-          after(() =>
-            primeCurrentCalendarDiscountSources().pipe(
-              runWorkspaceEffect("discounts.calendar-source.prime")
-            )
-          );
-        },
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.tapError((cause) =>
-          Effect.logWarning("Calendar discount cache refresh could not start", {
-            cause,
-          })
-        ),
-        Effect.ignore
-      )
-    : Effect.void
+  Effect.try({
+    try: () => {
+      revalidateTag(calendarDiscountSourceTag, { expire: 0 });
+      after(() =>
+        primeCurrentCalendarDiscountSources().pipe(
+          runWorkspaceEffect("discounts.calendar-source.prime")
+        )
+      );
+    },
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.tapError((cause) =>
+      Effect.logWarning("Calendar discount cache refresh could not start", {
+        cause,
+      })
+    ),
+    Effect.ignore,
+    Effect.when(
+      Effect.succeed(discountMutationChangesCalendarSource(input))
+    ),
+    Effect.asVoid
+  )
 );
 
 const primeCurrentCalendarDiscountSources = Effect.fn(
@@ -49,16 +51,10 @@ const primeCurrentCalendarDiscountSources = Effect.fn(
         try: () => loadCalendarDiscountSource(reservationDate),
         catch: (cause) => cause,
       }).pipe(
-        Effect.flatMap((result) =>
-          result.kind === "loaded" && result.source.complete
-            ? Effect.void
-            : Effect.logWarning(
-                "Calendar discount cache prime was incomplete",
-                {
-                  reservationDate,
-                  ...(result.kind === "failed" && { reason: result.reason }),
-                }
-              )
+        Effect.tap((source) =>
+          Effect.logWarning("Calendar discount cache prime was incomplete", {
+            reservationDate,
+          }).pipe(Effect.when(Effect.succeed(!source.complete)))
         ),
         Effect.catch((cause) =>
           Effect.logWarning("Calendar discount cache prime failed", {
