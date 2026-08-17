@@ -10,6 +10,7 @@ import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
+import { Skeleton } from "@/shared/components/ui/skeleton";
 import {
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
@@ -189,12 +190,12 @@ async function RoomCarouselContent({
 export function RoomCarouselFallback({ label }: { label: string }) {
   return (
     <section aria-busy="true" aria-label={label} className="mb-7 space-y-3">
-      <div className="aspect-[4/3] w-full animate-pulse rounded-[1.25rem] bg-linear-to-br from-navy-blue via-navy-blue/88 to-burned-orange/42" />
+      <Skeleton className="aspect-[4/3] w-full rounded-[1.25rem] bg-transparent bg-linear-to-br from-navy-blue via-navy-blue/88 to-burned-orange/42" />
       <div
         aria-hidden="true"
         className="flex min-h-10 items-center justify-center"
       >
-        <div className="h-2 w-14 animate-pulse rounded-full bg-navy-blue/16" />
+        <Skeleton className="h-2 w-14 rounded-full bg-navy-blue/16" />
       </div>
     </section>
   );
