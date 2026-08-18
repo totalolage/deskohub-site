@@ -1,5 +1,6 @@
 import Image, { getImageProps } from "next/image";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
@@ -14,16 +15,12 @@ import heroImage from "../images/hero.jpeg";
 import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
 import { LandingPageHexagon } from "./landing-page-hexagon";
 import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
-import {
-  LandingPageSaleBanner,
-  type LandingPageSaleBannerContent,
-} from "./landing-page-sale-banner";
 
 type LandingPageHeroSectionProps = {
   locale: Locale;
   meetingRoomPageEnabled: boolean;
   overviewSectionId: string;
-  saleBanner?: LandingPageSaleBannerContent;
+  saleBanner?: ReactNode;
 };
 
 export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
@@ -139,13 +136,9 @@ export function LandingPageHeroSection({
       ariaLabelledBy="landing-page-heading"
       background={<Background locale={locale} />}
       bottomSection={orangeMaskSection}
-      className={
-        saleBanner
-          ? "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-(--site-header-height) text-white"
-          : "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white"
-      }
+      className="group relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white has-[[data-landing-page-sale-banner]]:pt-(--site-header-height)"
       id={overviewSectionId}
-      saleBanner={saleBanner && <LandingPageSaleBanner content={saleBanner} />}
+      saleBanner={saleBanner}
     >
       {heroContent}
     </LandingPageHeroScrollScene>

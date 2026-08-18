@@ -134,6 +134,22 @@ const invalidEventCases = [
 ] as const;
 
 describe("CalendarDiscountProvider", () => {
+  test("routes Live discovery through the Next cache boundary", async () => {
+    const providerSource = await Bun.file(
+      new URL("./calendar-discount-provider.service.ts", import.meta.url)
+    ).text();
+    const cacheSource = await Bun.file(
+      new URL("./calendar-discount-source.server.ts", import.meta.url)
+    ).text();
+
+    expect(providerSource).toContain(
+      "useRemoteDiscovery\n        ? loadRemoteCalendarSalesSource\n        : yield* Cache.makeWith"
+    );
+    expect(cacheSource).toContain('"use cache: remote"');
+    expect(cacheSource).toContain('cacheLife("advertisedPricingSources")');
+    expect(cacheSource).toContain("cacheTag(calendarDiscountSourceTag)");
+  });
+
   test("discovers localized active sales with their complete product targets", async () => {
     const products = [coworkTarget, { kind: "meeting-room" } as const];
     const listEvents = mock(() => Effect.succeed([saleEvent()]));
@@ -164,21 +180,24 @@ describe("CalendarDiscountProvider", () => {
       from: "2026-07-20",
       to: "2026-07-20",
     });
-    expect(result).toEqual([
-      expect.objectContaining({
-        discount: {
-          id: expect.any(String),
-          label: "Databázová sleva",
-          adjustment: {
-            kind: "fixed",
-            amount: { value: 5000, exponent: 2, currency: "CZK" },
+    expect(result).toEqual({
+      activeSales: [
+        expect.objectContaining({
+          discount: {
+            id: expect.any(String),
+            label: "Databázová sleva",
+            adjustment: {
+              kind: "fixed",
+              amount: { value: 5000, exponent: 2, currency: "CZK" },
+            },
+            countdownStartsAt: expect.any(String),
+            expiresAt: expect.any(String),
           },
-          countdownStartsAt: expect.any(String),
-          expiresAt: expect.any(String),
-        },
-        products,
-      }),
-    ]);
+          products,
+        }),
+      ],
+      complete: true,
+    });
     expect(JSON.stringify(result)).not.toContain("Operator calendar title");
     expect(JSON.stringify(result)).not.toContain(discountIdA);
   });
@@ -827,7 +846,7 @@ describe("CalendarDiscountProvider", () => {
 
     expect(result.beforeExpiry).toHaveLength(1);
     expect(result.cachedAfterExpiry).toEqual([]);
-    expect(result.activeSalesAfterExpiry).toEqual([]);
+    expect(result.activeSalesAfterExpiry.activeSales).toEqual([]);
     expect(result.freshAfterExpiry).toEqual([]);
     expect(listEvents).toHaveBeenCalledTimes(2);
   });

@@ -11,7 +11,10 @@ import {
   meetingRoomReservationDefaultValues,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
-import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomReservationDuration,
+  getMeetingRoomReservationDurationKey,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import { getEarliestMeetingRoomStartDateTime } from "@/features/reservation/meeting-room-reservation-time";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -61,7 +64,11 @@ export async function renderMeetingRoomReservationContent({
       locale,
       startDateTime: initialValues.startDateTime,
       submittedCode,
-    })
+    }).filter(
+      ({ reservation }) =>
+        getMeetingRoomReservationDurationKey(reservation.details.duration) ===
+        initialValues.duration
+    )
   ).pipe(
     Effect.provide(CheckoutPricingService.Live),
     Effect.scoped,

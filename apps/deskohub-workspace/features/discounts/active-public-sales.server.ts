@@ -1,7 +1,7 @@
 import "server-only";
 
-import { Clock, Effect } from "effect";
-import { cacheLife } from "next/cache";
+import { Effect } from "effect";
+import { connection } from "next/server";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import type { Locale } from "@/features/i18n";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -32,20 +32,14 @@ export const getActivePublicSales = Effect.fn("Discounts.getActivePublicSales")(
 async function loadActivePublicSales(input: {
   readonly locale: Locale;
 }): Promise<readonly ActiveSale[]> {
-  "use cache";
-  cacheLife("publicContent");
+  await connection();
 
-  return Effect.Do.pipe(
-    Effect.bind("at", () => Clock.currentTimeMillis),
-    Effect.let("currentDate", ({ at }) =>
-      getCurrentWorkspaceDate(Temporal.Instant.fromEpochMilliseconds(at))
-    ),
-    Effect.flatMap(({ currentDate }) =>
-      CalendarDiscountProvider.pipe(
-        Effect.flatMap((provider) =>
-          provider.discoverActiveSales({ ...input, currentDate })
-        )
-      )
+  return CalendarDiscountProvider.pipe(
+    Effect.flatMap((provider) =>
+      provider.discoverActiveSales({
+        ...input,
+        currentDate: getCurrentWorkspaceDate(),
+      })
     ),
     Effect.tapError((cause) =>
       logDiscountResolutionFailure({
@@ -54,6 +48,7 @@ async function loadActivePublicSales(input: {
         provider: "calendar",
       })
     ),
+    Effect.map(({ activeSales }) => activeSales),
     Effect.orElseSucceed(() => []),
     Effect.provide(CalendarDiscountProvider.Live),
     runWorkspaceEffect("discounts.active-public-sales.load")

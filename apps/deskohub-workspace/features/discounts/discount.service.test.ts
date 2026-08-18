@@ -148,7 +148,9 @@ describe("DiscountService", () => {
     true,
     false,
   ])("discovers active sales when the Calendar gate is %s", async (calendarSales) => {
-    const discoverActiveSales = mock(() => Effect.succeed([activeSale]));
+    const discoverActiveSales = mock(() =>
+      Effect.succeed({ activeSales: [activeSale], complete: true })
+    );
     const evaluate = mock(() =>
       Effect.succeed({
         calendarSales,

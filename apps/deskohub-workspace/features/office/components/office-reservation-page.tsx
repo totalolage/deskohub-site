@@ -5,7 +5,7 @@ import { loadOfficeReservationSeatCapacity } from "@/features/office/backend/off
 import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
-import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
+import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDefaultValues,
   getOfficeReservationEndsOn,
@@ -50,15 +50,15 @@ export const officeReservationPage = createReservationPage({
       getOfficeReservationEndsOn(initialValues)
     );
     const seatCapacity = await loadOfficeReservationSeatCapacity();
-    const initialAdvertisedPrices = await loadAdvertisedPrices(
-      getOfficeSeatAdvertisedPriceRequests({
-        seatCapacity,
+    const initialAdvertisedPrices = await loadAdvertisedPrices([
+      getOfficeAdvertisedPriceRequest({
         locale,
         startsOn: decodePlainDate(initialValues.startsOn),
+        seats: initialValues.seats,
         submittedCode,
         endsOn: initialEndsOn,
-      })
-    ).pipe(
+      }),
+    ]).pipe(
       Effect.provide(CheckoutPricingService.Live),
       Effect.scoped,
       runWorkspaceEffect("reservation.office.load-advertised-price")

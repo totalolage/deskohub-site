@@ -8,7 +8,6 @@ import {
   Effect,
   Exit,
   Layer,
-  Option,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -16,24 +15,24 @@ import {
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
 import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
-import {
-  CalendarResourceConfig,
-  type SalesCalendarId,
-} from "@/shared/backend/config/calendar-resource.config";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
-import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
+import {
+  type CalendarSalesSourceInput,
+  type CalendarSalesSourceResult,
+  loadCalendarDiscountSource,
+  loadCalendarSalesSource,
+  type ResolvedCalendarSale,
+} from "./calendar-discount-source.server";
 import type {
   ActiveSale,
   ActiveSaleDiscoveryInput,
   DiscountQuoteInput,
 } from "./contracts";
-import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
-import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
 import type { DiscountCandidate } from "./provider";
-import { logDiscountResolutionFailure } from "./resolution-logging";
 
 const providerNamespace = "google-calendar-sales";
 
@@ -42,10 +41,15 @@ export type CalendarDiscountProviderInput = Pick<
   "locale" | "product" | "reservationDate"
 >;
 
+export interface ActiveSaleDiscoveryResult {
+  readonly activeSales: readonly ActiveSale[];
+  readonly complete: boolean;
+}
+
 export interface ICalendarDiscountProvider {
   readonly discoverActiveSales: (
     input: ActiveSaleDiscoveryInput
-  ) => Effect.Effect<readonly ActiveSale[], DiscountProviderError>;
+  ) => Effect.Effect<ActiveSaleDiscoveryResult, DiscountProviderError>;
   readonly discover: (
     input: CalendarDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
@@ -58,120 +62,82 @@ export class CalendarDiscountProvider extends Context.Service<
   CalendarDiscountProvider,
   ICalendarDiscountProvider
 >()("@deskohub-workspace/discounts/CalendarDiscountProvider") {
-  static Default = Layer.effect(
-    this,
+  static Default = Layer.suspend(() =>
+    makeCalendarDiscountProviderLayer(false)
+  );
+
+  static Live = Layer.suspend(() =>
+    makeCalendarDiscountProviderLayer(true)
+  ).pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        WorkspaceGoogleCalendarLayer,
+        CalendarResourceConfig.Default,
+        DiscountDefinitionRepository.Default.pipe(
+          Layer.provide(WorkspaceDatabase.Default)
+        )
+      )
+    )
+  );
+}
+
+const loadRemoteCalendarSalesSource = Effect.fn(
+  "CalendarDiscountSource.loadRemote"
+)((input: CalendarSalesSourceInput) =>
+  Effect.tryPromise({
+    try: () => loadCalendarDiscountSource(input.reservationDate),
+    catch: DiscountProviderError.fromCause({
+      reason: "provider_failure",
+      message: "Remote Calendar sales could not be loaded.",
+    }),
+  })
+);
+
+function makeCalendarDiscountProviderLayer(useRemoteDiscovery: boolean) {
+  return Layer.effect(
+    CalendarDiscountProvider,
     Effect.gen(function* () {
       const calendar = yield* GoogleCalendarService;
       const discountDefinitions = yield* DiscountDefinitionRepository;
       const { salesCalendarId } = yield* CalendarResourceConfig;
-
-      const loadDiscountDefinitions = Effect.fn(
-        "CalendarDiscountProvider.loadDiscountDefinitions"
-      )((input: { readonly sales: readonly CalendarSale[] }) =>
-        Effect.forEach(
-          [...new Set(input.sales.map(({ discountId }) => discountId))],
-          (discountId) =>
-            discountDefinitions.loadById({ discountId }).pipe(
-              Effect.mapError(toDiscountDefinitionProviderError),
-              Effect.matchEffect({
-                onFailure: (cause) =>
-                  logDiscountResolutionFailure({
-                    cause,
-                    operation: "load_definition",
-                    provider: "calendar",
-                  }).pipe(
-                    Effect.as({
-                      definition: Option.none<DiscountDefinition>(),
-                      failed: true,
-                    })
-                  ),
-                onSuccess: (loadedDefinition) =>
-                  Effect.succeed({
-                    definition: Option.some(loadedDefinition),
-                    failed: false,
-                  }),
-              })
+      const loadDirectCalendarSalesSource = (
+        input: CalendarSalesSourceInput
+      ): Effect.Effect<CalendarSalesSourceResult, DiscountProviderError> =>
+        loadCalendarSalesSource(input).pipe(
+          Effect.provideService(GoogleCalendarService, calendar),
+          Effect.provideService(
+            DiscountDefinitionRepository,
+            discountDefinitions
+          )
+        );
+      const loadDiscoverySales = useRemoteDiscovery
+        ? loadRemoteCalendarSalesSource
+        : yield* Cache.makeWith(loadDirectCalendarSalesSource, {
+            capacity: 512,
+            timeToLive: (exit) =>
+              Exit.isSuccess(exit) && exit.value.complete
+                ? Duration.seconds(60)
+                : Duration.zero,
+          }).pipe(
+            Effect.map(
+              (cache) => (input: CalendarSalesSourceInput) =>
+                Cache.get(cache, new CalendarSalesCacheKey(input))
             )
-        ).pipe(
-          Effect.map((results) => ({
-            definitions: new Map(
-              results
-                .map(({ definition }) => definition)
-                .filter(Option.isSome)
-                .map(({ value }) => [value.id, value])
-            ),
-            hasFailures: results.some(({ failed }) => failed),
-          }))
-        )
-      );
-
-      const loadCalendarSales = Effect.fn(
-        "CalendarDiscountProvider.loadCalendarSales"
-      )((key: CalendarSalesCacheKey) =>
-        Effect.succeed(key).pipe(
-          Effect.bind("events", ({ calendarId, reservationDate }) =>
-            calendar
-              .listEvents({
-                calendarId,
-                from: reservationDate,
-                to: reservationDate,
-              })
-              .pipe(
-                Effect.mapError(
-                  DiscountProviderError.fromCause({
-                    reason: "provider_failure",
-                    message: "Google Calendar sales could not be loaded.",
-                  })
-                )
-              )
-          ),
-          Effect.bind(
-            "normalization",
-            ({ calendarId, events, reservationDate }) =>
-              normalizeCalendarSales({
-                calendarId,
-                events,
-                reservationDate,
-              })
-          ),
-          Effect.bind("definitionResolution", ({ normalization }) =>
-            loadDiscountDefinitions({ sales: normalization.sales })
-          ),
-          Effect.map(({ definitionResolution, normalization }) => ({
-            sales: normalization.sales.flatMap((sale) => {
-              const definition = definitionResolution.definitions.get(
-                sale.discountId
-              );
-
-              return definition ? [{ sale, definition }] : [];
-            }),
-            cacheable:
-              !normalization.hasFailures && !definitionResolution.hasFailures,
-          }))
-        )
-      );
-
-      const salesCache = yield* Cache.makeWith(loadCalendarSales, {
-        capacity: 512,
-        timeToLive: (exit) =>
-          Exit.isSuccess(exit) && exit.value.cacheable
-            ? Duration.seconds(60)
-            : Duration.zero,
-      });
+          );
 
       const discover = Effect.fn("CalendarDiscountProvider.discover")(
         (input: CalendarDiscountProviderInput) =>
           Effect.succeed(input).pipe(
             Effect.let(
-              "cacheKey",
+              "sourceInput",
               ({ reservationDate }) =>
-                new CalendarSalesCacheKey({
+                ({
                   calendarId: salesCalendarId,
                   reservationDate,
-                })
+                }) satisfies CalendarSalesSourceInput
             ),
-            Effect.bind("resolvedSales", ({ cacheKey }) =>
-              Cache.get(salesCache, cacheKey)
+            Effect.bind("resolvedSales", ({ sourceInput }) =>
+              loadDiscoverySales(sourceInput)
             ),
             Effect.bind("at", () =>
               Clock.currentTimeMillis.pipe(
@@ -191,15 +157,15 @@ export class CalendarDiscountProvider extends Context.Service<
         (input: ActiveSaleDiscoveryInput) =>
           Effect.succeed(input).pipe(
             Effect.let(
-              "cacheKey",
+              "sourceInput",
               ({ currentDate }) =>
-                new CalendarSalesCacheKey({
+                ({
                   calendarId: salesCalendarId,
                   reservationDate: currentDate.toString(),
-                })
+                }) satisfies CalendarSalesSourceInput
             ),
-            Effect.bind("resolvedSales", ({ cacheKey }) =>
-              Cache.get(salesCache, cacheKey)
+            Effect.bind("resolvedSales", ({ sourceInput }) =>
+              loadDiscoverySales(sourceInput)
             ),
             Effect.bind("at", () =>
               Clock.currentTimeMillis.pipe(
@@ -207,7 +173,10 @@ export class CalendarDiscountProvider extends Context.Service<
               )
             ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
-            Effect.map(toActiveCalendarSales)
+            Effect.map(({ resolvedSales, ...activeSalesInput }) => ({
+              activeSales: toActiveCalendarSales(activeSalesInput),
+              complete: resolvedSales.complete,
+            }))
           ),
         (effect) =>
           effect.pipe(
@@ -221,15 +190,15 @@ export class CalendarDiscountProvider extends Context.Service<
         (input: CalendarDiscountProviderInput) =>
           Effect.succeed(input).pipe(
             Effect.let(
-              "cacheKey",
+              "sourceInput",
               ({ reservationDate }) =>
-                new CalendarSalesCacheKey({
+                ({
                   calendarId: salesCalendarId,
                   reservationDate,
-                })
+                }) satisfies CalendarSalesSourceInput
             ),
-            Effect.bind("resolvedSales", ({ cacheKey }) =>
-              loadCalendarSales(cacheKey)
+            Effect.bind("resolvedSales", ({ sourceInput }) =>
+              loadDirectCalendarSalesSource(sourceInput)
             ),
             Effect.bind("at", () =>
               Clock.currentTimeMillis.pipe(
@@ -250,24 +219,9 @@ export class CalendarDiscountProvider extends Context.Service<
       } satisfies ICalendarDiscountProvider;
     })
   );
-
-  static Live = this.Default.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        WorkspaceGoogleCalendarLayer,
-        CalendarResourceConfig.Default,
-        DiscountDefinitionRepository.Default.pipe(
-          Layer.provide(WorkspaceDatabase.Default)
-        )
-      )
-    )
-  );
 }
 
-class CalendarSalesCacheKey extends Data.Class<{
-  readonly calendarId: SalesCalendarId;
-  readonly reservationDate: string;
-}> {}
+class CalendarSalesCacheKey extends Data.Class<CalendarSalesSourceInput> {}
 
 const toEligibleCalendarCandidates = (input: {
   readonly at: Temporal.Instant;
@@ -339,11 +293,6 @@ const toCalendarDiscountCandidate = (input: {
     },
   },
 });
-
-type ResolvedCalendarSale = {
-  readonly sale: CalendarSale;
-  readonly definition: DiscountDefinition;
-};
 
 const withProviderAnnotations =
   (operation: "discover" | "revalidate") =>
