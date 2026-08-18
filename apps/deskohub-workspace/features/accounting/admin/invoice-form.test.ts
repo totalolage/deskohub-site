@@ -40,7 +40,6 @@ test("omits blank optional business contact names", () => {
     customer: null,
     customerMode: "new",
     customerType: "business",
-    defaultVariableSymbol: "2026000001",
     form,
     invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
     lines: [{ id: "line-1", description: "", price: "" }],
@@ -48,6 +47,7 @@ test("omits blank optional business contact names", () => {
 
   expect(input.customer.details).not.toHaveProperty("firstName");
   expect(input.customer.details).not.toHaveProperty("lastName");
+  expect(input.variableSymbol).toBe("2026000001");
   expect(() =>
     Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)(input)
   ).not.toThrow();

@@ -118,7 +118,6 @@ export function InvoiceCreationForm({
         customer,
         customerMode,
         customerType,
-        defaultVariableSymbol: suggestedVariableSymbol,
         form,
         invoiceId,
         lines,
@@ -726,7 +725,6 @@ export function readInvoiceForm(input: {
   readonly customer: InvoiceAdministrationCustomer | null;
   readonly customerMode: "existing" | "new";
   readonly customerType: "person" | "business";
-  readonly defaultVariableSymbol: string;
   readonly form: FormData;
   readonly invoiceId: string;
   readonly lines: readonly Line[];
@@ -770,7 +768,7 @@ export function readInvoiceForm(input: {
     serviceDate: field(input.form, "serviceDate"),
     dueDate: field(input.form, "dueDate"),
     currency: field(input.form, "currency"),
-    ...(variableSymbol !== input.defaultVariableSymbol && { variableSymbol }),
+    variableSymbol,
     lines: input.lines.map(({ id }) => ({
       description: field(input.form, `description-${id}`),
       price: field(input.form, `price-${id}`),
