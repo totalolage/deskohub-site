@@ -6,7 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { NexiCorrelationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
-import { asc, eq, like, sql } from "drizzle-orm";
+import { asc, eq, inArray, like, sql } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { DatabaseClient } from "@/db/database-client";
@@ -113,6 +113,12 @@ export const assertInvoicePersistence = Effect.gen(function* () {
       cleanupLegacyInvoicePersistenceFixtures(db).pipe(Effect.orDie)
     )
   );
+  const remainingFixtures = yield* db
+    .select({ id: invoices.id })
+    .from(invoices)
+    .where(like(invoices.dotyposCustomerId, "synthetic-customer-%"))
+    .limit(1);
+  equal(remainingFixtures.length, 0);
 }).pipe(
   Effect.mapError((cause) =>
     toWorkspaceE2EError("assert invoice persistence", cause)
@@ -126,11 +132,16 @@ const cleanupLegacyInvoicePersistenceFixtures = (db: DatabaseClient) =>
       yield* tx.execute(
         sql`alter table ${invoices} disable trigger invoices_immutable`
       );
+      const fixtureInvoices = tx
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(like(invoices.dotyposCustomerId, "synthetic-customer-%"));
+      yield* tx
+        .delete(invoiceEmailDeliveries)
+        .where(inArray(invoiceEmailDeliveries.invoiceId, fixtureInvoices));
       yield* tx
         .delete(invoices)
-        .where(
-          like(invoices.workspaceReservationId, "synthetic-reservation-%")
-        );
+        .where(like(invoices.dotyposCustomerId, "synthetic-customer-%"));
       yield* tx.execute(
         sql`alter table ${invoices} enable trigger invoices_immutable`
       );
