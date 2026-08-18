@@ -56,6 +56,7 @@ export function InvoiceCreationForm({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const searchId = useId();
+  const initialLineId = useId();
   const [customer, setCustomer] =
     useState<InvoiceAdministrationCustomer | null>(null);
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(
@@ -65,12 +66,11 @@ export function InvoiceCreationForm({
     "person"
   );
   const [query, setQuery] = useState("");
-  const [invoiceId] = useState(() => crypto.randomUUID());
   const [searchResults, setSearchResults] = useState<
     readonly InvoiceAdministrationCustomer[]
   >([]);
   const [lines, setLines] = useState<readonly Line[]>(() => [
-    { id: crypto.randomUUID(), description: "", price: "" },
+    { id: initialLineId, description: "", price: "" },
   ]);
   const [review, setReview] = useState<ReturnType<
     typeof readInvoiceForm
@@ -119,7 +119,7 @@ export function InvoiceCreationForm({
         customerMode,
         customerType,
         form,
-        invoiceId,
+        invoiceId: crypto.randomUUID(),
         lines,
       })
     );

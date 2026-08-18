@@ -29,6 +29,16 @@ describe("administration UI boundaries", () => {
     }
   });
 
+  test("creates invoice request identities only after user interaction", async () => {
+    const source = await readWorkspaceFile(
+      "features/accounting/admin/invoice-form.tsx"
+    );
+
+    expect(source.slice(0, source.indexOf("const openReview"))).not.toContain(
+      "crypto.randomUUID()"
+    );
+  });
+
   test("streams data routes through local suspense boundaries", async () => {
     const dataRoutes = [
       "app/admin/page.tsx",
