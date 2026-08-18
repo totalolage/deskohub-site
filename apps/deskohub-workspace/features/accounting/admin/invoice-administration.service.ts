@@ -241,25 +241,6 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
       lines: input.lines,
     });
     const invoiceId = invoiceIdSchema.make(input.invoiceId);
-    const claim = yield* creationRequests.claim({
-      invoiceId,
-      normalizedRequestJson: getManualInvoiceCreationRequestJson(
-        input,
-        provenance
-      ),
-    });
-    if (claim.kind === "mismatch") {
-      return yield* new InvoiceAdministrationCustomerError({
-        message: "Invoice id was already used with different input.",
-      });
-    }
-    if (claim.kind === "in-progress") {
-      return yield* new InvoiceAdministrationInProgressError({
-        invoiceId: input.invoiceId,
-        message:
-          "This invoice is already being created. Try the same request again shortly.",
-      });
-    }
     const issueForCustomer = (dotyposCustomerId: DotyposCustomerId) =>
       invoices.issueManual({
         invoiceId,
@@ -278,25 +259,52 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
         lines: input.lines,
         provenance,
       });
-    const existing = yield* invoices.findById(input.invoiceId);
-    if (claim.kind === "completed" && !existing) {
-      return yield* new ManualInvoiceCreationRequestError({
-        message: "The completed invoice creation request has no invoice.",
-      });
-    }
-    const issuance = existing
-      ? yield* issueForCustomer(
-          input.customer.kind === "existing"
-            ? yield* decodeDotyposCustomerId(input.customer.customerId)
-            : DotyposCustomerIdSchema.make(existing.dotyposCustomerId)
-        )
-      : yield* resolveCustomer(dotypos, input.customer).pipe(
-          Effect.flatMap((customer) => decodeDotyposCustomerId(customer.id)),
-          Effect.flatMap(issueForCustomer)
-        );
-    if (claim.kind === "claimed") {
-      yield* creationRequests.complete(invoiceId);
-    }
+    const issuance = yield* creationRequests.withLock(
+      invoiceId,
+      Effect.gen(function* () {
+        const claim = yield* creationRequests.claim({
+          invoiceId,
+          normalizedRequestJson: getManualInvoiceCreationRequestJson(
+            input,
+            provenance
+          ),
+        });
+        if (claim.kind === "mismatch") {
+          return yield* new InvoiceAdministrationCustomerError({
+            message: "Invoice id was already used with different input.",
+          });
+        }
+        if (claim.kind === "in-progress") {
+          return yield* new InvoiceAdministrationInProgressError({
+            invoiceId: input.invoiceId,
+            message:
+              "This invoice is already being created. Try the same request again shortly.",
+          });
+        }
+        const existing = yield* invoices.findById(input.invoiceId);
+        if (claim.kind === "completed" && !existing) {
+          return yield* new ManualInvoiceCreationRequestError({
+            message: "The completed invoice creation request has no invoice.",
+          });
+        }
+        const lockedIssuance = existing
+          ? yield* issueForCustomer(
+              input.customer.kind === "existing"
+                ? yield* decodeDotyposCustomerId(input.customer.customerId)
+                : DotyposCustomerIdSchema.make(existing.dotyposCustomerId)
+            )
+          : yield* resolveCustomer(dotypos, input.customer).pipe(
+              Effect.flatMap((customer) =>
+                decodeDotyposCustomerId(customer.id)
+              ),
+              Effect.flatMap(issueForCustomer)
+            );
+        if (claim.kind === "claimed") {
+          yield* creationRequests.complete(invoiceId);
+        }
+        return lockedIssuance;
+      })
+    );
     yield* deliveries
       .deliverByInvoiceId({ invoiceId: issuance.invoice.id })
       .pipe(

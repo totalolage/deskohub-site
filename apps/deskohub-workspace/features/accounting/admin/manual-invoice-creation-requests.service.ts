@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { and, eq, isNull, lte } from "drizzle-orm";
+import { and, eq, isNull, lte, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { manualInvoiceCreationRequests } from "@/db/schema";
 import type { InvoiceId } from "@/features/accounting/manual-invoice";
@@ -21,6 +22,10 @@ export class ManualInvoiceCreationRequestError extends Data.TaggedError(
 )<{ readonly message: string }> {}
 
 interface IManualInvoiceCreationRequests {
+  readonly withLock: <A, E, R>(
+    invoiceId: InvoiceId,
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E | EffectDrizzleQueryError | SqlError, R>;
   readonly claim: (input: {
     readonly invoiceId: InvoiceId;
     readonly normalizedRequestJson: string;
@@ -45,6 +50,18 @@ export class ManualInvoiceCreationRequests extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const keys = yield* AccountingSnapshotKeyService;
+
+      const withLock: IManualInvoiceCreationRequests["withLock"] = (
+        invoiceId,
+        effect
+      ) =>
+        db.transaction((tx) =>
+          tx
+            .execute(
+              sql`select pg_advisory_xact_lock(hashtext('manual-invoice-creation'), hashtext(${invoiceId}))`
+            )
+            .pipe(Effect.andThen(effect))
+        );
 
       const claim: IManualInvoiceCreationRequests["claim"] = (input) =>
         Effect.gen(function* () {
@@ -136,7 +153,11 @@ export class ManualInvoiceCreationRequests extends Context.Service<
             )
       );
 
-      return { claim, complete } satisfies IManualInvoiceCreationRequests;
+      return {
+        claim,
+        complete,
+        withLock,
+      } satisfies IManualInvoiceCreationRequests;
     })
   );
 

@@ -124,4 +124,19 @@ describe("manual invoice creation request claims", () => {
       ["invoiceId", "keyId", "requestDigest", "claimedAt", "completedAt"]
     );
   });
+
+  test("holds a namespaced transaction advisory lock around creation", async () => {
+    const source = await Bun.file(
+      `${import.meta.dir}/manual-invoice-creation-requests.service.ts`
+    ).text();
+    const withLock = source.slice(source.indexOf("const withLock"));
+
+    expect(withLock).toContain("db.transaction");
+    expect(withLock).toContain(
+      "pg_advisory_xact_lock(hashtext('manual-invoice-creation'), hashtext("
+    );
+    expect(withLock.indexOf("pg_advisory_xact_lock(")).toBeLessThan(
+      withLock.indexOf("Effect.andThen(effect)")
+    );
+  });
 });
