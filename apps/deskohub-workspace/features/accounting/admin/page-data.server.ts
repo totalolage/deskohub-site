@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { cache } from "react";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -23,6 +24,7 @@ const authorizeInvoiceAdministrationPage = cache(async () => {
       boundary: "route",
     })
   );
+  await connection();
 });
 
 export const loadInvoiceAdministrationList = async (

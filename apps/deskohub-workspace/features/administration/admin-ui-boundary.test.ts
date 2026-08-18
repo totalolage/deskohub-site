@@ -16,6 +16,7 @@ describe("administration UI boundaries", () => {
 
   test("establishes the request boundary in shared page authorization", async () => {
     for (const path of [
+      "features/accounting/admin/page-data.server.ts",
       "features/administration/page-data.server.ts",
       "features/discounts/admin/page-data.server.ts",
     ]) {
@@ -23,7 +24,7 @@ describe("administration UI boundaries", () => {
 
       expect(source.match(/await connection\(\)/g)).toHaveLength(1);
       expect(source).toMatch(
-        /export const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\);\n}\);/
+        /(?:export )?const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\);\n}\);/
       );
     }
   });
