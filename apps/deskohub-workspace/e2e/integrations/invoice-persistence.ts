@@ -7,7 +7,7 @@ import {
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { NexiCorrelationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
 import { asc, eq, like, sql } from "drizzle-orm";
-import { Data, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { DatabaseClient } from "@/db/database-client";
 import {
@@ -91,38 +91,28 @@ const personalInvoiceBuyer = {
   },
 } satisfies InvoiceBuyer;
 
-class InvoicePersistenceRollback extends Data.TaggedError(
-  "InvoicePersistenceRollback"
-) {}
-
 export const assertInvoicePersistence = Effect.gen(function* () {
   const { db } = yield* E2EDatabase;
   yield* cleanupLegacyInvoicePersistenceFixtures(db);
-  yield* db
-    .transaction((tx) =>
-      Effect.gen(function* () {
-        const repository = yield* makeInvoiceRepository({
-          db: tx,
-          keys: makeKeyService(),
-        });
-        const deliveryRepository =
-          yield* makeInvoiceEmailDeliveryRepository(tx);
+  const repository = yield* makeInvoiceRepository({
+    db,
+    keys: makeKeyService(),
+  });
+  const deliveryRepository = yield* makeInvoiceEmailDeliveryRepository(db);
 
-        yield* assertIdempotentIssuance(tx, repository);
-        yield* assertEmailDeliveryPersistence(
-          tx,
-          repository,
-          deliveryRepository
-        );
-        yield* assertUniqueNumbering(tx, repository);
-        yield* assertIneligiblePayment(tx, repository);
-        yield* assertUnfulfilledReservation(tx, repository);
-        yield* assertDifferentAttemptRejected(tx, repository);
-        yield* assertFailedInsertionRollsBackNumber(tx, repository);
-        return yield* new InvoicePersistenceRollback();
-      })
+  yield* Effect.gen(function* () {
+    yield* assertIdempotentIssuance(db, repository);
+    yield* assertEmailDeliveryPersistence(db, repository, deliveryRepository);
+    yield* assertUniqueNumbering(db, repository);
+    yield* assertIneligiblePayment(db, repository);
+    yield* assertUnfulfilledReservation(db, repository);
+    yield* assertDifferentAttemptRejected(db, repository);
+    yield* assertFailedInsertionRollsBackNumber(db, repository);
+  }).pipe(
+    Effect.ensuring(
+      cleanupLegacyInvoicePersistenceFixtures(db).pipe(Effect.orDie)
     )
-    .pipe(Effect.catchTag("InvoicePersistenceRollback", () => Effect.void));
+  );
 }).pipe(
   Effect.mapError((cause) =>
     toWorkspaceE2EError("assert invoice persistence", cause)
