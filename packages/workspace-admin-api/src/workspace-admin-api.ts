@@ -500,6 +500,7 @@ export type AdministrationInvoiceCreateInput =
   typeof AdministrationInvoiceCreateInput.Type;
 
 export const AdministrationInvoiceCreateFileInput = Schema.Struct({
+  invoiceId: AdministrationInvoiceCreateInput.fields.invoiceId,
   customer: AdministrationInvoiceCustomerInput,
   locale: AdministrationInvoiceCreateInput.fields.locale,
   serviceDate: administrationCalendarDate,

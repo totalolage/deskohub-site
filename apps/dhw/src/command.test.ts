@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AdministrationActorUsername,
   AdministrationDiscountCodeId,
   AdministrationVoucherId,
   AdministrationWorkspaceReservationId,
   CliAccessToken,
   CliSessionId,
+  type CliSessionType,
 } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
 import { Effect, Layer, Option, Redacted, Schema } from "effect";
@@ -61,6 +63,75 @@ describe("dhw mutation commands", () => {
       _tag: "AuthenticationRequiredError",
       message: expect.stringContaining("dhw auth"),
     });
+  });
+
+  test("reuses the invoice id from the input file across create retries", async () => {
+    const invoiceId = "01980000-0000-7000-8000-000000000009";
+    const inputPath = `/tmp/dhw-invoice-${crypto.randomUUID()}.json`;
+    const creations: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createInvoice: (_accessToken, input) =>
+        Effect.sync(() => {
+          creations.push(input);
+          return {
+            invoiceId: input.invoiceId,
+            invoiceNumber: "WS-FV-2026-000001",
+            changed: true,
+            needsAttention: false,
+          };
+        }),
+    });
+    await Bun.write(
+      inputPath,
+      JSON.stringify({
+        invoiceId,
+        customer: {
+          kind: "new",
+          details: {
+            kind: "person",
+            email: "synthetic@example.test",
+            firstName: "Synthetic",
+            lastName: "Customer",
+            address: {
+              line1: "Test street 1",
+              city: "Prague",
+              postalCode: "100 00",
+              country: "CZ",
+            },
+          },
+        },
+        locale: "cs-CZ",
+        serviceDate: "2026-08-10",
+        dueDate: "2026-08-24",
+        currency: "CZK",
+        lines: [{ description: "Space rental", price: "1000" }],
+      })
+    );
+
+    try {
+      const args = [
+        "--json",
+        "invoices",
+        "create",
+        "--input",
+        inputPath,
+        "--yes",
+      ];
+      await runCommand(args, layer).pipe(Effect.runPromise);
+      await runCommand(args, layer).pipe(Effect.runPromise);
+    } finally {
+      await Bun.file(inputPath).delete();
+    }
+
+    expect(creations).toHaveLength(2);
+    expect(creations).toEqual([
+      expect.objectContaining({ invoiceId }),
+      expect.objectContaining({ invoiceId }),
+    ]);
   });
 
   test("requires explicit confirmation for non-interactive revocation", async () => {
@@ -421,10 +492,14 @@ const makeCommandLayer = ({
   cancelReservation = () =>
     Effect.succeed({ outcome: "already_cancelled", email: "not_requested" }),
   clear = Effect.succeed(true),
+  createInvoice = () => Effect.die("not used"),
+  authenticatedSession = session,
   revokeSession = () => Effect.succeed({ changed: false }),
 }: {
   readonly cancelReservation?: WorkspaceAdminApiClient["Service"]["cancelReservation"];
   readonly clear?: AuthenticationService["Service"]["clear"];
+  readonly createInvoice?: WorkspaceAdminApiClient["Service"]["createInvoice"];
+  readonly authenticatedSession?: CliSessionType;
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
 } = {}) => {
   const mutations: unknown[] = [];
@@ -432,6 +507,7 @@ const makeCommandLayer = ({
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
     cancelReservation,
+    createInvoice,
     getReservation: () =>
       Effect.succeed({
         accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
@@ -486,7 +562,10 @@ const makeCommandLayer = ({
   });
   const authentication = Layer.succeed(AuthenticationService, {
     current: Effect.succeed(
-      Option.some({ accessToken: Redacted.make(accessToken), session })
+      Option.some({
+        accessToken: Redacted.make(accessToken),
+        session: authenticatedSession,
+      })
     ),
     save: () => Effect.void,
     clear,

@@ -153,6 +153,10 @@ omitted bounds and global or per-customer code maximum uses are stored as
 unrestricted values. Update commands replace the editable resource fields,
 matching the corresponding Admin UI forms.
 
+Invoice input files include a stable `invoiceId` UUID. Reuse the same file
+after an interrupted or uncertain create attempt so the server returns the
+same invoice instead of issuing another one.
+
 Commands that cancel reservations, delete resources, remove restrictions, revoke sessions, change a
 customer's discount group, or add a code-audience member ask for confirmation.
 Pass `--yes` to approve explicitly; non-interactive and `--json` invocations

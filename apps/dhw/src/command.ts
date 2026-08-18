@@ -644,14 +644,7 @@ const invoicesCreateCommand = Command.make(
           yield* reportCancellation(json);
           return;
         }
-        const crypto = yield* Crypto.Crypto;
-        const invoiceId = AdministrationInvoiceId.make(
-          yield* crypto.randomUUIDv7
-        );
-        const result = yield* api.createInvoice(accessToken, {
-          ...invoiceInput,
-          invoiceId,
-        });
+        const result = yield* api.createInvoice(accessToken, invoiceInput);
         yield* Console.log(
           json ? JSON.stringify(result) : formatInvoiceCreationOutput(result)
         );
