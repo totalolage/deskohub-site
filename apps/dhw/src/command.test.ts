@@ -11,7 +11,7 @@ import { Effect, Layer, Option, Redacted, Schema } from "effect";
 import { Command } from "effect/unstable/cli";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
-import { dhwCommand } from "./command";
+import { dhwCommand, formatInvoiceCreationOutput } from "./command";
 import { DhwConfig } from "./config/dhw-config.service";
 
 const accessToken = Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43));
@@ -29,6 +29,7 @@ const reservationId = Schema.decodeUnknownSync(
 )("reservation-test");
 const session = {
   id: sessionId,
+  approvedBy: null,
   clientName: "test client",
   cliVersion: "1.3.0",
   buildTarget: "development" as const,
@@ -37,6 +38,31 @@ const session = {
 };
 
 describe("dhw mutation commands", () => {
+  test("does not call a partially delivered invoice sent", () => {
+    const output = formatInvoiceCreationOutput({
+      invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
+      invoiceNumber: "WS-FV-2026-000001",
+      needsAttention: true,
+    });
+
+    expect(output).not.toContain("sent");
+    expect(output).toContain("delivery needs attention");
+  });
+
+  test("requires reauthentication before a legacy session can create invoices", async () => {
+    const { layer } = makeCommandLayer();
+
+    const error = await runCommand(
+      ["--json", "invoices", "create", "--input", "invoice.json", "--yes"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toMatchObject({
+      _tag: "AuthenticationRequiredError",
+      message: expect.stringContaining("dhw auth"),
+    });
+  });
+
   test("requires explicit confirmation for non-interactive revocation", async () => {
     let revocations = 0;
     const { layer } = makeCommandLayer({

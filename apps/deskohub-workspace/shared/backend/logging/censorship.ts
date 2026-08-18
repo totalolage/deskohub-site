@@ -70,6 +70,7 @@ const sensitiveLogExactKeys = new Set([
   "attachments",
   "city",
   "country",
+  "description",
   "db.namespace",
   "discountcode",
   "exception.stacktrace",

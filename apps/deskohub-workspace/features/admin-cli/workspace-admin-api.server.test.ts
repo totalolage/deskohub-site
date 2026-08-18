@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AdministrationActorUsername,
   AdministrationCanonicalPromotionCode,
   AdministrationDiscountCodeId,
   type AdministrationDiscountMutationType,
@@ -20,6 +21,10 @@ import {
 import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
+import {
+  InvoiceAdministrationInProgressError,
+  InvoiceAdministrationService,
+} from "@/features/accounting/admin/invoice-administration.service";
 import { AdministrationService } from "@/features/administration/administration.service";
 import {
   ReservationAccessAdministration,
@@ -46,6 +51,10 @@ const UnusedCliAuthentication = Layer.succeed(
   CliAuthentication,
   {} as CliAuthentication["Service"]
 );
+const UnusedAdministrationService = Layer.succeed(
+  AdministrationService,
+  {} as AdministrationService["Service"]
+);
 const UnusedReservationAdministration = Layer.succeed(
   ReservationAdministrationService,
   {} as ReservationAdministrationService["Service"]
@@ -67,8 +76,13 @@ const UnusedDiscountAdministration = Layer.succeed(
   DiscountAdministration,
   {} as DiscountAdministration["Service"]
 );
+const UnusedInvoiceAdministration = Layer.succeed(
+  InvoiceAdministrationService,
+  {} as InvoiceAdministrationService["Service"]
+);
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
+  approvedBy: null,
   clientName: "test client",
   cliVersion: "1.0.0",
   buildTarget: "development",
@@ -78,6 +92,13 @@ const session = {
 const AuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
   bearer: (httpEffect) =>
     Effect.provideService(httpEffect, CurrentCliSession, session),
+});
+const ActorAuthorizedCliRequest = Layer.succeed(CliBearerAuthentication, {
+  bearer: (httpEffect) =>
+    Effect.provideService(httpEffect, CurrentCliSession, {
+      ...session,
+      approvedBy: AdministrationActorUsername.make("admin"),
+    }),
 });
 
 describe("Workspace Admin API", () => {
@@ -99,6 +120,84 @@ describe("Workspace Admin API", () => {
       apiVersion: "v1",
       service: "deskohub-workspace",
     });
+  });
+
+  test("maps an in-progress invoice claim for retry without changing provenance", async () => {
+    const creations: unknown[] = [];
+    const invoiceAdministration = Layer.succeed(InvoiceAdministrationService, {
+      ...({} as InvoiceAdministrationService["Service"]),
+      create: (input, provenance) => {
+        creations.push({ input, provenance });
+        return creations.length === 1
+          ? Effect.fail(
+              new InvoiceAdministrationInProgressError({
+                invoiceId: input.invoiceId,
+                message: "The invoice is still being created.",
+              })
+            )
+          : Effect.succeed({
+              invoiceId: input.invoiceId,
+              invoiceNumber: "WS-FV-2026-000001",
+              changed: true,
+              needsAttention: false,
+            });
+      },
+    });
+    const payload = {
+      invoiceId: "01980000-0000-7000-8000-000000000009",
+      customer: {
+        kind: "new" as const,
+        details: {
+          kind: "person" as const,
+          email: "synthetic@example.test",
+          firstName: "Synthetic",
+          lastName: "Customer",
+          address: {
+            line1: "Test street 1",
+            city: "Prague",
+            postalCode: "100 00",
+            country: "CZ",
+          },
+        },
+      },
+      locale: "cs-CZ" as const,
+      serviceDate: "2026-08-10",
+      dueDate: "2026-08-24",
+      currency: "CZK",
+      lines: [{ description: "Space rental", price: "1000" }],
+    };
+
+    const result = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      const pending = yield* client.administration
+        .createInvoice({ payload })
+        .pipe(Effect.flip);
+      const created = yield* client.administration.createInvoice({ payload });
+      return { created, pending };
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(ActorAuthorizedCliRequest),
+      Effect.provide(invoiceAdministration),
+      Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(UnusedAdministrationService),
+      Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.runPromise
+    );
+
+    expect(result.pending).toBeInstanceOf(CliMutationInProgress);
+    expect(result.pending.requestId).toBe(payload.invoiceId);
+    expect(result.created.invoiceId).toBe(payload.invoiceId);
+    expect(creations).toEqual([
+      { input: payload, provenance: { source: "dhw-cli", actor: "admin" } },
+      { input: payload, provenance: { source: "dhw-cli", actor: "admin" } },
+    ]);
   });
 
   test("bounds unauthenticated authentication starts before database writes", async () => {
@@ -522,6 +621,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(reservationAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
@@ -703,6 +803,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
@@ -912,6 +1013,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
+      Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedDiscountAdministration),
       Effect.provide(UnusedCliAuthentication),
@@ -1016,6 +1118,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
+      Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(discounts),
       Effect.provide(UnusedCliAuthentication),

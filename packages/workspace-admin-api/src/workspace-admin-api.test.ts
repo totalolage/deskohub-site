@@ -16,6 +16,7 @@ import {
   AdministrationDotyposDiscountGroupId,
   AdministrationDotyposReservationId,
   AdministrationDotyposTableId,
+  AdministrationInvoiceCreateInput,
   AdministrationNexiOperationId,
   AdministrationNexiOrderId,
   AdministrationOperationQuery,
@@ -63,6 +64,47 @@ describe("StartCliAuthentication", () => {
 });
 
 describe("administration contract", () => {
+  test("strictly decodes manual invoice input without restricting signed prices", () => {
+    const input = {
+      invoiceId: "01980000-0000-7000-8000-000000000009",
+      customer: {
+        kind: "new",
+        details: {
+          kind: "person",
+          email: "synthetic@example.test",
+          firstName: "Synthetic",
+          lastName: "Customer",
+          address: {
+            line1: "Test street 1",
+            city: "Prague",
+            postalCode: "100 00",
+            country: "CZ",
+          },
+        },
+      },
+      locale: "cs-CZ",
+      serviceDate: "2026-08-10",
+      dueDate: "2026-08-24",
+      currency: "CZK",
+      variableSymbol: "1234567890",
+      lines: [{ description: "Space rental", price: "-12.34" }],
+    };
+    const decode = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput);
+
+    expect(decode(input)).toMatchObject(input);
+    expect(() => decode({ ...input, typo: true })).toThrow();
+    expect(() => decode({ ...input, variableSymbol: "12345678901" })).toThrow();
+    expect(() =>
+      decode({
+        ...input,
+        customer: {
+          ...input.customer,
+          details: { ...input.customer.details, typo: true },
+        },
+      })
+    ).toThrow();
+  });
+
   test("decodes pre-voucher administration responses", () => {
     expect(
       Schema.decodeUnknownSync(AdministrationDiscountMutationResult)({
@@ -239,6 +281,19 @@ describe("administration contract", () => {
     ).toBe("GET");
     expect(AdminCliAdministrationApi.endpoints.getDiscountCode?.method).toBe(
       "GET"
+    );
+    expect(AdminCliAdministrationApi.endpoints.listInvoices?.method).toBe(
+      "GET"
+    );
+    expect(AdminCliAdministrationApi.endpoints.getInvoice?.method).toBe("GET");
+    expect(AdminCliAdministrationApi.endpoints.getInvoicePdf?.method).toBe(
+      "GET"
+    );
+    expect(AdminCliAdministrationApi.endpoints.createInvoice?.method).toBe(
+      "POST"
+    );
+    expect(AdminCliAdministrationApi.endpoints.resendInvoice?.method).toBe(
+      "POST"
     );
     expect(AdminCliAdministrationApi.endpoints.listSessions?.method).toBe(
       "GET"

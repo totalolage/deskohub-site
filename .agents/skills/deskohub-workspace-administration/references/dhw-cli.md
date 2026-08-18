@@ -26,6 +26,11 @@ request behind the existing `/admin` Basic authentication, the CLI exchanges a
 single-use grant bound to its local verifier and stores the resulting opaque
 bearer in macOS Keychain or the Linux Secret Service.
 
+The server records the Basic-auth username that approved each new session. That
+server-derived actor is used for invoice provenance; it is never accepted from
+CLI input. Sessions issued before approver tracking was added remain valid for
+reads, but must run `dhw auth` again before creating an invoice.
+
 With `--json`, browser approval instructions are written to stderr while stdout
 is reserved for the single final JSON result.
 
@@ -69,6 +74,9 @@ dhw discounts list
 dhw codes list
 dhw codes get <code-id>
 dhw sales list
+dhw invoices list
+dhw invoices get <invoice-id>
+dhw invoices download <invoice-id> --output invoice.pdf
 dhw sessions list
 ```
 
@@ -126,6 +134,9 @@ dhw vouchers get <voucher-id>
 dhw vouchers list
 dhw vouchers delete <voucher-id>
 
+dhw invoices create --input invoice.json --yes
+dhw invoices resend <invoice-id> --yes
+
 dhw customers set-discount-group <customer-id> <group-id>
 dhw customers clear-discount-group <customer-id>
 dhw sessions rename <session-id> "Office Mac"
@@ -146,6 +157,17 @@ Commands that cancel reservations, delete resources, remove restrictions, revoke
 customer's discount group, or add a code-audience member ask for confirmation.
 Pass `--yes` to approve explicitly; non-interactive and `--json` invocations
 require it.
+
+Invoice creation reads a JSON object containing the customer choice, dates,
+currency, optional variable symbol, and at least one description-and-price line.
+The shared Effect schema rejects unknown properties, including unknown nested
+customer properties, so misspelled fields fail instead of being ignored. Prices
+remain decimal strings and may be positive, zero, or negative. `dhw` generates
+one invoice UUID per invocation and reuses it across transport retries; the
+repository rejects reuse with different input. The confirmation warns that the
+completed invoice is immediately emailed to the customer and the internal
+recipient. Invoice customer data is deliberately excluded from the generic CLI
+mutation ledger.
 
 Reservation cancellation preserves successful settlement facts, marks a paid Nexi attempt as requiring a refund, and does not issue the refund automatically. Zero-total internal payments remain refund-free. If the reservation has a live or ambiguous AlgoPIN, remove it at the lock first and pass `--confirm-access-credential-removed`; Igloohome cannot revoke it remotely. Add `--send-cancellation-email` to send the localized customer message after cancellation succeeds; email failure is reported separately from the completed cancellation.
 

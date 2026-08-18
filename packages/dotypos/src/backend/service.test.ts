@@ -780,6 +780,134 @@ describe("DotyposService customer lookup", () => {
     ]);
   });
 
+  test("creates and fully updates invoice customer details without a phone", async () => {
+    const created = customer({
+      id: "invoice-customer",
+      firstName: "",
+      companyName: "Analytical Engines",
+      email: "billing@example.com",
+    });
+    const updated = customer({
+      ...created,
+      addressLine1: "42 Engine Street",
+      city: "London",
+      zip: "SW1A 1AA",
+      country: "GB",
+    });
+    const fetchMock = mockDotyposFetch(async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json([created]);
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/invoice-customer" &&
+        request.method === "GET"
+      ) {
+        return Response.json(created, { headers: { ETag: '"customer-v1"' } });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/invoice-customer" &&
+        request.method === "PATCH"
+      ) {
+        return Response.json(updated);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const details = {
+      firstName: "",
+      lastName: "",
+      email: "billing@example.com",
+      addressLine1: "42 Engine Street",
+      addressLine2: "",
+      city: "London",
+      zip: "SW1A 1AA",
+      country: "GB",
+      companyName: "Analytical Engines",
+      companyId: "12345678",
+      vatId: "",
+    };
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        const newCustomer = yield* dotypos.createCustomer(details);
+        const savedCustomer = yield* dotypos.updateCustomerDetails(
+          dotyposCustomerId("invoice-customer"),
+          details
+        );
+        return { newCustomer, savedCustomer };
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual({ newCustomer: created, savedCustomer: updated });
+    const createCall = fetchMock.mock.calls.find(
+      (call) =>
+        getMethod(call as FetchCall) === "POST" &&
+        getUrl(call as FetchCall).endsWith("/customers")
+    ) as FetchCall;
+    expect((await readJsonBody(createCall))[0]).toMatchObject({
+      email: "billing@example.com",
+      phone: "",
+      addressLine1: "42 Engine Street",
+      companyName: "Analytical Engines",
+    });
+    const updateCall = fetchMock.mock.calls.find(
+      (call) => getMethod(call as FetchCall) === "PATCH"
+    ) as FetchCall;
+    expect(await readJsonBody(updateCall)).toMatchObject({
+      email: "billing@example.com",
+      phone: "",
+      addressLine1: "42 Engine Street",
+      companyName: "Analytical Engines",
+    });
+  });
+
+  test("does not retry the non-idempotent invoice customer creation request", async () => {
+    let createAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers" &&
+        request.method === "POST"
+      ) {
+        createAttempts += 1;
+        return Response.json(
+          { error: "server", error_description: "Server error", code: 500 },
+          { status: 500 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .createCustomer({
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "billing@example.com",
+            addressLine1: "42 Engine Street",
+            addressLine2: "",
+            city: "London",
+            zip: "SW1A 1AA",
+            country: "GB",
+            companyName: "",
+            companyId: "",
+            vatId: "",
+          })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(createAttempts).toBe(1);
+  });
+
   test("does not create or reuse a customer when lookup is ambiguous", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);

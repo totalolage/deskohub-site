@@ -124,6 +124,11 @@ describe("invoice", () => {
         kind: "business",
         legalName: "Invoice Buyer s.r.o.",
       },
+      provenance: {
+        system: "deskohub-workspace",
+        generatedAt: "2026-08-12T12:34:56.789Z",
+        source: "reservation-request",
+      },
     });
     expect(document).not.toHaveProperty("schemaVersion");
     expect(document).not.toHaveProperty("billing");
@@ -175,6 +180,23 @@ describe("invoice", () => {
     const { commercialRegister: _commercialRegister, ...legacySupplier } =
       supplier;
     const legacyDocument = { ...identity, supplier: legacySupplier };
+
+    await expect(
+      Effect.runPromise(decodeInvoiceDocument(legacyDocument))
+    ).resolves.toEqual(legacyDocument);
+  });
+
+  test("decodes legacy reservation invoices without provenance", async () => {
+    const document = makeInvoiceDocument({
+      source,
+      buyer: personalInvoiceBuyer,
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
+      issuedAt,
+      fulfilledAt,
+      paidAt,
+    });
+    const { provenance: _provenance, ...legacyDocument } = document;
 
     await expect(
       Effect.runPromise(decodeInvoiceDocument(legacyDocument))

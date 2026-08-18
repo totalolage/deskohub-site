@@ -8,6 +8,7 @@ import {
   makeCoworkInvoiceDocument,
   makeMeetingRoomInvoiceDocument,
   makeOfficeInvoiceDocument,
+  makeTestManualInvoiceDocument,
 } from "./invoice.test-utils";
 import { getInvoicePresentation } from "./invoice-presentation";
 
@@ -207,6 +208,24 @@ describe("invoice presentation", () => {
     expect(factLabels).not.toContain("Payment date");
     expect(presentation.supplier.details).not.toContainEqual(
       expect.stringContaining("Commercial register")
+    );
+  });
+
+  test.each([
+    "0",
+    "-100",
+  ])("does not request payment for a %s total manual invoice", (price) => {
+    const presentation = getInvoicePresentation(
+      makeTestManualInvoiceDocument("en-US", price)
+    );
+
+    expect(presentation.status).toBe("Issued");
+    expect(presentation.totalLabel).toBe("Total");
+    expect(presentation.factColumns.flat()).not.toContainEqual(
+      expect.objectContaining({ label: "Due date" })
+    );
+    expect(presentation.factColumns.flat()).not.toContainEqual(
+      expect.objectContaining({ label: "Variable symbol" })
     );
   });
 });

@@ -34,12 +34,10 @@ export const relations = defineRelations(schema, (r) => ({
     accountingDocumentSnapshot: r.one.accountingDocumentSnapshots({
       from: r.invoices.paymentAttemptId,
       to: r.accountingDocumentSnapshots.paymentAttemptId,
-      optional: false,
     }),
     workspaceReservation: r.one.workspaceReservations({
       from: r.invoices.workspaceReservationId,
       to: r.workspaceReservations.id,
-      optional: false,
     }),
     emailDeliveries: r.many.invoiceEmailDeliveries(),
   },

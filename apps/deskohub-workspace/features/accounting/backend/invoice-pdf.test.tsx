@@ -7,6 +7,7 @@ import {
   makeCoworkInvoiceDocument,
   makeMeetingRoomInvoiceDocument,
   makeOfficeInvoiceDocument,
+  makeTestManualInvoiceDocument,
 } from "../invoice.test-utils";
 import { renderInvoicePdf } from "./invoice-pdf";
 
@@ -29,6 +30,11 @@ const cases = [
   ],
   ["office cs-CZ", makeOfficeInvoiceDocument("cs-CZ"), "Soukromá kancelář"],
   ["office en-US", makeOfficeInvoiceDocument("en-US"), "Private office"],
+  [
+    "manual unpaid cs-CZ",
+    makeTestManualInvoiceDocument("cs-CZ"),
+    "Účet: 2303459272/2010",
+  ],
 ] as const;
 
 describe("invoice PDF", () => {

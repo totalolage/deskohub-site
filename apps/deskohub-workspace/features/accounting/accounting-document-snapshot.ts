@@ -163,18 +163,19 @@ export const decodeStoredAccountingDocumentSnapshot =
     onExcessProperty: "error",
   });
 
-const supplier: typeof accountingSupplierSchema.Type = {
-  legalName: workspaceSiteConstants.brand.legalName,
-  companyId: companyRegistrationIdSchema.make(
-    workspaceSiteConstants.company.identificationNumber
-  ),
-  vatStatus: workspaceSiteConstants.company.vatStatus,
-  address: {
-    ...workspaceSiteConstants.location.address,
-    country: "CZ",
-  },
-  contactEmail: workspaceSiteConstants.contact.infoEmail,
-};
+export const workspaceAccountingSupplier: typeof accountingSupplierSchema.Type =
+  {
+    legalName: workspaceSiteConstants.brand.legalName,
+    companyId: companyRegistrationIdSchema.make(
+      workspaceSiteConstants.company.identificationNumber
+    ),
+    vatStatus: workspaceSiteConstants.company.vatStatus,
+    address: {
+      ...workspaceSiteConstants.location.address,
+      country: "CZ",
+    },
+    contactEmail: workspaceSiteConstants.contact.infoEmail,
+  };
 
 export const makeAccountingDocumentSnapshot = (input: {
   readonly workspaceReservationId: WorkspaceReservationId;
@@ -194,7 +195,7 @@ export const makeAccountingDocumentSnapshot = (input: {
     dotyposReservationId: input.dotyposReservationId,
     dotyposCustomerId: input.dotyposCustomerId,
     locale: input.locale,
-    supplier,
+    supplier: workspaceAccountingSupplier,
     buyer: buyer ?? {
       kind: "person" as const,
       legalName: input.prepared.reservation.name,

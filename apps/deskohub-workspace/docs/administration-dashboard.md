@@ -4,7 +4,15 @@
 
 Workspace administration helps authorized operators find reservations and customers, understand a reservation's current condition and history, manage discounts and sales, and control issued administration sessions.
 
-The primary navigation is limited to Overview, Reservations, Customers, Codes, and Sales. Payment and booking records appear in the reservation that owns them instead of competing as separate primary workflows.
+The primary navigation includes Overview, Reservations, Customers, Invoices, Codes, Vouchers, Sales, and CLI sessions. Payment and booking records appear in the reservation that owns them instead of competing as separate primary workflows.
+
+## Invoice administration
+
+Administration shows order and ad-hoc invoices in one sortable, paginated history. Without an explicit sort, documents needing a delivery retry appear first and the remainder are newest first. An explicit sort is respected without adding the attention grouping. Each invoice has an embedded immutable PDF, download action, provenance, and retry action that sends only missing, failed, or stale customer or internal deliveries.
+
+Reservation invoices are shown as paid. Positive-total ad-hoc invoices are shown as issued before their due date, due on that date, and overdue afterwards, using the current Prague calendar date. Zero-total and negative-total documents remain issued because they do not request payment. Email delivery is shown separately as sending, sent, or needing a resend.
+
+An operator can issue an unpaid ad-hoc service invoice to an existing Dotypos customer or a new customer reused by exact email. The reviewed billing identity and delivery email are saved to Dotypos before issuance. Creation requires at least one description and signed decimal price, uses a single configured invoice currency, and records the authenticated Basic-auth username and whether the operation came from the administration UI or `dhw`. The final confirmation explicitly warns that creation is immutable and immediately emails both recipients.
 
 ## Operator responsibilities
 

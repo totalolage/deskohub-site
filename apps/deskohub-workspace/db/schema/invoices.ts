@@ -23,11 +23,9 @@ export const invoices = pgTable(
   {
     id: text("id").primaryKey().default(postgresUuidV7),
     workspaceReservationId: text("workspace_reservation_id")
-      .notNull()
       .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id),
     paymentAttemptId: text("payment_attempt_id")
-      .notNull()
       .$type<PaymentAttemptId>()
       .references(() => accountingDocumentSnapshots.paymentAttemptId),
     dotyposCustomerId: text("dotypos_customer_id")
@@ -46,6 +44,10 @@ export const invoices = pgTable(
       sql`btrim(${t.dotyposCustomerId}) <> ''`
     ),
     check("invoices_numbering_sequence_check", sql`${t.numberingSequence} > 0`),
+    check(
+      "invoices_source_reference_check",
+      sql`(${t.workspaceReservationId} is null) = (${t.paymentAttemptId} is null)`
+    ),
     check("invoices_key_id_check", sql`${t.keyId} ~ '^[A-Z][A-Z0-9_]{2,31}$'`),
     check(
       "invoices_issued_at_year_check",

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   Document,
   Font,
+  Image,
   Page,
   renderToBuffer,
   StyleSheet,
@@ -12,12 +13,19 @@ import {
 } from "@react-pdf/renderer";
 import { Data, Effect } from "effect";
 import type { ReactElement } from "react";
-import type { InvoiceDocument } from "@/features/accounting/invoice";
+import {
+  type InvoiceDocument,
+  isManualInvoiceDocument,
+} from "@/features/accounting/invoice";
 import {
   getInvoicePresentation,
   type InvoicePresentation,
   type InvoicePresentationParty,
 } from "@/features/accounting/invoice-presentation";
+import {
+  getInvoicePaymentRequest,
+  type InvoicePaymentRequest,
+} from "./invoice-payment-qr";
 
 const invoiceFontFamily = "Sculpin";
 const invoiceFontPath = join(
@@ -46,18 +54,37 @@ export class InvoicePdfRenderingError extends Data.TaggedError(
 export const renderInvoicePdf = (
   document: InvoiceDocument
 ): Effect.Effect<Buffer, InvoicePdfRenderingError> =>
-  Effect.tryPromise({
-    try: () => renderToBuffer(<InvoicePdfDocument document={document} />),
-    catch: () =>
-      new InvoicePdfRenderingError({
-        message: "Invoice PDF could not be rendered.",
-      }),
-  }).pipe(Effect.withTracerEnabled(false));
+  (isManualInvoiceDocument(document)
+    ? getInvoicePaymentRequest(document)
+    : Effect.succeed(null)
+  ).pipe(
+    Effect.mapError(
+      () =>
+        new InvoicePdfRenderingError({
+          message: "Invoice payment QR code could not be rendered.",
+        })
+    ),
+    Effect.flatMap((payment) =>
+      Effect.tryPromise({
+        try: () =>
+          renderToBuffer(
+            <InvoicePdfDocument document={document} payment={payment} />
+          ),
+        catch: () =>
+          new InvoicePdfRenderingError({
+            message: "Invoice PDF could not be rendered.",
+          }),
+      })
+    ),
+    Effect.withTracerEnabled(false)
+  );
 
 const InvoicePdfDocument = ({
   document,
+  payment,
 }: {
   readonly document: InvoiceDocument;
+  readonly payment: InvoicePaymentRequest | null;
 }): ReactElement => {
   const presentation = getInvoicePresentation(document);
   const issuedAt = new Date(document.issuedAt);
@@ -72,7 +99,10 @@ const InvoicePdfDocument = ({
       subject={`${presentation.title} ${document.invoiceNumber}`}
       title={`${presentation.title} ${document.invoiceNumber}`}
     >
-      <Page size="A4" style={styles.page}>
+      <Page
+        size="A4"
+        style={payment ? [styles.page, styles.manualPage] : styles.page}
+      >
         <View style={styles.header}>
           <View>
             <Text style={styles.eyebrow}>DESKOHUB WORKSPACE</Text>
@@ -106,6 +136,10 @@ const InvoicePdfDocument = ({
 
         <InvoiceLines presentation={presentation} />
 
+        {payment ? (
+          <PaymentRequest payment={payment} locale={document.locale} />
+        ) : null}
+
         <View style={styles.nonVatNote} wrap={false}>
           <Text>{presentation.nonVatStatement}</Text>
         </View>
@@ -138,6 +172,49 @@ const Party = ({
     ))}
   </View>
 );
+
+const PaymentRequest = ({
+  payment,
+  locale,
+}: {
+  readonly payment: InvoicePaymentRequest;
+  readonly locale: "cs-CZ" | "en-US";
+}): ReactElement => {
+  const labels =
+    locale === "cs-CZ"
+      ? {
+          heading: "Platební údaje",
+          account: "Účet",
+          iban: "IBAN",
+          variableSymbol: "Variabilní symbol",
+          dueDate: "Splatnost",
+        }
+      : {
+          heading: "Payment details",
+          account: "Account",
+          iban: "IBAN",
+          variableSymbol: "Variable symbol",
+          dueDate: "Due date",
+        };
+  return (
+    <View style={styles.paymentRequest} wrap={false}>
+      <View style={styles.paymentDetails}>
+        <Text style={styles.sectionHeading}>{labels.heading}</Text>
+        <Text>{`${labels.account}: ${payment.accountNumber}`}</Text>
+        <Text>{`${labels.iban}: ${payment.iban}`}</Text>
+        <Text>{`BIC: ${payment.bic}`}</Text>
+        <Text>{`${labels.variableSymbol}: ${payment.variableSymbol}`}</Text>
+        <Text>{`${labels.dueDate}: ${payment.dueDate}`}</Text>
+      </View>
+      {payment.qrCode ? (
+        <Image
+          src={`data:image/png;base64,${payment.qrCode.toString("base64")}`}
+          style={styles.paymentQr}
+        />
+      ) : null}
+    </View>
+  );
+};
 
 const InvoiceLines = ({
   presentation,
@@ -178,6 +255,11 @@ const styles = StyleSheet.create({
     paddingBottom: 64,
     paddingHorizontal: 46,
     paddingTop: 42,
+  },
+  manualPage: {
+    fontSize: 9,
+    paddingBottom: 44,
+    paddingTop: 24,
   },
   header: {
     alignItems: "flex-start",
@@ -245,7 +327,7 @@ const styles = StyleSheet.create({
   party: {
     backgroundColor: "#f5f7f8",
     borderRadius: 5,
-    minHeight: 142,
+    minHeight: 120,
     padding: 16,
     width: "50%",
   },
@@ -325,6 +407,22 @@ const styles = StyleSheet.create({
     fontSize: 9,
     marginTop: 8,
     padding: 11,
+  },
+  paymentRequest: {
+    alignItems: "center",
+    backgroundColor: "#f5f7f8",
+    borderRadius: 5,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    padding: 10,
+  },
+  paymentDetails: {
+    gap: 3,
+  },
+  paymentQr: {
+    height: 88,
+    width: 88,
   },
   footer: {
     bottom: 22,

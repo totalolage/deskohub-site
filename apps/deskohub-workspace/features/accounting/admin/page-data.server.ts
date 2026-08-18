@@ -1,0 +1,107 @@
+import "server-only";
+
+import { Effect } from "effect";
+import { notFound } from "next/navigation";
+import { cache } from "react";
+import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  type InvoiceAdministrationListQuery,
+  InvoiceAdministrationService,
+} from "./invoice-administration.service";
+
+export type InvoiceAdministrationSearchParams = Promise<{
+  readonly sort?: string;
+  readonly direction?: string;
+  readonly page?: string;
+}>;
+
+const authorizeInvoiceAdministrationPage = cache(async () => {
+  await requireDiscountAdminAuthorization().pipe(
+    Effect.provide(InvoiceAdministrationService.Live),
+    runWorkspaceEffect("invoice-administration.authorize", {
+      boundary: "route",
+    })
+  );
+});
+
+export const loadInvoiceAdministrationList = async (
+  searchParams: InvoiceAdministrationSearchParams
+) => {
+  await authorizeInvoiceAdministrationPage();
+  const params = await searchParams;
+  const query: InvoiceAdministrationListQuery = {
+    ...(isSort(params.sort) && { sort: params.sort }),
+    ...(isDirection(params.direction) && { direction: params.direction }),
+    ...(isPage(params.page) && { page: Number(params.page) }),
+  };
+  const items = await Effect.gen(function* () {
+    const administration = yield* InvoiceAdministrationService;
+    return yield* administration.list(query);
+  }).pipe(
+    Effect.provide(InvoiceAdministrationService.Live),
+    runWorkspaceEffect("invoice-administration.list", { boundary: "route" })
+  );
+  return { items, query };
+};
+
+export const loadInvoiceCreationPage = async () => {
+  await authorizeInvoiceAdministrationPage();
+  return Effect.gen(function* () {
+    const administration = yield* InvoiceAdministrationService;
+    return yield* administration.getCreationDefaults();
+  }).pipe(
+    Effect.provide(InvoiceAdministrationService.Live),
+    runWorkspaceEffect("invoice-administration.creation-defaults", {
+      boundary: "route",
+    })
+  );
+};
+
+export const loadInvoiceAdministrationDetail = async (invoiceId: string) => {
+  await authorizeInvoiceAdministrationPage();
+  const detail = await Effect.gen(function* () {
+    const administration = yield* InvoiceAdministrationService;
+    return yield* administration.get(invoiceId);
+  }).pipe(
+    Effect.catchTag("InvoiceAdministrationNotFoundError", () =>
+      Effect.succeed(null)
+    ),
+    Effect.provide(InvoiceAdministrationService.Live),
+    runWorkspaceEffect("invoice-administration.get", { boundary: "route" })
+  );
+  if (!detail) notFound();
+  return detail;
+};
+
+export const loadInvoiceAdministrationPdf = async (invoiceId: string) => {
+  await authorizeInvoiceAdministrationPage();
+  const pdf = await Effect.gen(function* () {
+    const administration = yield* InvoiceAdministrationService;
+    return yield* administration.getPdf(invoiceId);
+  }).pipe(
+    Effect.catchTag("InvoiceAdministrationNotFoundError", () =>
+      Effect.succeed(null)
+    ),
+    Effect.provide(InvoiceAdministrationService.Live),
+    runWorkspaceEffect("invoice-administration.pdf", { boundary: "route" })
+  );
+  if (!pdf) notFound();
+  return pdf;
+};
+
+const isSort = (
+  value: string | undefined
+): value is NonNullable<InvoiceAdministrationListQuery["sort"]> =>
+  value === "invoiceNumber" ||
+  value === "issuedAt" ||
+  value === "customer" ||
+  value === "total" ||
+  value === "paymentStatus" ||
+  value === "source" ||
+  value === "delivery";
+
+const isDirection = (value: string | undefined): value is "asc" | "desc" =>
+  value === "asc" || value === "desc";
+const isPage = (value: string | undefined) =>
+  Boolean(value && /^\d+$/.test(value) && Number(value) >= 1);

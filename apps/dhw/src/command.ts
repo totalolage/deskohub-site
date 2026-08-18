@@ -13,6 +13,9 @@ import {
   AdministrationDotyposDiscountGroupId,
   AdministrationDotyposReservationId,
   AdministrationInstant,
+  AdministrationInvoiceCreateFileInput,
+  AdministrationInvoiceId,
+  AdministrationInvoiceQuery,
   AdministrationNexiOperationId,
   AdministrationNexiOrderId,
   type AdministrationOperationQueryType,
@@ -42,6 +45,7 @@ import {
   Crypto,
   Data,
   Effect,
+  FileSystem,
   Match,
   Option,
   type Redacted,
@@ -522,6 +526,234 @@ const ordersGetCommand = Command.make(
 const ordersCommand = Command.make("orders").pipe(
   Command.withDescription("Inspect payment provider orders"),
   Command.withSubcommands([ordersListCommand, ordersGetCommand])
+);
+
+const invoicesListCommand = Command.make(
+  "list",
+  {
+    sort: Flag.choice("sort", [
+      "invoiceNumber",
+      "issuedAt",
+      "customer",
+      "total",
+      "paymentStatus",
+      "source",
+      "delivery",
+    ]).pipe(Flag.optional, Flag.withDescription("Sort field")),
+    direction: Flag.choice("direction", ["asc", "desc"]).pipe(
+      Flag.optional,
+      Flag.withDescription("Sort direction")
+    ),
+    page: Flag.integer("page").pipe(
+      Flag.optional,
+      Flag.withDescription("Results page")
+    ),
+  },
+  ({ direction, page, sort }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const query = yield* Schema.decodeUnknownEffect(
+          AdministrationInvoiceQuery
+        )({
+          ...(Option.isSome(sort) && { sort: sort.value }),
+          ...(Option.isSome(direction) && { direction: direction.value }),
+          ...(Option.isSome(page) && { page: page.value }),
+        });
+        const result = yield* api.listInvoices(accessToken, query);
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(
+          `Invoices: ${result.total} total · page ${result.page}/${result.pageCount}`
+        );
+        for (const invoice of result.items) {
+          yield* Console.log(
+            [
+              invoice.id,
+              invoice.invoiceNumber,
+              invoice.issuedAt,
+              invoice.customerName,
+              `${invoice.total} ${invoice.currency}`,
+              invoice.paymentStatus,
+              getInvoiceDeliveryLabel(invoice),
+            ].join("\t")
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("List issued invoices"));
+
+const invoicesGetCommand = Command.make(
+  "get",
+  {
+    invoiceId: Argument.string("invoice-id").pipe(
+      Argument.withSchema(AdministrationInvoiceId)
+    ),
+  },
+  ({ invoiceId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const invoice = yield* api.getInvoice(accessToken, invoiceId);
+        if (json) {
+          yield* Console.log(JSON.stringify(invoice));
+          return;
+        }
+        yield* Console.log(
+          [
+            invoice.invoiceNumber,
+            invoice.issuedAt,
+            invoice.customerName,
+            `${invoice.total} ${invoice.currency}`,
+            invoice.paymentStatus,
+            invoice.source,
+            getInvoiceDeliveryLabel(invoice),
+          ].join("\t")
+        );
+        for (const line of invoice.lines) {
+          yield* Console.log(`${line.description}\t${line.price}`);
+        }
+      })
+    )
+).pipe(Command.withDescription("Show an issued invoice"));
+
+const invoicesCreateCommand = Command.make(
+  "create",
+  {
+    input: Flag.string("input").pipe(
+      Flag.withDescription("Strict JSON invoice input file")
+    ),
+    yes: confirmationFlag,
+  },
+  ({ input, yes }) =>
+    runAuthenticatedCommand((api, accessToken, json, session) =>
+      Effect.gen(function* () {
+        if (session.approvedBy === null) {
+          return yield* new AuthenticationRequiredError({
+            message:
+              "This legacy CLI session cannot issue invoices. Run dhw auth again.",
+          });
+        }
+        const invoiceInput = yield* readInvoiceCreateInput(input);
+        const confirmed = yield* confirmChange(
+          yes,
+          json,
+          "Create this immutable invoice and immediately email it to both the customer and Deskohub?"
+        );
+        if (!confirmed) {
+          yield* reportCancellation(json);
+          return;
+        }
+        const crypto = yield* Crypto.Crypto;
+        const invoiceId = AdministrationInvoiceId.make(
+          yield* crypto.randomUUIDv7
+        );
+        const result = yield* api.createInvoice(accessToken, {
+          ...invoiceInput,
+          invoiceId,
+        });
+        yield* Console.log(
+          json ? JSON.stringify(result) : formatInvoiceCreationOutput(result)
+        );
+      })
+    )
+).pipe(Command.withDescription("Create and immediately email an invoice"));
+
+export const formatInvoiceCreationOutput = (result: {
+  readonly invoiceId: string;
+  readonly invoiceNumber: string;
+  readonly needsAttention: boolean;
+}) =>
+  result.needsAttention
+    ? `Created ${result.invoiceNumber} (${result.invoiceId}); delivery needs attention.`
+    : `Created and sent ${result.invoiceNumber} (${result.invoiceId}).`;
+
+const getInvoiceDeliveryLabel = (invoice: {
+  readonly delivery: Readonly<
+    Record<
+      "customer" | "internal",
+      "missing" | "processing" | "accepted" | "failed"
+    >
+  >;
+  readonly needsAttention: boolean;
+}) => {
+  if (invoice.needsAttention) return "Needs resend";
+  return invoice.delivery.customer === "accepted" &&
+    invoice.delivery.internal === "accepted"
+    ? "Sent"
+    : "Sending";
+};
+
+const invoicesDownloadCommand = Command.make(
+  "download",
+  {
+    invoiceId: Argument.string("invoice-id").pipe(
+      Argument.withSchema(AdministrationInvoiceId)
+    ),
+    output: Flag.string("output").pipe(
+      Flag.optional,
+      Flag.withDescription("PDF output path")
+    ),
+  },
+  ({ invoiceId, output }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const pdf = yield* api.getInvoicePdf(accessToken, invoiceId);
+        const path = Option.getOrElse(output, () => `${invoiceId}.pdf`);
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.writeFile(path, pdf);
+        yield* Console.log(
+          json
+            ? JSON.stringify({ invoiceId, path })
+            : `Downloaded invoice ${invoiceId} to ${path}.`
+        );
+      })
+    )
+).pipe(Command.withDescription("Download an invoice PDF"));
+
+const invoicesResendCommand = Command.make(
+  "resend",
+  {
+    invoiceId: Argument.string("invoice-id").pipe(
+      Argument.withSchema(AdministrationInvoiceId)
+    ),
+    yes: confirmationFlag,
+  },
+  ({ invoiceId, yes }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const confirmed = yield* confirmChange(
+          yes,
+          json,
+          `Retry missing or failed email delivery for invoice ${invoiceId}?`
+        );
+        if (!confirmed) {
+          yield* reportCancellation(json);
+          return;
+        }
+        const result = yield* api.resendInvoice(accessToken, invoiceId);
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(
+          result.changed
+            ? `Retried delivery for invoice ${invoiceId}.`
+            : `Invoice ${invoiceId} had no retryable delivery.`
+        );
+      })
+    )
+).pipe(Command.withDescription("Retry missing or failed invoice email"));
+
+const invoicesCommand = Command.make("invoices").pipe(
+  Command.withDescription("Create and manage invoices"),
+  Command.withSubcommands([
+    invoicesListCommand,
+    invoicesGetCommand,
+    invoicesCreateCommand,
+    invoicesDownloadCommand,
+    invoicesResendCommand,
+  ])
 );
 
 const operationsListCommand = Command.make(
@@ -1841,6 +2073,7 @@ export const dhwCommand = rootCommand.pipe(
     codesCommand,
     customersCommand,
     discountsCommand,
+    invoicesCommand,
     operationsCommand,
     ordersCommand,
     overviewCommand,
@@ -1957,6 +2190,39 @@ const runAuthenticatedCommand = <A, E, R>(
       );
     })
   );
+
+const readInvoiceCreateInput = Effect.fn("dhw.invoices.readCreateInput")(
+  function* (path: string) {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const contents = yield* fileSystem.readFileString(path).pipe(
+      Effect.mapError(
+        () =>
+          new InvalidMutationInputError({
+            message: "The invoice input file could not be read.",
+          })
+      )
+    );
+    const json = yield* Effect.try({
+      try: () => JSON.parse(contents) as unknown,
+      catch: () =>
+        new InvalidMutationInputError({
+          message: "The invoice input file is not valid JSON.",
+        }),
+    });
+    return yield* Schema.decodeUnknownEffect(
+      AdministrationInvoiceCreateFileInput,
+      { errors: "all", onExcessProperty: "error" }
+    )(json).pipe(
+      Effect.mapError(
+        () =>
+          new InvalidMutationInputError({
+            message:
+              "The invoice input is invalid or contains an unknown property.",
+          })
+      )
+    );
+  }
+);
 
 const makeDiscountDefinition = ({
   adjustment,
