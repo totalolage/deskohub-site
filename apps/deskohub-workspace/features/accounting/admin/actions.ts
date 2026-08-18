@@ -48,6 +48,37 @@ const createInvoiceAction = defineWorkspaceAction(
     )
 );
 
+const previewInvoiceAction = defineWorkspaceAction(
+  {
+    operation: "invoice-administration.preview",
+    schema: Schema.toStandardSchemaV1(AdministrationInvoiceCreateInput, {
+      parseOptions: strict,
+    }),
+    logInput: false,
+  },
+  (input) =>
+    Effect.gen(function* () {
+      const actor = yield* requireDiscountAdminAuthorization();
+      const administration = yield* InvoiceAdministrationService;
+      const pdf = yield* administration.preview(input, {
+        source: "admin-ui",
+        actor,
+      });
+      return {
+        dataUrl: `data:application/pdf;base64,${Buffer.from(pdf).toString("base64")}`,
+      };
+    }).pipe(
+      Effect.provide(InvoiceAdministrationService.Live),
+      Effect.mapError(
+        (cause) =>
+          new PublicSafeActionError({
+            message: "The invoice preview could not be generated.",
+            cause,
+          })
+      )
+    )
+);
+
 const searchCustomersAction = defineWorkspaceAction(
   {
     operation: "invoice-administration.search-customers",
@@ -112,6 +143,13 @@ export const createAdministrationInvoice: typeof createInvoiceAction = async (
 ) => {
   "use server";
   return await createInvoiceAction(...args);
+};
+
+export const previewAdministrationInvoice: typeof previewInvoiceAction = async (
+  ...args: Parameters<typeof previewInvoiceAction>
+) => {
+  "use server";
+  return await previewInvoiceAction(...args);
 };
 
 export const searchAdministrationInvoiceCustomers: typeof searchCustomersAction =

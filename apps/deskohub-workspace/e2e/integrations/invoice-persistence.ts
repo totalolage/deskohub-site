@@ -6,8 +6,8 @@ import {
 } from "@deskohub/dotypos";
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { NexiCorrelationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
-import { asc, eq } from "drizzle-orm";
-import { Effect, Layer } from "effect";
+import { asc, eq, like, sql } from "drizzle-orm";
+import { Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { DatabaseClient } from "@/db/database-client";
 import {
@@ -91,26 +91,61 @@ const personalInvoiceBuyer = {
   },
 } satisfies InvoiceBuyer;
 
+class InvoicePersistenceRollback extends Data.TaggedError(
+  "InvoicePersistenceRollback"
+) {}
+
 export const assertInvoicePersistence = Effect.gen(function* () {
   const { db } = yield* E2EDatabase;
-  const repository = yield* makeInvoiceRepository({
-    db,
-    keys: makeKeyService(),
-  });
-  const deliveryRepository = yield* makeInvoiceEmailDeliveryRepository(db);
+  yield* cleanupLegacyInvoicePersistenceFixtures(db);
+  yield* db
+    .transaction((tx) =>
+      Effect.gen(function* () {
+        const repository = yield* makeInvoiceRepository({
+          db: tx,
+          keys: makeKeyService(),
+        });
+        const deliveryRepository =
+          yield* makeInvoiceEmailDeliveryRepository(tx);
 
-  yield* assertIdempotentIssuance(db, repository);
-  yield* assertEmailDeliveryPersistence(db, repository, deliveryRepository);
-  yield* assertUniqueNumbering(db, repository);
-  yield* assertIneligiblePayment(db, repository);
-  yield* assertUnfulfilledReservation(db, repository);
-  yield* assertDifferentAttemptRejected(db, repository);
-  yield* assertFailedInsertionRollsBackNumber(db, repository);
+        yield* assertIdempotentIssuance(tx, repository);
+        yield* assertEmailDeliveryPersistence(
+          tx,
+          repository,
+          deliveryRepository
+        );
+        yield* assertUniqueNumbering(tx, repository);
+        yield* assertIneligiblePayment(tx, repository);
+        yield* assertUnfulfilledReservation(tx, repository);
+        yield* assertDifferentAttemptRejected(tx, repository);
+        yield* assertFailedInsertionRollsBackNumber(tx, repository);
+        return yield* new InvoicePersistenceRollback();
+      })
+    )
+    .pipe(Effect.catchTag("InvoicePersistenceRollback", () => Effect.void));
 }).pipe(
   Effect.mapError((cause) =>
     toWorkspaceE2EError("assert invoice persistence", cause)
   )
 );
+
+const cleanupLegacyInvoicePersistenceFixtures = (db: DatabaseClient) =>
+  db.transaction((tx) =>
+    Effect.gen(function* () {
+      yield* tx.execute(sql`lock table ${invoices} in access exclusive mode`);
+      yield* tx.execute(
+        sql`alter table ${invoices} disable trigger invoices_immutable`
+      );
+      yield* tx
+        .delete(invoices)
+        .where(
+          like(invoices.workspaceReservationId, "synthetic-reservation-%")
+        );
+      yield* tx.execute(
+        sql`alter table ${invoices} enable trigger invoices_immutable`
+      );
+    })
+  );
 
 const assertEmailDeliveryPersistence = (
   db: DatabaseClient,
@@ -541,11 +576,7 @@ const createPaidFixture = (
           dotyposReservationId,
           reservationState: paid ? "confirmed" : "held",
           paymentState: paid ? "paid" : "pending",
-          fulfillmentState: fulfilled
-            ? "fulfilled"
-            : paid
-              ? "processing"
-              : "not_started",
+          fulfillmentState: getFixtureFulfillmentState({ fulfilled, paid }),
           activePaymentAttemptId: paymentAttemptId,
           reservationDetails: {
             kind: "cowork",
@@ -650,6 +681,18 @@ const readCounters = (db: DatabaseClient) =>
           new Map(rows.map((row) => [row.numberingYear, row.lastSequence]))
       )
     );
+
+const getFixtureFulfillmentState = ({
+  fulfilled,
+  paid,
+}: {
+  readonly fulfilled: boolean;
+  readonly paid: boolean;
+}) => {
+  if (fulfilled) return "fulfilled" as const;
+  if (paid) return "processing" as const;
+  return "not_started" as const;
+};
 
 const isTaggedError = (tag: string) => (error: unknown) =>
   typeof error === "object" &&

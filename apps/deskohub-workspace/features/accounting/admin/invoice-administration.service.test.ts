@@ -10,6 +10,7 @@ import {
   AdministrationInvoiceId,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Schema, Semaphore } from "effect";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   makeCoworkInvoiceDocument,
   makeTestManualInvoiceDocument,
@@ -58,6 +59,53 @@ const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
 });
 
 describe("InvoiceAdministrationService", () => {
+  test("renders a PDF preview without touching providers or persistence", async () => {
+    const providerMutation = mock(() => Effect.die("provider mutation"));
+    const repositoryMutation = mock(() => Effect.die("repository mutation"));
+    const deliveryMutation = mock(() => Effect.die("delivery mutation"));
+    const claimMutation = mock(() => Effect.die("claim mutation"));
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, { createCustomer: providerMutation }),
+          Layer.mock(InvoiceRepository, { issueManual: repositoryMutation }),
+          Layer.mock(InvoiceEmailDeliveryService, {
+            deliverByInvoiceId: deliveryMutation,
+          }),
+          Layer.mock(ManualInvoiceCreationRequests, { claim: claimMutation })
+        )
+      )
+    );
+
+    const pdf = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return yield* service.preview(input, {
+        source: "admin-ui",
+        actor: "admin",
+      });
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(Buffer.from(pdf).subarray(0, 5).toString()).toBe("%PDF-");
+    const parsed = await getDocument({
+      data: new Uint8Array(pdf),
+      isEvalSupported: false,
+      useSystemFonts: false,
+    }).promise;
+    const page = await parsed.getPage(1);
+    const content = await page.getTextContent();
+    const text = content.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .join(" ");
+    await parsed.destroy();
+    expect(text).toContain("PREVIEW-0000000000");
+    expect(text).toContain("Space rental");
+    expect(text).toContain("Synthetic Customer");
+    expect(providerMutation).not.toHaveBeenCalled();
+    expect(repositoryMutation).not.toHaveBeenCalled();
+    expect(deliveryMutation).not.toHaveBeenCalled();
+    expect(claimMutation).not.toHaveBeenCalled();
+  });
+
   test("serializes a stale identical claim before creating a Dotypos customer", async () => {
     const permit = Semaphore.makeUnsafe(1);
     const document = makeTestManualInvoiceDocument("cs-CZ", "1000");

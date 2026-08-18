@@ -20,6 +20,7 @@ import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
   createAdministrationInvoice,
+  previewAdministrationInvoice,
   searchAdministrationInvoiceCustomers,
 } from "./actions";
 import type { InvoiceAdministrationCustomer } from "./invoice-administration.service";
@@ -65,6 +66,7 @@ export function InvoiceCreationForm({
   const [customerType, setCustomerType] = useState<"person" | "business">(
     "person"
   );
+  const [currency, setCurrency] = useState(defaultCurrency);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<
     readonly InvoiceAdministrationCustomer[]
@@ -77,6 +79,8 @@ export function InvoiceCreationForm({
   > | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const { execute: search, isExecuting: isSearching } = useWorkspaceAction(
     searchAdministrationInvoiceCustomers,
@@ -108,21 +112,46 @@ export function InvoiceCreationForm({
         setCreateError("The invoice could not be created."),
     }
   );
+  const { execute: preview, isExecuting: isPreviewing } = useWorkspaceAction(
+    previewAdministrationInvoice,
+    {
+      actionName: "previewAdministrationInvoice",
+      onSuccess: ({ data }) => {
+        if (!data) return;
+        setPreviewError(null);
+        setPreviewUrl(data.dataUrl);
+      },
+      onError: ({ error: actionError }) =>
+        setPreviewError(
+          actionError.serverError ??
+            "The invoice preview could not be generated."
+        ),
+      onTransportError: () =>
+        setPreviewError("The invoice preview could not be generated."),
+    }
+  );
 
   const openReview = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setCreateError(null);
     const form = new FormData(event.currentTarget);
-    setReview(
-      readInvoiceForm({
-        customer,
-        customerMode,
-        customerType,
-        form,
-        invoiceId: crypto.randomUUID(),
-        lines,
-      })
-    );
+    const nextReview = readInvoiceForm({
+      customer,
+      customerMode,
+      customerType,
+      form,
+      invoiceId: crypto.randomUUID(),
+      lines,
+    });
+    setPreviewError(null);
+    setPreviewUrl(null);
+    setReview(nextReview);
+    const exponent =
+      currencies.find(({ code }) => code === nextReview.currency)?.exponent ??
+      0;
+    if (getInvoiceReviewTotal(nextReview.lines, exponent) !== null) {
+      preview(nextReview);
+    }
   };
 
   const runSearch = () => {
@@ -134,7 +163,14 @@ export function InvoiceCreationForm({
     search({ query: normalizedQuery });
   };
 
-  const reviewTotal = review ? getInvoiceReviewTotal(review.lines) : null;
+  const currencyExponent =
+    currencies.find(({ code }) => code === currency)?.exponent ?? 0;
+  const reviewCurrencyExponent = review
+    ? (currencies.find(({ code }) => code === review.currency)?.exponent ?? 0)
+    : 0;
+  const reviewTotal = review
+    ? getInvoiceReviewTotal(review.lines, reviewCurrencyExponent)
+    : null;
 
   return (
     <>
@@ -452,6 +488,7 @@ export function InvoiceCreationForm({
                 defaultValue={defaultCurrency}
                 id="currency"
                 name="currency"
+                onChange={(event) => setCurrency(event.target.value)}
               >
                 {currencies.map((currency) => (
                   <option key={currency.code} value={currency.code}>
@@ -487,7 +524,8 @@ export function InvoiceCreationForm({
             <div>
               <h2 className="text-xl">Line items</h2>
               <p className="mt-1 text-sm text-navy-blue/65">
-                Enter signed prices using the selected currency.
+                Enter signed prices with up to {currencyExponent} decimal
+                places.
               </p>
             </div>
             <Button
@@ -525,8 +563,21 @@ export function InvoiceCreationForm({
                     id={`price-${line.id}`}
                     inputMode="decimal"
                     name={`price-${line.id}`}
+                    onChange={(event) => {
+                      const price = event.target.value;
+                      if (!isInvoicePriceInput(price, currencyExponent)) return;
+                      setLines((current) =>
+                        current.map((currentLine) =>
+                          currentLine.id === line.id
+                            ? { ...currentLine, price }
+                            : currentLine
+                        )
+                      );
+                    }}
+                    pattern={invoicePricePattern(currencyExponent)}
                     placeholder="0.00"
                     required
+                    value={line.price}
                   />
                 </FormField>
                 <Button
@@ -562,12 +613,14 @@ export function InvoiceCreationForm({
         onOpenChange={(open) => {
           if (!open && !isCreating) {
             setCreateError(null);
+            setPreviewError(null);
+            setPreviewUrl(null);
             setReview(null);
           }
         }}
         open={Boolean(review)}
       >
-        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-2xl flex-col overflow-hidden">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] max-w-5xl flex-col overflow-hidden">
           <DialogHeader>
             <div className="mb-2 flex size-11 items-center justify-center rounded-full bg-red-100 text-red-800">
               <CircleAlert aria-hidden className="size-6" />
@@ -576,84 +629,39 @@ export function InvoiceCreationForm({
             <DialogDescription className="text-base leading-6">
               The invoice is immutable after creation. Clicking the final button
               immediately emails it to the customer and Deskohub’s internal
-              recipient.
+              recipient. The final invoice number and issue time are assigned
+              after confirmation.
             </DialogDescription>
           </DialogHeader>
           {review && (
-            <div className="min-h-0 overflow-y-auto">
-              <dl className="grid gap-3 rounded-xl bg-navy-blue/5 p-4 text-sm sm:grid-cols-2">
-                <div>
-                  <dt className="text-navy-blue/60">Customer</dt>
-                  <dd className="font-semibold">
-                    {review.customer.details.kind === "business"
-                      ? review.customer.details.companyName
-                      : `${review.customer.details.firstName} ${review.customer.details.lastName}`}
-                  </dd>
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-navy-blue/10 bg-navy-blue/5">
+              {isPreviewing && (
+                <div
+                  aria-live="polite"
+                  className="grid min-h-96 place-items-center text-sm text-navy-blue/65"
+                >
+                  Generating PDF preview…
                 </div>
-                <div>
-                  <dt className="text-navy-blue/60">Email</dt>
-                  <dd className="font-semibold">
-                    {review.customer.details.email}
-                  </dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-navy-blue/60">Billing identity</dt>
-                  <dd className="font-semibold">
-                    {review.customer.details.kind === "business" && (
-                      <>
-                        {review.customer.details.companyName} · Company ID{" "}
-                        {review.customer.details.companyId}
-                        {review.customer.details.vatId && (
-                          <> · VAT ID {review.customer.details.vatId}</>
-                        )}
-                        <br />
-                      </>
-                    )}
-                    {review.customer.details.address.line1}
-                    {review.customer.details.address.line2 && (
-                      <>, {review.customer.details.address.line2}</>
-                    )}
-                    <br />
-                    {review.customer.details.address.postalCode}{" "}
-                    {review.customer.details.address.city},{" "}
-                    {review.customer.details.address.country}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-navy-blue/60">Service / due</dt>
-                  <dd className="font-semibold">
-                    {review.serviceDate} / {review.dueDate}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-navy-blue/60">Currency / VS</dt>
-                  <dd className="font-semibold">
-                    {review.currency} / {review.variableSymbol || "automatic"}
-                  </dd>
-                </div>
-                <div className="sm:col-span-2">
-                  <dt className="text-navy-blue/60">Line items</dt>
-                  <dd className="mt-1 space-y-1 font-semibold">
-                    {review.lines.map((line, index) => (
-                      <span
-                        className="flex justify-between gap-4"
-                        key={`${line.description}-${index}`}
-                      >
-                        <span>{line.description}</span>
-                        <span>
-                          {line.price} {review.currency}
-                        </span>
-                      </span>
-                    ))}
-                    <span className="mt-2 flex justify-between gap-4 border-t border-navy-blue/10 pt-2 text-base">
-                      <span>Total</span>
-                      <span>
-                        {reviewTotal ?? "Invalid price"} {review.currency}
-                      </span>
-                    </span>
-                  </dd>
-                </div>
-              </dl>
+              )}
+              {previewUrl && (
+                <>
+                  <iframe
+                    className="h-[60dvh] min-h-96 w-full bg-white"
+                    src={previewUrl}
+                    title="Invoice PDF preview"
+                  />
+                  <div className="border-t border-navy-blue/10 p-3 text-right text-sm">
+                    <a
+                      className="font-semibold text-burned-orange underline-offset-4 hover:underline"
+                      href={previewUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Open PDF preview
+                    </a>
+                  </div>
+                </>
+              )}
             </div>
           )}
           {review && reviewTotal === null && (
@@ -666,6 +674,11 @@ export function InvoiceCreationForm({
               {createError}
             </AdministrationAlert>
           )}
+          {previewError && (
+            <AdministrationAlert role="alert" status="error">
+              {previewError}
+            </AdministrationAlert>
+          )}
           <DialogFooter>
             <DialogClose asChild>
               <Button disabled={isCreating} type="button" variant="secondary">
@@ -673,7 +686,13 @@ export function InvoiceCreationForm({
               </Button>
             </DialogClose>
             <Button
-              disabled={isCreating || !review || reviewTotal === null}
+              disabled={
+                isCreating ||
+                isPreviewing ||
+                !review ||
+                !previewUrl ||
+                reviewTotal === null
+              }
               onClick={() => {
                 if (review) {
                   setCreateError(null);
@@ -693,16 +712,25 @@ export function InvoiceCreationForm({
 }
 
 export const getInvoiceReviewTotal = (
-  lines: readonly { readonly price: string }[]
+  lines: readonly { readonly price: string }[],
+  exponent = Number.POSITIVE_INFINITY
 ) => {
   const amounts: BigDecimal.BigDecimal[] = [];
   for (const line of lines) {
     const amount = BigDecimal.fromString(line.price);
-    if (Option.isNone(amount)) return null;
+    if (Option.isNone(amount) || amount.value.scale > exponent) return null;
     amounts.push(amount.value);
   }
   return BigDecimal.format(BigDecimal.sumAll(amounts));
 };
+
+export const isInvoicePriceInput = (value: string, exponent: number) =>
+  new RegExp(
+    exponent === 0 ? "^[+-]?\\d*$" : `^[+-]?\\d*(?:\\.\\d{0,${exponent}})?$`
+  ).test(value);
+
+const invoicePricePattern = (exponent: number) =>
+  exponent === 0 ? "[+-]?\\d+" : `[+-]?\\d+(?:\\.\\d{1,${exponent}})?`;
 
 function FormField({
   children,

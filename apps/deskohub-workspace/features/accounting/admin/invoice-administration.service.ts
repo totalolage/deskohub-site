@@ -26,7 +26,9 @@ import {
   type InvoiceBuyer,
   type InvoiceDocument,
   invoiceBuyerSchema,
+  invoiceNumberSchema,
   isManualInvoiceDocument,
+  makeManualInvoiceDocument,
 } from "@/features/accounting/invoice";
 import { getInvoicePresentation } from "@/features/accounting/invoice-presentation";
 import {
@@ -35,6 +37,7 @@ import {
   invoiceVariableSymbolSchema,
   isInvoiceCurrencyPayable,
   type ManualInvoiceProvenance,
+  normalizeManualInvoiceInput,
   normalizeManualInvoiceLines,
 } from "@/features/accounting/manual-invoice";
 import { getAdministrationPagination } from "@/features/administration/listing";
@@ -159,6 +162,44 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
   const dotypos = yield* DotyposService;
   const creationRequests = yield* ManualInvoiceCreationRequests;
 
+  const prepare = Effect.fn("InvoiceAdministrationService.prepare")(function* (
+    input: AdministrationInvoiceCreateInputType,
+    provenance: ManualInvoiceProvenance
+  ) {
+    const currency = findWorkspaceCurrencyDefinition(input.currency);
+    if (!currency || !isInvoiceCurrencyPayable(currency.code)) {
+      return yield* new InvoiceAdministrationCustomerError({
+        message: "No receiving account is configured for the invoice currency.",
+      });
+    }
+    const buyer = yield* toBuyer(input.customer.details);
+    yield* normalizeManualInvoiceLines({
+      currency: currency.code,
+      lines: input.lines,
+    });
+    const invoiceId = invoiceIdSchema.make(input.invoiceId);
+    return {
+      invoiceId,
+      forCustomer: (dotyposCustomerId: DotyposCustomerId) => ({
+        invoiceId,
+        dotyposCustomerId,
+        buyer,
+        deliveryEmail: input.customer.details.email,
+        locale: input.locale,
+        serviceDate: plainDateStringSchema.make(input.serviceDate),
+        dueDate: plainDateStringSchema.make(input.dueDate),
+        currency: currency.code,
+        ...(input.variableSymbol && {
+          variableSymbol: invoiceVariableSymbolSchema.make(
+            input.variableSymbol
+          ),
+        }),
+        lines: input.lines,
+        provenance,
+      }),
+    };
+  });
+
   const list = Effect.fn("InvoiceAdministrationService.list")(
     (query: InvoiceAdministrationListQuery = {}) =>
       invoices.list().pipe(
@@ -225,40 +266,31 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
       .slice(0, 50);
   });
 
+  const preview = Effect.fn("InvoiceAdministrationService.preview")(function* (
+    input: AdministrationInvoiceCreateInputType,
+    provenance: ManualInvoiceProvenance
+  ) {
+    const prepared = yield* prepare(input, provenance);
+    const normalized = yield* normalizeManualInvoiceInput(
+      prepared.forCustomer(DotyposCustomerIdSchema.make("preview"))
+    );
+    return yield* renderInvoicePdf(
+      makeManualInvoiceDocument({
+        normalized,
+        invoiceNumber: invoiceNumberSchema.make("PREVIEW-0000000000"),
+        issuedAt: Temporal.Now.instant(),
+      })
+    );
+  });
+
   const create = Effect.fn("InvoiceAdministrationService.create")(function* (
     input: AdministrationInvoiceCreateInputType,
     provenance: ManualInvoiceProvenance
   ) {
-    const currency = findWorkspaceCurrencyDefinition(input.currency);
-    if (!currency || !isInvoiceCurrencyPayable(currency.code)) {
-      return yield* new InvoiceAdministrationCustomerError({
-        message: "No receiving account is configured for the invoice currency.",
-      });
-    }
-    const buyer = yield* toBuyer(input.customer.details);
-    yield* normalizeManualInvoiceLines({
-      currency: currency.code,
-      lines: input.lines,
-    });
-    const invoiceId = invoiceIdSchema.make(input.invoiceId);
+    const prepared = yield* prepare(input, provenance);
+    const { invoiceId } = prepared;
     const issueForCustomer = (dotyposCustomerId: DotyposCustomerId) =>
-      invoices.issueManual({
-        invoiceId,
-        dotyposCustomerId,
-        buyer,
-        deliveryEmail: input.customer.details.email,
-        locale: input.locale,
-        serviceDate: plainDateStringSchema.make(input.serviceDate),
-        dueDate: plainDateStringSchema.make(input.dueDate),
-        currency: currency.code,
-        ...(input.variableSymbol && {
-          variableSymbol: invoiceVariableSymbolSchema.make(
-            input.variableSymbol
-          ),
-        }),
-        lines: input.lines,
-        provenance,
-      });
+      invoices.issueManual(prepared.forCustomer(dotyposCustomerId));
     const issuance = yield* creationRequests.withLock(
       invoiceId,
       Effect.gen(function* () {
@@ -361,6 +393,7 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     getCreationDefaults,
     getPdf,
     list,
+    preview,
     retry,
     searchCustomers,
   };

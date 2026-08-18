@@ -12,7 +12,7 @@ Administration shows order and ad-hoc invoices in one sortable, paginated histor
 
 Reservation invoices are shown as paid. Positive-total ad-hoc invoices are shown as issued before their due date, due on that date, and overdue afterwards, using the current Prague calendar date. Zero-total and negative-total documents remain issued because they do not request payment. Email delivery is shown separately as sending, sent, or needing a resend.
 
-An operator can issue an unpaid ad-hoc service invoice to an existing Dotypos customer or a new customer reused by exact email. The reviewed billing identity and delivery email are saved to Dotypos before issuance. Creation requires at least one description and signed decimal price, uses a single configured invoice currency, and records the authenticated Basic-auth username and whether the operation came from the administration UI or `dhw`. The final confirmation explicitly warns that creation is immutable and immediately emails both recipients.
+An operator can issue an unpaid ad-hoc service invoice to an existing Dotypos customer or a new customer reused by exact email. The reviewed billing identity and delivery email are saved to Dotypos before issuance. Creation requires at least one description and signed decimal price, uses a single configured invoice currency, and records the authenticated Basic-auth username and whether the operation came from the administration UI or `dhw`. The final confirmation shows the generated PDF preview and explicitly warns that creation is immutable and immediately emails both recipients; the final invoice number and issue time are assigned only after confirmation.
 
 ## Operator responsibilities
 

@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
 import { AdministrationInvoiceCreateInput } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
-import { getInvoiceReviewTotal, readInvoiceForm } from "./invoice-form";
+import {
+  getInvoiceReviewTotal,
+  isInvoicePriceInput,
+  readInvoiceForm,
+} from "./invoice-form";
 
 test("calculates the immutable review total without losing precision", () => {
   expect(
@@ -11,6 +15,13 @@ test("calculates the immutable review total without losing precision", () => {
     ])
   ).toBe("900719925474099312345678.01");
   expect(getInvoiceReviewTotal([{ price: "not-a-price" }])).toBeNull();
+});
+
+test("rejects prices beyond the selected currency precision", () => {
+  expect(getInvoiceReviewTotal([{ price: "1.234" }], 2)).toBeNull();
+  expect(getInvoiceReviewTotal([{ price: "-1.23" }], 2)).toBe("-1.23");
+  expect(isInvoicePriceInput("1.234", 2)).toBeFalse();
+  expect(isInvoicePriceInput("-1.23", 2)).toBeTrue();
 });
 
 test("omits blank optional business contact names", () => {
