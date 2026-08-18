@@ -18,13 +18,13 @@ export type InvoiceAdministrationSearchParams = Promise<{
 }>;
 
 const authorizeInvoiceAdministrationPage = cache(async () => {
+  await connection();
   await requireDiscountAdminAuthorization().pipe(
     Effect.provide(InvoiceAdministrationService.Live),
     runWorkspaceEffect("invoice-administration.authorize", {
       boundary: "route",
     })
   );
-  await connection();
 });
 
 export const loadInvoiceAdministrationList = async (

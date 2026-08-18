@@ -24,8 +24,13 @@ describe("administration UI boundaries", () => {
 
       expect(source.match(/await connection\(\)/g)).toHaveLength(1);
       expect(source).toMatch(
-        /(?:export )?const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\);\n}\);/
+        /(?:export )?const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\)/
       );
+      if (path === "features/accounting/admin/page-data.server.ts") {
+        expect(source.indexOf("await connection()")).toBeLessThan(
+          source.indexOf("runWorkspaceEffect(")
+        );
+      }
     }
   });
 

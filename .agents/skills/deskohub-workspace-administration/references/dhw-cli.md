@@ -153,10 +153,6 @@ omitted bounds and global or per-customer code maximum uses are stored as
 unrestricted values. Update commands replace the editable resource fields,
 matching the corresponding Admin UI forms.
 
-Invoice input files include a stable `invoiceId` UUID. Reuse the same file
-after an interrupted or uncertain create attempt so the server returns the
-same invoice instead of issuing another one.
-
 Commands that cancel reservations, delete resources, remove restrictions, revoke sessions, change a
 customer's discount group, or add a code-audience member ask for confirmation.
 Pass `--yes` to approve explicitly; non-interactive and `--json` invocations
@@ -166,12 +162,13 @@ Invoice creation reads a JSON object containing the customer choice, dates,
 currency, optional variable symbol, and at least one description-and-price line.
 The shared Effect schema rejects unknown properties, including unknown nested
 customer properties, so misspelled fields fail instead of being ignored. Prices
-remain decimal strings and may be positive, zero, or negative. `dhw` generates
-one invoice UUID per invocation and reuses it across transport retries; the
-repository rejects reuse with different input. The confirmation warns that the
-completed invoice is immediately emailed to the customer and the internal
-recipient. Invoice customer data is deliberately excluded from the generic CLI
-mutation ledger.
+remain decimal strings and may be positive, zero, or negative. The input file
+supplies one stable invoice UUID, which `dhw` sends unchanged across transport
+retries; reuse that file after an uncertain attempt. The repository rejects the
+same UUID with different input. The confirmation warns that the completed
+invoice is immediately emailed to the customer and the internal recipient.
+Invoice customer data is deliberately excluded from the generic CLI mutation
+ledger.
 
 Reservation cancellation preserves successful settlement facts, marks a paid Nexi attempt as requiring a refund, and does not issue the refund automatically. Zero-total internal payments remain refund-free. If the reservation has a live or ambiguous AlgoPIN, remove it at the lock first and pass `--confirm-access-credential-removed`; Igloohome cannot revoke it remotely. Add `--send-cancellation-email` to send the localized customer message after cancellation succeeds; email failure is reported separately from the completed cancellation.
 
