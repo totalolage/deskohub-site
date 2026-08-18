@@ -148,7 +148,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("manual invoices retain reservation source validation without fake references", async () => {
     const migration = await readAppFile(
-      "db/migrations/20260818170543_cynical_violations/migration.sql"
+      "db/migrations/20260818174747_mature_outlaw_kid/migration.sql"
     );
 
     expect(migration).toContain(
