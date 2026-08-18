@@ -714,7 +714,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           ),
           Effect.retry({
             schedule: Schedule.spaced("250 millis"),
-            times: 20,
+            times: 240,
             while: (cause) =>
               cause instanceof CliMutationInProgress ||
               cause instanceof CliServiceUnavailable ||

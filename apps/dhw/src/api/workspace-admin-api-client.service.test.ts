@@ -17,7 +17,7 @@ import {
   CliMutationRequestId,
   CliSessionId,
 } from "@deskohub/workspace-admin-api";
-import { Effect, Layer, Redacted, Schema } from "effect";
+import { Clock, Duration, Effect, Layer, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { DhwConfig } from "../config/dhw-config.service";
 import {
@@ -222,6 +222,109 @@ describe("WorkspaceAdminApiClient", () => {
         { method: "POST", path: "/api/v1/cli/invoices" },
         { method: "POST", path: `/api/v1/cli/invoices/${invoiceId}/resend` },
       ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("retries invoice creation through the one-minute claim recovery window", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("i".repeat(43))
+    );
+    const invoiceId = Schema.decodeUnknownSync(AdministrationInvoiceId)(
+      "01980000-0000-7000-8000-000000000019"
+    );
+    const input = {
+      invoiceId,
+      customer: {
+        kind: "new" as const,
+        details: {
+          kind: "person" as const,
+          email: "synthetic@example.test",
+          firstName: "Synthetic",
+          lastName: "Customer",
+          address: {
+            line1: "Test street 1",
+            city: "Prague",
+            postalCode: "100 00",
+            country: "CZ",
+          },
+        },
+      },
+      locale: "cs-CZ" as const,
+      serviceDate: "2026-08-10",
+      dueDate: "2026-08-24",
+      currency: "CZK",
+      lines: [{ description: "Space rental", price: "1000" }],
+    };
+    const payloads: unknown[] = [];
+    let elapsedRetryMilliseconds = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        payloads.push(await request.json());
+        if (payloads.length <= 240) {
+          return Response.json(
+            {
+              _tag: "CliMutationInProgress",
+              message: "The invoice is still being created.",
+              requestId: invoiceId,
+            },
+            { status: 409 }
+          );
+        }
+        return Response.json(
+          {
+            invoiceId,
+            invoiceNumber: "WS-FV-2026-000019",
+            changed: true,
+            needsAttention: false,
+          },
+          { status: 201 }
+        );
+      },
+    });
+
+    try {
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-invoice-recovery-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const result = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        return yield* client.createInvoice(accessToken, input);
+      }).pipe(
+        Effect.provide(clientLayer),
+        Effect.provideService(Clock.Clock, {
+          currentTimeMillisUnsafe: () => elapsedRetryMilliseconds,
+          currentTimeMillis: Effect.sync(() => elapsedRetryMilliseconds),
+          currentTimeNanosUnsafe: () =>
+            BigInt(elapsedRetryMilliseconds) * 1_000_000n,
+          currentTimeNanos: Effect.sync(
+            () => BigInt(elapsedRetryMilliseconds) * 1_000_000n
+          ),
+          sleep: (duration) =>
+            Effect.sync(() => {
+              elapsedRetryMilliseconds += Duration.toMillis(duration);
+            }),
+        }),
+        Effect.runPromise
+      );
+
+      expect(result.invoiceId).toBe(invoiceId);
+      expect(elapsedRetryMilliseconds).toBeGreaterThanOrEqual(60_000);
+      expect(payloads).toHaveLength(241);
+      expect(payloads.every((payload) => Bun.deepEquals(payload, input))).toBe(
+        true
+      );
     } finally {
       server.stop(true);
     }
