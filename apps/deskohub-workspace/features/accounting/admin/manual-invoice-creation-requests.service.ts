@@ -22,6 +22,9 @@ export class ManualInvoiceCreationRequestError extends Data.TaggedError(
 )<{ readonly message: string }> {}
 
 interface IManualInvoiceCreationRequests {
+  readonly withNewCustomerLock: <A, E, R>(
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E | EffectDrizzleQueryError | SqlError, R>;
   readonly withLock: <A, E, R>(
     invoiceId: InvoiceId,
     effect: Effect.Effect<A, E, R>
@@ -50,6 +53,18 @@ export class ManualInvoiceCreationRequests extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const keys = yield* AccountingSnapshotKeyService;
+
+      // ponytail: one global new-customer lock avoids putting email PII in SQL;
+      // shard by a keyed normalized-email digest if admin throughput matters.
+      const withNewCustomerLock: IManualInvoiceCreationRequests["withNewCustomerLock"] =
+        (effect) =>
+          db.transaction((tx) =>
+            tx
+              .execute(
+                sql`select pg_advisory_xact_lock(hashtext('manual-invoice-new-customer'), hashtext('global'))`
+              )
+              .pipe(Effect.andThen(effect))
+          );
 
       const withLock: IManualInvoiceCreationRequests["withLock"] = (
         invoiceId,
@@ -157,6 +172,7 @@ export class ManualInvoiceCreationRequests extends Context.Service<
         claim,
         complete,
         withLock,
+        withNewCustomerLock,
       } satisfies IManualInvoiceCreationRequests;
     })
   );

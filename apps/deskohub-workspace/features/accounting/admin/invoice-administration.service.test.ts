@@ -185,6 +185,8 @@ describe("InvoiceAdministrationService", () => {
               _invoiceId: string,
               effect: Effect.Effect<A, E, R>
             ) => permit.withPermit(effect),
+            withNewCustomerLock: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+              effect,
           } as never)
         )
       )
@@ -201,6 +203,128 @@ describe("InvoiceAdministrationService", () => {
     expect(results).toHaveLength(2);
     expect(createCustomer).toHaveBeenCalledTimes(1);
     expect(issueManual).toHaveBeenCalledTimes(2);
+  });
+
+  test("serializes new customer resolution by email across invoice ids", async () => {
+    const document = makeTestManualInvoiceDocument("cs-CZ", "1000");
+    const stored = new Map<string, Invoice>();
+    const invoicePermits = new Map<string, Semaphore.Semaphore>();
+    const newCustomerPermit = Semaphore.makeUnsafe(1);
+    let customer: { readonly id: DotyposCustomerIdSchema.Type } | null = null;
+    const createCustomer = mock(() =>
+      Effect.sleep("10 millis").pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            customer = {
+              id: DotyposCustomerIdSchema.make("dotypos-customer-manual"),
+            };
+            return customer as never;
+          })
+        )
+      )
+    );
+    const secondInput = Schema.decodeUnknownSync(
+      AdministrationInvoiceCreateInput
+    )({
+      ...input,
+      invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb24",
+      customer: {
+        ...input.customer,
+        details: {
+          ...input.customer.details,
+          email: ` ${input.customer.details.email} `,
+        },
+      },
+    });
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, {
+            findCustomer: () =>
+              Effect.succeed(
+                customer
+                  ? FindCustomerResult.Matched({
+                      customer: customer as never,
+                      matches: [customer as never],
+                    })
+                  : FindCustomerResult.NotFound({ matches: [] })
+              ),
+            createCustomer,
+            updateCustomerDetails: () => Effect.succeed(customer as never),
+          }),
+          Layer.mock(InvoiceRepository, {
+            findById: (invoiceId) =>
+              Effect.succeed(stored.get(invoiceId) ?? null),
+            issueManual: (invoiceInput) =>
+              Effect.sync(() => {
+                const invoice = {
+                  id: invoiceInput.invoiceId,
+                  workspaceReservationId: null,
+                  paymentAttemptId: null,
+                  dotyposCustomerId: invoiceInput.dotyposCustomerId,
+                  invoiceNumber: document.invoiceNumber,
+                  issuedAt: Temporal.Instant.from(document.issuedAt),
+                  document,
+                } satisfies Invoice;
+                stored.set(invoice.id, invoice);
+                return {
+                  invoice: {
+                    ...invoice,
+                    workspaceReservationId: null,
+                    paymentAttemptId: null,
+                    document,
+                  },
+                  changed: true,
+                } satisfies ManualInvoiceIssuance;
+              }),
+            list: () =>
+              Effect.succeed(
+                [...stored.values()].map((invoice) => ({
+                  invoice,
+                  delivery: {
+                    customer: "accepted" as const,
+                    internal: "accepted" as const,
+                  },
+                  needsAttention: false,
+                }))
+              ),
+          }),
+          Layer.mock(InvoiceEmailDeliveryService, {
+            deliverByInvoiceId: () =>
+              Effect.succeed({
+                status: "delivered",
+                changed: true,
+              } satisfies InvoiceEmailDeliveryResult),
+          }),
+          Layer.mock(ManualInvoiceCreationRequests, {
+            claim: () => Effect.succeed({ kind: "claimed" } as const),
+            complete: () => Effect.void,
+            withLock: <A, E, R>(
+              invoiceId: string,
+              effect: Effect.Effect<A, E, R>
+            ) => {
+              const permit =
+                invoicePermits.get(invoiceId) ?? Semaphore.makeUnsafe(1);
+              invoicePermits.set(invoiceId, permit);
+              return permit.withPermit(effect);
+            },
+            withNewCustomerLock: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+              newCustomerPermit.withPermit(effect),
+          } as never)
+        )
+      )
+    );
+
+    const results = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return yield* Effect.all(
+        [create(service, input), create(service, secondInput)],
+        { concurrency: "unbounded" }
+      );
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(results).toHaveLength(2);
+    expect(createCustomer).toHaveBeenCalledTimes(1);
   });
 });
 

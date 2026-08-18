@@ -319,13 +319,18 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
             message: "The completed invoice creation request has no invoice.",
           });
         }
+        const customerResolution = resolveCustomer(dotypos, input.customer);
         const lockedIssuance = existing
           ? yield* issueForCustomer(
               input.customer.kind === "existing"
                 ? yield* decodeDotyposCustomerId(input.customer.customerId)
                 : DotyposCustomerIdSchema.make(existing.dotyposCustomerId)
             )
-          : yield* resolveCustomer(dotypos, input.customer).pipe(
+          : yield* (
+              input.customer.kind === "new"
+                ? creationRequests.withNewCustomerLock(customerResolution)
+                : customerResolution
+            ).pipe(
               Effect.flatMap((customer) =>
                 decodeDotyposCustomerId(customer.id)
               ),
