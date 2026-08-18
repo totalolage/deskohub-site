@@ -56,6 +56,8 @@ export function InvoiceCreationForm({
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const invoiceIdRef = useRef<string | null>(null);
+  const variableSymbolOverriddenRef = useRef(false);
   const searchId = useId();
   const initialLineId = useId();
   const [customer, setCustomer] =
@@ -102,7 +104,10 @@ export function InvoiceCreationForm({
     {
       actionName: "createAdministrationInvoice",
       onSuccess: ({ data }) => {
-        if (data) router.push(`/admin/invoices/${data.invoiceId}`);
+        if (data) {
+          invoiceIdRef.current = null;
+          router.push(`/admin/invoices/${data.invoiceId}`);
+        }
       },
       onError: ({ error: actionError }) =>
         setCreateError(
@@ -135,13 +140,15 @@ export function InvoiceCreationForm({
     event.preventDefault();
     setCreateError(null);
     const form = new FormData(event.currentTarget);
+    invoiceIdRef.current = getInvoiceDraftId(invoiceIdRef.current);
     const nextReview = readInvoiceForm({
       customer,
       customerMode,
       customerType,
       form,
-      invoiceId: crypto.randomUUID(),
+      invoiceId: invoiceIdRef.current,
       lines,
+      variableSymbolOverridden: variableSymbolOverriddenRef.current,
     });
     setPreviewError(null);
     setPreviewUrl(null);
@@ -150,7 +157,10 @@ export function InvoiceCreationForm({
       currencies.find(({ code }) => code === nextReview.currency)?.exponent ??
       0;
     if (getInvoiceReviewTotal(nextReview.lines, exponent) !== null) {
-      preview(nextReview);
+      preview({
+        ...nextReview,
+        variableSymbol: nextReview.variableSymbol ?? suggestedVariableSymbol,
+      });
     }
   };
 
@@ -505,8 +515,13 @@ export function InvoiceCreationForm({
                 maxLength={10}
                 name="variableSymbol"
                 onBlur={(event) => {
-                  if (!event.currentTarget.value.trim())
+                  if (!event.currentTarget.value.trim()) {
                     event.currentTarget.value = suggestedVariableSymbol;
+                    variableSymbolOverriddenRef.current = false;
+                  }
+                }}
+                onChange={() => {
+                  variableSymbolOverriddenRef.current = true;
                 }}
                 onFocus={(event) => {
                   if (event.currentTarget.value === suggestedVariableSymbol)
@@ -629,8 +644,8 @@ export function InvoiceCreationForm({
             <DialogDescription className="text-base leading-6">
               The invoice is immutable after creation. Clicking the final button
               immediately emails it to the customer and Deskohub’s internal
-              recipient. The final invoice number and issue time are assigned
-              after confirmation.
+              recipient. The final invoice number, issue time, and automatically
+              suggested variable symbol are assigned after confirmation.
             </DialogDescription>
           </DialogHeader>
           {review && (
@@ -724,6 +739,9 @@ export const getInvoiceReviewTotal = (
   return BigDecimal.format(BigDecimal.sumAll(amounts));
 };
 
+export const getInvoiceDraftId = (current: string | null) =>
+  current ?? crypto.randomUUID();
+
 export const isInvoicePriceInput = (value: string, exponent: number) =>
   new RegExp(
     exponent === 0 ? "^[+-]?\\d*$" : `^[+-]?\\d*(?:\\.\\d{0,${exponent}})?$`
@@ -756,6 +774,7 @@ export function readInvoiceForm(input: {
   readonly form: FormData;
   readonly invoiceId: string;
   readonly lines: readonly Line[];
+  readonly variableSymbolOverridden?: boolean;
 }) {
   const address = {
     line1: field(input.form, "line1"),
@@ -796,7 +815,8 @@ export function readInvoiceForm(input: {
     serviceDate: field(input.form, "serviceDate"),
     dueDate: field(input.form, "dueDate"),
     currency: field(input.form, "currency"),
-    variableSymbol,
+    ...(input.variableSymbolOverridden !== false &&
+      variableSymbol && { variableSymbol }),
     lines: input.lines.map(({ id }) => ({
       description: field(input.form, `description-${id}`),
       price: field(input.form, `price-${id}`),
