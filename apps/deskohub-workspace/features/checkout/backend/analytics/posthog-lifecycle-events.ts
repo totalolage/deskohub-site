@@ -24,10 +24,8 @@ type PaymentLifecycleAttempt = Pick<
 const paymentProperties = (
   attempt: PaymentLifecycleAttempt
 ): PostHogEventProperties => ({
-  amount: toWorkspaceMoneyMajorAmount(attempt.amount),
-  amount_exponent: attempt.amount.exponent,
-  amount_value: attempt.amount.value,
   currency: attempt.amount.currency,
+  revenue: toWorkspaceMoneyMajorAmount(attempt.amount),
   reservation_id: attempt.workspaceReservationId,
   payment_attempt_id: attempt.id,
   provider: attempt.provider,
