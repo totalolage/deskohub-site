@@ -24,6 +24,7 @@ export const actionClient = createSafeActionClient({
       name: error.name,
       constructor: error.constructor.name,
       message: error.message,
+      stack: error.stack?.split("\n").slice(0, 4).join("\n"),
     });
 
     if (error.name === "ZodError") {
