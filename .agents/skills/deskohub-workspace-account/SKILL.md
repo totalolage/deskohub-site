@@ -84,8 +84,11 @@ description: Workspace customer account, Neon Auth, magic link, profile, account
   accounts claiming one Dotypos customer, and deletion racing resolution. Run
   them against migrated schema so the repository, unique constraints, and real
   advisory lock are all exercised.
-- Until Neon Auth is provisioned, credential-dependent protected-preview E2E is
-  deferred and is not a prerequisite for the goods-order migration.
+- Treat the credential-backed protected-preview lifecycle as the account
+  feature's completion gate. Keep the full Workspace E2E run blocked when Neon
+  Auth provisioning or management credentials are unavailable; resume after
+  provisioning instead of skipping the account project or running a reduced
+  checkout suite.
 
 ## Deployment checklist
 
