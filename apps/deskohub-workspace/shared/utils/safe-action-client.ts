@@ -20,13 +20,6 @@ export class PublicSafeActionError extends Data.TaggedError(
 
 export const actionClient = createSafeActionClient({
   handleServerError(error) {
-    console.error("Workspace safe action server error", {
-      name: error.name,
-      constructor: error.constructor.name,
-      message: error.message,
-      stack: error.stack?.split("\n").slice(0, 4).join("\n"),
-    });
-
     if (error.name === "ZodError") {
       return "Validation error occurred. Please check your input.";
     }
