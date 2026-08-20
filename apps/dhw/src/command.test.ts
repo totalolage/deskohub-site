@@ -106,7 +106,7 @@ describe("dhw mutation commands", () => {
         },
         locale: "cs-CZ",
         serviceDate: "2026-08-10",
-        dueDate: "2026-08-24",
+        payment: { status: "due", date: "2026-08-24" },
         currency: "CZK",
         lines: [{ description: "Space rental", price: "1000" }],
       })

@@ -5,12 +5,16 @@ import {
   makeManualInvoiceDocument,
 } from "@/features/accounting/invoice";
 import {
+  type ManualInvoicePayment,
   manualInvoiceInputSchema,
   normalizeManualInvoiceInput,
 } from "@/features/accounting/manual-invoice";
 import { getInvoicePaymentRequest } from "./invoice-payment-qr";
 
-const makeDocument = async (price: string) => {
+const makeDocument = async (
+  price: string,
+  payment: ManualInvoicePayment = { status: "due", date: "2026-09-01" }
+) => {
   const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
     invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb23",
     dotyposCustomerId: "synthetic-customer",
@@ -27,7 +31,7 @@ const makeDocument = async (price: string) => {
     deliveryEmail: "invoice@example.test",
     locale: "cs-CZ",
     serviceDate: "2026-08-18",
-    dueDate: "2026-09-01",
+    payment,
     currency: "CZK",
     variableSymbol: "42",
     lines: [{ description: "Pronájem prostoru", price }],
@@ -58,6 +62,19 @@ describe("invoice payment QR", () => {
     expect(
       await Effect.runPromise(
         getInvoicePaymentRequest(await makeDocument("-1"))
+      )
+    ).toBeNull();
+  });
+
+  test("omits payment instructions for an already-paid invoice", async () => {
+    expect(
+      await Effect.runPromise(
+        getInvoicePaymentRequest(
+          await makeDocument("450", {
+            status: "paid",
+            date: "2026-08-20",
+          })
+        )
       )
     ).toBeNull();
   });

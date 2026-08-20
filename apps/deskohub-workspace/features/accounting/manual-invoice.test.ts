@@ -33,7 +33,7 @@ const input = decodeInput({
   deliveryEmail: "invoice@example.test",
   locale: "cs-CZ",
   serviceDate: "2026-08-18",
-  dueDate: "2026-09-01",
+  payment: { status: "due", date: "2026-09-01" },
   currency: "CZK",
   lines: [
     { description: "Pronájem prostoru", price: "1000.20" },
@@ -99,6 +99,26 @@ describe("manual invoice", () => {
       system: "deskohub-workspace",
       generatedAt: document.issuedAt,
     });
+  });
+
+  test("stores the paid-on date instead of a due date", async () => {
+    const normalized = await Effect.runPromise(
+      normalizeManualInvoiceInput({
+        ...input,
+        payment: { status: "paid", date: "2026-08-20" },
+      })
+    );
+    const document = makeManualInvoiceDocument({
+      normalized,
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 42 }),
+      issuedAt: Temporal.Instant.from("2026-08-20T12:00:00Z"),
+    });
+
+    expect(document).toHaveProperty("payment", {
+      status: "paid",
+      date: "2026-08-20",
+    });
+    expect(document).not.toHaveProperty("dueDate");
   });
 
   test("accepts only a one-to-ten digit variable symbol", () => {

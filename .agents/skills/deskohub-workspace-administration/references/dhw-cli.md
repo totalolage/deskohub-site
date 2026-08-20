@@ -158,8 +158,10 @@ customer's discount group, or add a code-audience member ask for confirmation.
 Pass `--yes` to approve explicitly; non-interactive and `--json` invocations
 require it.
 
-Invoice creation reads a JSON object containing the customer choice, dates,
-currency, optional variable symbol, and at least one description-and-price line.
+Invoice creation reads a JSON object containing the customer choice, service
+date, a strict `payment` object with status `due` or `paid` and its matching
+date, currency, optional variable symbol, and at least one
+description-and-price line.
 The shared Effect schema rejects unknown properties, including unknown nested
 customer properties, so misspelled fields fail instead of being ignored. Prices
 remain decimal strings and may be positive, zero, or negative. The input file

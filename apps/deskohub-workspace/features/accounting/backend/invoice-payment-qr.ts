@@ -1,6 +1,9 @@
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { BigDecimal, Data, Effect } from "effect";
-import type { ManualInvoiceDocument } from "@/features/accounting/invoice";
+import {
+  getManualInvoicePayment,
+  type ManualInvoiceDocument,
+} from "@/features/accounting/invoice";
 import { findInvoicePaymentAccount } from "@/features/accounting/manual-invoice";
 import {
   findWorkspaceCurrencyDefinition,
@@ -28,6 +31,8 @@ export class InvoicePaymentQrError extends Data.TaggedError(
 
 export const getInvoicePaymentRequest = Effect.fn("getInvoicePaymentRequest")(
   function* (document: ManualInvoiceDocument) {
+    const payment = getManualInvoicePayment(document);
+    if (payment.status === "paid") return null;
     const total = BigDecimal.fromStringUnsafe(document.total);
     if (!BigDecimal.isPositive(total)) return null;
 
@@ -46,7 +51,7 @@ export const getInvoicePaymentRequest = Effect.fn("getInvoicePaymentRequest")(
             `ACC:${account.iban}`,
             `AM:${amount}`,
             "CC:CZK",
-            `DT:${document.dueDate.replaceAll("-", "")}`,
+            `DT:${payment.date.replaceAll("-", "")}`,
             `MSG:FAKTURA ${document.invoiceNumber}`,
             `X-VS:${document.variableSymbol}`,
           ].join("*");
@@ -70,7 +75,7 @@ export const getInvoicePaymentRequest = Effect.fn("getInvoicePaymentRequest")(
     return {
       ...account,
       variableSymbol: document.variableSymbol,
-      dueDate: document.dueDate,
+      dueDate: payment.date,
       amount,
       currency: document.currency,
       qrPayload,

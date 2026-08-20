@@ -1,5 +1,6 @@
 import { BigDecimal, Match } from "effect";
 import {
+  getManualInvoicePayment,
   type InvoiceDocument,
   isManualInvoiceDocument,
   type ManualInvoiceDocument,
@@ -178,9 +179,11 @@ const getManualInvoicePresentation = (
   document: ManualInvoiceDocument
 ): InvoicePresentation => {
   const copy = getInvoiceCopy(document.locale);
-  const paymentRequested = BigDecimal.isPositive(
+  const payment = getManualInvoicePayment(document);
+  const positiveTotal = BigDecimal.isPositive(
     BigDecimal.fromStringUnsafe(document.total)
   );
+  const paymentRequested = payment.status === "due" && positiveTotal;
   const manual =
     document.locale === "cs-CZ"
       ? {
@@ -199,16 +202,42 @@ const getManualInvoicePresentation = (
           total: "Total",
           totalDue: "Amount due",
         };
+  const paymentPresentation = Match.value(payment).pipe(
+    Match.discriminatorsExhaustive("status")({
+      paid: ({ date }) => ({
+        status: copy.paid,
+        totalLabel: copy.totalPaid,
+        dateFact: {
+          label: copy.paymentDate,
+          value: formatPlainDate(date, document.locale),
+        },
+      }),
+      due: ({ date }) =>
+        paymentRequested
+          ? {
+              status: manual.unpaid,
+              totalLabel: manual.totalDue,
+              dateFact: {
+                label: manual.dueDate,
+                value: formatPlainDate(date, document.locale),
+              },
+            }
+          : {
+              status: manual.issued,
+              totalLabel: manual.total,
+              dateFact: null,
+            },
+    })
+  );
 
   return {
     locale: document.locale,
     title: copy.title,
     invoiceNumber: document.invoiceNumber,
-    status: paymentRequested ? manual.unpaid : manual.issued,
     factColumns: [
       [
         { label: copy.invoiceNumber, value: document.invoiceNumber },
-        paymentRequested
+        positiveTotal
           ? { label: manual.variableSymbol, value: document.variableSymbol }
           : null,
       ],
@@ -221,12 +250,7 @@ const getManualInvoicePresentation = (
           label: copy.serviceDate,
           value: formatPlainDate(document.serviceDate, document.locale),
         },
-        paymentRequested
-          ? {
-              label: manual.dueDate,
-              value: formatPlainDate(document.dueDate, document.locale),
-            }
-          : null,
+        paymentPresentation.dateFact,
       ],
     ],
     supplier: getSupplierPresentation(document, copy),
@@ -238,7 +262,8 @@ const getManualInvoicePresentation = (
       description: line.description,
       amount: formatManualMoney(line.price, document.currency),
     })),
-    totalLabel: paymentRequested ? manual.totalDue : manual.total,
+    status: paymentPresentation.status,
+    totalLabel: paymentPresentation.totalLabel,
     total: formatManualMoney(document.total, document.currency),
     nonVatStatement: copy.nonVatPayer,
     footer: `${document.supplier.legalName} · ${document.supplier.contactEmail}`,

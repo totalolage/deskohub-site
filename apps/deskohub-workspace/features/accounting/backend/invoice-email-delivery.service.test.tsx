@@ -235,6 +235,33 @@ describe("invoice email delivery", () => {
       harness.accountingSnapshots.findByPaymentAttemptId
     ).not.toHaveBeenCalled();
   });
+
+  test("does not request payment in the email for a paid manual invoice", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const manualDocument = makeTestManualInvoiceDocument("en-US", "450", {
+      status: "paid",
+      date: "2026-08-20",
+    });
+    const manualInvoice: Invoice = {
+      id: manualDocument.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: manualDocument.dotyposCustomerId,
+      invoiceNumber: manualDocument.invoiceNumber,
+      issuedAt: Temporal.Instant.from(manualDocument.issuedAt),
+      document: manualDocument,
+    };
+
+    await runDeliveryByInvoiceId(
+      makeHarness({ invoice: manualInvoice, sentMessages }),
+      manualInvoice.id
+    );
+
+    expect(sentMessages[0]?.html).toContain(
+      `Invoice ${manualInvoice.invoiceNumber} is attached.`
+    );
+    expect(sentMessages[0]?.html).not.toContain("with payment details");
+  });
 });
 
 const runDelivery = (harness: ReturnType<typeof makeHarness>) =>

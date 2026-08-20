@@ -53,7 +53,7 @@ const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
   },
   locale: "cs-CZ",
   serviceDate: "2026-08-18",
-  dueDate: "2026-09-01",
+  payment: { status: "due", date: "2026-09-01" },
   currency: "CZK",
   lines: [{ description: "Space rental", price: "1000" }],
 });
@@ -418,6 +418,18 @@ describe("invoice administration payment status", () => {
     expect(getInvoiceAdministrationPaymentStatus(manual, "2026-09-02")).toBe(
       "overdue"
     );
+  });
+
+  test("keeps an already-paid manual invoice paid", () => {
+    expect(
+      getInvoiceAdministrationPaymentStatus(
+        makeTestManualInvoiceDocument("en-US", "450", {
+          status: "paid",
+          date: "2026-08-20",
+        }),
+        "2099-01-01"
+      )
+    ).toBe("paid");
   });
 
   test("keeps zero and negative manual totals issued after their due date", () => {

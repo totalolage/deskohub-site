@@ -20,7 +20,7 @@ async function NewInvoiceContent() {
   return (
     <AdministrationPage className="max-w-6xl">
       <AdministrationPageHeader
-        description="Create an unpaid ad-hoc service invoice and send it immediately after review."
+        description="Create an ad-hoc service invoice and send it immediately after review."
         eyebrow="Accounting"
         title="New invoice"
       />

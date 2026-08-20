@@ -23,6 +23,7 @@ import {
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
+  getManualInvoicePayment,
   type InvoiceBuyer,
   type InvoiceDocument,
   invoiceBuyerSchema,
@@ -112,6 +113,7 @@ export type InvoiceAdministrationDetail = InvoiceAdministrationListItem & {
   readonly locale: "cs-CZ" | "en-US";
   readonly serviceDate: string | null;
   readonly dueDate: string | null;
+  readonly paidOn: string | null;
   readonly variableSymbol: string | null;
   readonly lines: readonly {
     readonly description: string;
@@ -187,7 +189,10 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
         deliveryEmail: input.customer.details.email,
         locale: input.locale,
         serviceDate: plainDateStringSchema.make(input.serviceDate),
-        dueDate: plainDateStringSchema.make(input.dueDate),
+        payment: {
+          ...input.payment,
+          date: plainDateStringSchema.make(input.payment.date),
+        },
         currency: currency.code,
         ...(input.variableSymbol && {
           variableSymbol: invoiceVariableSymbolSchema.make(
@@ -604,11 +609,13 @@ const toDetail = (
   const summary = toListItem(item, today);
   const document = item.invoice.document;
   if (isManualInvoiceDocument(document)) {
+    const payment = getManualInvoicePayment(document);
     return {
       ...summary,
       locale: document.locale,
       serviceDate: document.serviceDate,
-      dueDate: document.dueDate,
+      dueDate: payment.status === "due" ? payment.date : null,
+      paidOn: payment.status === "paid" ? payment.date : null,
       variableSymbol: document.variableSymbol,
       lines: document.lines,
       buyer: document.buyer,
@@ -621,6 +628,7 @@ const toDetail = (
     locale: document.locale,
     serviceDate: document.fulfilledAt ?? null,
     dueDate: null,
+    paidOn: null,
     variableSymbol: null,
     lines: presentation.lines.map(({ description, amount }) => ({
       description,
@@ -636,10 +644,12 @@ export const getInvoiceAdministrationPaymentStatus = (
   today: string
 ): AdministrationInvoicePaymentStatusType => {
   if (!isManualInvoiceDocument(document)) return "paid";
+  const payment = getManualInvoicePayment(document);
+  if (payment.status === "paid") return "paid";
   if (!BigDecimal.isPositive(BigDecimal.fromStringUnsafe(document.total)))
     return "issued";
-  if (document.dueDate < today) return "overdue";
-  return document.dueDate === today ? "due" : "issued";
+  if (payment.date < today) return "overdue";
+  return payment.date === today ? "due" : "issued";
 };
 
 const getPragueDate = () =>
@@ -731,7 +741,9 @@ export const getManualInvoiceCreationRequestJson = (
           },
     locale: input.locale,
     serviceDate: input.serviceDate,
-    dueDate: input.dueDate,
+    ...(input.payment.status === "paid"
+      ? { paidOn: input.payment.date }
+      : { dueDate: input.payment.date }),
     currency: input.currency,
     variableSymbol: input.variableSymbol?.trim() ?? null,
     lines: input.lines.map((line) => ({

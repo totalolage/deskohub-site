@@ -21,6 +21,7 @@ import {
   type InvoiceVariableSymbol,
   invoiceIdSchema,
   invoiceVariableSymbolSchema,
+  type ManualInvoicePayment,
   manualInvoiceLineSchema,
   manualInvoiceProvenanceSchema,
   type NormalizedManualInvoiceInput,
@@ -120,7 +121,7 @@ const officeInvoiceDocumentSchema = Schema.Struct({
   quote: officeAccountingDocumentSnapshotSchema.fields.quote,
 });
 
-export const manualInvoiceDocumentSchema = Schema.Struct({
+const manualInvoiceDocumentIdentitySchema = Schema.Struct({
   documentKind: Schema.Literal("manual"),
   invoiceId: invoiceIdSchema,
   dotyposCustomerId: accountingDocumentIdentitySchema.fields.dotyposCustomerId,
@@ -131,7 +132,6 @@ export const manualInvoiceDocumentSchema = Schema.Struct({
   invoiceNumber: invoiceNumberSchema,
   issuedAt: instantStringSchema,
   serviceDate: plainDateStringSchema,
-  dueDate: plainDateStringSchema,
   currency: workspaceCurrencyCodeSchema,
   variableSymbol: invoiceVariableSymbolSchema,
   lines: Schema.Array(manualInvoiceLineSchema).check(Schema.isMinLength(1)),
@@ -141,6 +141,20 @@ export const manualInvoiceDocumentSchema = Schema.Struct({
     ...invoiceGenerationProvenanceSchema.fields,
   }),
 });
+
+export const manualInvoiceDocumentSchema = Schema.Union([
+  Schema.Struct({
+    ...manualInvoiceDocumentIdentitySchema.fields,
+    payment: Schema.Struct({
+      status: Schema.Literal("paid"),
+      date: plainDateStringSchema,
+    }),
+  }),
+  Schema.Struct({
+    ...manualInvoiceDocumentIdentitySchema.fields,
+    dueDate: plainDateStringSchema,
+  }),
+]);
 export type ManualInvoiceDocument = typeof manualInvoiceDocumentSchema.Type;
 
 export const invoiceDocumentSchema = Schema.Union([
@@ -159,6 +173,13 @@ export type InvoiceDocument = typeof invoiceDocumentSchema.Type;
 export const isManualInvoiceDocument = (
   document: InvoiceDocument
 ): document is ManualInvoiceDocument => "documentKind" in document;
+
+export const getManualInvoicePayment = (
+  document: ManualInvoiceDocument
+): ManualInvoicePayment =>
+  "payment" in document
+    ? document.payment
+    : { status: "due", date: document.dueDate };
 
 const decodeInvoiceNumber = Schema.decodeUnknownSync(invoiceNumberSchema);
 export const decodeInvoiceDocument = Schema.decodeUnknownEffect(
@@ -250,7 +271,9 @@ export const makeManualInvoiceDocument = (input: {
     invoiceNumber: input.invoiceNumber,
     issuedAt: generatedAt,
     serviceDate: normalized.serviceDate as PlainDate,
-    dueDate: normalized.dueDate as PlainDate,
+    ...(normalized.payment.status === "paid"
+      ? { payment: normalized.payment }
+      : { dueDate: normalized.payment.date as PlainDate }),
     currency: normalized.currency,
     variableSymbol:
       normalized.variableSymbol ??

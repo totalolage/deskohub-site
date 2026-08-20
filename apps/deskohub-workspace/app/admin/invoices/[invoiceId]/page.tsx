@@ -66,6 +66,12 @@ async function InvoiceDetailContent({
                     <dd className="font-semibold">{invoice.dueDate}</dd>
                   </div>
                 )}
+              {invoice.paidOn && (
+                <div>
+                  <dt className="text-navy-blue/60">Paid on</dt>
+                  <dd className="font-semibold">{invoice.paidOn}</dd>
+                </div>
+              )}
             </dl>
           </AdministrationDetailSection>
           <AdministrationDetailSection title="Delivery">

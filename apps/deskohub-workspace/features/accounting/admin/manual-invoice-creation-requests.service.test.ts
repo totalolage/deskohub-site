@@ -34,7 +34,7 @@ const request = {
   },
   locale: "en-US",
   serviceDate: "2026-08-18",
-  dueDate: "2026-09-01",
+  payment: { status: "due", date: "2026-09-01" },
   currency: "CZK",
   variableSymbol: "2026000001",
   lines: [{ description: "Room hire", price: "1200.00" }],
@@ -62,6 +62,8 @@ describe("manual invoice creation request claims", () => {
     );
 
     expect(equivalentJson).toBe(json);
+    expect(JSON.parse(json)).toMatchObject({ dueDate: "2026-09-01" });
+    expect(JSON.parse(json)).not.toHaveProperty("payment");
     expect(getManualInvoiceCreationRequestDigest(json, "key one")).toMatch(
       /^[A-Za-z0-9_-]{43}$/
     );
@@ -96,7 +98,8 @@ describe("manual invoice creation request claims", () => {
           },
         },
       },
-      { ...request, dueDate: "2026-09-02" },
+      { ...request, payment: { status: "due", date: "2026-09-02" } },
+      { ...request, payment: { status: "paid", date: "2026-08-18" } },
       { ...request, variableSymbol: "2026000002" },
       { ...request, lines: [{ description: "Equipment hire", price: "1200" }] },
     ];

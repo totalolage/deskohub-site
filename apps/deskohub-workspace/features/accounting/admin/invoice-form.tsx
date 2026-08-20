@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useId, useRef, useState } from "react";
 import { AdministrationAlert } from "@/features/administration/components";
 import { Button } from "@/shared/components/ui/button";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -59,6 +60,7 @@ export function InvoiceCreationForm({
   const invoiceIdRef = useRef<string | null>(null);
   const searchId = useId();
   const initialLineId = useId();
+  const paidId = useId();
   const [customer, setCustomer] =
     useState<InvoiceAdministrationCustomer | null>(null);
   const [customerMode, setCustomerMode] = useState<"existing" | "new">(
@@ -68,6 +70,7 @@ export function InvoiceCreationForm({
     "person"
   );
   const [currency, setCurrency] = useState(defaultCurrency);
+  const [paid, setPaid] = useState(false);
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<
     readonly InvoiceAdministrationCustomer[]
@@ -461,6 +464,18 @@ export function InvoiceCreationForm({
 
         <section className="rounded-2xl border border-navy-blue/10 bg-white p-5 sm:p-6">
           <h2 className="text-xl">Invoice</h2>
+          <label
+            className="mt-5 flex cursor-pointer items-center gap-3 rounded-xl border border-navy-blue/10 bg-navy-blue/2.5 p-4"
+            htmlFor={paidId}
+          >
+            <Checkbox
+              checked={paid}
+              id={paidId}
+              name="paid"
+              onCheckedChange={(checked) => setPaid(Boolean(checked))}
+            />
+            <span className="text-sm font-semibold">Already paid</span>
+          </label>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <FormField label="Service date" name="serviceDate">
               <Input
@@ -471,15 +486,27 @@ export function InvoiceCreationForm({
                 type="date"
               />
             </FormField>
-            <FormField label="Due date" name="dueDate">
-              <Input
-                defaultValue={defaultDueDate}
-                id="dueDate"
-                name="dueDate"
-                required
-                type="date"
-              />
-            </FormField>
+            {paid ? (
+              <FormField key="paid" label="Paid on" name="paidOn">
+                <Input
+                  defaultValue={defaultServiceDate}
+                  id="paidOn"
+                  name="paidOn"
+                  required
+                  type="date"
+                />
+              </FormField>
+            ) : (
+              <FormField key="due" label="Due date" name="dueDate">
+                <Input
+                  defaultValue={defaultDueDate}
+                  id="dueDate"
+                  name="dueDate"
+                  required
+                  type="date"
+                />
+              </FormField>
+            )}
             <FormField label="Language" name="locale">
               <select
                 className={selectClassName}
@@ -807,7 +834,9 @@ export function readInvoiceForm(input: {
         : { kind: "new" as const, details },
     locale: field(input.form, "locale") as "cs-CZ" | "en-US",
     serviceDate: field(input.form, "serviceDate"),
-    dueDate: field(input.form, "dueDate"),
+    payment: field(input.form, "paid")
+      ? { status: "paid" as const, date: field(input.form, "paidOn") }
+      : { status: "due" as const, date: field(input.form, "dueDate") },
     currency: field(input.form, "currency"),
     ...(variableSymbol && { variableSymbol }),
     lines: input.lines.map(({ id }) => ({

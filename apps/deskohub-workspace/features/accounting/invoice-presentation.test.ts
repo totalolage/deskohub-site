@@ -228,4 +228,22 @@ describe("invoice presentation", () => {
       expect.objectContaining({ label: "Variable symbol" })
     );
   });
+
+  test("presents an already-paid manual invoice as paid", () => {
+    const document = makeTestManualInvoiceDocument("en-US", "450", {
+      status: "paid",
+      date: "2026-08-20",
+    });
+    const presentation = getInvoicePresentation(document);
+
+    expect(presentation.status).toBe("Paid");
+    expect(presentation.totalLabel).toBe("Total paid");
+    expect(presentation.factColumns.flat()).toContainEqual({
+      label: "Payment date",
+      value: "Aug 20, 2026",
+    });
+    expect(presentation.factColumns.flat()).not.toContainEqual(
+      expect.objectContaining({ label: "Due date" })
+    );
+  });
 });

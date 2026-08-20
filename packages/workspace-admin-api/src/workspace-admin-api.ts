@@ -482,7 +482,16 @@ export const AdministrationInvoiceCreateInput = Schema.Struct({
   customer: AdministrationInvoiceCustomerInput,
   locale: Schema.Literals(["cs-CZ", "en-US"]),
   serviceDate: administrationCalendarDate,
-  dueDate: administrationCalendarDate,
+  payment: Schema.Union([
+    Schema.Struct({
+      status: Schema.Literal("due"),
+      date: administrationCalendarDate,
+    }),
+    Schema.Struct({
+      status: Schema.Literal("paid"),
+      date: administrationCalendarDate,
+    }),
+  ]),
   currency: Schema.String.check(Schema.isPattern(/^[A-Z]{3}$/)),
   variableSymbol: Schema.optional(
     Schema.Trim.check(Schema.isPattern(/^\d{1,10}$/))
@@ -504,7 +513,7 @@ export const AdministrationInvoiceCreateFileInput = Schema.Struct({
   customer: AdministrationInvoiceCustomerInput,
   locale: AdministrationInvoiceCreateInput.fields.locale,
   serviceDate: administrationCalendarDate,
-  dueDate: administrationCalendarDate,
+  payment: AdministrationInvoiceCreateInput.fields.payment,
   currency: AdministrationInvoiceCreateInput.fields.currency,
   variableSymbol: AdministrationInvoiceCreateInput.fields.variableSymbol,
   lines: AdministrationInvoiceCreateInput.fields.lines,
@@ -604,6 +613,7 @@ export const AdministrationInvoiceDetail = Schema.Struct({
   locale: Schema.Literals(["cs-CZ", "en-US"]),
   serviceDate: Schema.NullOr(administrationCalendarDate),
   dueDate: Schema.NullOr(administrationCalendarDate),
+  paidOn: Schema.NullOr(administrationCalendarDate),
   variableSymbol: Schema.NullOr(Schema.String),
   lines: Schema.Array(
     Schema.Struct({ description: Schema.String, price: Schema.String })

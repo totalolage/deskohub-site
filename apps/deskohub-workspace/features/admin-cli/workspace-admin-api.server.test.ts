@@ -162,7 +162,7 @@ describe("Workspace Admin API", () => {
       },
       locale: "cs-CZ" as const,
       serviceDate: "2026-08-10",
-      dueDate: "2026-08-24",
+      payment: { status: "due" as const, date: "2026-08-24" },
       currency: "CZK",
       lines: [{ description: "Space rental", price: "1000" }],
     };

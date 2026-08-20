@@ -84,7 +84,7 @@ describe("administration contract", () => {
       },
       locale: "cs-CZ",
       serviceDate: "2026-08-10",
-      dueDate: "2026-08-24",
+      payment: { status: "due", date: "2026-08-24" },
       currency: "CZK",
       variableSymbol: "1234567890",
       lines: [{ description: "Space rental", price: "-12.34" }],
@@ -92,7 +92,16 @@ describe("administration contract", () => {
     const decode = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput);
 
     expect(decode(input)).toMatchObject(input);
+    expect(
+      decode({
+        ...input,
+        payment: { status: "paid", date: "2026-08-10" },
+      })
+    ).toHaveProperty("payment.status", "paid");
     expect(() => decode({ ...input, typo: true })).toThrow();
+    expect(() =>
+      decode({ ...input, payment: { ...input.payment, typo: true } })
+    ).toThrow();
     expect(() => decode({ ...input, variableSymbol: "12345678901" })).toThrow();
     expect(() =>
       decode({

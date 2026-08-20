@@ -31,9 +31,7 @@ export const refreshCalendarDiscountSourceAfterMutation = Effect.fn(
       })
     ),
     Effect.ignore,
-    Effect.when(
-      Effect.succeed(discountMutationChangesCalendarSource(input))
-    ),
+    Effect.when(Effect.succeed(discountMutationChangesCalendarSource(input))),
     Effect.asVoid
   )
 );

@@ -8,7 +8,10 @@ import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
-import { isManualInvoiceDocument } from "@/features/accounting/invoice";
+import {
+  getManualInvoicePayment,
+  isManualInvoiceDocument,
+} from "@/features/accounting/invoice";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { m } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
@@ -89,13 +92,17 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         readonly resend?: boolean;
       }) {
         const manual = isManualInvoiceDocument(input.invoice.document);
+        const manualPayment = manual
+          ? getManualInvoicePayment(input.invoice.document)
+          : null;
         const content = Match.value(input.audience).pipe(
           Match.when("customer", () => {
             const locale = input.invoice.document.locale;
+            const asksForPayment = manualPayment?.status === "due";
             const manualBody =
               locale === "cs-CZ"
-                ? `V příloze posíláme fakturu ${input.invoice.invoiceNumber} s platebními údaji.`
-                : `Invoice ${input.invoice.invoiceNumber} with payment details is attached.`;
+                ? `V příloze posíláme fakturu ${input.invoice.invoiceNumber}${asksForPayment ? " s platebními údaji" : ""}.`
+                : `Invoice ${input.invoice.invoiceNumber}${asksForPayment ? " with payment details" : ""} is attached.`;
             return {
               body: manual
                 ? manualBody

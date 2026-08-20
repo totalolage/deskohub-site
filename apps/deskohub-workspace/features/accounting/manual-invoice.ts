@@ -46,6 +46,18 @@ export const manualInvoiceLineInputSchema = Schema.Struct({
 });
 export type ManualInvoiceLineInput = typeof manualInvoiceLineInputSchema.Type;
 
+export const manualInvoicePaymentSchema = Schema.Union([
+  Schema.Struct({
+    status: Schema.Literal("due"),
+    date: plainDateStringSchema,
+  }),
+  Schema.Struct({
+    status: Schema.Literal("paid"),
+    date: plainDateStringSchema,
+  }),
+]);
+export type ManualInvoicePayment = typeof manualInvoicePaymentSchema.Type;
+
 export const manualInvoiceInputSchema = Schema.Struct({
   invoiceId: invoiceIdSchema,
   dotyposCustomerId: DotyposCustomerIdSchema,
@@ -53,7 +65,7 @@ export const manualInvoiceInputSchema = Schema.Struct({
   deliveryEmail: reservationCustomerEmailSchema,
   locale: Schema.Literals(locales),
   serviceDate: plainDateStringSchema,
-  dueDate: plainDateStringSchema,
+  payment: manualInvoicePaymentSchema,
   currency: workspaceCurrencyCodeSchema,
   variableSymbol: Schema.optional(invoiceVariableSymbolSchema),
   lines: Schema.Array(manualInvoiceLineInputSchema).check(

@@ -18,6 +18,7 @@ import {
   invoiceNumberSchema,
   makeInvoiceDocument,
 } from "./invoice";
+import { makeTestManualInvoiceDocument } from "./invoice.test-utils";
 
 const coworkOrder = {
   entryTier: "basic",
@@ -201,6 +202,15 @@ describe("invoice", () => {
     await expect(
       Effect.runPromise(decodeInvoiceDocument(legacyDocument))
     ).resolves.toEqual(legacyDocument);
+  });
+
+  test("decodes manual invoices issued with the original due-date shape", async () => {
+    const document = makeTestManualInvoiceDocument("en-US");
+
+    expect(document).toHaveProperty("dueDate", "2026-09-01");
+    await expect(
+      Effect.runPromise(decodeInvoiceDocument(document))
+    ).resolves.toEqual(document);
   });
 
   test("decodes invoices issued before stricter billing input validation", async () => {

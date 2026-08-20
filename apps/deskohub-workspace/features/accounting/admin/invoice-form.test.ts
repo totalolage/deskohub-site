@@ -114,6 +114,23 @@ test("preserves the reviewed variable symbol", () => {
   expect(readInvoiceForm(common).variableSymbol).toBe("2026000001");
 });
 
+test("reads the visible payment date as paid on when already paid", () => {
+  const form = new FormData();
+  form.set("paid", "on");
+  form.set("paidOn", "2026-08-20");
+
+  expect(
+    readInvoiceForm({
+      customer: null,
+      customerMode: "new",
+      customerType: "person",
+      form,
+      invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
+      lines: [],
+    })
+  ).toHaveProperty("payment", { status: "paid", date: "2026-08-20" });
+});
+
 test("reuses an existing draft id and generates one when absent", () => {
   const firstId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21";
 
@@ -153,6 +170,38 @@ test("previews the suggested variable symbol after restoring the default", () =>
   fireEvent.submit(form);
   expect(preview).toHaveBeenCalledWith(
     expect.objectContaining({ variableSymbol: "2026000001" })
+  );
+});
+
+test("switches the invoice date from due date to paid on", () => {
+  const preview = mock();
+  workspaceUseAction.mockImplementation(
+    (_action, options) =>
+      ({
+        execute:
+          (options as { readonly actionName: string }).actionName ===
+          "previewAdministrationInvoice"
+            ? preview
+            : mock(),
+        isExecuting: false,
+      }) as never
+  );
+  const view = renderInvoiceCreationForm();
+
+  expect(view.getByLabelText("Due date")).toHaveProperty("value", "2026-09-01");
+  fireEvent.click(view.getByRole("checkbox", { name: "Already paid" }));
+  expect(view.queryByLabelText("Due date")).toBeNull();
+  expect(view.getByLabelText("Paid on")).toHaveProperty("value", "2026-08-18");
+  fireEvent.change(view.getByLabelText("Price"), {
+    target: { value: "1000" },
+  });
+  const form = view.container.querySelector("form");
+  if (!form) throw new Error("Invoice form missing");
+  fireEvent.submit(form);
+  expect(preview).toHaveBeenCalledWith(
+    expect.objectContaining({
+      payment: { status: "paid", date: "2026-08-18" },
+    })
   );
 });
 

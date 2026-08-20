@@ -33,6 +33,7 @@ import {
   makeManualInvoiceDocument,
 } from "./invoice";
 import {
+  type ManualInvoicePayment,
   manualInvoiceInputSchema,
   normalizeManualInvoiceInput,
 } from "./manual-invoice";
@@ -160,7 +161,11 @@ export const makeOfficeInvoiceDocument = (locale: Locale): InvoiceDocument => {
 
 export const makeTestManualInvoiceDocument = (
   locale: Locale,
-  price = "450"
+  price = "450",
+  payment: ManualInvoicePayment = {
+    status: "due",
+    date: plainDateStringSchema.make("2026-09-01"),
+  }
 ): ManualInvoiceDocument => {
   const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
     invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb23",
@@ -173,7 +178,7 @@ export const makeTestManualInvoiceDocument = (
     deliveryEmail: "manual-invoice@example.test",
     locale,
     serviceDate: "2026-08-18",
-    dueDate: "2026-09-01",
+    payment,
     currency: "CZK",
     lines: [{ description: "One-off space rental", price }],
     provenance: { source: "admin-ui", actor: "synthetic-admin" },
