@@ -23,6 +23,7 @@ export const actionClient = createSafeActionClient({
     console.error("Workspace safe action server error", {
       name: error.name,
       constructor: error.constructor.name,
+      message: error.message,
     });
 
     if (error.name === "ZodError") {
