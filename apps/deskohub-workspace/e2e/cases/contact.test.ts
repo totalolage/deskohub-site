@@ -57,16 +57,14 @@ test("activates the hydrated contact form action through its stable selector", a
   expect(
     calls.find(({ args }) => args.includes("press"))?.args.slice(2)
   ).toEqual(["press", "Enter"]);
+  expect(calls.filter(({ args }) => args.includes("press"))).toHaveLength(1);
 
   const waitIndex = calls.findIndex(({ args }) => args.includes("wait"));
   const focusIndex = calls.findIndex(({ args }) => args.includes("focus"));
   const pressIndex = calls.findIndex(({ args }) => args.includes("press"));
   const successWaitIndex = calls.findIndex(
     ({ args }, index) =>
-      index > pressIndex &&
-      args.includes("wait") &&
-      args.includes("--fn") &&
-      args.some((argument) => argument.includes("Your message has been sent."))
+      index > pressIndex && args.includes("eval") && args.includes("--stdin")
   );
   expect(waitIndex).toBeLessThan(focusIndex);
   expect(focusIndex).toBeLessThan(pressIndex);

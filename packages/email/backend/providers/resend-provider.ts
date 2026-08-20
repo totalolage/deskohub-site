@@ -15,6 +15,7 @@ import {
 import { NetworkError } from "../network-error";
 
 const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
+const resendSendTimeout = "5 seconds";
 
 const toResendTags = (message: EmailMessage) => {
   const tags: { name: string; value: string }[] = [];
@@ -155,6 +156,16 @@ const createResendProvider = (apiKey: string): EmailProvider => {
             );
           },
         }).pipe(
+          Effect.timeoutOrElse({
+            duration: resendSendTimeout,
+            orElse: () =>
+              Effect.fail(
+                new NetworkError({
+                  cause: `Resend request timed out after ${resendSendTimeout}`,
+                  message: "Resend send timed out",
+                })
+              ),
+          }),
           Effect.tap((response) =>
             Effect.gen(function* () {
               yield* Effect.annotateLogsScoped({ response });

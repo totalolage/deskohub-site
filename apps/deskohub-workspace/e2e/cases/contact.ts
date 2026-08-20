@@ -5,10 +5,10 @@ import {
   openBrowserPage,
   pressBrowserKey,
   waitForBrowserReactFormAction,
-  waitForBrowserTextContent,
+  waitForBrowserText,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
-import type { WorkspaceE2EError } from "../errors";
+import { failWorkspaceE2E, type WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
@@ -107,10 +107,16 @@ const submitContactForm = (
       { timeoutMs }
     );
     yield* pressBrowserKey(run, session, "Enter", { timeoutMs });
-    yield* waitForBrowserTextContent(
+    const result = yield* waitForBrowserText({
+      description: "contact form result",
+      matches: (text) =>
+        text.includes("Your message has been sent.") ||
+        text.includes("Failed to send your message. Please try again later."),
       run,
       session,
-      "Your message has been sent.",
-      { timeoutMs }
-    );
+      timeoutMs,
+    });
+
+    if (result.includes("Failed to send your message. Please try again later."))
+      return yield* failWorkspaceE2E("Contact form submission failed");
   });
