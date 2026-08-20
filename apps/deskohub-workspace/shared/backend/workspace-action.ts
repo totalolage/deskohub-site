@@ -5,7 +5,6 @@ import {
 } from "@deskohub/next-effect/effect-action";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Duration, Effect, References } from "effect";
-import { headers } from "next/headers";
 import type {
   FlattenedValidationErrors,
   ValidationErrors,
@@ -18,6 +17,7 @@ import {
   type SafeActionFailure,
 } from "../utils/safe-action-client";
 import { BotProtectionService } from "./bot-protection/bot-protection.service";
+import { getRequestHeaders } from "./utils/request-headers";
 import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
@@ -119,7 +119,8 @@ const prepareWorkspaceAction = <
     Effect.mapError(mapSafeActionFailure)
   );
 
-  const invocation = readActionHeaders.pipe(
+  const invocation = getRequestHeaders().pipe(
+    Effect.orDie,
     Effect.flatMap((requestHeaders) =>
       logged.pipe(withWorkspaceRequestContext(requestHeaders))
     ),
@@ -144,11 +145,6 @@ const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   clientInput: args.clientInput,
   locale: args.ctx.locale,
 });
-
-const readActionHeaders = Effect.tryPromise({
-  try: () => headers(),
-  catch: (cause) => cause,
-}).pipe(Effect.orDie);
 
 const mapSafeActionFailure = (error: SafeActionFailure) => {
   if (error instanceof PublicSafeActionError) {

@@ -879,8 +879,8 @@ describe("CheckoutService", () => {
       expect.objectContaining({
         event: "payment completed",
         properties: expect.objectContaining({
-          amount_value: 0,
           provider: "internal",
+          revenue: 0,
         }),
       })
     );

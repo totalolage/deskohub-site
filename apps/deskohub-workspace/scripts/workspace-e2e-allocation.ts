@@ -7,6 +7,7 @@ import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 import { supportedAllocationConcurrency } from "../e2e/coordination/allocation";
 import { AllocationRepository } from "../e2e/coordination/allocation.repository";
 import {
+  AllocationError,
   AllocationService,
   releaseAllocationOnFailure,
 } from "../e2e/coordination/allocation.service";
@@ -63,7 +64,14 @@ const run = Effect.fn("WorkspaceE2EAllocation.run")(function* (
         Effect.tryPromise({
           try: () =>
             appendFile(environment.GITHUB_OUTPUT, `shard=${shard}\n`, "utf8"),
-          catch: (cause) => cause,
+          catch: (cause) =>
+            new AllocationError({
+              cause,
+              message:
+                cause instanceof Error
+                  ? cause.message
+                  : "Workspace E2E allocation failed.",
+            }),
         })
       ),
       Effect.tap((shard) =>

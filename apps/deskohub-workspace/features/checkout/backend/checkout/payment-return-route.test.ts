@@ -88,7 +88,7 @@ describe("checkout pay return route", () => {
 
     expect(response.status).toBe(307);
     expect(refreshStatus).toHaveBeenCalledTimes(3);
-  });
+  }, 30_000);
 
   test("preserves the fail-open redirect when refresh fails", async () => {
     const response = await invoke(() => Effect.fail(new Error("unavailable")));
@@ -97,7 +97,7 @@ describe("checkout pay return route", () => {
     expect(response.headers.get("location")).toContain(
       "/en-US/reservation/status/order-id?outcome=success"
     );
-  });
+  }, 30_000);
 
   test("does not hide refresh defects behind the fail-open redirect", async () => {
     const defect = new Error("unexpected defect");

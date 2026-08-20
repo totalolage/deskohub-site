@@ -966,7 +966,7 @@ var require_pg_types = __commonJS((exports) => {
   });
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/defaults.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/defaults.js
 var require_defaults = __commonJS((exports, module) => {
   var user;
   try {
@@ -985,6 +985,7 @@ var require_defaults = __commonJS((exports, module) => {
     idleTimeoutMillis: 30000,
     client_encoding: "",
     ssl: false,
+    sslnegotiation: undefined,
     application_name: undefined,
     fallback_application_name: undefined,
     options: undefined,
@@ -1006,7 +1007,7 @@ var require_defaults = __commonJS((exports, module) => {
   });
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/utils.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/utils.js
 var require_utils = __commonJS((exports, module) => {
   var defaults = require_defaults();
   var { isDate } = __require("util/types");
@@ -1155,7 +1156,7 @@ var require_utils = __commonJS((exports, module) => {
   };
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/crypto/utils.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/crypto/utils.js
 var require_utils2 = __commonJS((exports, module) => {
   var nodeCrypto = __require("crypto");
   module.exports = {
@@ -1204,7 +1205,7 @@ var require_utils2 = __commonJS((exports, module) => {
   }
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/crypto/cert-signatures.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/crypto/cert-signatures.js
 var require_cert_signatures = __commonJS((exports, module) => {
   function x509Error(msg, cert) {
     return new Error("SASL channel binding: " + msg + " when parsing public certificate " + cert.toString("base64"));
@@ -1316,7 +1317,7 @@ var require_cert_signatures = __commonJS((exports, module) => {
   module.exports = { signatureAlgorithmHashFromCertificate };
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/crypto/sasl.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/crypto/sasl.js
 var require_sasl = __commonJS((exports, module) => {
   var crypto = require_utils2();
   var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
@@ -1496,7 +1497,7 @@ var require_sasl = __commonJS((exports, module) => {
   };
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/type-overrides.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/type-overrides.js
 var require_type_overrides = __commonJS((exports, module) => {
   var types = require_pg_types();
   function TypeOverrides(userTypes) {
@@ -1528,7 +1529,7 @@ var require_type_overrides = __commonJS((exports, module) => {
   module.exports = TypeOverrides;
 });
 
-// ../../node_modules/.bun/pg-connection-string@2.13.0/node_modules/pg-connection-string/index.js
+// ../../node_modules/.bun/pg-connection-string@2.14.0/node_modules/pg-connection-string/index.js
 var require_pg_connection_string = __commonJS((exports, module) => {
   function parse3(str, options = {}) {
     if (str.charAt(0) === "/") {
@@ -1582,6 +1583,9 @@ var require_pg_connection_string = __commonJS((exports, module) => {
     }
     if (config.sslcert || config.sslkey || config.sslrootcert || config.sslmode) {
       config.ssl = {};
+    }
+    if (config.sslnegotiation === "direct" && config.ssl === undefined) {
+      config.ssl = true;
     }
     const fs = config.sslcert || config.sslkey || config.sslrootcert ? __require("fs") : null;
     if (config.sslcert) {
@@ -1706,7 +1710,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   parse3.parseIntoClientConfig = parseIntoClientConfig;
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/connection-parameters.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/connection-parameters.js
 var require_connection_parameters = __commonJS((exports, module) => {
   var dns = __require("dns");
   var defaults = require_defaults();
@@ -1781,6 +1785,13 @@ var require_connection_parameters = __commonJS((exports, module) => {
           enumerable: false
         });
       }
+      this.sslnegotiation = val("sslnegotiation", config, "PGSSLNEGOTIATION");
+      if (this.sslnegotiation !== undefined && this.sslnegotiation !== "postgres" && this.sslnegotiation !== "direct") {
+        throw new Error(`Invalid sslnegotiation value: "${this.sslnegotiation}". Valid values are "postgres" and "direct".`);
+      }
+      if (this.sslnegotiation === "direct" && !this.ssl) {
+        throw new Error("sslnegotiation=direct requires SSL to be enabled");
+      }
       this.client_encoding = val("client_encoding", config);
       this.replication = val("replication", config);
       this.isDomainSocket = !(this.host || "").indexOf("/");
@@ -1819,6 +1830,7 @@ var require_connection_parameters = __commonJS((exports, module) => {
       add4(params, ssl, "sslkey");
       add4(params, ssl, "sslcert");
       add4(params, ssl, "sslrootcert");
+      add4(params, this, "sslnegotiation");
       if (this.database) {
         params.push("dbname=" + quoteParamValue(this.database));
       }
@@ -1845,7 +1857,7 @@ var require_connection_parameters = __commonJS((exports, module) => {
   module.exports = ConnectionParameters;
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/result.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/result.js
 var require_result = __commonJS((exports, module) => {
   var types = require_pg_types();
   var matchRegexp = /^([A-Za-z]+)(?: (\d+))?(?: (\d+))?/;
@@ -1933,7 +1945,7 @@ var require_result = __commonJS((exports, module) => {
   module.exports = Result2;
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/query.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/query.js
 var require_query = __commonJS((exports, module) => {
   var { EventEmitter } = __require("events");
   var Result2 = require_result();
@@ -2049,7 +2061,7 @@ var require_query = __commonJS((exports, module) => {
       if (typeof this.text !== "string" && typeof this.name !== "string") {
         return new Error("A query must have either text or a name. Supplying neither is unsupported.");
       }
-      const previous = connection.parsedStatements[this.name];
+      const previous = connection.parsedStatements[this.name] || connection.submittedNamedStatements[this.name];
       if (this.text && previous && this.text !== previous) {
         return new Error(`Prepared statements must be unique - '${this.name}' was used for a different statement`);
       }
@@ -2069,7 +2081,7 @@ var require_query = __commonJS((exports, module) => {
       return null;
     }
     hasBeenParsed(connection) {
-      return this.name && connection.parsedStatements[this.name];
+      return this.name && (connection.parsedStatements[this.name] || connection.submittedNamedStatements[this.name]);
     }
     handlePortalSuspended(connection) {
       this._getRows(connection, this.rows);
@@ -2092,6 +2104,9 @@ var require_query = __commonJS((exports, module) => {
           name: this.name,
           types: this.types
         });
+        if (this.name) {
+          connection.submittedNamedStatements[this.name] = this.text;
+        }
       }
       try {
         connection.bind({
@@ -2102,6 +2117,8 @@ var require_query = __commonJS((exports, module) => {
           valueMapper: utils.prepareValue
         });
       } catch (err) {
+        connection.close({ type: "S", name: this.name });
+        connection.sync();
         this.handleError(err, connection);
         return;
       }
@@ -2119,7 +2136,7 @@ var require_query = __commonJS((exports, module) => {
   module.exports = Query;
 });
 
-// ../../node_modules/.bun/pg-protocol@1.14.0/node_modules/pg-protocol/dist/messages.js
+// ../../node_modules/.bun/pg-protocol@1.16.0/node_modules/pg-protocol/dist/messages.js
 var require_messages = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.NoticeMessage = exports.DataRowMessage = exports.CommandCompleteMessage = exports.ReadyForQueryMessage = exports.NotificationResponseMessage = exports.BackendKeyDataMessage = exports.AuthenticationMD5Password = exports.ParameterStatusMessage = exports.ParameterDescriptionMessage = exports.RowDescriptionMessage = exports.Field = exports.CopyResponse = exports.CopyDataMessage = exports.DatabaseError = exports.copyDone = exports.emptyQuery = exports.replicationStart = exports.portalSuspended = exports.noData = exports.closeComplete = exports.bindComplete = exports.parseComplete = undefined;
@@ -2295,7 +2312,7 @@ var require_messages = __commonJS((exports) => {
   exports.NoticeMessage = NoticeMessage;
 });
 
-// ../../node_modules/.bun/pg-protocol@1.14.0/node_modules/pg-protocol/dist/buffer-writer.js
+// ../../node_modules/.bun/pg-protocol@1.16.0/node_modules/pg-protocol/dist/buffer-writer.js
 var require_buffer_writer = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Writer = undefined;
@@ -2349,6 +2366,19 @@ var require_buffer_writer = __commonJS((exports) => {
       this.offset += len;
       return this;
     }
+    addInt32PrefixedString(string4) {
+      const len = Buffer.byteLength(string4);
+      this.ensure(4 + len);
+      const buffer2 = this.buffer;
+      let offset = this.offset;
+      buffer2[offset++] = len >>> 24 & 255;
+      buffer2[offset++] = len >>> 16 & 255;
+      buffer2[offset++] = len >>> 8 & 255;
+      buffer2[offset++] = len >>> 0 & 255;
+      buffer2.write(string4, offset, "utf-8");
+      this.offset = offset + len;
+      return this;
+    }
     add(otherBuffer) {
       this.ensure(otherBuffer.length);
       otherBuffer.copy(this.buffer, this.offset);
@@ -2370,11 +2400,15 @@ var require_buffer_writer = __commonJS((exports) => {
       this.buffer = Buffer.allocUnsafe(this.size);
       return result3;
     }
+    clear() {
+      this.offset = 5;
+      this.headerPosition = 0;
+    }
   }
   exports.Writer = Writer;
 });
 
-// ../../node_modules/.bun/pg-protocol@1.14.0/node_modules/pg-protocol/dist/serializer.js
+// ../../node_modules/.bun/pg-protocol@1.16.0/node_modules/pg-protocol/dist/serializer.js
 var require_serializer = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.serialize = undefined;
@@ -2400,7 +2434,7 @@ var require_serializer = __commonJS((exports) => {
     return writer.addCString(password2).flush(112);
   };
   var sendSASLInitialResponseMessage = function(mechanism, initialResponse) {
-    writer.addCString(mechanism).addInt32(Buffer.byteLength(initialResponse)).addString(initialResponse);
+    writer.addCString(mechanism).addInt32PrefixedString(initialResponse);
     return writer.flush(112);
   };
   var sendSCRAMClientFinalMessage = function(additionalData) {
@@ -2426,9 +2460,9 @@ var require_serializer = __commonJS((exports) => {
     return writer.flush(80);
   };
   var paramWriter = new buffer_writer_1.Writer;
-  var writeValues = function(values2, valueMapper) {
+  var writeValues = function(values2, valueMapper2) {
     for (let i = 0;i < values2.length; i++) {
-      const mappedVal = valueMapper ? valueMapper(values2[i], i) : values2[i];
+      const mappedVal = valueMapper2 ? valueMapper2(values2[i], i) : values2[i];
       if (mappedVal == null) {
         writer.addInt16(0);
         paramWriter.addInt32(-1);
@@ -2438,8 +2472,7 @@ var require_serializer = __commonJS((exports) => {
         paramWriter.add(mappedVal);
       } else {
         writer.addInt16(0);
-        paramWriter.addInt32(Buffer.byteLength(mappedVal));
-        paramWriter.addString(mappedVal);
+        paramWriter.addInt32PrefixedString(mappedVal);
       }
     }
   };
@@ -2451,7 +2484,13 @@ var require_serializer = __commonJS((exports) => {
     const len = values2.length;
     writer.addCString(portal).addCString(statement2);
     writer.addInt16(len);
-    writeValues(values2, config.valueMapper);
+    try {
+      writeValues(values2, config.valueMapper);
+    } catch (err) {
+      writer.clear();
+      paramWriter.clear();
+      throw err;
+    }
     writer.addInt16(len);
     writer.add(paramWriter.flush());
     writer.addInt16(1);
@@ -2537,7 +2576,7 @@ var require_serializer = __commonJS((exports) => {
   exports.serialize = serialize;
 });
 
-// ../../node_modules/.bun/pg-protocol@1.14.0/node_modules/pg-protocol/dist/buffer-reader.js
+// ../../node_modules/.bun/pg-protocol@1.16.0/node_modules/pg-protocol/dist/buffer-reader.js
 var require_buffer_reader = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.BufferReader = undefined;
@@ -2580,7 +2619,7 @@ var require_buffer_reader = __commonJS((exports) => {
     cstring() {
       const start = this.offset;
       let end = start;
-      while (this.buffer[end++] !== 0) {}
+      while (this.buffer[end++]) {}
       this.offset = end;
       return this.buffer.toString(this.encoding, start, end - 1);
     }
@@ -2593,7 +2632,7 @@ var require_buffer_reader = __commonJS((exports) => {
   exports.BufferReader = BufferReader;
 });
 
-// ../../node_modules/.bun/pg-protocol@1.14.0/node_modules/pg-protocol/dist/parser.js
+// ../../node_modules/.bun/pg-protocol@1.16.0/node_modules/pg-protocol/dist/parser.js
 var require_parser = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
   exports.Parser = undefined;
@@ -2799,7 +2838,7 @@ var require_parser = __commonJS((exports) => {
     const parameterCount = reader.int16();
     const message = new messages_1.ParameterDescriptionMessage(LATEINIT_LENGTH, parameterCount);
     for (let i = 0;i < parameterCount; i++) {
-      message.dataTypeIDs[i] = reader.int32();
+      message.dataTypeIDs[i] = reader.uint32();
     }
     return message;
   };
@@ -2898,10 +2937,11 @@ var require_parser = __commonJS((exports) => {
   };
 });
 
-// ../../node_modules/.bun/pg-protocol@1.14.0/node_modules/pg-protocol/dist/index.js
+// ../../node_modules/.bun/pg-protocol@1.16.0/node_modules/pg-protocol/dist/index.js
 var require_dist = __commonJS((exports) => {
   Object.defineProperty(exports, "__esModule", { value: true });
-  exports.DatabaseError = exports.serialize = exports.parse = undefined;
+  exports.DatabaseError = exports.serialize = undefined;
+  exports.parse = parse3;
   var messages_1 = require_messages();
   Object.defineProperty(exports, "DatabaseError", { enumerable: true, get: function() {
     return messages_1.DatabaseError;
@@ -2916,7 +2956,6 @@ var require_dist = __commonJS((exports) => {
     stream2.on("data", (buffer2) => parser.parse(buffer2, callback4));
     return new Promise((resolve2) => stream2.on("end", () => resolve2()));
   }
-  exports.parse = parse3;
 });
 
 // ../../node_modules/.bun/pg-cloudflare@1.4.0/node_modules/pg-cloudflare/dist/empty.js
@@ -2925,7 +2964,7 @@ var require_empty = __commonJS((exports) => {
   exports.default = {};
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/stream.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/stream.js
 var require_stream = __commonJS((exports, module) => {
   var { getStream, getSecureStream } = getStreamFuncs();
   module.exports = {
@@ -2980,11 +3019,12 @@ var require_stream = __commonJS((exports, module) => {
   }
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/connection.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/connection.js
 var require_connection = __commonJS((exports, module) => {
   var EventEmitter = __require("events").EventEmitter;
   var { parse: parse3, serialize } = require_dist();
-  var { getStream, getSecureStream } = require_stream();
+  var stream2 = require_stream();
+  var { getStream } = stream2;
   var flushBuffer = serialize.flush();
   var syncBuffer = serialize.sync();
   var endBuffer = serialize.end();
@@ -3000,7 +3040,9 @@ var require_connection = __commonJS((exports, module) => {
       this._keepAlive = config.keepAlive;
       this._keepAliveInitialDelayMillis = config.keepAliveInitialDelayMillis;
       this.parsedStatements = {};
+      this.submittedNamedStatements = {};
       this.ssl = config.ssl || false;
+      this.sslNegotiation = config.sslNegotiation || "postgres";
       this._ending = false;
       this._emitMessage = false;
       const self = this;
@@ -3034,6 +3076,11 @@ var require_connection = __commonJS((exports, module) => {
       if (!this.ssl) {
         return this.attachListeners(this.stream);
       }
+      if (this.sslNegotiation === "direct") {
+        return this.stream.once("connect", function() {
+          self.upgradeToSSL(host, reportStreamError);
+        });
+      }
       this.stream.once("data", function(buffer2) {
         const responseCode = buffer2.toString("utf8");
         switch (responseCode) {
@@ -3046,31 +3093,38 @@ var require_connection = __commonJS((exports, module) => {
             self.stream.end();
             return self.emit("error", new Error("There was an error establishing an SSL connection"));
         }
-        const options = {
-          socket: self.stream
-        };
-        if (self.ssl !== true) {
-          Object.assign(options, self.ssl);
-          if ("key" in self.ssl) {
-            options.key = self.ssl.key;
-          }
-        }
-        const net = __require("net");
-        if (net.isIP && net.isIP(host) === 0) {
-          options.servername = host;
-        }
-        try {
-          self.stream = getSecureStream(options);
-        } catch (err) {
-          return self.emit("error", err);
-        }
-        self.attachListeners(self.stream);
-        self.stream.on("error", reportStreamError);
-        self.emit("sslconnect");
+        self.upgradeToSSL(host, reportStreamError);
       });
     }
-    attachListeners(stream2) {
-      parse3(stream2, (msg) => {
+    upgradeToSSL(host, reportStreamError) {
+      const self = this;
+      const options = {
+        socket: self.stream
+      };
+      if (self.ssl !== true) {
+        Object.assign(options, self.ssl);
+        if ("key" in self.ssl) {
+          options.key = self.ssl.key;
+        }
+      }
+      if (self.sslNegotiation === "direct") {
+        options.ALPNProtocols = ["postgresql"];
+      }
+      const net = __require("net");
+      if (net.isIP && net.isIP(host) === 0) {
+        options.servername = host;
+      }
+      try {
+        self.stream = stream2.getSecureStream(options);
+      } catch (err) {
+        return self.emit("error", err);
+      }
+      self.attachListeners(self.stream);
+      self.stream.on("error", reportStreamError);
+      self.emit("sslconnect");
+    }
+    attachListeners(stream3) {
+      parse3(stream3, (msg) => {
         const eventName = msg.name === "error" ? "errorMessage" : msg.name;
         if (this._emitMessage) {
           this.emit("message", msg);
@@ -3439,7 +3493,7 @@ var require_lib = __commonJS((exports, module) => {
   module.exports.warnTo = helper.warnTo;
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/client.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/client.js
 var require_client = __commonJS((exports, module) => {
   var EventEmitter = __require("events").EventEmitter;
   var utils = require_utils();
@@ -3501,15 +3555,19 @@ var require_client = __commonJS((exports, module) => {
       this.connection = c.connection || new Connection({
         stream: c.stream,
         ssl: this.connectionParameters.ssl,
+        sslNegotiation: this.connectionParameters.sslnegotiation,
         keepAlive: c.keepAlive || false,
         keepAliveInitialDelayMillis: c.keepAliveInitialDelayMillis || 0,
         encoding: this.connectionParameters.client_encoding || "utf8"
       });
       this._queryQueue = [];
+      this._sentQueryQueue = [];
+      this.pipeline = Boolean(c.pipeline);
       this.binary = c.binary || defaults.binary;
       this.processID = null;
       this.secretKey = null;
       this.ssl = this.connectionParameters.ssl || false;
+      this.sslNegotiation = this.connectionParameters.sslnegotiation || "postgres";
       if (this.ssl && this.ssl.key) {
         Object.defineProperty(this.ssl, "key", {
           enumerable: false
@@ -3539,6 +3597,8 @@ var require_client = __commonJS((exports, module) => {
         enqueueError(activeQuery);
         this._activeQuery = null;
       }
+      this._sentQueryQueue.forEach(enqueueError);
+      this._sentQueryQueue.length = 0;
       this._queryQueue.forEach(enqueueError);
       this._queryQueue.length = 0;
     }
@@ -3570,7 +3630,9 @@ var require_client = __commonJS((exports, module) => {
       }
       con.on("connect", function() {
         if (self.ssl) {
-          con.requestSsl();
+          if (self.sslNegotiation !== "direct") {
+            con.requestSsl();
+          }
         } else {
           con.startup(self.getStartupConf());
         }
@@ -3764,6 +3826,9 @@ var require_client = __commonJS((exports, module) => {
         return;
       }
       this._activeQuery = null;
+      if (activeQuery.name) {
+        delete this.connection.submittedNamedStatements[activeQuery.name];
+      }
       activeQuery.handleError(msg, this.connection);
     }
     _handleRowDescription(msg) {
@@ -3820,6 +3885,7 @@ var require_client = __commonJS((exports, module) => {
       }
       if (activeQuery.name) {
         this.connection.parsedStatements[activeQuery.name] = activeQuery.text;
+        delete this.connection.submittedNamedStatements[activeQuery.name];
       }
     }
     _handleCopyInResponse(msg) {
@@ -3886,6 +3952,8 @@ var require_client = __commonJS((exports, module) => {
         });
       } else if (client._queryQueue.indexOf(query) !== -1) {
         client._queryQueue.splice(client._queryQueue.indexOf(query), 1);
+      } else if (client._sentQueryQueue.indexOf(query) !== -1) {
+        query.callback = () => {};
       }
     }
     setTypeParser(oid, format4, parseFn) {
@@ -3901,6 +3969,10 @@ var require_client = __commonJS((exports, module) => {
       return utils.escapeLiteral(str);
     }
     _pulseQueryQueue() {
+      if (this.pipeline) {
+        this._pulsePipelinedQueryQueue();
+        return;
+      }
       if (this.readyForQuery === true) {
         this._activeQuery = this._queryQueue.shift();
         const activeQuery = this._getActiveQuery();
@@ -3919,6 +3991,30 @@ var require_client = __commonJS((exports, module) => {
           this._activeQuery = null;
           this.emit("drain");
         }
+      }
+    }
+    _pulsePipelinedQueryQueue() {
+      if (!this._connected || !this._queryable) {
+        return;
+      }
+      while (this._queryQueue.length > 0) {
+        const query = this._queryQueue.shift();
+        this.hasExecuted = true;
+        const queryError = query.submit(this.connection);
+        if (queryError) {
+          process.nextTick(() => {
+            query.handleError(queryError, this.connection);
+          });
+          continue;
+        }
+        this._sentQueryQueue.push(query);
+      }
+      if (this.readyForQuery && !this._activeQuery && this._sentQueryQueue.length > 0) {
+        this._activeQuery = this._sentQueryQueue.shift();
+        this.readyForQuery = false;
+      }
+      if (!this._activeQuery && this._sentQueryQueue.length === 0 && this._queryQueue.length === 0 && this.hasExecuted) {
+        this.emit("drain");
       }
     }
     query(config, values2, callback4) {
@@ -3962,6 +4058,9 @@ var require_client = __commonJS((exports, module) => {
           const index2 = this._queryQueue.indexOf(query);
           if (index2 > -1) {
             this._queryQueue.splice(index2, 1);
+          } else if (this.pipeline) {
+            this.connection.stream.destroy();
+            return;
           }
           this._pulseQueryQueue();
         }, readTimeout);
@@ -3988,7 +4087,7 @@ var require_client = __commonJS((exports, module) => {
         });
         return result3;
       }
-      if (this._queryQueue.length > 0) {
+      if (this._queryQueue.length > 0 && !this.pipeline) {
         queryQueueLengthDeprecationNotice();
       }
       this._queryQueue.push(query);
@@ -4014,7 +4113,11 @@ var require_client = __commonJS((exports, module) => {
           return this._Promise.resolve();
         }
       }
-      if (this._getActiveQuery() || !this._queryable) {
+      if (!this._queryable) {
+        this.connection.stream.destroy();
+      } else if (this.pipeline && (this._getActiveQuery() || this._sentQueryQueue.length > 0 || this._queryQueue.length > 0)) {
+        this.once("drain", () => this.connection.end());
+      } else if (this._getActiveQuery()) {
         this.connection.stream.destroy();
       } else {
         this.connection.end();
@@ -4036,7 +4139,7 @@ var require_client = __commonJS((exports, module) => {
   module.exports = Client;
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/defaults.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/defaults.js
 var require_defaults2 = __commonJS((exports, module) => {
   var user;
   try {
@@ -4055,6 +4158,7 @@ var require_defaults2 = __commonJS((exports, module) => {
     idleTimeoutMillis: 30000,
     client_encoding: "",
     ssl: false,
+    sslnegotiation: undefined,
     application_name: undefined,
     fallback_application_name: undefined,
     options: undefined,
@@ -4076,7 +4180,7 @@ var require_defaults2 = __commonJS((exports, module) => {
   });
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/utils.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/utils.js
 var require_utils3 = __commonJS((exports, module) => {
   var defaults = require_defaults2();
   var { isDate } = __require("util/types");
@@ -4225,7 +4329,7 @@ var require_utils3 = __commonJS((exports, module) => {
   };
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/crypto/utils.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/crypto/utils.js
 var require_utils4 = __commonJS((exports, module) => {
   var nodeCrypto = __require("crypto");
   module.exports = {
@@ -4274,7 +4378,7 @@ var require_utils4 = __commonJS((exports, module) => {
   }
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/crypto/cert-signatures.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/crypto/cert-signatures.js
 var require_cert_signatures2 = __commonJS((exports, module) => {
   function x509Error(msg, cert) {
     return new Error("SASL channel binding: " + msg + " when parsing public certificate " + cert.toString("base64"));
@@ -4386,7 +4490,7 @@ var require_cert_signatures2 = __commonJS((exports, module) => {
   module.exports = { signatureAlgorithmHashFromCertificate };
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/crypto/sasl.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/crypto/sasl.js
 var require_sasl2 = __commonJS((exports, module) => {
   var crypto = require_utils4();
   var { signatureAlgorithmHashFromCertificate } = require_cert_signatures2();
@@ -4566,7 +4670,7 @@ var require_sasl2 = __commonJS((exports, module) => {
   };
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/type-overrides.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/type-overrides.js
 var require_type_overrides2 = __commonJS((exports, module) => {
   var types = require_pg_types();
   function TypeOverrides(userTypes) {
@@ -4598,7 +4702,7 @@ var require_type_overrides2 = __commonJS((exports, module) => {
   module.exports = TypeOverrides;
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/connection-parameters.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/connection-parameters.js
 var require_connection_parameters2 = __commonJS((exports, module) => {
   var dns = __require("dns");
   var defaults = require_defaults2();
@@ -4673,6 +4777,13 @@ var require_connection_parameters2 = __commonJS((exports, module) => {
           enumerable: false
         });
       }
+      this.sslnegotiation = val("sslnegotiation", config, "PGSSLNEGOTIATION");
+      if (this.sslnegotiation !== undefined && this.sslnegotiation !== "postgres" && this.sslnegotiation !== "direct") {
+        throw new Error(`Invalid sslnegotiation value: "${this.sslnegotiation}". Valid values are "postgres" and "direct".`);
+      }
+      if (this.sslnegotiation === "direct" && !this.ssl) {
+        throw new Error("sslnegotiation=direct requires SSL to be enabled");
+      }
       this.client_encoding = val("client_encoding", config);
       this.replication = val("replication", config);
       this.isDomainSocket = !(this.host || "").indexOf("/");
@@ -4711,6 +4822,7 @@ var require_connection_parameters2 = __commonJS((exports, module) => {
       add4(params, ssl, "sslkey");
       add4(params, ssl, "sslcert");
       add4(params, ssl, "sslrootcert");
+      add4(params, this, "sslnegotiation");
       if (this.database) {
         params.push("dbname=" + quoteParamValue(this.database));
       }
@@ -4737,7 +4849,7 @@ var require_connection_parameters2 = __commonJS((exports, module) => {
   module.exports = ConnectionParameters;
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/result.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/result.js
 var require_result2 = __commonJS((exports, module) => {
   var types = require_pg_types();
   var matchRegexp = /^([A-Za-z]+)(?: (\d+))?(?: (\d+))?/;
@@ -4825,7 +4937,7 @@ var require_result2 = __commonJS((exports, module) => {
   module.exports = Result2;
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/query.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/query.js
 var require_query2 = __commonJS((exports, module) => {
   var { EventEmitter } = __require("events");
   var Result2 = require_result2();
@@ -4941,7 +5053,7 @@ var require_query2 = __commonJS((exports, module) => {
       if (typeof this.text !== "string" && typeof this.name !== "string") {
         return new Error("A query must have either text or a name. Supplying neither is unsupported.");
       }
-      const previous = connection.parsedStatements[this.name];
+      const previous = connection.parsedStatements[this.name] || connection.submittedNamedStatements[this.name];
       if (this.text && previous && this.text !== previous) {
         return new Error(`Prepared statements must be unique - '${this.name}' was used for a different statement`);
       }
@@ -4961,7 +5073,7 @@ var require_query2 = __commonJS((exports, module) => {
       return null;
     }
     hasBeenParsed(connection) {
-      return this.name && connection.parsedStatements[this.name];
+      return this.name && (connection.parsedStatements[this.name] || connection.submittedNamedStatements[this.name]);
     }
     handlePortalSuspended(connection) {
       this._getRows(connection, this.rows);
@@ -4984,6 +5096,9 @@ var require_query2 = __commonJS((exports, module) => {
           name: this.name,
           types: this.types
         });
+        if (this.name) {
+          connection.submittedNamedStatements[this.name] = this.text;
+        }
       }
       try {
         connection.bind({
@@ -4994,6 +5109,8 @@ var require_query2 = __commonJS((exports, module) => {
           valueMapper: utils.prepareValue
         });
       } catch (err) {
+        connection.close({ type: "S", name: this.name });
+        connection.sync();
         this.handleError(err, connection);
         return;
       }
@@ -5011,7 +5128,7 @@ var require_query2 = __commonJS((exports, module) => {
   module.exports = Query;
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/stream.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/stream.js
 var require_stream2 = __commonJS((exports, module) => {
   var { getStream, getSecureStream } = getStreamFuncs();
   module.exports = {
@@ -5066,11 +5183,12 @@ var require_stream2 = __commonJS((exports, module) => {
   }
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/connection.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/connection.js
 var require_connection2 = __commonJS((exports, module) => {
   var EventEmitter = __require("events").EventEmitter;
   var { parse: parse3, serialize } = require_dist();
-  var { getStream, getSecureStream } = require_stream2();
+  var stream2 = require_stream2();
+  var { getStream } = stream2;
   var flushBuffer = serialize.flush();
   var syncBuffer = serialize.sync();
   var endBuffer = serialize.end();
@@ -5086,7 +5204,9 @@ var require_connection2 = __commonJS((exports, module) => {
       this._keepAlive = config.keepAlive;
       this._keepAliveInitialDelayMillis = config.keepAliveInitialDelayMillis;
       this.parsedStatements = {};
+      this.submittedNamedStatements = {};
       this.ssl = config.ssl || false;
+      this.sslNegotiation = config.sslNegotiation || "postgres";
       this._ending = false;
       this._emitMessage = false;
       const self = this;
@@ -5120,6 +5240,11 @@ var require_connection2 = __commonJS((exports, module) => {
       if (!this.ssl) {
         return this.attachListeners(this.stream);
       }
+      if (this.sslNegotiation === "direct") {
+        return this.stream.once("connect", function() {
+          self.upgradeToSSL(host, reportStreamError);
+        });
+      }
       this.stream.once("data", function(buffer2) {
         const responseCode = buffer2.toString("utf8");
         switch (responseCode) {
@@ -5132,31 +5257,38 @@ var require_connection2 = __commonJS((exports, module) => {
             self.stream.end();
             return self.emit("error", new Error("There was an error establishing an SSL connection"));
         }
-        const options = {
-          socket: self.stream
-        };
-        if (self.ssl !== true) {
-          Object.assign(options, self.ssl);
-          if ("key" in self.ssl) {
-            options.key = self.ssl.key;
-          }
-        }
-        const net = __require("net");
-        if (net.isIP && net.isIP(host) === 0) {
-          options.servername = host;
-        }
-        try {
-          self.stream = getSecureStream(options);
-        } catch (err) {
-          return self.emit("error", err);
-        }
-        self.attachListeners(self.stream);
-        self.stream.on("error", reportStreamError);
-        self.emit("sslconnect");
+        self.upgradeToSSL(host, reportStreamError);
       });
     }
-    attachListeners(stream2) {
-      parse3(stream2, (msg) => {
+    upgradeToSSL(host, reportStreamError) {
+      const self = this;
+      const options = {
+        socket: self.stream
+      };
+      if (self.ssl !== true) {
+        Object.assign(options, self.ssl);
+        if ("key" in self.ssl) {
+          options.key = self.ssl.key;
+        }
+      }
+      if (self.sslNegotiation === "direct") {
+        options.ALPNProtocols = ["postgresql"];
+      }
+      const net = __require("net");
+      if (net.isIP && net.isIP(host) === 0) {
+        options.servername = host;
+      }
+      try {
+        self.stream = stream2.getSecureStream(options);
+      } catch (err) {
+        return self.emit("error", err);
+      }
+      self.attachListeners(self.stream);
+      self.stream.on("error", reportStreamError);
+      self.emit("sslconnect");
+    }
+    attachListeners(stream3) {
+      parse3(stream3, (msg) => {
         const eventName = msg.name === "error" ? "errorMessage" : msg.name;
         if (this._emitMessage) {
           this.emit("message", msg);
@@ -5244,7 +5376,7 @@ var require_connection2 = __commonJS((exports, module) => {
   module.exports = Connection;
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/client.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/client.js
 var require_client2 = __commonJS((exports, module) => {
   var EventEmitter = __require("events").EventEmitter;
   var utils = require_utils3();
@@ -5306,15 +5438,19 @@ var require_client2 = __commonJS((exports, module) => {
       this.connection = c.connection || new Connection({
         stream: c.stream,
         ssl: this.connectionParameters.ssl,
+        sslNegotiation: this.connectionParameters.sslnegotiation,
         keepAlive: c.keepAlive || false,
         keepAliveInitialDelayMillis: c.keepAliveInitialDelayMillis || 0,
         encoding: this.connectionParameters.client_encoding || "utf8"
       });
       this._queryQueue = [];
+      this._sentQueryQueue = [];
+      this.pipeline = Boolean(c.pipeline);
       this.binary = c.binary || defaults.binary;
       this.processID = null;
       this.secretKey = null;
       this.ssl = this.connectionParameters.ssl || false;
+      this.sslNegotiation = this.connectionParameters.sslnegotiation || "postgres";
       if (this.ssl && this.ssl.key) {
         Object.defineProperty(this.ssl, "key", {
           enumerable: false
@@ -5344,6 +5480,8 @@ var require_client2 = __commonJS((exports, module) => {
         enqueueError(activeQuery);
         this._activeQuery = null;
       }
+      this._sentQueryQueue.forEach(enqueueError);
+      this._sentQueryQueue.length = 0;
       this._queryQueue.forEach(enqueueError);
       this._queryQueue.length = 0;
     }
@@ -5375,7 +5513,9 @@ var require_client2 = __commonJS((exports, module) => {
       }
       con.on("connect", function() {
         if (self.ssl) {
-          con.requestSsl();
+          if (self.sslNegotiation !== "direct") {
+            con.requestSsl();
+          }
         } else {
           con.startup(self.getStartupConf());
         }
@@ -5569,6 +5709,9 @@ var require_client2 = __commonJS((exports, module) => {
         return;
       }
       this._activeQuery = null;
+      if (activeQuery.name) {
+        delete this.connection.submittedNamedStatements[activeQuery.name];
+      }
       activeQuery.handleError(msg, this.connection);
     }
     _handleRowDescription(msg) {
@@ -5625,6 +5768,7 @@ var require_client2 = __commonJS((exports, module) => {
       }
       if (activeQuery.name) {
         this.connection.parsedStatements[activeQuery.name] = activeQuery.text;
+        delete this.connection.submittedNamedStatements[activeQuery.name];
       }
     }
     _handleCopyInResponse(msg) {
@@ -5691,6 +5835,8 @@ var require_client2 = __commonJS((exports, module) => {
         });
       } else if (client._queryQueue.indexOf(query) !== -1) {
         client._queryQueue.splice(client._queryQueue.indexOf(query), 1);
+      } else if (client._sentQueryQueue.indexOf(query) !== -1) {
+        query.callback = () => {};
       }
     }
     setTypeParser(oid, format4, parseFn) {
@@ -5706,6 +5852,10 @@ var require_client2 = __commonJS((exports, module) => {
       return utils.escapeLiteral(str);
     }
     _pulseQueryQueue() {
+      if (this.pipeline) {
+        this._pulsePipelinedQueryQueue();
+        return;
+      }
       if (this.readyForQuery === true) {
         this._activeQuery = this._queryQueue.shift();
         const activeQuery = this._getActiveQuery();
@@ -5724,6 +5874,30 @@ var require_client2 = __commonJS((exports, module) => {
           this._activeQuery = null;
           this.emit("drain");
         }
+      }
+    }
+    _pulsePipelinedQueryQueue() {
+      if (!this._connected || !this._queryable) {
+        return;
+      }
+      while (this._queryQueue.length > 0) {
+        const query = this._queryQueue.shift();
+        this.hasExecuted = true;
+        const queryError = query.submit(this.connection);
+        if (queryError) {
+          process.nextTick(() => {
+            query.handleError(queryError, this.connection);
+          });
+          continue;
+        }
+        this._sentQueryQueue.push(query);
+      }
+      if (this.readyForQuery && !this._activeQuery && this._sentQueryQueue.length > 0) {
+        this._activeQuery = this._sentQueryQueue.shift();
+        this.readyForQuery = false;
+      }
+      if (!this._activeQuery && this._sentQueryQueue.length === 0 && this._queryQueue.length === 0 && this.hasExecuted) {
+        this.emit("drain");
       }
     }
     query(config, values2, callback4) {
@@ -5767,6 +5941,9 @@ var require_client2 = __commonJS((exports, module) => {
           const index2 = this._queryQueue.indexOf(query);
           if (index2 > -1) {
             this._queryQueue.splice(index2, 1);
+          } else if (this.pipeline) {
+            this.connection.stream.destroy();
+            return;
           }
           this._pulseQueryQueue();
         }, readTimeout);
@@ -5793,7 +5970,7 @@ var require_client2 = __commonJS((exports, module) => {
         });
         return result3;
       }
-      if (this._queryQueue.length > 0) {
+      if (this._queryQueue.length > 0 && !this.pipeline) {
         queryQueueLengthDeprecationNotice();
       }
       this._queryQueue.push(query);
@@ -5819,7 +5996,11 @@ var require_client2 = __commonJS((exports, module) => {
           return this._Promise.resolve();
         }
       }
-      if (this._getActiveQuery() || !this._queryable) {
+      if (!this._queryable) {
+        this.connection.stream.destroy();
+      } else if (this.pipeline && (this._getActiveQuery() || this._sentQueryQueue.length > 0 || this._queryQueue.length > 0)) {
+        this.once("drain", () => this.connection.end());
+      } else if (this._getActiveQuery()) {
         this.connection.stream.destroy();
       } else {
         this.connection.end();
@@ -5841,7 +6022,7 @@ var require_client2 = __commonJS((exports, module) => {
   module.exports = Client;
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/native/query.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/native/query.js
 var require_query3 = __commonJS((exports, module) => {
   var EventEmitter = __require("events").EventEmitter;
   var util = __require("util");
@@ -5878,7 +6059,7 @@ var require_query3 = __commonJS((exports, module) => {
     sourceFunction: "routine"
   };
   NativeQuery.prototype.handleError = function(err) {
-    const fields = this.native.pq.resultErrorFields();
+    const fields = this.native && this.native.pq.resultErrorFields();
     if (fields) {
       for (const key in fields) {
         const normalizedFieldName = errorFieldMap[key] || key;
@@ -5977,7 +6158,7 @@ var require_query3 = __commonJS((exports, module) => {
   };
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/native/client.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/native/client.js
 var require_client3 = __commonJS((exports, module) => {
   var nodeUtils = __require("util");
   var Native;
@@ -6005,6 +6186,8 @@ var require_client3 = __commonJS((exports, module) => {
     this._connecting = false;
     this._connected = false;
     this._queryable = true;
+    this.pipeline = Boolean(config.pipeline);
+    this._pipelineInFlight = false;
     const cp = this.connectionParameters = new ConnectionParameters(config);
     if (config.nativeConnectionString)
       cp.nativeConnectionString = config.nativeConnectionString;
@@ -6149,7 +6332,7 @@ var require_client3 = __commonJS((exports, module) => {
       });
       return result3;
     }
-    if (this._queryQueue.length > 0) {
+    if (this._queryQueue.length > 0 && !this.pipeline) {
       queryQueueLengthDeprecationNotice();
     }
     this._queryQueue.push(query);
@@ -6170,15 +6353,22 @@ var require_client3 = __commonJS((exports, module) => {
         cb = (err) => err ? reject(err) : resolve2();
       });
     }
-    this.native.end(function() {
-      self._connected = false;
-      self._errorAllQueries(new Error("Connection terminated"));
-      process.nextTick(() => {
-        self.emit("end");
-        if (cb)
-          cb();
+    const doEnd = function() {
+      self.native.end(function() {
+        self._connected = false;
+        self._errorAllQueries(new Error("Connection terminated"));
+        process.nextTick(() => {
+          self.emit("end");
+          if (cb)
+            cb();
+        });
       });
-    });
+    };
+    if (this.pipeline && (this._pipelineInFlight || this._queryQueue.length > 0)) {
+      this.once("drain", doEnd);
+    } else {
+      doEnd();
+    }
     return result3;
   };
   Client.prototype._hasActiveQuery = function() {
@@ -6187,6 +6377,9 @@ var require_client3 = __commonJS((exports, module) => {
   Client.prototype._pulseQueryQueue = function(initialConnection) {
     if (!this._connected) {
       return;
+    }
+    if (this.pipeline && !initialConnection) {
+      return this._pulsePipelinedQueryQueue();
     }
     if (this._hasActiveQuery()) {
       return;
@@ -6203,6 +6396,69 @@ var require_client3 = __commonJS((exports, module) => {
     const self = this;
     query.once("_done", function() {
       self._pulseQueryQueue();
+    });
+  };
+  Client.prototype._pulsePipelinedQueryQueue = function() {
+    if (!this._connected || this._pipelineInFlight) {
+      return;
+    }
+    if (this._queryQueue.length === 0) {
+      if (this.hasExecuted) {
+        this.emit("drain");
+      }
+      return;
+    }
+    this._pipelineInFlight = true;
+    const self = this;
+    const queries = [];
+    const nativeQueries = [];
+    const utils = require_utils3();
+    while (this._queryQueue.length > 0) {
+      const query = this._queryQueue.shift();
+      this.hasExecuted = true;
+      nativeQueries.push(query);
+      const values2 = query.values ? query.values.map(utils.prepareValue) : null;
+      const pipelineEntry = { text: query.text, name: query.name };
+      if (values2) {
+        pipelineEntry.values = values2;
+      }
+      if (query.name && this.namedQueries[query.name]) {
+        pipelineEntry._alreadyPrepared = true;
+      }
+      queries.push(pipelineEntry);
+    }
+    this.native.pipeline(queries, function(err, results) {
+      self._pipelineInFlight = false;
+      if (err) {
+        for (let i = 0;i < nativeQueries.length; i++) {
+          const q = nativeQueries[i];
+          q.native = self.native;
+          q.handleError(err);
+        }
+        self._pulsePipelinedQueryQueue();
+        return;
+      }
+      for (let i = 0;i < nativeQueries.length; i++) {
+        const q = nativeQueries[i];
+        const r = results[i];
+        q.native = self.native;
+        if (r.err) {
+          q.handleError(r.err);
+        } else {
+          if (q.name) {
+            self.namedQueries[q.name] = q.text;
+          }
+          q.state = "end";
+          q.emit("end", r.result);
+          if (q.callback) {
+            q.callback(null, r.result);
+          }
+        }
+        setImmediate(function() {
+          q.emit("_done");
+        });
+      }
+      self._pulsePipelinedQueryQueue();
     });
   };
   Client.prototype.cancel = function(query) {
@@ -6228,7 +6484,7 @@ var require_client3 = __commonJS((exports, module) => {
   };
 });
 
-// ../../node_modules/.bun/pg@8.21.0/node_modules/pg/lib/index.js
+// ../../node_modules/.bun/pg@8.23.0/node_modules/pg/lib/index.js
 var require_lib2 = __commonJS((exports, module) => {
   var Client = require_client2();
   var defaults = require_defaults2();
@@ -6290,7 +6546,7 @@ var require_lib2 = __commonJS((exports, module) => {
   });
 });
 
-// ../../node_modules/.bun/pg-pool@3.14.0+089ae586d7e96dbe/node_modules/pg-pool/index.js
+// ../../node_modules/.bun/pg-pool@3.14.0+00a0136bc273dfed/node_modules/pg-pool/index.js
 var require_pg_pool = __commonJS((exports, module) => {
   var EventEmitter = __require("events").EventEmitter;
   var NOOP = function() {};
@@ -6702,7 +6958,7 @@ var require_pg_pool = __commonJS((exports, module) => {
   module.exports = Pool;
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/native/query.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/native/query.js
 var require_query4 = __commonJS((exports, module) => {
   var EventEmitter = __require("events").EventEmitter;
   var util = __require("util");
@@ -6739,7 +6995,7 @@ var require_query4 = __commonJS((exports, module) => {
     sourceFunction: "routine"
   };
   NativeQuery.prototype.handleError = function(err) {
-    const fields = this.native.pq.resultErrorFields();
+    const fields = this.native && this.native.pq.resultErrorFields();
     if (fields) {
       for (const key in fields) {
         const normalizedFieldName = errorFieldMap[key] || key;
@@ -6838,7 +7094,7 @@ var require_query4 = __commonJS((exports, module) => {
   };
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/native/client.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/native/client.js
 var require_client4 = __commonJS((exports, module) => {
   var nodeUtils = __require("util");
   var Native;
@@ -6866,6 +7122,8 @@ var require_client4 = __commonJS((exports, module) => {
     this._connecting = false;
     this._connected = false;
     this._queryable = true;
+    this.pipeline = Boolean(config.pipeline);
+    this._pipelineInFlight = false;
     const cp = this.connectionParameters = new ConnectionParameters(config);
     if (config.nativeConnectionString)
       cp.nativeConnectionString = config.nativeConnectionString;
@@ -7010,7 +7268,7 @@ var require_client4 = __commonJS((exports, module) => {
       });
       return result3;
     }
-    if (this._queryQueue.length > 0) {
+    if (this._queryQueue.length > 0 && !this.pipeline) {
       queryQueueLengthDeprecationNotice();
     }
     this._queryQueue.push(query);
@@ -7031,15 +7289,22 @@ var require_client4 = __commonJS((exports, module) => {
         cb = (err) => err ? reject(err) : resolve2();
       });
     }
-    this.native.end(function() {
-      self._connected = false;
-      self._errorAllQueries(new Error("Connection terminated"));
-      process.nextTick(() => {
-        self.emit("end");
-        if (cb)
-          cb();
+    const doEnd = function() {
+      self.native.end(function() {
+        self._connected = false;
+        self._errorAllQueries(new Error("Connection terminated"));
+        process.nextTick(() => {
+          self.emit("end");
+          if (cb)
+            cb();
+        });
       });
-    });
+    };
+    if (this.pipeline && (this._pipelineInFlight || this._queryQueue.length > 0)) {
+      this.once("drain", doEnd);
+    } else {
+      doEnd();
+    }
     return result3;
   };
   Client.prototype._hasActiveQuery = function() {
@@ -7048,6 +7313,9 @@ var require_client4 = __commonJS((exports, module) => {
   Client.prototype._pulseQueryQueue = function(initialConnection) {
     if (!this._connected) {
       return;
+    }
+    if (this.pipeline && !initialConnection) {
+      return this._pulsePipelinedQueryQueue();
     }
     if (this._hasActiveQuery()) {
       return;
@@ -7064,6 +7332,69 @@ var require_client4 = __commonJS((exports, module) => {
     const self = this;
     query.once("_done", function() {
       self._pulseQueryQueue();
+    });
+  };
+  Client.prototype._pulsePipelinedQueryQueue = function() {
+    if (!this._connected || this._pipelineInFlight) {
+      return;
+    }
+    if (this._queryQueue.length === 0) {
+      if (this.hasExecuted) {
+        this.emit("drain");
+      }
+      return;
+    }
+    this._pipelineInFlight = true;
+    const self = this;
+    const queries = [];
+    const nativeQueries = [];
+    const utils = require_utils();
+    while (this._queryQueue.length > 0) {
+      const query = this._queryQueue.shift();
+      this.hasExecuted = true;
+      nativeQueries.push(query);
+      const values2 = query.values ? query.values.map(utils.prepareValue) : null;
+      const pipelineEntry = { text: query.text, name: query.name };
+      if (values2) {
+        pipelineEntry.values = values2;
+      }
+      if (query.name && this.namedQueries[query.name]) {
+        pipelineEntry._alreadyPrepared = true;
+      }
+      queries.push(pipelineEntry);
+    }
+    this.native.pipeline(queries, function(err, results) {
+      self._pipelineInFlight = false;
+      if (err) {
+        for (let i = 0;i < nativeQueries.length; i++) {
+          const q = nativeQueries[i];
+          q.native = self.native;
+          q.handleError(err);
+        }
+        self._pulsePipelinedQueryQueue();
+        return;
+      }
+      for (let i = 0;i < nativeQueries.length; i++) {
+        const q = nativeQueries[i];
+        const r = results[i];
+        q.native = self.native;
+        if (r.err) {
+          q.handleError(r.err);
+        } else {
+          if (q.name) {
+            self.namedQueries[q.name] = q.text;
+          }
+          q.state = "end";
+          q.emit("end", r.result);
+          if (q.callback) {
+            q.callback(null, r.result);
+          }
+        }
+        setImmediate(function() {
+          q.emit("_done");
+        });
+      }
+      self._pulsePipelinedQueryQueue();
     });
   };
   Client.prototype.cancel = function(query) {
@@ -7089,7 +7420,7 @@ var require_client4 = __commonJS((exports, module) => {
   };
 });
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/lib/index.js
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/lib/index.js
 var require_lib3 = __commonJS((exports, module) => {
   var Client = require_client();
   var defaults = require_defaults();
@@ -7329,7 +7660,7 @@ See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode de
   parse3.parseIntoClientConfig = parseIntoClientConfig;
 });
 
-// ../../node_modules/.bun/pg-cursor@2.21.0+089ae586d7e96dbe/node_modules/pg-cursor/index.js
+// ../../node_modules/.bun/pg-cursor@2.22.0+00a0136bc273dfed/node_modules/pg-cursor/index.js
 var require_pg_cursor = __commonJS((exports, module) => {
   var Result3 = require_result();
   var prepare = require_utils().prepareValue;
@@ -15367,7 +15698,7 @@ var getErrorReported = (u) => {
   return true;
 };
 
-// ../../node_modules/.bun/@effect+platform-node-shared@4.0.0-beta.85+53b677943b444488/node_modules/@effect/platform-node-shared/dist/NodeRuntime.js
+// ../../node_modules/.bun/@effect+platform-node-shared@4.0.0-rc.110+53b677943b444488/node_modules/@effect/platform-node-shared/dist/NodeRuntime.js
 var runMain = /* @__PURE__ */ makeRunMain(({
   fiber: fiber3,
   teardown
@@ -23328,11 +23659,15 @@ __export(exports_FastCheck, {
   Arbitrary: () => Arbitrary
 });
 
-// ../../node_modules/.bun/pure-rand@8.4.0/node_modules/pure-rand/lib/esm/generator/congruential32.js
+// ../../node_modules/.bun/pure-rand@8.4.2/node_modules/pure-rand/lib/esm/generator/congruential32.js
 var MULTIPLIER = 214013;
 var INCREMENT = 2531011;
 var MASK = 4294967295;
 var MASK_2 = -2147483649;
+var MULTIPLIER_2 = -1443076087;
+var INCREMENT_2 = 505908858;
+var MULTIPLIER_3 = 1170746341;
+var INCREMENT_3 = -755606699;
 var JUMP_MULTIPLIER = 1994129409;
 var JUMP_INCREMENT = 916127744;
 var LinearCongruential32 = class LinearCongruential322 {
@@ -23343,12 +23678,14 @@ var LinearCongruential32 = class LinearCongruential322 {
     return new LinearCongruential322(this.seed);
   }
   next() {
-    const s1 = computeNextSeed(this.seed);
-    const v1 = computeValueFromNextSeed(s1);
-    const s2 = computeNextSeed(s1);
-    const v2 = computeValueFromNextSeed(s2);
-    this.seed = computeNextSeed(s2);
-    return computeValueFromNextSeed(this.seed) + (v2 + (v1 << 15) << 15) | 0;
+    const s0 = this.seed;
+    const s1 = Math.imul(s0, MULTIPLIER) + INCREMENT | 0;
+    const s2 = Math.imul(s0, MULTIPLIER_2) + INCREMENT_2 | 0;
+    const s3 = Math.imul(s0, MULTIPLIER_3) + INCREMENT_3 | 0;
+    this.seed = s3;
+    const v1 = (s1 & MASK_2) >> 16;
+    const v2 = (s2 & MASK_2) >> 16;
+    return (s3 & MASK_2) >> 16 | v2 << 15 | v1 << 30;
   }
   jump() {
     this.seed = Math.imul(this.seed, JUMP_MULTIPLIER) + JUMP_INCREMENT & MASK;
@@ -23357,17 +23694,11 @@ var LinearCongruential32 = class LinearCongruential322 {
     return [this.seed];
   }
 };
-function computeNextSeed(seed) {
-  return Math.imul(seed, MULTIPLIER) + INCREMENT & MASK;
-}
-function computeValueFromNextSeed(nextseed) {
-  return (nextseed & MASK_2) >> 16;
-}
 function congruential32(seed) {
   return new LinearCongruential32(seed);
 }
 
-// ../../node_modules/.bun/pure-rand@8.4.0/node_modules/pure-rand/lib/esm/generator/mersenne.js
+// ../../node_modules/.bun/pure-rand@8.4.2/node_modules/pure-rand/lib/esm/generator/mersenne.js
 var N = 624;
 var M = 397;
 var A = 2567483615;
@@ -23460,7 +23791,13 @@ function mersenne(seed) {
   return new MersenneTwister(out, 0);
 }
 
-// ../../node_modules/.bun/pure-rand@8.4.0/node_modules/pure-rand/lib/esm/generator/xorshift128plus.js
+// ../../node_modules/.bun/pure-rand@8.4.2/node_modules/pure-rand/lib/esm/generator/xorshift128plus.js
+var jumps = [
+  1667051007,
+  2321340297,
+  1548169110,
+  304075285
+];
 var XorShift128Plus = class XorShift128Plus2 {
   constructor(s01, s00, s11, s10) {
     this.s01 = s01;
@@ -23474,13 +23811,13 @@ var XorShift128Plus = class XorShift128Plus2 {
   next() {
     const a0 = this.s00 ^ this.s00 << 23;
     const a1 = this.s01 ^ (this.s01 << 23 | this.s00 >>> 9);
-    const b0 = a0 ^ this.s10 ^ (a0 >>> 18 | a1 << 14) ^ (this.s10 >>> 5 | this.s11 << 27);
-    const b1 = a1 ^ this.s11 ^ a1 >>> 18 ^ this.s11 >>> 5;
-    const out = this.s00 + this.s10 | 0;
-    this.s01 = this.s11;
-    this.s00 = this.s10;
-    this.s11 = b1;
-    this.s10 = b0;
+    const s10 = this.s10;
+    const s11 = this.s11;
+    const out = this.s00 + s10 | 0;
+    this.s01 = s11;
+    this.s00 = s10;
+    this.s11 = a1 ^ s11 ^ a1 >>> 18 ^ s11 >>> 5;
+    this.s10 = a0 ^ s10 ^ (a0 >>> 18 | a1 << 14) ^ (s10 >>> 5 | s11 << 27);
     return out;
   }
   jump() {
@@ -23488,22 +23825,27 @@ var XorShift128Plus = class XorShift128Plus2 {
     let ns00 = 0;
     let ns11 = 0;
     let ns10 = 0;
-    const jump = [
-      1667051007,
-      2321340297,
-      1548169110,
-      304075285
-    ];
-    for (let i = 0;i !== 4; ++i)
+    let s01 = this.s01;
+    let s00 = this.s00;
+    let s11 = this.s11;
+    let s10 = this.s10;
+    for (let i = 0;i !== 4; ++i) {
+      const ji = jumps[i];
       for (let mask2 = 1;mask2; mask2 <<= 1) {
-        if (jump[i] & mask2) {
-          ns01 ^= this.s01;
-          ns00 ^= this.s00;
-          ns11 ^= this.s11;
-          ns10 ^= this.s10;
+        if (ji & mask2) {
+          ns01 ^= s01;
+          ns00 ^= s00;
+          ns11 ^= s11;
+          ns10 ^= s10;
         }
-        this.next();
+        const a0 = s00 ^ s00 << 23;
+        const a1 = s01 ^ (s01 << 23 | s00 >>> 9);
+        s01 = s11;
+        s00 = s10;
+        s10 = a0 ^ s10 ^ (a0 >>> 18 | a1 << 14) ^ (s10 >>> 5 | s11 << 27);
+        s11 = a1 ^ s11 ^ a1 >>> 18 ^ s11 >>> 5;
       }
+    }
     this.s01 = ns01;
     this.s00 = ns00;
     this.s11 = ns11;
@@ -23522,7 +23864,13 @@ function xorshift128plus(seed) {
   return new XorShift128Plus(-1, ~seed, seed | 0, 0);
 }
 
-// ../../node_modules/.bun/pure-rand@8.4.0/node_modules/pure-rand/lib/esm/generator/xoroshiro128plus.js
+// ../../node_modules/.bun/pure-rand@8.4.2/node_modules/pure-rand/lib/esm/generator/xoroshiro128plus.js
+var jumps2 = [
+  3639956645,
+  3750757012,
+  1261568508,
+  386426335
+];
 var XoroShiro128Plus = class XoroShiro128Plus2 {
   constructor(s01, s00, s11, s10) {
     this.s01 = s01;
@@ -23550,22 +23898,29 @@ var XoroShiro128Plus = class XoroShiro128Plus2 {
     let ns00 = 0;
     let ns11 = 0;
     let ns10 = 0;
-    const jump = [
-      3639956645,
-      3750757012,
-      1261568508,
-      386426335
-    ];
-    for (let i = 0;i !== 4; ++i)
+    let s01 = this.s01;
+    let s00 = this.s00;
+    let s11 = this.s11;
+    let s10 = this.s10;
+    for (let i = 0;i !== 4; ++i) {
+      const ji = jumps2[i];
       for (let mask2 = 1;mask2; mask2 <<= 1) {
-        if (jump[i] & mask2) {
-          ns01 ^= this.s01;
-          ns00 ^= this.s00;
-          ns11 ^= this.s11;
-          ns10 ^= this.s10;
+        if (ji & mask2) {
+          ns01 ^= s01;
+          ns00 ^= s00;
+          ns11 ^= s11;
+          ns10 ^= s10;
         }
-        this.next();
+        const a0 = s10 ^ s00;
+        const a1 = s11 ^ s01;
+        const s00_ = s00;
+        const s01_ = s01;
+        s00 = s00_ << 24 ^ s01_ >>> 8 ^ a0 ^ a0 << 16;
+        s01 = s01_ << 24 ^ s00_ >>> 8 ^ a1 ^ (a1 << 16 | a0 >>> 16);
+        s10 = a1 << 5 ^ a0 >>> 27;
+        s11 = a0 << 5 ^ a1 >>> 27;
       }
+    }
     this.s01 = ns01;
     this.s00 = ns00;
     this.s11 = ns11;
@@ -23584,13 +23939,13 @@ function xoroshiro128plus(seed) {
   return new XoroShiro128Plus(-1, ~seed, seed | 0, 0);
 }
 
-// ../../node_modules/.bun/pure-rand@8.4.0/node_modules/pure-rand/lib/esm/utils/skipN.js
+// ../../node_modules/.bun/pure-rand@8.4.2/node_modules/pure-rand/lib/esm/utils/skipN.js
 function skipN(rng, num) {
   for (let idx = 0;idx !== num; ++idx)
     rng.next();
 }
 
-// ../../node_modules/.bun/pure-rand@8.4.0/node_modules/pure-rand/lib/esm/distribution/uniformBigInt.js
+// ../../node_modules/.bun/pure-rand@8.4.2/node_modules/pure-rand/lib/esm/distribution/uniformBigInt.js
 var SBigInt = BigInt;
 var NumValues = 4294967296n;
 function uniformBigInt(rng, from, to) {
@@ -23620,7 +23975,7 @@ function generateNext(NumIterations, rng) {
   return value3;
 }
 
-// ../../node_modules/.bun/pure-rand@8.4.0/node_modules/pure-rand/lib/esm/distribution/uniformInt.js
+// ../../node_modules/.bun/pure-rand@8.4.2/node_modules/pure-rand/lib/esm/distribution/uniformInt.js
 function uniformIntInternal(rng, rangeSize) {
   const MaxAllowed = rangeSize > 2 ? ~~(4294967296 / rangeSize) * rangeSize : 4294967296;
   let deltaV = rng.next() + 2147483648;
@@ -23717,7 +24072,7 @@ function uniformInt(rng, from, to) {
   return uniformLargeIntInternal(rng, from, to, rangeSize);
 }
 
-// ../../node_modules/.bun/fast-check@4.8.0/node_modules/fast-check/lib/fast-check.js
+// ../../node_modules/.bun/fast-check@4.9.0/node_modules/fast-check/lib/fast-check.js
 var SharedFootPrint = Symbol.for("fast-check/PreconditionFailure");
 var PreconditionFailure = class extends Error {
   constructor(interruptExecution = false) {
@@ -23951,17 +24306,38 @@ var ChainArbitrary = class extends Arbitrary {
     return context3 !== null && context3 !== undefined && typeof context3 === "object" && "originalBias" in context3 && "originalValue" in context3 && "originalContext" in context3 && "stoppedForOriginal" in context3 && "chainedArbitrary" in context3 && "chainedContext" in context3 && "clonedMrng" in context3;
   }
 };
+function mapperWithCloneIfNeeded(v, mapper) {
+  const sourceValue = v.value;
+  const mappedValue = mapper(sourceValue);
+  if (v.hasToBeCloned && (typeof mappedValue === "object" && mappedValue !== null || typeof mappedValue === "function") && Object.isExtensible(mappedValue) && !hasCloneMethod(mappedValue))
+    Object.defineProperty(mappedValue, cloneMethod, { get: () => () => mapperWithCloneIfNeeded(v, mapper)[0] });
+  return [mappedValue, sourceValue];
+}
+function valueMapper(v, mapper) {
+  const [mappedValue, sourceValue] = mapperWithCloneIfNeeded(v, mapper);
+  return new Value(mappedValue, {
+    originalValue: sourceValue,
+    originalContext: v.context
+  });
+}
 var MapArbitrary = class extends Arbitrary {
   constructor(arb, mapper, unmapper) {
     super();
     this.arb = arb;
     this.mapper = mapper;
     this.unmapper = unmapper;
-    this.bindValueMapper = (v) => this.valueMapper(v);
+    this.bindValueMapper = (v) => valueMapper(v, mapper);
   }
   generate(mrng, biasFactor) {
     const g = this.arb.generate(mrng, biasFactor);
-    return this.valueMapper(g);
+    if (!g.hasToBeCloned) {
+      const sourceValue = g.value;
+      return new Value(this.mapper(sourceValue), {
+        originalValue: sourceValue,
+        originalContext: g.context
+      });
+    }
+    return valueMapper(g, this.mapper);
   }
   canShrinkWithoutContext(value3) {
     if (this.unmapper !== undefined)
@@ -23981,20 +24357,6 @@ var MapArbitrary = class extends Arbitrary {
       return this.arb.shrink(unmapped, undefined).map(this.bindValueMapper);
     }
     return Stream.nil();
-  }
-  mapperWithCloneIfNeeded(v) {
-    const sourceValue = v.value;
-    const mappedValue = this.mapper(sourceValue);
-    if (v.hasToBeCloned && (typeof mappedValue === "object" && mappedValue !== null || typeof mappedValue === "function") && Object.isExtensible(mappedValue) && !hasCloneMethod(mappedValue))
-      Object.defineProperty(mappedValue, cloneMethod, { get: () => () => this.mapperWithCloneIfNeeded(v)[0] });
-    return [mappedValue, sourceValue];
-  }
-  valueMapper(v) {
-    const [mappedValue, sourceValue] = this.mapperWithCloneIfNeeded(v);
-    return new Value(mappedValue, {
-      originalValue: sourceValue,
-      originalContext: v.context
-    });
   }
   isSafeContext(context3) {
     return context3 !== null && context3 !== undefined && typeof context3 === "object" && "originalValue" in context3 && "originalContext" in context3;
@@ -24524,41 +24886,41 @@ function makeLazy2(producer) {
 }
 var safeArrayIsArray$4 = Array.isArray;
 var safeObjectDefineProperty$3 = Object.defineProperty;
-function tupleMakeItCloneable(vs, values2) {
+function tupleMakeItCloneable(vs, ctxs, values2) {
   return safeObjectDefineProperty$3(vs, cloneMethod, { value: () => {
     const cloned = [];
-    for (let idx = 0;idx !== values2.length; ++idx)
-      safePush(cloned, values2[idx].value);
-    tupleMakeItCloneable(cloned, values2);
+    for (let idx = 0;idx !== values2.length; ++idx) {
+      let current = values2[idx];
+      if (current === undefined)
+        current = new Value(vs[idx], ctxs[idx]);
+      safePush(cloned, current.value);
+    }
+    tupleMakeItCloneable(cloned, ctxs, values2);
     return cloned;
   } });
-}
-function tupleWrapper(values2) {
-  let cloneable = false;
-  const vs = [];
-  const ctxs = [];
-  for (let idx = 0;idx !== values2.length; ++idx) {
-    const v = values2[idx];
-    cloneable = cloneable || v.hasToBeCloned;
-    safePush(vs, v.value);
-    safePush(ctxs, v.context);
-  }
-  if (cloneable)
-    tupleMakeItCloneable(vs, values2);
-  return new Value(vs, ctxs);
 }
 function tupleShrink(arbs, value3, context3) {
   const shrinks = [];
   const safeContext = safeArrayIsArray$4(context3) ? context3 : [];
   for (let idx = 0;idx !== arbs.length; ++idx)
     safePush(shrinks, makeLazy2(() => arbs[idx].shrink(value3[idx], safeContext[idx]).map((v) => {
-      const nextValues = safeMap(value3, (v2, idx2) => new Value(cloneIfNeeded(v2), safeContext[idx2]));
-      return [
-        ...safeSlice(nextValues, 0, idx),
-        v,
-        ...safeSlice(nextValues, idx + 1)
-      ];
-    }).map(tupleWrapper)));
+      let cloneable = false;
+      const vs = [];
+      const ctxs = [];
+      const mapped = [];
+      for (let nestedIdx = 0;nestedIdx !== arbs.length; ++nestedIdx) {
+        const nestedV = nestedIdx === idx ? v : new Value(cloneIfNeeded(value3[nestedIdx]), safeContext[nestedIdx]);
+        if (nestedV.hasToBeCloned) {
+          cloneable = true;
+          mapped[nestedIdx] = nestedV;
+        }
+        safePush(vs, nestedV.value);
+        safePush(ctxs, nestedV.context);
+      }
+      if (cloneable)
+        tupleMakeItCloneable(vs, ctxs, mapped);
+      return new Value(vs, ctxs);
+    })));
   return Stream.nil().join(...shrinks);
 }
 var TupleArbitrary = class extends Arbitrary {
@@ -24572,10 +24934,22 @@ var TupleArbitrary = class extends Arbitrary {
     }
   }
   generate(mrng, biasFactor) {
+    let cloneable = false;
+    const vs = [];
+    const ctxs = [];
     const mapped = [];
-    for (let idx = 0;idx !== this.arbs.length; ++idx)
-      safePush(mapped, this.arbs[idx].generate(mrng, biasFactor));
-    return tupleWrapper(mapped);
+    for (let idx = 0;idx !== this.arbs.length; ++idx) {
+      const v = this.arbs[idx].generate(mrng, biasFactor);
+      if (v.hasToBeCloned) {
+        cloneable = true;
+        mapped[idx] = v;
+      }
+      safePush(vs, v.value);
+      safePush(ctxs, v.context);
+    }
+    if (cloneable)
+      tupleMakeItCloneable(vs, ctxs, mapped);
+    return new Value(vs, ctxs);
   }
   canShrinkWithoutContext(value3) {
     if (!safeArrayIsArray$4(value3) || value3.length !== this.arbs.length)
@@ -25182,7 +25556,8 @@ function stringifyInternal(value3, previousValues, getAsyncContent) {
         const typedArray = value3;
         if (typedArray.buffer.detached)
           return `${className}.from(/*detached ArrayBuffer*/)`;
-        return `${className}.from(${stringifyInternal(safeArrayFrom(typedArray.values()), currentValues, getAsyncContent)})`;
+        const valuesFromTypedArr = typedArray.values();
+        return `${className}.from(${stringifyInternal(safeArrayFrom(valuesFromTypedArr), currentValues, getAsyncContent)})`;
       }
       break;
     }
@@ -25591,7 +25966,7 @@ function pathWalk(path, initialProducers, shrink) {
   }
   return values2;
 }
-var safeObjectAssign$5 = Object.assign;
+var safeObjectAssign$6 = Object.assign;
 function formatHints(hints) {
   if (hints.length === 1)
     return `Hint: ${hints[0]}`;
@@ -25742,7 +26117,7 @@ function buildError(errorMessage, out) {
     throw new SError(errorMessage);
   const error = new SError(errorMessage, { cause: out.errorInstance });
   if (!("cause" in error))
-    safeObjectAssign$5(error, { cause: out.errorInstance });
+    safeObjectAssign$6(error, { cause: out.errorInstance });
   return error;
 }
 function throwIfFailed(out) {
@@ -25862,7 +26237,7 @@ function statistics(generator, classify, params) {
   for (const item of data)
     qParams.logger(`${item[0].padEnd(longestName, ".")}..${item[1].padStart(longestPercent, ".")}`);
 }
-var safeObjectAssign$4 = Object.assign;
+var safeObjectAssign$5 = Object.assign;
 function buildGeneratorValue(mrng, biasFactor, computePreBuiltValues, arbitraryCache) {
   const preBuiltValues = computePreBuiltValues();
   let localMrng = mrng.clone();
@@ -25896,7 +26271,7 @@ function buildGeneratorValue(mrng, biasFactor, computePreBuiltValues, arbitraryC
   const memoedValueFunction = (arb, ...args2) => {
     return valueFunction(arbitraryCache(arb, args2));
   };
-  return new Value(safeObjectAssign$4(memoedValueFunction, {
+  return new Value(safeObjectAssign$5(memoedValueFunction, {
     values() {
       return safeMap(context3.history, (c) => c.value);
     },
@@ -26075,9 +26450,18 @@ var IntegerArbitrary = class IntegerArbitrary2 extends Arbitrary {
     super();
     this.min = min5;
     this.max = max5;
+    this.ranges = biasNumericRange(min5, max5, integerLogLike);
   }
   generate(mrng, biasFactor) {
-    const range2 = this.computeGenerateRange(mrng, biasFactor);
+    if (biasFactor === undefined || mrng.nextInt(1, biasFactor) !== 1)
+      return new Value(mrng.nextInt(this.min, this.max), undefined);
+    const ranges = this.ranges;
+    if (ranges.length === 1) {
+      const range3 = ranges[0];
+      return new Value(mrng.nextInt(range3.min, range3.max), undefined);
+    }
+    const id2 = mrng.nextInt(-2 * (ranges.length - 1), ranges.length - 2);
+    const range2 = id2 < 0 ? ranges[0] : ranges[id2 + 1];
     return new Value(mrng.nextInt(range2.min, range2.max), undefined);
   }
   canShrinkWithoutContext(value3) {
@@ -26085,27 +26469,10 @@ var IntegerArbitrary = class IntegerArbitrary2 extends Arbitrary {
   }
   shrink(current, context3) {
     if (!IntegerArbitrary2.isValidContext(current, context3))
-      return shrinkInteger(current, this.defaultTarget(), true);
+      return shrinkInteger(current, this.min <= 0 && this.max >= 0 ? 0 : this.min < 0 ? this.max : this.min, true);
     if (this.isLastChanceTry(current, context3))
       return Stream.of(new Value(context3, undefined));
     return shrinkInteger(current, context3, false);
-  }
-  defaultTarget() {
-    if (this.min <= 0 && this.max >= 0)
-      return 0;
-    return this.min < 0 ? this.max : this.min;
-  }
-  computeGenerateRange(mrng, biasFactor) {
-    if (biasFactor === undefined || mrng.nextInt(1, biasFactor) !== 1)
-      return {
-        min: this.min,
-        max: this.max
-      };
-    const ranges = biasNumericRange(this.min, this.max, integerLogLike);
-    if (ranges.length === 1)
-      return ranges[0];
-    const id2 = mrng.nextInt(-2 * (ranges.length - 1), ranges.length - 2);
-    return id2 < 0 ? ranges[0] : ranges[id2 + 1];
   }
   isLastChanceTry(current, context3) {
     if (current > 0)
@@ -26169,7 +26536,7 @@ var NoopSlicedGenerator = class {
   }
 };
 var safeMathMin$5 = Math.min;
-var safeMathMax$3 = Math.max;
+var safeMathMax$2 = Math.max;
 var SlicedBasedGenerator = class {
   constructor(arb, mrng, slices, biasFactor) {
     this.arb = arb;
@@ -26208,7 +26575,7 @@ var SlicedBasedGenerator = class {
     const rangeBoundaryA = this.mrng.nextInt(0, slice.length - 1);
     const rangeBoundaryB = this.mrng.nextInt(0, slice.length - 1);
     this.nextIndexInSlice = safeMathMin$5(rangeBoundaryA, rangeBoundaryB);
-    this.lastIndexInSlice = safeMathMax$3(rangeBoundaryA, rangeBoundaryB);
+    this.lastIndexInSlice = safeMathMax$2(rangeBoundaryA, rangeBoundaryB);
     return new Value(slice[this.nextIndexInSlice++], undefined);
   }
 };
@@ -26219,7 +26586,6 @@ function buildSlicedGenerator(arb, mrng, slices, biasFactor) {
 }
 var safeMathFloor$4 = Math.floor;
 var safeMathLog$1 = Math.log;
-var safeMathMax$2 = Math.max;
 var safeArrayIsArray$2 = Array.isArray;
 function biasedMaxLength(minLength, maxLength) {
   if (minLength === maxLength)
@@ -26240,6 +26606,7 @@ var ArrayArbitrary = class ArrayArbitrary2 extends Arbitrary {
       max: maxGeneratedLength
     });
     this.depthContext = getDepthContextFor(depthIdentifier);
+    this.cachedBiasedMaxLength = biasedMaxLength(minLength, maxGeneratedLength);
   }
   preFilter(tab) {
     if (this.setBuilder === undefined)
@@ -26273,7 +26640,9 @@ var ArrayArbitrary = class ArrayArbitrary2 extends Arbitrary {
     return s.getData();
   }
   safeGenerateNItemsNoDuplicates(setBuilder, N2, mrng, biasFactorItems) {
-    const depthImpact = safeMathMax$2(0, N2 - biasedMaxLength(this.minLength, this.maxGeneratedLength));
+    const depthImpact = N2 - this.cachedBiasedMaxLength;
+    if (depthImpact <= 0)
+      return this.generateNItemsNoDuplicates(setBuilder, N2, mrng, biasFactorItems);
     this.depthContext.depth += depthImpact;
     try {
       return this.generateNItemsNoDuplicates(setBuilder, N2, mrng, biasFactorItems);
@@ -26290,7 +26659,9 @@ var ArrayArbitrary = class ArrayArbitrary2 extends Arbitrary {
     return items;
   }
   safeGenerateNItems(N2, mrng, biasFactorItems) {
-    const depthImpact = safeMathMax$2(0, N2 - biasedMaxLength(this.minLength, this.maxGeneratedLength));
+    const depthImpact = N2 - this.cachedBiasedMaxLength;
+    if (depthImpact <= 0)
+      return this.generateNItems(N2, mrng, biasFactorItems);
     this.depthContext.depth += depthImpact;
     try {
       return this.generateNItems(N2, mrng, biasFactorItems);
@@ -26319,34 +26690,28 @@ var ArrayArbitrary = class ArrayArbitrary2 extends Arbitrary {
     });
   }
   generate(mrng, biasFactor) {
-    const biasMeta = this.applyBias(mrng, biasFactor);
-    const targetSize = biasMeta.size;
-    const items = this.setBuilder !== undefined ? this.safeGenerateNItemsNoDuplicates(this.setBuilder, targetSize, mrng, biasMeta.biasFactorItems) : this.safeGenerateNItems(targetSize, mrng, biasMeta.biasFactorItems);
-    return this.wrapper(items, false, undefined, 0);
-  }
-  applyBias(mrng, biasFactor) {
+    let targetSize;
+    let biasFactorItems;
     if (biasFactor === undefined)
-      return { size: this.lengthArb.generate(mrng, undefined).value };
-    if (this.minLength === this.maxGeneratedLength)
-      return {
-        size: this.lengthArb.generate(mrng, undefined).value,
-        biasFactorItems: biasFactor
-      };
-    if (mrng.nextInt(1, biasFactor) !== 1)
-      return { size: this.lengthArb.generate(mrng, undefined).value };
-    if (mrng.nextInt(1, biasFactor) !== 1 || this.minLength === this.maxGeneratedLength)
-      return {
-        size: this.lengthArb.generate(mrng, undefined).value,
-        biasFactorItems: biasFactor
-      };
-    const maxBiasedLength = biasedMaxLength(this.minLength, this.maxGeneratedLength);
-    return {
-      size: integer({
+      targetSize = this.lengthArb.generate(mrng, undefined).value;
+    else if (this.minLength === this.maxGeneratedLength) {
+      targetSize = this.lengthArb.generate(mrng, undefined).value;
+      biasFactorItems = biasFactor;
+    } else if (mrng.nextInt(1, biasFactor) !== 1)
+      targetSize = this.lengthArb.generate(mrng, undefined).value;
+    else if (mrng.nextInt(1, biasFactor) !== 1) {
+      targetSize = this.lengthArb.generate(mrng, undefined).value;
+      biasFactorItems = biasFactor;
+    } else {
+      const maxBiasedLength = this.cachedBiasedMaxLength;
+      targetSize = integer({
         min: this.minLength,
         max: maxBiasedLength
-      }).generate(mrng, undefined).value,
-      biasFactorItems: biasFactor
-    };
+      }).generate(mrng, undefined).value;
+      biasFactorItems = biasFactor;
+    }
+    const items = this.setBuilder !== undefined ? this.safeGenerateNItemsNoDuplicates(this.setBuilder, targetSize, mrng, biasFactorItems) : this.safeGenerateNItems(targetSize, mrng, biasFactorItems);
+    return this.wrapper(items, false, undefined, 0);
   }
   canShrinkWithoutContext(value3) {
     if (!safeArrayIsArray$2(value3) || this.minLength > value3.length || value3.length > this.maxLength)
@@ -26466,7 +26831,8 @@ function maxGeneratedLengthFromSizeForArbitrary(size6, minLength, maxLength, spe
   const definedSize = size6 !== undefined ? size6 : specifiedMaxLength && defaultSizeToMaxWhenMaxSpecified ? "max" : defaultSize;
   if (definedSize === "max")
     return maxLength;
-  return safeMathMin$4(maxLengthFromMinLength(minLength, relativeSizeToSize(definedSize, defaultSize)), maxLength);
+  const finalSize = relativeSizeToSize(definedSize, defaultSize);
+  return safeMathMin$4(maxLengthFromMinLength(minLength, finalSize), maxLength);
 }
 function depthBiasFromSizeForArbitrary(depthSizeOrSize, specifiedMaxDepth) {
   if (typeof depthSizeOrSize === "number")
@@ -27074,13 +27440,19 @@ var safeObjectPrototype$1 = Object.prototype;
 var safeReflectOwnKeys = Reflect.ownKeys;
 function keyValuePairsToObjectMapper(definition) {
   const obj = definition[1] ? safeObjectCreate$5(null) : {};
-  for (const keyValue of definition[0])
-    safeObjectDefineProperty$2(obj, keyValue[0], {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: keyValue[1]
-    });
+  const keyValues = definition[0];
+  for (let idx = 0;idx !== keyValues.length; ++idx) {
+    const key = keyValues[idx][0];
+    if (key === "__proto__")
+      safeObjectDefineProperty$2(obj, key, {
+        enumerable: true,
+        configurable: true,
+        writable: true,
+        value: keyValues[idx][1]
+      });
+    else
+      obj[key] = keyValues[idx][1];
+  }
   return obj;
 }
 function isValidPropertyNameFilter(descriptor) {
@@ -27134,11 +27506,12 @@ var FrequencyArbitrary = class FrequencyArbitrary2 extends Arbitrary {
     }
     if (totalWeight <= 0)
       throw new Error(`${label} expects the sum of weights to be strictly superior to 0`);
-    return new FrequencyArbitrary2(warbs, {
+    const sanitizedConstraints = {
       depthBias: depthBiasFromSizeForArbitrary(constraints.depthSize, constraints.maxDepth !== undefined),
       maxDepth: constraints.maxDepth !== undefined ? constraints.maxDepth : safePositiveInfinity$7,
       withCrossShrink: !!constraints.withCrossShrink
-    }, getDepthContextFor(constraints.depthIdentifier));
+    };
+    return new FrequencyArbitrary2(warbs, sanitizedConstraints, getDepthContextFor(constraints.depthIdentifier));
   }
   constructor(warbs, constraints, context4) {
     super();
@@ -28814,7 +29187,7 @@ var INDEX_NEGATIVE_INFINITY$1 = -INDEX_POSITIVE_INFINITY$1 - SBigInt2(1);
 var num2Pow52 = 4503599627370496;
 var big2Pow52Mask = SBigInt2(4503599627370495);
 var big2Pow53 = SBigInt2("9007199254740992");
-var f64 = new Float64Array(1);
+var f64 = /* @__PURE__ */ new Float64Array(1);
 var u32$1 = new Uint32Array(f64.buffer, f64.byteOffset);
 function bitCastDoubleToUInt64(f) {
   f64[0] = f;
@@ -28894,7 +29267,7 @@ function doubleOnlyMapper(value3) {
 function doubleOnlyUnmapper(value3) {
   if (typeof value3 !== "number")
     throw new Error("Unsupported type");
-  return value3 === safePositiveInfinity$4 ? onlyIntegersAfterThisValue$1 : value3 === safeNegativeInfinity$4 ? -onlyIntegersAfterThisValue$1 : value3;
+  return value3 === safePositiveInfinity$4 ? onlyIntegersAfterThisValue$1 : value3 === safeNegativeInfinity$4 ? -4503599627370496 : value3;
 }
 var safeNumberIsInteger$1 = Number.isInteger;
 var safeNumberIsNaN$1 = Number.isNaN;
@@ -28958,7 +29331,7 @@ var safeMathImul = Math.imul;
 var MAX_VALUE_32 = 2 ** 127 * (1 + (2 ** 23 - 1) / 2 ** 23);
 var INDEX_POSITIVE_INFINITY = 2139095040;
 var INDEX_NEGATIVE_INFINITY = -2139095041;
-var f32 = new Float32Array(1);
+var f32 = /* @__PURE__ */ new Float32Array(1);
 var u32 = new Uint32Array(f32.buffer, f32.byteOffset);
 function bitCastFloatToUInt32(f) {
   f32[0] = f;
@@ -29021,7 +29394,7 @@ function floatOnlyMapper(value3) {
 function floatOnlyUnmapper(value3) {
   if (typeof value3 !== "number")
     throw new Error("Unsupported type");
-  return value3 === safePositiveInfinity$1 ? onlyIntegersAfterThisValue : value3 === safeNegativeInfinity$1 ? -onlyIntegersAfterThisValue : value3;
+  return value3 === safePositiveInfinity$1 ? onlyIntegersAfterThisValue : value3 === safeNegativeInfinity$1 ? -8388608 : value3;
 }
 var safeNumberIsInteger = Number.isInteger;
 var safeNumberIsNaN = Number.isNaN;
@@ -29396,7 +29769,7 @@ function noShrink(arb) {
     return arb;
   return new NoShrinkArbitrary(arb);
 }
-var safeObjectAssign$3 = Object.assign;
+var safeObjectAssign$4 = Object.assign;
 var safeObjectKeys$3 = Object.keys;
 function buildCompareFunctionArbitrary(cmp) {
   return tuple2(noShrink(integer()), noShrink(integer({
@@ -29412,7 +29785,7 @@ function buildCompareFunctionArbitrary(cmp) {
         recorded[`[${reprA},${reprB}]`] = val;
         return val;
       };
-      return safeObjectAssign$3(f, {
+      return safeObjectAssign$4(f, {
         toString: () => {
           const seenValues = safeObjectKeys$3(recorded).sort().map((k) => `${k} => ${stringify(recorded[k])}`).map((line) => `/* ${escapeForMultilineComments(line)} */`);
           return `function(a, b) {
@@ -29431,15 +29804,15 @@ function buildCompareFunctionArbitrary(cmp) {
     return producer();
   });
 }
-var safeObjectAssign$2 = Object.assign;
+var safeObjectAssign$3 = Object.assign;
 function compareBooleanFunc() {
-  return buildCompareFunctionArbitrary(safeObjectAssign$2((hA, hB) => hA < hB, { toString() {
+  return buildCompareFunctionArbitrary(safeObjectAssign$3((hA, hB) => hA < hB, { toString() {
     return "(hA, hB) => hA < hB";
   } }));
 }
-var safeObjectAssign$1 = Object.assign;
+var safeObjectAssign$2 = Object.assign;
 function compareFunc() {
-  return buildCompareFunctionArbitrary(safeObjectAssign$1((hA, hB) => hA - hB, { toString() {
+  return buildCompareFunctionArbitrary(safeObjectAssign$2((hA, hB) => hA - hB, { toString() {
     return "(hA, hB) => hA - hB";
   } }));
 }
@@ -29767,7 +30140,7 @@ function initialPoolForEntityGraph(keys3, constraints) {
     throw new SError("Contraints on pool must accept at least one entity, maxLength cannot sum to 0");
   return tuple2(...keys3.map((key) => array3(constant2(key), constraints[key]))).map((values2) => safeFlat(values2)).filter((names) => names.length > 0);
 }
-var safeObjectAssign = Object.assign;
+var safeObjectAssign$1 = Object.assign;
 var safeObjectCreate$4 = Object.create;
 var safeObjectDefineProperty$1 = Object.defineProperty;
 var safeObjectGetPrototypeOf = Object.getPrototypeOf;
@@ -29789,7 +30162,7 @@ function unlinkedToLinkedEntitiesMapper(unlinkedEntities, producedLinks) {
     const unlinkedEntitiesForName = unlinkedEntities[name];
     const linkedEntitiesForName = [];
     for (const unlinkedEntity of unlinkedEntitiesForName) {
-      const linkedEntity = safeObjectAssign(safeObjectCreate$4(safeObjectGetPrototypeOf(unlinkedEntity)), unlinkedEntity);
+      const linkedEntity = safeObjectAssign$1(safeObjectCreate$4(safeObjectGetPrototypeOf(unlinkedEntity)), unlinkedEntity);
       linkedEntitiesForName.push(linkedEntity);
     }
     linkedEntities[name] = linkedEntitiesForName;
@@ -29809,7 +30182,7 @@ function unlinkedToLinkedEntitiesMapper(unlinkedEntities, producedLinks) {
         writable: false,
         value: () => {
           const unlinkedEntity = unlinkedEntities[name][entityIndex];
-          const entity = safeObjectAssign(safeObjectCreate$4(safeObjectGetPrototypeOf(unlinkedEntity)), unlinkedEntity);
+          const entity = safeObjectAssign$1(safeObjectCreate$4(safeObjectGetPrototypeOf(unlinkedEntity)), unlinkedEntity);
           for (const prop in entityLinksForInstance) {
             const propValue = entityLinksForInstance[prop];
             entity[prop] = propValue.index === undefined ? undefined : typeof propValue.index === "number" ? withReferenceStringifiedValue(propValue.type, propValue.index) : safeMap(propValue.index, (index2) => withReferenceStringifiedValue(propValue.type, index2));
@@ -29868,6 +30241,7 @@ function buildInversedRelationsMapping(relations) {
     throw new SError(`Some inverse relationships could not be matched with their corresponding forward relationships`);
   return inversedRelations;
 }
+var safeObjectAssign = Object.assign;
 var safeObjectCreate$3 = Object.create;
 function produceLinkUnitaryIndexArbitrary(strategy, currentIndexIfSameType, countInTargetType) {
   switch (strategy) {
@@ -29885,136 +30259,212 @@ function produceLinkUnitaryIndexArbitrary(strategy, currentIndexIfSameType, coun
       }));
   }
 }
-function computeLinkIndex(arity, strategy, currentIndexIfSameType, countInTargetType, currentEntityDepth, mrng, biasFactor) {
+function buildLinkIndexArbitrary(arity, strategy, currentIndexIfSameType, countInTargetType, currentEntityDepth) {
   const linkArbitrary = produceLinkUnitaryIndexArbitrary(strategy, currentIndexIfSameType, countInTargetType);
   switch (arity) {
     case "0-1":
       return option3(linkArbitrary, {
         nil: undefined,
         depthIdentifier: currentEntityDepth
-      }).generate(mrng, biasFactor).value;
+      });
     case "1":
-      return linkArbitrary.generate(mrng, biasFactor).value;
+      return linkArbitrary;
     case "many": {
       let randomUnicity = 0;
-      const values2 = option3(uniqueArray(linkArbitrary, {
+      return option3(uniqueArray(linkArbitrary, {
         depthIdentifier: currentEntityDepth,
         selector: (v) => v === countInTargetType ? v + ++randomUnicity : v,
         minLength: 1
       }), {
         nil: [],
         depthIdentifier: currentEntityDepth
-      }).generate(mrng, biasFactor).value;
-      let offset = 0;
-      return safeMap(values2, (v) => v === countInTargetType ? v + offset++ : v);
+      }).map((values2) => {
+        let offset = 0;
+        return safeMap(values2, (v) => v === countInTargetType ? v + offset++ : v);
+      });
     }
   }
 }
-var OnTheFlyLinksForEntityGraphArbitrary = class extends Arbitrary {
-  constructor(relations, defaultEntities) {
-    super();
-    this.relations = relations;
-    this.defaultEntities = defaultEntities;
-    const nonExclusiveEntities = new SSet;
-    const exclusiveEntities = new SSet;
-    for (const name in relations) {
-      const relationsForName = relations[name];
-      for (const fieldName in relationsForName) {
-        const relation = relationsForName[fieldName];
-        if (relation.arity === "inverse")
-          continue;
-        if (relation.strategy === "exclusive") {
-          if (safeHas(nonExclusiveEntities, relation.type))
-            throw new SError(`Cannot mix exclusive with other strategies for type ${SString(relation.type)}`);
-          safeAdd(exclusiveEntities, relation.type);
-        } else {
-          if (safeHas(exclusiveEntities, relation.type))
-            throw new SError(`Cannot mix exclusive with other strategies for type ${SString(relation.type)}`);
-          safeAdd(nonExclusiveEntities, relation.type);
-        }
-        if (relation.strategy === "successor" && relation.type !== name)
-          throw new SError(`Cannot mix types for the strategy successor`);
-        if (relation.strategy === "successor" && relation.arity === "1")
-          throw new SError(`Cannot use an arity of 1 for the strategy successor`);
-      }
-    }
-    this.inversedRelations = buildInversedRelationsMapping(relations);
+function createEmptyLinksInstanceFor(relations, targetType) {
+  const emptyLinksInstance = safeObjectCreate$3(null);
+  const relationsForType = relations[targetType];
+  for (const name in relationsForType) {
+    const relation = relationsForType[name];
+    if (relation.arity === "inverse")
+      emptyLinksInstance[name] = {
+        type: relation.type,
+        index: []
+      };
   }
-  createEmptyLinksInstanceFor(targetType) {
-    const emptyLinksInstance = safeObjectCreate$3(null);
-    const relationsForType = this.relations[targetType];
-    for (const name in relationsForType) {
-      const relation = relationsForType[name];
+  return emptyLinksInstance;
+}
+function assertAcceptableRelations(relations) {
+  const nonExclusiveEntities = new SSet;
+  const exclusiveEntities = new SSet;
+  for (const name in relations) {
+    const relationsForName = relations[name];
+    for (const fieldName in relationsForName) {
+      const relation = relationsForName[fieldName];
       if (relation.arity === "inverse")
-        emptyLinksInstance[name] = {
-          type: relation.type,
-          index: []
-        };
-    }
-    return emptyLinksInstance;
-  }
-  generate(mrng, biasFactor) {
-    const producedLinks = safeObjectCreate$3(null);
-    for (const name in this.relations)
-      producedLinks[name] = [];
-    const toBeProducedEntities = [];
-    for (const name of this.defaultEntities) {
-      safePush(toBeProducedEntities, {
-        type: name,
-        indexInType: producedLinks[name].length,
-        depth: 0
-      });
-      safePush(producedLinks[name], this.createEmptyLinksInstanceFor(name));
-    }
-    let lastTreatedEntities = -1;
-    while (++lastTreatedEntities < toBeProducedEntities.length) {
-      const currentEntity = toBeProducedEntities[lastTreatedEntities];
-      const currentRelations = this.relations[currentEntity.type];
-      const currentLinks = producedLinks[currentEntity.type][currentEntity.indexInType];
-      const currentEntityDepth = createDepthIdentifier();
-      currentEntityDepth.depth = currentEntity.depth;
-      for (const name in currentRelations) {
-        const relation = currentRelations[name];
-        if (relation.arity === "inverse")
-          continue;
-        const targetType = relation.type;
-        const producedLinksInTargetType = producedLinks[targetType];
-        const countInTargetType = producedLinksInTargetType.length;
-        const linkOrLinks = computeLinkIndex(relation.arity, relation.strategy || "any", targetType === currentEntity.type ? currentEntity.indexInType : undefined, producedLinksInTargetType.length, currentEntityDepth, mrng, biasFactor);
-        currentLinks[name] = {
-          type: targetType,
-          index: linkOrLinks
-        };
-        const links = linkOrLinks === undefined ? [] : typeof linkOrLinks === "number" ? [linkOrLinks] : linkOrLinks;
-        for (const link of links) {
-          if (link >= countInTargetType) {
-            safePush(toBeProducedEntities, {
-              type: targetType,
-              indexInType: link,
-              depth: currentEntity.depth + 1
-            });
-            safePush(producedLinksInTargetType, this.createEmptyLinksInstanceFor(targetType));
-          }
-          const inversed = safeMapGet(this.inversedRelations, relation);
-          if (inversed !== undefined) {
-            const knownInversedLinks = producedLinksInTargetType[link][inversed.property].index;
-            safePush(knownInversedLinks, currentEntity.indexInType);
-          }
-        }
+        continue;
+      if (relation.strategy === "exclusive") {
+        if (safeHas(nonExclusiveEntities, relation.type))
+          throw new SError(`Cannot mix exclusive with other strategies for type ${SString(relation.type)}`);
+        safeAdd(exclusiveEntities, relation.type);
+      } else {
+        if (safeHas(exclusiveEntities, relation.type))
+          throw new SError(`Cannot mix exclusive with other strategies for type ${SString(relation.type)}`);
+        safeAdd(nonExclusiveEntities, relation.type);
       }
+      if (relation.strategy === "successor" && relation.type !== name)
+        throw new SError(`Cannot mix types for the strategy successor`);
+      if (relation.strategy === "successor" && relation.arity === "1")
+        throw new SError(`Cannot use an arity of 1 for the strategy successor`);
     }
-    toBeProducedEntities.length = 0;
-    return new Value(producedLinks, undefined);
   }
-  canShrinkWithoutContext(_value) {
-    return false;
+}
+function draftNextProductionState(state, offset) {
+  const { producedLinks, toBeProducedEntities } = state;
+  const nextIndex = state.nextIndex + offset;
+  const newProducedLinks = safeObjectAssign(safeObjectCreate$3(null), producedLinks);
+  function getOrCreateProducedLinksFor(type) {
+    if (newProducedLinks[type] === producedLinks[type])
+      newProducedLinks[type] = safeSlice(producedLinks[type]);
+    return newProducedLinks[type];
   }
-  shrink(_value, _context) {
-    return Stream.nil();
+  function getOrCreateLinksFor(type, indexInType) {
+    const producedLinksForType = getOrCreateProducedLinksFor(type);
+    if (producedLinksForType[indexInType] === producedLinks[type][indexInType])
+      producedLinksForType[indexInType] = safeObjectAssign(safeObjectCreate$3(null), producedLinks[type][indexInType]);
+    return producedLinksForType[indexInType];
   }
-};
+  function getOrCreateRelationFor(type, indexInType, property2) {
+    const links = getOrCreateLinksFor(type, indexInType);
+    const originalEntity = producedLinks[type][indexInType];
+    if (originalEntity !== undefined && links[property2] === originalEntity[property2]) {
+      const sharedRelation = links[property2];
+      links[property2] = {
+        type: sharedRelation.type,
+        index: typeof sharedRelation.index === "object" ? safeSlice(sharedRelation.index) : sharedRelation.index
+      };
+    }
+    return links[property2];
+  }
+  let newToBeProducedEntities = undefined;
+  const toBeProduced = toBeProducedEntities[nextIndex];
+  return {
+    setOutboundLink: (name, value3) => {
+      const currentLinks = getOrCreateLinksFor(toBeProduced.type, toBeProduced.indexInType);
+      currentLinks[name] = value3;
+    },
+    enqueueNewEntity: (relations, targetType) => {
+      const producedLinksInTargetType = getOrCreateProducedLinksFor(targetType);
+      const newEntityIndexInType = producedLinksInTargetType.length;
+      if (newToBeProducedEntities === undefined)
+        newToBeProducedEntities = safeSlice(toBeProducedEntities);
+      safePush(newToBeProducedEntities, {
+        type: targetType,
+        indexInType: newEntityIndexInType,
+        depth: toBeProduced.depth + 1
+      });
+      safePush(producedLinksInTargetType, createEmptyLinksInstanceFor(relations, targetType));
+      return newEntityIndexInType;
+    },
+    appendBackReference: (targetType, indexInType, property2) => {
+      const knownInversedLinks = getOrCreateRelationFor(targetType, indexInType, property2).index;
+      safePush(knownInversedLinks, toBeProduced.indexInType);
+    },
+    commit: () => ({
+      producedLinks: newProducedLinks,
+      toBeProducedEntities: newToBeProducedEntities !== undefined ? newToBeProducedEntities : toBeProducedEntities,
+      nextIndex: nextIndex + 1
+    })
+  };
+}
+function buildInitialProductionState(relations, defaultEntities) {
+  const producedLinks = safeObjectCreate$3(null);
+  for (const name in relations)
+    producedLinks[name] = [];
+  const toBeProducedEntities = [];
+  for (const name of defaultEntities) {
+    safePush(toBeProducedEntities, {
+      type: name,
+      indexInType: producedLinks[name].length,
+      depth: 0
+    });
+    safePush(producedLinks[name], createEmptyLinksInstanceFor(relations, name));
+  }
+  return {
+    producedLinks,
+    toBeProducedEntities,
+    nextIndex: 0
+  };
+}
+function buildEntityStepArbitrary(relations, inversedRelations, lastState, offset) {
+  const lastProducedLinks = lastState.producedLinks;
+  const currentEntity = lastState.toBeProducedEntities[lastState.nextIndex + offset];
+  const currentRelations = relations[currentEntity.type];
+  const currentEntityDepth = createDepthIdentifier();
+  currentEntityDepth.depth = currentEntity.depth;
+  const subArbitraries = [];
+  const linkContexts = [];
+  for (const name in currentRelations) {
+    const relation = currentRelations[name];
+    if (relation.arity === "inverse")
+      continue;
+    const targetType = relation.type;
+    const countInTargetType = lastProducedLinks[targetType].length;
+    safePush(subArbitraries, buildLinkIndexArbitrary(relation.arity, relation.strategy || "any", targetType === currentEntity.type ? currentEntity.indexInType : undefined, countInTargetType, currentEntityDepth));
+    safePush(linkContexts, {
+      name,
+      relation,
+      sentinelLinkIndex: countInTargetType
+    });
+  }
+  if (subArbitraries.length === 0)
+    return;
+  return tuple2(...subArbitraries).map((results) => {
+    const state = draftNextProductionState(lastState, offset);
+    for (let resultIndex = 0;resultIndex !== results.length; ++resultIndex) {
+      const linkOrLinks = results[resultIndex];
+      const { name, relation, sentinelLinkIndex } = linkContexts[resultIndex];
+      const effectiveLinks = [];
+      const links = linkOrLinks === undefined ? [] : typeof linkOrLinks === "number" ? [linkOrLinks] : linkOrLinks;
+      for (const link of links) {
+        let newEntityIndexInType;
+        if (link >= sentinelLinkIndex)
+          newEntityIndexInType = state.enqueueNewEntity(relations, relation.type);
+        else
+          newEntityIndexInType = link;
+        safePush(effectiveLinks, newEntityIndexInType);
+        const inversed = safeMapGet(inversedRelations, relation);
+        if (inversed !== undefined)
+          state.appendBackReference(relation.type, newEntityIndexInType, inversed.property);
+      }
+      state.setOutboundLink(name, {
+        type: relation.type,
+        index: linkOrLinks === undefined ? undefined : typeof linkOrLinks === "number" ? effectiveLinks[0] : effectiveLinks
+      });
+    }
+    return state.commit();
+  });
+}
 function onTheFlyLinksForEntityGraph(relations, defaultEntities) {
-  return new OnTheFlyLinksForEntityGraphArbitrary(relations, defaultEntities);
+  assertAcceptableRelations(relations);
+  const inversedRelations = buildInversedRelationsMapping(relations);
+  return chainUntil(constant2(buildInitialProductionState(relations, defaultEntities)), (state) => {
+    if (state.nextIndex >= state.toBeProducedEntities.length)
+      return;
+    let offset = 0;
+    let next2 = undefined;
+    while (next2 === undefined && state.nextIndex + offset < state.toBeProducedEntities.length) {
+      next2 = buildEntityStepArbitrary(relations, inversedRelations, state, offset);
+      offset += 1;
+    }
+    return next2;
+  }).map((state) => {
+    return state.producedLinks;
+  });
 }
 var safeObjectKeys$1 = Object.keys;
 var safeObjectGetOwnPropertySymbols$1 = Object.getOwnPropertySymbols;
@@ -30037,16 +30487,21 @@ var safeObjectGetOwnPropertyNames = Object.getOwnPropertyNames;
 var safeObjectGetOwnPropertySymbols = Object.getOwnPropertySymbols;
 function buildValuesAndSeparateKeysToObjectMapper(keys3, noKeyValue) {
   return function valuesAndSeparateKeysToObjectMapper(definition) {
-    const obj = definition[1] ? safeObjectCreate$2(null) : {};
+    const obj = definition[definition.length - 1] ? safeObjectCreate$2(null) : {};
     for (let idx = 0;idx !== keys3.length; ++idx) {
-      const valueWrapper = definition[0][idx];
-      if (valueWrapper !== noKeyValue)
-        safeObjectDefineProperty(obj, keys3[idx], {
-          value: valueWrapper,
-          configurable: true,
-          enumerable: true,
-          writable: true
-        });
+      const valueWrapper = definition[idx];
+      if (valueWrapper !== noKeyValue) {
+        const key = keys3[idx];
+        if (key === "__proto__")
+          safeObjectDefineProperty(obj, key, {
+            value: valueWrapper,
+            configurable: true,
+            enumerable: true,
+            writable: true
+          });
+        else
+          obj[key] = valueWrapper;
+      }
     }
     return obj;
   };
@@ -30077,7 +30532,7 @@ function buildValuesAndSeparateKeysToObjectUnmapper(keys3, noKeyValue) {
     const symbolPropertiesCount = safeObjectGetOwnPropertySymbols(value3).length;
     if (extractedPropertiesCount !== namePropertiesCount + symbolPropertiesCount)
       throw new Error("Incompatible instance received: should not contain extra properties");
-    return [extractedValues, hasNullPrototype];
+    return [...extractedValues, hasNullPrototype];
   };
 }
 var noKeyValue = Symbol("no-key");
@@ -30092,7 +30547,7 @@ function buildPartialRecordArbitrary(recordModel, requiredKeys, noNullPrototype)
     else
       safePush(arbs, option3(requiredArbitrary, { nil: noKeyValue }));
   }
-  return tuple2(tuple2(...arbs), noNullPrototype ? constant2(false) : boolean2()).map(buildValuesAndSeparateKeysToObjectMapper(keys3, noKeyValue), buildValuesAndSeparateKeysToObjectUnmapper(keys3, noKeyValue));
+  return tuple2(...arbs, noNullPrototype ? constant2(false) : boolean2()).map(buildValuesAndSeparateKeysToObjectMapper(keys3, noKeyValue), buildValuesAndSeparateKeysToObjectUnmapper(keys3, noKeyValue));
 }
 function record2(recordModel, constraints) {
   const noNullPrototype = constraints !== undefined && !!constraints.noNullPrototype;
@@ -30748,7 +31203,8 @@ var StreamArbitrary = class extends Arbitrary {
           yield value3;
         }
       };
-      return safeObjectDefineProperties(new Stream(g(this.arb, mrng.clone())), {
+      const s = new Stream(g(this.arb, mrng.clone()));
+      return safeObjectDefineProperties(s, {
         toString: { value: () => prettyPrint(numSeenValues, seenValues !== null ? seenValues.map(stringify) : undefined) },
         [toStringMethod]: { value: () => prettyPrint(numSeenValues, seenValues !== null ? seenValues.map(stringify) : undefined) },
         [asyncToStringMethod]: { value: async () => prettyPrint(numSeenValues, seenValues !== null ? await Promise.all(seenValues.map(asyncStringify)) : undefined) },
@@ -31021,7 +31477,8 @@ function uintToBase32StringUnmapper(value3) {
   let accumulated = 0;
   let power = 1;
   for (let index2 = value3.length - 1;index2 >= 0; --index2) {
-    const numericForChar = decodeSymbolLookupTable[value3[index2]];
+    const char = value3[index2];
+    const numericForChar = decodeSymbolLookupTable[char];
     if (numericForChar === undefined)
       throw new SError("Unsupported type");
     accumulated += numericForChar * power;
@@ -31204,7 +31661,10 @@ function webSegment(constraints = {}) {
   });
 }
 function segmentsToPathMapper(segments) {
-  return safeJoin(safeMap(segments, (v) => `/${v}`), "");
+  let path = "";
+  for (let index2 = 0;index2 !== segments.length; ++index2)
+    path += "/" + segments[index2];
+  return path;
 }
 function segmentsToPathUnmapper(value3) {
   if (typeof value3 !== "string")
@@ -31577,7 +32037,8 @@ async function asyncModelRun(s, cmds) {
   await internalAsyncModelRun(s, cmds);
 }
 async function scheduledModelRun(scheduler, s, cmds) {
-  const out = internalAsyncModelRun(s, scheduleCommands(scheduler, cmds), scheduler.schedule(Promise.resolve(), "startModel"));
+  const scheduledCommands = scheduleCommands(scheduler, cmds);
+  const out = internalAsyncModelRun(s, scheduledCommands, scheduler.schedule(Promise.resolve(), "startModel"));
   await scheduler.waitFor(out);
   await scheduler.waitAll();
 }
@@ -33107,6 +33568,11 @@ var newLineChars = [...`\r
 `];
 var terminatorChars = [..."\x1E\x15"];
 var newLineAndTerminatorChars = [...newLineChars, ...terminatorChars];
+var wordCharsSet = new SSet(wordChars);
+var digitCharsSet = new SSet(digitChars);
+var spaceCharsSet = new SSet(spaceChars);
+var terminatorCharsSet = new SSet(terminatorChars);
+var newLineAndTerminatorCharsSet = new SSet(newLineAndTerminatorChars);
 var defaultChar = () => string3({
   unit: "grapheme-ascii",
   minLength: 1,
@@ -33123,21 +33589,21 @@ function toMatchingArbitrary(astNode, constraints, flags) {
           case "\\w":
             return constantFrom(...wordChars);
           case "\\W":
-            return defaultChar().filter((c) => safeIndexOf(wordChars, c) === -1);
+            return defaultChar().filter((c) => !safeHas(wordCharsSet, c));
           case "\\d":
             return constantFrom(...digitChars);
           case "\\D":
-            return defaultChar().filter((c) => safeIndexOf(digitChars, c) === -1);
+            return defaultChar().filter((c) => !safeHas(digitCharsSet, c));
           case "\\s":
             return constantFrom(...spaceChars);
           case "\\S":
-            return defaultChar().filter((c) => safeIndexOf(spaceChars, c) === -1);
+            return defaultChar().filter((c) => !safeHas(spaceCharsSet, c));
           case "\\b":
           case "\\B":
             throw new SError(`Meta character ${astNode.value} not implemented yet!`);
           case ".": {
-            const forbiddenChars = flags.dotAll ? terminatorChars : newLineAndTerminatorChars;
-            return defaultChar().filter((c) => safeIndexOf(forbiddenChars, c) === -1);
+            const forbiddenChars = flags.dotAll ? terminatorCharsSet : newLineAndTerminatorCharsSet;
+            return defaultChar().filter((c) => !safeHas(forbiddenChars, c));
           }
         }
       if (astNode.symbol === undefined)
@@ -33177,8 +33643,27 @@ function toMatchingArbitrary(astNode, constraints, flags) {
     }
     case "Quantifier":
       throw new SError(`Wrongly defined AST tree, Quantifier nodes not supposed to be scanned!`);
-    case "Alternative":
-      return tuple2(...safeMap(astNode.expressions, (n) => toMatchingArbitrary(n, constraints, flags))).map((vs) => safeJoin(vs, ""));
+    case "Alternative": {
+      const childrenArbitraries = [];
+      let pendingAggregatedValue = "";
+      for (const n of astNode.expressions)
+        if (n.type === "Char" && n.kind !== "meta" && n.symbol !== undefined)
+          pendingAggregatedValue += n.symbol;
+        else if (flags.multiline || n.type !== "Assertion" || n.kind !== "^" && n.kind !== "$") {
+          if (pendingAggregatedValue !== "") {
+            safePush(childrenArbitraries, constant2(pendingAggregatedValue));
+            pendingAggregatedValue = "";
+          }
+          safePush(childrenArbitraries, toMatchingArbitrary(n, constraints, flags));
+        }
+      if (pendingAggregatedValue !== "")
+        safePush(childrenArbitraries, constant2(pendingAggregatedValue));
+      if (childrenArbitraries.length === 0)
+        return constant2("");
+      if (childrenArbitraries.length === 1)
+        return childrenArbitraries[0];
+      return tuple2(...childrenArbitraries).map((vs) => safeJoin(vs, ""));
+    }
     case "CharacterClass":
       if (astNode.negative) {
         const childrenArbitraries = safeMap(astNode.expressions, (n) => toMatchingArbitrary(n, constraints, flags));
@@ -33201,8 +33686,21 @@ function toMatchingArbitrary(astNode, constraints, flags) {
     }
     case "Group":
       return toMatchingArbitrary(astNode.expression, constraints, flags);
-    case "Disjunction":
-      return oneof(astNode.left !== null ? toMatchingArbitrary(astNode.left, constraints, flags) : constant2(""), astNode.right !== null ? toMatchingArbitrary(astNode.right, constraints, flags) : constant2(""));
+    case "Disjunction": {
+      const stack = [astNode.left, astNode.right];
+      const branches = [];
+      for (let i = 0;i !== stack.length; ++i) {
+        const node = stack[i];
+        if (node === null)
+          safePush(branches, constant2(""));
+        else if (node.type === "Disjunction") {
+          safePush(stack, node.left);
+          safePush(stack, node.right);
+        } else
+          safePush(branches, toMatchingArbitrary(node, constraints, flags));
+      }
+      return oneof(...branches);
+    }
     case "Assertion":
       if (astNode.kind === "^" || astNode.kind === "$") {
         if (flags.multiline)
@@ -33319,8 +33817,8 @@ function limitShrink(arbitrary, maxShrinks) {
   return new LimitedShrinkArbitrary(arbitrary, maxShrinks);
 }
 var __type = "module";
-var __version = "4.8.0";
-var __commitHash = "c0da76fbcf6470339ad7bb2f0dfcebee06ede56c";
+var __version = "4.9.0";
+var __commitHash = "0d3c2547dce556f72413607849377530d18ea283";
 // ../../node_modules/.bun/effect@4.0.0-beta.85/node_modules/effect/dist/Schema.js
 var TypeId27 = TypeId26;
 function declareConstructor() {
@@ -37517,7 +38015,7 @@ class SqlError extends (/* @__PURE__ */ TaggedErrorClass("effect/sql/SqlError")(
   }
 }
 
-// ../../node_modules/.bun/pg@8.21.0+089ae586d7e96dbe/node_modules/pg/esm/index.mjs
+// ../../node_modules/.bun/pg@8.23.0+00a0136bc273dfed/node_modules/pg/esm/index.mjs
 var import_lib = __toESM(require_lib3(), 1);
 var Client = import_lib.default.Client;
 var Pool = import_lib.default.Pool;
@@ -37538,7 +38036,7 @@ var parse3 = import___.default.parse;
 var toClientConfig = import___.default.toClientConfig;
 var parseIntoClientConfig = import___.default.parseIntoClientConfig;
 
-// ../../node_modules/.bun/pg-cursor@2.21.0+089ae586d7e96dbe/node_modules/pg-cursor/esm/index.mjs
+// ../../node_modules/.bun/pg-cursor@2.22.0+00a0136bc273dfed/node_modules/pg-cursor/esm/index.mjs
 var import___2 = __toESM(require_pg_cursor(), 1);
 var esm_default2 = import___2.default;
 
@@ -39991,7 +40489,10 @@ var run2 = exports_Effect.fn("WorkspaceE2EAllocation.run")(function* (environmen
   }).pipe(exports_Effect.tap((shard) => exports_Effect.tryPromise({
     try: () => appendFile(environment.GITHUB_OUTPUT, `shard=${shard}
 `, "utf8"),
-    catch: (cause) => cause
+    catch: (cause) => new AllocationError({
+      cause,
+      message: cause instanceof Error ? cause.message : "Workspace E2E allocation failed."
+    })
   })), exports_Effect.tap((shard) => exports_Effect.log(`Workspace E2E allocation acquired shard ${shard} of ${supportedAllocationConcurrency}`)));
   yield* releaseAllocationOnFailure(acquireAndPublish, allocation.release(owner));
 });

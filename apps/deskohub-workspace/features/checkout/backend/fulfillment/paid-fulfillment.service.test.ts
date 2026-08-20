@@ -7,26 +7,26 @@ import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryTy
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
+const {
+  PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
+  WorkspacePaidFulfillmentService,
+  WorkspacePaidFulfillmentServiceLive,
+} = await import("./paid-fulfillment.service");
+const { WorkspaceReservationEmailService } = await import(
+  "./workspace-reservation-email.service"
+);
+const { WorkspaceReservationRepository } = await import(
+  "@/features/reservation/backend/workspace-reservation.repository"
+);
+const { WorkspaceReservationService } = await import(
+  "@/features/reservation/backend/workspace-reservation.service"
+);
+const { PostHogEventService } = await import(
+  "@/shared/backend/analytics/posthog-event.service"
+);
+
 describe("WorkspacePaidFulfillmentService", () => {
   test("retries stale processing paid orders and completes non-production fulfillment after send acceptance", async () => {
-    const {
-      PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
-      WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
-    } = await import("./paid-fulfillment.service");
-    const { WorkspaceReservationEmailService } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { WorkspaceReservationService } = await import(
-      "@/features/reservation/backend/workspace-reservation.service"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
-
     const order = {
       id: "reservation-id",
       paymentState: "paid",
@@ -117,23 +117,6 @@ describe("WorkspacePaidFulfillmentService", () => {
   });
 
   test("confirms held paid orders, sends emails, and completes non-production fulfillment", async () => {
-    const {
-      WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
-    } = await import("./paid-fulfillment.service");
-    const { WorkspaceReservationEmailService } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { WorkspaceReservationService } = await import(
-      "@/features/reservation/backend/workspace-reservation.service"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
-
     const order = {
       id: "reservation-id",
       paymentState: "paid",
@@ -214,23 +197,6 @@ describe("WorkspacePaidFulfillmentService", () => {
   });
 
   test("releases the fulfillment claim after an unexpected infrastructure failure", async () => {
-    const {
-      WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
-    } = await import("./paid-fulfillment.service");
-    const { WorkspaceReservationEmailService } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { WorkspaceReservationService } = await import(
-      "@/features/reservation/backend/workspace-reservation.service"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
-
     const order = {
       id: "reservation-id",
       paymentState: "paid",

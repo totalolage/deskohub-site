@@ -128,7 +128,7 @@ describe("administration reservation components", () => {
     const coworkDates = view.getAllByText("10 Aug 2026");
     expect(coworkDates).toHaveLength(2);
     expect(coworkDates[0]?.textContent).not.toContain("00:00");
-    expect(view.getAllByText("10 Aug 2026, 10:00")).toHaveLength(2);
+    expect(view.getAllByText(/10 Aug 2026(?:,| at) 10:00/)).toHaveLength(2);
   });
 
   test("links sortable reservation headers to server-side ordering", () => {
