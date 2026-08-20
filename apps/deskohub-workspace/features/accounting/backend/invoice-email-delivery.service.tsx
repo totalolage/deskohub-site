@@ -4,7 +4,7 @@ import {
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
-import { Context, Data, Effect, Layer, Match } from "effect";
+import { BigDecimal, Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
@@ -91,20 +91,26 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         readonly pdf: Buffer;
         readonly resend?: boolean;
       }) {
-        const manual = isManualInvoiceDocument(input.invoice.document);
-        const manualPayment = manual
-          ? getManualInvoicePayment(input.invoice.document)
+        const manualDocument = isManualInvoiceDocument(input.invoice.document)
+          ? input.invoice.document
+          : null;
+        const manualPayment = manualDocument
+          ? getManualInvoicePayment(manualDocument)
           : null;
         const content = Match.value(input.audience).pipe(
           Match.when("customer", () => {
             const locale = input.invoice.document.locale;
-            const asksForPayment = manualPayment?.status === "due";
+            const asksForPayment =
+              manualPayment?.status === "due" &&
+              BigDecimal.isPositive(
+                BigDecimal.fromStringUnsafe(manualDocument?.total ?? "0")
+              );
             const manualBody =
               locale === "cs-CZ"
                 ? `V příloze posíláme fakturu ${input.invoice.invoiceNumber}${asksForPayment ? " s platebními údaji" : ""}.`
                 : `Invoice ${input.invoice.invoiceNumber}${asksForPayment ? " with payment details" : ""} is attached.`;
             return {
-              body: manual
+              body: manualDocument
                 ? manualBody
                 : m.invoiceEmailBody(
                     {
@@ -126,7 +132,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
               subjectPrefix = `${internalTestingSubjectPrefix} `;
             }
             return {
-              body: manual
+              body: manualDocument
                 ? `Kopie vystavené faktury ${input.invoice.invoiceNumber} je v příloze.`
                 : m.invoiceEmailInternalBody(
                     {

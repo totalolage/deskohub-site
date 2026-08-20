@@ -262,6 +262,30 @@ describe("invoice email delivery", () => {
     );
     expect(sentMessages[0]?.html).not.toContain("with payment details");
   });
+
+  test("does not request payment in the email for a non-positive manual invoice", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const manualDocument = makeTestManualInvoiceDocument("en-US", "0");
+    const manualInvoice: Invoice = {
+      id: manualDocument.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: manualDocument.dotyposCustomerId,
+      invoiceNumber: manualDocument.invoiceNumber,
+      issuedAt: Temporal.Instant.from(manualDocument.issuedAt),
+      document: manualDocument,
+    };
+
+    await runDeliveryByInvoiceId(
+      makeHarness({ invoice: manualInvoice, sentMessages }),
+      manualInvoice.id
+    );
+
+    expect(sentMessages[0]?.html).toContain(
+      `Invoice ${manualInvoice.invoiceNumber} is attached.`
+    );
+    expect(sentMessages[0]?.html).not.toContain("with payment details");
+  });
 });
 
 const runDelivery = (harness: ReturnType<typeof makeHarness>) =>
