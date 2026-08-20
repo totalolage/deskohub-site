@@ -177,6 +177,16 @@ test("runs invoice persistence inside the normal exact-SHA Playwright graph", as
   expect(invoicePersistence).toContain(
     "temporalInstantToIsoString(Temporal.Now.instant())"
   );
+  expect(invoicePersistence).toContain(
+    'like(invoices.dotyposCustomerId, "synthetic-customer-%")'
+  );
+  const deliveryCleanup = invoicePersistence.indexOf(
+    ".delete(invoiceEmailDeliveries)"
+  );
+  expect(deliveryCleanup).toBeGreaterThan(-1);
+  expect(deliveryCleanup).toBeLessThan(
+    invoicePersistence.indexOf(".delete(invoices)")
+  );
   expect(invoicePersistence).not.toContain("WORKSPACE_E2E_DATABASE_ALLOWLIST");
   expect(databaseContract).not.toContain('from "@/env"');
   expect(accountingKeyContract).not.toContain('from "@/env"');

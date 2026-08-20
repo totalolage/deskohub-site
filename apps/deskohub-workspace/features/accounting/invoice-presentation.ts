@@ -1,8 +1,14 @@
-import { Match } from "effect";
-import type { InvoiceDocument } from "@/features/accounting/invoice";
+import { BigDecimal, Match } from "effect";
+import {
+  getManualInvoicePayment,
+  type InvoiceDocument,
+  isManualInvoiceDocument,
+  type ManualInvoiceDocument,
+} from "@/features/accounting/invoice";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import { formatInstantDate } from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
@@ -29,7 +35,7 @@ export interface InvoicePresentation {
   readonly invoiceNumber: string;
   readonly status: string;
   readonly factColumns: readonly [
-    readonly [InvoicePresentationFact, InvoicePresentationFact],
+    readonly [InvoicePresentationFact, InvoicePresentationFact | null],
     readonly [
       InvoicePresentationFact,
       InvoicePresentationFact | null,
@@ -109,6 +115,10 @@ const getInvoiceCopy = (locale: Locale): InvoiceCopy => ({
 export const getInvoicePresentation = (
   document: InvoiceDocument
 ): InvoicePresentation => {
+  if (isManualInvoiceDocument(document)) {
+    return getManualInvoicePresentation(document);
+  }
+
   const { locale } = document;
   const copy = getInvoiceCopy(locale);
 
@@ -144,23 +154,7 @@ export const getInvoicePresentation = (
           : null,
       ],
     ],
-    supplier: {
-      heading: copy.supplier,
-      name: document.supplier.legalName,
-      details: [
-        document.supplier.address.street,
-        document.supplier.address.cityDistrict,
-        `${document.supplier.address.postalCode} ${document.supplier.address.city}`,
-        formatCountry(document.supplier.address.country, locale),
-        `${copy.companyId}: ${document.supplier.companyId}`,
-        ...(document.supplier.commercialRegister
-          ? [
-              `${copy.commercialRegister}: ${document.supplier.commercialRegister.section} ${document.supplier.commercialRegister.file}, ${document.supplier.commercialRegister.court}`,
-            ]
-          : []),
-        document.supplier.contactEmail,
-      ],
-    },
+    supplier: getSupplierPresentation(document, copy),
     buyer: getBuyerPresentation(document, copy),
     lineDescriptionHeading: copy.description,
     lineAmountHeading: copy.amount,
@@ -176,6 +170,101 @@ export const getInvoicePresentation = (
     ],
     totalLabel: copy.totalPaid,
     total: formatWorkspaceMoney(document.quote.payment.expectedPrice, locale),
+    nonVatStatement: copy.nonVatPayer,
+    footer: `${document.supplier.legalName} · ${document.supplier.contactEmail}`,
+  };
+};
+
+const getManualInvoicePresentation = (
+  document: ManualInvoiceDocument
+): InvoicePresentation => {
+  const copy = getInvoiceCopy(document.locale);
+  const payment = getManualInvoicePayment(document);
+  const positiveTotal = BigDecimal.isPositive(
+    BigDecimal.fromStringUnsafe(document.total)
+  );
+  const paymentRequested = payment.status === "due" && positiveTotal;
+  const manual =
+    document.locale === "cs-CZ"
+      ? {
+          issued: "Vystaveno",
+          unpaid: "K úhradě",
+          dueDate: "Datum splatnosti",
+          variableSymbol: "Variabilní symbol",
+          total: "Celkem",
+          totalDue: "Celkem k úhradě",
+        }
+      : {
+          issued: "Issued",
+          unpaid: "Payment due",
+          dueDate: "Due date",
+          variableSymbol: "Variable symbol",
+          total: "Total",
+          totalDue: "Amount due",
+        };
+  const paymentPresentation = Match.value(payment).pipe(
+    Match.discriminatorsExhaustive("status")({
+      paid: ({ date }) => ({
+        status: copy.paid,
+        totalLabel: copy.totalPaid,
+        dateFact: {
+          label: copy.paymentDate,
+          value: formatPlainDate(date, document.locale),
+        },
+      }),
+      due: ({ date }) =>
+        paymentRequested
+          ? {
+              status: manual.unpaid,
+              totalLabel: manual.totalDue,
+              dateFact: {
+                label: manual.dueDate,
+                value: formatPlainDate(date, document.locale),
+              },
+            }
+          : {
+              status: manual.issued,
+              totalLabel: manual.total,
+              dateFact: null,
+            },
+    })
+  );
+
+  return {
+    locale: document.locale,
+    title: copy.title,
+    invoiceNumber: document.invoiceNumber,
+    factColumns: [
+      [
+        { label: copy.invoiceNumber, value: document.invoiceNumber },
+        positiveTotal
+          ? { label: manual.variableSymbol, value: document.variableSymbol }
+          : null,
+      ],
+      [
+        {
+          label: copy.issueDate,
+          value: formatWorkspaceInstantDate(document.issuedAt, document.locale),
+        },
+        {
+          label: copy.serviceDate,
+          value: formatPlainDate(document.serviceDate, document.locale),
+        },
+        paymentPresentation.dateFact,
+      ],
+    ],
+    supplier: getSupplierPresentation(document, copy),
+    buyer: getBuyerPresentation(document, copy),
+    lineDescriptionHeading: copy.description,
+    lineAmountHeading: copy.amount,
+    lines: document.lines.map((line) => ({
+      kind: "item" as const,
+      description: line.description,
+      amount: formatManualMoney(line.price, document.currency),
+    })),
+    status: paymentPresentation.status,
+    totalLabel: paymentPresentation.totalLabel,
+    total: formatManualMoney(document.total, document.currency),
     nonVatStatement: copy.nonVatPayer,
     footer: `${document.supplier.legalName} · ${document.supplier.contactEmail}`,
   };
@@ -206,8 +295,29 @@ const getBuyerPresentation = (
   };
 };
 
-const getItemLines = (
+const getSupplierPresentation = (
   document: InvoiceDocument,
+  copy: InvoiceCopy
+): InvoicePresentationParty => ({
+  heading: copy.supplier,
+  name: document.supplier.legalName,
+  details: [
+    document.supplier.address.street,
+    document.supplier.address.cityDistrict,
+    `${document.supplier.address.postalCode} ${document.supplier.address.city}`,
+    formatCountry(document.supplier.address.country, document.locale),
+    `${copy.companyId}: ${document.supplier.companyId}`,
+    ...(document.supplier.commercialRegister
+      ? [
+          `${copy.commercialRegister}: ${document.supplier.commercialRegister.section} ${document.supplier.commercialRegister.file}, ${document.supplier.commercialRegister.court}`,
+        ]
+      : []),
+    document.supplier.contactEmail,
+  ],
+});
+
+const getItemLines = (
+  document: Exclude<InvoiceDocument, ManualInvoiceDocument>,
   copy: InvoiceCopy
 ): readonly InvoicePresentationLine[] =>
   document.quote.items.map(
@@ -259,4 +369,16 @@ const formatCountry = (country: string, locale: Locale) => {
   } catch {
     return country;
   }
+};
+
+const formatPlainDate = (value: string, locale: Locale) =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeZone: "UTC",
+  }).format(new Date(`${value}T00:00:00Z`));
+
+const formatManualMoney = (value: string, currency: string) => {
+  const exponent = findWorkspaceCurrencyDefinition(currency)?.exponent ?? 0;
+  const [integer, fraction = ""] = value.split(".");
+  return `${integer}${exponent > 0 ? `.${fraction.padEnd(exponent, "0")}` : ""} ${currency}`;
 };

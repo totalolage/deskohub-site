@@ -4,10 +4,14 @@ import {
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
-import { Context, Data, Effect, Layer, Match } from "effect";
+import { BigDecimal, Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
+import {
+  getManualInvoicePayment,
+  isManualInvoiceDocument,
+} from "@/features/accounting/invoice";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { m } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
@@ -54,6 +58,9 @@ export type InvoiceEmailDeliveryResult =
   | { readonly status: "delivered"; readonly changed: boolean };
 
 export interface IInvoiceEmailDeliveryService {
+  readonly deliverByInvoiceId: (input: {
+    readonly invoiceId: string;
+  }) => Effect.Effect<InvoiceEmailDeliveryResult, InvoiceEmailDeliveryError>;
   readonly deliverByPaymentAttemptId: (input: {
     readonly paymentAttemptId: string;
   }) => Effect.Effect<InvoiceEmailDeliveryResult, InvoiceEmailDeliveryError>;
@@ -84,15 +91,34 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         readonly pdf: Buffer;
         readonly resend?: boolean;
       }) {
-        const messageInput = {
-          invoiceNumber: input.invoice.invoiceNumber,
-          orderId: input.invoice.workspaceReservationId,
-        };
+        const manualDocument = isManualInvoiceDocument(input.invoice.document)
+          ? input.invoice.document
+          : null;
+        const manualPayment = manualDocument
+          ? getManualInvoicePayment(manualDocument)
+          : null;
         const content = Match.value(input.audience).pipe(
           Match.when("customer", () => {
             const locale = input.invoice.document.locale;
+            const asksForPayment =
+              manualPayment?.status === "due" &&
+              BigDecimal.isPositive(
+                BigDecimal.fromStringUnsafe(manualDocument?.total ?? "0")
+              );
+            const manualBody =
+              locale === "cs-CZ"
+                ? `V příloze posíláme fakturu ${input.invoice.invoiceNumber}${asksForPayment ? " s platebními údaji" : ""}.`
+                : `Invoice ${input.invoice.invoiceNumber}${asksForPayment ? " with payment details" : ""} is attached.`;
             return {
-              body: m.invoiceEmailBody(messageInput, { locale }),
+              body: manualDocument
+                ? manualBody
+                : m.invoiceEmailBody(
+                    {
+                      invoiceNumber: input.invoice.invoiceNumber,
+                      orderId: input.invoice.workspaceReservationId ?? "",
+                    },
+                    { locale }
+                  ),
               category: invoiceCustomerEmailCategory,
               heading: m.invoiceEmailHeading({}, { locale }),
               locale,
@@ -106,7 +132,15 @@ export class InvoiceEmailDeliveryService extends Context.Service<
               subjectPrefix = `${internalTestingSubjectPrefix} `;
             }
             return {
-              body: m.invoiceEmailInternalBody(messageInput, { locale }),
+              body: manualDocument
+                ? `Kopie vystavené faktury ${input.invoice.invoiceNumber} je v příloze.`
+                : m.invoiceEmailInternalBody(
+                    {
+                      invoiceNumber: input.invoice.invoiceNumber,
+                      orderId: input.invoice.workspaceReservationId ?? "",
+                    },
+                    { locale }
+                  ),
               category: invoiceInternalEmailCategory,
               heading: m.invoiceEmailInternalHeading({}, { locale }),
               locale,
@@ -128,7 +162,8 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           Effect.mapError((cause) =>
             deliveryError({
               code: "email_delivery_failed",
-              paymentAttemptId: input.invoice.paymentAttemptId,
+              paymentAttemptId:
+                input.invoice.paymentAttemptId ?? input.invoice.id,
               message: "Invoice delivery email could not be rendered.",
               cause,
             })
@@ -152,7 +187,8 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           Effect.mapError((cause) =>
             deliveryError({
               code: "persistence_failed",
-              paymentAttemptId: input.invoice.paymentAttemptId,
+              paymentAttemptId:
+                input.invoice.paymentAttemptId ?? input.invoice.id,
               message: "Invoice email delivery could not be claimed.",
               cause,
             })
@@ -168,9 +204,9 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           subject: `${content.subjectPrefix}${preview}`,
           html: rendered.html,
           text: rendered.text,
-          ...(input.resend && {
-            idempotencyKey: `workspace-invoice-customer-resend-${input.invoice.id}-${claim.attemptNumber}`,
-          }),
+          idempotencyKey: input.resend
+            ? `workspace-invoice-customer-resend-${input.invoice.id}-${claim.attemptNumber}`
+            : `${content.category}-${input.invoice.id}`,
           attachments: [
             {
               filename: `${input.invoice.invoiceNumber}.pdf`,
@@ -182,7 +218,9 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           metadata: {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-invoice-delivery",
-            workspaceReservationId: input.invoice.workspaceReservationId,
+            ...(input.invoice.workspaceReservationId && {
+              workspaceReservationId: input.invoice.workspaceReservationId,
+            }),
             invoiceId: input.invoice.id,
             audience: input.audience,
           },
@@ -222,7 +260,8 @@ export class InvoiceEmailDeliveryService extends Context.Service<
             Effect.mapError((cause) =>
               deliveryError({
                 code: "persistence_failed",
-                paymentAttemptId: input.invoice.paymentAttemptId,
+                paymentAttemptId:
+                  input.invoice.paymentAttemptId ?? input.invoice.id,
                 message: "Accepted invoice email delivery was not recorded.",
                 cause,
               })
@@ -249,10 +288,41 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           );
         if (!invoice) return null;
 
+        return yield* loadInvoiceDelivery(invoice);
+      });
+
+      const loadInvoiceDelivery = Effect.fn(
+        "InvoiceEmailDeliveryService.loadInvoiceDelivery"
+      )(function* (invoice: Invoice) {
+        if (isManualInvoiceDocument(invoice.document)) {
+          const pdf = yield* renderInvoicePdf(invoice.document).pipe(
+            Effect.mapError((cause) =>
+              deliveryError({
+                code: "pdf_render_failed",
+                paymentAttemptId: invoice.id,
+                message: "Invoice PDF could not be rendered for delivery.",
+                cause,
+              })
+            )
+          );
+          return {
+            invoice,
+            recipient: invoice.document.delivery.email,
+            pdf,
+          };
+        }
+
+        if (!invoice.paymentAttemptId) {
+          return yield* deliveryError({
+            code: "invoice_load_failed",
+            paymentAttemptId: invoice.id,
+            message: "Reservation invoice payment reference is unavailable.",
+          });
+        }
+        const paymentAttemptId = invoice.paymentAttemptId;
+
         const source = yield* accountingSnapshots
-          .findByPaymentAttemptId(
-            paymentAttemptIdSchema.make(invoice.paymentAttemptId)
-          )
+          .findByPaymentAttemptId(paymentAttemptIdSchema.make(paymentAttemptId))
           .pipe(
             Effect.mapError((cause) =>
               deliveryError({
@@ -285,40 +355,70 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         return { invoice, recipient: source.delivery.email, pdf };
       });
 
+      const deliverLoaded = Effect.fn(
+        "InvoiceEmailDeliveryService.deliverLoaded"
+      )(function* (
+        delivery: NonNullable<
+          Effect.Success<ReturnType<typeof loadInvoiceDelivery>>
+        >
+      ) {
+        const customer = yield* deliverAudience({
+          invoice: delivery.invoice,
+          audience: "customer",
+          recipient: { email: delivery.recipient },
+          pdf: delivery.pdf,
+        }).pipe(settleDelivery);
+        const internal = yield* deliverAudience({
+          invoice: delivery.invoice,
+          audience: "internal",
+          recipient: internalWorkspaceEmailRecipient,
+          pdf: delivery.pdf,
+        }).pipe(settleDelivery);
+
+        if (!customer.success) return yield* customer.error;
+        if (!internal.success) {
+          return yield* deliveryError({
+            code: internal.error.code,
+            paymentAttemptId:
+              delivery.invoice.paymentAttemptId ?? delivery.invoice.id,
+            message: internal.error.message,
+            customerDelivered: customer.value,
+            cause: internal.error,
+          });
+        }
+        return {
+          status: "delivered",
+          changed: customer.value || internal.value,
+        } as const;
+      });
+
+      const deliverByInvoiceId = Effect.fn(
+        "InvoiceEmailDeliveryService.deliverByInvoiceId"
+      )(function* ({ invoiceId }: { readonly invoiceId: string }) {
+        const invoice = yield* invoices.findById(invoiceId).pipe(
+          Effect.mapError((cause) =>
+            deliveryError({
+              code: "invoice_load_failed",
+              paymentAttemptId: invoiceId,
+              message: "Issued invoice could not be loaded for delivery.",
+              cause,
+            })
+          )
+        );
+        if (!invoice) return { status: "not_issued" } as const;
+        return yield* loadInvoiceDelivery(invoice).pipe(
+          Effect.flatMap(deliverLoaded)
+        );
+      });
+
       return {
+        deliverByInvoiceId,
         deliverByPaymentAttemptId: Effect.fn(
           "InvoiceEmailDeliveryService.deliverByPaymentAttemptId"
         )(function* ({ paymentAttemptId }) {
           const delivery = yield* loadDelivery(paymentAttemptId);
           if (!delivery) return { status: "not_issued" } as const;
-          const customer = yield* deliverAudience({
-            invoice: delivery.invoice,
-            audience: "customer",
-            recipient: { email: delivery.recipient },
-            pdf: delivery.pdf,
-          }).pipe(settleDelivery);
-          const internal = yield* deliverAudience({
-            invoice: delivery.invoice,
-            audience: "internal",
-            recipient: internalWorkspaceEmailRecipient,
-            pdf: delivery.pdf,
-          }).pipe(settleDelivery);
-
-          if (!customer.success) return yield* customer.error;
-          if (!internal.success) {
-            return yield* deliveryError({
-              code: internal.error.code,
-              paymentAttemptId,
-              message: internal.error.message,
-              customerDelivered: customer.value,
-              cause: internal.error,
-            });
-          }
-
-          return {
-            status: "delivered",
-            changed: customer.value || internal.value,
-          } as const;
+          return yield* deliverLoaded(delivery);
         }),
         resendCustomerByPaymentAttemptId: Effect.fn(
           "InvoiceEmailDeliveryService.resendCustomerByPaymentAttemptId"
@@ -399,7 +499,7 @@ const failDelivery = (input: {
       Effect.mapError((cause) =>
         deliveryError({
           code: "persistence_failed",
-          paymentAttemptId: input.invoice.paymentAttemptId,
+          paymentAttemptId: input.invoice.paymentAttemptId ?? input.invoice.id,
           message: "Failed invoice email delivery was not recorded.",
           cause,
         })
@@ -408,7 +508,8 @@ const failDelivery = (input: {
         Effect.fail(
           deliveryError({
             code: "email_delivery_failed",
-            paymentAttemptId: input.invoice.paymentAttemptId,
+            paymentAttemptId:
+              input.invoice.paymentAttemptId ?? input.invoice.id,
             message: "Invoice email delivery failed.",
             cause: input.cause,
           })

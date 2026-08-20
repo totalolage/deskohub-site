@@ -1,4 +1,5 @@
 import {
+  type AdministrationActorUsernameType,
   CliAccessToken,
   type CliAccessTokenType,
   CliAuthenticationCode,
@@ -98,9 +99,10 @@ interface ICliAuthentication {
     CliApprovalRequest | null,
     EffectDrizzleQueryError | PlatformError.PlatformError
   >;
-  readonly approve: (
-    code: CliAuthenticationCodeType
-  ) => Effect.Effect<
+  readonly approve: (input: {
+    readonly code: CliAuthenticationCodeType;
+    readonly approvedBy: AdministrationActorUsernameType;
+  }) => Effect.Effect<
     CliApprovalRequest,
     | EffectDrizzleQueryError
     | PlatformError.PlatformError
@@ -232,10 +234,11 @@ export class CliAuthentication extends Context.Service<
         }
       );
 
-      const approve = Effect.fn("CliAuthentication.approve")(function* (
-        code: CliAuthenticationCodeType
-      ) {
-        const result = yield* loadRequest(code);
+      const approve = Effect.fn("CliAuthentication.approve")(function* (input: {
+        readonly code: CliAuthenticationCodeType;
+        readonly approvedBy: AdministrationActorUsernameType;
+      }) {
+        const result = yield* loadRequest(input.code);
         const now = yield* nowInstant;
         if (!result) {
           return yield* new CliApprovalUnavailableError({
@@ -254,6 +257,7 @@ export class CliAuthentication extends Context.Service<
           .update(cliAuthenticationRequests)
           .set({
             approvedAt: now,
+            approvedBy: input.approvedBy,
             grantToken,
             grantExpiresAt,
           })
@@ -267,7 +271,7 @@ export class CliAuthentication extends Context.Service<
           .returning();
 
         if (!approved) {
-          const latest = yield* loadRequest(code);
+          const latest = yield* loadRequest(input.code);
           if (!latest) {
             return yield* new CliApprovalUnavailableError({
               message: "This authentication request is invalid or has expired.",
@@ -309,6 +313,7 @@ export class CliAuthentication extends Context.Service<
           Effect.gen(function* () {
             yield* tx.insert(cliSessions).values({
               id: sessionId,
+              approvedBy: request.approvedBy,
               tokenHash,
               clientName: request.clientName,
               cliVersion: request.cliVersion,
@@ -339,6 +344,7 @@ export class CliAuthentication extends Context.Service<
             if (consumed.length === 0) return yield* rejectedGrant;
             return {
               id: sessionId,
+              approvedBy: request.approvedBy,
               tokenHash,
               clientName: request.clientName,
               cliVersion: request.cliVersion,
@@ -465,6 +471,7 @@ const toIsoString = (instant: Temporal.Instant) =>
 
 const toCliSession = (row: CliSessionRow): CliSessionType => ({
   id: row.id,
+  approvedBy: row.approvedBy,
   clientName: row.clientName,
   cliVersion: row.cliVersion,
   buildTarget: row.buildTarget,

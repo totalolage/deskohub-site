@@ -6,7 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { NexiCorrelationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray, like, sql } from "drizzle-orm";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { DatabaseClient } from "@/db/database-client";
@@ -93,24 +93,60 @@ const personalInvoiceBuyer = {
 
 export const assertInvoicePersistence = Effect.gen(function* () {
   const { db } = yield* E2EDatabase;
+  yield* cleanupLegacyInvoicePersistenceFixtures(db);
   const repository = yield* makeInvoiceRepository({
     db,
     keys: makeKeyService(),
   });
   const deliveryRepository = yield* makeInvoiceEmailDeliveryRepository(db);
 
-  yield* assertIdempotentIssuance(db, repository);
-  yield* assertEmailDeliveryPersistence(db, repository, deliveryRepository);
-  yield* assertUniqueNumbering(db, repository);
-  yield* assertIneligiblePayment(db, repository);
-  yield* assertUnfulfilledReservation(db, repository);
-  yield* assertDifferentAttemptRejected(db, repository);
-  yield* assertFailedInsertionRollsBackNumber(db, repository);
+  yield* Effect.gen(function* () {
+    yield* assertIdempotentIssuance(db, repository);
+    yield* assertEmailDeliveryPersistence(db, repository, deliveryRepository);
+    yield* assertUniqueNumbering(db, repository);
+    yield* assertIneligiblePayment(db, repository);
+    yield* assertUnfulfilledReservation(db, repository);
+    yield* assertDifferentAttemptRejected(db, repository);
+    yield* assertFailedInsertionRollsBackNumber(db, repository);
+  }).pipe(
+    Effect.ensuring(
+      cleanupLegacyInvoicePersistenceFixtures(db).pipe(Effect.orDie)
+    )
+  );
+  const remainingFixtures = yield* db
+    .select({ id: invoices.id })
+    .from(invoices)
+    .where(like(invoices.dotyposCustomerId, "synthetic-customer-%"))
+    .limit(1);
+  equal(remainingFixtures.length, 0);
 }).pipe(
   Effect.mapError((cause) =>
     toWorkspaceE2EError("assert invoice persistence", cause)
   )
 );
+
+const cleanupLegacyInvoicePersistenceFixtures = (db: DatabaseClient) =>
+  db.transaction((tx) =>
+    Effect.gen(function* () {
+      yield* tx.execute(sql`lock table ${invoices} in access exclusive mode`);
+      yield* tx.execute(
+        sql`alter table ${invoices} disable trigger invoices_immutable`
+      );
+      const fixtureInvoices = tx
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(like(invoices.dotyposCustomerId, "synthetic-customer-%"));
+      yield* tx
+        .delete(invoiceEmailDeliveries)
+        .where(inArray(invoiceEmailDeliveries.invoiceId, fixtureInvoices));
+      yield* tx
+        .delete(invoices)
+        .where(like(invoices.dotyposCustomerId, "synthetic-customer-%"));
+      yield* tx.execute(
+        sql`alter table ${invoices} enable trigger invoices_immutable`
+      );
+    })
+  );
 
 const assertEmailDeliveryPersistence = (
   db: DatabaseClient,
@@ -541,11 +577,7 @@ const createPaidFixture = (
           dotyposReservationId,
           reservationState: paid ? "confirmed" : "held",
           paymentState: paid ? "paid" : "pending",
-          fulfillmentState: fulfilled
-            ? "fulfilled"
-            : paid
-              ? "processing"
-              : "not_started",
+          fulfillmentState: getFixtureFulfillmentState({ fulfilled, paid }),
           activePaymentAttemptId: paymentAttemptId,
           reservationDetails: {
             kind: "cowork",
@@ -650,6 +682,18 @@ const readCounters = (db: DatabaseClient) =>
           new Map(rows.map((row) => [row.numberingYear, row.lastSequence]))
       )
     );
+
+const getFixtureFulfillmentState = ({
+  fulfilled,
+  paid,
+}: {
+  readonly fulfilled: boolean;
+  readonly paid: boolean;
+}) => {
+  if (fulfilled) return "fulfilled" as const;
+  if (paid) return "processing" as const;
+  return "not_started" as const;
+};
 
 const isTaggedError = (tag: string) => (error: unknown) =>
   typeof error === "object" &&

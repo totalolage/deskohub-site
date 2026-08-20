@@ -193,6 +193,7 @@ describe("reservation invoice processing", () => {
         legalName: "Ada Lovelace",
         address: personalAddress,
       },
+      provenance: { source: "post-order-link" },
     });
   });
 

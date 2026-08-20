@@ -2,7 +2,13 @@
 
 The Workspace administration dashboard is an operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Loading reservation and customer pages does not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records; reservation cancellation and access recovery are explicit operator actions.
 
-The visible navigation is intentionally limited to Overview, Reservations, Customers, Codes, and Sales. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
+The visible navigation includes Overview, Reservations, Customers, Invoices, Codes, Vouchers, Sales, and CLI sessions. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
+
+Invoice administration composes the encrypted accounting-document repository, delivery status, and Dotypos customers. Keep customer resolution and invoice issuance in the shared invoice administration service so the UI and administration API enforce the same exact-email reuse, billing update, currency, idempotency, provenance, and delivery rules. The default list ordering groups delivery attention first and then uses issuance time descending; an explicit operator sort must not retain the attention grouping.
+
+Claim an ad-hoc invoice's client UUID before any Dotypos mutation. Bind the complete normalized request and server-derived provenance with a keyed digest, persist no plaintext customer data in the claim, reject a different request for the same UUID, and allow the identical request to reclaim an incomplete claim after one minute.
+
+Project reservation invoices and manual invoices explicitly marked as paid as paid. A paid manual invoice records its payment date and omits payment instructions. Project positive-total unpaid manual invoices as issued, due, or overdue by comparing their due date with the current Prague calendar date. Keep zero-total and negative-total unpaid manual documents issued because they do not request payment. Keep payment and email delivery as separate statuses; fresh processing delivery is sending, not sent.
 
 Discount definitions are managed through the code or Calendar sale that uses them instead of through a standalone definitions table. Code creation can create its discount atomically, and associated Calendar-sale rows expose their discount editor. `/admin/discounts` redirects to Codes for compatibility with existing links.
 

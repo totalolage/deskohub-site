@@ -6,6 +6,7 @@ import {
   CliGrantRejected,
   CliMutationInProgress,
   CliMutationRejected,
+  CliMutationRequestId,
   CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionUnauthorized,
@@ -16,6 +17,14 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Match, Redacted, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
+import {
+  InvoiceAdministrationCustomerError,
+  InvoiceAdministrationInProgressError,
+  InvoiceAdministrationNotFoundError,
+  InvoiceAdministrationService,
+} from "@/features/accounting/admin/invoice-administration.service";
+import { ManualInvoiceConflictError } from "@/features/accounting/backend/invoice.repository";
+import { ManualInvoiceValidationError } from "@/features/accounting/manual-invoice";
 import { AdministrationService } from "@/features/administration/administration.service";
 import {
   getAdministrationOperationFilters,
@@ -107,6 +116,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       const reservationAccess = yield* ReservationAccessAdministration;
       const authentication = yield* CliAuthentication;
       const discounts = yield* DiscountAdministration;
+      const invoices = yield* InvoiceAdministrationService;
       const mutationIdempotency = yield* CliMutationIdempotency;
       return handlers
         .handle("getOverview", () =>
@@ -358,6 +368,48 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             )
           )
         )
+        .handle("listInvoices", ({ query }) =>
+          invoices.list(query).pipe(mapServiceFailure)
+        )
+        .handle("getInvoice", ({ params }) =>
+          invoices
+            .get(params.invoiceId)
+            .pipe(Effect.mapError(mapInvoiceReadFailure))
+        )
+        .handle("getInvoicePdf", ({ params }) =>
+          invoices.getPdf(params.invoiceId).pipe(
+            Effect.map(({ bytes }) => bytes),
+            Effect.mapError(mapInvoiceReadFailure)
+          )
+        )
+        .handle("createInvoice", ({ payload }) =>
+          Effect.gen(function* () {
+            const session = yield* CurrentCliSession;
+            if (session.approvedBy === null) {
+              return yield* new CliMutationRejected({
+                message:
+                  "This legacy CLI session cannot issue invoices. Run dhw auth again.",
+              });
+            }
+            return yield* invoices
+              .create(payload, {
+                source: "dhw-cli",
+                actor: session.approvedBy,
+              })
+              .pipe(Effect.mapError(mapInvoiceMutationFailure));
+          })
+        )
+        .handle("resendInvoice", ({ params }) =>
+          invoices.retry(params.invoiceId).pipe(
+            Effect.mapError((cause) =>
+              cause instanceof InvoiceAdministrationNotFoundError
+                ? new CliResourceNotFound({
+                    message: "The invoice was not found.",
+                  })
+                : makeServiceUnavailable()
+            )
+          )
+        )
         .handle("listSessions", () =>
           authentication.listSessions().pipe(mapServiceFailure)
         )
@@ -499,6 +551,28 @@ const mapDiscountMutationFailure = (
     Match.orElse(makeServiceUnavailable)
   );
 
+const mapInvoiceReadFailure = (cause: unknown) =>
+  cause instanceof InvoiceAdministrationNotFoundError
+    ? new CliResourceNotFound({ message: "The invoice was not found." })
+    : makeServiceUnavailable();
+
+const mapInvoiceMutationFailure = (cause: unknown) => {
+  if (cause instanceof InvoiceAdministrationInProgressError) {
+    return new CliMutationInProgress({
+      message: cause.message,
+      requestId: CliMutationRequestId.make(cause.invoiceId),
+    });
+  }
+  if (
+    cause instanceof InvoiceAdministrationCustomerError ||
+    cause instanceof ManualInvoiceConflictError ||
+    cause instanceof ManualInvoiceValidationError
+  ) {
+    return new CliMutationRejected({ message: cause.message });
+  }
+  return makeServiceUnavailable();
+};
+
 const mapReservationCancellationFailure = (
   cause: ReservationAdministrationError
 ) => {
@@ -631,6 +705,7 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(ReservationAdministrationService.Live),
     Layer.provide(ReservationAccessAdministration.Live),
     Layer.provide(DiscountAdministration.Live),
+    Layer.provide(InvoiceAdministrationService.Live),
     Layer.provide(CliMutationIdempotency.Live),
     Layer.provide(CliAuthenticationAdmission.Default),
     Layer.provide(CliAuthentication.Live)

@@ -7,6 +7,7 @@ import {
   makeCoworkInvoiceDocument,
   makeMeetingRoomInvoiceDocument,
   makeOfficeInvoiceDocument,
+  makeTestManualInvoiceDocument,
 } from "../invoice.test-utils";
 import { renderInvoicePdf } from "./invoice-pdf";
 
@@ -29,6 +30,11 @@ const cases = [
   ],
   ["office cs-CZ", makeOfficeInvoiceDocument("cs-CZ"), "Soukromá kancelář"],
   ["office en-US", makeOfficeInvoiceDocument("en-US"), "Private office"],
+  [
+    "manual unpaid cs-CZ",
+    makeTestManualInvoiceDocument("cs-CZ"),
+    "Účet: 2303459272/2010",
+  ],
 ] as const;
 
 describe("invoice PDF", () => {
@@ -86,6 +92,20 @@ describe("invoice PDF", () => {
     expect(text).toContain("Žluťoučký kůň s.r.o.");
     expect(text).toContain("Příčná 12");
     expect(text).toContain("Nejsme plátci DPH.");
+  });
+
+  test("renders a paid manual invoice without payment instructions", async () => {
+    const document = makeTestManualInvoiceDocument("cs-CZ", "450", {
+      status: "paid",
+      date: "2026-08-20",
+    });
+    const { text } = await extractPdfText(
+      await Effect.runPromise(renderInvoicePdf(document))
+    );
+
+    expect(text).toContain("UHRAZENO");
+    expect(text).toContain("DATUM ÚHRADY");
+    expect(text).not.toContain("Platební údaje");
   });
 });
 

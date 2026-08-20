@@ -3,6 +3,7 @@ import {
   AdministrationBookingSummary,
   AdministrationCanonicalPromotionCode,
   AdministrationDiscountCodeId,
+  AdministrationInvoiceId,
   AdministrationNexiOperationId,
   AdministrationOperation,
   AdministrationOrder,
@@ -16,7 +17,7 @@ import {
   CliMutationRequestId,
   CliSessionId,
 } from "@deskohub/workspace-admin-api";
-import { Effect, Layer, Redacted, Schema } from "effect";
+import { Clock, Duration, Effect, Layer, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { DhwConfig } from "../config/dhw-config.service";
 import {
@@ -67,6 +68,269 @@ describe("WorkspaceAdminApiClient", () => {
     }
   });
 
+  test("uses the typed invoice endpoints without changing the creation id", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("i".repeat(43))
+    );
+    const invoiceId = Schema.decodeUnknownSync(AdministrationInvoiceId)(
+      "01980000-0000-7000-8000-000000000009"
+    );
+    const requests: Array<{ method: string; path: string }> = [];
+    const createdPayloads: unknown[] = [];
+    const item = {
+      id: invoiceId,
+      invoiceNumber: "WS-FV-2026-000001",
+      issuedAt: "2026-08-10T10:00:00.000Z",
+      customerName: "Synthetic Customer",
+      total: "1000",
+      currency: "CZK",
+      paymentStatus: "paid",
+      source: "dhw-cli" as const,
+      actor: "admin",
+      delivery: {
+        customer: "accepted" as const,
+        internal: "accepted" as const,
+      },
+      needsAttention: false,
+    };
+    const input = {
+      invoiceId,
+      customer: {
+        kind: "new" as const,
+        details: {
+          kind: "person" as const,
+          email: "synthetic@example.test",
+          firstName: "Synthetic",
+          lastName: "Customer",
+          address: {
+            line1: "Test street 1",
+            city: "Prague",
+            postalCode: "100 00",
+            country: "CZ",
+          },
+        },
+      },
+      locale: "cs-CZ" as const,
+      serviceDate: "2026-08-10",
+      payment: { status: "due" as const, date: "2026-08-24" },
+      currency: "CZK",
+      lines: [{ description: "Space rental", price: "1000" }],
+    };
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const url = new URL(request.url);
+        requests.push({ method: request.method, path: url.pathname });
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer ${Redacted.value(accessToken)}`
+        );
+        if (url.pathname.endsWith(`/${invoiceId}/pdf`)) {
+          return new Response(Uint8Array.from([37, 80, 68, 70]), {
+            headers: { "content-type": "application/pdf" },
+          });
+        }
+        if (url.pathname.endsWith(`/${invoiceId}/resend`)) {
+          return Response.json({
+            invoiceId,
+            changed: true,
+            needsAttention: false,
+          });
+        }
+        if (url.pathname.endsWith(`/${invoiceId}`)) {
+          return Response.json({
+            ...item,
+            locale: "cs-CZ",
+            serviceDate: "2026-08-10",
+            dueDate: "2026-08-24",
+            paidOn: null,
+            variableSymbol: "2026000001",
+            lines: input.lines,
+            buyer: {
+              kind: "person",
+              legalName: "Synthetic Customer",
+              address: input.customer.details.address,
+            },
+            pdfUrl: `/admin/invoices/${invoiceId}/pdf`,
+          });
+        }
+        if (request.method === "POST") {
+          createdPayloads.push(await request.json());
+          if (createdPayloads.length === 1) {
+            return Response.json(
+              {
+                _tag: "CliMutationInProgress",
+                message: "The invoice is still being created.",
+                requestId: invoiceId,
+              },
+              { status: 409 }
+            );
+          }
+          return Response.json(
+            {
+              invoiceId,
+              invoiceNumber: item.invoiceNumber,
+              changed: true,
+              needsAttention: false,
+            },
+            { status: 201 }
+          );
+        }
+        return Response.json({
+          items: [item],
+          total: 1,
+          page: 1,
+          pageSize: 24,
+          pageCount: 1,
+        });
+      },
+    });
+
+    try {
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-invoice-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const results = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        return yield* Effect.all([
+          client.listInvoices(accessToken, { page: 1 }),
+          client.getInvoice(accessToken, invoiceId),
+          client.getInvoicePdf(accessToken, invoiceId),
+          client.createInvoice(accessToken, input),
+          client.resendInvoice(accessToken, invoiceId),
+        ]);
+      }).pipe(Effect.provide(clientLayer), Effect.runPromise);
+
+      expect(results[0].items).toHaveLength(1);
+      expect(results[1].id).toBe(invoiceId);
+      expect([...results[2]]).toEqual([37, 80, 68, 70]);
+      expect(results[3].invoiceId).toBe(invoiceId);
+      expect(results[4].changed).toBe(true);
+      expect(createdPayloads).toEqual([input, input]);
+      expect(requests).toEqual([
+        { method: "GET", path: "/api/v1/cli/invoices" },
+        { method: "GET", path: `/api/v1/cli/invoices/${invoiceId}` },
+        { method: "GET", path: `/api/v1/cli/invoices/${invoiceId}/pdf` },
+        { method: "POST", path: "/api/v1/cli/invoices" },
+        { method: "POST", path: "/api/v1/cli/invoices" },
+        { method: "POST", path: `/api/v1/cli/invoices/${invoiceId}/resend` },
+      ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("retries invoice creation through the one-minute claim recovery window", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("i".repeat(43))
+    );
+    const invoiceId = Schema.decodeUnknownSync(AdministrationInvoiceId)(
+      "01980000-0000-7000-8000-000000000019"
+    );
+    const input = {
+      invoiceId,
+      customer: {
+        kind: "new" as const,
+        details: {
+          kind: "person" as const,
+          email: "synthetic@example.test",
+          firstName: "Synthetic",
+          lastName: "Customer",
+          address: {
+            line1: "Test street 1",
+            city: "Prague",
+            postalCode: "100 00",
+            country: "CZ",
+          },
+        },
+      },
+      locale: "cs-CZ" as const,
+      serviceDate: "2026-08-10",
+      payment: { status: "due" as const, date: "2026-08-24" },
+      currency: "CZK",
+      lines: [{ description: "Space rental", price: "1000" }],
+    };
+    const payloads: unknown[] = [];
+    let elapsedRetryMilliseconds = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        payloads.push(await request.json());
+        if (payloads.length <= 240) {
+          return Response.json(
+            {
+              _tag: "CliMutationInProgress",
+              message: "The invoice is still being created.",
+              requestId: invoiceId,
+            },
+            { status: 409 }
+          );
+        }
+        return Response.json(
+          {
+            invoiceId,
+            invoiceNumber: "WS-FV-2026-000019",
+            changed: true,
+            needsAttention: false,
+          },
+          { status: 201 }
+        );
+      },
+    });
+
+    try {
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-invoice-recovery-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const result = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        return yield* client.createInvoice(accessToken, input);
+      }).pipe(
+        Effect.provide(clientLayer),
+        Effect.provideService(Clock.Clock, {
+          currentTimeMillisUnsafe: () => elapsedRetryMilliseconds,
+          currentTimeMillis: Effect.sync(() => elapsedRetryMilliseconds),
+          currentTimeNanosUnsafe: () =>
+            BigInt(elapsedRetryMilliseconds) * 1_000_000n,
+          currentTimeNanos: Effect.sync(
+            () => BigInt(elapsedRetryMilliseconds) * 1_000_000n
+          ),
+          sleep: (duration) =>
+            Effect.sync(() => {
+              elapsedRetryMilliseconds += Duration.toMillis(duration);
+            }),
+        }),
+        Effect.runPromise
+      );
+
+      expect(result.invoiceId).toBe(invoiceId);
+      expect(elapsedRetryMilliseconds).toBeGreaterThanOrEqual(60_000);
+      expect(payloads).toHaveLength(241);
+      expect(payloads.every((payload) => Bun.deepEquals(payload, input))).toBe(
+        true
+      );
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("uses the typed authentication contract and bearer header", async () => {
     const code = Schema.decodeUnknownSync(CliAuthenticationCode)(
       "c".repeat(43)
@@ -96,6 +360,7 @@ describe("WorkspaceAdminApiClient", () => {
     const expiresAt = "2026-08-10T10:00:00.000Z";
     const session = {
       id: sessionId,
+      approvedBy: null,
       clientName: "test client",
       cliVersion: "1.0.0",
       buildTarget: "development",

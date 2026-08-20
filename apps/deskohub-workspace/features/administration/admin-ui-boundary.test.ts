@@ -16,6 +16,7 @@ describe("administration UI boundaries", () => {
 
   test("establishes the request boundary in shared page authorization", async () => {
     for (const path of [
+      "features/accounting/admin/page-data.server.ts",
       "features/administration/page-data.server.ts",
       "features/discounts/admin/page-data.server.ts",
     ]) {
@@ -23,9 +24,24 @@ describe("administration UI boundaries", () => {
 
       expect(source.match(/await connection\(\)/g)).toHaveLength(1);
       expect(source).toMatch(
-        /export const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\);\n}\);/
+        /(?:export )?const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\)/
       );
+      if (path === "features/accounting/admin/page-data.server.ts") {
+        expect(source.indexOf("await connection()")).toBeLessThan(
+          source.indexOf("runWorkspaceEffect(")
+        );
+      }
     }
+  });
+
+  test("creates invoice request identities only after user interaction", async () => {
+    const source = await readWorkspaceFile(
+      "features/accounting/admin/invoice-form.tsx"
+    );
+
+    expect(source.slice(0, source.indexOf("const openReview"))).not.toContain(
+      "crypto.randomUUID()"
+    );
   });
 
   test("streams data routes through local suspense boundaries", async () => {

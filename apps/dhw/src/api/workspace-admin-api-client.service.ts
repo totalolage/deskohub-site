@@ -17,6 +17,13 @@ import {
   type AdministrationDiscountMutationType,
   type AdministrationDotyposCustomerIdType,
   type AdministrationDotyposReservationIdType,
+  type AdministrationInvoiceCreateInputType,
+  type AdministrationInvoiceCreateResultType,
+  type AdministrationInvoiceDetailType,
+  type AdministrationInvoiceIdType,
+  type AdministrationInvoicePageType,
+  type AdministrationInvoiceQueryType,
+  type AdministrationInvoiceRetryResultType,
   type AdministrationNexiOperationIdType,
   type AdministrationNexiOrderIdType,
   type AdministrationOperationDetailType,
@@ -257,6 +264,55 @@ interface IWorkspaceAdminApiClient {
   ) => Effect.Effect<
     AdministrationVoucherDetailType,
     | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly listInvoices: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    query: AdministrationInvoiceQueryType
+  ) => Effect.Effect<
+    AdministrationInvoicePageType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getInvoice: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    invoiceId: AdministrationInvoiceIdType
+  ) => Effect.Effect<
+    AdministrationInvoiceDetailType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly getInvoicePdf: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    invoiceId: AdministrationInvoiceIdType
+  ) => Effect.Effect<
+    Uint8Array,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly createInvoice: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    input: AdministrationInvoiceCreateInputType
+  ) => Effect.Effect<
+    AdministrationInvoiceCreateResultType,
+    | CliApiRequestError
+    | CliMutationInProgress
+    | CliMutationRejected
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly resendInvoice: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    invoiceId: AdministrationInvoiceIdType
+  ) => Effect.Effect<
+    AdministrationInvoiceRetryResultType,
+    | CliApiRequestError
+    | CliMutationRejected
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
@@ -612,6 +668,72 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.mapError(sanitizeResourceError)
         )
     ),
+    listInvoices: Effect.fn("WorkspaceAdminApiClient.listInvoices")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        query: AdministrationInvoiceQueryType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listInvoices({ query })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    getInvoice: Effect.fn("WorkspaceAdminApiClient.getInvoice")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        invoiceId: AdministrationInvoiceIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getInvoice({ params: { invoiceId } })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    getInvoicePdf: Effect.fn("WorkspaceAdminApiClient.getInvoicePdf")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        invoiceId: AdministrationInvoiceIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getInvoicePdf({
+              params: { invoiceId },
+            })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    createInvoice: Effect.fn("WorkspaceAdminApiClient.createInvoice")(
+      (accessToken, input: AdministrationInvoiceCreateInputType) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.createInvoice({ payload: input })
+          ),
+          Effect.retry({
+            schedule: Schedule.spaced("250 millis"),
+            times: 240,
+            while: (cause) =>
+              cause instanceof CliMutationInProgress ||
+              cause instanceof CliServiceUnavailable ||
+              HttpClientError.isHttpClientError(cause),
+          }),
+          Effect.mapError(sanitizeInvoiceCreationError)
+        )
+    ),
+    resendInvoice: Effect.fn("WorkspaceAdminApiClient.resendInvoice")(
+      (accessToken, invoiceId: AdministrationInvoiceIdType) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.resendInvoice({
+              params: { invoiceId },
+            })
+          ),
+          Effect.mapError(sanitizeReservationMutationError)
+        )
+    ),
     listSessions: Effect.fn("WorkspaceAdminApiClient.listSessions")(
       (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
         makeClient(accessToken).pipe(
@@ -753,8 +875,8 @@ const sanitizeResourceError = (
 
 const sanitizeMutationError = (
   cause:
-    | CliMutationRejected
     | CliMutationInProgress
+    | CliMutationRejected
     | CliResourceNotFound
     | CliServiceUnavailable
     | CliSessionUnauthorized
@@ -780,3 +902,16 @@ const sanitizeReservationMutationError = (
     | Schema.SchemaError
 ) =>
   cause instanceof CliMutationRejected ? cause : sanitizeResourceError(cause);
+
+const sanitizeInvoiceCreationError = (
+  cause:
+    | CliMutationInProgress
+    | CliMutationRejected
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliMutationInProgress || cause instanceof CliMutationRejected
+    ? cause
+    : sanitizeSessionError(cause);
