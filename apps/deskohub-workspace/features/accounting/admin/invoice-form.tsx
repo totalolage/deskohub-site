@@ -57,7 +57,6 @@ export function InvoiceCreationForm({
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const invoiceIdRef = useRef<string | null>(null);
-  const variableSymbolOverriddenRef = useRef(false);
   const searchId = useId();
   const initialLineId = useId();
   const [customer, setCustomer] =
@@ -148,7 +147,6 @@ export function InvoiceCreationForm({
       form,
       invoiceId: invoiceIdRef.current,
       lines,
-      variableSymbolOverridden: variableSymbolOverriddenRef.current,
     });
     setPreviewError(null);
     setPreviewUrl(null);
@@ -518,11 +516,7 @@ export function InvoiceCreationForm({
                 onBlur={(event) => {
                   if (!event.currentTarget.value.trim()) {
                     event.currentTarget.value = suggestedVariableSymbol;
-                    variableSymbolOverriddenRef.current = false;
                   }
-                }}
-                onChange={() => {
-                  variableSymbolOverriddenRef.current = true;
                 }}
                 onFocus={(event) => {
                   if (event.currentTarget.value === suggestedVariableSymbol)
@@ -775,7 +769,6 @@ export function readInvoiceForm(input: {
   readonly form: FormData;
   readonly invoiceId: string;
   readonly lines: readonly Line[];
-  readonly variableSymbolOverridden?: boolean;
 }) {
   const address = {
     line1: field(input.form, "line1"),
@@ -816,8 +809,7 @@ export function readInvoiceForm(input: {
     serviceDate: field(input.form, "serviceDate"),
     dueDate: field(input.form, "dueDate"),
     currency: field(input.form, "currency"),
-    ...(input.variableSymbolOverridden !== false &&
-      variableSymbol && { variableSymbol }),
+    ...(variableSymbol && { variableSymbol }),
     lines: input.lines.map(({ id }) => ({
       description: field(input.form, `description-${id}`),
       price: field(input.form, `price-${id}`),

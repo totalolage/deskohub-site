@@ -98,7 +98,7 @@ test("omits blank optional business contact names", () => {
   ).not.toThrow();
 });
 
-test("submits only a manually overridden variable symbol", () => {
+test("preserves the reviewed variable symbol", () => {
   const form = new FormData();
   form.set("variableSymbol", "2026000001");
 
@@ -111,13 +111,7 @@ test("submits only a manually overridden variable symbol", () => {
     lines: [],
   };
 
-  expect(
-    readInvoiceForm({ ...common, variableSymbolOverridden: false })
-  ).not.toHaveProperty("variableSymbol");
-  expect(
-    readInvoiceForm({ ...common, variableSymbolOverridden: true })
-      .variableSymbol
-  ).toBe("2026000001");
+  expect(readInvoiceForm(common).variableSymbol).toBe("2026000001");
 });
 
 test("reuses an existing draft id and generates one when absent", () => {
