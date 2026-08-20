@@ -36,6 +36,7 @@ import {
   cliAuthenticationRequests,
   cliSessions,
 } from "@/db/schema";
+import "@/shared/polyfills/temporal";
 
 const authenticationLifetimeMinutes = 5;
 const grantLifetimeMinutes = 5;
