@@ -39,13 +39,18 @@ test("includes runtime feature flag overrides in the Workspace build cache", asy
 });
 
 test("passes the email provider selection to the Workspace build", async () => {
-  const config = (await Bun.file(
-    new URL("../../../turbo.json", import.meta.url)
-  ).json()) as {
-    readonly tasks: {
-      readonly build: { readonly env: readonly string[] };
-    };
-  };
+  const [appConfig, rootConfig] = (await Promise.all([
+    Bun.file(new URL("../../../turbo.json", import.meta.url)).json(),
+    Bun.file(new URL("../../../../../turbo.json", import.meta.url)).json(),
+  ])) as [
+    {
+      readonly tasks: {
+        readonly build: { readonly env: readonly string[] };
+      };
+    },
+    { readonly globalPassThroughEnv: readonly string[] },
+  ];
 
-  expect(config.tasks.build.env).toContain("EMAIL_PROVIDER");
+  expect(appConfig.tasks.build.env).toContain("EMAIL_PROVIDER");
+  expect(rootConfig.globalPassThroughEnv).toContain("EMAIL_PROVIDER");
 });
