@@ -25,6 +25,7 @@ describe("discount administration server authorization", () => {
     const exit = await Effect.runPromiseExit(await loadAuthorization());
 
     expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) expect(exit.value).toBe("admin");
   });
 
   test("rejects direct operation calls without valid Basic credentials", async () => {

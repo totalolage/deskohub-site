@@ -1,4 +1,5 @@
 import type {
+  AdministrationActorUsernameType,
   AdministrationDiscountMutationResultType,
   AdministrationDiscountMutationType,
   AdministrationReservationAccessGrantType,
@@ -31,6 +32,7 @@ export const cliSessions = pgTable(
       .primaryKey()
       .default(postgresUuidV7)
       .$type<CliSessionIdType>(),
+    approvedBy: text("approved_by").$type<AdministrationActorUsernameType>(),
     tokenHash: text("token_hash").notNull(),
     clientName: text("client_name").notNull(),
     cliVersion: text("cli_version").notNull(),
@@ -66,6 +68,10 @@ export const cliSessions = pgTable(
       "cli_sessions_revoked_check",
       sql`${t.revokedAt} is null or ${t.revokedAt} >= ${t.createdAt}`
     ),
+    check(
+      "cli_sessions_approved_by_check",
+      sql`${t.approvedBy} is null or char_length(btrim(${t.approvedBy})) between 1 and 80`
+    ),
   ]
 );
 
@@ -84,6 +90,7 @@ export const cliAuthenticationRequests = pgTable(
     createdAt: instant("created_at").notNull().default(sql`now()`),
     expiresAt: instant("expires_at").notNull(),
     approvedAt: instant("approved_at"),
+    approvedBy: text("approved_by").$type<AdministrationActorUsernameType>(),
     grantToken: text("grant_token"),
     grantExpiresAt: instant("grant_expires_at"),
     consumedAt: instant("consumed_at"),
@@ -123,6 +130,7 @@ export const cliAuthenticationRequests = pgTable(
       "cli_authentication_requests_approval_check",
       sql`(
         ${t.approvedAt} is null
+        and ${t.approvedBy} is null
         and ${t.grantToken} is null
         and ${t.grantExpiresAt} is null
       ) or (

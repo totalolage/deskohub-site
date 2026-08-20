@@ -56,6 +56,18 @@ export const CliMutationRequestId = uuidSchema
   .annotate({ identifier: "CliMutationRequestId" });
 export type CliMutationRequestId = typeof CliMutationRequestId.Type;
 
+export const AdministrationActorUsername = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(80)
+)
+  .pipe(Schema.brand("AdministrationActorUsername"))
+  .annotate({
+    identifier: "AdministrationActorUsername",
+    description: "Validated Basic-auth username identifying an administrator.",
+  });
+export type AdministrationActorUsername =
+  typeof AdministrationActorUsername.Type;
+
 export const CLI_BUILD_TARGETS = [
   "development",
   "darwin-arm64",
@@ -137,6 +149,9 @@ export type ExchangeCliGrant = typeof ExchangeCliGrant.Type;
 
 export const CliSession = Schema.Struct({
   id: CliSessionId,
+  approvedBy: Schema.NullOr(AdministrationActorUsername).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   clientName: CliClientName,
   cliVersion: Schema.String,
   buildTarget: CliBuildTarget,
@@ -399,6 +414,236 @@ const administrationCalendarDate = Schema.String.check(
     description: "A calendar date in YYYY-MM-DD format.",
   })
 ).annotate({ format: "date" });
+
+export const AdministrationInvoiceId = Schema.String.check(Schema.isUUID())
+  .pipe(Schema.brand("AdministrationInvoiceId"))
+  .annotate({ identifier: "AdministrationInvoiceId" });
+export type AdministrationInvoiceId = typeof AdministrationInvoiceId.Type;
+
+const administrationInvoiceText = (maximumLength: number) =>
+  Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(maximumLength));
+
+export const AdministrationInvoiceCustomerAddress = Schema.Struct({
+  line1: administrationInvoiceText(180),
+  line2: Schema.optional(administrationInvoiceText(180)),
+  city: administrationInvoiceText(255),
+  postalCode: administrationInvoiceText(20),
+  country: Schema.Trim.check(Schema.isPattern(/^[A-Z]{2}$/)),
+});
+export type AdministrationInvoiceCustomerAddress =
+  typeof AdministrationInvoiceCustomerAddress.Type;
+
+const administrationInvoiceCustomerContact = {
+  email: Schema.Trim.check(
+    Schema.isNonEmpty(),
+    Schema.isMaxLength(255),
+    Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
+  ),
+  phone: Schema.optional(administrationInvoiceText(20)),
+  address: AdministrationInvoiceCustomerAddress,
+};
+
+export const AdministrationInvoiceCustomerDetails = Schema.Union([
+  Schema.Struct({
+    ...administrationInvoiceCustomerContact,
+    kind: Schema.Literal("person"),
+    firstName: administrationInvoiceText(100),
+    lastName: administrationInvoiceText(100),
+  }),
+  Schema.Struct({
+    ...administrationInvoiceCustomerContact,
+    kind: Schema.Literal("business"),
+    companyName: administrationInvoiceText(180),
+    companyId: administrationInvoiceText(255),
+    vatId: Schema.optional(administrationInvoiceText(255)),
+    firstName: Schema.optional(administrationInvoiceText(100)),
+    lastName: Schema.optional(administrationInvoiceText(100)),
+  }),
+]);
+export type AdministrationInvoiceCustomerDetails =
+  typeof AdministrationInvoiceCustomerDetails.Type;
+
+export const AdministrationInvoiceCustomerInput = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("existing"),
+    customerId: AdministrationDotyposCustomerId,
+    details: AdministrationInvoiceCustomerDetails,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("new"),
+    details: AdministrationInvoiceCustomerDetails,
+  }),
+]);
+export type AdministrationInvoiceCustomerInput =
+  typeof AdministrationInvoiceCustomerInput.Type;
+
+export const AdministrationInvoiceCreateInput = Schema.Struct({
+  invoiceId: AdministrationInvoiceId,
+  customer: AdministrationInvoiceCustomerInput,
+  locale: Schema.Literals(["cs-CZ", "en-US"]),
+  serviceDate: administrationCalendarDate,
+  payment: Schema.Union([
+    Schema.Struct({
+      status: Schema.Literal("due"),
+      date: administrationCalendarDate,
+    }),
+    Schema.Struct({
+      status: Schema.Literal("paid"),
+      date: administrationCalendarDate,
+    }),
+  ]),
+  currency: Schema.String.check(Schema.isPattern(/^[A-Z]{3}$/)),
+  variableSymbol: Schema.optional(
+    Schema.Trim.check(Schema.isPattern(/^\d{1,10}$/))
+  ),
+  lines: Schema.Array(
+    Schema.Struct({
+      description: administrationInvoiceText(1000),
+      price: Schema.Trim.check(Schema.isPattern(/^[+-]?\d+(?:\.\d+)?$/)),
+    })
+  ).check(Schema.isMinLength(1)),
+}).annotate({
+  parseOptions: { errors: "all", onExcessProperty: "error" },
+});
+export type AdministrationInvoiceCreateInput =
+  typeof AdministrationInvoiceCreateInput.Type;
+
+export const AdministrationInvoiceCreateFileInput = Schema.Struct({
+  invoiceId: AdministrationInvoiceCreateInput.fields.invoiceId,
+  customer: AdministrationInvoiceCustomerInput,
+  locale: AdministrationInvoiceCreateInput.fields.locale,
+  serviceDate: administrationCalendarDate,
+  payment: AdministrationInvoiceCreateInput.fields.payment,
+  currency: AdministrationInvoiceCreateInput.fields.currency,
+  variableSymbol: AdministrationInvoiceCreateInput.fields.variableSymbol,
+  lines: AdministrationInvoiceCreateInput.fields.lines,
+}).annotate({
+  parseOptions: { errors: "all", onExcessProperty: "error" },
+});
+export type AdministrationInvoiceCreateFileInput =
+  typeof AdministrationInvoiceCreateFileInput.Type;
+
+export const AdministrationInvoiceSort = Schema.Literals([
+  "invoiceNumber",
+  "issuedAt",
+  "customer",
+  "total",
+  "paymentStatus",
+  "source",
+  "delivery",
+]);
+export type AdministrationInvoiceSort = typeof AdministrationInvoiceSort.Type;
+
+export const AdministrationInvoiceQuery = Schema.Struct({
+  sort: Schema.optional(AdministrationInvoiceSort),
+  direction: Schema.optional(AdministrationReservationSortDirection),
+  page: Schema.optional(
+    Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
+  ),
+});
+export type AdministrationInvoiceQuery = typeof AdministrationInvoiceQuery.Type;
+
+const AdministrationInvoiceDeliveryState = Schema.Literals([
+  "missing",
+  "processing",
+  "accepted",
+  "failed",
+]);
+
+export const AdministrationInvoicePaymentStatus = Schema.Literals([
+  "paid",
+  "issued",
+  "due",
+  "overdue",
+]);
+export type AdministrationInvoicePaymentStatus =
+  typeof AdministrationInvoicePaymentStatus.Type;
+
+export const AdministrationInvoiceListItem = Schema.Struct({
+  id: AdministrationInvoiceId,
+  invoiceNumber: Schema.String,
+  issuedAt: Schema.String,
+  customerName: Schema.String,
+  total: Schema.String,
+  currency: Schema.String,
+  paymentStatus: AdministrationInvoicePaymentStatus,
+  source: Schema.Literals([
+    "reservation-request",
+    "post-order-link",
+    "admin-ui",
+    "dhw-cli",
+    "legacy",
+  ]),
+  actor: Schema.NullOr(Schema.String),
+  delivery: Schema.Struct({
+    customer: AdministrationInvoiceDeliveryState,
+    internal: AdministrationInvoiceDeliveryState,
+  }),
+  needsAttention: Schema.Boolean,
+});
+export type AdministrationInvoiceListItem =
+  typeof AdministrationInvoiceListItem.Type;
+
+export const AdministrationInvoicePage = Schema.Struct({
+  items: Schema.Array(AdministrationInvoiceListItem),
+  total: Schema.Number,
+  page: Schema.Number,
+  pageSize: Schema.Number,
+  pageCount: Schema.Number,
+});
+export type AdministrationInvoicePage = typeof AdministrationInvoicePage.Type;
+
+const AdministrationInvoiceBuyer = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("person"),
+    legalName: Schema.String,
+    address: AdministrationInvoiceCustomerAddress,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("business"),
+    legalName: Schema.String,
+    companyId: Schema.String,
+    vatId: Schema.optional(Schema.String),
+    address: AdministrationInvoiceCustomerAddress,
+  }),
+]);
+
+export const AdministrationInvoiceDetail = Schema.Struct({
+  ...AdministrationInvoiceListItem.fields,
+  locale: Schema.Literals(["cs-CZ", "en-US"]),
+  serviceDate: Schema.NullOr(administrationCalendarDate),
+  dueDate: Schema.NullOr(administrationCalendarDate),
+  paidOn: Schema.NullOr(administrationCalendarDate),
+  variableSymbol: Schema.NullOr(Schema.String),
+  lines: Schema.Array(
+    Schema.Struct({ description: Schema.String, price: Schema.String })
+  ),
+  buyer: AdministrationInvoiceBuyer,
+  pdfUrl: Schema.String,
+});
+export type AdministrationInvoiceDetail =
+  typeof AdministrationInvoiceDetail.Type;
+
+export const AdministrationInvoiceCreateResult = Schema.Struct({
+  invoiceId: AdministrationInvoiceId,
+  invoiceNumber: Schema.String,
+  changed: Schema.Boolean,
+  needsAttention: Schema.Boolean,
+}).pipe(HttpApiSchema.status("Created"));
+export type AdministrationInvoiceCreateResult =
+  typeof AdministrationInvoiceCreateResult.Type;
+
+export const AdministrationInvoiceRetryResult = Schema.Struct({
+  invoiceId: AdministrationInvoiceId,
+  changed: Schema.Boolean,
+  needsAttention: Schema.Boolean,
+});
+export type AdministrationInvoiceRetryResult =
+  typeof AdministrationInvoiceRetryResult.Type;
+
+export const AdministrationInvoicePdf = Schema.Uint8Array.pipe(
+  HttpApiSchema.asUint8Array({ contentType: "application/pdf" })
+);
 
 export const AdministrationReservationQuery = Schema.Struct({
   customerId: Schema.optional(AdministrationDotyposCustomerId),
@@ -1592,6 +1837,48 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       params: { voucherId: AdministrationVoucherId },
       success: AdministrationVoucherDetail,
       error: CliResourceNotFound.schema,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listInvoices", "/invoices", {
+      query: AdministrationInvoiceQuery,
+      success: AdministrationInvoicePage,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getInvoice", "/invoices/:invoiceId", {
+      params: { invoiceId: AdministrationInvoiceId },
+      success: AdministrationInvoiceDetail,
+      error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getInvoicePdf", "/invoices/:invoiceId/pdf", {
+      params: { invoiceId: AdministrationInvoiceId },
+      success: AdministrationInvoicePdf,
+      error: [CliResourceNotFound.schema, CliServiceUnavailable.schema],
+    })
+  )
+  .add(
+    HttpApiEndpoint.post("createInvoice", "/invoices", {
+      payload: AdministrationInvoiceCreateInput,
+      success: AdministrationInvoiceCreateResult,
+      error: [
+        CliMutationInProgress.schema,
+        CliMutationRejected.schema,
+        CliServiceUnavailable.schema,
+      ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.post("resendInvoice", "/invoices/:invoiceId/resend", {
+      params: { invoiceId: AdministrationInvoiceId },
+      success: AdministrationInvoiceRetryResult,
+      error: [
+        CliMutationRejected.schema,
+        CliResourceNotFound.schema,
+        CliServiceUnavailable.schema,
+      ],
     })
   )
   .add(

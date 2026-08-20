@@ -72,4 +72,22 @@ describe("invoice repository persistence contract", () => {
     expect(issue).toContain("Schema.decodeUnknownEffect(invoiceBuyerSchema");
     expect(issue).not.toContain("input.buyer ?? source.buyer");
   });
+
+  test("serializes manual invoice ids and compares normalized retries before numbering", async () => {
+    const source = await readRepository();
+    const issue = source.slice(
+      source.indexOf(
+        'const issueManual = Effect.fn("InvoiceRepository.issueManual")'
+      )
+    );
+    const advisoryLock = issue.indexOf("pg_advisory_xact_lock");
+    const existingLookup = issue.indexOf("const [existing]");
+    const counterAllocation = issue.indexOf(".insert(invoiceNumberCounters)");
+
+    expect(issue).toContain("normalizeManualInvoiceInput(input)");
+    expect(issue).toContain("validateManualInvoiceRetry");
+    expect(advisoryLock).toBeGreaterThan(-1);
+    expect(existingLookup).toBeGreaterThan(advisoryLock);
+    expect(counterAllocation).toBeGreaterThan(existingLookup);
+  });
 });

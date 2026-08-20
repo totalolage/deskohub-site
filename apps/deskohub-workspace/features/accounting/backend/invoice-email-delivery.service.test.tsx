@@ -19,12 +19,18 @@ import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
 } from "@/features/accounting/accounting-document-snapshot";
-import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-utils";
+import { isManualInvoiceDocument } from "@/features/accounting/invoice";
+import {
+  makeCoworkInvoiceDocument,
+  makeTestManualInvoiceDocument,
+} from "@/features/accounting/invoice.test-utils";
 import type { InvoiceEmailDeliveryAudience } from "@/features/accounting/invoice-email-delivery";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import {
   type IInvoiceRepository,
+  type Invoice,
   InvoiceRepository,
+  type ReservationInvoice,
 } from "./invoice.repository";
 import {
   type IInvoiceEmailDeliveryRepository,
@@ -85,6 +91,7 @@ describe("invoice email delivery", () => {
       to: { email: "frozen-recipient@example.test" },
       subject: `Invoice ${document.invoiceNumber}`,
       tags: ["workspace-invoice-customer"],
+      idempotencyKey: `workspace-invoice-customer-${invoice.id}`,
       attachments: [
         {
           filename: `${document.invoiceNumber}.pdf`,
@@ -96,6 +103,7 @@ describe("invoice email delivery", () => {
       to: { email: "delivered+workspace-internal@resend.dev" },
       subject: `[TESTING] Faktura ${document.invoiceNumber}`,
       tags: ["workspace-invoice-internal"],
+      idempotencyKey: `workspace-invoice-internal-${invoice.id}`,
       attachments: [
         {
           filename: `${document.invoiceNumber}.pdf`,
@@ -148,6 +156,9 @@ describe("invoice email delivery", () => {
     expect(retry).toEqual({ status: "delivered", changed: true });
     expect(sentMessages).toHaveLength(3);
     expect(sentMessages[2]?.tags).toEqual(["workspace-invoice-internal"]);
+    expect(sentMessages[2]?.idempotencyKey).toBe(
+      sentMessages[1]?.idempotencyKey
+    );
     expect(sentMessages[2]?.attachments?.[0]?.filename).toBe(
       `${document.invoiceNumber}.pdf`
     );
@@ -195,6 +206,85 @@ describe("invoice email delivery", () => {
     });
     expect(sentMessages).toEqual([]);
     expect(harness.claim).not.toHaveBeenCalled();
+  });
+
+  test("delivers a manual invoice to its immutable document recipient", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const manualDocument = makeTestManualInvoiceDocument("en-US");
+    const manualInvoice: Invoice = {
+      id: manualDocument.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: manualDocument.dotyposCustomerId,
+      invoiceNumber: manualDocument.invoiceNumber,
+      issuedAt: Temporal.Instant.from(manualDocument.issuedAt),
+      document: manualDocument,
+    };
+    const harness = makeHarness({ invoice: manualInvoice, sentMessages });
+
+    const result = await runDeliveryByInvoiceId(harness, manualInvoice.id);
+
+    expect(result).toEqual({ status: "delivered", changed: true });
+    expect(sentMessages[0]?.to).toEqual({
+      email: "manual-invoice@example.test",
+    });
+    expect(sentMessages[0]?.idempotencyKey).toBe(
+      `${sentMessages[0]?.tags?.[0]}-${manualInvoice.id}`
+    );
+    expect(
+      harness.accountingSnapshots.findByPaymentAttemptId
+    ).not.toHaveBeenCalled();
+  });
+
+  test("does not request payment in the email for a paid manual invoice", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const manualDocument = makeTestManualInvoiceDocument("en-US", "450", {
+      status: "paid",
+      date: "2026-08-20",
+    });
+    const manualInvoice: Invoice = {
+      id: manualDocument.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: manualDocument.dotyposCustomerId,
+      invoiceNumber: manualDocument.invoiceNumber,
+      issuedAt: Temporal.Instant.from(manualDocument.issuedAt),
+      document: manualDocument,
+    };
+
+    await runDeliveryByInvoiceId(
+      makeHarness({ invoice: manualInvoice, sentMessages }),
+      manualInvoice.id
+    );
+
+    expect(sentMessages[0]?.html).toContain(
+      `Invoice ${manualInvoice.invoiceNumber} is attached.`
+    );
+    expect(sentMessages[0]?.html).not.toContain("with payment details");
+  });
+
+  test("does not request payment in the email for a non-positive manual invoice", async () => {
+    const sentMessages: EmailMessage[] = [];
+    const manualDocument = makeTestManualInvoiceDocument("en-US", "0");
+    const manualInvoice: Invoice = {
+      id: manualDocument.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: manualDocument.dotyposCustomerId,
+      invoiceNumber: manualDocument.invoiceNumber,
+      issuedAt: Temporal.Instant.from(manualDocument.issuedAt),
+      document: manualDocument,
+    };
+
+    await runDeliveryByInvoiceId(
+      makeHarness({ invoice: manualInvoice, sentMessages }),
+      manualInvoice.id
+    );
+
+    expect(sentMessages[0]?.html).toContain(
+      `Invoice ${manualInvoice.invoiceNumber} is attached.`
+    );
+    expect(sentMessages[0]?.html).not.toContain("with payment details");
   });
 });
 
@@ -250,9 +340,36 @@ const runCustomerResend = (harness: ReturnType<typeof makeHarness>) =>
     Effect.runPromise
   );
 
+const runDeliveryByInvoiceId = (
+  harness: ReturnType<typeof makeHarness>,
+  invoiceId: string
+) =>
+  Effect.gen(function* () {
+    const service = yield* InvoiceEmailDeliveryService;
+    return yield* service.deliverByInvoiceId({ invoiceId });
+  }).pipe(
+    Effect.provide(
+      InvoiceEmailDeliveryService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(InvoiceRepository, harness.invoices),
+            Layer.succeed(
+              AccountingDocumentSnapshotRepository,
+              harness.accountingSnapshots
+            ),
+            Layer.succeed(InvoiceEmailDeliveryRepository, harness.deliveries),
+            Layer.succeed(EmailServiceTag, harness.emailService),
+            Layer.succeed(EmailConfigTag, emailConfig)
+          )
+        )
+      )
+    ),
+    Effect.runPromise
+  );
+
 const makeHarness = (options: {
   readonly sentMessages: EmailMessage[];
-  readonly invoice?: typeof invoice | null;
+  readonly invoice?: Invoice | null;
   readonly source?: AccountingDocumentSnapshot;
   readonly send?: EmailService["send"];
   readonly resendClaimed?: boolean;
@@ -291,11 +408,21 @@ const makeHarness = (options: {
     markAccepted,
     markFailed,
   };
+  const selectedInvoice =
+    options.invoice === undefined ? invoice : options.invoice;
   const invoices: IInvoiceRepository = {
+    findById: mock(() => Effect.succeed(selectedInvoice)),
     findByPaymentAttemptId: mock(() =>
-      Effect.succeed(options.invoice === undefined ? invoice : options.invoice)
+      Effect.succeed(
+        selectedInvoice && !isManualInvoiceDocument(selectedInvoice.document)
+          ? (selectedInvoice as ReservationInvoice)
+          : null
+      )
     ),
+    getSuggestedVariableSymbol: mock(() => Effect.succeed("2026000001")),
     issue: mock(() => Effect.die("issuance is not used by delivery")),
+    issueManual: mock(() => Effect.die("issuance is not used by delivery")),
+    list: mock(() => Effect.succeed([])),
   };
   const accountingSnapshots = {
     findByPaymentAttemptId: mock(() =>

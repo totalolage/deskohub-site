@@ -146,6 +146,22 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(migration).not.toContain("999999");
   });
 
+  test("manual invoices retain reservation source validation without fake references", async () => {
+    const migration = await readAppFile(
+      "db/migrations/20260818174747_mature_outlaw_kid/migration.sql"
+    );
+
+    expect(migration).toContain(
+      'CHECK (("workspace_reservation_id" is null) = ("payment_attempt_id" is null))'
+    );
+    expect(migration).toContain(
+      "IF NEW.workspace_reservation_id IS NULL AND NEW.payment_attempt_id IS NULL THEN"
+    );
+    expect(migration).toContain(
+      "reservation.active_payment_attempt_id = attempt.id"
+    );
+  });
+
   test("invoice email delivery state stores no recipient or document payload", async () => {
     const [schema, migration] = await Promise.all([
       readAppFile("db/schema/invoice-email-deliveries.ts"),

@@ -2,12 +2,12 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 const basicAuthorizationPrefix = "Basic ";
 
-export const isDiscountAdminAuthorizationValid = (
+export const getDiscountAdminAuthorizationUsername = (
   authorization: string | null,
   expectedSha256: string | undefined
 ) => {
   if (!expectedSha256 || !authorization?.startsWith(basicAuthorizationPrefix)) {
-    return false;
+    return null;
   }
 
   const encodedCredentials = authorization.slice(
@@ -22,16 +22,29 @@ export const isDiscountAdminAuthorizationValid = (
       separatorIndex === credentials.length - 1 ||
       credentials.toString("base64") !== encodedCredentials
     ) {
-      return false;
+      return null;
     }
 
     const actual = createHash("sha256").update(credentials).digest();
     const expected = Buffer.from(expectedSha256, "hex");
 
-    return (
-      actual.length === expected.length && timingSafeEqual(actual, expected)
-    );
+    if (
+      actual.length !== expected.length ||
+      !timingSafeEqual(actual, expected)
+    ) {
+      return null;
+    }
+
+    const usernameBytes = credentials.subarray(0, separatorIndex);
+    const username = usernameBytes.toString("utf8");
+    return Buffer.from(username).equals(usernameBytes) ? username : null;
   } catch {
-    return false;
+    return null;
   }
 };
+
+export const isDiscountAdminAuthorizationValid = (
+  authorization: string | null,
+  expectedSha256: string | undefined
+) =>
+  getDiscountAdminAuthorizationUsername(authorization, expectedSha256) !== null;

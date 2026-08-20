@@ -2,7 +2,7 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import {
   buildCoworkReservationQuote,
@@ -28,8 +28,15 @@ import {
   formatInvoiceNumber,
   type InvoiceBuyer,
   type InvoiceDocument,
+  type ManualInvoiceDocument,
   makeInvoiceDocument,
+  makeManualInvoiceDocument,
 } from "./invoice";
+import {
+  type ManualInvoicePayment,
+  manualInvoiceInputSchema,
+  normalizeManualInvoiceInput,
+} from "./manual-invoice";
 
 const issuedAt = Temporal.Instant.from("2026-08-12T12:34:56.789Z");
 const paidAt = Temporal.Instant.from("2026-08-10T12:30:00Z");
@@ -150,6 +157,37 @@ export const makeOfficeInvoiceDocument = (locale: Locale): InvoiceDocument => {
   };
 
   return issueTestInvoice({ locale, prepared, sequence: 3 });
+};
+
+export const makeTestManualInvoiceDocument = (
+  locale: Locale,
+  price = "450",
+  payment: ManualInvoicePayment = {
+    status: "due",
+    date: plainDateStringSchema.make("2026-09-01"),
+  }
+): ManualInvoiceDocument => {
+  const input = Schema.decodeUnknownSync(manualInvoiceInputSchema)({
+    invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb23",
+    dotyposCustomerId: "dotypos-customer-manual",
+    buyer: {
+      kind: "person",
+      legalName: "Ada Lovelace",
+      address: personalAddress,
+    },
+    deliveryEmail: "manual-invoice@example.test",
+    locale,
+    serviceDate: "2026-08-18",
+    payment,
+    currency: "CZK",
+    lines: [{ description: "One-off space rental", price }],
+    provenance: { source: "admin-ui", actor: "synthetic-admin" },
+  });
+  return makeManualInvoiceDocument({
+    normalized: Effect.runSync(normalizeManualInvoiceInput(input)),
+    invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 42 }),
+    issuedAt,
+  });
 };
 
 const issueTestInvoice = (input: {

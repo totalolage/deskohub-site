@@ -1,17 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AdministrationActorUsername,
   AdministrationDiscountCodeId,
   AdministrationVoucherId,
   AdministrationWorkspaceReservationId,
   CliAccessToken,
   CliSessionId,
+  type CliSessionType,
 } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
 import { Effect, Layer, Option, Redacted, Schema } from "effect";
 import { Command } from "effect/unstable/cli";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
-import { dhwCommand } from "./command";
+import { dhwCommand, formatInvoiceCreationOutput } from "./command";
 import { DhwConfig } from "./config/dhw-config.service";
 
 const accessToken = Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43));
@@ -29,6 +31,7 @@ const reservationId = Schema.decodeUnknownSync(
 )("reservation-test");
 const session = {
   id: sessionId,
+  approvedBy: null,
   clientName: "test client",
   cliVersion: "1.3.0",
   buildTarget: "development" as const,
@@ -37,6 +40,100 @@ const session = {
 };
 
 describe("dhw mutation commands", () => {
+  test("does not call a partially delivered invoice sent", () => {
+    const output = formatInvoiceCreationOutput({
+      invoiceId: "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb21",
+      invoiceNumber: "WS-FV-2026-000001",
+      needsAttention: true,
+    });
+
+    expect(output).not.toContain("sent");
+    expect(output).toContain("delivery needs attention");
+  });
+
+  test("requires reauthentication before a legacy session can create invoices", async () => {
+    const { layer } = makeCommandLayer();
+
+    const error = await runCommand(
+      ["--json", "invoices", "create", "--input", "invoice.json", "--yes"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toMatchObject({
+      _tag: "AuthenticationRequiredError",
+      message: expect.stringContaining("dhw auth"),
+    });
+  });
+
+  test("reuses the invoice id from the input file across create retries", async () => {
+    const invoiceId = "01980000-0000-7000-8000-000000000009";
+    const inputPath = `/tmp/dhw-invoice-${crypto.randomUUID()}.json`;
+    const creations: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createInvoice: (_accessToken, input) =>
+        Effect.sync(() => {
+          creations.push(input);
+          return {
+            invoiceId: input.invoiceId,
+            invoiceNumber: "WS-FV-2026-000001",
+            changed: true,
+            needsAttention: false,
+          };
+        }),
+    });
+    await Bun.write(
+      inputPath,
+      JSON.stringify({
+        invoiceId,
+        customer: {
+          kind: "new",
+          details: {
+            kind: "person",
+            email: "synthetic@example.test",
+            firstName: "Synthetic",
+            lastName: "Customer",
+            address: {
+              line1: "Test street 1",
+              city: "Prague",
+              postalCode: "100 00",
+              country: "CZ",
+            },
+          },
+        },
+        locale: "cs-CZ",
+        serviceDate: "2026-08-10",
+        payment: { status: "due", date: "2026-08-24" },
+        currency: "CZK",
+        lines: [{ description: "Space rental", price: "1000" }],
+      })
+    );
+
+    try {
+      const args = [
+        "--json",
+        "invoices",
+        "create",
+        "--input",
+        inputPath,
+        "--yes",
+      ];
+      await runCommand(args, layer).pipe(Effect.runPromise);
+      await runCommand(args, layer).pipe(Effect.runPromise);
+    } finally {
+      await Bun.file(inputPath).delete();
+    }
+
+    expect(creations).toHaveLength(2);
+    expect(creations).toEqual([
+      expect.objectContaining({ invoiceId }),
+      expect.objectContaining({ invoiceId }),
+    ]);
+  });
+
   test("requires explicit confirmation for non-interactive revocation", async () => {
     let revocations = 0;
     const { layer } = makeCommandLayer({
@@ -395,10 +492,14 @@ const makeCommandLayer = ({
   cancelReservation = () =>
     Effect.succeed({ outcome: "already_cancelled", email: "not_requested" }),
   clear = Effect.succeed(true),
+  createInvoice = () => Effect.die("not used"),
+  authenticatedSession = session,
   revokeSession = () => Effect.succeed({ changed: false }),
 }: {
   readonly cancelReservation?: WorkspaceAdminApiClient["Service"]["cancelReservation"];
   readonly clear?: AuthenticationService["Service"]["clear"];
+  readonly createInvoice?: WorkspaceAdminApiClient["Service"]["createInvoice"];
+  readonly authenticatedSession?: CliSessionType;
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
 } = {}) => {
   const mutations: unknown[] = [];
@@ -406,6 +507,7 @@ const makeCommandLayer = ({
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
     cancelReservation,
+    createInvoice,
     getReservation: () =>
       Effect.succeed({
         accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
@@ -460,7 +562,10 @@ const makeCommandLayer = ({
   });
   const authentication = Layer.succeed(AuthenticationService, {
     current: Effect.succeed(
-      Option.some({ accessToken: Redacted.make(accessToken), session })
+      Option.some({
+        accessToken: Redacted.make(accessToken),
+        session: authenticatedSession,
+      })
     ),
     save: () => Effect.void,
     clear,

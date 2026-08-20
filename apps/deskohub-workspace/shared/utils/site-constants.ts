@@ -1,3 +1,12 @@
+import type { WorkspaceCurrencyCode } from "@/shared/money/currencies";
+
+export interface WorkspacePaymentAccount {
+  readonly accountNumber: string;
+  readonly iban: string;
+  readonly bic: string;
+  readonly bankName: string;
+}
+
 export const workspaceSiteConstants = {
   brand: {
     name: "Deskohub Workspace",
@@ -32,6 +41,16 @@ export const workspaceSiteConstants = {
       section: "C",
       file: "442830",
     },
+    paymentAccounts: {
+      CZK: {
+        accountNumber: "2303459272/2010",
+        iban: "CZ0620100000002303459272",
+        bic: "FIOBCZPPXXX",
+        bankName: "Fio banka, a.s.",
+      },
+    } satisfies Partial<
+      Readonly<Record<WorkspaceCurrencyCode, WorkspacePaymentAccount>>
+    >,
   },
   social: {
     instagram: "https://www.instagram.com/deskohub/",

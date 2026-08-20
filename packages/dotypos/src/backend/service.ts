@@ -233,6 +233,13 @@ export type DotyposCustomerBillingDetails = {
   readonly vatId: string;
 };
 
+export type DotyposCustomerDetails = DotyposCustomerBillingDetails & {
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly email: string;
+  readonly phone?: string;
+};
+
 export type FindCustomerOptions = {
   readonly lookupFields?: readonly CustomerLookupField[];
 };
@@ -979,6 +986,61 @@ const makeDotyposService = Effect.gen(function* () {
       effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
   );
 
+  const createCustomer = Effect.fn("DotyposService.createCustomer")(
+    function* (details: DotyposCustomerDetails) {
+      const email = details.email.trim();
+      if (!email) {
+        return yield* new ValidationError({
+          message: "Customer email is required",
+        });
+      }
+
+      const request: CreateCustomerRequest = {
+        _cloudId: config.cloudId,
+        addressLine1: details.addressLine1.trim(),
+        addressLine2: details.addressLine2.trim() || null,
+        barcode: "",
+        city: details.city.trim() || null,
+        companyId: details.companyId.trim(),
+        companyName: details.companyName.trim(),
+        country: details.country.trim() || null,
+        deleted: false,
+        display: true,
+        email,
+        expireDate: null,
+        firstName: details.firstName.trim(),
+        flags: "0",
+        headerPrint: "",
+        hexColor: "#000000",
+        internalNote: "",
+        lastName: details.lastName.trim(),
+        phone: details.phone ? normalizePhoneNumber(details.phone) || "" : "",
+        points: "0",
+        tags: [],
+        vatId: details.vatId.trim(),
+        zip: details.zip.trim(),
+      };
+
+      const result = yield* runDotyposRequest(
+        client
+          .createCustomers(config.cloudId, { payload: [request] })
+          .pipe(
+            Effect.flatMap((customers) =>
+              firstOrExternalError(customers, "createCustomer")
+            )
+          ),
+        "createCustomer"
+      );
+
+      return yield* decodeProviderEntity(
+        DotyposCustomerSchema,
+        result,
+        "createCustomer"
+      );
+    },
+    (effect) => effect.pipe(Effect.scoped)
+  );
+
   const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
     function* (
       customerData: DotyposCustomerLookupData,
@@ -1353,6 +1415,25 @@ const makeDotyposService = Effect.gen(function* () {
     patchCustomer(customerId, details)
   );
 
+  const updateCustomerDetails = Effect.fn(
+    "DotyposService.updateCustomerDetails"
+  )((customerId: DotyposCustomerId, details: DotyposCustomerDetails) =>
+    patchCustomer(customerId, {
+      addressLine1: details.addressLine1.trim(),
+      addressLine2: details.addressLine2.trim(),
+      city: details.city.trim(),
+      companyId: details.companyId.trim(),
+      companyName: details.companyName.trim(),
+      country: details.country.trim(),
+      email: details.email.trim(),
+      firstName: details.firstName.trim(),
+      lastName: details.lastName.trim(),
+      phone: details.phone ? normalizePhoneNumber(details.phone) || "" : "",
+      vatId: details.vatId.trim(),
+      zip: details.zip.trim(),
+    })
+  );
+
   const getTables = Effect.fn("getTables")(() =>
     loadAllDotyposPages({
       operation: "getTables",
@@ -1504,12 +1585,14 @@ const makeDotyposService = Effect.gen(function* () {
     getReservationStatus,
     getCustomer,
     getCustomers,
+    createCustomer,
     searchCustomers,
     getCustomerDiscountGroup,
     getCustomerDiscount,
     getDiscountGroups,
     setCustomerDiscountGroup,
     updateCustomerBillingDetails,
+    updateCustomerDetails,
     findCustomer,
     findOrCreateCustomer,
     getTables,

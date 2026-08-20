@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { isDiscountAdminAuthorizationValid } from "./basic-auth";
+import {
+  getDiscountAdminAuthorizationUsername,
+  isDiscountAdminAuthorizationValid,
+} from "./basic-auth";
 
 const credentials = "operator:a-long-preview-password";
 const expectedHash = createHash("sha256").update(credentials).digest("hex");
@@ -11,6 +14,9 @@ describe("discount administration Basic authentication", () => {
     expect(isDiscountAdminAuthorizationValid(authorization, expectedHash)).toBe(
       true
     );
+    expect(
+      getDiscountAdminAuthorizationUsername(authorization, expectedHash)
+    ).toBe("operator");
   });
 
   test("fails closed for absent configuration or authorization", () => {

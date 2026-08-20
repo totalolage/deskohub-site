@@ -223,6 +223,7 @@ export class ReservationInvoiceService extends Context.Service<
           const issuance = yield* invoices.issue({
             paymentAttemptId: context.paymentAttemptId,
             buyer,
+            provenance: { source: "post-order-link" },
           });
           if (!issuance.changed) {
             const committedBuyer = issuance.invoice.document.buyer;

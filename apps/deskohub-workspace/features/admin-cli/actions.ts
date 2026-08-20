@@ -17,10 +17,10 @@ export async function approveCliAuthentication(formData: FormData) {
   const codeForRedirect = Predicate.isString(rawCode) ? rawCode : "";
 
   const approved = await Effect.gen(function* () {
-    yield* requireDiscountAdminAuthorization();
+    const approvedBy = yield* requireDiscountAdminAuthorization();
     const code = yield* decodeCliAuthenticationCode(rawCode);
     const authentication = yield* CliAuthentication;
-    return yield* authentication.approve(code);
+    return yield* authentication.approve({ approvedBy, code });
   }).pipe(
     Effect.as(true),
     Effect.catch(() => Effect.succeed(false)),

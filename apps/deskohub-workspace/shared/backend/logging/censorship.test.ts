@@ -83,6 +83,7 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("city")).toBe(true);
     expect(isSensitiveLogKey("zip")).toBe(true);
     expect(isSensitiveLogKey("country")).toBe(true);
+    expect(isSensitiveLogKey("description")).toBe(true);
   });
 
   test("matches common prefixed camelCase credential key shapes", () => {
