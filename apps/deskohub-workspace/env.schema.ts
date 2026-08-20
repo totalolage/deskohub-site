@@ -75,6 +75,9 @@ export const workspaceServerEnvSchema = Schema.Struct({
   DOTYPOS_EMPLOYEE_ID: nonEmptyStringSchema,
   DOTYPOS_REFRESH_TOKEN: nonEmptyStringSchema,
   EMAIL_API_KEY: optionalStringSchema,
+  EMAIL_PROVIDER: toEnvSchema(
+    Schema.optional(Schema.Literals(["resend", "console"]))
+  ),
   GOOGLE_CALENDAR_PRIVATE_KEY: nonEmptyStringSchema,
   GOOGLE_CALENDAR_SALES_ID: nonEmptyStringSchema,
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
