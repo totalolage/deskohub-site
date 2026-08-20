@@ -166,7 +166,8 @@ const getWorkspaceActionContext = <S extends StandardSchemaV1>(
 
 const readActionHeaders = Effect.tryPromise({
   try: () => headers(),
-  catch: (cause) => cause,
+  catch: (cause) =>
+    new Error("Could not load the current request headers.", { cause }),
 }).pipe(Effect.orDie);
 
 const handleWorkspaceActionValidationFailure = async <
