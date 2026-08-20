@@ -199,6 +199,7 @@ export function InvoiceCreationForm({
               {(["existing", "new"] as const).map((mode) => (
                 <Button
                   aria-pressed={customerMode === mode}
+                  className="rounded-sm"
                   key={mode}
                   onClick={() => {
                     setCustomerMode(mode);
