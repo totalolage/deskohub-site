@@ -1,6 +1,6 @@
 import {
-  type DotyposReservationInterval,
   type DotyposReservationId,
+  type DotyposReservationInterval,
   DotyposService,
   type DotyposTableId,
   type ExternalAPIError,
