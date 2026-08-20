@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.9.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.8.2...dhw-v1.9.0) (2026-08-20)
+
+
+### Features
+
+* **dhw:** add ad-hoc invoice administration ([1e67fdb](https://github.com/totalolage/deskohub-site/commit/1e67fdbcbb25dfe9efe1b1c239426a25e503ffc7))
+* **dhw:** support paid ad-hoc invoices ([840260a](https://github.com/totalolage/deskohub-site/commit/840260ac0a5b360197f847e326a6afb2fa0a67e9))
+
+
+### Bug Fixes
+
+* **dhw:** preserve invoice ids across restarts ([9dcf594](https://github.com/totalolage/deskohub-site/commit/9dcf5942740897394359bd8f839a49d937a9a4db))
+* **dhw:** retry invoices through claim recovery ([01ef211](https://github.com/totalolage/deskohub-site/commit/01ef2116e0bb8e9038f22dab311db697cf27c398))
+
 ## [1.8.2](https://github.com/totalolage/deskohub-site/compare/dhw-v1.8.1...dhw-v1.8.2) (2026-08-14)
 
 
