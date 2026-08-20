@@ -1,5 +1,5 @@
 import { NextEffect } from "@deskohub/next-effect";
-import { Effect, Layer } from "effect";
+import { Data, Effect, Layer } from "effect";
 import { after } from "next/server";
 import { postHogLoggerProvider } from "@/instrumentation";
 import {
@@ -15,6 +15,13 @@ interface RunWorkspaceEffectOptions {
   readonly boundary?: WorkspaceEffectBoundary;
   readonly signal?: AbortSignal;
 }
+
+class WorkspaceTelemetryError extends Data.TaggedError(
+  "WorkspaceTelemetryError"
+)<{
+  readonly cause: unknown;
+  readonly message: string;
+}> {}
 
 export const runWorkspaceEffect =
   (operation: string, options: RunWorkspaceEffectOptions = {}) =>
@@ -60,7 +67,11 @@ export const scheduleWorkspaceTelemetryFlush = () =>
           after(() =>
             flushTelemetry.pipe(runWorkspaceEffect("telemetry.flush"))
           ),
-        catch: (cause) => cause,
+        catch: (cause) =>
+          new WorkspaceTelemetryError({
+            cause,
+            message: "PostHog log flush could not be scheduled",
+          }),
       }).pipe(
         Effect.tapError((cause) =>
           Effect.logWarning("PostHog log flush could not be scheduled", {
@@ -84,7 +95,11 @@ const workspaceRuntime = NextEffect.make({
 
 const flushTelemetry = Effect.tryPromise({
   try: () => flushPostHogLogs({ provider: postHogLoggerProvider }),
-  catch: (cause) => cause,
+  catch: (cause) =>
+    new WorkspaceTelemetryError({
+      cause,
+      message: "PostHog log flush failed",
+    }),
 }).pipe(
   Effect.timeout("5 seconds"),
   Effect.tapError((cause) =>

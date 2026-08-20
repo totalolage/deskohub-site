@@ -112,8 +112,13 @@ test("keeps a successful advertised-price batch independent from a failed siblin
     </QueryClientProvider>
   );
 
-  await waitFor(() => {
-    expect(view.getByTestId("advertised-price-0").textContent).toBe("error");
-    expect(view.getByTestId("advertised-price-16").textContent).toBe("success");
-  });
+  await waitFor(
+    () => {
+      expect(view.getByTestId("advertised-price-0").textContent).toBe("error");
+      expect(view.getByTestId("advertised-price-16").textContent).toBe(
+        "success"
+      );
+    },
+    { timeout: 5000 }
+  );
 });

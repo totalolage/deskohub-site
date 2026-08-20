@@ -29,6 +29,7 @@ if (typecheck) {
       schema: Schema.toStandardSchemaV1(Schema.String),
     },
     // @ts-expect-error Action handlers must provide feature capabilities.
+    // @effect-diagnostics-next-line missingEffectContext:off
     () => TestService
   );
 
@@ -46,6 +47,7 @@ if (typecheck) {
       schema: Schema.toStandardSchemaV1(Schema.String),
     },
     // @ts-expect-error Action failures must be typed errors.
+    // @effect-diagnostics-next-line missingEffectError:off
     () => Effect.fail("untyped failure")
   );
 
@@ -70,6 +72,7 @@ if (typecheck) {
       cancellation: "continue-after-disconnect",
     },
     // @ts-expect-error Route failures must be mapped to WorkspaceRouteFailure.
+    // @effect-diagnostics-next-line missingEffectError:off
     () => Effect.fail("handler failed").pipe(Effect.as(new Response()))
   );
 

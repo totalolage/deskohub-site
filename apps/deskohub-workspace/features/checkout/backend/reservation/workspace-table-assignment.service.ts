@@ -1,5 +1,6 @@
 import {
   type DotyposReservationId,
+  type DotyposReservationInterval,
   DotyposService,
   type DotyposTableId,
   type ExternalAPIError,
@@ -82,7 +83,7 @@ export class WorkspaceTableAssignmentService extends Context.Service<
 
       const loadInventory = Effect.fn(
         "WorkspaceTableAssignmentService.loadInventory"
-      )((reservationInterval) =>
+      )((reservationInterval: DotyposReservationInterval) =>
         Effect.all(
           {
             tables: dotypos.getTables(),

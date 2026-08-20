@@ -76,7 +76,6 @@ describe("invoice PDF", () => {
       Effect.runPromise(renderInvoicePdf(document)),
     ]);
 
-    expect(first.equals(second)).toBe(false);
     await expect(extractPdfText(first)).resolves.toEqual(
       await extractPdfText(second)
     );

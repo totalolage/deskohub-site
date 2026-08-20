@@ -20,6 +20,10 @@ export class LatePaymentRecoveryQueueError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+class DuplicateLatePaymentRecoveryMessageError extends Data.TaggedError(
+  "DuplicateLatePaymentRecoveryMessageError"
+) {}
+
 interface ILatePaymentRecoveryQueueService {
   readonly enqueue: (input: {
     readonly paymentAttemptId: PaymentAttemptId;
@@ -40,18 +44,17 @@ export const makeLatePaymentRecoveryQueueService = (
             idempotencyKey: `late-payment-recovery:${input.paymentAttemptId}`,
           }
         ),
-      catch: (cause) => cause,
+      catch: (cause) =>
+        cause instanceof DuplicateMessageError
+          ? new DuplicateLatePaymentRecoveryMessageError()
+          : new LatePaymentRecoveryQueueError({
+              message: "Late-payment recovery could not be enqueued.",
+              cause: serializeErrorForLog(cause),
+            }),
     }).pipe(
-      Effect.catchIf(
-        (cause) => cause instanceof DuplicateMessageError,
+      Effect.catchTag(
+        "DuplicateLatePaymentRecoveryMessageError",
         () => Effect.void
-      ),
-      Effect.mapError(
-        (cause) =>
-          new LatePaymentRecoveryQueueError({
-            message: "Late-payment recovery could not be enqueued.",
-            cause: serializeErrorForLog(cause),
-          })
       )
     );
   }),

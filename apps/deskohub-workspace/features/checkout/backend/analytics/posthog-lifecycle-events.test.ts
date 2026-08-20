@@ -51,14 +51,12 @@ describe("PostHog lifecycle events", () => {
       uuid: `${attemptId}:payment completed`,
     });
     expect(captures[0].properties).toMatchObject({
-      amount: 350,
-      amount_exponent: 2,
-      amount_value: 35_000,
       currency: "CZK",
       payment_attempt_id: attemptId,
       provider: "nexi",
       provider_order_id: "provider-order-id",
       reservation_id: reservationId,
+      revenue: 350,
     });
   });
 
@@ -101,13 +99,11 @@ describe("PostHog lifecycle events", () => {
     );
 
     expect(captures[0]?.properties).toEqual({
-      amount: 0,
-      amount_exponent: 2,
-      amount_value: 0,
       currency: "CZK",
-      reservation_id: reservationId,
       payment_attempt_id: attemptId,
       provider: "internal",
+      reservation_id: reservationId,
+      revenue: 0,
     });
   });
 });

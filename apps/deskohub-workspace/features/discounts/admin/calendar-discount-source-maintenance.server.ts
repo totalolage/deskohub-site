@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { after } from "next/server";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -10,6 +10,12 @@ import {
   loadCalendarDiscountSource,
 } from "../calendar-discount-source.server";
 import type { DiscountAdminMutation } from "./contracts";
+
+class CalendarDiscountSourceMaintenanceError extends Data.TaggedError(
+  "CalendarDiscountSourceMaintenanceError"
+)<{
+  readonly cause: unknown;
+}> {}
 
 export const refreshCalendarDiscountSourceAfterMutation = Effect.fn(
   "DiscountAdministration.refreshCalendarSource"
@@ -23,7 +29,7 @@ export const refreshCalendarDiscountSourceAfterMutation = Effect.fn(
         )
       );
     },
-    catch: (cause) => cause,
+    catch: (cause) => new CalendarDiscountSourceMaintenanceError({ cause }),
   }).pipe(
     Effect.tapError((cause) =>
       Effect.logWarning("Calendar discount cache refresh could not start", {
@@ -47,7 +53,7 @@ const primeCurrentCalendarDiscountSources = Effect.fn(
     (reservationDate) =>
       Effect.tryPromise({
         try: () => loadCalendarDiscountSource(reservationDate),
-        catch: (cause) => cause,
+        catch: (cause) => new CalendarDiscountSourceMaintenanceError({ cause }),
       }).pipe(
         Effect.tap((source) =>
           Effect.logWarning("Calendar discount cache prime was incomplete", {

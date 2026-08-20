@@ -10,6 +10,7 @@
         "i18n:compile"
       ],
       "env": [
+        "EMAIL_PROVIDER",
         "DOTYPOS_API_TIMEOUT",
         "IGLOOHOME_API_TIMEOUT",
         "IGLOOHOME_API_URL",

@@ -43,7 +43,6 @@ const nextConfig = {
     instantInsights: {
       validationLevel: "manual-warning",
     },
-    useTypeScriptCli: false,
   },
   partialPrefetching: true,
   reactCompiler: true,

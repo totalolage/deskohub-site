@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import { EmailDeliveryIdSchema } from "../../types/email.types";
 
 type SendResponse =
@@ -111,6 +112,30 @@ describe("ResendEmailProvider", () => {
         expect(result.failure._tag).toBe("NetworkError");
       }
     }
+  });
+
+  test("maps a stalled request to NetworkError", async () => {
+    send = mock<SendImplementation>(() => new Promise(() => {}));
+
+    const result = await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        const fiber = yield* provider
+          .send(message)
+          .pipe(Effect.result, Effect.forkChild);
+        yield* TestClock.adjust("5 seconds");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestClock.layer()))
+    );
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "NetworkError",
+        message: "Resend send timed out",
+      },
+    });
   });
 
   test("send result includes status", async () => {

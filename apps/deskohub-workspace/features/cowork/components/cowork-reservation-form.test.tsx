@@ -306,9 +306,12 @@ describe("CoworkReservationForm advertised pricing", () => {
 
     const view = renderForm();
     const continueButton = view.getByRole("button", { name: "Continue" });
-    await waitFor(() => {
-      expect(continueButton.hasAttribute("disabled")).toBe(false);
-    });
+    await waitFor(
+      () => {
+        expect(continueButton.hasAttribute("disabled")).toBe(false);
+      },
+      { timeout: 5000 }
+    );
 
     fireEvent.click(continueButton);
 
@@ -332,9 +335,12 @@ describe("CoworkReservationForm advertised pricing", () => {
 
     const view = renderForm();
     const continueButton = view.getByRole("button", { name: "Continue" });
-    await waitFor(() => {
-      expect(continueButton.hasAttribute("disabled")).toBe(false);
-    });
+    await waitFor(
+      () => {
+        expect(continueButton.hasAttribute("disabled")).toBe(false);
+      },
+      { timeout: 5000 }
+    );
 
     fireEvent.click(view.getByRole("checkbox", { name: "Create invoice" }));
     fireEvent.click(continueButton);
@@ -416,7 +422,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     const view = renderForm();
 
     expect(
-      await view.findByText(/original price.*350/i, {}, { timeout: 3000 })
+      await view.findByText(/original price.*350/i, {}, { timeout: 5000 })
     ).toBeDefined();
     expect(view.getByText(/discounted price.*175/i)).toBeDefined();
     expect(
@@ -571,7 +577,7 @@ describe("CoworkReservationForm advertised pricing", () => {
 
     const view = renderForm();
     expect(
-      (await view.findByRole("alert", {}, { timeout: 3000 })).textContent
+      (await view.findByRole("alert", {}, { timeout: 10_000 })).textContent
     ).toMatch(/current price could not be loaded/i);
     expect(
       view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")

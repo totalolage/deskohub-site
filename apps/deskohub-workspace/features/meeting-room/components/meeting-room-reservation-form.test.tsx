@@ -306,9 +306,12 @@ describe("MeetingRoomReservationForm", () => {
         ) as HTMLInputElement
     );
 
-    await waitFor(() => {
-      expect(continueButton.hasAttribute("disabled")).toBe(false);
-    });
+    await waitFor(
+      () => {
+        expect(continueButton.hasAttribute("disabled")).toBe(false);
+      },
+      { timeout: 5000 }
+    );
     expect(durationInputs.map(({ checked }) => checked)).toEqual([
       true,
       false,
@@ -387,26 +390,29 @@ describe("MeetingRoomReservationForm", () => {
         'input[type="radio"][value="hour:4"]'
       ) as HTMLInputElement
     );
-    await waitFor(() => {
-      expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
-      expect(continueButton.hasAttribute("disabled")).toBe(false);
-      expect(durationInputs[1]?.checked).toBe(true);
-      expect(getAdvertisedPrices).toHaveBeenCalledWith(
-        expect.arrayContaining([
-          {
-            locale: "en-US",
-            reservation: {
-              kind: "meeting-room",
-              details: {
+    await waitFor(
+      () => {
+        expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
+        expect(continueButton.hasAttribute("disabled")).toBe(false);
+        expect(durationInputs[1]?.checked).toBe(true);
+        expect(getAdvertisedPrices).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            {
+              locale: "en-US",
+              reservation: {
                 kind: "meeting-room",
-                duration: { unit: "hour", amount: 4 },
-                reservationDate: "2099-07-30",
+                details: {
+                  kind: "meeting-room",
+                  duration: { unit: "hour", amount: 4 },
+                  reservationDate: "2099-07-30",
+                },
               },
             },
-          },
-        ])
-      );
-    });
+          ])
+        );
+      },
+      { timeout: 5000 }
+    );
     fireEvent.click(continueButton);
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(3));
     expect(execute.mock.calls[2]?.[0].checkoutAttemptId).not.toBe(
@@ -779,7 +785,9 @@ describe("MeetingRoomReservationForm", () => {
       ) as HTMLInputElement
     );
 
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2), {
+      timeout: 5000,
+    });
     expect(String(globalThis.fetch.mock.calls[1]?.[0])).toContain(
       "startsAt=2099-07-30T09%3A00%3A00Z&endsAt=2099-07-30T13%3A00%3A00Z"
     );

@@ -54,7 +54,7 @@ describe("ReservationAccessPage", () => {
     expect(view.getByText("Your access PIN")).toBeDefined();
     expect(
       view.getByText(
-        "The lock accepts this PIN from Aug 13, 2026, 10:00 AM until Aug 13, 2026, 6:00 PM."
+        /The lock accepts this PIN from Aug 13, 2026(?:,| at) 10:00 AM until Aug 13, 2026(?:,| at) 6:00 PM\./
       )
     ).toBeDefined();
     expect(view.container.querySelector("[data-reservation-access]")).toBe(

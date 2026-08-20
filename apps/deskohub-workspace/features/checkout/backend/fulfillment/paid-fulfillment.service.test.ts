@@ -13,25 +13,25 @@ const { WorkspaceCheckoutAccessCodeService } = await import(
   "@/features/checkout/backend/reservation/access-code.service"
 );
 
+const {
+  PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
+  WorkspacePaidFulfillmentService,
+} = await import("./paid-fulfillment.service");
+const { WorkspaceReservationEmailService } = await import(
+  "./workspace-reservation-email.service"
+);
+const { WorkspaceReservationRepository } = await import(
+  "@/features/reservation/backend/workspace-reservation.repository"
+);
+const { WorkspaceReservationService } = await import(
+  "@/features/reservation/backend/workspace-reservation.service"
+);
+const { PostHogEventService } = await import(
+  "@/shared/backend/analytics/posthog-event.service"
+);
+
 describe("WorkspacePaidFulfillmentService", () => {
   test("retries stale processing paid orders and completes non-production fulfillment after send acceptance", async () => {
-    const {
-      PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
-      WorkspacePaidFulfillmentService,
-    } = await import("./paid-fulfillment.service");
-    const { WorkspaceReservationEmailService } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { WorkspaceReservationService } = await import(
-      "@/features/reservation/backend/workspace-reservation.service"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
-
     const order = {
       id: "reservation-id",
       activePaymentAttemptId: "payment-attempt-id",
@@ -151,22 +151,6 @@ describe("WorkspacePaidFulfillmentService", () => {
   });
 
   test("confirms held paid orders, sends emails, and completes non-production fulfillment", async () => {
-    const { WorkspacePaidFulfillmentService } = await import(
-      "./paid-fulfillment.service"
-    );
-    const { WorkspaceReservationEmailService } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { WorkspaceReservationService } = await import(
-      "@/features/reservation/backend/workspace-reservation.service"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
-
     const order = {
       id: "reservation-id",
       activePaymentAttemptId: "payment-attempt-id",
@@ -260,21 +244,6 @@ describe("WorkspacePaidFulfillmentService", () => {
   });
 
   test("retries invoice processing without reverting completed access fulfillment", async () => {
-    const { WorkspacePaidFulfillmentService } = await import(
-      "./paid-fulfillment.service"
-    );
-    const { WorkspaceReservationEmailService } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { WorkspaceReservationService } = await import(
-      "@/features/reservation/backend/workspace-reservation.service"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
     const invoiceFailure = new Error("synthetic invoice failure");
     const processInvoice = mock(() => Effect.fail(invoiceFailure));
     const markFulfillmentFailed = mock(() => Effect.void);
@@ -328,22 +297,6 @@ describe("WorkspacePaidFulfillmentService", () => {
   });
 
   test("releases the fulfillment claim after an unexpected infrastructure failure", async () => {
-    const { WorkspacePaidFulfillmentService } = await import(
-      "./paid-fulfillment.service"
-    );
-    const { WorkspaceReservationEmailService } = await import(
-      "./workspace-reservation-email.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const { WorkspaceReservationService } = await import(
-      "@/features/reservation/backend/workspace-reservation.service"
-    );
-    const { PostHogEventService } = await import(
-      "@/shared/backend/analytics/posthog-event.service"
-    );
-
     const order = {
       id: "reservation-id",
       paymentState: "paid",

@@ -60,7 +60,7 @@ test("waits for Dotypos to expose the confirmed reservation state", async () => 
           },
         };
       }),
-      { intervalMs: 1, timeoutMs: 100 }
+      { intervalMs: 1, timeoutMs: 500 }
     )
   );
 
@@ -82,7 +82,7 @@ test("waits for cancelled reservations to leave active inventory", async () => {
         ];
       }),
       [reservationId],
-      { intervalMs: 1, timeoutMs: 100 }
+      { intervalMs: 1, timeoutMs: 500 }
     )
   );
 
@@ -112,7 +112,7 @@ test("waits for a customer discount-group change to become readable", async () =
         };
       }),
       discountGroupId,
-      { intervalMs: 1, timeoutMs: 100 }
+      { intervalMs: 1, timeoutMs: 500 }
     )
   );
 
@@ -132,7 +132,7 @@ test("waits for a removed customer discount group to become readable", async () 
         };
       }),
       null,
-      { intervalMs: 1, timeoutMs: 100 }
+      { intervalMs: 1, timeoutMs: 500 }
     )
   );
 

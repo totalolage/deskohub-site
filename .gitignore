@@ -51,3 +51,6 @@ node_modules/
 
 .opencode/
 .skillopt-sleep/
+
+# Turborepo
+.turbo

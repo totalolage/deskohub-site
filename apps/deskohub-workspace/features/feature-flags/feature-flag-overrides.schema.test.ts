@@ -35,13 +35,14 @@ describe("PostHog feature flag override environment schema", () => {
     expect(
       decodeFeatureFlagOverrideEnvironment({
         POSTHOG_FEATURE_FLAG_OVERRIDES:
-          '{"calendar_sales":true,"customer_discounts":false,"discount_codes":true}',
+          '{"calendar_sales":true,"customer_discounts":false,"discount_codes":true,"office_page":true}',
         VERCEL_ENV: "preview",
       }).POSTHOG_FEATURE_FLAG_OVERRIDES
     ).toEqual({
       calendar_sales: true,
       customer_discounts: false,
       discount_codes: true,
+      office_page: true,
     });
   });
 

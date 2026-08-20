@@ -1,6 +1,6 @@
 import { NodeRuntime } from "@effect/platform-node";
 import * as PgClient from "@effect/sql-pg/PgClient";
-import { Effect, Redacted, Schema } from "effect";
+import { Data, Effect, Redacted, Schema } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 
 const allocatorRoleName = "workspace_e2e_allocator";
@@ -24,6 +24,13 @@ interface ProviderPermitRoleSecurityRow {
   readonly isSuperuser: boolean;
 }
 
+class CoordinationProvisioningError extends Data.TaggedError(
+  "CoordinationProvisioningError"
+)<{
+  readonly cause?: unknown;
+  readonly message: string;
+}> {}
+
 const program = Schema.decodeUnknownEffect(Environment)(process.env).pipe(
   Effect.flatMap((environment) =>
     Effect.gen(function* () {
@@ -36,9 +43,10 @@ const program = Schema.decodeUnknownEffect(Environment)(process.env).pipe(
       const currentDatabase = currentDatabases[0];
       if (!currentDatabase) {
         return yield* Effect.fail(
-          new Error(
-            "Could not identify the Workspace E2E coordination database."
-          )
+          new CoordinationProvisioningError({
+            message:
+              "Could not identify the Workspace E2E coordination database.",
+          })
         );
       }
       const database = sql(currentDatabase.databaseName);
@@ -139,7 +147,9 @@ const program = Schema.decodeUnknownEffect(Environment)(process.env).pipe(
             providerPermitRoleSecurity.isSuperuser
           ) {
             return yield* Effect.fail(
-              new Error("The provider permit role is not isolated.")
+              new CoordinationProvisioningError({
+                message: "The provider permit role is not isolated.",
+              })
             );
           }
         })
@@ -172,7 +182,10 @@ const provisionStep = <A, E, R>(name: string, effect: Effect.Effect<A, E, R>) =>
   effect.pipe(
     Effect.mapError(
       (cause) =>
-        new Error(`Coordination provisioning failed at: ${name}`, { cause })
+        new CoordinationProvisioningError({
+          cause,
+          message: `Coordination provisioning failed at: ${name}`,
+        })
     )
   );
 

@@ -18,6 +18,7 @@ import {
   type SafeActionFailure,
 } from "../utils/safe-action-client";
 import { BotProtectionService } from "./bot-protection/bot-protection.service";
+import { RequestHeadersError } from "./utils/request-headers";
 import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
@@ -166,7 +167,11 @@ const getWorkspaceActionContext = <S extends StandardSchemaV1>(
 
 const readActionHeaders = Effect.tryPromise({
   try: () => headers(),
-  catch: (cause) => cause,
+  catch: (cause) =>
+    new RequestHeadersError({
+      message: "Could not load the current request headers.",
+      cause,
+    }),
 }).pipe(Effect.orDie);
 
 const handleWorkspaceActionValidationFailure = async <
