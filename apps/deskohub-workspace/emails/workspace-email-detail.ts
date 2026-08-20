@@ -1,4 +1,5 @@
 export interface WorkspaceEmailDetail {
+  readonly href?: string;
   readonly label: string;
   readonly value: string;
 }

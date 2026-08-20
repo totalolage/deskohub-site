@@ -1,3 +1,4 @@
+import { CloudinaryPublicIdSchema } from "@deskohub/cloudinary/schema";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
@@ -16,19 +17,19 @@ export function LandingPageFoundersSection({
 }: LandingPageFoundersSectionProps) {
   const founders = [
     {
-      imagePublicId: "founder-profile-danica",
+      imagePublicId: CloudinaryPublicIdSchema.make("founder-profile-danica"),
       name: "Danica",
       role: m.landingFounderDanicaRole({}, { locale }),
       description: m.landingFounderDanicaDescription({}, { locale }),
     },
     {
-      imagePublicId: "founder-profile-filip",
+      imagePublicId: CloudinaryPublicIdSchema.make("founder-profile-filip"),
       name: "Filip",
       role: m.landingFounderFilipRole({}, { locale }),
       description: m.landingFounderFilipDescription({}, { locale }),
     },
     {
-      imagePublicId: "founder-profile-carp",
+      imagePublicId: CloudinaryPublicIdSchema.make("founder-profile-carp"),
       name: null,
       role: m.landingFounderHardwareRole({}, { locale }),
       description: m.landingFounderHardwareDescription({}, { locale }),

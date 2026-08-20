@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
 export interface WorkspaceCheckoutNetworkDetails {
   readonly ssid: string;
@@ -21,7 +22,7 @@ export const workspaceCheckoutPlaceholderNetworkDetails: WorkspaceCheckoutNetwor
 
 export interface IWorkspaceCheckoutNetworkDetailsService {
   readonly resolveCustomerNetworkDetails: (input: {
-    readonly reservation: { readonly id: string };
+    readonly reservation: { readonly id: WorkspaceReservationId };
   }) => Effect.Effect<WorkspaceCheckoutNetworkDetails>;
 }
 
@@ -29,7 +30,7 @@ export class WorkspaceCheckoutNetworkDetailsService extends Context.Service<
   WorkspaceCheckoutNetworkDetailsService,
   IWorkspaceCheckoutNetworkDetailsService
 >()("@deskohub-workspace/checkout/WorkspaceCheckoutNetworkDetailsService") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     resolveCustomerNetworkDetails: Effect.fn(
       "workspaceCheckoutNetworkDetails.resolveCustomerNetworkDetails"
     )(function* () {

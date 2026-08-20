@@ -1,7 +1,11 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import {
+  canonicalPromotionCodeSchema,
+  discountIdSchema,
+} from "@/features/discounts";
 import {
   parseCheckoutStateKey,
   sealCheckoutState,
@@ -76,6 +80,37 @@ describe("advertised price state", () => {
     expect(token).not.toContain("2026-06-20");
   });
 
+  test("keeps an advertised query code inside the encrypted snapshot", () => {
+    const submittedCode = Schema.decodeUnknownSync(
+      canonicalPromotionCodeSchema
+    )("CAMPAIGN10");
+    const submittedCodeDiscountId =
+      Schema.decodeUnknownSync(discountIdSchema)("campaign-discount");
+    const state = Effect.runSync(
+      buildAdvertisedPriceState(
+        {
+          kind: "cowork",
+          locale: "en-US",
+          reservation,
+          quote,
+          submittedCode,
+          submittedCodeDiscountId,
+        },
+        { keys: [fixedKey], now: () => fixedNow }
+      )
+    );
+    const token = seal(state);
+    const opened = Effect.runSync(
+      openAdvertisedPriceState(token, {
+        keys: [fixedKey],
+        now: () => fixedNow,
+      })
+    );
+
+    expect(opened).toMatchObject({ submittedCode, submittedCodeDiscountId });
+    expect(token).not.toContain(submittedCode);
+  });
+
   test("rejects tampering and expiry", () => {
     const token = seal();
 
@@ -100,7 +135,7 @@ describe("advertised price state", () => {
   test("strictly rejects extra snapshot fields", () => {
     const state = { ...buildState(), customerEmail: "ada@example.test" };
     const token = Effect.runSync(
-      sealCheckoutState(state, {
+      sealCheckoutState(state, state.kid, {
         keys: [fixedKey],
         randomBytes: fixedRandomBytes,
       })

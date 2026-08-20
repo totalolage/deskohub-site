@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
   mergeReservationHistory,
   PostHogHistoryRuntimeConfig,
@@ -12,6 +14,7 @@ afterEach(() => {
 });
 
 const originalFetch = globalThis.fetch;
+const reservationId = workspaceReservationIdSchema.make("reservation-id");
 
 describe("PostHog reservation history", () => {
   test("uses a parameterized scoped query and decodes approved fields", async () => {
@@ -32,13 +35,13 @@ describe("PostHog reservation history", () => {
         ],
       });
     };
-    const layer = PostHogReservationHistory.Live.pipe(
+    const layer = PostHogReservationHistory.Default.pipe(
       Layer.provide(
         Layer.succeed(PostHogHistoryRuntimeConfig, {
           apiKey: "test-key",
           environment: "preview",
           host: "https://eu.posthog.test",
-          projectId: "42",
+          projectId: PostHogProjectId.make("42"),
           serviceName: "deskohub-workspace",
         })
       ),
@@ -47,7 +50,7 @@ describe("PostHog reservation history", () => {
 
     const result = await Effect.gen(function* () {
       const history = yield* PostHogReservationHistory;
-      return yield* history.load("reservation-id");
+      return yield* history.load(reservationId);
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
     expect(result).toEqual({
@@ -75,8 +78,8 @@ describe("PostHog reservation history", () => {
     });
   });
 
-  test("is unavailable without a dedicated read credential", async () => {
-    const layer = PostHogReservationHistory.Live.pipe(
+  test("is unavailable without the PostHog API key", async () => {
+    const layer = PostHogReservationHistory.Default.pipe(
       Layer.provide(
         Layer.succeed(PostHogHistoryRuntimeConfig, {
           environment: "development",
@@ -87,7 +90,7 @@ describe("PostHog reservation history", () => {
     );
     const result = await Effect.gen(function* () {
       const history = yield* PostHogReservationHistory;
-      return yield* history.load("reservation-id");
+      return yield* history.load(reservationId);
     }).pipe(Effect.provide(layer), Effect.runPromise);
     expect(result).toEqual({ kind: "unavailable" });
   });

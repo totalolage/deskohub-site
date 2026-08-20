@@ -2,12 +2,19 @@ import "server-only";
 
 import { Effect, Option } from "effect";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
 import {
   openPayState,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import {
+  type CanonicalPromotionCode,
+  discountCodeQueryParam,
+  normalizeSubmittedPromotionCode,
+} from "@/features/discounts";
 import { type Locale, locales } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
@@ -28,15 +35,17 @@ type ReservationForKind<Kind extends ReservationKind> = Extract<
 >;
 
 type ReservationPageContext<Kind extends ReservationKind> = {
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: CheckoutSessionId;
   readonly initialReservation?: ReservationForKind<Kind>;
   readonly locale: Locale;
   readonly replacementToken?: string;
   readonly searchParams: SearchParamsRecord;
+  readonly submittedCode?: CanonicalPromotionCode;
 };
 
 type ReservationPageDefinition<Kind extends ReservationKind> = {
   readonly fallback: (locale: Locale) => ReactNode;
+  readonly isEnabled?: () => boolean | Promise<boolean>;
   readonly kind: Kind;
   readonly metadata: (locale: Locale) => {
     readonly description: string;
@@ -76,6 +85,7 @@ const loadRestoredReservation = Effect.fn(
     checkoutSessionId: payState.checkoutSessionId,
     initialReservation: payState.reservation as ReservationForKind<Kind>,
     replacementToken: token,
+    submittedCode: payState.submittedCode,
   };
 });
 
@@ -83,7 +93,9 @@ export function createReservationPage<const Kind extends ReservationKind>(
   definition: ReservationPageDefinition<Kind>
 ) {
   async function generateMetadata(): Promise<Metadata> {
-    return runWithRequestLocale((locale) => {
+    return runWithRequestLocale(async (locale) => {
+      if (definition.isEnabled && !(await definition.isEnabled())) notFound();
+
       const { description, title } = definition.metadata(locale);
       const url = getWorkspaceLocalizedCanonicalUrl(
         locale,
@@ -118,14 +130,22 @@ export function createReservationPage<const Kind extends ReservationKind>(
   }
 
   async function Page({ searchParams }: LocalizedReservationPageProps) {
-    return runWithRequestLocale((locale) => (
-      <ReservationPage fallback={definition.fallback(locale)} locale={locale}>
-        <ReservationPageContent
-          definition={definition}
-          searchParams={searchParams}
-        />
-      </ReservationPage>
-    ));
+    return runWithRequestLocale(async (locale) => {
+      if (definition.isEnabled && !(await definition.isEnabled())) notFound();
+
+      return (
+        <ReservationPage
+          fallback={definition.fallback(locale)}
+          locale={locale}
+          title={definition.metadata(locale).title}
+        >
+          <ReservationPageContent
+            definition={definition}
+            searchParams={searchParams}
+          />
+        </ReservationPage>
+      );
+    });
   }
 
   return { generateMetadata, Page };
@@ -147,10 +167,21 @@ async function ReservationPageContent<Kind extends ReservationKind>({
       locale,
       definition.kind
     ).pipe(runWorkspaceEffect(`reservation.${definition.kind}.load-state`));
+    const normalizedCode = await normalizeSubmittedPromotionCode({
+      submittedCode: getSearchParam(
+        resolvedSearchParams,
+        discountCodeQueryParam
+      ),
+    }).pipe(
+      Effect.catch(() => Effect.succeed(Option.none())),
+      runWorkspaceEffect(`reservation.${definition.kind}.normalize-code`)
+    );
+    const submittedCode = Option.getOrUndefined(normalizedCode);
 
     return definition.render({
       locale,
       searchParams: resolvedSearchParams,
+      submittedCode,
       ...restoredReservation,
     });
   });

@@ -1,7 +1,6 @@
 export {
+  type ITrainingReservationService as TrainingReservationServiceType,
   TrainingReservationService,
-  type TrainingReservationService as TrainingReservationServiceType,
-  TrainingReservationServiceLive,
   type TrainingRoomReservation,
 } from "./backend/training-reservation.service";
 export { ReservationForm } from "./components/reservation-form";

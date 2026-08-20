@@ -50,6 +50,7 @@ function useFormField() {
     id: itemContext.id,
     name: fieldContext.name,
     formItemId: `${itemContext.id}-form-item`,
+    formLabelId: `${itemContext.id}-form-item-label`,
     formDescriptionId: `${itemContext.id}-form-item-description`,
     formMessageId: `${itemContext.id}-form-item-message`,
     ...fieldState,
@@ -85,7 +86,7 @@ function FormLabel({
   required?: boolean;
   ref?: React.Ref<React.ComponentRef<typeof LabelPrimitive.Root>>;
 }) {
-  const { error, formItemId } = useFormField();
+  const { error, formItemId, formLabelId } = useFormField();
 
   return (
     <Label
@@ -96,6 +97,7 @@ function FormLabel({
         className
       )}
       htmlFor={formItemId}
+      id={formLabelId}
       {...props}
     />
   );
@@ -107,17 +109,15 @@ function FormControl({
 }: React.ComponentPropsWithoutRef<typeof Slot> & {
   ref?: React.Ref<React.ComponentRef<typeof Slot>>;
 }) {
-  const { error, formItemId, formDescriptionId, formMessageId } =
-    useFormField();
+  const { error, formItemId, formLabelId, formMessageId } = useFormField();
 
   return (
     <Slot
       ref={ref}
       id={formItemId}
-      aria-describedby={
-        error ? `${formDescriptionId} ${formMessageId}` : formDescriptionId
-      }
+      aria-describedby={error ? formMessageId : undefined}
       aria-invalid={Boolean(error)}
+      aria-labelledby={formLabelId}
       {...props}
     />
   );
@@ -161,6 +161,7 @@ function FormMessage({
     <p
       ref={ref}
       id={formMessageId}
+      aria-live="polite"
       className={cn("text-sm font-medium text-burned-orange", className)}
       {...props}
     >

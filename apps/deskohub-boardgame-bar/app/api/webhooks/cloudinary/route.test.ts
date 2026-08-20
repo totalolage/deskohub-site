@@ -18,7 +18,7 @@ const verifyCloudinaryWebhookRequest = mock<VerifyCloudinaryWebhookRequest>(
 const revalidateTag = mock(() => undefined);
 
 mock.module("@deskohub/cloudinary/server", () => ({
-  CloudinaryWebhookVerifier: { Live: Layer.empty },
+  CloudinaryWebhookVerifier: { Default: Layer.empty },
   makeCloudinaryRuntimeConfigLayer: () => Layer.empty,
   verifyCloudinaryWebhookRequest,
 }));

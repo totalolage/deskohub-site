@@ -1,5 +1,6 @@
 "use client";
 
+import Interpolate from "@doist/react-interpolate";
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,6 +10,7 @@ import type {
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-summary";
 import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
+import { markCheckoutStatusWindowOwner } from "@/features/checkout/components/checkout-payment-window";
 import {
   CheckoutSummary,
   CheckoutSummarySection,
@@ -34,6 +36,7 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly discountCodeForm?: ReactNode;
+  readonly earlyPerformanceRequestRequired?: boolean;
   readonly freshPayUrl?: string;
   readonly locale: Locale;
   readonly payStateToken?: string;
@@ -47,6 +50,7 @@ type CheckoutPayActionVariant = "pay" | "retry";
 export function CheckoutPayPage({
   changedKeys,
   discountCodeForm,
+  earlyPerformanceRequestRequired = true,
   freshPayUrl,
   locale,
   payStateToken,
@@ -77,6 +81,16 @@ export function CheckoutPayPage({
       if (!data?.redirectUrl) {
         setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
         return;
+      }
+
+      if (data.statusUrl) {
+        const paymentWindow = window.open(data.redirectUrl, "_blank");
+        if (paymentWindow) {
+          paymentWindow.opener = null;
+          markCheckoutStatusWindowOwner(data.statusUrl);
+          router.push(data.statusUrl);
+          return;
+        }
       }
 
       router.push(data.redirectUrl);
@@ -159,6 +173,7 @@ export function CheckoutPayPage({
             id="checkout-pay-legal-consent"
             locale={locale}
             onCheckedChange={setLegalConsent}
+            showEarlyPerformanceRequest={earlyPerformanceRequestRequired}
             variant={actionVariant}
           />
 
@@ -174,11 +189,16 @@ export function CheckoutPayPage({
                 return;
               }
 
-              execute({
+              const input = {
                 locale,
                 payStateToken,
                 legalConsent,
-              });
+              };
+              execute(
+                earlyPerformanceRequestRequired
+                  ? { ...input, earlyPerformanceConsent: legalConsent }
+                  : input
+              );
             }}
             pending={isSubmitPending}
             variant={actionVariant}
@@ -232,7 +252,9 @@ function CheckoutPayCard({
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
-        <CardTitle className="text-3xl sm:text-[2.35rem]">{title}</CardTitle>
+        <CardTitle as="h1" className="text-3xl sm:text-[2.35rem]">
+          {title}
+        </CardTitle>
         {!!lead && (
           <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
             {lead}
@@ -270,6 +292,7 @@ function CheckoutPayConsent({
   id,
   locale,
   onCheckedChange,
+  showEarlyPerformanceRequest = false,
   variant,
 }: {
   readonly checked?: boolean;
@@ -277,6 +300,7 @@ function CheckoutPayConsent({
   readonly id: string;
   readonly locale: Locale;
   readonly onCheckedChange?: (checked: boolean) => void;
+  readonly showEarlyPerformanceRequest?: boolean;
   readonly variant: CheckoutPayActionVariant;
 }) {
   return (
@@ -298,25 +322,28 @@ function CheckoutPayConsent({
             : undefined
         }
       />
-      <span className="space-y-2 text-sm leading-6 text-navy-blue/66">
-        <span className="block">
-          {
+      <span className="text-sm leading-6 text-navy-blue/66">
+        <Interpolate
+          string={
             {
-              pay: m.checkoutPayConsentBefore({}, { locale }),
-              retry: m.checkoutPaymentRetryConsentBefore({}, { locale }),
+              pay: m.checkoutPayConsent({}, { locale }),
+              retry: m.checkoutPaymentRetryConsent({}, { locale }),
             }[variant]
-          }{" "}
-          <LegalLink
-            href={`/${locale}/terms-and-conditions`}
-            label={m.reservationLegalConsentTermsLink({}, { locale })}
-          />
-          {", "}
-          <LegalLink
-            href={`/${locale}/operating-rules`}
-            label={m.reservationLegalConsentOperatingRulesLink({}, { locale })}
-          />
-          {"."} {m.reservationLegalConsentNoRefund({}, { locale })}
-        </span>
+          }
+          mapping={{
+            terms: (label) => (
+              <LegalLink
+                href={`/${locale}/terms-and-conditions`}
+                label={label}
+              />
+            ),
+            operatingRules: (label) => (
+              <LegalLink href={`/${locale}/operating-rules`} label={label} />
+            ),
+            earlyPerformance: (text) =>
+              showEarlyPerformanceRequest ? text : null,
+          }}
+        />
       </span>
     </label>
   );
@@ -379,7 +406,7 @@ function LegalLink({
   label,
 }: {
   readonly href: string;
-  readonly label: string;
+  readonly label: ReactNode;
 }) {
   return (
     <Link

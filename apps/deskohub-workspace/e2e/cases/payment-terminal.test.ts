@@ -32,18 +32,19 @@ test("restarts a reservation through a hydrated stable link selector", async () 
 
   expect(calls.map((args) => args.slice(2))).toEqual([
     ["wait", "--fn", expect.any(String)],
-    ["focus", 'a[href="/en-US/reservation/cowork"]'],
+    [
+      "focus",
+      '#checkout-status-reserve-again[href="/en-US/reservation/cowork"]',
+    ],
     ["press", "Enter"],
   ]);
   expect(calls.some((args) => args.includes("eval"))).toBe(false);
 });
 
-test("releases reservation-start capacity before hosted payment", async () => {
-  let insideHostedPaymentSession = false;
+test("starts hosted payment only after reservation preparation", async () => {
   const observedSteps: Array<{
-    readonly capacity: "reservation-start" | undefined;
+    readonly capacity: "provider-verification" | undefined;
     readonly id: string;
-    readonly insideHostedPaymentSession: boolean;
   }> = [];
   const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
   const stop = workspaceE2EError("stop after hosted-payment step");
@@ -51,7 +52,6 @@ test("releases reservation-start capacity before hosted payment", async () => {
     observedSteps.push({
       capacity: step.capacity,
       id: step.id,
-      insideHostedPaymentSession,
     });
     return step.id === "prepare-checkout-pay-page"
       ? Effect.succeed(orderId)
@@ -65,19 +65,6 @@ test("releases reservation-start capacity before hosted payment", async () => {
       config: { timeouts: workspaceE2ETimeouts } as WorkspaceE2EConfig,
       data,
       reservationPath: "/en-US/reservation/cowork",
-      resources: {
-        withHostedPaymentSession: (effect) =>
-          Effect.acquireUseRelease(
-            Effect.sync(() => {
-              insideHostedPaymentSession = true;
-            }),
-            () => effect,
-            () =>
-              Effect.sync(() => {
-                insideHostedPaymentSession = false;
-              })
-          ),
-      },
       run: (() =>
         Promise.reject(new Error("runner must not execute"))) as Runner,
       runStep,
@@ -95,14 +82,12 @@ test("releases reservation-start capacity before hosted payment", async () => {
   expect(Exit.isFailure(exit)).toBe(true);
   expect(observedSteps).toEqual([
     {
-      capacity: "reservation-start",
+      capacity: undefined,
       id: "prepare-checkout-pay-page",
-      insideHostedPaymentSession: false,
     },
     {
       capacity: undefined,
       id: "start-hosted-payment",
-      insideHostedPaymentSession: true,
     },
   ]);
   expect(state.orderId).toBe(orderId);

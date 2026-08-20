@@ -23,7 +23,6 @@ const sculpin = localFont({
       style: "italic",
     },
   ],
-  preload: false,
   display: "swap",
   variable: "--font-sculpin",
 });

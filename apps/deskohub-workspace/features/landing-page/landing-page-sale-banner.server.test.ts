@@ -1,15 +1,32 @@
 import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Logger, References, Schema } from "effect";
-import { TestClock } from "effect/testing";
-import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import {
+  type Context,
+  Effect,
+  Layer,
+  Logger,
+  References,
+  Schema,
+} from "effect";
 import { type ActiveSale, discountIdSchema } from "@/features/discounts";
-import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
 
 mock.module("server-only", () => ({}));
 
+let activePublicSales: readonly ActiveSale[] = [];
+const getActivePublicSales = mock(() => Effect.succeed(activePublicSales));
+mock.module("@/features/discounts/active-public-sales.server", () => ({
+  getActivePublicSales,
+}));
+
+const { OfficeReservationFeatureFlagService } = await import(
+  "@/features/office/backend/office-reservation-feature-flag.service"
+);
 const { getActiveLandingPageSaleBanner } = await import(
   "./landing-page-sale-banner.server"
 );
@@ -17,15 +34,16 @@ const { getActiveLandingPageSaleBanner } = await import(
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 const coworkProduct = {
   kind: "cowork",
-  tier: "basic",
-} satisfies WorkspaceProductIdentity;
+} satisfies WorkspaceProductTarget;
 const meetingRoomProduct = {
   kind: "meeting-room",
-  duration: workspaceMeetingRoomCatalog[0]!.duration,
-} satisfies WorkspaceProductIdentity;
+} satisfies WorkspaceProductTarget;
+const officeProduct = {
+  kind: "office",
+} satisfies WorkspaceProductTarget;
 
 const sale = (
-  products: readonly WorkspaceProductIdentity[],
+  products: readonly WorkspaceProductTarget[],
   id = "summer-focus"
 ): ActiveSale => ({
   discount: {
@@ -38,26 +56,32 @@ const sale = (
 
 const getBannerEffect = (
   activeSales: readonly ActiveSale[],
-  locale: "en-US" | "cs-CZ" = "en-US"
+  locale: "en-US" | "cs-CZ" = "en-US",
+  officePageEnabled = true
 ) => {
-  const discoverActiveSales = mock(() => Effect.succeed(activeSales));
+  activePublicSales = activeSales;
+  getActivePublicSales.mockClear();
 
   return Effect.gen(function* () {
-    yield* TestClock.setTime(
-      Temporal.Instant.from("2026-07-19T22:30:00Z").epochMilliseconds
-    );
     const banner = yield* getActiveLandingPageSaleBanner({ locale });
-    return { banner, discoverActiveSales };
+    return { banner };
   }).pipe(
-    Effect.provide(DiscountServiceMock({ discoverActiveSales })),
-    Effect.provide(TestClock.layer())
+    Effect.provide(
+      Layer.succeed(OfficeReservationFeatureFlagService, {
+        isEnabled: Effect.succeed(officePageEnabled),
+      })
+    )
   );
 };
 
 const getBanner = (
   activeSales: readonly ActiveSale[],
-  locale: "en-US" | "cs-CZ" = "en-US"
-) => getBannerEffect(activeSales, locale).pipe(Effect.runPromise);
+  locale: "en-US" | "cs-CZ" = "en-US",
+  officePageEnabled = true
+) =>
+  getBannerEffect(activeSales, locale, officePageEnabled).pipe(
+    Effect.runPromise
+  );
 
 describe("getActiveLandingPageSaleBanner", () => {
   test.each([
@@ -76,18 +100,25 @@ describe("getActiveLandingPageSaleBanner", () => {
       [coworkProduct, meetingRoomProduct],
       "/en-US/reservation/cowork?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
     ],
+    [
+      "mixed without cowork",
+      [officeProduct, meetingRoomProduct],
+      "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
+    ],
+    [
+      "office-only",
+      [officeProduct],
+      "/en-US/reservation/office?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
+    ],
   ] as const)("builds the %s sale CTA", async (_label, products, href) => {
-    const { banner, discoverActiveSales } = await getBanner([sale(products)]);
+    const { banner } = await getBanner([sale(products)]);
 
     expect(banner).toMatchObject({
       adjustmentKind: "percentage",
       href,
       label: expect.stringContaining("Summer focus"),
     });
-    expect(discoverActiveSales).toHaveBeenCalledWith({
-      currentDate: Temporal.PlainDate.from("2026-07-20"),
-      locale: "en-US",
-    });
+    expect(getActivePublicSales).toHaveBeenCalledWith({ locale: "en-US" });
   });
 
   test("renders no banner when there is no active sale", async () => {
@@ -96,9 +127,25 @@ describe("getActiveLandingPageSaleBanner", () => {
     expect(banner).toBeUndefined();
   });
 
+  test("renders no office-only banner while office reservations are disabled", async () => {
+    const { banner } = await getBanner([sale([officeProduct])], "en-US", false);
+
+    expect(banner).toBeUndefined();
+  });
+
+  test("renders no mixed office banner while office reservations are disabled", async () => {
+    const { banner } = await getBanner(
+      [sale([meetingRoomProduct, officeProduct])],
+      "en-US",
+      false
+    );
+
+    expect(banner).toBeUndefined();
+  });
+
   test("fails closed and logs when overlapping sales are ambiguous", async () => {
     const logRecords: {
-      readonly annotations: Record<string, unknown>;
+      readonly annotations: LogAnnotations;
       readonly level: string;
     }[] = [];
     const logger = Logger.make((options) => {

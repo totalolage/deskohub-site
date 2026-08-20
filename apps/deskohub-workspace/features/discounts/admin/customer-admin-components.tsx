@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import Link from "next/link";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import type {
   AdministrationCustomerActivity,
   AdministrationCustomerMarketingConsent,
@@ -7,68 +7,45 @@ import type {
   AdministrationMoney,
 } from "@/features/administration/administration.service";
 import {
+  AdministrationFact,
   AdministrationNoticeBanner,
   AdministrationPage,
   AdministrationPageHeader,
+  AdministrationStatusBadge,
+  EmptyState,
   formatAdministrationDateTime,
   formatAdministrationMoney,
   ReservationTable,
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
-import { AdminPageShell, EmptyState } from "./components";
+import { VoucherEditor } from "./admin-tables";
 import {
   AddCodeCustomerForm,
+  AddVoucherCustomerForm,
   AdminMutationButton,
-  CustomerCodeAction,
   CustomerDiscountGroupForm,
-  CustomerSearch,
 } from "./customer-admin-client";
+import {
+  ClaimHistoryTable,
+  CustomerCodeEligibilityTable,
+  CustomerTransactionHistoryTable,
+  CustomerVoucherEligibilityTable,
+} from "./customer-admin-tables";
 import type {
   AdminCustomerProfile,
   AdminDiscountCode,
   AdminDiscountCodeClaim,
   AdminDiscountCodeDetail,
+  AdminVoucher,
+  AdminVoucherClaim,
+  AdminVoucherDetail,
 } from "./discount-administration.service";
 
 type Notice = {
   readonly message: string;
   readonly status: "error" | "success";
 };
-
-const getCustomerCodeAvailability = (
-  code: AdminCustomerProfile["codes"][number]
-) => {
-  if (!code.eligible) return "Available to all";
-  if (code.audienceSize === 1) return "Only this customer";
-  return `${code.audienceSize} selected customers`;
-};
-
-export function CustomersAdministrationPage({
-  notice,
-}: {
-  readonly notice?: Notice;
-}) {
-  return (
-    <AdminPageShell
-      activeSection="customers"
-      count={0}
-      notice={notice}
-      title="Customers"
-    >
-      <CustomerSearch />
-    </AdminPageShell>
-  );
-}
 
 export function CodeAdministrationDetailPage({
   detail,
@@ -79,15 +56,17 @@ export function CodeAdministrationDetailPage({
 }) {
   const { code } = detail;
   return (
-    <AdminPageShell
-      activeSection="codes"
-      count={detail.customers.length}
-      notice={notice}
-      title={code.code}
-    >
-      <Button asChild className="mb-4" size="sm" variant="ghost">
-        <Link href="/admin/codes">← Back to codes</Link>
-      </Button>
+    <AdministrationPage>
+      <AdministrationPageHeader title={code.code} />
+      <AdministrationNoticeBanner notice={notice} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/admin/codes">← Back to codes</Link>
+        </Button>
+        <Button asChild size="sm" variant="secondary">
+          <Link href="/admin/codes">Edit or delete code</Link>
+        </Button>
+      </div>
 
       <CodeSummary code={code} discountLabel={detail.discountLabel} />
 
@@ -178,9 +157,129 @@ export function CodeAdministrationDetailPage({
 
       <section className="mt-5">
         <h2 className="mb-3 font-semibold">Claim history</h2>
-        <ClaimHistory claims={detail.claims} showCode={false} />
+        <ClaimHistory claims={detail.claims} resource="code-customer" />
       </section>
-    </AdminPageShell>
+    </AdministrationPage>
+  );
+}
+
+export function VoucherAdministrationDetailPage({
+  detail,
+  notice,
+}: {
+  readonly detail: AdminVoucherDetail;
+  readonly notice?: Notice;
+}) {
+  const { voucher } = detail;
+  return (
+    <AdministrationPage>
+      <AdministrationPageHeader title={voucher.code} />
+      <AdministrationNoticeBanner notice={notice} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/admin/vouchers">← Back to vouchers</Link>
+        </Button>
+      </div>
+
+      <VoucherSummary voucher={voucher} />
+
+      <section className="mt-5 rounded-xl border border-navy-blue/10 bg-white p-5">
+        <h2 className="mb-4 font-semibold">Configuration</h2>
+        <VoucherEditor
+          deletable
+          deleteRedirect="/admin/vouchers"
+          voucher={{
+            ...voucher,
+            validFrom: voucher.validFrom?.toString() ?? null,
+            validUntil: voucher.validUntil?.toString() ?? null,
+          }}
+        />
+      </section>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <section className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-navy-blue/10 px-5 py-4">
+            <div>
+              <h2 className="font-semibold">Audience</h2>
+              <p className="mt-1 text-sm text-navy-blue/65">
+                {detail.customers.length === 0
+                  ? "Any Dotypos customer can use this voucher."
+                  : `${detail.customers.length} customers can use this voucher.`}
+              </p>
+            </div>
+            {detail.customers.length > 0 && (
+              <AdminMutationButton
+                confirmation="Make this voucher unrestricted? Every Dotypos customer will be eligible."
+                mutation={{
+                  kind: "make-voucher-unrestricted",
+                  voucherId: voucher.id,
+                }}
+              >
+                Make unrestricted
+              </AdminMutationButton>
+            )}
+          </div>
+          {detail.customers.length === 0 ? (
+            <EmptyState message="Unrestricted audience" />
+          ) : (
+            <ul className="divide-y divide-navy-blue/10">
+              {detail.customers.map(({ customer, customerId }) => (
+                <li
+                  className="flex flex-wrap items-center justify-between gap-4 px-5 py-4"
+                  key={customerId}
+                >
+                  <div>
+                    <Link
+                      className="font-semibold underline decoration-navy-blue/25 underline-offset-4"
+                      href={`/admin/customers/${customerId}`}
+                    >
+                      {customer?.displayName ?? "Details unavailable"}
+                    </Link>
+                    <p className="mt-1 text-sm text-navy-blue/65">
+                      {customer
+                        ? [customer.email, customer.phone]
+                            .filter(Boolean)
+                            .join(" · ") || "No contact details"
+                        : customerId}
+                    </p>
+                  </div>
+                  {detail.customers.length > 1 ? (
+                    <AdminMutationButton
+                      confirmation={`Remove ${customer?.displayName ?? customerId} from this voucher audience?`}
+                      mutation={{
+                        kind: "remove-voucher-customer",
+                        voucherId: voucher.id,
+                        customerId,
+                      }}
+                    >
+                      Remove
+                    </AdminMutationButton>
+                  ) : (
+                    <span className="text-xs text-navy-blue/65">
+                      Use Make unrestricted
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5">
+          <h2 className="font-semibold">Add customer</h2>
+          <p className="mb-4 mt-1 text-sm leading-5 text-navy-blue/65">
+            Adding the first customer changes an unrestricted voucher into a
+            restricted voucher.
+          </p>
+          <AddVoucherCustomerForm voucherId={voucher.id} />
+        </aside>
+      </div>
+
+      <section className="mt-5">
+        <h2 className="mb-3 font-semibold">Claim history</h2>
+        <ClaimHistory claims={detail.claims} resource="voucher-customer" />
+      </section>
+    </AdministrationPage>
   );
 }
 
@@ -206,15 +305,19 @@ export function CustomerAdministrationDetailPage({
     .filter((code) => code.eligible || code.audienceSize === 0)
     .toSorted(
       (left, right) =>
+        Number(right.enabled) - Number(left.enabled) ||
         Number(right.eligible) - Number(left.eligible) ||
         left.code.localeCompare(right.code)
     );
   const targetedCodeCount = profile.codes.filter(
-    (code) => code.eligible && code.audienceSize > 0
+    (code) => code.enabled && code.eligible && code.audienceSize > 0
   ).length;
   const universalCodeCount = profile.codes.filter(
-    (code) => code.audienceSize === 0
+    (code) => code.enabled && code.audienceSize === 0
   ).length;
+  const visibleVouchers = profile.vouchers
+    .filter((voucher) => voucher.eligible || voucher.audienceSize === 0)
+    .toSorted((left, right) => left.code.localeCompare(right.code));
   const reservationGroups = groupCustomerReservations(activity.reservations);
   return (
     <AdministrationPage>
@@ -311,66 +414,74 @@ export function CustomerAdministrationDetailPage({
                   href={`/admin/customers/${profile.customer.id}/create-code`}
                 >
                   <Plus aria-hidden className="size-4" />
-                  Create discount code
+                  Create code
                 </Link>
               </Button>
             </div>
             {visibleCodes.length === 0 ? (
               <EmptyState message="No discount codes are available to this customer." />
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
-                <Table
-                  aria-label="Customer code eligibility"
-                  className="min-w-[620px]"
-                >
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Code</TableHead>
-                      <TableHead>Discount</TableHead>
-                      <TableHead>Availability</TableHead>
-                      <TableHead>
-                        <span className="sr-only">Manage eligibility</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visibleCodes.map((code) => {
-                      return (
-                        <TableRow key={code.id}>
-                          <TableCell>
-                            <Link
-                              className="font-mono font-semibold underline underline-offset-4"
-                              href={`/admin/codes/${code.id}`}
-                            >
-                              {code.code}
-                            </Link>
-                          </TableCell>
-                          <TableCell>{code.discountLabel}</TableCell>
-                          <TableCell>
-                            {getCustomerCodeAvailability(code)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <CustomerCodeAction
-                              audienceSize={code.audienceSize}
-                              code={code.code}
-                              codeId={code.id}
-                              customerId={profile.customer.id}
-                              customerName={profile.customer.displayName}
-                              eligible={code.eligible}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+              <CustomerCodeEligibilityTable
+                codes={visibleCodes.map(
+                  ({
+                    audienceSize,
+                    code,
+                    discountAdjustment,
+                    discountLabel,
+                    eligible,
+                    enabled,
+                    id,
+                  }) => ({
+                    audienceSize,
+                    code,
+                    discountAdjustment,
+                    discountLabel,
+                    eligible,
+                    enabled,
+                    id,
+                  })
+                )}
+                customerId={profile.customer.id}
+                customerName={profile.customer.displayName}
+              />
             )}
           </section>
 
           <section>
             <h2 className="mb-3 text-xl">Discount code history</h2>
-            <ClaimHistory claims={profile.claims} showCode />
+            <ClaimHistory claims={profile.claims} resource="code" />
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-xl">Vouchers</h2>
+            {visibleVouchers.length === 0 ? (
+              <EmptyState message="No vouchers are available to this customer." />
+            ) : (
+              <CustomerVoucherEligibilityTable
+                vouchers={visibleVouchers.map(
+                  ({
+                    audienceSize,
+                    code,
+                    eligible,
+                    id,
+                    issuedCredit,
+                    remainingCredit,
+                  }) => ({
+                    audienceSize,
+                    code,
+                    eligible,
+                    id,
+                    issuedCredit,
+                    remainingCredit,
+                  })
+                )}
+              />
+            )}
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-xl">Voucher history</h2>
+            <ClaimHistory claims={profile.voucherClaims} resource="voucher" />
           </section>
         </div>
 
@@ -378,15 +489,18 @@ export function CustomerAdministrationDetailPage({
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
             <h2 className="font-semibold">Contact</h2>
             <dl className="mt-4 grid gap-4 text-sm">
-              <CustomerFact
+              <AdministrationFact
                 label="Email"
                 value={profile.customer.email ?? "—"}
               />
-              <CustomerFact
+              <AdministrationFact
                 label="Phone"
                 value={profile.customer.phone ?? "—"}
               />
-              <CustomerFact label="Current group" value={currentGroupLabel} />
+              <AdministrationFact
+                label="Current group"
+                value={currentGroupLabel}
+              />
             </dl>
           </section>
 
@@ -404,10 +518,10 @@ export function CustomerAdministrationDetailPage({
               Reference
             </summary>
             <div className="border-t border-navy-blue/10 px-5 py-4">
-              <CustomerFact
+              <AdministrationFact
                 label="Customer ID"
                 value={profile.customer.id}
-                mono
+                valueClassName="break-all font-mono text-xs"
               />
             </div>
           </details>
@@ -492,15 +606,11 @@ function CustomerConsent({
       <dd className="text-sm text-navy-blue/65 sm:text-right">
         {consent ? (
           <>
-            <span
-              className={
-                withdrawnAt
-                  ? "font-semibold text-red-600"
-                  : "font-semibold text-aquamarine-ink"
-              }
+            <AdministrationStatusBadge
+              tone={withdrawnAt ? "attention" : "positive"}
             >
               {withdrawnAt ? "Withdrawn" : "Granted"}
-            </span>{" "}
+            </AdministrationStatusBadge>{" "}
             · {formatAdministrationDateTime(withdrawnAt ?? consent.grantedAt)}
             <span className="mt-0.5 block break-all text-xs">
               {withdrawnAt && (
@@ -527,65 +637,7 @@ function CustomerTransactionHistory({
   if (transactions.length === 0) {
     return <EmptyState message="This customer has no payments." />;
   }
-  return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
-      <Table
-        aria-label="Customer transaction history"
-        className="min-w-[760px]"
-      >
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Reservation</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Payment ID</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {transactions.map(({ attempt, reservation }) => (
-            <TableRow key={attempt.id}>
-              <TableCell className="whitespace-nowrap text-navy-blue/68">
-                {formatAdministrationDateTime(attempt.updatedAt)}
-              </TableCell>
-              <TableCell>
-                <Badge
-                  variant={attempt.state === "paid" ? "default" : "subtle"}
-                >
-                  {attempt.stateLabel}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Link
-                  className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
-                  href={`/admin/reservations/${reservation.id}`}
-                >
-                  {reservation.typeLabel}
-                </Link>
-              </TableCell>
-              <TableCell className="whitespace-nowrap font-semibold">
-                {formatAdministrationMoney(attempt.amount)}
-              </TableCell>
-              <TableCell>
-                {attempt.providerOrderId ? (
-                  <a
-                    className="font-mono text-xs font-semibold text-burned-orange-ink underline underline-offset-4"
-                    href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    {attempt.providerOrderId} ↗
-                  </a>
-                ) : (
-                  <span className="font-mono text-xs">{attempt.id}</span>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
+  return <CustomerTransactionHistoryTable transactions={transactions} />;
 }
 
 const formatMoneyTotals = (totals: readonly AdministrationMoney[]) =>
@@ -598,9 +650,16 @@ function CodeSummary({
   readonly code: AdminDiscountCode;
   readonly discountLabel: string;
 }) {
+  const benefit = discountLabel;
   return (
-    <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-5">
-      <SummaryFact label="Discount" value={discountLabel} />
+    <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryFact label="Benefit" value={benefit} />
+      <SummaryFact
+        label="Status"
+        value={code.enabled ? "Enabled" : "Disabled"}
+      />
+      <SummaryFact label="Valid from" value={formatInstant(code.validFrom)} />
+      <SummaryFact label="Valid until" value={formatInstant(code.validUntil)} />
       <SummaryFact
         label="Audience"
         value={
@@ -612,9 +671,50 @@ function CodeSummary({
       <SummaryFact label="Reserved" value={code.reservedUses} />
       <SummaryFact label="Redeemed" value={code.redeemedUses} />
       <SummaryFact
-        label="Remaining"
+        label="Remaining globally"
         value={code.remainingUses ?? "Unlimited"}
       />
+      <SummaryFact
+        label="Uses per customer"
+        value={code.maxUsesPerCustomer ?? "Unlimited"}
+      />
+    </dl>
+  );
+}
+
+function VoucherSummary({ voucher }: { readonly voucher: AdminVoucher }) {
+  return (
+    <dl className="grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryFact
+        label="Issued"
+        value={formatAdministrationMoney(voucher.issuedCredit)}
+      />
+      <SummaryFact
+        label="Remaining"
+        value={formatAdministrationMoney(voucher.remainingCredit)}
+      />
+      <SummaryFact
+        label="Status"
+        value={voucher.enabled ? "Enabled" : "Disabled"}
+      />
+      <SummaryFact
+        label="Audience"
+        value={
+          voucher.audienceSize === 0
+            ? "Unrestricted"
+            : `${voucher.audienceSize} customers`
+        }
+      />
+      <SummaryFact
+        label="Valid from"
+        value={formatInstant(voucher.validFrom)}
+      />
+      <SummaryFact
+        label="Valid until"
+        value={formatInstant(voucher.validUntil)}
+      />
+      <SummaryFact label="Reserved" value={voucher.reservedUses} />
+      <SummaryFact label="Redeemed" value={voucher.redeemedUses} />
     </dl>
   );
 }
@@ -636,108 +736,39 @@ function SummaryFact({
   );
 }
 
-function CustomerFact({
-  label,
-  mono = false,
-  value,
-}: {
-  readonly label: string;
-  readonly mono?: boolean;
-  readonly value: string;
-}) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-navy-blue/65">
-        {label}
-      </dt>
-      <dd className={mono ? "mt-1 break-all font-mono text-xs" : "mt-1"}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
 function ClaimHistory({
   claims,
-  showCode,
+  resource,
 }: {
-  readonly claims: readonly AdminDiscountCodeClaim[];
-  readonly showCode: boolean;
+  readonly claims: readonly (AdminDiscountCodeClaim | AdminVoucherClaim)[];
+  readonly resource: "code" | "code-customer" | "voucher" | "voucher-customer";
 }) {
+  const isVoucher = resource.startsWith("voucher");
+  const subjectLabel = isVoucher ? "Voucher" : "Discount code";
   if (claims.length === 0) {
-    return <EmptyState message="No code claims yet." />;
+    return (
+      <EmptyState message={`No ${subjectLabel.toLowerCase()} claims yet.`} />
+    );
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
-      <Table aria-label="Discount code claim history" className="min-w-[820px]">
-        <TableHeader>
-          <TableRow>
-            {showCode ? (
-              <TableHead>Code</TableHead>
-            ) : (
-              <TableHead>Customer</TableHead>
-            )}
-            <TableHead>State</TableHead>
-            <TableHead>Reserved</TableHead>
-            <TableHead>Completed</TableHead>
-            <TableHead>Reservation</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {claims.map((claim) => (
-            <TableRow key={claim.id}>
-              {showCode ? (
-                <TableCell>
-                  <Link
-                    className="font-semibold underline underline-offset-4"
-                    href={`/admin/codes/${claim.codeId}`}
-                  >
-                    View code
-                  </Link>
-                </TableCell>
-              ) : (
-                <TableCell>
-                  <Link
-                    className="font-semibold underline underline-offset-4"
-                    href={`/admin/customers/${claim.dotyposCustomerId}`}
-                  >
-                    View customer
-                  </Link>
-                </TableCell>
-              )}
-              <TableCell>
-                <Badge
-                  variant={claim.state === "released" ? "subtle" : "default"}
-                >
-                  {claim.state[0]?.toUpperCase()}
-                  {claim.state.slice(1)}
-                </Badge>
-                {claim.releaseReason && (
-                  <p className="mt-1 max-w-48 text-xs text-navy-blue/65">
-                    {claim.releaseReason}
-                  </p>
-                )}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                {formatInstant(claim.reservedAt)}
-              </TableCell>
-              <TableCell className="whitespace-nowrap">
-                {formatInstant(claim.redeemedAt ?? claim.releasedAt)}
-              </TableCell>
-              <TableCell>
-                <Link
-                  className="font-semibold underline underline-offset-4"
-                  href={`/admin/reservations/${claim.workspaceReservationId}`}
-                >
-                  Open reservation
-                </Link>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <ClaimHistoryTable
+      claims={claims.map((claim) => ({
+        id: claim.id,
+        appliedAmount: claim.appliedAmount,
+        ...("codeId" in claim
+          ? { codeId: claim.codeId }
+          : { voucherId: claim.voucherId }),
+        dotyposCustomerId: claim.dotyposCustomerId,
+        redeemedAt: claim.redeemedAt?.toString() ?? null,
+        releasedAt: claim.releasedAt?.toString() ?? null,
+        releaseReason: claim.releaseReason,
+        reservedAt: claim.reservedAt.toString(),
+        state: claim.state,
+        workspaceReservationId: claim.workspaceReservationId,
+      }))}
+      resource={resource}
+    />
   );
 }
 

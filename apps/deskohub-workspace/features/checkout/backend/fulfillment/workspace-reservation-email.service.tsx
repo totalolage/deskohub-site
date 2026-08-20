@@ -8,7 +8,6 @@ import {
 import type {
   EmailAttachment,
   EmailMessage,
-  EmailRecipient,
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer, Match } from "effect";
@@ -17,14 +16,28 @@ import { ReservationNotificationEmail } from "@/emails/reservation-notification"
 import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
 import { env } from "@/env";
 import {
+  getWorkspaceOfficeProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { isLocale, type Locale, m } from "@/features/i18n";
+import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
+import {
+  getReservationAccessPath,
+  getReservationInvoicePath,
+} from "@/features/reservation/backend/reservation-access-url";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayDateRange,
+} from "@/features/reservation/reservation-date";
+import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
+import {
+  internalWorkspaceEmailRecipient,
+  workspaceEmailRecipient,
+} from "@/shared/backend/email/workspace-email-recipients";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
   workspaceFormattedAddress,
@@ -45,22 +58,10 @@ export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
+  readonly sendCancellationEmail: (input: {
+    readonly reservation: WorkspaceReservationDetails;
+  }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
-
-const workspaceRecipient: EmailRecipient = {
-  email: workspaceSiteConstants.contact.infoEmail,
-  name: workspaceSiteConstants.brand.name,
-};
-
-const nonProductionInternalRecipient: EmailRecipient = {
-  email: "delivered+workspace-internal@resend.dev",
-  name: workspaceSiteConstants.brand.name,
-};
-
-const internalReservationRecipient =
-  env.VERCEL_ENV === "production"
-    ? workspaceRecipient
-    : nonProductionInternalRecipient;
 
 const workspaceLocationMapContentId = "workspace-location-map";
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
@@ -212,6 +213,24 @@ const createReservationDetails = (
           timeLabel: m.reservationEmailTimeLabel({}, { locale }),
           wholeDay: m.reservationMeetingRoomDurationWholeDay({}, { locale }),
         }),
+      office: () => [
+        {
+          label: m.reservationEmailReservationLabel({}, { locale }),
+          value: getWorkspaceOfficeProductTitle(locale),
+        },
+        {
+          label: m.reservationEmailDateLabel({}, { locale }),
+          value: formatReservationDisplayDateRange(
+            reservation.reservedFrom,
+            reservation.reservedUntil,
+            locale
+          ),
+        },
+        {
+          label: m.reservationEmailSeatsLabel({}, { locale }),
+          value: String(reservation.seats),
+        },
+      ],
     })
   );
 
@@ -280,6 +299,8 @@ const createInternalReservationDetails = (
 const createCustomerReservationEmail = (input: {
   readonly reservation: WorkspaceReservationDetails;
   readonly locale: Locale;
+  readonly accessUrl: string;
+  readonly invoiceUrl: string;
   readonly networkDetails: WorkspaceCheckoutNetworkDetails;
   readonly networkQrImageSrc?: string;
   readonly locationMapImageSrc?: string;
@@ -291,7 +312,24 @@ const createCustomerReservationEmail = (input: {
 
   return (
     <CustomerReservationEmail
-      accessCode={input.reservation.customerAccessCode}
+      access={{
+        button: m.checkoutEmailCustomerAccessButton(
+          {},
+          { locale: input.locale }
+        ),
+        url: input.accessUrl,
+      }}
+      invoice={{
+        label: m.checkoutEmailCustomerInvoiceLabel(
+          {},
+          { locale: input.locale }
+        ),
+        download: m.checkoutEmailCustomerInvoiceDownload(
+          {},
+          { locale: input.locale }
+        ),
+        url: input.invoiceUrl,
+      }}
       details={createReservationRows(input.reservation, input.locale)}
       followUp={m.reservationEmailCustomerFollowUp(
         { email: workspaceSiteConstants.contact.infoEmail },
@@ -299,10 +337,6 @@ const createCustomerReservationEmail = (input: {
       )}
       heading={createCustomerAccessHeading(input.reservation, input.locale)}
       labels={{
-        accessCode: m.checkoutEmailAccessCodeLabel(
-          {},
-          { locale: input.locale }
-        ),
         location: m.checkoutEmailLocationHeading({}, { locale: input.locale }),
         directions: m.checkoutEmailLocationMapLink(
           {},
@@ -323,16 +357,12 @@ const createCustomerReservationEmail = (input: {
       location={{
         address: workspaceFormattedAddress,
         directionsUrl: workspaceGoogleDirectionsUrl,
-        ...(input.locationMapImageSrc
-          ? { mapImageSrc: input.locationMapImageSrc }
-          : {}),
+        mapImageSrc: input.locationMapImageSrc,
       }}
       network={{
         ssid: input.networkDetails.ssid,
         password: input.networkDetails.password,
-        ...(input.networkQrImageSrc
-          ? { qrImageSrc: input.networkQrImageSrc }
-          : {}),
+        qrImageSrc: input.networkQrImageSrc,
       }}
       preview={subject}
       {...(input.reservation.tableName
@@ -368,24 +398,32 @@ const createInternalReservationEmail = (
 
 export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
   "WorkspaceReservationEmailService.renderCustomerPreview"
-)((input: { readonly reservation: WorkspaceReservationDetails }) => {
-  const locale = getReservationLocale(input.reservation.locale);
+)(
+  (input: {
+    readonly accessUrl: string;
+    readonly invoiceUrl: string;
+    readonly reservation: WorkspaceReservationDetails;
+  }) => {
+    const locale = getReservationLocale(input.reservation.locale);
 
-  return createPreviewNetworkQrPng().pipe(
-    Effect.flatMap((networkQrPng) =>
-      renderWorkspaceEmail(
-        createCustomerReservationEmail({
-          reservation: input.reservation,
-          locale,
-          networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
-          networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
-          locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
-        })
-      )
-    ),
-    Effect.map(({ html }) => html)
-  );
-});
+    return createPreviewNetworkQrPng().pipe(
+      Effect.flatMap((networkQrPng) =>
+        renderWorkspaceEmail(
+          createCustomerReservationEmail({
+            reservation: input.reservation,
+            locale,
+            accessUrl: input.accessUrl,
+            invoiceUrl: input.invoiceUrl,
+            networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
+            networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
+            locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
+          })
+        )
+      ),
+      Effect.map(({ html }) => html)
+    );
+  }
+);
 
 const createPreviewNetworkQrPng = () =>
   Effect.tryPromise({
@@ -421,7 +459,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
 >()(
   "@deskohub-workspace/checkout/fulfillment/WorkspaceReservationEmailService"
 ) {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const emailService = yield* EmailServiceTag;
@@ -429,7 +467,73 @@ export class WorkspaceReservationEmailService extends Context.Service<
       const networkDetailsService =
         yield* WorkspaceCheckoutNetworkDetailsService;
 
+      const createCustomerAccessUrls = Effect.fn(
+        "WorkspaceReservationEmailService.createCustomerAccessUrls"
+      )(function* (reservation: WorkspaceReservationDetails, locale: Locale) {
+        const accessToken = yield* createReservationAccessToken({
+          orderId: reservation.id,
+          locale,
+        });
+        const origin = yield* getWorkspaceRuntimeCallbackOrigin;
+
+        const pathInput = {
+          locale,
+          orderId: reservation.id,
+          accessToken,
+          setBypassCookie: true,
+        };
+        return {
+          accessUrl: new URL(
+            getReservationAccessPath(pathInput),
+            origin
+          ).toString(),
+          invoiceUrl: new URL(
+            getReservationInvoicePath(pathInput),
+            origin
+          ).toString(),
+        };
+      });
+
       return {
+        sendCancellationEmail: Effect.fn(
+          "WorkspaceReservationEmailService.sendCancellationEmail"
+        )(function* ({ reservation }) {
+          const locale = getReservationLocale(reservation.locale);
+          const customerEmail = reservation.customer.email?.trim();
+          if (!customerEmail) {
+            return yield* Effect.fail(
+              new EmailServiceError(
+                "Workspace reservation customer email is missing."
+              )
+            );
+          }
+          const subject = m.reservationCancellationEmailSubject({}, { locale });
+          const rendered = yield* renderWorkspaceEmail(
+            <ReservationNotificationEmail
+              body={m.reservationCancellationEmailBody({}, { locale })}
+              details={createReservationRows(reservation, locale)}
+              heading={m.reservationCancellationEmailHeading({}, { locale })}
+              locale={locale}
+              preview={subject}
+            />
+          );
+          const message: EmailMessage = {
+            from: emailConfig.defaultFrom,
+            to: { email: customerEmail },
+            replyTo: workspaceEmailRecipient,
+            subject,
+            html: rendered.html,
+            text: rendered.text,
+            tags: ["workspace-reservation-cancellation"],
+            metadata: {
+              deploymentEnvironment: env.VERCEL_ENV,
+              source: "workspace-reservation-administration",
+              workspaceReservationId: reservation.id,
+              dotyposReservationId: reservation.dotyposReservationId,
+            },
+          };
+          yield* emailService.send(message).pipe(Effect.asVoid);
+        }),
         sendPaidReservationEmails: Effect.fn(
           "WorkspaceReservationEmailService.sendPaidReservationEmails"
         )(function* ({ reservation }) {
@@ -441,6 +545,18 @@ export class WorkspaceReservationEmailService extends Context.Service<
             yield* networkDetailsService.resolveCustomerNetworkDetails({
               reservation,
             });
+          const { accessUrl, invoiceUrl } = yield* createCustomerAccessUrls(
+            reservation,
+            locale
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new EmailServiceError(
+                  "Workspace reservation access URL could not be created.",
+                  cause
+                )
+            )
+          );
           const metadata = {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-paid-fulfillment",
@@ -492,21 +608,21 @@ export class WorkspaceReservationEmailService extends Context.Service<
             createCustomerReservationEmail({
               reservation,
               locale,
+              accessUrl,
+              invoiceUrl,
               networkDetails,
-              ...(networkQrAttachment
-                ? { networkQrImageSrc: `cid:${networkQrAttachment.contentId}` }
-                : {}),
-              ...(locationMapAttachment
-                ? {
-                    locationMapImageSrc: `cid:${locationMapAttachment.contentId}`,
-                  }
-                : {}),
+              networkQrImageSrc: networkQrAttachment
+                ? `cid:${networkQrAttachment.contentId}`
+                : undefined,
+              locationMapImageSrc: locationMapAttachment
+                ? `cid:${locationMapAttachment.contentId}`
+                : undefined,
             })
           );
           const customerMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
             to: { email: customerEmail },
-            replyTo: workspaceRecipient,
+            replyTo: workspaceEmailRecipient,
             subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
             html: renderedCustomerEmail.html,
             text: renderedCustomerEmail.text,
@@ -533,7 +649,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             );
             const internalMessage: EmailMessage = {
               from: emailConfig.defaultFrom,
-              to: internalReservationRecipient,
+              to: internalWorkspaceEmailRecipient,
               replyTo: { email: customerEmail, name: customerName },
               subject: createInternalReservationSubject(reservation),
               html: renderedInternalEmail.html,

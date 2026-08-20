@@ -2,10 +2,15 @@ import "../../shared/polyfills/temporal";
 
 import { expect, mock, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import {
+  DotyposCustomerIdSchema,
+  DotyposReservationIdSchema,
+} from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { makeMeetingRoomCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -39,7 +44,9 @@ test("keeps a held interval available while another meeting-room table is empty"
   const reservations = [makeMeetingRoomReservation("room-a")];
 
   expect(
-    isMeetingRoomUnavailableFromInventory({ reservations, slot, tables })
+    Effect.runSync(
+      isMeetingRoomUnavailableFromInventory({ reservations, slot, tables })
+    )
   ).toBe(false);
 });
 
@@ -55,9 +62,11 @@ test("validates an unpaid meeting-room hold without waiting for confirmation", (
   expect(() =>
     assertHeldMeetingRoomReservation({
       expected: {
-        customerId: "customer-a",
-        reservationId: "reservation-a",
-        workspaceReservationId: "workspace-reservation-a",
+        customerId: DotyposCustomerIdSchema.make("customer-a"),
+        reservationId: DotyposReservationIdSchema.make("reservation-a"),
+        workspaceReservationId: workspaceReservationIdSchema.make(
+          "workspace-reservation-a"
+        ),
       },
       reservations: [makeMeetingRoomReservation("room-a")],
       slot,
@@ -76,11 +85,13 @@ test("treats a held interval as unavailable when every meeting room is occupied"
   };
 
   expect(
-    isMeetingRoomUnavailableFromInventory({
-      reservations: [makeMeetingRoomReservation("room-a")],
-      slot,
-      tables: [makeMeetingRoomTable("room-a")],
-    })
+    Effect.runSync(
+      isMeetingRoomUnavailableFromInventory({
+        reservations: [makeMeetingRoomReservation("room-a")],
+        slot,
+        tables: [makeMeetingRoomTable("room-a")],
+      })
+    )
   ).toBe(true);
 });
 

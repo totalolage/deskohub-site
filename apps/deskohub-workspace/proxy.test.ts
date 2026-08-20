@@ -114,6 +114,18 @@ test("continues to persist the locale for ordinary localized requests", () => {
   expect(response.cookies.get(localeCookieName)?.value).toBe("cs-CZ");
 });
 
+test("prevents private reservation responses from being cached", () => {
+  for (const path of [
+    "/en-US/reservation/status/reservation-id?outcome=success",
+    "/en-US/reservation/access/reservation-id?accessToken=sensitive",
+    "/en-US/reservation/invoice/reservation-id?accessToken=sensitive",
+  ]) {
+    const response = proxy(new NextRequest(`https://workspace.example${path}`));
+
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  }
+});
+
 test("does not treat a GET with a spoofed action header as a Server Action", () => {
   const request = new NextRequest("https://workspace.example/", {
     headers: {

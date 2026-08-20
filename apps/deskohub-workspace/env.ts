@@ -1,4 +1,5 @@
 import { createEnv } from "@t3-oss/env-nextjs";
+import { Predicate } from "effect";
 import {
   createEnvironmentSchema,
   workspaceClientEnvSchema,
@@ -20,7 +21,6 @@ export const env = createEnv({
   runtimeEnv: {
     ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID:
       process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID,
-    AGENT_BROWSER_EXECUTABLE_PATH: process.env.AGENT_BROWSER_EXECUTABLE_PATH,
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
@@ -41,10 +41,20 @@ export const env = createEnv({
       process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL,
     GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID:
       process.env.GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID,
+    GITHUB_STEP_SUMMARY: process.env.GITHUB_STEP_SUMMARY,
+    IGLOOHOME_API_TIMEOUT: process.env.IGLOOHOME_API_TIMEOUT,
+    IGLOOHOME_API_URL: process.env.IGLOOHOME_API_URL,
+    IGLOOHOME_AUTH_URL: process.env.IGLOOHOME_AUTH_URL,
+    IGLOOHOME_CLIENT_ID: process.env.IGLOOHOME_CLIENT_ID,
+    IGLOOHOME_CLIENT_SECRET: process.env.IGLOOHOME_CLIENT_SECRET,
+    IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID:
+      process.env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID,
     RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
     CHECKOUT_PAY_STATE_KEYS: process.env.CHECKOUT_PAY_STATE_KEYS,
     CHECKOUT_RETURN_STATE_TOKEN_SECRET:
       process.env.CHECKOUT_RETURN_STATE_TOKEN_SECRET,
+    RESERVATION_ACCESS_TOKEN_SECRET:
+      process.env.RESERVATION_ACCESS_TOKEN_SECRET,
     CRON_SECRET: process.env.CRON_SECRET,
     NEXI_API_KEY: process.env.NEXI_API_KEY,
     NEXI_API_ORIGIN: process.env.NEXI_API_ORIGIN,
@@ -52,10 +62,13 @@ export const env = createEnv({
       process.env.NEXI_CHECKOUT_CURRENCY_OVERRIDE,
     POSTHOG_SERVICE_NAME: process.env.POSTHOG_SERVICE_NAME,
     POSTHOG_SERVICE_NAMESPACE: process.env.POSTHOG_SERVICE_NAMESPACE,
+    POSTHOG_API_KEY: process.env.POSTHOG_API_KEY,
+    POSTHOG_API_HOST: process.env.POSTHOG_API_HOST,
     POSTHOG_FEATURE_FLAG_OVERRIDES: process.env.POSTHOG_FEATURE_FLAG_OVERRIDES,
-    POSTHOG_HOST: process.env.POSTHOG_HOST,
+    POSTHOG_INGEST_HOST: process.env.POSTHOG_INGEST_HOST,
     POSTHOG_PROJECT_ID: process.env.POSTHOG_PROJECT_ID,
-    POSTHOG_HISTORY_API_KEY: process.env.POSTHOG_HISTORY_API_KEY,
+    PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
+      process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
     VERCEL_AUTOMATION_BYPASS_SECRET:
       process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
     VERCEL_ENV: process.env.VERCEL_ENV,
@@ -77,7 +90,7 @@ export const env = createEnv({
     const sanitizedError = error.map((issue) => {
       const hasPath = (key: string) =>
         issue.path?.some((segment) =>
-          typeof segment === "object" ? segment.key === key : segment === key
+          Predicate.isObject(segment) ? segment.key === key : segment === key
         );
 
       if (hasPath("POSTHOG_FEATURE_FLAG_OVERRIDES")) {
@@ -91,6 +104,13 @@ export const env = createEnv({
         return {
           ...issue,
           message: "Invalid administration authentication hash.",
+        };
+      }
+
+      if (hasPath("IGLOOHOME_CLIENT_SECRET")) {
+        return {
+          ...issue,
+          message: "Invalid Igloohome client credential configuration.",
         };
       }
 

@@ -4,36 +4,61 @@ import {
   contactBusinessPreviewProps,
   contactConfirmationPreviewProps,
   customerReservationPreviewProps,
+  invoiceDeliveryPreviewProps,
   reservationNotificationPreviewProps,
 } from "./_fixtures/preview-props";
 import { ContactBusinessEmail } from "./contact-business";
 import { ContactConfirmationEmail } from "./contact-confirmation";
 import { CustomerReservationEmail } from "./customer-reservation";
+import { InvoiceDeliveryEmail } from "./invoice-delivery";
 import { ReservationNotificationEmail } from "./reservation-notification";
 
 describe("Workspace React Email templates", () => {
-  test("renders all four previews with their channel-specific data boundaries", async () => {
-    const [business, confirmation, customerReservation, staffNotification] =
-      await Promise.all([
-        render(<ContactBusinessEmail {...contactBusinessPreviewProps} />),
-        render(
-          <ContactConfirmationEmail {...contactConfirmationPreviewProps} />
-        ),
-        render(
-          <CustomerReservationEmail {...customerReservationPreviewProps} />
-        ),
-        render(
-          <ReservationNotificationEmail
-            {...reservationNotificationPreviewProps}
-          />
-        ),
-      ]);
+  test("renders every preview with the shared design and channel-specific data boundaries", async () => {
+    const [
+      business,
+      confirmation,
+      customerReservation,
+      staffNotification,
+      invoiceDelivery,
+    ] = await Promise.all([
+      render(<ContactBusinessEmail {...contactBusinessPreviewProps} />),
+      render(<ContactConfirmationEmail {...contactConfirmationPreviewProps} />),
+      render(<CustomerReservationEmail {...customerReservationPreviewProps} />),
+      render(
+        <ReservationNotificationEmail
+          {...reservationNotificationPreviewProps}
+        />
+      ),
+      render(<InvoiceDeliveryEmail {...invoiceDeliveryPreviewProps} />),
+    ]);
+
+    for (const email of [
+      business,
+      confirmation,
+      customerReservation,
+      staffNotification,
+      invoiceDelivery,
+    ]) {
+      expect(email).toContain("Deskohub");
+      expect(email).toContain("Turnovská 430/10");
+      expect(email).toContain("font-size:26px");
+      expect(email).toContain("line-height:34px");
+    }
 
     expect(business).toContain(contactBusinessPreviewProps.heading);
     expect(confirmation).toContain(contactConfirmationPreviewProps.heading);
-    expect(customerReservation).toContain(
-      customerReservationPreviewProps.accessCode
+    expect(customerReservation).toContain("Show access code");
+    expect(customerReservation).toContain(">Invoice<");
+    expect(customerReservation).toContain(">Download<");
+    expect(customerReservation).toContain("text-decoration-line:underline");
+    expect(customerReservation).not.toContain(
+      "For security, the current access PIN is shown"
     );
+    expect(customerReservation).toContain("/reservation/access/");
+    expect(customerReservation).toContain("accessToken=preview-token");
+    expect(customerReservation).not.toContain("statusToken=");
+    expect(customerReservation).not.toContain("4829");
     expect(customerReservation).toContain('bgcolor="#00024f"');
     expect(customerReservation).toContain("background-color:#00024f");
     expect(customerReservation).toContain(
@@ -42,11 +67,13 @@ describe("Workspace React Email templates", () => {
     expect(customerReservation).toContain(
       "padding-right:8px;padding-left:8px;padding-bottom:16px;padding-top:16px"
     );
+    expect(customerReservation).toContain(
+      "@media (min-width:40rem){.sm_w-auto{width:auto!important}}"
+    );
     expect(customerReservation).not.toContain("Where to sit");
     expect(customerReservation).not.toContain("customer@example.com");
     expect(staffNotification).toContain("customer@example.com");
-    expect(staffNotification).not.toContain(
-      customerReservationPreviewProps.accessCode
-    );
+    expect(staffNotification).not.toContain("4829");
+    expect(invoiceDelivery).toContain(invoiceDeliveryPreviewProps.body);
   });
 });

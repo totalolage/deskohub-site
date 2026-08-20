@@ -9,14 +9,15 @@ import {
   useMotionSwipeCarousel,
   wrapIndex,
 } from "@/features/gallery/hooks/use-motion-swipe-carousel";
+import { type Locale, m } from "@/features/i18n";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
 import "yet-another-react-lightbox/styles.css";
 
 type LandingPagePhotoCarouselProps = {
   ariaLabel: string;
+  locale: Locale;
   images: readonly CloudinaryAsset[];
-  autoPlayInterval?: number;
   className?: string;
 };
 
@@ -93,12 +94,10 @@ const getSlideZIndex = (offset: number) => {
   return 0;
 };
 
-const AUTO_PLAY_INTERVAL = 3600;
-
 export function LandingPagePhotoCarousel({
   ariaLabel,
   images,
-  autoPlayInterval = AUTO_PLAY_INTERVAL,
+  locale,
   className,
 }: LandingPagePhotoCarouselProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
@@ -121,7 +120,6 @@ export function LandingPagePhotoCarousel({
     virtualIndex: currentVirtualIndex,
     visibleVirtualIndex,
   } = useMotionSwipeCarousel({
-    autoPlayInterval,
     count: images.length,
   });
   const activeSlideTransition =
@@ -139,15 +137,17 @@ export function LandingPagePhotoCarousel({
   };
   const lightboxSlides: SlideImage[] = useMemo(
     () =>
-      images.map((image) => ({
-        alt: image.context?.custom?.alt ?? image.public_id,
+      images.map((image, index) => ({
+        alt:
+          image.context?.custom?.alt ??
+          m.landingCarouselImageAlt({ number: index + 1 }, { locale }),
         description: image.context?.custom?.caption,
         height: image.height,
         src: image.secure_url,
         title: image.context?.custom?.caption,
         width: image.width,
       })),
-    [images]
+    [images, locale]
   );
   let visibleOffsets: readonly SlideOffset[] = slideOffsets;
   if (images.length === 0) visibleOffsets = [];
@@ -221,8 +221,14 @@ export function LandingPagePhotoCarousel({
               aria-hidden={isVisible ? undefined : true}
               aria-label={
                 isCurrent
-                  ? `Open current carousel photo ${logicalIndex + 1} in lightbox`
-                  : `Show carousel photo ${logicalIndex + 1}`
+                  ? m.landingCarouselOpenCurrentPhoto(
+                      { number: logicalIndex + 1 },
+                      { locale }
+                    )
+                  : m.landingCarouselShowPhoto(
+                      { number: logicalIndex + 1 },
+                      { locale }
+                    )
               }
               className={cn(
                 "absolute left-1/2 top-1/2 aspect-16/10 w-[min(78cqw,160cqh)] select-none overflow-hidden rounded-[1.8rem] border border-white/35 bg-white/18 p-2 text-left shadow-[0_30px_90px_-48px_rgba(0,2,79,0.95)] backdrop-blur-sm focus-visible:outline focus-visible:outline-offset-4 focus-visible:outline-white sm:rounded-[2.5rem] sm:p-3",
@@ -256,29 +262,39 @@ export function LandingPagePhotoCarousel({
                   : undefined
               }
             >
-              <div className="relative h-full overflow-hidden rounded-[1.25rem] bg-navy-blue sm:rounded-[1.85rem]">
+              <span className="relative block h-full overflow-hidden rounded-[1.25rem] bg-navy-blue sm:rounded-[1.85rem]">
                 <CloudinaryImage
                   source={image}
+                  alt={
+                    image.context?.custom?.alt ??
+                    m.landingCarouselImageAlt(
+                      { number: logicalIndex + 1 },
+                      { locale }
+                    )
+                  }
                   className="absolute inset-0"
                   preload={isCurrent}
                   size={{ width: "fill", height: "fill" }}
                   variant="gallery"
                 />
-                <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,2,79,0.18),transparent_42%,rgba(245,125,0,0.18))]" />
-              </div>
+                <span className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,2,79,0.18),transparent_42%,rgba(245,125,0,0.18))]" />
+              </span>
             </motion.button>
           );
         })}
       </motion.div>
-      <CarouselPositionIndicator
-        activeIndex={activeIndex}
-        className="justify-center px-4"
-        count={images.length}
-        getKey={(index) => images[index]?.public_id ?? index}
-        getLabel={(index) => `Show carousel image ${index + 1}`}
-        onSelect={moveToIndex}
-        transition={activeDotTransition}
-      />
+      <div className="flex flex-wrap items-center justify-center gap-2 px-4">
+        <CarouselPositionIndicator
+          activeIndex={activeIndex}
+          count={images.length}
+          getKey={(index) => images[index]?.public_id ?? index}
+          getLabel={(index) =>
+            m.landingCarouselShowImage({ number: index + 1 }, { locale })
+          }
+          onSelect={moveToIndex}
+          transition={activeDotTransition}
+        />
+      </div>
       <Lightbox
         animation={lightboxAnimation}
         close={() => setLightboxIndex(-1)}

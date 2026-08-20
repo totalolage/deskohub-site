@@ -1,17 +1,22 @@
 import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
-import { Context, Effect, Layer, Option, Stream } from "effect";
+import { Context, Effect, Layer, Option, Schema, Stream } from "effect";
 import {
   GoogleCalendarRuntimeConfig,
   type IGoogleCalendarRuntimeConfig,
   validateGoogleCalendarRuntimeConfig,
 } from "../config";
 import { GoogleCalendarAPIError, type GoogleCalendarError } from "../errors";
-import type {
-  GoogleCalendarEvent,
-  GoogleCalendarEventDateTime,
-  GoogleCalendarListEventsInput,
-  GoogleCalendarWatchChannel,
-  GoogleCalendarWatchEventsInput,
+import {
+  GoogleCalendarChannelIdSchema,
+  type GoogleCalendarEvent,
+  type GoogleCalendarEventDateTime,
+  GoogleCalendarEventIdSchema,
+  GoogleCalendarICalUidSchema,
+  type GoogleCalendarId,
+  type GoogleCalendarListEventsInput,
+  GoogleCalendarResourceIdSchema,
+  type GoogleCalendarWatchChannel,
+  type GoogleCalendarWatchEventsInput,
 } from "../types";
 
 const calendarReadonlyScope =
@@ -31,7 +36,7 @@ export class GoogleCalendarService extends Context.Service<
   GoogleCalendarService,
   IGoogleCalendarService
 >()("@deskohub/google-calendar/GoogleCalendarService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const rawConfig = yield* GoogleCalendarRuntimeConfig;
@@ -51,8 +56,10 @@ export class GoogleCalendarService extends Context.Service<
               toCalendarBoundary(addDays(to, 2))
             ),
             Effect.bind("events", loadEventPages),
-            Effect.let("result", ({ events }) =>
-              events.map(toGoogleCalendarEvent)
+            Effect.bind("result", ({ events }) =>
+              Effect.all(events.map(toGoogleCalendarEvent), {
+                concurrency: "inherit",
+              })
             ),
             Effect.tap(({ result }) =>
               Effect.annotateLogsScoped({ eventCount: result.length })
@@ -93,7 +100,7 @@ export class GoogleCalendarService extends Context.Service<
                     type: "web_hook",
                   },
                 })
-                .then(({ data }) => toGoogleCalendarWatchChannel(data, input)),
+                .then(({ data }) => data),
             catch: (cause) =>
               new GoogleCalendarAPIError({
                 operation: "events.watch",
@@ -101,7 +108,9 @@ export class GoogleCalendarService extends Context.Service<
                 message: getGoogleErrorMessage(cause),
                 cause,
               }),
-          }),
+          }).pipe(
+            Effect.flatMap((data) => toGoogleCalendarWatchChannel(data, input))
+          ),
         (effect, input) =>
           effect.pipe(
             Effect.annotateLogs({
@@ -117,26 +126,28 @@ export class GoogleCalendarService extends Context.Service<
       );
 
       const loadEventPages = (input: {
-        readonly calendarId: string;
+        readonly calendarId: GoogleCalendarId;
         readonly timeMax: string;
         readonly timeMin: string;
       }) =>
-        Stream.paginate(
-          undefined as string | undefined,
-          (pageToken: string | undefined) =>
-            loadEventPage({ ...input, pageToken }).pipe(
-              Effect.map(
-                (response) =>
-                  [
-                    response.data.items ?? [],
-                    Option.fromNullishOr(response.data.nextPageToken),
-                  ] as const
-              )
+        Stream.paginate<
+          string | undefined,
+          calendar_v3.Schema$Event,
+          GoogleCalendarAPIError
+        >(undefined, (pageToken: string | undefined) =>
+          loadEventPage({ ...input, pageToken }).pipe(
+            Effect.map(
+              (response) =>
+                [
+                  response.data.items ?? [],
+                  Option.fromNullishOr(response.data.nextPageToken),
+                ] as const
             )
+          )
         ).pipe(Stream.runCollect);
 
       const loadEventPage = (input: {
-        readonly calendarId: string;
+        readonly calendarId: GoogleCalendarId;
         readonly pageToken?: string;
         readonly timeMax: string;
         readonly timeMin: string;
@@ -180,22 +191,72 @@ const getCalendarClient = (config: IGoogleCalendarRuntimeConfig) => {
   });
 };
 
-const toGoogleCalendarEvent = (
-  event: calendar_v3.Schema$Event
-): GoogleCalendarEvent => ({
-  ...(event.id && { id: event.id }),
-  ...(event.iCalUID && { iCalUID: event.iCalUID }),
-  ...(event.htmlLink && { htmlLink: event.htmlLink }),
-  ...(event.recurringEventId && { recurringEventId: event.recurringEventId }),
-  ...(event.status && { status: event.status }),
-  ...(event.summary && { summary: event.summary }),
-  ...(event.description && { description: event.description }),
-  ...(event.start && { start: toGoogleCalendarEventDateTime(event.start) }),
-  ...(event.end && { end: toGoogleCalendarEventDateTime(event.end) }),
-  ...(event.originalStartTime && {
-    originalStartTime: toGoogleCalendarEventDateTime(event.originalStartTime),
-  }),
-});
+const decodeGoogleIdentifier = <A>(
+  schema: Schema.Decoder<A>,
+  value: unknown,
+  operation: string
+) =>
+  Schema.decodeUnknownEffect(schema)(value).pipe(
+    Effect.mapError(
+      (cause) =>
+        new GoogleCalendarAPIError({
+          operation,
+          message: "Google Calendar returned a malformed identifier.",
+          cause,
+        })
+    )
+  );
+
+const decodeOptionalGoogleIdentifier = <A>(
+  schema: Schema.Decoder<A>,
+  value: unknown | null | undefined,
+  operation: string
+): Effect.Effect<Option.Option<A>, GoogleCalendarAPIError> =>
+  value === null || value === undefined
+    ? Effect.succeed(Option.none<A>())
+    : decodeGoogleIdentifier(schema, value, operation).pipe(
+        Effect.map(Option.some)
+      );
+
+const toGoogleCalendarEvent = (event: calendar_v3.Schema$Event) =>
+  Effect.gen(function* () {
+    const id = yield* decodeOptionalGoogleIdentifier(
+      GoogleCalendarEventIdSchema,
+      event.id,
+      "events.list"
+    );
+    const iCalUID = yield* decodeOptionalGoogleIdentifier(
+      GoogleCalendarICalUidSchema,
+      event.iCalUID,
+      "events.list"
+    );
+    const recurringEventId = yield* decodeOptionalGoogleIdentifier(
+      GoogleCalendarEventIdSchema,
+      event.recurringEventId,
+      "events.list"
+    );
+
+    const result: GoogleCalendarEvent = {
+      ...(Option.isSome(id) && { id: id.value }),
+      ...(Option.isSome(iCalUID) && { iCalUID: iCalUID.value }),
+      ...(event.htmlLink && { htmlLink: event.htmlLink }),
+      ...(Option.isSome(recurringEventId) && {
+        recurringEventId: recurringEventId.value,
+      }),
+      ...(event.status && { status: event.status }),
+      ...(event.summary && { summary: event.summary }),
+      ...(event.description && { description: event.description }),
+      ...(event.start && { start: toGoogleCalendarEventDateTime(event.start) }),
+      ...(event.end && { end: toGoogleCalendarEventDateTime(event.end) }),
+      ...(event.originalStartTime && {
+        originalStartTime: toGoogleCalendarEventDateTime(
+          event.originalStartTime
+        ),
+      }),
+    };
+
+    return result;
+  });
 
 const toGoogleCalendarEventDateTime = (
   input: calendar_v3.Schema$EventDateTime
@@ -208,12 +269,28 @@ const toGoogleCalendarEventDateTime = (
 const toGoogleCalendarWatchChannel = (
   channel: calendar_v3.Schema$Channel,
   input: GoogleCalendarWatchEventsInput
-): GoogleCalendarWatchChannel => ({
-  channelId: channel.id ?? input.channelId,
-  ...(channel.resourceId && { resourceId: channel.resourceId }),
-  ...(channel.resourceUri && { resourceUri: channel.resourceUri }),
-  ...(channel.expiration && { expiration: Number(channel.expiration) }),
-});
+) =>
+  Effect.gen(function* () {
+    const returnedChannelId = yield* decodeOptionalGoogleIdentifier(
+      GoogleCalendarChannelIdSchema,
+      channel.id,
+      "events.watch"
+    );
+    const resourceId = yield* decodeOptionalGoogleIdentifier(
+      GoogleCalendarResourceIdSchema,
+      channel.resourceId,
+      "events.watch"
+    );
+
+    const result: GoogleCalendarWatchChannel = {
+      channelId: Option.getOrElse(returnedChannelId, () => input.channelId),
+      ...(Option.isSome(resourceId) && { resourceId: resourceId.value }),
+      ...(channel.resourceUri && { resourceUri: channel.resourceUri }),
+      ...(channel.expiration && { expiration: Number(channel.expiration) }),
+    };
+
+    return result;
+  });
 
 const addDays = (date: string, days: number) => {
   const parsed = new Date(`${date}T00:00:00.000Z`);

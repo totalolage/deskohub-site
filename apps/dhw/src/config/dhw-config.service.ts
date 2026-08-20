@@ -36,7 +36,7 @@ interface IDhwConfig {
 export class DhwConfig extends Context.Service<DhwConfig, IDhwConfig>()(
   "DhwConfig"
 ) {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.suspend(() => loadDhwConfig)
   );

@@ -1,23 +1,33 @@
+import { Suspense } from "react";
+import { CliSessionsTable } from "@/features/admin-cli/cli-sessions-table";
 import { loadCliSessions } from "@/features/admin-cli/page-data.server";
-import { RenameCliSession } from "@/features/admin-cli/rename-cli-session";
-import { RevokeCliSession } from "@/features/admin-cli/revoke-cli-session";
 import {
   AdministrationNoticeBanner,
   AdministrationPage,
-  AdministrationPageHeader,
-  formatAdministrationDateTime,
+  AdministrationTableToolbar,
 } from "@/features/administration/components";
-import { Badge } from "@/shared/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
+import { AdministrationCollectionLoading } from "@/features/administration/loading";
 
-export default async function CliSessionsPage({
+export default function CliSessionsPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly result?: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <h1 className="sr-only">CLI sessions</h1>
+      <Suspense
+        fallback={
+          <AdministrationCollectionLoading label="CLI sessions" columns={6} />
+        }
+      >
+        <CliSessionsContent searchParams={searchParams} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+async function CliSessionsContent({
   searchParams,
 }: {
   readonly searchParams: Promise<{ readonly result?: string }>;
@@ -29,83 +39,15 @@ export default async function CliSessionsPage({
   const notice = getSessionsNotice(params.result);
 
   return (
-    <AdministrationPage>
-      <AdministrationPageHeader
+    <>
+      <AdministrationTableToolbar
         count={sessions.length}
-        description="Review every command-line credential issued for Workspace administration and revoke access immediately."
-        eyebrow="CLI security"
-        title="CLI sessions"
+        itemLabel="CLI session"
       />
       <AdministrationNoticeBanner notice={notice} />
 
-      {sessions.length === 0 ? (
-        <div className="rounded-xl border border-navy-blue/10 bg-white p-6">
-          <h2 className="text-xl">No CLI sessions yet</h2>
-          <p className="mt-2 text-sm leading-6 text-navy-blue/65">
-            Sessions will appear here after a user completes dhw auth.
-          </p>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-          <div className="overflow-x-auto">
-            <Table aria-label="CLI sessions" className="min-w-[880px]">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Client</TableHead>
-                  <TableHead>Build</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Last used</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sessions.map((session) => (
-                  <TableRow key={session.id}>
-                    <TableCell>
-                      <p className="font-semibold">{session.clientName}</p>
-                      <p className="mt-1 font-mono text-xs text-navy-blue/55">
-                        {session.id}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <p className="font-medium">{session.cliVersion}</p>
-                      <p className="mt-1 text-xs text-navy-blue/60">
-                        {session.buildTarget}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      {formatAdministrationDateTime(session.createdAt)}
-                    </TableCell>
-                    <TableCell>
-                      {formatAdministrationDateTime(session.lastUsedAt)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={session.revokedAt ? "subtle" : "default"}>
-                        {session.revokedAt ? "Revoked" : "Active"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <RenameCliSession
-                          clientName={session.clientName}
-                          sessionId={session.id}
-                        />
-                        <RevokeCliSession
-                          clientName={session.clientName}
-                          revoked={session.revokedAt !== null}
-                          sessionId={session.id}
-                        />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
-    </AdministrationPage>
+      <CliSessionsTable sessions={sessions} />
+    </>
   );
 }
 

@@ -5,10 +5,9 @@ import type {
   StoredDiscount,
 } from "@/db/schema";
 import {
-  getWorkspaceProductKey,
-  type WorkspaceProductIdentity,
-  workspaceProductIdentitySchema,
-} from "@/features/checkout/product-identity";
+  type WorkspaceProductTarget,
+  workspaceProductTargetSchema,
+} from "@/features/discounts/product-target";
 import { locales } from "@/features/i18n";
 import { type DiscountAdjustment, discountAdjustmentSchema } from "./contracts";
 import {
@@ -20,11 +19,14 @@ export type DiscountDefinition = {
   readonly id: StoredDiscountId;
   readonly labels: DiscountLabels;
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly WorkspaceProductIdentity[];
+  readonly products: readonly WorkspaceProductTarget[];
 };
 
 export type DiscountDefinitionRow = StoredDiscount & {
-  readonly productTargets: readonly DiscountProductTarget[];
+  readonly productTargets: readonly Pick<
+    DiscountProductTarget,
+    "discountId" | "productTarget"
+  >[];
 };
 
 export class DiscountDefinitionMalformedError extends Data.TaggedError(
@@ -45,7 +47,7 @@ export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
       Effect.bind("adjustment", decodeDefinitionAdjustment),
       Effect.bind("targets", decodeDefinitionTargets),
       Effect.let("products", ({ targets }) =>
-        targets.map(({ productIdentity }) => productIdentity)
+        targets.map(({ productTarget }) => productTarget)
       ),
       Effect.mapError(
         (cause) =>
@@ -65,11 +67,12 @@ const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
   definitionLabelSchema
 );
 
-const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
-  Schema.Struct({
-    discountId: storedDiscountIdSchema,
-    productIdentity: workspaceProductIdentitySchema,
-  });
+const discountTargetSchema: Schema.Decoder<
+  DiscountDefinitionRow["productTargets"][number]
+> = Schema.Struct({
+  discountId: storedDiscountIdSchema,
+  productTarget: workspaceProductTargetSchema,
+});
 
 const discountTargetsSchema = (discountId: StoredDiscountId) =>
   Schema.NonEmptyArray(discountTargetSchema).check(
@@ -82,11 +85,8 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
     ),
     Schema.makeFilter(
       (targets) =>
-        new Set(
-          targets.map(({ productIdentity }) =>
-            getWorkspaceProductKey(productIdentity)
-          )
-        ).size === targets.length || {
+        new Set(targets.map(({ productTarget }) => productTarget.kind)).size ===
+          targets.length || {
           path: [],
           issue: "product targets must be unique",
         }

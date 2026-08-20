@@ -1,13 +1,52 @@
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+  type DotyposReservationId,
+  DotyposReservationIdSchema,
+} from "@deskohub/dotypos";
 import { Match, Schema } from "effect";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
+import { officeReservationQuoteSchema } from "@/features/checkout/reservation-quote-office";
 import type { Locale } from "@/features/i18n";
+import { officeReservationDetailsSchema } from "@/features/reservation/office-reservation";
+import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
+import {
+  defaultReservationBillingSelection,
+  getReservationInvoiceBuyer,
+  reservationBillingSelectionSchema,
+} from "@/features/reservation/reservation-billing";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
+import {
+  companyRegistrationIdSchema,
+  vatRegistrationIdSchema,
+} from "./billing-identity";
+
+export {
+  type CompanyRegistrationId,
+  companyRegistrationIdSchema,
+  type VatRegistrationId,
+  vatRegistrationIdSchema,
+} from "./billing-identity";
+
+export const accountingSnapshotKeyIdSchema = Schema.NonEmptyString.check(
+  Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/)
+)
+  .pipe(Schema.brand("AccountingSnapshotKeyId"))
+  .annotate({
+    identifier: "AccountingSnapshotKeyId",
+    description: "Identifier selecting an accounting snapshot encryption key.",
+  });
+
+export type AccountingSnapshotKeyId = typeof accountingSnapshotKeyIdSchema.Type;
 
 const accountingBuyerAddressSchema = Schema.Struct({
   line1: Schema.optionalKey(Schema.NonEmptyString),
@@ -26,8 +65,8 @@ const personalAccountingBuyerSchema = Schema.Struct({
 const businessAccountingBuyerSchema = Schema.Struct({
   kind: Schema.Literal("business"),
   legalName: Schema.NonEmptyString,
-  companyId: Schema.NonEmptyString,
-  vatId: Schema.optionalKey(Schema.NonEmptyString),
+  companyId: companyRegistrationIdSchema,
+  vatId: Schema.optionalKey(vatRegistrationIdSchema),
   address: Schema.Struct({
     line1: Schema.NonEmptyString,
     line2: Schema.optionalKey(Schema.NonEmptyString),
@@ -46,7 +85,7 @@ export type AccountingBuyer = typeof accountingBuyerSchema.Type;
 
 const accountingSupplierSchema = Schema.Struct({
   legalName: Schema.NonEmptyString,
-  companyId: Schema.NonEmptyString,
+  companyId: companyRegistrationIdSchema,
   vatStatus: Schema.Literal("not-vat-payer"),
   address: Schema.Struct({
     street: Schema.NonEmptyString,
@@ -58,18 +97,23 @@ const accountingSupplierSchema = Schema.Struct({
   contactEmail: Schema.NonEmptyString,
 });
 
-const accountingSnapshotIdentitySchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
-  workspaceReservationId: Schema.NonEmptyString,
-  dotyposReservationId: Schema.NonEmptyString,
-  dotyposCustomerId: Schema.NonEmptyString,
+export const accountingDocumentIdentitySchema = Schema.Struct({
+  workspaceReservationId: workspaceReservationIdSchema,
+  dotyposReservationId: DotyposReservationIdSchema,
+  dotyposCustomerId: DotyposCustomerIdSchema,
   locale: Schema.Literals(["cs-CZ", "en-US"]),
   supplier: accountingSupplierSchema,
   buyer: accountingBuyerSchema,
 });
 
-const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
-  ...accountingSnapshotIdentitySchema.fields,
+const accountingDocumentDeliverySchema = Schema.Struct({
+  email: Schema.Trim.check(Schema.isNonEmpty()),
+});
+
+export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...accountingDocumentIdentitySchema.fields,
+  billing: Schema.optionalKey(reservationBillingSelectionSchema),
+  delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
   reservation: Schema.Struct({
     kind: Schema.Literal("cowork"),
     date: plainDateStringSchema,
@@ -77,8 +121,10 @@ const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
   quote: coworkReservationQuoteSchema,
 });
 
-const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
-  ...accountingSnapshotIdentitySchema.fields,
+export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...accountingDocumentIdentitySchema.fields,
+  billing: Schema.optionalKey(reservationBillingSelectionSchema),
+  delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
   reservation: Schema.Struct({
     kind: Schema.Literal("meeting-room"),
     startsAt: instantStringSchema,
@@ -87,9 +133,18 @@ const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
   quote: meetingRoomReservationQuoteSchema,
 });
 
+export const officeAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...accountingDocumentIdentitySchema.fields,
+  billing: Schema.optionalKey(reservationBillingSelectionSchema),
+  delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
+  reservation: officeReservationDetailsSchema,
+  quote: officeReservationQuoteSchema,
+});
+
 export const accountingDocumentSnapshotSchema = Schema.Union([
   coworkAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
+  officeAccountingDocumentSnapshotSchema,
 ]).annotate({
   identifier: "AccountingDocumentSnapshot",
   description:
@@ -99,9 +154,20 @@ export const accountingDocumentSnapshotSchema = Schema.Union([
 export type AccountingDocumentSnapshot =
   typeof accountingDocumentSnapshotSchema.Type;
 
+export const encodeStoredAccountingDocumentSnapshot = Schema.encodeSync(
+  accountingDocumentSnapshotSchema
+);
+
+export const decodeStoredAccountingDocumentSnapshot =
+  Schema.decodeUnknownEffect(accountingDocumentSnapshotSchema, {
+    onExcessProperty: "error",
+  });
+
 const supplier: typeof accountingSupplierSchema.Type = {
   legalName: workspaceSiteConstants.brand.legalName,
-  companyId: workspaceSiteConstants.company.identificationNumber,
+  companyId: companyRegistrationIdSchema.make(
+    workspaceSiteConstants.company.identificationNumber
+  ),
   vatStatus: workspaceSiteConstants.company.vatStatus,
   address: {
     ...workspaceSiteConstants.location.address,
@@ -111,24 +177,30 @@ const supplier: typeof accountingSupplierSchema.Type = {
 };
 
 export const makeAccountingDocumentSnapshot = (input: {
-  readonly workspaceReservationId: string;
-  readonly dotyposReservationId: string;
-  readonly dotyposCustomerId: string;
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly dotyposReservationId: DotyposReservationId;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly prepared: PreparedCustomerQuote;
-  readonly buyer?: AccountingBuyer;
 }): AccountingDocumentSnapshot => {
+  const billing =
+    input.prepared.reservation.billing ?? defaultReservationBillingSelection;
+  const buyer = getReservationInvoiceBuyer({
+    billing,
+    customerName: input.prepared.reservation.name,
+  });
   const identity = {
-    schemaVersion: 1 as const,
     workspaceReservationId: input.workspaceReservationId,
     dotyposReservationId: input.dotyposReservationId,
     dotyposCustomerId: input.dotyposCustomerId,
     locale: input.locale,
     supplier,
-    buyer: input.buyer ?? {
+    buyer: buyer ?? {
       kind: "person" as const,
       legalName: input.prepared.reservation.name,
     },
+    billing,
+    delivery: { email: input.prepared.reservation.email },
   };
 
   return Match.value(input.prepared).pipe(
@@ -147,6 +219,16 @@ export const makeAccountingDocumentSnapshot = (input: {
           kind: "meeting-room" as const,
           startsAt: reservation.startsAt,
           endsAt: reservation.endsAt,
+        },
+        quote,
+      }),
+      office: ({ quote, reservation }) => ({
+        ...identity,
+        reservation: {
+          kind: "office" as const,
+          startsOn: reservation.startsOn,
+          endsOn: reservation.endsOn,
+          seats: reservation.seats,
         },
         quote,
       }),

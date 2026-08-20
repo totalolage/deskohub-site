@@ -25,7 +25,7 @@ export class CustomerMarketingConsentRepository extends Context.Service<
   CustomerMarketingConsentRepository,
   ICustomerMarketingConsentRepository
 >()("@deskohub-workspace/legal/CustomerMarketingConsentRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;

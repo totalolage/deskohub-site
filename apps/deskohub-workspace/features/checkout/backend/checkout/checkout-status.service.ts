@@ -1,34 +1,34 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer, Match, Option } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { Context, Effect, Layer, Match, Option, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import type { FulfillmentState, PaymentState } from "@/db/schema";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
-import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
-import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
+import {
+  SeatingMapFeatureFlagService,
+  WorkspaceFeatureFlagService,
+} from "@/features/feature-flags/backend";
 import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import type { StoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import {
-  ProviderPaymentFinalizationService,
-  ProviderPaymentFinalizationServiceLiveWithDependencies,
-} from "../payment/provider-payment-finalization.service";
+import type { StoredOfficeReservationDetails } from "@/features/reservation/office-reservation";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { ProviderPaymentFinalizationService } from "../payment/provider-payment-finalization.service";
 import {
   type PaymentAttempt,
   PaymentAttemptRepository,
-  PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
 import type { PaymentLifecycleRepositoryError } from "../repositories/payment-lifecycle.repository";
 
@@ -59,9 +59,13 @@ export type CheckoutCoworkStatusSummary = CheckoutStatusSummaryBase &
 export type CheckoutMeetingRoomStatusSummary = CheckoutStatusSummaryBase &
   StoredMeetingRoomReservationDetails;
 
+export type CheckoutOfficeStatusSummary = CheckoutStatusSummaryBase &
+  StoredOfficeReservationDetails & { readonly seats: number };
+
 export type CheckoutStatusSummary =
   | CheckoutCoworkStatusSummary
-  | CheckoutMeetingRoomStatusSummary;
+  | CheckoutMeetingRoomStatusSummary
+  | CheckoutOfficeStatusSummary;
 
 export type CheckoutStatusContactPrefill = {
   readonly name?: string;
@@ -72,7 +76,7 @@ export type CheckoutStatusContactPrefill = {
 export type CheckoutStatusTableMap = WorkspaceTableMap;
 
 type CheckoutStatusViewModelBase = {
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
 };
 
@@ -95,18 +99,41 @@ type CheckoutMeetingRoomStatusViewModel =
     readonly summary?: CheckoutMeetingRoomStatusSummary;
   };
 
+type CheckoutOfficeStatusViewModel = CheckoutReservationStatusViewModelBase & {
+  readonly kind: "office";
+  readonly summary?: CheckoutOfficeStatusSummary;
+};
+
 type CheckoutStatusNotFoundViewModel = CheckoutStatusViewModelBase & {
   readonly status: "not_found";
   readonly summary?: undefined;
 };
 
-export type CheckoutStatusViewModel =
+type CheckoutReservationStatusViewModel =
   | CheckoutCoworkStatusViewModel
   | CheckoutMeetingRoomStatusViewModel
+  | CheckoutOfficeStatusViewModel;
+
+export type CheckoutStatusViewModel =
+  | CheckoutReservationStatusViewModel
   | CheckoutStatusNotFoundViewModel;
 
+type CheckoutStatusReservationReconstruction =
+  | {
+      readonly kind: "cowork";
+      readonly summary?: CheckoutCoworkStatusSummary;
+    }
+  | {
+      readonly kind: "meeting-room";
+      readonly summary?: CheckoutMeetingRoomStatusSummary;
+    }
+  | {
+      readonly kind: "office";
+      readonly summary?: CheckoutOfficeStatusSummary;
+    };
+
 type CheckoutStatusReconstruction = {
-  readonly summary?: CheckoutStatusSummary;
+  readonly reservation: CheckoutStatusReservationReconstruction;
   readonly tableMap?: CheckoutStatusTableMap;
   readonly supportContactPrefill?: CheckoutStatusContactPrefill;
 };
@@ -118,11 +145,11 @@ type CheckoutStatusError =
 
 export interface ICheckoutStatusService {
   readonly getStatus: (input: {
-    readonly orderId: string;
+    readonly orderId: WorkspaceReservationId;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
   readonly refreshStatus: (input: {
-    readonly orderId: string;
+    readonly orderId: WorkspaceReservationId;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
 }
@@ -194,7 +221,16 @@ const getSupportContactPrefill = (
   return prefill.name || prefill.email || prefill.phone ? prefill : undefined;
 };
 
-const emptyCheckoutStatusReconstruction: CheckoutStatusReconstruction = {};
+const getEmptyCheckoutStatusReservation = (
+  details: WorkspaceReservation["reservationDetails"]
+): CheckoutStatusReservationReconstruction =>
+  Match.value(details).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: () => ({ kind: "cowork" as const }),
+      "meeting-room": () => ({ kind: "meeting-room" as const }),
+      office: () => ({ kind: "office" as const }),
+    })
+  );
 
 const implementation = Effect.gen(function* () {
   const reservations = yield* WorkspaceReservationRepository;
@@ -208,12 +244,17 @@ const implementation = Effect.gen(function* () {
   )(
     function* (reservation: WorkspaceReservation) {
       yield* Effect.logDebug("Checkout status summary reconstruction started");
+      const emptyReconstruction: CheckoutStatusReconstruction = {
+        reservation: getEmptyCheckoutStatusReservation(
+          reservation.reservationDetails
+        ),
+      };
 
       if (!reservation.dotyposReservationId) {
         yield* Effect.logWarning(
           "Checkout status summary missing Dotypos reservation id"
         );
-        return emptyCheckoutStatusReconstruction;
+        return emptyReconstruction;
       }
 
       const attempt = yield* paymentAttempts.findDisplayableForReservation({
@@ -229,7 +270,7 @@ const implementation = Effect.gen(function* () {
         yield* Effect.logWarning(
           "Checkout status summary missing payment attempt"
         );
-        return emptyCheckoutStatusReconstruction;
+        return emptyReconstruction;
       }
       yield* Effect.annotateLogsScoped({
         paymentAttemptId: attempt.id,
@@ -240,7 +281,7 @@ const implementation = Effect.gen(function* () {
         yield* Effect.logWarning(
           "Checkout status summary unusable payment attempt"
         );
-        return emptyCheckoutStatusReconstruction;
+        return emptyReconstruction;
       }
 
       const dotyposReservation = yield* dotypos
@@ -259,7 +300,7 @@ const implementation = Effect.gen(function* () {
         yield* Effect.logWarning(
           "Checkout status summary missing Dotypos reservation"
         );
-        return emptyCheckoutStatusReconstruction;
+        return emptyReconstruction;
       }
       yield* Effect.logDebug(
         "Checkout status summary Dotypos reservation loaded"
@@ -297,7 +338,8 @@ const implementation = Effect.gen(function* () {
 
       if (!timing) {
         const reconstruction: CheckoutStatusReconstruction = {
-          ...(tableMap ? { tableMap } : {}),
+          reservation: emptyReconstruction.reservation,
+          tableMap,
           supportContactPrefill: getSupportContactPrefill(
             dotyposReservation.customer
           ),
@@ -306,17 +348,52 @@ const implementation = Effect.gen(function* () {
         return reconstruction;
       }
 
-      const summary: CheckoutStatusSummary = {
-        ...reservation.reservationDetails,
-        ...timing,
-        price: attempt.amount,
-      };
+      const statusReservation = Match.value(
+        reservation.reservationDetails
+      ).pipe(
+        Match.discriminatorsExhaustive("kind")({
+          cowork: (details) => ({
+            kind: "cowork" as const,
+            summary: {
+              ...details,
+              ...timing,
+              price: attempt.amount,
+            },
+          }),
+          "meeting-room": (details) => ({
+            kind: "meeting-room" as const,
+            summary: {
+              ...details,
+              ...timing,
+              price: attempt.amount,
+            },
+          }),
+          office: (details) => {
+            const seats = Option.getOrUndefined(
+              Schema.decodeUnknownOption(dotyposReservationSeatsSchema)(
+                dotyposReservation.reservation.seats
+              )
+            );
+            if (!seats) return { kind: "office" as const };
+
+            return {
+              kind: "office" as const,
+              summary: {
+                ...details,
+                ...timing,
+                price: attempt.amount,
+                seats,
+              },
+            };
+          },
+        })
+      );
 
       yield* Effect.logDebug("Checkout status summary reconstructed");
 
       const reconstruction: CheckoutStatusReconstruction = {
-        summary,
-        ...(tableMap ? { tableMap } : {}),
+        reservation: statusReservation,
+        tableMap,
         supportContactPrefill: getSupportContactPrefill(
           dotyposReservation.customer
         ),
@@ -337,7 +414,7 @@ const implementation = Effect.gen(function* () {
 
   const getStatus = Effect.fn("CheckoutStatusService.getStatus")(
     function* (input: {
-      readonly orderId: string;
+      readonly orderId: WorkspaceReservationId;
       readonly returnOutcome: CheckoutStatusReturnOutcome;
     }) {
       yield* Effect.logInfo("Checkout status lookup started");
@@ -362,6 +439,11 @@ const implementation = Effect.gen(function* () {
         reservation.paymentState,
         reservation.fulfillmentState
       );
+      const timeoutReconstruction: CheckoutStatusReconstruction = {
+        reservation: getEmptyCheckoutStatusReservation(
+          reservation.reservationDetails
+        ),
+      };
       const reconstruction: CheckoutStatusReconstruction =
         yield* reconstructSummary(reservation).pipe(
           Effect.timeoutOrElse({
@@ -373,7 +455,7 @@ const implementation = Effect.gen(function* () {
                   reservationId: reservation.id,
                   status: statusKind,
                 }
-              ).pipe(Effect.as(emptyCheckoutStatusReconstruction)),
+              ).pipe(Effect.as(timeoutReconstruction)),
           })
         );
 
@@ -383,59 +465,16 @@ const implementation = Effect.gen(function* () {
         status: statusKind,
         paymentStatus: reservation.paymentState,
         fulfillmentStatus: reservation.fulfillmentState,
-        ...(reconstruction.tableMap
-          ? { tableMap: reconstruction.tableMap }
-          : {}),
-        ...(statusKind === "fulfillment_failed" &&
-        reconstruction.supportContactPrefill
-          ? { supportContactPrefill: reconstruction.supportContactPrefill }
-          : {}),
+        tableMap: reconstruction.tableMap,
+        supportContactPrefill:
+          statusKind === "fulfillment_failed"
+            ? reconstruction.supportContactPrefill
+            : undefined,
       };
-      const result: CheckoutStatusViewModel = Match.value(
-        reservation.reservationDetails
-      ).pipe(
-        Match.when(
-          { kind: "cowork" },
-          (): CheckoutCoworkStatusViewModel =>
-            Match.value(reconstruction.summary).pipe(
-              Match.when(
-                { kind: "cowork" },
-                (summary): CheckoutCoworkStatusViewModel => ({
-                  kind: "cowork",
-                  ...resultBase,
-                  summary,
-                })
-              ),
-              Match.orElse(
-                (): CheckoutCoworkStatusViewModel => ({
-                  kind: "cowork",
-                  ...resultBase,
-                })
-              )
-            )
-        ),
-        Match.when(
-          { kind: "meeting-room" },
-          (): CheckoutMeetingRoomStatusViewModel =>
-            Match.value(reconstruction.summary).pipe(
-              Match.when(
-                { kind: "meeting-room" },
-                (summary): CheckoutMeetingRoomStatusViewModel => ({
-                  kind: "meeting-room",
-                  ...resultBase,
-                  summary,
-                })
-              ),
-              Match.orElse(
-                (): CheckoutMeetingRoomStatusViewModel => ({
-                  kind: "meeting-room",
-                  ...resultBase,
-                })
-              )
-            )
-        ),
-        Match.exhaustive
-      );
+      const result: CheckoutReservationStatusViewModel = {
+        ...resultBase,
+        ...reconstruction.reservation,
+      };
 
       yield* Effect.annotateLogsScoped({
         status: result.status,
@@ -509,6 +548,10 @@ const implementation = Effect.gen(function* () {
               status,
               reservationKind: kind,
             })),
+            Match.when({ kind: "office" }, ({ kind, status }) => ({
+              status,
+              reservationKind: kind,
+            })),
             Match.exhaustive
           )
         );
@@ -532,17 +575,17 @@ export class CheckoutStatusService extends Context.Service<
   CheckoutStatusService,
   ICheckoutStatusService
 >()("@deskohub-workspace/checkout/CheckoutStatusService") {
-  static Live = Layer.effect(this, implementation);
+  static Default = Layer.effect(this, implementation);
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(PaymentAttemptRepositoryLive),
-    Layer.provide(WorkspaceReservationRepositoryLive),
-    Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(DotyposServiceLive),
+  static Live = this.Default.pipe(
+    Layer.provide(ProviderPaymentFinalizationService.Live),
+    Layer.provide(PaymentAttemptRepository.Default),
+    Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(WorkspaceDatabase.Default),
+    Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(
-      SeatingMapFeatureFlagService.Live.pipe(
-        Layer.provide(WorkspaceFeatureFlagServiceLive)
+      SeatingMapFeatureFlagService.Default.pipe(
+        Layer.provide(WorkspaceFeatureFlagService.Default)
       )
     )
   );

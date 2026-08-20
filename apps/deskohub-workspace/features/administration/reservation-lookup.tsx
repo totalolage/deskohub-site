@@ -9,6 +9,7 @@ import { Label } from "@/shared/components/ui/label";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getAdministrationReservation } from "./actions";
+import { AdministrationAlert } from "./notice";
 
 export function ReservationLookup({
   variant = "card",
@@ -81,12 +82,13 @@ export function ReservationLookup({
       </form>
 
       {error && (
-        <p
-          className="rounded-xl bg-burned-orange/10 px-4 py-3 text-sm font-semibold text-burned-orange-ink"
+        <AdministrationAlert
+          className="font-semibold"
           role="alert"
+          status="error"
         >
           {error}
-        </p>
+        </AdministrationAlert>
       )}
     </div>
   );

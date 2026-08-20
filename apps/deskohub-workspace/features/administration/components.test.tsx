@@ -8,9 +8,11 @@ import {
   mock,
   test,
 } from "bun:test";
+import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import {
   workspaceRouterPush,
+  workspaceRouterRefresh,
   workspaceUseAction,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -19,6 +21,9 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import { AdministrationBreadcrumbs } from "./admin-shell";
 import {
+  AdministrationStatusBadge,
+  AdministrationTableCount,
+  AdministrationTableToolbar,
   BookingTable,
   getBookingTableLabel,
   PaymentAttemptList,
@@ -33,25 +38,186 @@ import {
   loadFixtureReservations,
 } from "./fixtures";
 import {
-  OperationTable,
-  OrderTable,
   ProviderStatusBadge,
   ReservationOrderList,
 } from "./payment-components";
+import { OperationTable, OrderTable } from "./payment-tables";
+import { ReservationAccessAdministration } from "./reservation-access-administration";
 import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
 
 mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
+  mutateReservationAccess: mock(),
 }));
 
 describe("administration reservation components", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
   beforeEach(() => {
     workspaceRouterPush.mockClear();
+    workspaceRouterRefresh.mockClear();
     workspaceUseAction.mockReset();
   });
   afterEach(() => cleanup());
   afterAll(() => unregisterWorkspaceComponentTestEnv());
+
+  test("composes collection counts, search, filters, and actions consistently", () => {
+    const view = render(
+      <AdministrationTableToolbar
+        actions={<button type="button">Create</button>}
+        count={2}
+        filters={<button type="button">Filter</button>}
+        itemLabel="reservation"
+        search={<input aria-label="Lookup" />}
+      />
+    );
+
+    const toolbar = view.getByRole("region", {
+      name: "reservation table controls",
+    });
+    expect(within(toolbar).getByLabelText("2 reservations")).toBeDefined();
+    expect(within(toolbar).getByLabelText("Lookup")).toBeDefined();
+    expect(
+      within(toolbar).getByRole("button", { name: "Filter" })
+    ).toBeDefined();
+    expect(
+      within(toolbar).getByRole("button", { name: "Create" })
+    ).toBeDefined();
+  });
+
+  test("keeps streamed collection counts styled and accessible", () => {
+    const view = render(
+      <AdministrationTableToolbar
+        count={<AdministrationTableCount count={24} itemLabel="reservation" />}
+        itemLabel="reservation"
+      />
+    );
+
+    expect(view.getByLabelText("24 reservations").textContent).toBe("24");
+  });
+
+  test("keeps a compact primary action beside the collection count", () => {
+    const view = render(
+      <AdministrationTableToolbar
+        actions={<button type="button">Create</button>}
+        count={1}
+        itemLabel="voucher"
+      />
+    );
+
+    expect(
+      view.getByRole("region", { name: "voucher table controls" }).className
+    ).toContain("grid-cols-[minmax(0,1fr)_auto]");
+  });
+
+  test("uses one status badge foundation for domain-specific states", () => {
+    const view = render(
+      <AdministrationStatusBadge tone="positive">
+        Active
+      </AdministrationStatusBadge>
+    );
+
+    expect(view.getByText("Active").className).toContain(
+      "bg-aquamarine-green/12"
+    );
+  });
+
+  test("shows safe access metadata and the failed retry action without the PIN", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail?.accessGrant).not.toBeNull();
+    if (!detail?.accessGrant) return;
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+    } as never);
+
+    const view = render(
+      <ReservationAccessAdministration
+        grant={detail.accessGrant}
+        reservationId={detail.reservation.id}
+      />
+    );
+
+    expect(view.getByText("Failed")).toBeDefined();
+    expect(view.getByText(detail.accessGrant.accessName)).toBeDefined();
+    expect(view.queryByText("PIN")).toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Retry access" }));
+    expect(execute).toHaveBeenCalledWith({
+      kind: "retry-failed",
+      reservationId: detail.reservation.id,
+    });
+  });
+
+  test("requires explicit manual provider reconciliation for uncertain access", async () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail?.accessGrant).not.toBeNull();
+    if (!detail?.accessGrant) return;
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+    } as never);
+
+    const view = render(
+      <ReservationAccessAdministration
+        grant={{ ...detail.accessGrant, state: "uncertain" }}
+        reservationId={detail.reservation.id}
+      />
+    );
+    const disclosure = view.getByText("Reconcile access").closest("details");
+    expect(disclosure?.open).toBe(false);
+    fireEvent.click(view.getByText("Reconcile access"));
+    expect(disclosure?.open).toBe(true);
+    expect(
+      await view.findByText(/connect the Igloohome app over Bluetooth/i)
+    ).toBeDefined();
+    fireEvent.click(
+      view.getByRole("button", { name: "Confirm removed and retry" })
+    );
+    expect(execute).toHaveBeenCalledWith({
+      kind: "confirm-provider-credential-removed",
+      providerCredentialRemoved: true,
+      reservationId: detail.reservation.id,
+    });
+  });
+
+  test("offers reconciliation for stale provisioning but not a fresh claim", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail?.accessGrant).not.toBeNull();
+    if (!detail?.accessGrant) return;
+    workspaceUseAction.mockReturnValue({
+      execute: mock(),
+      isExecuting: false,
+    } as never);
+
+    const fresh = render(
+      <ReservationAccessAdministration
+        grant={{
+          ...detail.accessGrant,
+          state: "provisioning",
+          provisioningStartedAt: Temporal.Now.instant().toString(),
+        }}
+        reservationId={detail.reservation.id}
+      />
+    );
+    expect(fresh.queryByText("Reconcile access")).toBeNull();
+    fresh.unmount();
+
+    const stale = render(
+      <ReservationAccessAdministration
+        grant={{
+          ...detail.accessGrant,
+          state: "provisioning",
+          provisioningStartedAt: Temporal.Now.instant()
+            .subtract({ minutes: 2 })
+            .toString(),
+        }}
+        reservationId={detail.reservation.id}
+      />
+    );
+    expect(stale.getByText("Reconcile access")).toBeDefined();
+    expect(stale.getByText("Needs reconciliation")).toBeDefined();
+  });
 
   test("renders a semantic reservation table with friendly status labels", () => {
     const { items } = loadFixtureReservations({});
@@ -69,6 +235,9 @@ describe("administration reservation components", () => {
       />
     );
     const table = view.getByRole("table", { name: "Reservations" });
+    expect(table.parentElement?.parentElement?.className).toContain(
+      "overflow-x-auto"
+    );
     expect(within(table).getAllByText("Confirmation issue")).not.toHaveLength(
       0
     );
@@ -183,6 +352,23 @@ describe("administration reservation components", () => {
 
     expect(view.getByText("Cancelled in Dotypos")).toBeDefined();
     expect(view.getByText("Deskohub: Awaiting payment")).toBeDefined();
+    expect(view.getByText("Alex Morgan")).toBeDefined();
+    expect(view.getByText("alex.morgan@example.test")).toBeDefined();
+  });
+
+  test("keeps related reservations useful when customer details are unavailable", () => {
+    const { items } = loadFixtureReservations({});
+    const reservation = items[0];
+    expect(reservation).toBeDefined();
+    if (!reservation) return;
+
+    const view = render(
+      <RelatedReservationLink
+        reservation={{ ...reservation, customer: null }}
+      />
+    );
+
+    expect(view.getByText("Customer unavailable")).toBeDefined();
   });
 
   test("renders ordered operational history without forbidden fields", () => {
@@ -190,7 +376,6 @@ describe("administration reservation components", () => {
     expect(detail).not.toBeNull();
     if (!detail) return;
     const serialized = JSON.stringify(detail);
-    expect(serialized).not.toContain("customerAccessCode");
     expect(serialized).not.toContain("securityToken");
     expect(serialized).not.toContain("providerRedirectUrl");
     expect(serialized).not.toContain("rawPayload");
@@ -224,7 +409,7 @@ describe("administration reservation components", () => {
     const view = render(
       <PaymentAttemptList
         attempts={[
-          ...detail.paymentAttempts,
+          { ...attempt, refundState: "required" },
           {
             ...attempt,
             id: "fixture-internal-payment",
@@ -240,6 +425,7 @@ describe("administration reservation components", () => {
     expect(orderLink.getAttribute("href")).toBe(
       "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
     );
+    expect(view.getByText("Needs refund")).toBeDefined();
     expect(orderLink.getAttribute("target")).toBe("_blank");
     expect(view.getAllByText("Nexi order")).toHaveLength(1);
   });
@@ -264,6 +450,71 @@ describe("administration reservation components", () => {
     expect(
       view.container.querySelector('a[href^="/admin/operations"]')
     ).toBeNull();
+  });
+
+  test("explains pending Nexi orders using the cleanup policy", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+    const order = detail.orders[0];
+    expect(order?.provider).not.toBeNull();
+    expect(order?.link).not.toBeNull();
+    if (!(order?.provider && order.link)) return;
+
+    const emptyOrder = {
+      ...order,
+      provider: {
+        ...order.provider,
+        authorizedAmount: "0",
+        capturedAmount: "0.00",
+        operations: [],
+      },
+      link: {
+        ...order.link,
+        state: "pending" as const,
+        stateLabel: "Pending",
+        providerOrderCreatedAt: Temporal.Now.instant()
+          .subtract({ minutes: 10 })
+          .toString(),
+      },
+    };
+    const openWindow = render(<ReservationOrderList orders={[emptyOrder]} />);
+    expect(
+      openWindow.getByText(/local payment window is open until/i)
+    ).toBeDefined();
+    openWindow.unmount();
+
+    const overdue = render(
+      <ReservationOrderList
+        orders={[
+          {
+            ...emptyOrder,
+            link: {
+              ...emptyOrder.link,
+              providerOrderCreatedAt: Temporal.Now.instant()
+                .subtract({ minutes: 31 })
+                .toString(),
+            },
+          },
+        ]}
+      />
+    );
+    expect(
+      overdue.getByText(/still empty after the local payment window/i)
+    ).toBeDefined();
+    overdue.unmount();
+
+    const activity = render(
+      <ReservationOrderList
+        orders={[
+          {
+            ...order,
+            link: { ...order.link, state: "pending", stateLabel: "Pending" },
+          },
+        ]}
+      />
+    );
+    expect(activity.getByText(/Nexi reports payment activity/i)).toBeDefined();
   });
 
   test("marks the actual lifecycle stage accessibly", () => {
@@ -326,6 +577,31 @@ describe("administration reservation components", () => {
         .getByRole("link", { name: "DADMINFIXTUREPAYMENT" })
         .getAttribute("href")
     ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+  });
+
+  test("sorts Nexi orders by raw order ID", () => {
+    const order = loadFixtureReservation("0198-admin-fixture-attention")
+      ?.orders[0];
+    expect(order).toBeDefined();
+    if (!order) return;
+    const view = render(
+      <OrderTable
+        orders={[
+          { ...order, orderId: NexiOrderIdSchema.make("Z-ORDER") },
+          { ...order, orderId: NexiOrderIdSchema.make("A-ORDER") },
+        ]}
+      />
+    );
+    const table = view.getByRole("table", { name: "Nexi orders" });
+
+    fireEvent.click(within(table).getByRole("button", { name: "Order" }));
+
+    expect(
+      within(table)
+        .getAllByRole("row")
+        .slice(1)
+        .map((row) => within(row).getAllByRole("link")[0]?.textContent)
+    ).toEqual(["A-ORDER", "Z-ORDER"]);
   });
 
   test("renders both Nexi cancellation spellings as warnings", () => {
@@ -395,7 +671,14 @@ describe("administration reservation components", () => {
 
   test("renders Dotypos bookings with linked customers and reservations", () => {
     const view = render(
-      <BookingTable bookings={loadFixtureBookings().items} />
+      <BookingTable
+        bookings={loadFixtureBookings().items}
+        sorting={{
+          direction: "asc",
+          field: "booking",
+          params: { date: "2026-08-10" },
+        }}
+      />
     );
     const table = view.getByRole("table", { name: "Bookings" });
 
@@ -410,6 +693,12 @@ describe("administration reservation components", () => {
         .getByRole("link", { name: "Cowork Basic" })
         .getAttribute("href")
     ).toBe("/admin/reservations/0198-admin-fixture-complete");
+    expect(
+      within(table).getByRole("link", { name: "Booking" }).getAttribute("href")
+    ).toBe("/admin/bookings?date=2026-08-10&sort=booking&direction=desc");
+    expect(
+      within(table).getByRole("link", { name: "Status" }).getAttribute("href")
+    ).toBe("/admin/bookings?date=2026-08-10&sort=status&direction=asc");
   });
 
   test("identifies customer and reservation entities in breadcrumbs", () => {

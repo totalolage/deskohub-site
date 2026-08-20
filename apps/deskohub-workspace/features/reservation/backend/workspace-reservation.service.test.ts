@@ -9,7 +9,6 @@ import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backe
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
-  type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
 } from "./workspace-reservation.repository";
 import {
   WorkspaceReservationDetailsError,
@@ -28,8 +27,9 @@ type TestWorkspaceReservation = Pick<
   | "id"
   | "dotyposCustomerId"
   | "dotyposReservationId"
-  | "customerAccessCode"
   | "reservationDetails"
+  | "reservationState"
+  | "paymentState"
   | "locale"
 >;
 
@@ -39,7 +39,8 @@ const makeWorkspaceReservation = (
   id: "reservation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: " dotypos-reservation-id ",
-  customerAccessCode: "1234",
+  reservationState: "confirmed",
+  paymentState: "paid",
   reservationDetails: {
     kind: "cowork",
     entryTier: "profi",
@@ -90,7 +91,7 @@ const detailsEffect = (input: {
           : input.workspaceReservation) as WorkspaceReservation | null
       )
     ),
-  } as unknown as WorkspaceReservationRepositoryType;
+  };
   const dotypos = {
     getReservation: mock(() =>
       Effect.succeed({
@@ -99,18 +100,18 @@ const detailsEffect = (input: {
       })
     ),
     getTables: mock(() => Effect.succeed(input.tables ?? [makeTable()])),
-  } as unknown as typeof DotyposService.Service;
+  };
 
   return Effect.gen(function* () {
     const service = yield* WorkspaceReservationService;
     return yield* service.getReservation("reservation-id");
   }).pipe(
     Effect.provide(
-      WorkspaceReservationService.Live.pipe(
+      WorkspaceReservationService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(WorkspaceReservationRepository, repository),
-            Layer.succeed(DotyposService, dotypos),
+            Layer.mock(WorkspaceReservationRepository, repository),
+            Layer.mock(DotyposService, dotypos),
             SeatingMapFeatureFlagServiceMock({
               isEnabled: Effect.succeed(input.seatingMapEnabled ?? true),
             })
@@ -120,6 +121,45 @@ const detailsEffect = (input: {
     )
   );
 };
+
+const accessTargetEffect = (input: {
+  readonly workspaceReservation?: TestWorkspaceReservation;
+  readonly dotyposReservation?: Reservation;
+}) =>
+  Effect.gen(function* () {
+    const service = yield* WorkspaceReservationService;
+    return yield* service.getAccessTarget("reservation-id");
+  }).pipe(
+    Effect.provide(
+      WorkspaceReservationService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(WorkspaceReservationRepository, {
+              findById: mock(() =>
+                Effect.succeed(
+                  (input.workspaceReservation ??
+                    makeWorkspaceReservation()) as WorkspaceReservation
+                )
+              ),
+            }),
+            Layer.mock(DotyposService, {
+              getReservation: mock(() =>
+                Effect.succeed({
+                  reservation:
+                    input.dotyposReservation ?? makeDotyposReservation(),
+                  customer,
+                })
+              ),
+              getTables: mock(() => Effect.succeed([])),
+            }),
+            SeatingMapFeatureFlagServiceMock({
+              isEnabled: Effect.succeed(false),
+            })
+          )
+        )
+      )
+    )
+  );
 
 describe("WorkspaceReservationService", () => {
   test("builds details from Dotypos reservation dates and table", async () => {
@@ -212,5 +252,24 @@ describe("WorkspaceReservationService", () => {
       reservationId: "reservation-id",
       errorCode: "dotypos_reservation_date_invalid",
     });
+  });
+
+  test("rejects access recovery unless both local and provider reservations are eligible", async () => {
+    for (const effect of [
+      accessTargetEffect({
+        workspaceReservation: makeWorkspaceReservation({
+          paymentState: "not_started",
+        }),
+      }),
+      accessTargetEffect({
+        dotyposReservation: makeDotyposReservation({ status: "CANCELLED" }),
+      }),
+    ]) {
+      const error = await Effect.runPromise(Effect.flip(effect));
+      expect(error).toMatchObject({
+        reservationId: "reservation-id",
+        errorCode: "reservation_access_unavailable",
+      });
+    }
   });
 });

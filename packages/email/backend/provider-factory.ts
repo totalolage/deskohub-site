@@ -1,9 +1,9 @@
 import { Effect, Layer } from "effect";
+import { EmailConfigTag, EmailServiceError } from "./capabilities";
 import { ConsoleEmailProviderLive } from "./providers/console-provider";
 import { ResendEmailProviderLive } from "./providers/resend-provider";
-import { EmailConfigTag, EmailServiceError } from "./service";
 
-export const EmailProviderLive = Layer.unwrap(
+export const ConfiguredEmailProviderLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* EmailConfigTag;
 

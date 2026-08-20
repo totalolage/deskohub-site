@@ -1,19 +1,18 @@
-import Link from "next/link";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
-import { cn } from "@/shared/utils";
-import { EmptyState, formatAdministrationDateTime } from "./components";
-import type {
-  AdministrationOperation,
-  AdministrationOrder,
-} from "./payment-administration.service";
+  getProviderOrderAbandonmentCutoff,
+  getProviderOrderAbandonmentState,
+  hasProviderPaymentActivity,
+} from "@/features/checkout/provider-order-abandonment";
+import { EmptyState } from "./empty-state";
+import { formatAdministrationDateTime } from "./formatters";
+import { NexiOrderLink } from "./nexi-order-link";
+import { AdministrationAlert } from "./notice";
+import type { AdministrationOrder } from "./payment-administration.service";
 import { getProviderValueLabel } from "./payment-presentation";
+import {
+  AdministrationStatusBadge,
+  type AdministrationStatusTone,
+} from "./status-badge";
 
 export const formatProviderMoney = (
   amount: string | undefined,
@@ -50,13 +49,6 @@ export const formatProviderDateTime = (value: string | undefined) => {
   }
 };
 
-const getReconciliationLabel = (order: AdministrationOrder) => {
-  if (order.providerStatus === "available") return "Provider only";
-  if (order.providerStatus === "not_found") return "Not found";
-  if (order.providerStatus === "not_returned") return "Not returned";
-  return "Provider unavailable";
-};
-
 export function ProviderStatusBadge({ value }: { readonly value: string }) {
   const normalized = value.toUpperCase();
   const positive = [
@@ -76,20 +68,13 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
     "THREEDS_FAILED",
     "VOIDED",
   ].includes(normalized);
+  let tone: AdministrationStatusTone = "neutral";
+  if (positive) tone = "positive";
+  else if (warning) tone = "attention";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-        positive &&
-          "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
-        warning &&
-          "border-burned-orange/30 bg-burned-orange/10 text-burned-orange-ink",
-        !(positive || warning) &&
-          "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/65"
-      )}
-    >
+    <AdministrationStatusBadge tone={tone}>
       {getProviderValueLabel(value)}
-    </span>
+    </AdministrationStatusBadge>
   );
 }
 
@@ -105,298 +90,151 @@ export function ReservationOrderList({
   }
   return (
     <div className="space-y-4">
-      {orders.map((order) => (
-        <section
-          className="scroll-mt-24 overflow-hidden rounded-xl border border-navy-blue/10 bg-white"
-          id={`order-${order.orderId}`}
-          key={order.orderId}
-        >
-          <div className="flex flex-col gap-4 border-b border-navy-blue/10 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
-                Nexi order
-              </p>
-              <a
-                aria-label={`Nexi order ${order.orderId} (opens in XPay)`}
-                className="mt-1 inline-flex max-w-full items-baseline gap-1.5 break-all font-mono text-sm font-semibold text-burned-orange-ink underline decoration-burned-orange/30 underline-offset-4"
-                href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(order.orderId)}`}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {order.orderId}
-                <span aria-hidden>↗</span>
-              </a>
+      {orders.map((order) => {
+        const pendingProviderOrder =
+          order.link?.state === "pending" &&
+          order.providerStatus === "available" &&
+          order.provider &&
+          order.link.providerOrderCreatedAt
+            ? {
+                checkedAt: Temporal.Now.instant(),
+                providerOrderCreatedAt: Temporal.Instant.from(
+                  order.link.providerOrderCreatedAt
+                ),
+                order: {
+                  operationCount: order.provider.operations.length,
+                  authorizedAmount: order.provider.authorizedAmount,
+                  capturedAmount: order.provider.capturedAmount,
+                },
+              }
+            : null;
+        const abandonmentState = pendingProviderOrder
+          ? getProviderOrderAbandonmentState(pendingProviderOrder)
+          : null;
+        const providerHasPaymentActivity = pendingProviderOrder
+          ? hasProviderPaymentActivity(pendingProviderOrder.order)
+          : false;
+        return (
+          <section
+            className="scroll-mt-24 overflow-hidden rounded-xl border border-navy-blue/10 bg-white"
+            id={`order-${order.orderId}`}
+            key={order.orderId}
+          >
+            <div className="flex flex-col gap-4 border-b border-navy-blue/10 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
+                  Nexi order
+                </p>
+                <NexiOrderLink
+                  className="mt-1 inline-flex max-w-full items-baseline gap-1.5 break-all font-mono text-sm font-semibold text-burned-orange-ink underline decoration-burned-orange/30 underline-offset-4"
+                  orderId={order.orderId}
+                />
+              </div>
+              <div className="sm:text-right">
+                <p className="font-semibold">{formatOrderMoney(order)}</p>
+                <p className="mt-1 text-xs text-navy-blue/60">
+                  {order.link?.stateLabel ?? "No local payment attempt"}
+                </p>
+              </div>
             </div>
-            <div className="sm:text-right">
-              <p className="font-semibold">{formatOrderMoney(order)}</p>
-              <p className="mt-1 text-xs text-navy-blue/60">
-                {order.link?.stateLabel ?? "No local payment attempt"}
+
+            {order.providerStatus === "not_found" && (
+              <AdministrationAlert className="m-4 sm:m-5" status="warning">
+                Nexi did not return this locally linked order. The order ID and
+                local payment facts remain available above.
+              </AdministrationAlert>
+            )}
+            {order.providerStatus === "unavailable" && (
+              <AdministrationAlert className="m-4 sm:m-5" status="warning">
+                Live order operations are temporarily unavailable from Nexi.
+              </AdministrationAlert>
+            )}
+            {providerHasPaymentActivity && (
+              <AdministrationAlert className="m-4 sm:m-5" status="warning">
+                Nexi reports payment activity. Automatic cleanup will keep this
+                reservation held for payment review.
+              </AdministrationAlert>
+            )}
+            {abandonmentState === "deferred" && pendingProviderOrder && (
+              <p className="m-4 rounded-xl bg-navy-blue/5 px-4 py-3 text-sm text-navy-blue/70 sm:m-5">
+                The local payment window is open until{" "}
+                {formatAdministrationDateTime(
+                  getProviderOrderAbandonmentCutoff(
+                    pendingProviderOrder.providerOrderCreatedAt
+                  ).toString()
+                )}
+                . If Nexi remains empty, automatic cleanup can release the hold.
               </p>
-            </div>
-          </div>
+            )}
+            {abandonmentState === "abandoned" && (
+              <AdministrationAlert className="m-4 sm:m-5" status="warning">
+                Nexi is still empty after the local payment window. Automatic
+                cleanup should release this reservation hold.
+              </AdministrationAlert>
+            )}
 
-          {order.providerStatus === "not_found" && (
-            <p className="m-4 rounded-lg bg-burned-orange/10 px-3 py-2 text-sm text-burned-orange-ink sm:m-5">
-              Nexi did not return this locally linked order. The order ID and
-              local payment facts remain available above.
-            </p>
-          )}
-          {order.providerStatus === "unavailable" && (
-            <p className="m-4 rounded-lg bg-sunset-yellow/15 px-3 py-2 text-sm sm:m-5">
-              Live order operations are temporarily unavailable from Nexi.
-            </p>
-          )}
-
-          {order.provider?.operations &&
-          order.provider.operations.length > 0 ? (
-            <ol aria-label={`Operations for order ${order.orderId}`}>
-              {order.provider.operations.map((operation, index) => (
-                <li
-                  className="scroll-mt-24 border-b border-navy-blue/10 px-4 py-4 last:border-b-0 sm:px-5"
-                  id={
-                    operation.operationId
-                      ? `operation-${operation.operationId}`
-                      : undefined
-                  }
-                  key={
-                    operation.operationId ??
-                    `${operation.operationTime ?? "unknown"}-${index}`
-                  }
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold">
-                          {operation.operationType
-                            ? getProviderValueLabel(operation.operationType)
-                            : "Payment operation"}
+            {order.provider?.operations &&
+            order.provider.operations.length > 0 ? (
+              <ol aria-label={`Operations for order ${order.orderId}`}>
+                {order.provider.operations.map((operation, index) => (
+                  <li
+                    className="scroll-mt-24 border-b border-navy-blue/10 px-4 py-4 last:border-b-0 sm:px-5"
+                    id={
+                      operation.operationId
+                        ? `operation-${operation.operationId}`
+                        : undefined
+                    }
+                    key={
+                      operation.operationId ??
+                      `${operation.operationTime ?? "unknown"}-${index}`
+                    }
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">
+                            {operation.operationType
+                              ? getProviderValueLabel(operation.operationType)
+                              : "Payment operation"}
+                          </p>
+                          {operation.operationResult && (
+                            <ProviderStatusBadge
+                              value={operation.operationResult}
+                            />
+                          )}
+                        </div>
+                        <p className="mt-1 text-xs text-navy-blue/60">
+                          {formatProviderDateTime(operation.operationTime)}
+                          {operation.channel && (
+                            <> · {getProviderValueLabel(operation.channel)}</>
+                          )}
                         </p>
-                        {operation.operationResult && (
-                          <ProviderStatusBadge
-                            value={operation.operationResult}
-                          />
+                        {operation.operationId && (
+                          <p className="mt-2 break-all font-mono text-xs text-navy-blue/65">
+                            {operation.operationId}
+                          </p>
                         )}
                       </div>
-                      <p className="mt-1 text-xs text-navy-blue/60">
-                        {formatProviderDateTime(operation.operationTime)}
-                        {operation.channel && (
-                          <> · {getProviderValueLabel(operation.channel)}</>
+                      <p className="font-medium sm:text-right">
+                        {formatProviderMoney(
+                          operation.amount,
+                          operation.currency
                         )}
                       </p>
-                      {operation.operationId && (
-                        <p className="mt-2 break-all font-mono text-xs text-navy-blue/65">
-                          {operation.operationId}
-                        </p>
-                      )}
                     </div>
-                    <p className="font-medium sm:text-right">
-                      {formatProviderMoney(
-                        operation.amount,
-                        operation.currency
-                      )}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          ) : (
-            order.providerStatus === "available" && (
-              <p className="px-4 py-5 text-sm text-navy-blue/60 sm:px-5">
-                Nexi did not report any operations for this order.
-              </p>
-            )
-          )}
-        </section>
-      ))}
-    </div>
-  );
-}
-
-export function OrderTable({
-  orders,
-}: {
-  readonly orders: readonly AdministrationOrder[];
-}) {
-  if (orders.length === 0) {
-    return <EmptyState message="No Nexi orders match this period." />;
-  }
-  return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
-      <Table aria-label="Nexi orders" className="min-w-[780px]">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Order</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Last operation</TableHead>
-            <TableHead>Reservation</TableHead>
-            <TableHead>Reconciliation</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {orders.map((order) => (
-            <TableRow key={order.orderId}>
-              <TableCell>
-                <Link
-                  className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                  href={`/admin/orders/${encodeURIComponent(order.orderId)}`}
-                >
-                  {order.orderId}
-                </Link>
-                {(order.provider?.lastOperationTime ||
-                  order.link?.providerOrderCreatedAt ||
-                  order.link?.attemptCreatedAt) && (
-                  <p className="mt-1 text-xs text-navy-blue/65">
-                    {formatProviderDateTime(
-                      order.provider?.lastOperationTime ??
-                        order.link?.providerOrderCreatedAt ??
-                        order.link?.attemptCreatedAt ??
-                        ""
-                    )}
-                  </p>
-                )}
-              </TableCell>
-              <TableCell className="font-medium">
-                {formatOrderMoney(order)}
-              </TableCell>
-              <TableCell>
-                {order.provider?.lastOperationType ? (
-                  <span className="font-medium">
-                    {getProviderValueLabel(order.provider.lastOperationType)}
-                  </span>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">
-                    None reported
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                {order.link ? (
-                  <Link
-                    className="font-medium hover:underline"
-                    href={`/admin/reservations/${order.link.reservationId}`}
-                  >
-                    View reservation
-                  </Link>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">Not linked</span>
-                )}
-              </TableCell>
-              <TableCell>
-                {order.provider && order.link ? (
-                  <ProviderStatusBadge value={order.link.state} />
-                ) : (
-                  <ProviderStatusBadge value={getReconciliationLabel(order)} />
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-export function OperationTable({
-  operations,
-}: {
-  readonly operations: readonly AdministrationOperation[];
-}) {
-  if (operations.length === 0) {
-    return <EmptyState message="No Nexi operations match these filters." />;
-  }
-  return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
-      <Table aria-label="Nexi operations" className="min-w-[880px]">
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>Operation</TableHead>
-            <TableHead>Order</TableHead>
-            <TableHead>Type</TableHead>
-            <TableHead>Result</TableHead>
-            <TableHead>Origin</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Reservation</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {operations.map((operation, index) => (
-            <TableRow
-              key={
-                operation.operationId ??
-                `${operation.orderId ?? "unknown"}-${operation.operationTime ?? index}`
-              }
-            >
-              <TableCell>
-                {operation.operationId ? (
-                  <Link
-                    className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                    href={`/admin/operations/${encodeURIComponent(operation.operationId)}`}
-                  >
-                    {operation.operationId}
-                  </Link>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">
-                    Not reported
-                  </span>
-                )}
-                {operation.operationTime && (
-                  <p className="mt-1 text-xs text-navy-blue/65">
-                    {formatProviderDateTime(operation.operationTime)}
-                  </p>
-                )}
-              </TableCell>
-              <TableCell>
-                {operation.orderId ? (
-                  <Link
-                    className="font-mono text-xs hover:underline"
-                    href={`/admin/orders/${encodeURIComponent(operation.orderId)}`}
-                  >
-                    {operation.orderId}
-                  </Link>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">
-                    Not reported
-                  </span>
-                )}
-              </TableCell>
-              <TableCell className="font-medium">
-                {operation.operationType
-                  ? getProviderValueLabel(operation.operationType)
-                  : "Not reported"}
-              </TableCell>
-              <TableCell>
-                {operation.operationResult ? (
-                  <ProviderStatusBadge value={operation.operationResult} />
-                ) : (
-                  <span className="text-sm text-navy-blue/65">
-                    Not reported
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                {operation.channel
-                  ? getProviderValueLabel(operation.channel)
-                  : "Not reported"}
-              </TableCell>
-              <TableCell className="font-medium">
-                {formatProviderMoney(operation.amount, operation.currency)}
-              </TableCell>
-              <TableCell>
-                {operation.linkedReservationId ? (
-                  <Link
-                    className="font-medium hover:underline"
-                    href={`/admin/reservations/${operation.linkedReservationId}`}
-                  >
-                    View reservation
-                  </Link>
-                ) : (
-                  <span className="text-sm text-navy-blue/65">Not linked</span>
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              order.providerStatus === "available" && (
+                <p className="px-4 py-5 text-sm text-navy-blue/60 sm:px-5">
+                  Nexi did not report any operations for this order.
+                </p>
+              )
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }

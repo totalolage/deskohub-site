@@ -2,12 +2,12 @@ import "server-only";
 
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { cache } from "react";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
-import type { DiscountCodeId } from "../persistence-contracts";
+import type { DiscountCodeId, VoucherId } from "../persistence-contracts";
 import { requireDiscountAdminAuthorization } from "./basic-auth.server";
-import { DiscountAdministrationLive } from "./discount-administration.runtime";
 import { DiscountAdministration } from "./discount-administration.service";
 
 export type DiscountAdminSearchParams = Promise<{
@@ -20,18 +20,81 @@ export const loadDiscountAdminPageData = async (
 ) => {
   await authorizeDiscountAdminPage();
 
-  const dashboard = await Effect.gen(function* () {
+  const dashboard = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadDashboard();
   }).pipe(
-    Effect.provide(DiscountAdministrationLive),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load", {
       boundary: "route",
     })
   );
-  const notice = await loadNotice(searchParams);
+  const [resolvedDashboard, notice] = await Promise.all([
+    dashboard,
+    loadNotice(searchParams),
+  ]);
 
-  return { dashboard, notice };
+  return { dashboard: resolvedDashboard, notice };
+};
+
+export const loadDiscountAdminCodesPageData = async (
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+  const dashboard = Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadCodesPage();
+  }).pipe(
+    Effect.provide(DiscountAdministration.Live),
+    runWorkspaceEffect("discount-administration.load-codes", {
+      boundary: "route",
+    })
+  );
+  const [resolvedDashboard, notice] = await Promise.all([
+    dashboard,
+    loadNotice(searchParams),
+  ]);
+  return { dashboard: resolvedDashboard, notice };
+};
+
+export const loadDiscountAdminSalesPageData = async (
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+  const dashboard = Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadSalesPage();
+  }).pipe(
+    Effect.provide(DiscountAdministration.Live),
+    runWorkspaceEffect("discount-administration.load-sales", {
+      boundary: "route",
+    })
+  );
+  const [resolvedDashboard, notice] = await Promise.all([
+    dashboard,
+    loadNotice(searchParams),
+  ]);
+  return { dashboard: resolvedDashboard, notice };
+};
+
+export const loadDiscountAdminVouchersPageData = async (
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+  const dashboard = Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadVouchersPage();
+  }).pipe(
+    Effect.provide(DiscountAdministration.Live),
+    runWorkspaceEffect("discount-administration.load-vouchers", {
+      boundary: "route",
+    })
+  );
+  const [resolvedDashboard, notice] = await Promise.all([
+    dashboard,
+    loadNotice(searchParams),
+  ]);
+  return { dashboard: resolvedDashboard, notice };
 };
 
 export const loadDiscountAdminShellPageData = async (
@@ -47,21 +110,25 @@ export const loadDiscountAdminCodePageData = async (
 ) => {
   await authorizeDiscountAdminPage();
 
-  const detail = await Effect.gen(function* () {
+  const detail = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadCodeDetail({ codeId });
   }).pipe(
     Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministrationLive),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-code", {
       boundary: "route",
     })
   );
-  if (!detail) notFound();
+  const [resolvedDetail, notice] = await Promise.all([
+    detail,
+    loadNotice(searchParams),
+  ]);
+  if (!resolvedDetail) notFound();
 
   return {
-    detail,
-    notice: await loadNotice(searchParams),
+    detail: resolvedDetail,
+    notice,
   };
 };
 
@@ -71,22 +138,49 @@ export const loadDiscountAdminCustomerPageData = async (
 ) => {
   await authorizeDiscountAdminPage();
 
-  const profile = await Effect.gen(function* () {
+  const profile = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadCustomerProfile({ customerId });
   }).pipe(
     Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministrationLive),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-customer", {
       boundary: "route",
     })
   );
-  if (!profile) notFound();
+  const [resolvedProfile, notice] = await Promise.all([
+    profile,
+    loadNotice(searchParams),
+  ]);
+  if (!resolvedProfile) notFound();
 
   return {
-    profile,
-    notice: await loadNotice(searchParams),
+    profile: resolvedProfile,
+    notice,
   };
+};
+
+export const loadDiscountAdminVoucherPageData = async (
+  voucherId: VoucherId,
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+  const detail = Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadVoucherDetail({ voucherId });
+  }).pipe(
+    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
+    Effect.provide(DiscountAdministration.Live),
+    runWorkspaceEffect("discount-administration.load-voucher", {
+      boundary: "route",
+    })
+  );
+  const [resolvedDetail, notice] = await Promise.all([
+    detail,
+    loadNotice(searchParams),
+  ]);
+  if (!resolvedDetail) notFound();
+  return { detail: resolvedDetail, notice };
 };
 
 export const loadDiscountAdminCustomerCodeCreationPageData = async (
@@ -99,7 +193,7 @@ export const loadDiscountAdminCustomerCodeCreationPageData = async (
     return yield* administration.loadCustomerCodeCreation({ customerId });
   }).pipe(
     Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.provide(DiscountAdministrationLive),
+    Effect.provide(DiscountAdministration.Live),
     runWorkspaceEffect("discount-administration.load-customer-code-creation", {
       boundary: "route",
     })
@@ -121,7 +215,7 @@ const loadOptionalDiscountAdminCustomerProfile = cache(
           customerId,
         }).pipe(Effect.as(null))
       ),
-      Effect.provide(DiscountAdministrationLive),
+      Effect.provide(DiscountAdministration.Live),
       runWorkspaceEffect("discount-administration.load-customer-optional", {
         boundary: "route",
       })
@@ -133,11 +227,14 @@ export const loadOptionalDiscountAdminCustomerPageData = async (
   searchParams: DiscountAdminSearchParams
 ) => {
   await authorizeDiscountAdminPage();
-  const profile = await loadOptionalDiscountAdminCustomerProfile(customerId);
+  const [profile, notice] = await Promise.all([
+    loadOptionalDiscountAdminCustomerProfile(customerId),
+    loadNotice(searchParams),
+  ]);
 
   return {
     profile,
-    notice: await loadNotice(searchParams),
+    notice,
   };
 };
 
@@ -145,11 +242,24 @@ export const loadDiscountAdminCustomerBreadcrumbLabel = async (
   customerId: DotyposCustomerId
 ) => {
   await authorizeDiscountAdminPage();
-  const profile = await loadOptionalDiscountAdminCustomerProfile(customerId);
-  return profile?.customer.displayName;
+  return Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadCustomerBreadcrumbLabel({ customerId });
+  }).pipe(
+    Effect.provide(DiscountAdministration.Live),
+    Effect.catch((cause) =>
+      Effect.logWarning("Customer breadcrumb label unavailable", {
+        cause,
+        customerId,
+      }).pipe(Effect.as(undefined))
+    ),
+    runWorkspaceEffect("discount-administration.customer-breadcrumb", {
+      boundary: "route",
+    })
+  );
 };
 
-export const authorizeDiscountAdminPage = async () => {
+export const authorizeDiscountAdminPage = cache(async () => {
   const authorized = await requireDiscountAdminAuthorization().pipe(
     Effect.as(true),
     Effect.catchTag("DiscountAdminUnauthorizedError", () =>
@@ -163,7 +273,8 @@ export const authorizeDiscountAdminPage = async () => {
   if (!authorized) {
     notFound();
   }
-};
+  await connection();
+});
 
 const loadNotice = async (searchParams: DiscountAdminSearchParams) => {
   const params = await searchParams;

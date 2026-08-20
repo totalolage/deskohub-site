@@ -10,6 +10,7 @@ const input = {
   locale: "en-US" as const,
   payStateToken: "pay-state-token",
   legalConsent: true,
+  earlyPerformanceConsent: true,
 };
 
 const runSubmitReservation = async (options?: {
@@ -34,6 +35,7 @@ const runSubmitReservation = async (options?: {
       Effect.succeed({
         status: "redirect" as const,
         redirectUrl: "https://payments.example.test/checkout",
+        statusUrl: "/en-US/reservation/status/reservation-id",
       })
     );
 
@@ -72,6 +74,7 @@ describe("submitWorkspaceReservation", () => {
         return {
           status: "redirect" as const,
           redirectUrl: "https://payments.example.test/checkout",
+          statusUrl: "/en-US/reservation/status/reservation-id",
         };
       })
     );
@@ -90,6 +93,7 @@ describe("submitWorkspaceReservation", () => {
       {
         payStateToken: input.payStateToken,
         legalConsent: true,
+        earlyPerformanceConsent: true,
       },
       "en-US"
     );
@@ -97,6 +101,7 @@ describe("submitWorkspaceReservation", () => {
       message: "Checkout started successfully",
       status: "redirect",
       redirectUrl: "https://payments.example.test/checkout",
+      statusUrl: "/en-US/reservation/status/reservation-id",
     });
   });
 
@@ -236,6 +241,35 @@ describe("submitWorkspaceReservation", () => {
     expect(error).toMatchObject({
       _tag: "PublicSafeActionError",
       message: m.reservationValidationMeetingRoomEnded({}, { locale }),
+    });
+  });
+
+  test.each([
+    "en-US",
+    "cs-CZ",
+  ] as const)("localizes an ended office reservation in %s", async (locale) => {
+    const { CheckoutError } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const { m } = await import("@/features/i18n");
+    const createHostedPaymentCheckout = mock(() =>
+      Effect.fail(
+        new CheckoutError({
+          code: "office_reservation_ended",
+          message: "internal diagnostic",
+        })
+      )
+    );
+    const scenario = await runSubmitReservation({
+      createHostedPaymentCheckout,
+      locale,
+    });
+
+    const error = await Effect.runPromise(Effect.flip(scenario.effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.reservationValidationOfficeEnded({}, { locale }),
     });
   });
 });

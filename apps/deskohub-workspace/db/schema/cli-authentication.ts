@@ -1,6 +1,9 @@
 import type {
   AdministrationDiscountMutationResultType,
   AdministrationDiscountMutationType,
+  AdministrationReservationAccessGrantType,
+  AdministrationReservationAccessMutationType,
+  AdministrationWorkspaceReservationIdType,
   CliBuildTargetType,
   CliMutationRequestIdType,
   CliSessionIdType,
@@ -16,6 +19,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
@@ -68,7 +72,10 @@ export const cliSessions = pgTable(
 export const cliAuthenticationRequests = pgTable(
   "cli_authentication_requests",
   {
-    id: text("id").primaryKey().default(postgresUuidV7),
+    id: text("id")
+      .primaryKey()
+      .default(postgresUuidV7)
+      .$type<CliAuthenticationRequestId>(),
     codeHash: text("code_hash").notNull(),
     challenge: text("challenge").notNull(),
     clientName: text("client_name").notNull(),
@@ -144,10 +151,8 @@ export const cliMutationRequests = pgTable(
       .$type<CliSessionIdType>()
       .references(() => cliSessions.id, { onDelete: "cascade" }),
     requestId: text("request_id").notNull().$type<CliMutationRequestIdType>(),
-    mutation: jsonb("mutation")
-      .notNull()
-      .$type<AdministrationDiscountMutationType>(),
-    result: jsonb("result").$type<AdministrationDiscountMutationResultType>(),
+    mutation: jsonb("mutation").notNull().$type<CliStoredMutation>(),
+    result: jsonb("result").$type<CliStoredMutationResult>(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     completedAt: instant("completed_at"),
   },
@@ -174,6 +179,18 @@ export const cliMutationRequests = pgTable(
     ),
   ]
 );
+
+export type CliStoredMutation =
+  | AdministrationDiscountMutationType
+  | {
+      readonly kind: "reservation-access";
+      readonly reservationId: AdministrationWorkspaceReservationIdType;
+      readonly mutation: AdministrationReservationAccessMutationType;
+    };
+
+export type CliStoredMutationResult =
+  | AdministrationDiscountMutationResultType
+  | AdministrationReservationAccessGrantType;
 
 export type CliSessionRow = typeof cliSessions.$inferSelect;
 export type NewCliSessionRow = typeof cliSessions.$inferInsert;

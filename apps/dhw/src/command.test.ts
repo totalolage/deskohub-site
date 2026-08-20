@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   AdministrationDiscountCodeId,
+  AdministrationVoucherId,
+  AdministrationWorkspaceReservationId,
   CliAccessToken,
   CliSessionId,
 } from "@deskohub/workspace-admin-api";
@@ -19,6 +21,12 @@ const sessionId = Schema.decodeUnknownSync(CliSessionId)(
 const codeId = Schema.decodeUnknownSync(AdministrationDiscountCodeId)(
   "01980000-0000-7000-8000-000000000001"
 );
+const voucherId = Schema.decodeUnknownSync(AdministrationVoucherId)(
+  "01980000-0000-7000-8000-000000000002"
+);
+const reservationId = Schema.decodeUnknownSync(
+  AdministrationWorkspaceReservationId
+)("reservation-test");
 const session = {
   id: sessionId,
   clientName: "test client",
@@ -48,6 +56,41 @@ describe("dhw mutation commands", () => {
     expect(revocations).toBe(0);
   });
 
+  test("confirms reservation cancellation and forwards the email choice", async () => {
+    const cancellations: unknown[] = [];
+    const { layer } = makeCommandLayer({
+      cancelReservation: (_accessToken, id, input) =>
+        Effect.sync(() => {
+          cancellations.push({ id, input });
+          return { outcome: "cancelled", email: "sent" } as const;
+        }),
+    });
+
+    await runCommand(
+      [
+        "--json",
+        "reservations",
+        "cancel",
+        reservationId,
+        "--confirm-access-credential-removed",
+        "--send-cancellation-email",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(cancellations).toEqual([
+      {
+        id: reservationId,
+        input: {
+          accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+          providerCredentialRemoved: true,
+          sendCancellationEmail: true,
+        },
+      },
+    ]);
+  });
+
   test("clears the local credential after revoking its own session", async () => {
     let clears = 0;
     const { layer } = makeCommandLayer({
@@ -64,6 +107,56 @@ describe("dhw mutation commands", () => {
     ).pipe(Effect.runPromise);
 
     expect(clears).toBe(1);
+  });
+
+  test("requires confirmation and provider cleanup before reconciling access", async () => {
+    const { accessMutations, layer } = makeCommandLayer();
+
+    const confirmationError = await runCommand(
+      ["--json", "reservations", "retry-access", "reservation-1"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+    const providerError = await runCommand(
+      ["--json", "reservations", "reconcile-access", "reservation-1", "--yes"],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(confirmationError).toMatchObject({
+      _tag: "ConfirmationRequiredError",
+    });
+    expect(providerError).toMatchObject({ _tag: "InvalidMutationInputError" });
+    expect(accessMutations).toHaveLength(0);
+  });
+
+  test("dispatches the confirmed reservation access mutations", async () => {
+    const { accessMutations, layer } = makeCommandLayer();
+
+    await runCommand(
+      ["--json", "reservations", "retry-access", "reservation-1", "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      [
+        "--json",
+        "reservations",
+        "reconcile-access",
+        "reservation-1",
+        "--provider-credential-removed",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(accessMutations).toEqual([
+      ["reservation-1", { kind: "retry-failed" }],
+      [
+        "reservation-1",
+        {
+          kind: "confirm-provider-credential-removed",
+          providerCredentialRemoved: true,
+        },
+      ],
+    ]);
   });
 
   test("rejects percentages that cannot be represented as whole basis points", async () => {
@@ -83,7 +176,7 @@ describe("dhw mutation commands", () => {
           "--percentage",
           "0.015",
           "--product",
-          "cowork:basic",
+          "cowork",
         ],
         layer
       ).pipe(Effect.runPromise)
@@ -108,7 +201,7 @@ describe("dhw mutation commands", () => {
         "--percentage",
         "0.01",
         "--product",
-        "cowork:basic",
+        "cowork",
       ],
       layer
     ).pipe(Effect.runPromise);
@@ -119,7 +212,43 @@ describe("dhw mutation commands", () => {
         discount: {
           labels: { "cs-CZ": "Léto", "en-US": "Summer" },
           adjustment: { kind: "percentage", basisPoints: 1 },
-          products: [{ kind: "cowork", tier: "basic" }],
+          products: [{ kind: "cowork" }],
+        },
+      },
+    ]);
+  });
+
+  test("maps a per-customer code limit", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "codes",
+        "create",
+        "existing",
+        "SUMMER10",
+        "01980000-0000-7000-8000-000000000002",
+        "--max-uses-per-customer",
+        "2",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "create-code",
+        code: {
+          code: "SUMMER10",
+          enabled: true,
+          maxUses: null,
+          maxUsesPerCustomer: 2,
+          validFrom: null,
+          validUntil: null,
+        },
+        discount: {
+          kind: "existing",
+          discountId: "01980000-0000-7000-8000-000000000002",
         },
       },
     ]);
@@ -141,15 +270,116 @@ describe("dhw mutation commands", () => {
         "--percentage",
         "10",
         "--product",
-        "cowork:basic",
+        "cowork",
         "--product",
-        "cowork:basic",
+        "cowork",
       ],
       layer
     ).pipe(Effect.flip, Effect.runPromise);
 
     expect(error).toMatchObject({ _tag: "InvalidMutationInputError" });
     expect(mutations).toHaveLength(0);
+  });
+
+  test("creates reusable voucher credit", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "vouchers",
+        "create",
+        "VOUCHER100",
+        "--credit-value",
+        "10000",
+        "--currency",
+        "CZK",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "create-voucher",
+        voucher: {
+          code: "VOUCHER100",
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+          enabled: true,
+          validFrom: null,
+          validUntil: null,
+        },
+      },
+    ]);
+  });
+
+  test("updates reusable voucher credit and configuration", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "vouchers",
+        "update",
+        voucherId,
+        "GIFT150",
+        "--credit-value",
+        "15000",
+        "--currency",
+        "CZK",
+        "--enabled",
+        "false",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "update-voucher",
+        voucher: {
+          id: voucherId,
+          code: "GIFT150",
+          credit: { value: 15_000, exponent: 2, currency: "CZK" },
+          enabled: false,
+          validFrom: null,
+          validUntil: null,
+        },
+      },
+    ]);
+  });
+
+  test("manages a voucher audience and deletion", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      ["--json", "vouchers", "add-customer", voucherId, "customer-1", "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      [
+        "--json",
+        "vouchers",
+        "remove-customer",
+        voucherId,
+        "customer-1",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      ["--json", "vouchers", "make-unrestricted", voucherId, "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+    await runCommand(
+      ["--json", "vouchers", "delete", voucherId, "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      { kind: "add-voucher-customer", voucherId, customerId: "customer-1" },
+      { kind: "remove-voucher-customer", voucherId, customerId: "customer-1" },
+      { kind: "make-voucher-unrestricted", voucherId },
+      { kind: "delete-voucher", id: voucherId },
+    ]);
   });
 });
 
@@ -162,15 +392,24 @@ const runCommand = <R>(
   );
 
 const makeCommandLayer = ({
+  cancelReservation = () =>
+    Effect.succeed({ outcome: "already_cancelled", email: "not_requested" }),
   clear = Effect.succeed(true),
   revokeSession = () => Effect.succeed({ changed: false }),
 }: {
+  readonly cancelReservation?: WorkspaceAdminApiClient["Service"]["cancelReservation"];
   readonly clear?: AuthenticationService["Service"]["clear"];
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
 } = {}) => {
   const mutations: unknown[] = [];
+  const accessMutations: unknown[] = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
+    cancelReservation,
+    getReservation: () =>
+      Effect.succeed({
+        accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
+      } as never),
     mutateDiscounts: (_accessToken, _requestId, mutation) =>
       Effect.sync(() => {
         mutations.push(mutation);
@@ -182,6 +421,39 @@ const makeCommandLayer = ({
             mutation.kind === "create-customer-code"
               ? codeId
               : null,
+          createdVoucherId:
+            mutation.kind === "create-voucher" ||
+            mutation.kind === "create-customer-voucher"
+              ? voucherId
+              : null,
+        };
+      }),
+    mutateReservationAccess: (
+      _accessToken,
+      _requestId,
+      reservationId,
+      mutation
+    ) =>
+      Effect.sync(() => {
+        accessMutations.push([reservationId, mutation]);
+        const timestamp = "2026-08-10T10:00:00.000Z";
+        return {
+          id: "access-1",
+          state: "issued" as const,
+          provider: "igloohome",
+          credentialType: "algopin-hourly",
+          deviceId: "EK1X16f8898a",
+          providerCredentialId: "pin-1",
+          accessName: `Deskohub ${reservationId}`,
+          scheduledStartsAt: timestamp,
+          startsAt: timestamp,
+          endsAt: timestamp,
+          provisioningStartedAt: timestamp,
+          issuedAt: timestamp,
+          failedAt: null,
+          failureCode: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
         };
       }),
     revokeSession,
@@ -202,6 +474,7 @@ const makeCommandLayer = ({
   });
 
   return {
+    accessMutations,
     mutations,
     layer: Layer.mergeAll(BunServices.layer, api, authentication, config),
   };

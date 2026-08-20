@@ -21,7 +21,7 @@ export function LandingPageSaleBanner({
   return (
     <aside
       aria-label={content.statusLabel}
-      className="absolute left-1/2 top-[calc(var(--site-header-height)+1rem)] z-20 w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2 text-left text-navy-blue drop-shadow-[0_30px_45px_rgba(0,2,79,0.42)]"
+      className="relative z-20 mx-auto mt-6 w-[calc(100%-2rem)] max-w-4xl text-left text-navy-blue drop-shadow-[0_30px_45px_rgba(0,2,79,0.42)]"
     >
       <div
         className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-3xl bg-[#f4f1ea] px-7 py-3 sm:px-9"

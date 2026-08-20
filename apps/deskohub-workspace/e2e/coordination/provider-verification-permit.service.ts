@@ -23,7 +23,7 @@ export class WorkspaceE2EProviderVerificationPermitService extends Context.Servi
     )
   );
 
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const sql = yield* PgClient.PgClient;

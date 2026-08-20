@@ -82,7 +82,7 @@ test("uses a document navigation to reopen signed reservation state", async () =
   expect(capturedLinks).toBeEmpty();
 });
 
-test("prefetches reserve-again while protecting status-page context links", async () => {
+test("starts a new reservation with a fresh document", async () => {
   const { CheckoutStatusPage } = await import("./checkout-status-page");
 
   const view = render(
@@ -113,10 +113,14 @@ test("prefetches reserve-again while protecting status-page context links", asyn
     href: supportHref,
     prefetch: false,
   });
-  expect(capturedLinks).toContainEqual({
-    href: "/en-US/reservation/cowork",
-    prefetch: undefined,
-  });
+  expect(
+    view
+      .getByRole("link", { name: "Start a new reservation" })
+      .getAttribute("href")
+  ).toBe("/en-US/reservation/cowork");
+  expect(
+    capturedLinks.some(({ href }) => href === "/en-US/reservation/cowork")
+  ).toBe(false);
   expect(capturedLinks).toContainEqual({
     href: "/en-US",
     prefetch: false,

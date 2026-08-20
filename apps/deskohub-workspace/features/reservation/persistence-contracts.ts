@@ -7,11 +7,16 @@ import {
   getStoredMeetingRoomReservationDetails,
   storedMeetingRoomReservationDetailsSchema,
 } from "@/features/reservation/meeting-room-reservation";
+import {
+  getStoredOfficeReservationDetails,
+  storedOfficeReservationDetailsSchema,
+} from "@/features/reservation/office-reservation";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 export const storedWorkspaceReservationDetailsSchema = Schema.Union([
   storedCoworkReservationDetailsSchema,
   storedMeetingRoomReservationDetailsSchema,
+  storedOfficeReservationDetailsSchema,
 ]).annotate({
   identifier: "StoredWorkspaceReservationDetails",
   description:
@@ -28,6 +33,7 @@ export const getStoredWorkspaceReservationDetails = (
     Match.discriminatorsExhaustive("kind")({
       cowork: getStoredCoworkReservationDetails,
       "meeting-room": getStoredMeetingRoomReservationDetails,
+      office: getStoredOfficeReservationDetails,
     })
   );
 

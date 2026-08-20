@@ -27,7 +27,7 @@ export class AllocationService extends Context.Service<
   AllocationService,
   IAllocationService
 >()("WorkspaceE2E/AllocationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const repository = yield* AllocationRepository;

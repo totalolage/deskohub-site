@@ -18,3 +18,5 @@ If something in the project is surprising or unclear, alert the developer and na
 - Never print or quote secrets, access codes, tokens, or sensitive production payloads. Load `$deskohub-workspace-operations` before production diagnostics.
 - Preview environments and preview databases must never contain real PII; use synthetic data only.
 - In this secondary worktree, `main` may already be checked out in the primary repository. After fetching, create the next feature branch directly from `origin/main` instead of trying to switch this worktree to `main`.
+- Outside repository control metadata and generated release artifacts, keep Markdown outside `.agents/skills` limited to business-oriented product and policy specifications. Put implementation, architecture, setup, testing, diagnostic, and operational guidance in the matching repository skill.
+- Write skill frontmatter descriptions as concise trigger phrases and search keywords for when the skill should be loaded, not as summaries of its instructions.

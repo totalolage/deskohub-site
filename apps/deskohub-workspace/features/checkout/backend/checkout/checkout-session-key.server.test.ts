@@ -3,11 +3,12 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
+import type { ReservationBillingSelectionInput } from "@/features/reservation/reservation-billing";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 
 mock.module("server-only", () => ({}));
 
-const decodeReservation = (input: unknown) =>
+const decodeReservation = <T>(input: T) =>
   Schema.decodeUnknownEffect(reservationOrderSchema)(input).pipe(
     Effect.runSync
   );
@@ -62,5 +63,52 @@ describe("checkout attempt key", () => {
     for (const key of keys) {
       expect(key).toMatch(/^[a-f0-9]{64}$/);
     }
+  });
+
+  test("changes when reservation purpose or billing identity changes", async () => {
+    const { deriveCheckoutAttemptKey } = await import(
+      "./checkout-session-key.server"
+    );
+    const base = {
+      kind: "cowork",
+      ...contact,
+      date: "2099-06-10",
+      entryTier: "basic",
+      coffee: false,
+    };
+    const getKey = (billing: ReservationBillingSelectionInput) =>
+      deriveCheckoutAttemptKey({
+        checkoutSessionId: "session-id",
+        checkoutAttemptId: "attempt-id",
+        reservation: decodeReservation({ ...base, billing }),
+      });
+    const address = {
+      line1: "Synthetic street 1",
+      city: "Prague",
+      postalCode: "100 00",
+      country: "CZ",
+    };
+
+    const keys = [
+      getKey({ purpose: "personal", invoice: "none" }),
+      getKey({ purpose: "personal", invoice: "requested", address }),
+      getKey({
+        purpose: "personal",
+        invoice: "requested",
+        address: { ...address, postalCode: "100 01" },
+      }),
+      getKey({
+        purpose: "business",
+        invoice: "required",
+        buyer: {
+          kind: "business",
+          legalName: "Synthetic Company s.r.o.",
+          companyId: "12345678",
+          address,
+        },
+      }),
+    ];
+
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });

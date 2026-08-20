@@ -1,8 +1,13 @@
-import Link from "next/link";
+import { Suspense } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
+  AdministrationAlert,
+  AdministrationDetailSection,
+  AdministrationFact,
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
+import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationOperation } from "@/features/administration/page-data.server";
 import {
   formatProviderDateTime,
@@ -11,7 +16,23 @@ import {
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
 
-export default async function OperationAdministrationDetailPage({
+export default function OperationAdministrationDetailPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly operationId: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="operation details" />}
+      >
+        <OperationAdministrationDetail params={params} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+export async function OperationAdministrationDetail({
   params,
 }: {
   readonly params: Promise<{ readonly operationId: string }>;
@@ -20,7 +41,7 @@ export default async function OperationAdministrationDetailPage({
   const detail = await loadAdministrationOperation(operationId);
   const operation = detail.operation;
   return (
-    <AdministrationPage>
+    <>
       <AdministrationPageHeader
         actions={
           operation?.operationResult ? (
@@ -32,21 +53,21 @@ export default async function OperationAdministrationDetailPage({
         title={operationId}
       />
       {detail.providerStatus === "not_found" && (
-        <p className="mb-5 rounded-xl border border-burned-orange/30 bg-burned-orange/10 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-5" status="error">
           Nexi did not find this operation.
-        </p>
+        </AdministrationAlert>
       )}
       {detail.providerStatus === "unavailable" && (
-        <p className="mb-5 rounded-xl border border-sunset-yellow/35 bg-sunset-yellow/10 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-5" status="warning">
           Nexi operation details are temporarily unavailable.
-        </p>
+        </AdministrationAlert>
       )}
       {operation && (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
             <h2 className="text-xl">Operation details</h2>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <OperationFact
+              <AdministrationFact
                 label="Type"
                 value={
                   operation.operationType
@@ -54,7 +75,7 @@ export default async function OperationAdministrationDetailPage({
                     : "Not reported"
                 }
               />
-              <OperationFact
+              <AdministrationFact
                 label="Result"
                 value={
                   operation.operationResult
@@ -62,7 +83,7 @@ export default async function OperationAdministrationDetailPage({
                     : "Not reported"
                 }
               />
-              <OperationFact
+              <AdministrationFact
                 label="Origin"
                 value={
                   operation.channel
@@ -70,18 +91,18 @@ export default async function OperationAdministrationDetailPage({
                     : "Not reported"
                 }
               />
-              <OperationFact
+              <AdministrationFact
                 label="Occurred"
                 value={formatProviderDateTime(operation.operationTime)}
               />
-              <OperationFact
+              <AdministrationFact
                 label="Amount"
                 value={formatProviderMoney(
                   operation.amount,
                   operation.currency
                 )}
               />
-              <OperationFact
+              <AdministrationFact
                 label="Reverses operation"
                 value={operation.cancelledOperationId ?? "Not applicable"}
               />
@@ -109,24 +130,7 @@ export default async function OperationAdministrationDetailPage({
           </aside>
         </div>
       )}
-    </AdministrationPage>
-  );
-}
-
-function OperationFact({
-  label,
-  value,
-}: {
-  readonly label: string;
-  readonly value: string;
-}) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
-        {label}
-      </dt>
-      <dd className="mt-1.5 break-words font-medium">{value}</dd>
-    </div>
+    </>
   );
 }
 
@@ -145,10 +149,7 @@ function RelatedEntity({
     </span>
   );
   return (
-    <section className="rounded-xl border border-navy-blue/10 bg-white p-3">
-      <h2 className="px-3 pb-2 pt-1 text-xs font-semibold uppercase tracking-[0.12em] text-navy-blue/65">
-        {title}
-      </h2>
+    <AdministrationDetailSection density="compact" title={title}>
       {href ? (
         <Link
           className="block rounded-lg px-3 py-3 hover:bg-navy-blue/[0.035]"
@@ -159,6 +160,6 @@ function RelatedEntity({
       ) : (
         <div className="px-3 py-3">{content}</div>
       )}
-    </section>
+    </AdministrationDetailSection>
   );
 }

@@ -8,27 +8,26 @@ import {
 } from "motion/react";
 import { type ReactNode, useRef } from "react";
 import { Container } from "@/shared/components/container";
+import { cn } from "@/shared/utils";
 
 type LandingPageHeroScrollSceneProps = {
-  ariaBusy: boolean;
   ariaLabelledBy: string;
   id: string;
   className?: string;
   background: ReactNode;
   bottomSection: ReactNode;
   children: ReactNode;
-  overlay?: ReactNode;
+  saleBanner?: ReactNode;
 };
 
 export function LandingPageHeroScrollScene({
-  ariaBusy,
   ariaLabelledBy,
   id,
   className,
   background,
   bottomSection,
   children,
-  overlay,
+  saleBanner,
 }: LandingPageHeroScrollSceneProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const shouldReduceMotion = useReducedMotion();
@@ -43,7 +42,6 @@ export function LandingPageHeroScrollScene({
 
   return (
     <section
-      aria-busy={ariaBusy}
       aria-labelledby={ariaLabelledBy}
       className={className}
       id={id}
@@ -60,9 +58,14 @@ export function LandingPageHeroScrollScene({
         {background}
       </motion.div>
 
-      {overlay}
+      {saleBanner}
 
-      <Container className="mx-auto flex min-h-[calc(100dvh-var(--site-header-height)-var(--hero-bottom-section-height))] w-full flex-col items-center justify-center pb-28 text-center">
+      <Container
+        className={cn(
+          "mx-auto flex min-h-[calc(100dvh-var(--site-header-height)-var(--hero-bottom-section-height))] w-full flex-col items-center justify-center pb-28 text-center",
+          "group-has-[[data-landing-page-sale-banner]]:pt-16 sm:group-has-[[data-landing-page-sale-banner]]:pt-10"
+        )}
+      >
         <motion.div
           className="relative z-1 flex flex-col items-center text-center"
           style={

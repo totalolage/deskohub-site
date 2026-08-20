@@ -5,22 +5,19 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
-import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 
 const testInstant = (value = "2026-06-01T10:00:00Z") =>
   Temporal.Instant.from(value);
 
-const makeReservation = (overrides: Record<string, unknown> = {}) => ({
+const makeReservation = <Overrides extends object>(overrides?: Overrides) => ({
   id: "reservation-provider-return",
   checkoutSessionKey: "session-key",
   checkoutAttemptKey: "attempt-key",
   correlationId: "correlation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: "dotypos-reservation-id",
-  customerAccessCode: "customer-access-code",
   reservationDetails: {
     kind: "cowork",
     entryTier: "profi",
@@ -50,7 +47,9 @@ const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const makePaymentAttempt = (overrides: Record<string, unknown> = {}) => ({
+const makePaymentAttempt = <Overrides extends object>(
+  overrides?: Overrides
+) => ({
   id: "attempt-provider-return",
   workspaceReservationId: "reservation-provider-return",
   provider: "nexi",
@@ -72,24 +71,23 @@ const makePaymentAttempt = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const makeDotypos = (overrides: Record<string, unknown> = {}) =>
-  ({
-    getReservation: mock(() =>
-      Effect.succeed({
-        reservation: {
-          id: "dotypos-reservation-id",
-          _customerId: "customer-id",
-          startDate: "2026-06-20T00:00:00.000+02:00",
-          endDate: "2026-06-21T00:00:00.000+02:00",
-          seats: "1",
-          status: "CONFIRMED",
-        },
-        customer: { id: "customer-id" },
-      })
-    ),
-    getTables: mock(() => Effect.succeed([])),
-    ...overrides,
-  }) as unknown as typeof DotyposService.Service;
+const makeDotypos = <Overrides extends object>(overrides?: Overrides) => ({
+  getReservation: mock(() =>
+    Effect.succeed({
+      reservation: {
+        id: "dotypos-reservation-id",
+        _customerId: "customer-id",
+        startDate: "2026-06-20T00:00:00.000+02:00",
+        endDate: "2026-06-21T00:00:00.000+02:00",
+        seats: "1",
+        status: "CONFIRMED",
+      },
+      customer: { id: "customer-id" },
+    })
+  ),
+  getTables: mock(() => Effect.succeed([])),
+  ...overrides,
+});
 
 describe("CheckoutStatusService", () => {
   test("refreshes successful payment status before reading status", async () => {
@@ -120,7 +118,7 @@ describe("CheckoutStatusService", () => {
           })
         )
       ),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment,
     };
@@ -132,7 +130,7 @@ describe("CheckoutStatusService", () => {
     };
     const paymentAttempts = {
       findDisplayableForReservation: mock(() => Effect.succeed(null)),
-    } as unknown as PaymentAttemptRepositoryType;
+    };
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -142,14 +140,14 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, finalization),
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-              Layer.succeed(DotyposService, makeDotypos()),
-              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              Layer.mock(DotyposService, makeDotypos()),
+              Layer.mock(ReservationHoldCleanupService, holdCleanup),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -192,7 +190,7 @@ describe("CheckoutStatusService", () => {
     };
     const reservations = {
       findById: mock(() => Effect.succeed(makeReservation())),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const holdCleanup: ReservationHoldCleanupServiceType = {
       cancelOrderHold,
       sweepExpiredHolds: mock(() =>
@@ -201,7 +199,7 @@ describe("CheckoutStatusService", () => {
     };
     const paymentAttempts = {
       findDisplayableForReservation: mock(() => Effect.succeed(null)),
-    } as unknown as PaymentAttemptRepositoryType;
+    };
 
     await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -211,14 +209,14 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, finalization),
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-              Layer.succeed(DotyposService, makeDotypos()),
-              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              Layer.mock(DotyposService, makeDotypos()),
+              Layer.mock(ReservationHoldCleanupService, holdCleanup),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -256,7 +254,7 @@ describe("CheckoutStatusService", () => {
           })
         )
       ),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const paymentAttempts = {
       findDisplayableForReservation: mock(() =>
         Effect.succeed(
@@ -271,7 +269,7 @@ describe("CheckoutStatusService", () => {
           })
         )
       ),
-    } as unknown as PaymentAttemptRepositoryType;
+    };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
     };
@@ -340,14 +338,14 @@ describe("CheckoutStatusService", () => {
         });
       }).pipe(
         Effect.provide(
-          CheckoutStatusService.Live.pipe(
+          CheckoutStatusService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
-                Layer.succeed(ProviderPaymentFinalizationService, finalization),
-                Layer.succeed(WorkspaceReservationRepository, reservations),
-                Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-                Layer.succeed(DotyposService, dotypos),
-                Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+                Layer.mock(ProviderPaymentFinalizationService, finalization),
+                Layer.mock(WorkspaceReservationRepository, reservations),
+                Layer.mock(PaymentAttemptRepository, paymentAttempts),
+                Layer.mock(DotyposService, dotypos),
+                Layer.mock(ReservationHoldCleanupService, holdCleanup),
                 SeatingMapFeatureFlagServiceMock({
                   isEnabled: Effect.succeed(seatingMapEnabled),
                 })
@@ -436,12 +434,12 @@ describe("CheckoutStatusService", () => {
           })
         )
       ),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const paymentAttempts = {
       findDisplayableForReservation: mock(() =>
         Effect.succeed(makePaymentAttempt())
       ),
-    } as unknown as PaymentAttemptRepositoryType;
+    };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
     };
@@ -487,14 +485,14 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, finalization),
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-              Layer.succeed(DotyposService, dotypos),
-              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              Layer.mock(DotyposService, dotypos),
+              Layer.mock(ReservationHoldCleanupService, holdCleanup),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -526,6 +524,107 @@ describe("CheckoutStatusService", () => {
     expect(JSON.stringify(status)).not.toContain("customer-access-code");
   });
 
+  test("reconstructs office dates and seats from Dotypos", async () => {
+    const { CheckoutStatusService } = await import("./checkout-status.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "../holds/reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            reservationDetails: { kind: "office" },
+            productTier: null,
+            productCoffee: false,
+            productMonitorOption: null,
+            paymentState: "paid",
+            fulfillmentState: "fulfilled",
+          })
+        )
+      ),
+    };
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(makePaymentAttempt())
+      ),
+    };
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+    const dotypos = makeDotypos({
+      getReservation: mock(() =>
+        Effect.succeed({
+          reservation: {
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            _tableId: "office-table",
+            startDate: "2026-06-11T22:00:00.000Z",
+            endDate: "2026-06-14T22:00:00.000Z",
+            seats: "3",
+            status: "CONFIRMED",
+          },
+          customer: { id: "customer-id" },
+        })
+      ),
+    });
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "success",
+      });
+    }).pipe(
+      Effect.provide(
+        CheckoutStatusService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              Layer.mock(DotyposService, dotypos),
+              Layer.mock(ReservationHoldCleanupService, holdCleanup),
+              SeatingMapFeatureFlagServiceMock({
+                isEnabled: Effect.succeed(false),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(status).toMatchObject({
+      kind: "office",
+      status: "fulfilled",
+      summary: {
+        kind: "office",
+        seats: 3,
+        price: { value: 55_000, exponent: 2, currency: "CZK" },
+      },
+    });
+    expect(status.summary?.reservedFrom.toString()).toBe(
+      "2026-06-11T22:00:00Z"
+    );
+    expect(status.summary?.reservedUntil.toString()).toBe(
+      "2026-06-14T22:00:00Z"
+    );
+  });
+
   test("includes support contact prefill only after fulfillment fails", async () => {
     const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
@@ -552,12 +651,12 @@ describe("CheckoutStatusService", () => {
           })
         )
       ),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const paymentAttempts = {
       findDisplayableForReservation: mock(() =>
         Effect.succeed(makePaymentAttempt())
       ),
-    } as unknown as PaymentAttemptRepositoryType;
+    };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
     };
@@ -574,13 +673,13 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, finalization),
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-              Layer.succeed(
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              Layer.mock(
                 DotyposService,
                 makeDotypos({
                   getReservation: mock(() =>
@@ -604,7 +703,7 @@ describe("CheckoutStatusService", () => {
                   ),
                 })
               ),
-              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.mock(ReservationHoldCleanupService, holdCleanup),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -648,7 +747,7 @@ describe("CheckoutStatusService", () => {
           })
         )
       ),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const paymentAttempts = {
       findDisplayableForReservation: mock(() =>
         Effect.succeed(
@@ -662,7 +761,7 @@ describe("CheckoutStatusService", () => {
           })
         )
       ),
-    } as unknown as PaymentAttemptRepositoryType;
+    };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
     };
@@ -680,14 +779,14 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, finalization),
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-              Layer.succeed(DotyposService, makeDotypos({ getReservation })),
-              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              Layer.mock(DotyposService, makeDotypos({ getReservation })),
+              Layer.mock(ReservationHoldCleanupService, holdCleanup),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -727,12 +826,12 @@ describe("CheckoutStatusService", () => {
           })
         )
       ),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const paymentAttempts = {
       findDisplayableForReservation: mock(() =>
         Effect.succeed(makePaymentAttempt())
       ),
-    } as unknown as PaymentAttemptRepositoryType;
+    };
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),
     };
@@ -749,19 +848,19 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusService.Live.pipe(
+        CheckoutStatusService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, finalization),
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-              Layer.succeed(
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PaymentAttemptRepository, paymentAttempts),
+              Layer.mock(
                 DotyposService,
                 makeDotypos({
                   getReservation: mock(() => Effect.fail("down")),
                 })
               ),
-              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.mock(ReservationHoldCleanupService, holdCleanup),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })

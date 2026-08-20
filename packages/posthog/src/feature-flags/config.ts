@@ -1,15 +1,16 @@
 import { Context, Layer } from "effect";
+import type { PostHogProjectId } from "../identifiers";
 
-interface IPostHogFeatureFlagConfig {
+export interface PostHogFeatureFlagConfigInput {
   readonly apiKey: string;
   readonly host: URL;
-  readonly projectId: string;
+  readonly projectId: PostHogProjectId;
 }
 
 export class PostHogFeatureFlagConfig extends Context.Service<
   PostHogFeatureFlagConfig,
-  IPostHogFeatureFlagConfig
+  PostHogFeatureFlagConfigInput
 >()("@deskohub/posthog/PostHogFeatureFlagConfig") {
-  static from = (config: IPostHogFeatureFlagConfig) =>
+  static from = (config: PostHogFeatureFlagConfigInput) =>
     Layer.succeed(this, config);
 }

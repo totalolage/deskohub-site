@@ -1,3 +1,4 @@
+import type { NexiOrderId } from "@deskohub/nexi";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
@@ -7,6 +8,8 @@ import {
   type PaymentState,
   paymentAttempts,
 } from "@/db/schema";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
 export const toPaymentAttempt = (attempt: PaymentAttemptRow) => {
   const { amountExponent, amountValue, currency, ...paymentAttempt } = attempt;
@@ -25,7 +28,7 @@ export type PaymentAttempt = ReturnType<typeof toPaymentAttempt>;
 
 export type NexiPaymentAttempt = PaymentAttempt & {
   readonly provider: "nexi";
-  readonly providerOrderId: string;
+  readonly providerOrderId: NexiOrderId;
 };
 
 export const isNexiPaymentAttempt = (
@@ -35,14 +38,14 @@ export const isNexiPaymentAttempt = (
 
 export interface IPaymentAttemptRepository {
   readonly findById: (
-    id: string
+    id: PaymentAttemptId
   ) => Effect.Effect<PaymentAttempt | null, EffectDrizzleQueryError>;
   readonly findByProviderOrderId: (
-    providerOrderId: string
+    providerOrderId: NexiOrderId
   ) => Effect.Effect<PaymentAttempt | null, EffectDrizzleQueryError>;
   readonly findDisplayableForReservation: (input: {
-    readonly workspaceReservationId: string;
-    readonly activePaymentAttemptId?: string;
+    readonly workspaceReservationId: WorkspaceReservationId;
+    readonly activePaymentAttemptId?: PaymentAttemptId;
     readonly paymentState: PaymentState;
   }) => Effect.Effect<PaymentAttempt | null, EffectDrizzleQueryError>;
 }
@@ -51,13 +54,13 @@ export class PaymentAttemptRepository extends Context.Service<
   PaymentAttemptRepository,
   IPaymentAttemptRepository
 >()("@deskohub-workspace/checkout/PaymentAttemptRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
 
       const findById = Effect.fn("PaymentAttemptRepository.findById")(
-        function* (id: string) {
+        function* (id: PaymentAttemptId) {
           const [attempt] = yield* db
             .select()
             .from(paymentAttempts)
@@ -69,7 +72,7 @@ export class PaymentAttemptRepository extends Context.Service<
 
       const findByProviderOrderId = Effect.fn(
         "PaymentAttemptRepository.findByProviderOrderId"
-      )(function* (providerOrderId: string) {
+      )(function* (providerOrderId: NexiOrderId) {
         const [attempt] = yield* db
           .select()
           .from(paymentAttempts)
@@ -86,8 +89,8 @@ export class PaymentAttemptRepository extends Context.Service<
       const findDisplayableForReservation = Effect.fn(
         "PaymentAttemptRepository.findDisplayableForReservation"
       )(function* (input: {
-        readonly workspaceReservationId: string;
-        readonly activePaymentAttemptId?: string;
+        readonly workspaceReservationId: WorkspaceReservationId;
+        readonly activePaymentAttemptId?: PaymentAttemptId;
         readonly paymentState: PaymentState;
       }) {
         const [attempt] = yield* db
@@ -100,10 +103,16 @@ export class PaymentAttemptRepository extends Context.Service<
                 input.workspaceReservationId
               ),
               or(
-                and(
-                  eq(paymentAttempts.id, input.activePaymentAttemptId ?? ""),
-                  inArray(paymentAttempts.state, ["created", "pending", "paid"])
-                ),
+                input.activePaymentAttemptId
+                  ? and(
+                      eq(paymentAttempts.id, input.activePaymentAttemptId),
+                      inArray(paymentAttempts.state, [
+                        "created",
+                        "pending",
+                        "paid",
+                      ])
+                    )
+                  : sql`false`,
                 input.paymentState === "paid"
                   ? eq(paymentAttempts.state, "paid")
                   : sql`false`
@@ -130,5 +139,3 @@ export class PaymentAttemptRepository extends Context.Service<
     })
   );
 }
-
-export const PaymentAttemptRepositoryLive = PaymentAttemptRepository.Live;

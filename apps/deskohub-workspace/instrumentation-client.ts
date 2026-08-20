@@ -20,7 +20,15 @@ initializeWorkspaceBotId(env.NEXT_PUBLIC_VERCEL_ENV, () =>
         method: "POST",
       },
       {
+        path: "/*/reservation/office",
+        method: "POST",
+      },
+      {
         path: "/*/checkout/pay",
+        method: "POST",
+      },
+      {
+        path: "/*/reservation/invoice/*",
         method: "POST",
       },
     ],

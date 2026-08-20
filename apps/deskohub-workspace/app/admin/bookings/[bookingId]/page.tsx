@@ -1,13 +1,33 @@
-import Link from "next/link";
+import { Suspense } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
+  AdministrationDetailSection,
+  AdministrationFact,
   AdministrationPage,
   AdministrationPageHeader,
   BookingStatusBadge,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationBooking } from "@/features/administration/page-data.server";
 
-export default async function BookingAdministrationDetailPage({
+export default function BookingAdministrationDetailPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly bookingId: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="booking details" />}
+      >
+        <BookingAdministrationDetail params={params} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+export async function BookingAdministrationDetail({
   params,
 }: {
   readonly params: Promise<{ readonly bookingId: string }>;
@@ -15,7 +35,7 @@ export default async function BookingAdministrationDetailPage({
   const { bookingId } = await params;
   const { booking, references } = await loadAdministrationBooking(bookingId);
   return (
-    <AdministrationPage>
+    <>
       <AdministrationPageHeader
         actions={<BookingStatusBadge booking={booking} />}
         description={`${formatAdministrationDateTime(booking.startsAt)} · ${booking.seats} ${booking.seats === "1" ? "guest" : "guests"}`}
@@ -28,32 +48,32 @@ export default async function BookingAdministrationDetailPage({
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
             <h2 className="text-xl">Booking details</h2>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <BookingFact label="Status" value={booking.statusLabel} />
-              <BookingFact
+              <AdministrationFact label="Status" value={booking.statusLabel} />
+              <AdministrationFact
                 label="Starts"
                 value={formatAdministrationDateTime(booking.startsAt)}
               />
-              <BookingFact
+              <AdministrationFact
                 label="Ends"
                 value={formatAdministrationDateTime(booking.endsAt)}
               />
-              <BookingFact label="Guests" value={booking.seats} />
-              <BookingFact
+              <AdministrationFact label="Guests" value={booking.seats} />
+              <AdministrationFact
                 label="Table"
                 value={booking.tableName ?? "Not assigned"}
               />
-              <BookingFact
+              <AdministrationFact
                 label="Location"
                 value={booking.tableLocation ?? "Not specified"}
               />
               {booking.createdAt && (
-                <BookingFact
+                <AdministrationFact
                   label="Created"
                   value={formatAdministrationDateTime(booking.createdAt)}
                 />
               )}
               {booking.updatedAt && (
-                <BookingFact
+                <AdministrationFact
                   label="Last changed"
                   value={formatAdministrationDateTime(booking.updatedAt)}
                 />
@@ -132,24 +152,7 @@ export default async function BookingAdministrationDetailPage({
           </RelatedBookingEntity>
         </aside>
       </div>
-    </AdministrationPage>
-  );
-}
-
-function BookingFact({
-  label,
-  value,
-}: {
-  readonly label: string;
-  readonly value: string;
-}) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
-        {label}
-      </dt>
-      <dd className="mt-1.5 font-medium">{value}</dd>
-    </div>
+    </>
   );
 }
 
@@ -187,11 +190,8 @@ function RelatedBookingEntity({
   readonly title: string;
 }) {
   return (
-    <section className="rounded-xl border border-navy-blue/10 bg-white p-3">
-      <h2 className="px-3 pb-2 pt-1 text-xs font-semibold uppercase tracking-[0.12em] text-navy-blue/65">
-        {title}
-      </h2>
+    <AdministrationDetailSection density="compact" title={title}>
       {children}
-    </section>
+    </AdministrationDetailSection>
   );
 }

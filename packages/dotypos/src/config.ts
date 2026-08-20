@@ -1,17 +1,24 @@
 import { Context, Layer, Schema } from "effect";
+import {
+  DotyposBranchIdSchema,
+  DotyposClientIdSchema,
+  DotyposCloudIdSchema,
+  DotyposEmployeeIdSchema,
+  DotyposTableIdSchema,
+} from "./types";
 
 export const DotyposRuntimeConfigSchema = Schema.Struct({
-  clientId: Schema.NonEmptyString,
+  clientId: DotyposClientIdSchema,
   clientSecret: Schema.NonEmptyString,
   refreshToken: Schema.NonEmptyString,
-  cloudId: Schema.NonEmptyString,
-  branchId: Schema.NonEmptyString,
-  employeeId: Schema.NonEmptyString,
+  cloudId: DotyposCloudIdSchema,
+  branchId: DotyposBranchIdSchema,
+  employeeId: DotyposEmployeeIdSchema,
   apiUrl: Schema.NonEmptyString,
   apiTimeout: Schema.Finite.check(
     Schema.isGreaterThan(0, { description: "API timeout in milliseconds" })
   ),
-  reservationTableIds: Schema.Array(Schema.NonEmptyString),
+  reservationTableIds: Schema.Array(DotyposTableIdSchema),
 });
 
 export type DotyposRuntimeConfigObj = Schema.Schema.Type<

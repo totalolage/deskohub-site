@@ -1,26 +1,47 @@
 import { describe, expect, mock, test } from "bun:test";
+import {
+  type DotyposCategory,
+  type DotyposCategoryId,
+  DotyposCategorySchema,
+  type DotyposProduct,
+  DotyposProductSchema,
+} from "@deskohub/dotypos";
 import type { Category, Product } from "@deskohub/dotypos/generated";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 
-const category = (overrides: Partial<Category>): Category => ({
-  id: "category-id",
-  name: "Category",
-  display: true,
-  deleted: false,
-  ...overrides,
-});
+const category = (overrides: Partial<Category>): DotyposCategory => {
+  const { id, ...fields } = overrides;
+  let identifier: { readonly id?: string } = { id: "category-id" };
+  if ("id" in overrides) {
+    identifier = id === undefined ? {} : { id };
+  }
+  return Schema.decodeUnknownSync(DotyposCategorySchema)({
+    ...identifier,
+    name: "Category",
+    display: true,
+    deleted: false,
+    ...fields,
+  });
+};
 
-const product = (overrides: Partial<Product>): Product => ({
-  id: "product-id",
-  _categoryId: "category-id",
-  name: "Product",
-  display: true,
-  deleted: false,
-  priceWithoutVat: "100",
-  vat: "21",
-  ...overrides,
-});
+const product = (overrides: Partial<Product>): DotyposProduct => {
+  const { id, ...fields } = overrides;
+  let identifier: { readonly id?: string } = { id: "product-id" };
+  if ("id" in overrides) {
+    identifier = id === undefined ? {} : { id };
+  }
+  return Schema.decodeUnknownSync(DotyposProductSchema)({
+    ...identifier,
+    _categoryId: "category-id",
+    name: "Product",
+    display: true,
+    deleted: false,
+    priceWithoutVat: "100",
+    vat: "21",
+    ...fields,
+  });
+};
 
 type SharedDotyposServiceShape =
   typeof import("@deskohub/dotypos").DotyposService.Service;
@@ -43,7 +64,7 @@ const runWithShared = async <A, E>(
   return Effect.runPromise(
     makeEffect(DotyposService).pipe(
       Effect.provide(
-        DotyposService.DefaultWithoutDependencies.pipe(
+        DotyposService.Default.pipe(
           Layer.provide(
             Layer.succeed(
               SharedDotyposService,
@@ -64,17 +85,18 @@ describe("DotyposService.getMenuItems", () => {
     const deleted = category({ id: "deleted", deleted: true });
     const nonMenu = category({ id: "non-menu", tags: ["non-menu"] });
     const duplicate = product({ id: "duplicate", _categoryId: "visible" });
-    const getProducts = mock(({ categoryId }: { categoryId?: string }) =>
-      Effect.succeed(
-        categoryId === "visible"
-          ? [
-              duplicate,
-              product({ id: "hidden-product", display: false }),
-              product({ id: "deleted-product", deleted: true }),
-              product({ id: undefined }),
-            ]
-          : [product({ ...duplicate, _categoryId: "also-visible" })]
-      )
+    const getProducts = mock(
+      ({ categoryId }: { categoryId?: DotyposCategoryId }) =>
+        Effect.succeed(
+          categoryId === "visible"
+            ? [
+                duplicate,
+                product({ id: "hidden-product", display: false }),
+                product({ id: "deleted-product", deleted: true }),
+                product({ id: undefined }),
+              ]
+            : [product({ ...duplicate, _categoryId: "also-visible" })]
+        )
     );
 
     const result = await runWithShared(
@@ -108,7 +130,7 @@ describe("DotyposService.getMenuItems", () => {
       includeDeleted: false,
     });
     expect(result.products).toHaveLength(1);
-    expect(result.products[0]?.id).toBe("duplicate");
+    expect(result.products[0]?.id).toBe(duplicate.id);
     expect(result.categories).toEqual([
       visible,
       hidden,

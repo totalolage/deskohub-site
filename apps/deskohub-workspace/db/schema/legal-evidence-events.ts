@@ -1,5 +1,7 @@
 import { sql } from "drizzle-orm";
 import { boolean, check, index, pgTable, text } from "drizzle-orm/pg-core";
+import type { LegalEvidenceEventId } from "@/features/checkout/legal-evidence";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { workspaceReservations } from "./workspace-reservations";
@@ -7,11 +9,13 @@ import { workspaceReservations } from "./workspace-reservations";
 export const legalEvidenceEvents = pgTable(
   "legal_evidence_events",
   {
-    id: text("id").primaryKey().default(postgresUuidV7),
-    workspaceReservationId: text("workspace_reservation_id").references(
-      () => workspaceReservations.id,
-      { onDelete: "set null" }
-    ),
+    id: text("id")
+      .primaryKey()
+      .default(postgresUuidV7)
+      .$type<LegalEvidenceEventId>(),
+    workspaceReservationId: text("workspace_reservation_id")
+      .$type<WorkspaceReservationId>()
+      .references(() => workspaceReservations.id, { onDelete: "set null" }),
     documentKey: text("document_key").notNull(),
     documentPath: text("document_path").notNull(),
     documentHash: text("document_hash").notNull(),

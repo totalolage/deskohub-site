@@ -1,9 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
+import { Effect, Predicate } from "effect";
 
-const overrideFeatureFlags = mock((_overrides: unknown) => undefined);
+const overrideFeatureFlags = mock(<T>(_overrides: T) => undefined);
+const createPostHogClient = mock(
+  (_projectToken: string, _options: { readonly host: string }) => undefined
+);
 
 mock.module("posthog-node", () => ({
   cookieStoreFromHeader: (header: string) => {
@@ -25,7 +29,11 @@ mock.module("posthog-node", () => ({
       size: cookies.size,
     };
   },
-  PostHog: function PostHog() {
+  PostHog: function PostHog(
+    projectToken: string,
+    options: { readonly host: string }
+  ) {
+    createPostHogClient(projectToken, options);
     let overrides: Readonly<Record<string, boolean | string>> = {};
     const getFlag = (key: string) => overrides[key];
     const isEnabled = (key: string) => {
@@ -50,8 +58,9 @@ mock.module("posthog-node", () => ({
           enabled: isEnabled(key),
           key,
           payload: undefined,
-          variant:
-            typeof overrides[key] === "string" ? overrides[key] : undefined,
+          variant: Predicate.isString(overrides[key])
+            ? overrides[key]
+            : undefined,
         }),
       overrideFeatureFlags: (
         configuredOverrides: Readonly<Record<string, boolean | string>>
@@ -68,7 +77,7 @@ mock.module("@/shared/backend/config/posthog.config", () => ({
   postHogRuntimeConfig: {
     environment: "preview",
     featureFlagOverrides: { discount_codes: true },
-    host: "https://posthog.example",
+    ingestHost: "https://posthog.example",
     projectToken: "phc_test",
     serviceName: "deskohub-workspace",
     serviceNamespace: "deskohub",
@@ -82,7 +91,7 @@ describe("Workspace PostHog Node feature flags", () => {
     const snapshot = await Effect.runPromise(
       nodeFeatureFlags.evaluateFlags({
         subject: {
-          distinctId: "global-release",
+          distinctId: PostHogDistinctId.make("global-release"),
           sendFeatureFlagEvents: false,
         },
       })
@@ -91,7 +100,7 @@ describe("Workspace PostHog Node feature flags", () => {
       nodeFeatureFlags.isEnabled({
         key: "discount_codes",
         subject: {
-          distinctId: "visitor-id",
+          distinctId: PostHogDistinctId.make("visitor-id"),
           sendFeatureFlagEvents: true,
         },
       })
@@ -103,6 +112,10 @@ describe("Workspace PostHog Node feature flags", () => {
     expect(overrideFeatureFlags).toHaveBeenCalledTimes(1);
     expect(overrideFeatureFlags).toHaveBeenCalledWith({
       discount_codes: true,
+    });
+    expect(createPostHogClient).toHaveBeenCalledWith("phc_test", {
+      featureFlagsRequestTimeoutMs: 2_000,
+      host: "https://posthog.example",
     });
   });
 });

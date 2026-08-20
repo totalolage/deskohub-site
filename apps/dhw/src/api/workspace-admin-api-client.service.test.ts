@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
-  AdministrationCanonicalDiscountCode,
+  AdministrationBookingSummary,
+  AdministrationCanonicalPromotionCode,
+  AdministrationDiscountCodeId,
+  AdministrationNexiOperationId,
+  AdministrationOperation,
+  AdministrationOrder,
+  AdministrationReservationSummary,
   AdministrationStoredDiscountId,
   CliAccessToken,
   CliAuthenticationChallenge,
@@ -42,7 +48,7 @@ describe("WorkspaceAdminApiClient", () => {
         stateDirectory: "/tmp/dhw-client-test",
         updateChecksDisabled: true,
       });
-      const clientLayer = WorkspaceAdminApiClient.Live.pipe(
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(config)
       );
@@ -79,7 +85,7 @@ describe("WorkspaceAdminApiClient", () => {
       "01980000-0000-7000-8000-000000000001"
     );
     const canonicalCode = Schema.decodeUnknownSync(
-      AdministrationCanonicalDiscountCode
+      AdministrationCanonicalPromotionCode
     )("SUMMER10");
     const sessionId = Schema.decodeUnknownSync(CliSessionId)(
       "01980000-0000-7000-8000-000000000000"
@@ -96,7 +102,7 @@ describe("WorkspaceAdminApiClient", () => {
       createdAt: expiresAt,
       lastUsedAt: expiresAt,
     } as const;
-    const booking = {
+    const booking = Schema.decodeUnknownSync(AdministrationBookingSummary)({
       id: "booking-1",
       customerId: "customer-1",
       customer: {
@@ -116,8 +122,10 @@ describe("WorkspaceAdminApiClient", () => {
       linkedReservation: { id: "reservation-1", label: "Meeting room" },
       createdAt: expiresAt,
       updatedAt: expiresAt,
-    };
-    const reservation = {
+    });
+    const reservation = Schema.decodeUnknownSync(
+      AdministrationReservationSummary
+    )({
       id: "reservation-1",
       customerId: "customer-1",
       customer: booking.customer,
@@ -132,22 +140,26 @@ describe("WorkspaceAdminApiClient", () => {
       createdAt: expiresAt,
       latestPayment: null,
       updatedAt: expiresAt,
-    };
-    const order = {
+    });
+    const order = Schema.decodeUnknownSync(AdministrationOrder)({
       orderId: "order-1",
       provider: null,
       providerAvailable: false,
       providerStatus: "unavailable" as const,
       link: null,
-    };
-    const operation = {
-      operationId: "operation-1",
+    });
+    const operationId = Schema.decodeUnknownSync(AdministrationNexiOperationId)(
+      "operation-1"
+    );
+    const operation = Schema.decodeUnknownSync(AdministrationOperation)({
+      operationId,
       operationType: "CAPTURE",
       operationResult: "AUTHORIZED",
       linkedReservationId: reservation.id,
-    };
+    });
     const requests: Array<{ readonly method: string; readonly path: string }> =
       [];
+    let accessMutationAttempts = 0;
     let mutationAttempts = 0;
     const server = Bun.serve({
       port: 0,
@@ -215,6 +227,8 @@ describe("WorkspaceAdminApiClient", () => {
           );
           return Response.json({
             reservation,
+            canCancel: true,
+            requiresProviderCredentialRemoval: false,
             booking,
             lifecycle: {
               currentStage: "complete",
@@ -226,6 +240,7 @@ describe("WorkspaceAdminApiClient", () => {
             paymentAttempts: [],
             orders: [],
             discounts: [],
+            accessGrant: null,
             otherCustomerReservations: [],
             sameDateReservations: [],
             references: {
@@ -241,6 +256,45 @@ describe("WorkspaceAdminApiClient", () => {
           );
           expect(url.searchParams.get("identifier")).toBe("payment-1");
           return Response.json({ reservationId: reservation.id });
+        }
+        if (url.pathname.endsWith("/reservations/reservation-1/access")) {
+          accessMutationAttempts += 1;
+          expect(request.method).toBe("POST");
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(await request.json()).toEqual({
+            requestId: mutationRequestId,
+            mutation: { kind: "retry-failed" },
+          });
+          if (accessMutationAttempts === 1) {
+            return Response.json(
+              {
+                _tag: "CliMutationInProgress",
+                message: "The mutation is still being applied.",
+                requestId: mutationRequestId,
+              },
+              { status: 409 }
+            );
+          }
+          return Response.json({
+            id: "access-1",
+            state: "issued",
+            provider: "igloohome",
+            credentialType: "algopin-hourly",
+            deviceId: "EK1X16f8898a",
+            providerCredentialId: "pin-1",
+            accessName: "Deskohub reservation-1",
+            scheduledStartsAt: expiresAt,
+            startsAt: expiresAt,
+            endsAt: expiresAt,
+            provisioningStartedAt: expiresAt,
+            issuedAt: expiresAt,
+            failedAt: null,
+            failureCode: null,
+            createdAt: expiresAt,
+            updatedAt: expiresAt,
+          });
         }
         if (url.pathname.endsWith("/bookings/booking-1")) {
           expect(request.headers.get("authorization")).toBe(
@@ -378,6 +432,7 @@ describe("WorkspaceAdminApiClient", () => {
                 validFrom: null,
                 validUntil: null,
                 maxUses: null,
+                maxUsesPerCustomer: null,
               },
               discount: { kind: "existing", discountId },
             },
@@ -396,6 +451,7 @@ describe("WorkspaceAdminApiClient", () => {
             kind: "create-code",
             createdDiscountId: null,
             createdCodeId: "01980000-0000-7000-8000-000000000002",
+            createdVoucherId: null,
           });
         }
         if (url.pathname.endsWith("/discounts")) {
@@ -405,19 +461,20 @@ describe("WorkspaceAdminApiClient", () => {
           return Response.json({
             discounts: [
               {
-                id: "discount-1",
+                id: discountId,
                 labels: {
                   "en-US": "Summer sale",
                   "cs-CZ": "Letní sleva",
                 },
                 adjustment: { kind: "percentage", basisPoints: 1000 },
-                products: [{ kind: "cowork", tier: "basic" }],
+                products: [{ kind: "office" }],
                 codeCount: 1,
                 createdAt: expiresAt,
                 updatedAt: expiresAt,
               },
             ],
             codes: [],
+            vouchers: [],
             calendar: {
               events: [],
               unavailable: false,
@@ -434,12 +491,13 @@ describe("WorkspaceAdminApiClient", () => {
           return Response.json({
             code: {
               id: "code-1",
-              discountId: "discount-1",
+              discountId,
               code: "SUMMER10",
               enabled: true,
               validFrom: null,
               validUntil: null,
               maxUses: null,
+              maxUsesPerCustomer: null,
               audienceSize: 0,
               reservedUses: 0,
               redeemedUses: 0,
@@ -475,7 +533,7 @@ describe("WorkspaceAdminApiClient", () => {
     });
 
     try {
-      const clientLayer = WorkspaceAdminApiClient.Live.pipe(
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(
           Layer.succeed(DhwConfig, {
@@ -508,6 +566,12 @@ describe("WorkspaceAdminApiClient", () => {
           Redacted.make(accessToken),
           reservation.id
         );
+        yield* client.mutateReservationAccess(
+          Redacted.make(accessToken),
+          mutationRequestId,
+          reservation.id,
+          { kind: "retry-failed" }
+        );
         yield* client.findReservation(Redacted.make(accessToken), "payment-1");
         yield* client.listBookings(Redacted.make(accessToken), {
           date: "2026-08-10",
@@ -523,10 +587,7 @@ describe("WorkspaceAdminApiClient", () => {
           channel: "ECOMMERCE",
           operationType: "CAPTURE",
         });
-        yield* client.getOperation(
-          Redacted.make(accessToken),
-          operation.operationId
-        );
+        yield* client.getOperation(Redacted.make(accessToken), operationId);
         yield* client.listCustomers(Redacted.make(accessToken), { page: 3 });
         yield* client.searchCustomers(Redacted.make(accessToken), {
           query: "Ada",
@@ -541,7 +602,10 @@ describe("WorkspaceAdminApiClient", () => {
           { page: 2 }
         );
         yield* client.getDiscountDashboard(Redacted.make(accessToken));
-        yield* client.getDiscountCode(Redacted.make(accessToken), "code-1");
+        yield* client.getDiscountCode(
+          Redacted.make(accessToken),
+          AdministrationDiscountCodeId.make("code-1")
+        );
         yield* client.listSessions(Redacted.make(accessToken));
         yield* client.mutateDiscounts(
           Redacted.make(accessToken),
@@ -554,6 +618,7 @@ describe("WorkspaceAdminApiClient", () => {
               validFrom: null,
               validUntil: null,
               maxUses: null,
+              maxUsesPerCustomer: null,
             },
             discount: { kind: "existing", discountId },
           }
@@ -574,6 +639,14 @@ describe("WorkspaceAdminApiClient", () => {
         {
           method: "GET",
           path: "/api/v1/cli/reservations/reservation-1",
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/reservations/reservation-1/access",
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/reservations/reservation-1/access",
         },
         { method: "GET", path: "/api/v1/cli/reservations/find" },
         { method: "GET", path: "/api/v1/cli/bookings" },
@@ -618,7 +691,7 @@ describe("WorkspaceAdminApiClient", () => {
     });
 
     try {
-      const clientLayer = WorkspaceAdminApiClient.Live.pipe(
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
         Layer.provide(FetchHttpClient.layer),
         Layer.provide(
           Layer.succeed(DhwConfig, {

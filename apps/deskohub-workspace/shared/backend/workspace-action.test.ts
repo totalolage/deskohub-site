@@ -1,7 +1,8 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 let actionHeaderReads = 0;
+let scheduledTelemetryFlushes = 0;
 
 mock.module("server-only", () => ({}));
 mock.module("./bot-protection/bot-protection.runtime", () => ({
@@ -9,6 +10,17 @@ mock.module("./bot-protection/bot-protection.runtime", () => ({
 }));
 mock.module("botid/server", () => ({
   checkBotId: () => Promise.resolve({ isBot: false }),
+}));
+mock.module("next/server", () => ({
+  after: () => {
+    scheduledTelemetryFlushes += 1;
+  },
+}));
+mock.module("@/instrumentation", () => ({
+  postHogLoggerProvider: {
+    forceFlush: () => Promise.resolve(),
+    getLogger: () => ({ emit: () => undefined }),
+  },
 }));
 
 mock.module("next/headers", () => ({
@@ -50,6 +62,83 @@ describe("Workspace actions", () => {
       data: { clientInput: "21", locale: "en-US", value: 42 },
     });
     expect(actionHeaderReads).toBe(3);
+  });
+
+  test("preserves nested validation errors for the client", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.nested-validation",
+        schema: Schema.toStandardSchemaV1(
+          Schema.Struct({
+            discount: Schema.Struct({
+              products: Schema.Array(
+                Schema.Struct({ kind: Schema.Literal("cowork") })
+              ),
+            }),
+          }),
+          { parseOptions: { onExcessProperty: "error" } }
+        ),
+      },
+      () => Effect.succeed("unreachable")
+    );
+    const staleInput = {
+      discount: {
+        products: [{ kind: "cowork" as const, tier: "basic" }],
+      },
+    };
+
+    await expect(action(staleInput)).resolves.toMatchObject({
+      validationErrors: {
+        fieldErrors: {
+          discount: ['products[0].tier: Unexpected key with value "basic"'],
+        },
+      },
+    });
+  });
+
+  test("does not log validation paths when input logging is disabled", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const sensitiveKey = "person@example.test";
+    const action = defineWorkspaceAction(
+      {
+        logInput: false,
+        operation: "test.private-validation",
+        schema: Schema.toStandardSchemaV1(
+          Schema.Struct({ query: Schema.String }),
+          { parseOptions: { onExcessProperty: "error" } }
+        ),
+      },
+      () => Effect.succeed("unreachable")
+    );
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await expect(
+        action({ query: "safe", [sensitiveKey]: "private" })
+      ).resolves.toMatchObject({ validationErrors: expect.any(Object) });
+
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(sensitiveKey);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("schedules a telemetry flush for validation failures", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.validation-flush",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => Effect.succeed("unreachable")
+    );
+    scheduledTelemetryFlushes = 0;
+
+    await expect(action(42)).resolves.toMatchObject({
+      validationErrors: expect.any(Object),
+    });
+    expect(scheduledTelemetryFlushes).toBe(1);
   });
 
   test("preserves public failures", async () => {

@@ -8,11 +8,69 @@ import type { CheckoutRow } from "../types";
 import {
   assertDiscountApplications,
   assertInternalDiscountApplications,
+  assertLatePaymentRecoveryOutcome,
   assertLegalEvidenceRows,
   getProviderSessionRowDiagnosticCode,
   replayNexiWebhook,
   waitForProviderSessionRowAfterRedirect,
 } from "./database";
+
+test("accepts a recreated late-payment recovery", async () => {
+  await Effect.runPromise(
+    assertLatePaymentRecoveryOutcome(
+      {
+        checkoutRow: {
+          dotypos_reservation_id: "replacement-reservation",
+          failure_code: null,
+          fulfillment_state: "processing",
+          payment_attempt_state: "paid",
+          payment_state: "paid",
+          reservation_state: "confirmed",
+          webhook_state: "processed",
+        } as CheckoutRow,
+        recovery: {
+          completedAt: {} as never,
+          failureCode: null,
+          originalDotyposReservationId: "original-reservation",
+          recoveredDotyposReservationId: "replacement-reservation",
+          state: "recovered",
+        } as never,
+      },
+      "original-reservation" as never,
+      { state: "recovered" }
+    )
+  );
+});
+
+test("accepts a refund-required late-payment recovery", async () => {
+  await Effect.runPromise(
+    assertLatePaymentRecoveryOutcome(
+      {
+        checkoutRow: {
+          dotypos_reservation_id: "original-reservation",
+          failure_code: "late_payment_snapshot_unavailable",
+          fulfillment_state: "not_started",
+          payment_attempt_state: "paid",
+          payment_state: "paid",
+          reservation_state: "cancelled",
+          webhook_state: "processed",
+        } as CheckoutRow,
+        recovery: {
+          completedAt: {} as never,
+          failureCode: "late_payment_snapshot_unavailable",
+          originalDotyposReservationId: "original-reservation",
+          recoveredDotyposReservationId: null,
+          state: "refund_required",
+        } as never,
+      },
+      "original-reservation" as never,
+      {
+        state: "refund_required",
+        failureCode: "late_payment_snapshot_unavailable",
+      }
+    )
+  );
+});
 
 test("accepts reservation terms evidence from payment submission", () => {
   const row = (document_key: string, source: string, accepted = true) => ({
@@ -47,7 +105,7 @@ test("reads persisted reservation details without legacy product columns", async
   expect(source).not.toContain("workspaceReservations.productMonitorOption");
 });
 
-test("uses one scoped Drizzle client for the exact preview datasource", async () => {
+test("uses one worker-scoped Drizzle client for the exact preview datasource", async () => {
   const databaseServiceSource = await Bun.file(
     fileURLToPath(new URL("./database.service.ts", import.meta.url))
   ).text();
@@ -61,8 +119,9 @@ test("uses one scoped Drizzle client for the exact preview datasource", async ()
   expect(databaseServiceSource).not.toContain(
     "connectionString: config.databaseUrl,"
   );
+  expect(runnerSource).toContain("E2EDatabase.layer(datasourceConfig)");
   expect(runnerSource).toContain(
-    "Effect.provide(E2EDatabase.layer(datasourceConfig))"
+    "WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support))"
   );
 });
 
@@ -332,7 +391,53 @@ test("accepts the catalog money exponent in persisted discount applications", ()
           subtotal_before_value: 35_000,
         },
       ],
-      [{ basisPoints: 1000, label: "Customer discount" }],
+      [
+        {
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          label: "Customer discount",
+        },
+      ],
+      "CZK"
+    )
+  ).not.toThrow();
+});
+
+test("accepts a fixed voucher that leaves a positive payment balance", () => {
+  expect(() =>
+    assertDiscountApplications(
+      [
+        {
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 10_000, exponent: 2, currency: "CZK" },
+          },
+          applied_amount_currency: "CZK",
+          applied_amount_exponent: 2,
+          applied_amount_value: 10_000,
+          countdown_starts_at: null,
+          expires_at: null,
+          label: "Voucher",
+          redeemed_at: new Date("2099-07-24T12:00:00.000Z"),
+          redemption_state: "redeemed",
+          sequence: 0,
+          subtotal_after_currency: "CZK",
+          subtotal_after_exponent: 2,
+          subtotal_after_value: 18_000,
+          subtotal_before_currency: "CZK",
+          subtotal_before_exponent: 2,
+          subtotal_before_value: 28_000,
+        },
+      ],
+      [
+        {
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 10_000, exponent: 2, currency: "CZK" },
+          },
+          label: "Voucher",
+          redemptionState: "redeemed",
+        },
+      ],
       "CZK"
     )
   ).not.toThrow();

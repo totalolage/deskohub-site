@@ -1,10 +1,13 @@
 import {
+  CliAccessToken,
   type CliAccessTokenType,
+  CliAuthenticationCode,
   type CliAuthenticationCodeType,
   type CliAuthenticationStatusType,
   type CliClientNameType,
   CliGrantRejected,
-  type CliGrantTokenType,
+  CliGrantToken,
+  CliSessionId,
   type CliSessionIdType,
   type CliSessionType,
   CliSessionUnauthorized,
@@ -23,13 +26,12 @@ import {
   Data,
   Effect,
   Layer,
+  Option,
   type PlatformError,
+  Schema,
 } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
-import {
-  WorkspaceDatabase,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type CliAuthenticationRequestRow,
   type CliSessionRow,
@@ -37,6 +39,7 @@ import {
   cliSessions,
 } from "@/db/schema";
 import "@/shared/polyfills/temporal";
+import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 
 const authenticationLifetimeMinutes = 5;
 const grantLifetimeMinutes = 5;
@@ -47,7 +50,7 @@ export type CliSessionAdministrationItem = CliSessionType & {
 };
 
 export type CliApprovalRequest = {
-  readonly id: string;
+  readonly id: CliAuthenticationRequestId;
   readonly clientName: string;
   readonly cliVersion: string;
   readonly buildTarget: StartCliAuthenticationType["buildTarget"];
@@ -120,7 +123,7 @@ export class CliAuthentication extends Context.Service<
   CliAuthentication,
   ICliAuthentication
 >()("@deskohub-workspace/admin-cli/CliAuthentication") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -156,7 +159,7 @@ export class CliAuthentication extends Context.Service<
       const start = Effect.fn("CliAuthentication.start")(function* (
         input: StartCliAuthenticationType
       ) {
-        const code = (yield* makeSecret()) as CliAuthenticationCodeType;
+        const code = CliAuthenticationCode.make(yield* makeSecret());
         const codeHash = yield* digestSecret(code);
         const now = yield* nowInstant;
         const expiresAt = now.add({ minutes: authenticationLifetimeMinutes });
@@ -245,7 +248,7 @@ export class CliAuthentication extends Context.Service<
           return current;
         }
 
-        const grantToken = (yield* makeSecret()) as CliGrantTokenType;
+        const grantToken = CliGrantToken.make(yield* makeSecret());
         const grantExpiresAt = now.add({ minutes: grantLifetimeMinutes });
         const [approved] = yield* db
           .update(cliAuthenticationRequests)
@@ -298,9 +301,9 @@ export class CliAuthentication extends Context.Service<
           .limit(1);
         if (!request) return yield* rejectedGrant;
 
-        const accessToken = (yield* makeSecret()) as CliAccessTokenType;
+        const accessToken = CliAccessToken.make(yield* makeSecret());
         const tokenHash = yield* digestSecret(accessToken);
-        const sessionId = (yield* crypto.randomUUIDv7) as CliSessionIdType;
+        const sessionId = CliSessionId.make(yield* crypto.randomUUIDv7);
 
         const session = yield* db.transaction((tx) =>
           Effect.gen(function* () {
@@ -443,8 +446,8 @@ export class CliAuthentication extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceDatabaseLive),
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(NodeCrypto.layer)
   );
 }
@@ -489,15 +492,18 @@ const toAuthenticationStatus = (
       expiresAt: toIsoString(request.expiresAt),
     };
   }
+  const grantToken = Option.getOrUndefined(
+    Schema.decodeUnknownOption(CliGrantToken)(request.grantToken)
+  );
   if (
     request.approvedAt &&
-    request.grantToken &&
+    grantToken &&
     request.grantExpiresAt &&
     Temporal.Instant.compare(now, request.grantExpiresAt) < 0
   ) {
     return {
       authStatus: "approved",
-      grantToken: request.grantToken as CliGrantTokenType,
+      grantToken,
       expiresAt: toIsoString(request.grantExpiresAt),
     };
   }

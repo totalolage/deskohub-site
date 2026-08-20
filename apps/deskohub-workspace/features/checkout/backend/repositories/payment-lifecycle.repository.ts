@@ -1,6 +1,15 @@
-import { and, count, eq, inArray } from "drizzle-orm";
+import type {
+  DotyposCustomerId,
+  DotyposReservationId,
+} from "@deskohub/dotypos";
+import type {
+  NexiOperationId,
+  NexiOrderId,
+  NexiWebhookEventId,
+} from "@deskohub/nexi";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
   WorkspaceDatabase,
@@ -9,25 +18,33 @@ import {
 import {
   accountingDocumentSnapshots,
   discountApplications,
-  discountCodeCustomers,
   discountCodeRedemptions,
   discountCodes,
   discountProductTargets,
   discounts,
   paymentAttempts,
+  promotionCodeCustomers,
+  promotionCodes,
+  voucherRedemptions,
+  vouchers,
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
+  encodeStoredAccountingDocumentSnapshot,
 } from "@/features/accounting/accounting-document-snapshot";
-import { AccountingDocumentSnapshotStorageError } from "@/features/accounting/backend/accounting-document-snapshot.repository";
+import {
+  AccountingDocumentSnapshotStorageError,
+  type AccountingPaymentReference,
+} from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import {
   type AccountingSnapshotKey,
   AccountingSnapshotKeyService,
 } from "@/features/accounting/backend/accounting-snapshot-key.service";
 import { encryptAccountingSnapshot } from "@/features/accounting/backend/accounting-snapshot-sql";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import {
   type WorkspaceMoney,
@@ -42,23 +59,38 @@ import type {
   AppliedDiscount,
   DiscountAdjustment,
 } from "@/features/discounts/contracts";
-import { getDiscountCodeTiming } from "@/features/discounts/discount-code";
 import { decodeDiscountDefinition } from "@/features/discounts/discount-definition";
 import { DiscountClaimError } from "@/features/discounts/errors";
-import type { DiscountApplicationId } from "@/features/discounts/persistence-contracts";
+import { deriveOpaqueDiscountId } from "@/features/discounts/opaque-discount-id";
+import type {
+  DiscountApplicationId,
+  DiscountCodeId,
+  VoucherId,
+} from "@/features/discounts/persistence-contracts";
+import { getWorkspaceProductTarget } from "@/features/discounts/product-target";
+import { getPromotionTiming } from "@/features/discounts/promotion-code";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
-import type { Locale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   type PaymentAttempt,
   toPaymentAttempt,
 } from "./payment-attempt.repository";
 
+export type PaymentLifecycleReference =
+  | { readonly type: "paymentAttemptId"; readonly id: PaymentAttemptId }
+  | { readonly type: "providerOrderId"; readonly id: NexiOrderId }
+  | {
+      readonly type: "workspaceReservationId";
+      readonly id: WorkspaceReservationId;
+    };
+
 export class PaymentLifecycleStateError extends Data.TaggedError(
   "PaymentLifecycleStateError"
 )<{
   readonly operation: string;
-  readonly paymentAttemptId: string;
+  readonly paymentReference: PaymentLifecycleReference;
   readonly message: string;
 }> {}
 
@@ -77,15 +109,15 @@ export type PaymentLifecycleRepositoryError =
 
 export interface IPaymentLifecycleRepository {
   readonly createPendingNexiAttempt: (input: {
-    readonly workspaceReservationId: string;
-    readonly providerOrderId: string;
+    readonly workspaceReservationId: WorkspaceReservationId;
+    readonly providerOrderId: NexiOrderId;
     readonly amount: WorkspaceMoney;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
     readonly accountingSnapshot: AccountingDocumentSnapshot;
   }) => Effect.Effect<PaymentAttempt, PaymentLifecycleRepositoryError>;
   readonly completeInternalPayment: (input: {
-    readonly workspaceReservationId: string;
+    readonly workspaceReservationId: WorkspaceReservationId;
     readonly amount: WorkspaceMoney;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
@@ -95,7 +127,7 @@ export interface IPaymentLifecycleRepository {
     PaymentLifecycleRepositoryError
   >;
   readonly attachProviderSession: (input: {
-    readonly id: string;
+    readonly id: PaymentAttemptId;
     readonly securityToken: string;
     readonly providerRedirectUrl: string;
   }) => Effect.Effect<
@@ -103,10 +135,10 @@ export interface IPaymentLifecycleRepository {
     EffectDrizzleQueryError | PaymentLifecycleStateError
   >;
   readonly markPaid: (input: {
-    readonly id: string;
-    readonly workspaceReservationId: string;
-    readonly webhookEventId?: string;
-    readonly providerOperationId?: string;
+    readonly id: PaymentAttemptId;
+    readonly workspaceReservationId: WorkspaceReservationId;
+    readonly webhookEventId?: NexiWebhookEventId;
+    readonly providerOperationId?: NexiOperationId;
     readonly providerStatus?: string;
     readonly paidAt: Temporal.Instant;
   }) => Effect.Effect<
@@ -114,12 +146,12 @@ export interface IPaymentLifecycleRepository {
     PaymentLifecycleRepositoryError
   >;
   readonly markTerminal: (input: {
-    readonly id: string;
-    readonly workspaceReservationId: string;
+    readonly id: PaymentAttemptId;
+    readonly workspaceReservationId: WorkspaceReservationId;
     readonly state: "failed" | "cancelled" | "expired";
     readonly failureCode: string;
-    readonly webhookEventId?: string;
-    readonly providerOperationId?: string;
+    readonly webhookEventId?: NexiWebhookEventId;
+    readonly providerOperationId?: NexiOperationId;
     readonly providerStatus?: string;
   }) => Effect.Effect<
     PaymentLifecycleTransition,
@@ -131,7 +163,7 @@ export class PaymentLifecycleRepository extends Context.Service<
   PaymentLifecycleRepository,
   IPaymentLifecycleRepository
 >()("@deskohub-workspace/checkout/PaymentLifecycleRepository") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -140,8 +172,8 @@ export class PaymentLifecycleRepository extends Context.Service<
       const createPendingNexiAttempt = Effect.fn(
         "PaymentLifecycleRepository.createPendingNexiAttempt"
       )(function* (input: {
-        readonly workspaceReservationId: string;
-        readonly providerOrderId: string;
+        readonly workspaceReservationId: WorkspaceReservationId;
+        readonly providerOrderId: NexiOrderId;
         readonly amount: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
@@ -153,7 +185,10 @@ export class PaymentLifecycleRepository extends Context.Service<
             workspaceReservationId: input.workspaceReservationId,
             amount: input.amount,
             locale: input.locale,
-            paymentAttemptId: input.providerOrderId,
+            paymentReference: {
+              type: "providerOrderId",
+              id: input.providerOrderId,
+            },
           });
         const accountingSnapshotKey =
           yield* accountingSnapshotKeys.getActive.pipe(
@@ -161,7 +196,10 @@ export class PaymentLifecycleRepository extends Context.Service<
               () =>
                 new AccountingDocumentSnapshotStorageError({
                   operation: "encrypt",
-                  paymentAttemptId: input.providerOrderId,
+                  paymentReference: {
+                    type: "providerOrderId",
+                    id: input.providerOrderId,
+                  },
                   message: "Accounting snapshot encryption key is unavailable.",
                 })
             )
@@ -209,7 +247,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                 return yield* new PaymentLifecycleStateError({
                   operation:
                     "PaymentLifecycleRepository.createPendingNexiAttempt",
-                  paymentAttemptId: input.providerOrderId,
+                  paymentReference: {
+                    type: "providerOrderId",
+                    id: input.providerOrderId,
+                  },
                   message:
                     "Payment attempts can only be created for a current held reservation.",
                 });
@@ -217,7 +258,10 @@ export class PaymentLifecycleRepository extends Context.Service<
 
               yield* validateAccountingDocumentSnapshotProviderIdentity({
                 snapshot: accountingSnapshot,
-                paymentAttemptId: input.providerOrderId,
+                paymentReference: {
+                  type: "providerOrderId",
+                  id: input.providerOrderId,
+                },
                 dotyposCustomerId: reservation.dotyposCustomerId,
                 dotyposReservationId: reservation.dotyposReservationId,
               });
@@ -275,7 +319,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                 return yield* new PaymentLifecycleStateError({
                   operation:
                     "PaymentLifecycleRepository.createPendingNexiAttempt",
-                  paymentAttemptId: attemptRow.id,
+                  paymentReference: {
+                    type: "paymentAttemptId",
+                    id: attemptRow.id,
+                  },
                   message:
                     "Payment attempts can only be linked to held unpaid reservations.",
                 });
@@ -318,7 +365,7 @@ export class PaymentLifecycleRepository extends Context.Service<
       const completeInternalPayment = Effect.fn(
         "PaymentLifecycleRepository.completeInternalPayment"
       )(function* (input: {
-        readonly workspaceReservationId: string;
+        readonly workspaceReservationId: WorkspaceReservationId;
         readonly amount: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
@@ -330,7 +377,10 @@ export class PaymentLifecycleRepository extends Context.Service<
             workspaceReservationId: input.workspaceReservationId,
             amount: input.amount,
             locale: input.locale,
-            paymentAttemptId: input.workspaceReservationId,
+            paymentReference: {
+              type: "workspaceReservationId",
+              id: input.workspaceReservationId,
+            },
           });
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplication = yield* validateInternalPaymentCommitment(
@@ -341,7 +391,10 @@ export class PaymentLifecycleRepository extends Context.Service<
         if (input.amount.value !== 0) {
           return yield* lifecycleStateError(
             "completeInternalPayment",
-            input.workspaceReservationId,
+            {
+              type: "workspaceReservationId",
+              id: input.workspaceReservationId,
+            },
             "Internal payments require an exactly zero payable amount."
           );
         }
@@ -423,14 +476,20 @@ export class PaymentLifecycleRepository extends Context.Service<
               ) {
                 return yield* lifecycleStateError(
                   "completeInternalPayment",
-                  input.workspaceReservationId,
+                  {
+                    type: "workspaceReservationId",
+                    id: input.workspaceReservationId,
+                  },
                   "Internal payments can only complete a current held unpaid reservation."
                 );
               }
 
               yield* validateAccountingDocumentSnapshotProviderIdentity({
                 snapshot: accountingSnapshot,
-                paymentAttemptId: input.workspaceReservationId,
+                paymentReference: {
+                  type: "workspaceReservationId",
+                  id: input.workspaceReservationId,
+                },
                 dotyposCustomerId: reservation.dotyposCustomerId,
                 dotyposReservationId: reservation.dotyposReservationId,
               });
@@ -441,7 +500,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                     () =>
                       new AccountingDocumentSnapshotStorageError({
                         operation: "encrypt",
-                        paymentAttemptId: input.workspaceReservationId,
+                        paymentReference: {
+                          type: "workspaceReservationId",
+                          id: input.workspaceReservationId,
+                        },
                         message:
                           "Accounting snapshot encryption key is unavailable.",
                       })
@@ -504,7 +566,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!completedReservation) {
                 return yield* lifecycleStateError(
                   "completeInternalPayment",
-                  attemptRow.id,
+                  { type: "paymentAttemptId", id: attemptRow.id },
                   "Internal payment could not atomically complete the held reservation."
                 );
               }
@@ -553,7 +615,7 @@ export class PaymentLifecycleRepository extends Context.Service<
       const attachProviderSession = Effect.fn(
         "PaymentLifecycleRepository.attachProviderSession"
       )(function* (input: {
-        readonly id: string;
+        readonly id: PaymentAttemptId;
         readonly securityToken: string;
         readonly providerRedirectUrl: string;
       }) {
@@ -580,7 +642,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         if (!attempt) {
           return yield* new PaymentLifecycleStateError({
             operation: "PaymentLifecycleRepository.attachProviderSession",
-            paymentAttemptId: input.id,
+            paymentReference: { type: "paymentAttemptId", id: input.id },
             message:
               "Only created payment attempts can attach a provider session.",
           });
@@ -591,10 +653,10 @@ export class PaymentLifecycleRepository extends Context.Service<
 
       const markPaid = Effect.fn("PaymentLifecycleRepository.markPaid")(
         function* (input: {
-          readonly id: string;
-          readonly workspaceReservationId: string;
-          readonly webhookEventId?: string;
-          readonly providerOperationId?: string;
+          readonly id: PaymentAttemptId;
+          readonly workspaceReservationId: WorkspaceReservationId;
+          readonly webhookEventId?: NexiWebhookEventId;
+          readonly providerOperationId?: NexiOperationId;
           readonly providerStatus?: string;
           readonly paidAt: Temporal.Instant;
         }) {
@@ -629,7 +691,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!attempt) {
                 return yield* lifecycleStateError(
                   "markPaid",
-                  input.id,
+                  { type: "paymentAttemptId", id: input.id },
                   "Only a created, pending, or already-paid attempt can mark a reservation paid."
                 );
               }
@@ -676,7 +738,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!consistent) {
                 return yield* lifecycleStateError(
                   "markPaid",
-                  input.id,
+                  { type: "paymentAttemptId", id: input.id },
                   "Only the active pending attempt on a held reservation can mark payment paid."
                 );
               }
@@ -694,12 +756,12 @@ export class PaymentLifecycleRepository extends Context.Service<
 
       const markTerminal = Effect.fn("PaymentLifecycleRepository.markTerminal")(
         function* (input: {
-          readonly id: string;
-          readonly workspaceReservationId: string;
+          readonly id: PaymentAttemptId;
+          readonly workspaceReservationId: WorkspaceReservationId;
           readonly state: "failed" | "cancelled" | "expired";
           readonly failureCode: string;
-          readonly webhookEventId?: string;
-          readonly providerOperationId?: string;
+          readonly webhookEventId?: NexiWebhookEventId;
+          readonly providerOperationId?: NexiOperationId;
           readonly providerStatus?: string;
         }) {
           const terminalAt = Temporal.Now.instant();
@@ -735,16 +797,10 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!attempt) {
                 return yield* lifecycleStateError(
                   "markTerminal",
-                  input.id,
+                  { type: "paymentAttemptId", id: input.id },
                   "Only a non-terminal or matching terminal attempt can mark a reservation terminal."
                 );
               }
-
-              yield* tx
-                .delete(accountingDocumentSnapshots)
-                .where(
-                  eq(accountingDocumentSnapshots.paymentAttemptId, input.id)
-                );
 
               const [reservation] = yield* tx
                 .update(workspaceReservations)
@@ -792,7 +848,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!consistent) {
                 return yield* lifecycleStateError(
                   "markTerminal",
-                  input.id,
+                  { type: "paymentAttemptId", id: input.id },
                   "Only the active pending attempt on a held reservation can mark payment terminal."
                 );
               }
@@ -820,7 +876,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         markPaid,
         markTerminal,
       } satisfies IPaymentLifecycleRepository;
-    }).pipe(Effect.provide(AccountingSnapshotKeyService.Live))
+    }).pipe(Effect.provide(AccountingSnapshotKeyService.Default))
   );
 }
 
@@ -865,12 +921,12 @@ export const validateDiscountCommitment = Effect.fn(
         operation: "reserve",
         reason: "money_mismatch",
         message: "A committed discount application has inconsistent money.",
-        codeId: claim?.codeId,
+        codeId: getPromotionClaimId(claim),
       });
     }
 
     if (
-      claim &&
+      claim?.kind === "discount_code" &&
       getWorkspaceProductKey(claim.product) !==
         getWorkspaceProductKey(commitment.product)
     ) {
@@ -916,12 +972,12 @@ export const validateInternalPaymentCommitment = Effect.fn(
 
 const lifecycleStateError = (
   operation: string,
-  paymentAttemptId: string,
+  paymentReference: PaymentLifecycleReference,
   message: string
 ) =>
   new PaymentLifecycleStateError({
     operation: `PaymentLifecycleRepository.${operation}`,
-    paymentAttemptId,
+    paymentReference,
     message,
   });
 
@@ -935,8 +991,18 @@ const claimError = (
     operation,
     reason,
     message,
-    codeId: claim?.codeId,
+    codeId: getPromotionClaimId(claim),
   });
+
+const getPromotionClaimId = (claim: DiscountClaimInstruction | undefined) => {
+  if (!claim) return undefined;
+  return Match.value(claim).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      discount_code: ({ codeId }) => codeId,
+      voucher: ({ voucherId }) => voucherId,
+    })
+  );
+};
 
 const discountAdjustmentsEqual = (
   left: DiscountAdjustment,
@@ -965,8 +1031,8 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
   "PaymentLifecycle.validateAccountingDocumentSnapshotForAttempt"
 )(function* (input: {
   readonly snapshot: AccountingDocumentSnapshot;
-  readonly workspaceReservationId: string;
-  readonly paymentAttemptId: string;
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly paymentReference: AccountingPaymentReference;
   readonly amount: WorkspaceMoney;
   readonly locale: Locale;
 }) {
@@ -975,7 +1041,7 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
       () =>
         new AccountingDocumentSnapshotStorageError({
           operation: "validate",
-          paymentAttemptId: input.paymentAttemptId,
+          paymentReference: input.paymentReference,
           message: "Accounting snapshot schema is invalid.",
         })
     )
@@ -989,7 +1055,7 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
   ) {
     return yield* new AccountingDocumentSnapshotStorageError({
       operation: "validate",
-      paymentAttemptId: input.paymentAttemptId,
+      paymentReference: input.paymentReference,
       message: "Accounting snapshot does not match the payment attempt.",
     });
   }
@@ -1032,9 +1098,9 @@ const validateAccountingDocumentSnapshotProviderIdentity = Effect.fn(
   "PaymentLifecycle.validateAccountingDocumentSnapshotProviderIdentity"
 )(function* (input: {
   readonly snapshot: AccountingDocumentSnapshot;
-  readonly paymentAttemptId: string;
-  readonly dotyposCustomerId: string;
-  readonly dotyposReservationId: string | null;
+  readonly paymentReference: AccountingPaymentReference;
+  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly dotyposReservationId: DotyposReservationId | null;
 }) {
   if (
     input.snapshot.dotyposCustomerId !== input.dotyposCustomerId ||
@@ -1042,7 +1108,7 @@ const validateAccountingDocumentSnapshotProviderIdentity = Effect.fn(
   ) {
     return yield* new AccountingDocumentSnapshotStorageError({
       operation: "validate",
-      paymentAttemptId: input.paymentAttemptId,
+      paymentReference: input.paymentReference,
       message: "Accounting snapshot provider identity is inconsistent.",
     });
   }
@@ -1052,19 +1118,20 @@ const persistAccountingDocumentSnapshot = Effect.fn(
   "PaymentLifecycle.persistAccountingDocumentSnapshot"
 )(function* (input: {
   readonly tx: TransactionClient;
-  readonly paymentAttemptId: string;
-  readonly workspaceReservationId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly workspaceReservationId: WorkspaceReservationId;
   readonly snapshot: AccountingDocumentSnapshot;
   readonly key: AccountingSnapshotKey;
 }) {
-  const snapshotJson = JSON.stringify(input.snapshot);
+  const snapshotJson = JSON.stringify(
+    encodeStoredAccountingDocumentSnapshot(input.snapshot)
+  );
 
   yield* input.tx
     .insert(accountingDocumentSnapshots)
     .values({
       paymentAttemptId: input.paymentAttemptId,
       workspaceReservationId: input.workspaceReservationId,
-      schemaVersion: input.snapshot.schemaVersion,
       keyId: input.key.id,
       encryptedSnapshot: encryptAccountingSnapshot(
         snapshotJson,
@@ -1077,7 +1144,10 @@ const persistAccountingDocumentSnapshot = Effect.fn(
         () =>
           new AccountingDocumentSnapshotStorageError({
             operation: "encrypt",
-            paymentAttemptId: input.paymentAttemptId,
+            paymentReference: {
+              type: "paymentAttemptId",
+              id: input.paymentAttemptId,
+            },
             message: "Accounting snapshot could not be encrypted.",
           })
       )
@@ -1100,8 +1170,8 @@ const persistDiscountApplications = Effect.fn(
 )(function* (input: {
   readonly tx: TransactionClient;
   readonly commitment: CommitmentPayload;
-  readonly paymentAttemptId: string;
-  readonly workspaceReservationId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly workspaceReservationId: WorkspaceReservationId;
 }) {
   if (input.commitment.applications.length === 0) {
     return [] satisfies PersistedApplication[];
@@ -1150,9 +1220,9 @@ const reserveCommittedCodeClaim = Effect.fn(
   readonly tx: TransactionClient;
   readonly claimedApplication: ClaimedApplication | undefined;
   readonly applicationRows: readonly PersistedApplication[];
-  readonly paymentAttemptId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
   readonly locale: Locale;
-  readonly reservationCustomerId: string;
+  readonly reservationCustomerId: DotyposCustomerId;
   readonly reservationExpiresAt: Temporal.Instant;
 }) {
   if (!input.claimedApplication) return;
@@ -1188,9 +1258,9 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     readonly claim: DiscountClaimInstruction;
     readonly application: AppliedDiscount;
     readonly applicationId: DiscountApplicationId;
-    readonly paymentAttemptId: string;
+    readonly paymentAttemptId: PaymentAttemptId;
     readonly locale: Locale;
-    readonly reservationCustomerId: string;
+    readonly reservationCustomerId: DotyposCustomerId;
     readonly reservationExpiresAt: Temporal.Instant;
   }) {
     if (input.reservationCustomerId !== input.claim.dotyposCustomerId) {
@@ -1202,62 +1272,60 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       );
     }
 
-    const [code] = yield* input.tx
-      .select()
-      .from(discountCodes)
-      .where(eq(discountCodes.id, input.claim.codeId))
-      .limit(1)
-      .for("update");
+    const stored = yield* Match.value(input.claim).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount_code: (claim) =>
+          Effect.gen(function* () {
+            const rows = yield* input.tx
+              .select({ promotion: promotionCodes, code: discountCodes })
+              .from(discountCodes)
+              .innerJoin(
+                promotionCodes,
+                eq(promotionCodes.id, discountCodes.promotionCodeId)
+              )
+              .where(eq(discountCodes.id, claim.codeId))
+              .limit(1)
+              .for("update");
+            return rows[0]
+              ? ({ kind: "discount_code", claim, ...rows[0] } as const)
+              : undefined;
+          }),
+        voucher: (claim) =>
+          Effect.gen(function* () {
+            const rows = yield* input.tx
+              .select({ promotion: promotionCodes, voucher: vouchers })
+              .from(vouchers)
+              .innerJoin(
+                promotionCodes,
+                eq(promotionCodes.id, vouchers.promotionCodeId)
+              )
+              .where(eq(vouchers.id, claim.voucherId))
+              .limit(1)
+              .for("update");
+            return rows[0]
+              ? ({ kind: "voucher", claim, ...rows[0] } as const)
+              : undefined;
+          }),
+      })
+    );
 
-    if (!code || code.discountId !== input.claim.storedDiscountId) {
+    if (
+      !stored ||
+      (stored.kind === "discount_code" &&
+        stored.code.discountId !== stored.claim.storedDiscountId)
+    ) {
       return yield* claimError(
         "reserve",
         "unknown_code",
-        "The accepted discount code no longer exists.",
+        "The accepted promotion no longer exists.",
         input.claim
       );
     }
-
-    const [definition] = yield* input.tx
-      .select()
-      .from(discounts)
-      .where(eq(discounts.id, input.claim.storedDiscountId))
-      .limit(1)
-      .for("update");
-    if (!definition) {
-      return yield* claimError(
-        "reserve",
-        "unknown_code",
-        "The accepted discount benefit no longer exists.",
-        input.claim
-      );
-    }
-    if (!code.enabled) {
+    if (!stored.promotion.enabled) {
       return yield* claimError(
         "reserve",
         "inactive",
-        "The accepted discount code is inactive.",
-        input.claim
-      );
-    }
-
-    const [target] = yield* input.tx
-      .select({ discountId: discountProductTargets.discountId })
-      .from(discountProductTargets)
-      .where(
-        and(
-          eq(discountProductTargets.discountId, input.claim.storedDiscountId),
-          eq(discountProductTargets.productIdentity, input.claim.product)
-        )
-      )
-      .limit(1)
-      .for("update");
-
-    if (!target) {
-      return yield* claimError(
-        "reserve",
-        "product_ineligible",
-        "The accepted discount code no longer targets this product.",
+        "The accepted promotion is inactive.",
         input.claim
       );
     }
@@ -1266,88 +1334,46 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     if (Temporal.Instant.compare(input.reservationExpiresAt, claimedAt) <= 0) {
       return yield* lifecycleStateError(
         "reserveCodeClaim",
-        input.paymentAttemptId,
+        { type: "paymentAttemptId", id: input.paymentAttemptId },
         "Discount claims can only be reserved for a current held reservation."
       );
     }
     if (
-      code.validFrom &&
-      Temporal.Instant.compare(claimedAt, code.validFrom) < 0
+      stored.promotion.validFrom &&
+      Temporal.Instant.compare(claimedAt, stored.promotion.validFrom) < 0
     ) {
       return yield* claimError(
         "reserve",
         "not_started",
-        "The accepted discount code is not valid yet.",
+        "The accepted promotion is not valid yet.",
         input.claim
       );
     }
     if (
-      code.validUntil &&
-      Temporal.Instant.compare(claimedAt, code.validUntil) >= 0
+      stored.promotion.validUntil &&
+      Temporal.Instant.compare(claimedAt, stored.promotion.validUntil) >= 0
     ) {
       return yield* claimError(
         "reserve",
         "expired",
-        "The accepted discount code has expired.",
-        input.claim
-      );
-    }
-
-    const currentDefinition = yield* decodeDiscountDefinition({
-      row: {
-        ...definition,
-        productTargets: [
-          {
-            discountId: target.discountId,
-            productIdentity: input.claim.product,
-          },
-        ],
-      },
-    }).pipe(
-      Effect.mapError(
-        (cause) =>
-          new DiscountClaimError({
-            operation: "reserve",
-            reason: "malformed_configuration",
-            message: "The accepted discount benefit is malformed.",
-            codeId: input.claim.codeId,
-            cause,
-          })
-      )
-    );
-    const currentTiming = getDiscountCodeTiming(code.validUntil);
-    if (
-      !discountAdjustmentsEqual(
-        currentDefinition.adjustment,
-        input.application.discount.adjustment
-      ) ||
-      currentDefinition.labels[input.locale] !==
-        input.application.discount.label ||
-      currentTiming.expiresAt !== input.application.discount.expiresAt ||
-      currentTiming.countdownStartsAt !==
-        input.application.discount.countdownStartsAt
-    ) {
-      return yield* claimError(
-        "reserve",
-        "claim_conflict",
-        "The accepted discount benefit changed before claim admission.",
+        "The accepted promotion has expired.",
         input.claim
       );
     }
 
     const [allowlist] = yield* input.tx
       .select({ count: count() })
-      .from(discountCodeCustomers)
-      .where(eq(discountCodeCustomers.codeId, input.claim.codeId));
+      .from(promotionCodeCustomers)
+      .where(eq(promotionCodeCustomers.promotionCodeId, stored.promotion.id));
     if ((allowlist?.count ?? 0) > 0) {
       const [customer] = yield* input.tx
-        .select({ codeId: discountCodeCustomers.codeId })
-        .from(discountCodeCustomers)
+        .select({ promotionCodeId: promotionCodeCustomers.promotionCodeId })
+        .from(promotionCodeCustomers)
         .where(
           and(
-            eq(discountCodeCustomers.codeId, input.claim.codeId),
+            eq(promotionCodeCustomers.promotionCodeId, stored.promotion.id),
             eq(
-              discountCodeCustomers.dotyposCustomerId,
+              promotionCodeCustomers.dotyposCustomerId,
               input.claim.dotyposCustomerId
             )
           )
@@ -1357,56 +1383,93 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
         return yield* claimError(
           "reserve",
           "customer_ineligible",
-          "The customer is no longer eligible for the accepted discount code.",
+          "The customer is no longer eligible for the accepted promotion.",
           input.claim
         );
       }
     }
 
-    const [customerUse] = yield* input.tx
-      .select({ state: discountCodeRedemptions.state })
-      .from(discountCodeRedemptions)
-      .where(
-        and(
-          eq(discountCodeRedemptions.codeId, input.claim.codeId),
-          eq(
-            discountCodeRedemptions.dotyposCustomerId,
-            input.claim.dotyposCustomerId
-          ),
-          inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+    yield* Match.value(stored).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount_code: ({ claim, code, promotion }) =>
+          validateStoredDiscountClaim({
+            ...input,
+            claim,
+            code,
+            promotion,
+          }),
+        voucher: ({ claim, voucher, promotion }) =>
+          validateVoucherClaim({
+            ...input,
+            claim,
+            voucher,
+            promotion,
+          }),
+      })
+    );
+
+    if (stored.kind === "discount_code") {
+      const [customerUses] = yield* input.tx
+        .select({ count: count() })
+        .from(discountCodeRedemptions)
+        .where(
+          and(
+            eq(discountCodeRedemptions.codeId, stored.code.id),
+            eq(
+              discountCodeRedemptions.dotyposCustomerId,
+              input.claim.dotyposCustomerId
+            ),
+            inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+          )
+        );
+      if (
+        stored.code.maxUsesPerCustomer !== null &&
+        (customerUses?.count ?? 0) >= stored.code.maxUsesPerCustomer
+      ) {
+        return yield* claimError(
+          "reserve",
+          "usage_limit_reached",
+          "The customer has no remaining uses for this discount code.",
+          input.claim
+        );
+      }
+    } else {
+      const [customerUse] = yield* input.tx
+        .select({ state: voucherRedemptions.state })
+        .from(voucherRedemptions)
+        .where(
+          and(
+            eq(voucherRedemptions.voucherId, stored.voucher.id),
+            eq(
+              voucherRedemptions.dotyposCustomerId,
+              input.claim.dotyposCustomerId
+            ),
+            eq(voucherRedemptions.state, "reserved")
+          )
         )
-      )
-      .limit(1);
-
-    if (customerUse?.state === "redeemed") {
-      return yield* claimError(
-        "reserve",
-        "already_redeemed",
-        "The customer has already redeemed this discount code.",
-        input.claim
-      );
-    }
-    if (customerUse) {
-      return yield* claimError(
-        "reserve",
-        "claim_conflict",
-        "The customer already has an active claim for this discount code.",
-        input.claim
-      );
+        .limit(1);
+      if (customerUse) {
+        return yield* claimError(
+          "reserve",
+          "claim_conflict",
+          "The customer already has an active claim for this voucher.",
+          input.claim
+        );
+      }
     }
 
-    if (code.maxUses !== null) {
+    if (stored.kind === "discount_code" && stored.code.maxUses !== null) {
       const [uses] = yield* input.tx
         .select({ count: count() })
         .from(discountCodeRedemptions)
         .where(
           and(
-            eq(discountCodeRedemptions.codeId, input.claim.codeId),
+            eq(discountCodeRedemptions.codeId, stored.code.id),
             inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
           )
         );
 
-      if ((uses?.count ?? 0) >= code.maxUses) {
+      if ((uses?.count ?? 0) >= stored.code.maxUses) {
         return yield* claimError(
           "reserve",
           "usage_limit_reached",
@@ -1416,121 +1479,499 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       }
     }
 
-    yield* input.tx.insert(discountCodeRedemptions).values({
-      codeId: input.claim.codeId,
+    const claimValues = {
       applicationId: input.applicationId,
       paymentAttemptId: input.paymentAttemptId,
       dotyposCustomerId: input.claim.dotyposCustomerId,
-      state: "reserved",
+      state: "reserved" as const,
       reservationExpiresAt: input.reservationExpiresAt,
       reservedAt: claimedAt,
       updatedAt: claimedAt,
-    });
+    };
+    yield* Match.value(stored).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount_code: ({ code }) =>
+          input.tx
+            .insert(discountCodeRedemptions)
+            .values({
+              ...claimValues,
+              codeId: code.id,
+            })
+            .pipe(Effect.asVoid),
+        voucher: ({ voucher }) =>
+          input.tx
+            .insert(voucherRedemptions)
+            .values({
+              ...claimValues,
+              voucherId: voucher.id,
+            })
+            .pipe(Effect.asVoid),
+      })
+    );
     return claimedAt;
   }
 );
 
-const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
+const validateStoredDiscountClaim = Effect.fn(
+  "PaymentLifecycle.validateStoredDiscountClaim"
+)(function* (input: {
+  readonly tx: TransactionClient;
+  readonly claim: Extract<
+    DiscountClaimInstruction,
+    { readonly kind: "discount_code" }
+  >;
+  readonly code: typeof discountCodes.$inferSelect;
+  readonly promotion: typeof promotionCodes.$inferSelect;
+  readonly application: AppliedDiscount;
+  readonly locale: Locale;
+}) {
+  const [definition] = yield* input.tx
+    .select()
+    .from(discounts)
+    .where(eq(discounts.id, input.claim.storedDiscountId))
+    .limit(1)
+    .for("update");
+  if (!definition) {
+    return yield* claimError(
+      "reserve",
+      "unknown_code",
+      "The accepted discount benefit no longer exists.",
+      input.claim
+    );
+  }
+
+  const [target] = yield* input.tx
+    .select({ discountId: discountProductTargets.discountId })
+    .from(discountProductTargets)
+    .where(
+      and(
+        eq(discountProductTargets.discountId, input.claim.storedDiscountId),
+        eq(
+          discountProductTargets.productTarget,
+          getWorkspaceProductTarget(input.claim.product)
+        )
+      )
+    )
+    .limit(1)
+    .for("update");
+  if (!target) {
+    return yield* claimError(
+      "reserve",
+      "product_ineligible",
+      "The accepted discount code no longer targets this product.",
+      input.claim
+    );
+  }
+
+  const currentDefinition = yield* decodeDiscountDefinition({
+    row: {
+      ...definition,
+      productTargets: [
+        {
+          discountId: target.discountId,
+          productTarget: getWorkspaceProductTarget(input.claim.product),
+        },
+      ],
+    },
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DiscountClaimError({
+          operation: "reserve",
+          reason: "malformed_configuration",
+          message: "The accepted discount benefit is malformed.",
+          codeId: input.claim.codeId,
+          cause,
+        })
+    )
+  );
+  const timing = getPromotionTiming(input.promotion.validUntil);
+  if (
+    !discountAdjustmentsEqual(
+      currentDefinition.adjustment,
+      input.application.discount.adjustment
+    ) ||
+    currentDefinition.labels[input.locale] !==
+      input.application.discount.label ||
+    timing.expiresAt !== input.application.discount.expiresAt ||
+    timing.countdownStartsAt !== input.application.discount.countdownStartsAt
+  ) {
+    return yield* claimError(
+      "reserve",
+      "claim_conflict",
+      "The accepted discount benefit changed before claim admission.",
+      input.claim
+    );
+  }
+});
+
+const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
+  function* (input: {
+    readonly tx: TransactionClient;
+    readonly claim: Extract<
+      DiscountClaimInstruction,
+      { readonly kind: "voucher" }
+    >;
+    readonly voucher: typeof vouchers.$inferSelect;
+    readonly promotion: typeof promotionCodes.$inferSelect;
+    readonly application: AppliedDiscount;
+    readonly locale: Locale;
+  }) {
+    const [usage] = yield* input.tx
+      .select({
+        value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+      })
+      .from(voucherRedemptions)
+      .innerJoin(
+        discountApplications,
+        eq(discountApplications.id, voucherRedemptions.applicationId)
+      )
+      .where(
+        and(
+          eq(voucherRedemptions.voucherId, input.claim.voucherId),
+          inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+        )
+      );
+    const availableAmount = {
+      value: input.voucher.issuedAmountValue - (usage?.value ?? 0),
+      exponent: input.voucher.issuedAmountExponent,
+      currency: input.voucher.issuedAmountCurrency,
+    };
+    const adjustment = input.application.discount.adjustment;
+    const timing = getPromotionTiming(input.promotion.validUntil);
+    const discountId = deriveOpaqueDiscountId({
+      providerNamespace: "database-voucher",
+      providerReference: input.claim.voucherId,
+    });
+    if (
+      !workspaceMoneyEquals(availableAmount, input.claim.availableAmount) ||
+      adjustment.kind !== "fixed" ||
+      !workspaceMoneyEquals(adjustment.amount, availableAmount) ||
+      input.application.amount.value > availableAmount.value ||
+      input.application.discount.id !== discountId ||
+      input.application.discount.label !==
+        m.checkoutVoucherLabel({}, { locale: input.locale }) ||
+      timing.expiresAt !== input.application.discount.expiresAt ||
+      timing.countdownStartsAt !== input.application.discount.countdownStartsAt
+    ) {
+      return yield* claimError(
+        "reserve",
+        "claim_conflict",
+        "The accepted voucher credit changed before claim admission.",
+        input.claim
+      );
+    }
+  }
+);
+
+export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
   function* (
     tx: TransactionClient,
-    paymentAttemptId: string,
-    redeemedAt: Temporal.Instant
+    paymentAttemptId: PaymentAttemptId,
+    redeemedAt: Temporal.Instant,
+    allowReleased = false
   ) {
-    const [claim] = yield* tx
-      .select({
-        codeId: discountCodeRedemptions.codeId,
-        state: discountCodeRedemptions.state,
-      })
-      .from(discountCodeRedemptions)
-      .where(eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId))
-      .limit(1)
-      .for("update");
+    const [discountClaims, voucherClaims] = yield* Effect.all([
+      tx
+        .select({
+          dotyposCustomerId: discountCodeRedemptions.dotyposCustomerId,
+          id: discountCodeRedemptions.codeId,
+          state: discountCodeRedemptions.state,
+        })
+        .from(discountCodeRedemptions)
+        .where(eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId))
+        .limit(1)
+        .for("update"),
+      tx
+        .select({
+          applicationId: voucherRedemptions.applicationId,
+          id: voucherRedemptions.voucherId,
+          state: voucherRedemptions.state,
+        })
+        .from(voucherRedemptions)
+        .where(eq(voucherRedemptions.paymentAttemptId, paymentAttemptId))
+        .limit(1)
+        .for("update"),
+    ]);
+    const claim = selectStoredPromotionClaim(
+      discountClaims[0],
+      voucherClaims[0]
+    );
 
     if (!claim) return;
-    if (claim.state === "released") {
+    if (claim.state === "released" && !allowReleased) {
       return yield* new DiscountClaimError({
         operation: "redeem",
         reason: "claim_conflict",
-        message: "A released discount-code claim cannot be redeemed.",
-        codeId: claim.codeId,
+        message: "A released promotion claim cannot be redeemed.",
+        codeId: claim.id,
       });
     }
     if (claim.state === "redeemed") return;
+    if (claim.state === "released" && claim.kind === "discount") {
+      const [code] = yield* tx
+        .select({ maxUses: discountCodes.maxUses })
+        .from(discountCodes)
+        .where(eq(discountCodes.id, claim.id))
+        .limit(1)
+        .for("update");
+      if (!code) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason: "unknown_code",
+          message: "The accepted discount code no longer exists.",
+          codeId: claim.id,
+        });
+      }
 
-    yield* tx
-      .update(discountCodeRedemptions)
-      .set({
-        state: "redeemed",
-        redeemedAt,
-        updatedAt: redeemedAt,
-      })
-      .where(
-        and(
-          eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
-          eq(discountCodeRedemptions.state, "reserved")
+      const [customerUse] = yield* tx
+        .select({ state: discountCodeRedemptions.state })
+        .from(discountCodeRedemptions)
+        .where(
+          and(
+            eq(discountCodeRedemptions.codeId, claim.id),
+            eq(
+              discountCodeRedemptions.dotyposCustomerId,
+              claim.dotyposCustomerId
+            ),
+            inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+          )
         )
-      );
+        .limit(1);
+      if (customerUse) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason:
+            customerUse.state === "redeemed"
+              ? "already_redeemed"
+              : "claim_conflict",
+          message: "The customer has another active claim for this code.",
+          codeId: claim.id,
+        });
+      }
+
+      if (code.maxUses !== null) {
+        const [uses] = yield* tx
+          .select({ count: count() })
+          .from(discountCodeRedemptions)
+          .where(
+            and(
+              eq(discountCodeRedemptions.codeId, claim.id),
+              inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+            )
+          );
+        if ((uses?.count ?? 0) >= code.maxUses) {
+          return yield* new DiscountClaimError({
+            operation: "redeem",
+            reason: "usage_limit_reached",
+            message: "The accepted discount code has no remaining uses.",
+            codeId: claim.id,
+          });
+        }
+      }
+    }
+
+    if (claim.state === "released" && claim.kind === "voucher") {
+      const [voucher] = yield* tx
+        .select()
+        .from(vouchers)
+        .where(eq(vouchers.id, claim.id))
+        .limit(1)
+        .for("update");
+      if (!voucher) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason: "unknown_code",
+          message: "The accepted voucher no longer exists.",
+          codeId: claim.id,
+        });
+      }
+
+      const [[application], [usage]] = yield* Effect.all([
+        tx
+          .select({
+            currency: discountApplications.appliedAmountCurrency,
+            exponent: discountApplications.appliedAmountExponent,
+            value: discountApplications.appliedAmountValue,
+          })
+          .from(discountApplications)
+          .where(eq(discountApplications.id, claim.applicationId))
+          .limit(1),
+        tx
+          .select({
+            value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+          })
+          .from(voucherRedemptions)
+          .innerJoin(
+            discountApplications,
+            eq(discountApplications.id, voucherRedemptions.applicationId)
+          )
+          .where(
+            and(
+              eq(voucherRedemptions.voucherId, claim.id),
+              inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+            )
+          ),
+      ]);
+      if (
+        !application ||
+        application.currency !== voucher.issuedAmountCurrency ||
+        application.exponent !== voucher.issuedAmountExponent ||
+        application.value > voucher.issuedAmountValue - (usage?.value ?? 0)
+      ) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason: "claim_conflict",
+          message: "The voucher no longer has enough available credit.",
+          codeId: claim.id,
+        });
+      }
+    }
+
+    const values = {
+      state: "redeemed" as const,
+      redeemedAt,
+      releasedAt: null,
+      releaseReason: null,
+      updatedAt: redeemedAt,
+    };
+    const claimableStates = allowReleased
+      ? (["reserved", "released"] as const)
+      : (["reserved"] as const);
+    yield* Match.value(claim).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount: () =>
+          tx
+            .update(discountCodeRedemptions)
+            .set(values)
+            .where(
+              and(
+                eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
+                inArray(discountCodeRedemptions.state, claimableStates)
+              )
+            )
+            .pipe(Effect.asVoid),
+        voucher: () =>
+          tx
+            .update(voucherRedemptions)
+            .set(values)
+            .where(
+              and(
+                eq(voucherRedemptions.paymentAttemptId, paymentAttemptId),
+                inArray(voucherRedemptions.state, claimableStates)
+              )
+            )
+            .pipe(Effect.asVoid),
+      })
+    );
   }
 );
 
 const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
   function* (
     tx: TransactionClient,
-    paymentAttemptId: string,
+    paymentAttemptId: PaymentAttemptId,
     releasedAt: Temporal.Instant,
     releaseReason: string
   ) {
-    const [claim] = yield* tx
-      .select({
-        codeId: discountCodeRedemptions.codeId,
-        state: discountCodeRedemptions.state,
-      })
-      .from(discountCodeRedemptions)
-      .where(eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId))
-      .limit(1)
-      .for("update");
+    const [discountClaims, voucherClaims] = yield* Effect.all([
+      tx
+        .select({
+          id: discountCodeRedemptions.codeId,
+          state: discountCodeRedemptions.state,
+        })
+        .from(discountCodeRedemptions)
+        .where(eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId))
+        .limit(1)
+        .for("update"),
+      tx
+        .select({
+          id: voucherRedemptions.voucherId,
+          state: voucherRedemptions.state,
+        })
+        .from(voucherRedemptions)
+        .where(eq(voucherRedemptions.paymentAttemptId, paymentAttemptId))
+        .limit(1)
+        .for("update"),
+    ]);
+    const claim = selectStoredPromotionClaim(
+      discountClaims[0],
+      voucherClaims[0]
+    );
 
     if (!claim) return;
     if (claim.state === "redeemed") {
       return yield* new DiscountClaimError({
         operation: "release",
         reason: "claim_conflict",
-        message: "A redeemed discount-code claim cannot be released.",
-        codeId: claim.codeId,
+        message: "A redeemed promotion claim cannot be released.",
+        codeId: claim.id,
       });
     }
     if (claim.state === "released") return;
 
-    yield* tx
-      .update(discountCodeRedemptions)
-      .set({
-        state: "released",
-        releasedAt,
-        releaseReason,
-        updatedAt: releasedAt,
+    const values = {
+      state: "released" as const,
+      releasedAt,
+      releaseReason,
+      updatedAt: releasedAt,
+    };
+    yield* Match.value(claim).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        discount: () =>
+          tx
+            .update(discountCodeRedemptions)
+            .set(values)
+            .where(
+              and(
+                eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
+                eq(discountCodeRedemptions.state, "reserved")
+              )
+            )
+            .pipe(Effect.asVoid),
+        voucher: () =>
+          tx
+            .update(voucherRedemptions)
+            .set(values)
+            .where(
+              and(
+                eq(voucherRedemptions.paymentAttemptId, paymentAttemptId),
+                eq(voucherRedemptions.state, "reserved")
+              )
+            )
+            .pipe(Effect.asVoid),
       })
-      .where(
-        and(
-          eq(discountCodeRedemptions.paymentAttemptId, paymentAttemptId),
-          eq(discountCodeRedemptions.state, "reserved")
-        )
-      );
+    );
   }
 );
 
+const selectStoredPromotionClaim = <
+  DiscountClaim extends { readonly id: DiscountCodeId; readonly state: string },
+  VoucherClaim extends { readonly id: VoucherId; readonly state: string },
+>(
+  discountClaim: DiscountClaim | undefined,
+  voucherClaim: VoucherClaim | undefined
+) => {
+  if (discountClaim) return { kind: "discount", ...discountClaim } as const;
+  if (voucherClaim) return { kind: "voucher", ...voucherClaim } as const;
+  return undefined;
+};
+
 const activeClaimConstraints = new Set([
-  "discount_code_redemptions_active_customer_unique_idx",
   "discount_code_redemptions_application_unique_idx",
   "discount_code_redemptions_attempt_unique_idx",
+  "voucher_redemptions_active_customer_unique_idx",
+  "voucher_redemptions_application_unique_idx",
+  "voucher_redemptions_attempt_unique_idx",
 ]);
 
 const getUniqueConstraint = (cause: unknown): string | undefined => {
-  if (typeof cause !== "object" || cause === null) return undefined;
+  if (!Predicate.isObject(cause)) return undefined;
   if (
     "_tag" in cause &&
     cause._tag === "UniqueViolation" &&
     "constraint" in cause &&
-    typeof cause.constraint === "string"
+    Predicate.isString(cause.constraint)
   ) {
     return cause.constraint;
   }

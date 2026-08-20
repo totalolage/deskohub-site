@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  DotyposReservationIdSchema,
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
@@ -14,7 +15,7 @@ import {
   Schedule,
   Schema,
 } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
   buildCheckoutPayPath,
@@ -23,7 +24,6 @@ import {
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import {
   deriveCheckoutAttemptKey,
   deriveCheckoutSessionKey,
@@ -32,32 +32,50 @@ import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backe
 import {
   createWorkspaceDotyposReservation,
   splitCustomerName,
-  WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLive,
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
-import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
+import {
+  type CheckoutAttemptId,
+  type CheckoutSessionId,
+  promoteCheckoutAttemptToSessionId,
+} from "@/features/checkout/checkout-identifiers";
+import {
+  type CheckoutSummaryChangedKeys,
+  getCheckoutSummaryChangedKeys,
+} from "@/features/checkout/checkout-summary";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
+import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import {
+  ensureOfficeReservationsEnabled,
+  OfficeReservationFeatureFlagService,
+} from "@/features/office/backend/office-reservation-feature-flag.service";
 import { supersedableReservationPaymentStates } from "@/features/reservation/backend/reservation-supersession";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   type CreateWorkspaceReservationInput,
+  type IWorkspaceReservationRepository,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type DotyposCustomerId,
   dotyposCustomerIdSchema,
 } from "@/features/reservation/dotypos-customer";
-import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
-import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
+import {
+  getStoredWorkspaceReservationDetails,
+  type WorkspaceReservationId,
+} from "@/features/reservation/persistence-contracts";
+import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
+import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
@@ -74,6 +92,13 @@ import {
   type PreparedMeetingRoomPayState,
   prepareMeetingRoomAdvertisement,
 } from "./prepare-meeting-room-pay-state";
+import {
+  ensureOfficePayStateAvailable,
+  getPreparedOfficeCheckoutDetails,
+  type PreparedOfficeAdvertisement,
+  type PreparedOfficePayState,
+  prepareOfficeAdvertisement,
+} from "./prepare-office-pay-state";
 import {
   type PreparePayStateInput,
   preparePayStateSchema,
@@ -92,20 +117,20 @@ const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
 
 type PreparedAdvertisement =
   | PreparedCoworkAdvertisement
-  | PreparedMeetingRoomAdvertisement;
+  | PreparedMeetingRoomAdvertisement
+  | PreparedOfficeAdvertisement;
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
   (input: PreparePayStateInput) =>
-    Match.value(input).pipe(
-      Match.when(
-        { reservation: { kind: "cowork" } },
-        prepareCoworkAdvertisement
-      ),
-      Match.when(
-        { reservation: { kind: "meeting-room" } },
-        prepareMeetingRoomAdvertisement
-      ),
-      Match.exhaustive
+    Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: (reservation) =>
+          prepareCoworkAdvertisement({ ...input, reservation }),
+        "meeting-room": (reservation) =>
+          prepareMeetingRoomAdvertisement({ ...input, reservation }),
+        office: (reservation) =>
+          prepareOfficeAdvertisement({ ...input, reservation }),
+      })
     )
 );
 
@@ -118,16 +143,47 @@ const quotePreparedReservation = Effect.fn(
 }) {
   const pricing = yield* CheckoutPricingService;
 
-  return yield* pricing.quoteForCustomer({
+  const prepared = yield* pricing.quoteForCustomer({
     ...input.advertisement,
     dotyposCustomerId: input.dotyposCustomerId,
     locale: input.locale,
     affirmedAdvertisement: input.advertisement.discountQuote,
   });
+  const advertisedSummary = Match.value(input.advertisement).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (advertisement) =>
+        getCoworkCheckoutSummary(
+          advertisement.reservation,
+          advertisement.advertisedQuote
+        ),
+      "meeting-room": (advertisement) =>
+        getMeetingRoomCheckoutSummary(advertisement.advertisedQuote),
+      office: (advertisement) =>
+        getOfficeCheckoutSummary(advertisement.advertisedQuote),
+    })
+  );
+  const preparedSummary = Match.value(prepared).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (customerQuote) =>
+        getCoworkCheckoutSummary(
+          customerQuote.reservation,
+          customerQuote.quote
+        ),
+      "meeting-room": (customerQuote) =>
+        getMeetingRoomCheckoutSummary(customerQuote.quote),
+      office: (customerQuote) => getOfficeCheckoutSummary(customerQuote.quote),
+    })
+  );
+  const changedKeys =
+    input.advertisement.changedKeys || prepared.advertisedPriceChanged
+      ? getCheckoutSummaryChangedKeys(advertisedSummary, preparedSummary)
+      : undefined;
+
+  return { ...prepared, changedKeys };
 });
 
 const DotyposEntityWithIdSchema = Schema.Struct({
-  id: Schema.NonEmptyString,
+  id: DotyposReservationIdSchema,
 });
 
 const decodeDotyposEntityId = Effect.fn(
@@ -156,7 +212,7 @@ const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
 
 const getDotyposCustomerId = Effect.fn(
   "prepareWorkspacePayState.getDotyposCustomerId"
-)((value: unknown) =>
+)((value: string | undefined) =>
   decodeDotyposCustomerId(value).pipe(
     Effect.mapError(
       () =>
@@ -167,7 +223,10 @@ const getDotyposCustomerId = Effect.fn(
   )
 );
 
-type PreparedPayState = PreparedCoworkPayState | PreparedMeetingRoomPayState;
+type PreparedPayState =
+  | PreparedCoworkPayState
+  | PreparedMeetingRoomPayState
+  | PreparedOfficePayState;
 
 const getReservationCheckoutDetails = (input: {
   readonly locale: Locale;
@@ -180,6 +239,8 @@ const getReservationCheckoutDetails = (input: {
         getPreparedCoworkCheckoutDetails({ ...input, prepared }),
       "meeting-room": (prepared) =>
         getPreparedMeetingRoomCheckoutDetails({ ...input, prepared }),
+      office: (prepared) =>
+        getPreparedOfficeCheckoutDetails({ ...input, prepared }),
     })
   );
 
@@ -187,8 +248,8 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
   function* (input: {
     readonly locale: Locale;
     readonly prepared: PreparedPayState;
-    readonly reservationId: string;
-    readonly checkoutSessionId: string;
+    readonly reservationId: WorkspaceReservationId;
+    readonly checkoutSessionId: CheckoutSessionId;
     readonly changedKeys?: CheckoutSummaryChangedKeys;
   }) {
     const state = yield* buildSignedPayState({
@@ -239,7 +300,7 @@ const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
 const enqueueReservationHoldCleanup = Effect.fn(
   "preparePayState.enqueueReservationHoldCleanup"
 )(function* (input: {
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly reservationHoldExpiresAt: Temporal.Instant | null;
 }) {
   if (!input.reservationHoldExpiresAt) {
@@ -300,8 +361,8 @@ const pendingHoldCreationRetryPolicy = Schedule.exponential("250 millis").pipe(
 const waitForPendingReservationTransition = Effect.fn(
   "preparePayState.waitForPendingReservationTransition"
 )(function* (input: {
-  readonly reservations: WorkspaceReservationRepository;
-  readonly reservationId: string;
+  readonly reservations: IWorkspaceReservationRepository;
+  readonly reservationId: WorkspaceReservationId;
   readonly pendingStates?: readonly WorkspaceReservation["reservationState"][];
 }) {
   const pendingStates = input.pendingStates ?? ["creating_hold", "cancelling"];
@@ -356,14 +417,19 @@ const ensureReservationAvailable = (input: {
           availability: input.availability,
           reservation,
         }),
+      office: (reservation) =>
+        ensureOfficePayStateAvailable({
+          availability: input.availability,
+          reservation,
+        }),
     })
   );
 
 const prepareReservationDraft = Effect.fn(
   "preparePayState.prepareReservationDraft"
 )(function* (input: {
-  readonly checkoutSessionId: string;
-  readonly checkoutAttemptId: string;
+  readonly checkoutSessionId: CheckoutSessionId;
+  readonly checkoutAttemptId: CheckoutAttemptId;
   readonly reservation: PreparePayStateInput["reservation"];
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
@@ -417,12 +483,17 @@ const prepareReservationDraft = Effect.fn(
       }
 
       if (mustRotateCheckoutSession(existingAttempt)) {
-        if (checkoutSessionId === input.checkoutAttemptId) {
+        if (
+          checkoutSessionId ===
+          promoteCheckoutAttemptToSessionId(input.checkoutAttemptId)
+        ) {
           return yield* new CheckoutAttemptUnavailableError({
             reservation: existingAttempt,
           });
         }
-        checkoutSessionId = input.checkoutAttemptId;
+        checkoutSessionId = promoteCheckoutAttemptToSessionId(
+          input.checkoutAttemptId
+        );
         continue;
       }
 
@@ -464,12 +535,17 @@ const prepareReservationDraft = Effect.fn(
           previousPaymentState: currentReservation.paymentState,
         }
       );
-      if (checkoutSessionId === input.checkoutAttemptId) {
+      if (
+        checkoutSessionId ===
+        promoteCheckoutAttemptToSessionId(input.checkoutAttemptId)
+      ) {
         return yield* new CheckoutAttemptUnavailableError({
           reservation: currentReservation,
         });
       }
-      checkoutSessionId = input.checkoutAttemptId;
+      checkoutSessionId = promoteCheckoutAttemptToSessionId(
+        input.checkoutAttemptId
+      );
       continue;
     }
 
@@ -537,12 +613,17 @@ const prepareReservationDraft = Effect.fn(
             ),
             Effect.ignore
           );
-        if (checkoutSessionId === input.checkoutAttemptId) {
+        if (
+          checkoutSessionId ===
+          promoteCheckoutAttemptToSessionId(input.checkoutAttemptId)
+        ) {
           return yield* new CheckoutAttemptUnavailableError({
             reservation: claimed,
           });
         }
-        checkoutSessionId = input.checkoutAttemptId;
+        checkoutSessionId = promoteCheckoutAttemptToSessionId(
+          input.checkoutAttemptId
+        );
         continue;
       }
 
@@ -599,6 +680,14 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
+    yield* Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: () => Effect.void,
+        "meeting-room": () => Effect.void,
+        office: () => ensureOfficeReservationsEnabled,
+      })
+    );
+
     const advertisement = yield* prepareAdvertisement(input);
     const reservation = advertisement.reservation;
 
@@ -634,6 +723,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.annotateLogsScoped({ dotyposCustomerId });
     yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
 
+    const billing = reservation.billing ?? defaultReservationBillingSelection;
     if (input.marketingConsent === true) {
       yield* Effect.gen(function* () {
         const documents = yield* getLegalAcceptanceSnapshot(input.locale);
@@ -662,8 +752,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.logDebug("Workspace reservation quote built");
 
     const holdExpiresAt = getReservationHoldExpiresAt(Temporal.Now.instant());
-    const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
-    const customerAccessCode = yield* accessCodes.generateCustomerAccessCode;
 
     const preparedDraft = yield* prepareReservationDraft({
       checkoutSessionId: input.checkoutSessionId,
@@ -671,7 +759,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservation,
       draft: {
         dotyposCustomerId,
-        customerAccessCode,
+        reservationPurpose: billing.purpose,
         reservationDetails: getStoredWorkspaceReservationDetails(reservation),
         locale: input.locale,
         reservationHoldExpiresAt: holdExpiresAt,
@@ -697,7 +785,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         prepared,
         reservationId: reservationDraft.id,
         checkoutSessionId,
-        changedKeys: advertisement.changedKeys,
+        changedKeys: prepared.changedKeys,
       });
     }
 
@@ -738,7 +826,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           prepared: reusedPrepared,
           reservationId: claimConflictReservation.id,
           checkoutSessionId,
-          changedKeys: advertisement.changedKeys,
+          changedKeys: reusedPrepared.changedKeys,
         });
       }
 
@@ -910,7 +998,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       prepared,
       reservationId: reservationDraft.id,
       checkoutSessionId,
-      changedKeys: advertisement.changedKeys,
+      changedKeys: prepared.changedKeys,
     });
   },
   (effect, input) =>
@@ -939,23 +1027,21 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
 const PreparePayStateLive = Layer.mergeAll(
   Layer.mergeAll(
-    WorkspaceReservationRepositoryLive,
-    CustomerMarketingConsentRepository.Live
-  ).pipe(Layer.provide(WorkspaceDatabaseLive)),
-  WorkspaceAvailabilityService.LiveWithDependencies,
-  WorkspaceTableAssignmentService.Live.pipe(
-    Layer.provide(
-      WorkspaceReservationRepositoryLive.pipe(
-        Layer.provide(WorkspaceDatabaseLive)
-      )
-    ),
-    Layer.provide(DotyposServiceLive)
+    WorkspaceReservationRepository.Default,
+    CustomerMarketingConsentRepository.Default
+  ).pipe(Layer.provide(WorkspaceDatabase.Default)),
+  WorkspaceAvailabilityService.Live,
+  WorkspaceTableAssignmentService.Default.pipe(
+    Layer.provide(WorkspaceReservationRepository.Live),
+    Layer.provide(WorkspaceDotyposLayer)
   ),
-  WorkspaceCheckoutAccessCodeServiceLive,
-  ReservationHoldCleanupScheduleService.Live,
-  PostHogEventServiceLive,
-  DotyposServiceLive,
-  CheckoutPricingServiceLiveWithDependencies
+  ReservationHoldCleanupScheduleService.Default,
+  PostHogEventService.Live,
+  WorkspaceDotyposLayer,
+  CheckoutPricingService.Live,
+  OfficeReservationFeatureFlagService.Default.pipe(
+    Layer.provide(WorkspaceFeatureFlagService.Default)
+  )
 );
 
 const preparePayStateAction = defineWorkspaceAction(

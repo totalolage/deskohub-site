@@ -1,5 +1,10 @@
+import type { NexiOrderId, NexiWebhookEventId } from "@deskohub/nexi";
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, text } from "drizzle-orm/pg-core";
+import type {
+  PaymentAttemptId,
+  StoredWebhookEventId,
+} from "@/features/checkout/checkout-identifiers";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { paymentAttempts } from "./payment-attempts";
@@ -16,13 +21,16 @@ export type WebhookEventState = (typeof webhookEventStates)[number];
 export const webhookEvents = pgTable(
   "webhook_events",
   {
-    id: text("id").primaryKey().default(postgresUuidV7),
+    id: text("id")
+      .primaryKey()
+      .default(postgresUuidV7)
+      .$type<StoredWebhookEventId>(),
     provider: text("provider").notNull().$type<WebhookProvider>(),
-    eventId: text("event_id").notNull().unique(),
-    paymentAttemptId: text("payment_attempt_id").references(
-      () => paymentAttempts.id
-    ),
-    providerOrderId: text("provider_order_id"),
+    eventId: text("event_id").notNull().unique().$type<NexiWebhookEventId>(),
+    paymentAttemptId: text("payment_attempt_id")
+      .$type<PaymentAttemptId>()
+      .references(() => paymentAttempts.id),
+    providerOrderId: text("provider_order_id").$type<NexiOrderId>(),
     receivedAt: instant("received_at").notNull(),
     processedAt: instant("processed_at"),
     state: text("state").notNull().$type<WebhookEventState>(),

@@ -34,7 +34,7 @@ export class UpdateService extends Context.Service<
   UpdateService,
   IUpdateService
 >()("UpdateService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* DhwConfig;

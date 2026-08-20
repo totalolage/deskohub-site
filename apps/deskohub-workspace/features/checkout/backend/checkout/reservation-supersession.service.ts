@@ -5,11 +5,13 @@ import type {
 } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer } from "effect";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   isReservationSupersedable,
   type SupersedableReservation,
 } from "@/features/reservation/backend/reservation-supersession";
 import type { WorkspaceReservationDetailsMalformedError } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { PayableReservationService } from "./payable-reservation.service";
 
 type ReservationSupersessionError =
@@ -21,8 +23,8 @@ type ReservationSupersessionError =
 
 interface IReservationSupersessionService {
   readonly findCurrent: (input: {
-    readonly orderId: string;
-    readonly checkoutSessionId?: string;
+    readonly orderId: WorkspaceReservationId;
+    readonly checkoutSessionId?: CheckoutSessionId;
   }) => Effect.Effect<
     SupersedableReservation | undefined,
     ReservationSupersessionError
@@ -33,7 +35,7 @@ export class ReservationSupersessionService extends Context.Service<
   ReservationSupersessionService,
   IReservationSupersessionService
 >()("ReservationSupersessionService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const payableReservations = yield* PayableReservationService;
@@ -53,7 +55,7 @@ export class ReservationSupersessionService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(PayableReservationService.LiveWithDependencies)
+  static Live = this.Default.pipe(
+    Layer.provide(PayableReservationService.Live)
   );
 }

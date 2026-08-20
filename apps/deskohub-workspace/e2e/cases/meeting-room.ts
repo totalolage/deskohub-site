@@ -1,9 +1,14 @@
-import type { Reservation, Table } from "@deskohub/dotypos/generated";
+import type {
+  DotyposCustomerId,
+  DotyposReservation,
+  DotyposReservationId,
+  DotyposTable,
+} from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import {
   getWorkspaceTableOccupancyById,
-  workspaceBookingGuestCount,
+  workspaceBookingSeatCount,
 } from "@/features/checkout/backend/reservation/workspace-table-occupancy";
 import {
   hasAvailableWorkspaceTableCandidate,
@@ -15,6 +20,7 @@ import {
   isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { normalizeBrowserText, waitForBrowserText } from "../browser";
 import { getSubmitMeetingRoomReservationScript } from "../browser-scripts";
@@ -167,7 +173,7 @@ export const makeMeetingRoomE2ECases = ({
     return [
       {
         checkoutStates: [paidState],
-        execute: ({ resources, runStep, session }) =>
+        execute: ({ runStep, session }) =>
           executeCheckoutFlow({
             config,
             data: paidData,
@@ -176,7 +182,6 @@ export const makeMeetingRoomE2ECases = ({
               id: "meeting-room-paid-one-hour",
               submitReservationScript: getSubmitMeetingRoomReservationScript,
             },
-            resources,
             payPageSteps: () => [
               {
                 execute: assertMeetingRoomPayPage(
@@ -267,12 +272,11 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [cancelledState],
-        execute: ({ resources, runStep, session }) =>
+        execute: ({ runStep, session }) =>
           assertPaymentTerminalPath({
             config,
             data: cancelledData,
             reservationPath: "/en-US/reservation/meeting-room",
-            resources,
             run,
             runStep,
             scenario: cancelledScenario,
@@ -293,7 +297,7 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [dayState],
-        execute: ({ resources, runStep, session }) =>
+        execute: ({ runStep, session }) =>
           executeCheckoutFlow({
             config,
             data: dayData,
@@ -302,7 +306,6 @@ export const makeMeetingRoomE2ECases = ({
               id: "meeting-room-paid-whole-day",
               submitReservationScript: getSubmitMeetingRoomReservationScript,
             },
-            resources,
             payPageSteps: () => [
               {
                 execute: assertMeetingRoomPayPage(
@@ -389,7 +392,7 @@ const assertHeldMeetingRoomSlotAvailability = (
           tables: inventory.tables,
         })
     );
-    const expectedUnavailable = isMeetingRoomUnavailableFromInventory({
+    const expectedUnavailable = yield* isMeetingRoomUnavailableFromInventory({
       reservations: inventory.reservations,
       slot,
       tables: inventory.tables,
@@ -438,13 +441,13 @@ export const assertHeldMeetingRoomReservation = ({
   tables,
 }: {
   readonly expected: {
-    readonly customerId: string;
-    readonly reservationId: string;
-    readonly workspaceReservationId: string;
+    readonly customerId: DotyposCustomerId;
+    readonly reservationId: DotyposReservationId;
+    readonly workspaceReservationId: WorkspaceReservationId;
   };
-  readonly reservations: readonly Reservation[];
+  readonly reservations: readonly DotyposReservation[];
   readonly slot: MeetingRoomCheckoutSlot;
-  readonly tables: readonly Table[];
+  readonly tables: readonly DotyposTable[];
 }) => {
   const reservation = reservations.find(
     ({ id }) => id === expected.reservationId
@@ -487,19 +490,24 @@ export const isMeetingRoomUnavailableFromInventory = ({
   slot,
   tables,
 }: {
-  readonly reservations: readonly Reservation[];
+  readonly reservations: readonly DotyposReservation[];
   readonly slot: MeetingRoomCheckoutSlot;
-  readonly tables: readonly Table[];
+  readonly tables: readonly DotyposTable[];
 }) =>
-  !hasAvailableWorkspaceTableCandidate(
+  hasAvailableWorkspaceTableCandidate(
     tables,
     [workspaceMeetingRoomReservationTableTag],
     getWorkspaceTableOccupancyById(reservations, {
       endsAt: slot.endsAt,
       startsAt: slot.startsAt,
     }),
-    workspaceBookingGuestCount,
+    workspaceBookingSeatCount,
     true
+  ).pipe(
+    Effect.map((hasAvailableTable) => !hasAvailableTable),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("read meeting-room table capacity", cause)
+    )
   );
 
 const assertMeetingRoomPayPage = (

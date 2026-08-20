@@ -10,7 +10,11 @@ import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/ser
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema, Scope } from "effect";
 import { TestClock } from "effect/testing";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import {
+  CalendarResourceConfig,
+  salesCalendarIdSchema,
+  workspaceLimitationsCalendarIdSchema,
+} from "@/shared/backend/config/calendar-resource.config";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import type { DiscountDefinition } from "./discount-definition";
 import {
@@ -24,9 +28,15 @@ import {
   storedDiscountIdSchema,
 } from "./persistence-contracts";
 
-const salesCalendarId = "sales-calendar";
+const salesCalendarId = Schema.decodeUnknownSync(salesCalendarIdSchema)(
+  "sales-calendar"
+);
+const workspaceLimitationsCalendarId = Schema.decodeUnknownSync(
+  workspaceLimitationsCalendarIdSchema
+)("workspace-limitations-calendar");
 const providerNamespace = "google-calendar-sales";
 const basicProduct = { kind: "cowork", tier: "basic" } as const;
+const coworkTarget = { kind: "cowork" } as const;
 
 const discountIdA = Schema.decodeUnknownSync(storedDiscountIdSchema)(
   "019bfe6e-8ef0-7def-8b16-55cfbc82edb7"
@@ -36,7 +46,7 @@ const discountIdB = Schema.decodeUnknownSync(storedDiscountIdSchema)(
 );
 
 const resourceConfigLayer = Layer.succeed(CalendarResourceConfig, {
-  workspaceLimitationsCalendarId: "workspace-limitations-calendar",
+  workspaceLimitationsCalendarId,
   salesCalendarId,
 });
 
@@ -50,7 +60,7 @@ const definition = (
     "cs-CZ": "Databázová sleva",
   },
   adjustment: { kind: "percentage", basisPoints: 2000 },
-  products: [basicProduct],
+  products: [coworkTarget],
   ...overrides,
 });
 
@@ -77,7 +87,7 @@ const runWithProvider = <A, E>(
   effect.pipe(
     Effect.provide(
       Layer.mergeAll(
-        CalendarDiscountProvider.Live.pipe(
+        CalendarDiscountProvider.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
               GoogleCalendarServiceMock({ listEvents }),
@@ -124,11 +134,24 @@ const invalidEventCases = [
 ] as const;
 
 describe("CalendarDiscountProvider", () => {
+  test("routes Live discovery through the Next cache boundary", async () => {
+    const providerSource = await Bun.file(
+      new URL("./calendar-discount-provider.service.ts", import.meta.url)
+    ).text();
+    const cacheSource = await Bun.file(
+      new URL("./calendar-discount-source.server.ts", import.meta.url)
+    ).text();
+
+    expect(providerSource).toContain(
+      "useRemoteDiscovery\n        ? loadRemoteCalendarSalesSource\n        : yield* Cache.makeWith"
+    );
+    expect(cacheSource).toContain('"use cache: remote"');
+    expect(cacheSource).toContain('cacheLife("advertisedPricingSources")');
+    expect(cacheSource).toContain("cacheTag(calendarDiscountSourceTag)");
+  });
+
   test("discovers localized active sales with their complete product targets", async () => {
-    const products = [
-      basicProduct,
-      { kind: "meeting-room", durationMinutes: 60 } as const,
-    ];
+    const products = [coworkTarget, { kind: "meeting-room" } as const];
     const listEvents = mock(() => Effect.succeed([saleEvent()]));
 
     const result = await runWithProvider(
@@ -157,21 +180,24 @@ describe("CalendarDiscountProvider", () => {
       from: "2026-07-20",
       to: "2026-07-20",
     });
-    expect(result).toEqual([
-      expect.objectContaining({
-        discount: {
-          id: expect.any(String),
-          label: "Databázová sleva",
-          adjustment: {
-            kind: "fixed",
-            amount: { value: 5000, exponent: 2, currency: "CZK" },
+    expect(result).toEqual({
+      activeSales: [
+        expect.objectContaining({
+          discount: {
+            id: expect.any(String),
+            label: "Databázová sleva",
+            adjustment: {
+              kind: "fixed",
+              amount: { value: 5000, exponent: 2, currency: "CZK" },
+            },
+            countdownStartsAt: expect.any(String),
+            expiresAt: expect.any(String),
           },
-          countdownStartsAt: expect.any(String),
-          expiresAt: expect.any(String),
-        },
-        products,
-      }),
-    ]);
+          products,
+        }),
+      ],
+      complete: true,
+    });
     expect(JSON.stringify(result)).not.toContain("Operator calendar title");
     expect(JSON.stringify(result)).not.toContain(discountIdA);
   });
@@ -196,7 +222,7 @@ describe("CalendarDiscountProvider", () => {
         discountIdA,
         definition(discountIdA, {
           labels: {
-            "en-US": "Basic database sale",
+            "en-US": "Percentage database sale",
             "cs-CZ": "Základní databázová sleva",
           },
           adjustment: { kind: "percentage", basisPoints: 1000 },
@@ -213,11 +239,7 @@ describe("CalendarDiscountProvider", () => {
             kind: "fixed",
             amount: { value: 5000, exponent: 2, currency: "CZK" },
           },
-          products: [
-            basicProduct,
-            { kind: "cowork", tier: "plus" },
-            { kind: "cowork", tier: "profi" },
-          ],
+          products: [coworkTarget],
         }),
       ],
     ]);
@@ -264,7 +286,7 @@ describe("CalendarDiscountProvider", () => {
     );
     expect(
       result.basic.map(({ discount }) => discount.label).toSorted()
-    ).toEqual(["All-tier fixed sale", "Basic database sale"]);
+    ).toEqual(["All-tier fixed sale", "Percentage database sale"]);
     expect(result.basic.map(({ discount }) => discount.adjustment)).toEqual(
       expect.arrayContaining([
         { kind: "percentage", basisPoints: 1000 },
@@ -274,8 +296,9 @@ describe("CalendarDiscountProvider", () => {
         },
       ])
     );
-    expect(result.plus).toHaveLength(1);
-    expect(result.plus[0]?.discount.label).toBe("All-tier fixed sale");
+    expect(
+      result.plus.map(({ discount }) => discount.label).toSorted()
+    ).toEqual(["All-tier fixed sale", "Percentage database sale"]);
     expect(result.basic[0]?.discount.expiresAt).toBe(
       "2026-08-01T22:00:00.000Z"
     );
@@ -823,7 +846,7 @@ describe("CalendarDiscountProvider", () => {
 
     expect(result.beforeExpiry).toHaveLength(1);
     expect(result.cachedAfterExpiry).toEqual([]);
-    expect(result.activeSalesAfterExpiry).toEqual([]);
+    expect(result.activeSalesAfterExpiry.activeSales).toEqual([]);
     expect(result.freshAfterExpiry).toEqual([]);
     expect(listEvents).toHaveBeenCalledTimes(2);
   });
@@ -845,7 +868,7 @@ describe("CalendarDiscountProvider", () => {
     const providerLayer = Layer.mergeAll(
       Layer.fromBuild(() =>
         Layer.buildWithMemoMap(
-          CalendarDiscountProvider.Live.pipe(
+          CalendarDiscountProvider.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
                 GoogleCalendarServiceMock({ listEvents }),

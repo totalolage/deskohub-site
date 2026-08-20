@@ -1,3 +1,12 @@
+import {
+  DotyposCustomerIdSchema,
+  DotyposReservationIdSchema,
+  DotyposTableIdSchema,
+} from "@deskohub/dotypos";
+import { NexiOperationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
+import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
+import { discountApplicationIdSchema } from "@/features/discounts/persistence-contracts";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import type {
   AdministrationBookingPage,
   AdministrationBookingSummary,
@@ -6,9 +15,21 @@ import type {
   AdministrationReservationListInput,
   AdministrationReservationSummary,
 } from "./administration.service";
+import { getAdministrationReservationDateRange } from "./reservation-date-range";
 import { getAdministrationReservationLifecycle } from "./reservation-status";
 
 const timeZone = "Europe/Prague";
+
+const fixtureCustomerId = (id: string) => DotyposCustomerIdSchema.make(id);
+const fixtureBookingId = (id: string) => DotyposReservationIdSchema.make(id);
+const fixtureTableId = (id: string) => DotyposTableIdSchema.make(id);
+const fixtureReservationId = (id: string) =>
+  workspaceReservationIdSchema.make(id);
+const fixturePaymentAttemptId = (id: string) => paymentAttemptIdSchema.make(id);
+const fixtureDiscountApplicationId = (id: string) =>
+  discountApplicationIdSchema.make(id);
+const fixtureNexiOrderId = (id: string) => NexiOrderIdSchema.make(id);
+const fixtureNexiOperationId = (id: string) => NexiOperationIdSchema.make(id);
 
 const atTime = (date: Temporal.PlainDate, hour: number) =>
   date
@@ -24,19 +45,19 @@ const today = () =>
 
 const fixtureCustomers = {
   "customer-alex": {
-    id: "customer-alex",
+    id: fixtureCustomerId("customer-alex"),
     displayName: "Alex Morgan",
     email: "alex.morgan@example.test",
     phone: "+420 700 000 101",
   },
   "customer-jordan": {
-    id: "customer-jordan",
+    id: fixtureCustomerId("customer-jordan"),
     displayName: "Jordan Lee",
     email: "jordan.lee@example.test",
     phone: "+420 700 000 202",
   },
   "customer-sam": {
-    id: "customer-sam",
+    id: fixtureCustomerId("customer-sam"),
     displayName: "Sam Taylor",
     email: "sam.taylor@example.test",
     phone: null,
@@ -47,11 +68,13 @@ const makeFixturePayment = (
   id: string,
   updatedAt: string
 ): AdministrationPaymentAttempt => ({
-  id: `payment-${id}`,
+  id: fixturePaymentAttemptId(`payment-${id}`),
   state: "paid",
-  providerOrderId: `ORDER-${id}`,
+  refundState: "not_required",
+  providerOrderId: fixtureNexiOrderId(`ORDER-${id}`),
   providerLabel: "Online payment",
   stateLabel: "Paid",
+  failureCode: null,
   amount: { value: 27_500, exponent: 2, currency: "CZK" },
   createdAt: Temporal.Instant.from(updatedAt)
     .subtract({ minutes: 5 })
@@ -69,7 +92,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
   const lastWeek = currentDate.subtract({ days: 7 });
   return [
     {
-      id: "0198-admin-fixture-attention",
+      id: fixtureReservationId("0198-admin-fixture-attention"),
       customerId: fixtureCustomers["customer-alex"].id,
       customer: fixtureCustomers["customer-alex"],
       liveDetailsAvailable: true,
@@ -88,7 +111,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       updatedAt: atTime(currentDate, 10),
     },
     {
-      id: "0198-admin-fixture-pending",
+      id: fixtureReservationId("0198-admin-fixture-pending"),
       customerId: fixtureCustomers["customer-jordan"].id,
       customer: fixtureCustomers["customer-jordan"],
       liveDetailsAvailable: true,
@@ -111,7 +134,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       updatedAt: atTime(currentDate, 9),
     },
     {
-      id: "0198-admin-fixture-confirming",
+      id: fixtureReservationId("0198-admin-fixture-confirming"),
       customerId: fixtureCustomers["customer-sam"].id,
       customer: fixtureCustomers["customer-sam"],
       liveDetailsAvailable: true,
@@ -130,7 +153,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       updatedAt: atTime(yesterday, 17),
     },
     {
-      id: "0198-admin-fixture-complete",
+      id: fixtureReservationId("0198-admin-fixture-complete"),
       customerId: fixtureCustomers["customer-alex"].id,
       customer: fixtureCustomers["customer-alex"],
       liveDetailsAvailable: true,
@@ -149,7 +172,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       updatedAt: atTime(lastWeek, 8),
     },
     {
-      id: "0198-admin-fixture-cancelled",
+      id: fixtureReservationId("0198-admin-fixture-cancelled"),
       customerId: fixtureCustomers["customer-jordan"].id,
       customer: fixtureCustomers["customer-jordan"],
       liveDetailsAvailable: true,
@@ -176,7 +199,7 @@ const fixtureBookingStatuses = {
 
 const makeBookings = (): readonly AdministrationBookingSummary[] =>
   makeReservations().map((reservation, index) => ({
-    id: `live-${reservation.id}`,
+    id: fixtureBookingId(`live-${reservation.id}`),
     customerId: reservation.customerId,
     customer: reservation.customer,
     startsAt: reservation.startsAt ?? reservation.updatedAt,
@@ -185,7 +208,7 @@ const makeBookings = (): readonly AdministrationBookingSummary[] =>
       Temporal.Instant.from(reservation.updatedAt).add({ hours: 2 }).toString(),
     seats: reservation.type === "meeting-room" ? "4" : "1",
     ...fixtureBookingStatuses[reservation.status.group],
-    tableId: `fixture-table-${index + 1}`,
+    tableId: fixtureTableId(`fixture-table-${index + 1}`),
     tableName: index === 3 ? "Table 4" : `Table ${index + 1}`,
     tableLocation: index % 2 === 0 ? "Main floor" : "Coworking area",
     linkedReservation: {
@@ -236,12 +259,16 @@ const getFixtureLifecycle = (reservation: AdministrationReservationSummary) => {
 export const loadFixtureReservations = (
   input: AdministrationReservationListInput
 ) => {
+  const dateRange = getAdministrationReservationDateRange(input);
   const items = makeReservations().filter(
     (reservation) =>
       (!input.customerId || reservation.customerId === input.customerId) &&
       (!input.status || reservation.status.group === input.status) &&
       (!input.type || reservation.type === input.type) &&
-      (!input.date || reservation.date === input.date)
+      (!dateRange ||
+        (reservation.date !== null &&
+          (!dateRange.from || reservation.date >= dateRange.from) &&
+          (!dateRange.to || reservation.date <= dateRange.to)))
   );
   return {
     items,
@@ -291,6 +318,9 @@ export const loadFixtureReservation = (
     .toString();
   return {
     reservation,
+    operatorNotice: null,
+    canCancel: true,
+    requiresProviderCredentialRemoval: false,
     timeline: [
       {
         id: "fixture-checkout",
@@ -357,11 +387,13 @@ export const loadFixtureReservation = (
     ],
     paymentAttempts: [
       {
-        id: "fixture-payment",
+        id: fixturePaymentAttemptId("fixture-payment"),
         state: "paid",
-        providerOrderId: "DADMINFIXTUREPAYMENT",
+        refundState: "not_required",
+        providerOrderId: fixtureNexiOrderId("DADMINFIXTUREPAYMENT"),
         providerLabel: "Online payment",
         stateLabel: "Paid",
+        failureCode: null,
         amount: { value: 240000, exponent: 2, currency: "CZK" },
         createdAt: Temporal.Instant.from(paidAt)
           .subtract({ minutes: 3 })
@@ -377,11 +409,11 @@ export const loadFixtureReservation = (
     lifecycle: getFixtureLifecycle(reservation),
     orders: [
       {
-        orderId: "DADMINFIXTUREPAYMENT",
+        orderId: fixtureNexiOrderId("DADMINFIXTUREPAYMENT"),
         providerAvailable: true,
         providerStatus: "available",
         provider: {
-          orderId: "DADMINFIXTUREPAYMENT",
+          orderId: fixtureNexiOrderId("DADMINFIXTUREPAYMENT"),
           amount: "240000",
           currency: "CZK",
           capturedAmount: "240000",
@@ -391,8 +423,8 @@ export const loadFixtureReservation = (
           lastOperationType: "CAPTURE",
           operations: [
             {
-              orderId: "DADMINFIXTUREPAYMENT",
-              operationId: "DADMINFIXTUREOPERATION",
+              orderId: fixtureNexiOrderId("DADMINFIXTUREPAYMENT"),
+              operationId: fixtureNexiOperationId("DADMINFIXTUREOPERATION"),
               channel: "ECOMMERCE",
               operationType: "CAPTURE",
               operationResult: "EXECUTED",
@@ -405,7 +437,7 @@ export const loadFixtureReservation = (
           ],
         },
         link: {
-          paymentAttemptId: "fixture-payment",
+          paymentAttemptId: fixturePaymentAttemptId("fixture-payment"),
           reservationId: reservation.id,
           state: "paid",
           stateLabel: "Paid",
@@ -420,11 +452,32 @@ export const loadFixtureReservation = (
     ],
     discounts: [
       {
-        id: "fixture-discount",
+        id: fixtureDiscountApplicationId("fixture-discount"),
         label: "Workspace welcome offer",
         amount: { value: 30000, exponent: 2, currency: "CZK" },
       },
     ],
+    accessGrant:
+      reservation.status.group === "attention"
+        ? {
+            id: "fixture-access-grant",
+            state: "failed",
+            provider: "igloohome",
+            credentialType: "algopin_hourly",
+            deviceId: "EK1X16f8898a",
+            providerCredentialId: null,
+            accessName: `Deskohub ${reservation.id}`,
+            scheduledStartsAt: reservation.startsAt ?? startedAt,
+            startsAt: reservation.startsAt ?? startedAt,
+            endsAt: reservation.endsAt ?? reservation.updatedAt,
+            provisioningStartedAt: null,
+            issuedAt: null,
+            failedAt: reservation.updatedAt,
+            failureCode: "provider_request_rejected",
+            createdAt: startedAt,
+            updatedAt: reservation.updatedAt,
+          }
+        : null,
     otherCustomerReservations: reservations.filter(
       (item) => item.customerId === reservation.customerId && item.id !== id
     ),
@@ -433,7 +486,7 @@ export const loadFixtureReservation = (
     ),
     references: {
       workspaceReservationId: reservation.id,
-      dotyposReservationId: `live-${reservation.id}`,
+      dotyposReservationId: fixtureBookingId(`live-${reservation.id}`),
       customerId: reservation.customerId,
     },
   };

@@ -14,6 +14,8 @@ import { type CnfExpression, cnfToCloudinaryExpression } from "./expression";
 import {
   type CloudinaryAsset,
   CloudinaryAssetSchema,
+  type CloudinaryPublicId,
+  type CloudinarySearchCursor,
   CloudinarySearchResponseSchema,
   type SearchOptions,
   SearchOptionsSchema,
@@ -23,7 +25,7 @@ export type { CloudinaryConfig } from "./config";
 
 export interface ICloudinaryService {
   readonly getByPublicId: (
-    publicId: string
+    publicId: CloudinaryPublicId
   ) => Effect.Effect<CloudinaryAsset, CloudinarySearchError>;
   readonly searchByTag: (
     tag: string,
@@ -50,7 +52,7 @@ export class CloudinaryService extends Context.Service<
   CloudinaryService,
   ICloudinaryService
 >()("@deskohub/cloudinary/CloudinaryService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const rawConfig = yield* CloudinaryRuntimeConfig;
@@ -163,7 +165,7 @@ type CloudinaryRejectedValue =
   | null
   | undefined;
 
-function decodeAssetResponse(result: unknown, publicId: string) {
+function decodeAssetResponse(result: unknown, publicId: CloudinaryPublicId) {
   return pipe(
     Schema.decodeUnknownEffect(CloudinaryAssetSchema)(result),
     Effect.mapError(
@@ -269,7 +271,7 @@ function createSearchExecutor(config: CloudinaryConfig) {
     expression: string,
     options: SearchOptions,
     pageSize: number,
-    nextCursor?: string
+    nextCursor?: CloudinarySearchCursor
   ) => {
     let search = cloudinary.search
       .expression(expression)
@@ -291,7 +293,7 @@ function createSearchExecutor(config: CloudinaryConfig) {
     expression: string,
     options: SearchOptions,
     pageSize: number,
-    nextCursor?: string
+    nextCursor?: CloudinarySearchCursor
   ) =>
     pipe(
       Effect.tryPromise({
@@ -347,7 +349,7 @@ function createSearchExecutor(config: CloudinaryConfig) {
       });
 
       const assets: CloudinaryAsset[] = [];
-      let nextCursor: string | undefined;
+      let nextCursor: CloudinarySearchCursor | undefined;
       let remainingResults = decodedOptions.maxResults;
       let hasNextPage = true;
 
@@ -411,14 +413,7 @@ function createSearchExecutor(config: CloudinaryConfig) {
 
 function createPublicIdLookupExecutor() {
   return Effect.fn("cloudinary.api.resource")(
-    function* (publicId: string) {
-      if (!publicId.trim()) {
-        return yield* new CloudinarySearchError({
-          message: "Cloudinary publicId is required",
-          expression: "public_id=",
-        });
-      }
-
+    function* (publicId: CloudinaryPublicId) {
       yield* Effect.annotateLogsScoped({ publicId });
       yield* Effect.logInfo("Cloudinary public ID lookup started", {
         publicId,

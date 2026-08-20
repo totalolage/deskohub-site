@@ -9,7 +9,11 @@ import { authorizeDiscountAdminPage } from "@/features/discounts/admin/page-data
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CliAuthentication } from "./cli-authentication.service";
 
-export const loadCliAuthenticationApproval = async (code: unknown) => {
+type CliAuthenticationCodeInput = FormDataEntryValue | null | undefined;
+
+export const loadCliAuthenticationApproval = async (
+  code: CliAuthenticationCodeInput
+) => {
   await authorizeDiscountAdminPage();
   const decoded = Schema.decodeUnknownOption(CliAuthenticationCode)(code);
   if (Option.isNone(decoded)) return null;
@@ -18,7 +22,7 @@ export const loadCliAuthenticationApproval = async (code: unknown) => {
     Effect.flatMap((authentication) =>
       authentication.inspectApproval(decoded.value)
     ),
-    Effect.provide(CliAuthentication.LiveWithDependencies),
+    Effect.provide(CliAuthentication.Live),
     runWorkspaceEffect("cli-authentication.inspect-approval", {
       boundary: "page",
     })
@@ -29,14 +33,14 @@ export const loadCliSessions = async () => {
   await authorizeDiscountAdminPage();
   return CliAuthentication.pipe(
     Effect.flatMap((authentication) => authentication.listSessions()),
-    Effect.provide(CliAuthentication.LiveWithDependencies),
+    Effect.provide(CliAuthentication.Live),
     runWorkspaceEffect("cli-authentication.list-sessions", {
       boundary: "page",
     })
   );
 };
 
-export const decodeCliAuthenticationCode = (code: unknown) =>
+export const decodeCliAuthenticationCode = (code: CliAuthenticationCodeInput) =>
   Schema.decodeUnknownEffect(CliAuthenticationCode)(code) as Effect.Effect<
     CliAuthenticationCodeType,
     Schema.SchemaError

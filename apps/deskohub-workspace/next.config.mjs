@@ -14,8 +14,7 @@ const postHogSourceMapConfig =
     ? {
         personalApiKey: process.env.POSTHOG_API_KEY,
         projectId: process.env.POSTHOG_PROJECT_ID,
-        host:
-          process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.posthog.com",
+        host: process.env.POSTHOG_API_HOST,
         sourcemaps: {
           enabled: process.env.VERCEL_ENV === "production",
           releaseName: "deskohub-workspace",
@@ -29,6 +28,14 @@ const postHogSourceMapConfig =
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  cacheLife: {
+    advertisedPricingSources: {
+      stale: 30,
+      revalidate: 60,
+      expire: 60 * 60 * 8,
+    },
+    publicContent: { stale: 30, revalidate: 60, expire: 300 },
+  },
   cacheComponents: true,
   experimental: {
     exposeTestingApiInProductionBuild:

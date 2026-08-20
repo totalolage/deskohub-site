@@ -6,20 +6,20 @@ import {
 } from "@deskohub/dotypos";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
 
 export class PayableReservationUnavailableError extends Data.TaggedError(
   "PayableReservationUnavailableError"
 )<{
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly reason:
     | "missing_checkout_session"
     | "missing_reservation"
@@ -32,8 +32,8 @@ export class PayableReservationUnavailableError extends Data.TaggedError(
 
 interface IPayableReservationService {
   readonly requireCurrent: (input: {
-    readonly orderId: string;
-    readonly checkoutSessionId?: string;
+    readonly orderId: WorkspaceReservationId;
+    readonly checkoutSessionId?: CheckoutSessionId;
   }) => Effect.Effect<
     WorkspaceReservation,
     | PayableReservationUnavailableError
@@ -49,7 +49,7 @@ export class PayableReservationService extends Context.Service<
   PayableReservationService,
   IPayableReservationService
 >()("PayableReservationService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const reservations = yield* WorkspaceReservationRepository;
@@ -113,18 +113,14 @@ export class PayableReservationService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(
-      WorkspaceReservationRepositoryLive.pipe(
-        Layer.provide(WorkspaceDatabaseLive)
-      )
-    ),
-    Layer.provide(DotyposServiceLive)
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceReservationRepository.Live),
+    Layer.provide(WorkspaceDotyposLayer)
   );
 }
 
 const unavailable = (
-  input: { readonly orderId: string },
+  input: { readonly orderId: WorkspaceReservationId },
   reason: PayableReservationUnavailableError["reason"]
 ) =>
   new PayableReservationUnavailableError({

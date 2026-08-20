@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-botid
-description: Configure, debug, or review Deskohub Workspace BotID protection, protected Server Actions, withBotId rewrites, checkBotId verification, client path registration, or the controlled browser-E2E bypass.
+description: Workspace BotID, protected Server Action, and preview-automation protection handling.
 ---
 
 # Deskohub Workspace BotID

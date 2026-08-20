@@ -5,9 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
-import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 
 describe("ReservationHoldCleanupService", () => {
   test("fails the expired hold sweep when expired hold selection fails", async () => {
@@ -17,8 +15,9 @@ describe("ReservationHoldCleanupService", () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -38,8 +37,8 @@ describe("ReservationHoldCleanupService", () => {
     );
     const reservations = {
       selectExpiredHolds,
-    } as unknown as WorkspaceReservationRepositoryType;
-    const dotypos = {} as unknown as typeof DotyposService.Service;
+    };
+    const dotypos = {};
 
     const now = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
     const result = await Effect.gen(function* () {
@@ -50,20 +49,20 @@ describe("ReservationHoldCleanupService", () => {
       });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, {
+              Layer.mock(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: unused,
               } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.succeed(PaymentLifecycleRepository, {
+              Layer.mock(PaymentLifecycleRepository, {
                 markTerminal: unused,
-              } as unknown as IPaymentLifecycleRepository),
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(PostHogEventService, {
+              }),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PostHogEventService, {
                 capture: () => Effect.void,
               }),
-              Layer.succeed(DotyposService, dotypos)
+              Layer.mock(DotyposService, dotypos)
             )
           )
         )
@@ -88,8 +87,9 @@ describe("ReservationHoldCleanupService", () => {
     const { PaymentLifecycleRepository } = await import(
       "../repositories/payment-lifecycle.repository"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -116,31 +116,31 @@ describe("ReservationHoldCleanupService", () => {
         })
       ),
       claimCancellation,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const dotypos = {
       cancelReservation,
-    } as unknown as typeof DotyposService.Service;
+    };
 
     const outcome = await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({
         orderId,
-        holdExpiredAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
+        checkedAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
       });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, finalization),
-              Layer.succeed(PaymentLifecycleRepository, {
+              Layer.mock(ProviderPaymentFinalizationService, finalization),
+              Layer.mock(PaymentLifecycleRepository, {
                 markTerminal: mock(() => Effect.die("not used")),
-              } as unknown as IPaymentLifecycleRepository),
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(PostHogEventService, {
+              }),
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(PostHogEventService, {
                 capture: () => Effect.void,
               }),
-              Layer.succeed(DotyposService, dotypos)
+              Layer.mock(DotyposService, dotypos)
             )
           )
         )
@@ -152,6 +152,7 @@ describe("ReservationHoldCleanupService", () => {
     expect(finalization.finalizePendingProviderPayment).toHaveBeenCalledWith({
       orderId,
       paymentAttemptId: attemptId,
+      abandonmentCheckedAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
     });
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
@@ -164,8 +165,9 @@ describe("ReservationHoldCleanupService", () => {
     const { PaymentLifecycleRepository } = await import(
       "../repositories/payment-lifecycle.repository"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -196,10 +198,10 @@ describe("ReservationHoldCleanupService", () => {
       findById: mock(() => Effect.succeed(activeReservation as never)),
       recordHoldCleanupSkipped,
       claimCancellation,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const dotypos = {
       cancelReservation,
-    } as unknown as typeof DotyposService.Service;
+    };
 
     const runSweep = () =>
       Effect.gen(function* () {
@@ -207,18 +209,18 @@ describe("ReservationHoldCleanupService", () => {
         return yield* cleanup.sweepExpiredHolds({ now, limit: 1 });
       }).pipe(
         Effect.provide(
-          ReservationHoldCleanupServiceLive.pipe(
+          ReservationHoldCleanupService.Default.pipe(
             Layer.provide(
               Layer.mergeAll(
-                Layer.succeed(ProviderPaymentFinalizationService, finalization),
-                Layer.succeed(PaymentLifecycleRepository, {
+                Layer.mock(ProviderPaymentFinalizationService, finalization),
+                Layer.mock(PaymentLifecycleRepository, {
                   markTerminal: mock(() => Effect.die("not used")),
-                } as unknown as IPaymentLifecycleRepository),
-                Layer.succeed(WorkspaceReservationRepository, reservations),
-                Layer.succeed(PostHogEventService, {
+                }),
+                Layer.mock(WorkspaceReservationRepository, reservations),
+                Layer.mock(PostHogEventService, {
                   capture: () => Effect.void,
                 }),
-                Layer.succeed(DotyposService, dotypos)
+                Layer.mock(DotyposService, dotypos)
               )
             )
           )
@@ -250,15 +252,16 @@ describe("ReservationHoldCleanupService", () => {
     expect(cancelReservation).not.toHaveBeenCalled();
   });
 
-  test("expires a durable not-verifiable payment attempt before cancelling the hold", async () => {
+  test("expires a verified abandoned payment attempt before cancelling the hold", async () => {
     const { PaymentLifecycleRepository } = await import(
       "../repositories/payment-lifecycle.repository"
     );
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -266,9 +269,9 @@ describe("ReservationHoldCleanupService", () => {
       "@/shared/backend/analytics/posthog-event.service"
     );
 
-    const orderId = "reservation-cleanup-not-verifiable";
-    const attemptId = "attempt-cleanup-not-verifiable";
-    const holdExpiredAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
+    const orderId = "reservation-cleanup-abandoned";
+    const attemptId = "attempt-cleanup-abandoned";
+    const checkedAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
     const claimed = {
       id: orderId,
       reservationState: "cancelling",
@@ -288,21 +291,21 @@ describe("ReservationHoldCleanupService", () => {
     );
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.cancelOrderHold({ orderId, holdExpiredAt });
+      return yield* cleanup.cancelOrderHold({ orderId, checkedAt });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, {
+              Layer.mock(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: mock(() =>
-                  Effect.succeed("not_verifiable" as const)
+                  Effect.succeed("abandoned" as const)
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.succeed(PaymentLifecycleRepository, {
+              Layer.mock(PaymentLifecycleRepository, {
                 markTerminal: markTerminalForReservation,
-              } as unknown as IPaymentLifecycleRepository),
-              Layer.succeed(WorkspaceReservationRepository, {
+              }),
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() =>
                   Effect.succeed({
                     id: orderId,
@@ -313,13 +316,13 @@ describe("ReservationHoldCleanupService", () => {
                 ),
                 claimCancellation,
                 markCancelled,
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(PostHogEventService, {
+              }),
+              Layer.mock(PostHogEventService, {
                 capture: () => Effect.void,
               }),
-              Layer.succeed(DotyposService, {
+              Layer.mock(DotyposService, {
                 cancelReservation,
-              } as unknown as typeof DotyposService.Service)
+              })
             )
           )
         )
@@ -331,25 +334,28 @@ describe("ReservationHoldCleanupService", () => {
       id: attemptId,
       workspaceReservationId: orderId,
       state: "expired",
-      failureCode: "payment_not_verifiable_before_cleanup",
+      failureCode: "payment_abandoned_after_provider_cutoff",
     });
+
     expect(claimCancellation).toHaveBeenCalledWith(orderId);
     expect(cancelReservation).toHaveBeenCalledWith("dotypos-reservation-id");
     expect(markCancelled).toHaveBeenCalledWith({
       id: orderId,
       cancelledAt: expect.any(Temporal.Instant),
-      holdExpiredAt,
+      holdExpiredAt: checkedAt,
     });
   });
 
-  test("does not cancel when expiring the not-verifiable attempt loses the active-attempt guard", async () => {
-    const { PaymentLifecycleRepository, PaymentLifecycleStateError } =
-      await import("../repositories/payment-lifecycle.repository");
+  test("does not expire or cancel a payment that cannot be verified", async () => {
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
+    );
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -359,6 +365,7 @@ describe("ReservationHoldCleanupService", () => {
 
     const orderId = "reservation-cleanup-stale-attempt";
     const attemptId = "attempt-cleanup-stale-attempt";
+    const markTerminal = mock(() => Effect.die("not used"));
     const claimCancellation = mock(() => Effect.succeed(null));
     const cancelReservation = mock(() => Effect.void);
 
@@ -367,26 +374,18 @@ describe("ReservationHoldCleanupService", () => {
       return yield* cleanup.cancelOrderHold({ orderId });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, {
+              Layer.mock(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: mock(() =>
                   Effect.succeed("not_verifiable" as const)
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.succeed(PaymentLifecycleRepository, {
-                markTerminal: mock(() =>
-                  Effect.fail(
-                    new PaymentLifecycleStateError({
-                      operation: "PaymentLifecycleRepository.markTerminal",
-                      paymentAttemptId: attemptId,
-                      message: "stale",
-                    })
-                  )
-                ),
-              } as unknown as IPaymentLifecycleRepository),
-              Layer.succeed(WorkspaceReservationRepository, {
+              Layer.mock(PaymentLifecycleRepository, {
+                markTerminal,
+              }),
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() =>
                   Effect.succeed({
                     id: orderId,
@@ -396,13 +395,13 @@ describe("ReservationHoldCleanupService", () => {
                   })
                 ),
                 claimCancellation,
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(PostHogEventService, {
+              }),
+              Layer.mock(PostHogEventService, {
                 capture: () => Effect.void,
               }),
-              Layer.succeed(DotyposService, {
+              Layer.mock(DotyposService, {
                 cancelReservation,
-              } as unknown as typeof DotyposService.Service)
+              })
             )
           )
         )
@@ -410,6 +409,7 @@ describe("ReservationHoldCleanupService", () => {
       Effect.runPromise
     );
 
+    expect(markTerminal).not.toHaveBeenCalled();
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
   });
@@ -421,8 +421,9 @@ describe("ReservationHoldCleanupService", () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
-      await import("./reservation-hold-cleanup.service");
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -441,18 +442,18 @@ describe("ReservationHoldCleanupService", () => {
       return yield* cleanup.cancelOrderHold({ orderId });
     }).pipe(
       Effect.provide(
-        ReservationHoldCleanupServiceLive.pipe(
+        ReservationHoldCleanupService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(ProviderPaymentFinalizationService, {
+              Layer.mock(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: mock(() =>
                   Effect.succeed("provider_verification_failed" as const)
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.succeed(PaymentLifecycleRepository, {
+              Layer.mock(PaymentLifecycleRepository, {
                 markTerminal: markTerminalForReservation,
-              } as unknown as IPaymentLifecycleRepository),
-              Layer.succeed(WorkspaceReservationRepository, {
+              }),
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() =>
                   Effect.succeed({
                     id: orderId,
@@ -462,13 +463,13 @@ describe("ReservationHoldCleanupService", () => {
                   })
                 ),
                 claimCancellation,
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(PostHogEventService, {
+              }),
+              Layer.mock(PostHogEventService, {
                 capture: () => Effect.void,
               }),
-              Layer.succeed(DotyposService, {
+              Layer.mock(DotyposService, {
                 cancelReservation,
-              } as unknown as typeof DotyposService.Service)
+              })
             )
           )
         )

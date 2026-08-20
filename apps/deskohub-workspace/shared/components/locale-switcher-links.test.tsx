@@ -72,6 +72,20 @@ afterAll(() => {
   unregisterWorkspaceComponentTestEnv();
 });
 
+test("reserves both language labels before request-aware links resolve", async () => {
+  const { LocaleSwitcherLabels } = await import("./locale-switcher-links");
+  const view = render(
+    <LocaleSwitcherLabels
+      currentLocale="en-US"
+      languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
+    />
+  );
+
+  expect(view.getByText("English").tagName).toBe("STRONG");
+  expect(view.getByText("Czech").tagName).toBe("SPAN");
+  expect(view.container.querySelectorAll("a")).toHaveLength(0);
+});
+
 test("uses document navigation for every alternate-locale full-header link", async () => {
   const { SiteHeader } = await import("./site-header");
 
@@ -116,9 +130,11 @@ test("renders only the configured full-header items without reserved slots", asy
   const galleryHref = "/en-US/gallery";
   const view = render(
     <SiteHeader
+      closeNavigationMenuLabel="Close navigation menu"
       contactHref="/en-US/reservation/cowork"
       contactLabel="Book"
       currentLocale="en-US"
+      languageSwitcherLabel="Language switcher"
       languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
       links={[
         {
@@ -127,11 +143,14 @@ test("renders only the configured full-header items without reserved slots", asy
           label: "Gallery",
         },
       ]}
+      mobilePrimaryNavigationLabel="Mobile primary navigation"
+      openNavigationMenuLabel="Open navigation menu"
+      primaryNavigationLabel="Primary navigation"
     />
   );
 
   const desktopNavigation = view.container.querySelector(
-    'nav[aria-label="Primary"]'
+    'nav[aria-label="Primary navigation"]'
   );
   expect(desktopNavigation?.getAttribute("class")).toContain("gap-6");
   expect(desktopNavigation?.getAttribute("class")).toContain("xl:flex");

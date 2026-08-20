@@ -6,14 +6,18 @@ import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   formatReservationDisplayDate,
+  formatReservationDisplayDateRange,
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
 import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
+  activateBrowserElement,
   activateHydratedBrowserElement,
   evalBrowserScript,
   normalizeBrowserText,
   openBrowserPage,
+  waitForBrowserCondition,
+  waitForBrowserReactHandler,
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
@@ -49,7 +53,6 @@ import type {
   CheckoutFlow,
   CheckoutFlowState,
   CheckoutRow,
-  WorkspaceE2ECaseResources,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
@@ -65,24 +68,26 @@ export const executeCheckoutFlow = ({
   data,
   datasourceConfig,
   flow,
-  resources,
   run,
   runStep,
   session,
   state,
   payPageSteps,
+  beforeReservationSubmit,
   expectedDiscounts,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
   flow: Pick<CheckoutFlow, "id" | "submitReservationScript">;
-  resources: WorkspaceE2ECaseResources;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-  payPageSteps?: (orderId: string) => readonly WorkspaceE2EStep<void>[];
+  payPageSteps?: (
+    orderId: CheckoutRow["reservation_id"]
+  ) => readonly WorkspaceE2EStep<void>[];
+  beforeReservationSubmit?: Effect.Effect<void, WorkspaceE2EError>;
   expectedDiscounts?: readonly ExpectedDiscountApplication[];
 }): Effect.Effect<
   void,
@@ -93,11 +98,11 @@ export const executeCheckoutFlow = ({
     const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
     const orderId = yield* runStep({
-      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
         });
+        if (beforeReservationSubmit) yield* beforeReservationSubmit;
         return yield* submitReservationForPayPage({
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
@@ -114,45 +119,44 @@ export const executeCheckoutFlow = ({
     if (payPageSteps) {
       for (const step of payPageSteps(orderId)) yield* runStep(step);
     }
-    const providerSessionRow = yield* resources.withHostedPaymentSession(
-      Effect.gen(function* () {
-        yield* runStep({
-          execute: submitPaymentAndWaitForHostedPage({
-            run,
-            session,
-            timeouts: config.timeouts,
-          }).pipe(Effect.asVoid),
-          id: "start-checkout-payment",
-          timeoutMs: config.timeouts.providerTransition,
-        });
-        const row = yield* runStep({
-          execute: requireProviderSessionRowAfterRedirect(orderId, {
-            onRow: (value) => {
-              state.checkoutRow = value;
-            },
-            timeoutMs: config.timeouts.browserAction,
-          }),
-          id: "read-provider-session-row",
-          timeoutMs: config.timeouts.datasource,
-        });
-        yield* runStep({
-          execute: completeNexiHostedPayment({
-            data,
-            run,
-            session,
-            timeouts: config.timeouts,
-          }),
-          id: "complete-hosted-payment",
-          timeoutMs: config.timeouts.hostedPayment,
-        });
-        yield* runStep({
-          execute: waitForCheckoutStatusPage(config, run, session),
-          id: "reach-checkout-status-page",
-          timeoutMs: config.timeouts.providerTransition,
-        });
-        return row;
-      })
-    );
+    const providerSessionRow = yield* Effect.gen(function* () {
+      const hostedPaymentPage = yield* runStep({
+        execute: submitPaymentAndWaitForHostedPage({
+          run,
+          session,
+          timeouts: config.timeouts,
+        }),
+        id: "start-checkout-payment",
+        timeoutMs: config.timeouts.providerTransition,
+      });
+      const row = yield* runStep({
+        execute: requireProviderSessionRowAfterRedirect(orderId, {
+          onRow: (value) => {
+            state.checkoutRow = value;
+          },
+          timeoutMs: config.timeouts.browserAction,
+        }),
+        id: "read-provider-session-row",
+        timeoutMs: config.timeouts.datasource,
+      });
+      yield* runStep({
+        execute: completeNexiHostedPayment({
+          data,
+          hostedPaymentPage,
+          run,
+          session,
+          timeouts: config.timeouts,
+        }),
+        id: "complete-hosted-payment",
+        timeoutMs: config.timeouts.hostedPayment,
+      });
+      yield* runStep({
+        execute: waitForCheckoutStatusPage(config, run, session),
+        id: "reach-checkout-status-page",
+        timeoutMs: config.timeouts.providerTransition,
+      });
+      return row;
+    });
     state.orderId = orderId;
 
     // Nexi verification happens inside the deployed webhook handler. The runner
@@ -207,6 +211,16 @@ export const executeCheckoutFlow = ({
       id: "assert-fulfilled-status-page",
       timeoutMs: config.timeouts.uiTransition,
     });
+    yield* runStep({
+      execute: restartReservationAfterFulfillment({
+        config,
+        data,
+        run,
+        session,
+      }),
+      id: "restart-reservation-after-fulfillment",
+      timeoutMs: config.timeouts.uiTransition,
+    });
     if (
       data.meetingRoom &&
       isMeetingRoomWholeDayReservationDuration(data.meetingRoom.duration)
@@ -246,6 +260,59 @@ const waitForCheckoutStatusPage = (
     timeoutMs: config.timeouts.providerTransition,
   }).pipe(Effect.asVoid);
 
+const restartReservationAfterFulfillment = ({
+  config,
+  data,
+  run,
+  session,
+}: {
+  config: WorkspaceE2EConfig;
+  data: CheckoutData;
+  run: Runner;
+  session: string;
+}) =>
+  Effect.gen(function* () {
+    const reservationPath = yield* tryWorkspaceE2ESync(
+      "read fresh reservation path",
+      () => {
+        const url = parseUrl(data.checkoutUrl);
+        if (!url) throw new Error("checkout URL is invalid");
+        return url.pathname;
+      }
+    );
+
+    yield* activateBrowserElement(
+      run,
+      session,
+      "#checkout-status-reserve-again",
+      { timeoutMs: config.timeouts.browserAction }
+    );
+    yield* waitForBrowserReactHandler(run, session, "form", "onSubmit", {
+      timeoutMs: config.timeouts.uiTransition,
+    });
+
+    const reservationPathLiteral = JSON.stringify(reservationPath);
+    yield* waitForBrowserCondition(
+      run,
+      session,
+      "fresh reservation form remains active",
+      `(() => {
+        const root = document.documentElement;
+        if (location.pathname !== ${reservationPathLiteral}) {
+          delete root.dataset.checkoutRestartReadyAt;
+          return false;
+        }
+        const readyAt = Number(root.dataset.checkoutRestartReadyAt);
+        if (!Number.isFinite(readyAt) || readyAt <= 0) {
+          root.dataset.checkoutRestartReadyAt = String(Date.now());
+          return false;
+        }
+        return Date.now() - readyAt >= 1000;
+      })()`,
+      { timeoutMs: config.timeouts.uiTransition }
+    );
+  });
+
 export const assertFulfilledStatusPage = ({
   checkoutRow,
   config,
@@ -259,7 +326,7 @@ export const assertFulfilledStatusPage = ({
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   dotyposReservation: ValidatedDotyposReservation;
-  orderId: string;
+  orderId: CheckoutRow["reservation_id"];
   run: Runner;
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
@@ -303,40 +370,56 @@ export const assertFulfilledStatusPage = ({
       session,
       timeoutMs: config.timeouts.uiTransition,
     });
-    const expectedMeetingRoomText = yield* tryWorkspaceE2ESync(
+    const expectedReservationText = yield* tryWorkspaceE2ESync(
       "read confirmed reservation interval for status assertion",
-      () =>
-        data.meetingRoom
-          ? (() => {
-              const interval = {
-                startsAt: dotyposReservation.reservedFrom,
-                endsAt: dotyposReservation.reservedUntil,
-              };
+      () => {
+        if (data.office) {
+          return [
+            "Private office",
+            formatReservationDisplayDateRange(
+              dotyposReservation.reservedFrom,
+              dotyposReservation.reservedUntil,
+              data.locale
+            ),
+            "Seats",
+            String(data.office.seats),
+            expectedPaymentPrice,
+          ];
+        }
+        if (!data.meetingRoom) return [];
 
-              return [
-                formatReservationDisplayDate(interval.startsAt, data.locale),
-                isSingleDayReservationInterval(interval)
-                  ? "whole day"
-                  : formatReservationDisplayTimeRange(
-                      interval.startsAt,
-                      interval.endsAt,
-                      data.locale
-                    ),
-                expectedPaymentPrice,
-              ];
-            })()
-          : []
+        const interval = {
+          startsAt: dotyposReservation.reservedFrom,
+          endsAt: dotyposReservation.reservedUntil,
+        };
+
+        return [
+          formatReservationDisplayDate(interval.startsAt, data.locale),
+          isSingleDayReservationInterval(interval)
+            ? "whole day"
+            : formatReservationDisplayTimeRange(
+                interval.startsAt,
+                interval.endsAt,
+                data.locale
+              ),
+          expectedPaymentPrice,
+        ];
+      }
     );
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
       matches: (text) => {
-        const normalizedText = normalizeBrowserText(text);
+        const normalizedText = normalizeBrowserText(text).toLocaleLowerCase(
+          data.locale
+        );
 
         return (
-          /Your workspace access is ready\./i.test(normalizedText) &&
-          /sent by email/i.test(normalizedText) &&
-          expectedMeetingRoomText.every((expected) =>
-            normalizedText.includes(normalizeBrowserText(expected))
+          /Your reservation is confirmed\./i.test(normalizedText) &&
+          /secure access link has been sent by email/i.test(normalizedText) &&
+          expectedReservationText.every((expected) =>
+            normalizedText.includes(
+              normalizeBrowserText(expected).toLocaleLowerCase(data.locale)
+            )
           )
         );
       },
@@ -497,7 +580,7 @@ const assertFulfillmentFailedSupportPath = ({
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  orderId: string;
+  orderId: CheckoutRow["reservation_id"];
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
@@ -528,7 +611,7 @@ const assertFulfillmentFailedSupportPath = ({
       execute: waitForBrowserText({
         description: "fulfillment failed support link",
         matches: (text) =>
-          /couldn't deliver your access codes/i.test(text) &&
+          /couldn't deliver your confirmation/i.test(text) &&
           /Send support request/i.test(text),
         run,
         session,

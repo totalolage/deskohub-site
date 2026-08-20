@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
-import type { CliSessionIdType } from "@deskohub/workspace-admin-api";
+import { CliSessionId } from "@deskohub/workspace-admin-api";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import {
   registerWorkspaceComponentTestEnv,
@@ -28,7 +28,7 @@ test("requires confirmation before exposing the CLI revoke submission", async ()
     <RevokeCliSession
       clientName="Office Mac"
       revoked={false}
-      sessionId={"019f70bd-0131-7f30-9f8a-48e768f00292" as CliSessionIdType}
+      sessionId={CliSessionId.make("019f70bd-0131-7f30-9f8a-48e768f00292")}
     />
   );
 

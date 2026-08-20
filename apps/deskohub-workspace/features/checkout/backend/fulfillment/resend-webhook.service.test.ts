@@ -1,16 +1,18 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type {
-  EmailMessage,
-  EmailProviderConfig,
-  EmailSendResult,
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailProviderConfig,
+  type EmailSendResult,
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer, Logger } from "effect";
+import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import { m } from "@/features/i18n";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -68,7 +70,7 @@ mock.module("resend", () => ({
 }));
 
 const sentResult = (id: string): EmailSendResult => ({
-  id,
+  id: EmailDeliveryIdSchema.make(id),
   status: "sent",
   provider: "test",
   timestamp: new Date(),
@@ -115,29 +117,68 @@ const internalFailurePayload = {
   },
 };
 
+interface RawWebhookRequest {
+  readonly payload: string;
+  readonly headers: {
+    readonly id?: string | null;
+    readonly timestamp?: string | null;
+    readonly signature?: string | null;
+  };
+}
+
+const validRawWebhookRequest: RawWebhookRequest = {
+  payload: "raw-payload",
+  headers: {
+    id: "webhook-event-id",
+    timestamp: "1710000000",
+    signature: "v1,signature",
+  },
+};
+
 const processWebhook = async (input: {
-  readonly reservations: WorkspaceReservationRepositoryType;
+  readonly reservations: Partial<WorkspaceReservationRepositoryType>;
   readonly config?: ResendWebhookRuntimeConfigObj;
+  readonly request?: RawWebhookRequest;
 }) => {
   const effect = await processWebhookEffect(input);
-  return Effect.runPromise(effect);
+  return Effect.runPromise(
+    effect.pipe(
+      Effect.provideService(
+        ReservationInvoiceService,
+        ReservationInvoiceService.of({
+          processByPaymentAttemptId: () => Effect.void,
+        })
+      )
+    )
+  );
 };
 
 const processWebhookError = async (input: {
-  readonly reservations: WorkspaceReservationRepositoryType;
+  readonly reservations: Partial<WorkspaceReservationRepositoryType>;
   readonly config?: ResendWebhookRuntimeConfigObj;
+  readonly request?: RawWebhookRequest;
 }) => {
   const effect = await processWebhookEffect(input);
-  return Effect.runPromise(Effect.flip(effect));
+  return Effect.runPromise(
+    Effect.flip(
+      effect.pipe(
+        Effect.provideService(
+          ReservationInvoiceService,
+          ReservationInvoiceService.of({
+            processByPaymentAttemptId: () => Effect.void,
+          })
+        )
+      )
+    )
+  );
 };
 
 const processWebhookEffect = async (input: {
-  readonly reservations: WorkspaceReservationRepositoryType;
+  readonly reservations: Partial<WorkspaceReservationRepositoryType>;
   readonly config?: ResendWebhookRuntimeConfigObj;
+  readonly request?: RawWebhookRequest;
 }) => {
-  const { ResendWebhookService, ResendWebhookServiceLive } = await import(
-    "./resend-webhook.service"
-  );
+  const { ResendWebhookService } = await import("./resend-webhook.service");
   const { ResendWebhookRuntimeConfig } = await import(
     "./resend-webhook.config"
   );
@@ -156,21 +197,16 @@ const processWebhookEffect = async (input: {
 
   return Effect.gen(function* () {
     const service = yield* ResendWebhookService;
-    return yield* service.processWebhook({
-      payload: "raw-payload",
-      headers: {
-        id: "webhook-event-id",
-        timestamp: "1710000000",
-        signature: "v1,signature",
-      },
-    });
+    return yield* service.processWebhook(
+      input.request ?? validRawWebhookRequest
+    );
   }).pipe(
     Effect.provide(
-      ResendWebhookServiceLive.pipe(
+      ResendWebhookService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
-            Layer.succeed(WorkspaceReservationRepository, input.reservations),
-            Layer.succeed(PostHogEventService, {
+            Layer.mock(WorkspaceReservationRepository, input.reservations),
+            Layer.mock(PostHogEventService, {
               capture: () => Effect.void,
             }),
             Layer.succeed(ResendWebhookRuntimeConfig, config)
@@ -197,21 +233,31 @@ describe("ResendWebhookService", () => {
     const markFulfillmentDeliveryFailed = mock(() =>
       Effect.die("should not fail fulfillment")
     );
+    const processInvoice = mock(() => Effect.void);
     const reservations = {
       findById: mock(() =>
         Effect.succeed({
           id: "reservation-id",
+          activePaymentAttemptId: "payment-attempt-id",
           paymentState: "paid",
           fulfillmentState: "processing",
         } as never)
       ),
       markFulfilled,
       markFulfillmentDeliveryFailed,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
-    const result = await processWebhook({
-      reservations,
-    });
+    const effect = await processWebhookEffect({ reservations });
+    const result = await Effect.runPromise(
+      effect.pipe(
+        Effect.provideService(
+          ReservationInvoiceService,
+          ReservationInvoiceService.of({
+            processByPaymentAttemptId: processInvoice,
+          })
+        )
+      )
+    );
 
     expect(result).toEqual({ status: "processed" });
     expect(constructResend).toHaveBeenCalledWith("re_test");
@@ -221,13 +267,59 @@ describe("ResendWebhookService", () => {
     const [updateInput] = markFulfilled.mock.calls[0] ?? [];
     expect(updateInput).toMatchObject({ id: "reservation-id" });
     expect(updateInput.fulfilledAt).toBeInstanceOf(Temporal.Instant);
+    expect(processInvoice).toHaveBeenCalledWith({
+      paymentAttemptId: "payment-attempt-id",
+    });
+  });
+
+  test("retries invoice processing for an already fulfilled reservation", async () => {
+    verifiedPayload = customerDeliveredPayload;
+    const invoiceFailure = new Error("synthetic invoice failure");
+    const processInvoice = mock(() => Effect.fail(invoiceFailure));
+    const markFulfilled = mock(() => Effect.void);
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed({
+          id: "reservation-id",
+          activePaymentAttemptId: "payment-attempt-id",
+          paymentState: "paid",
+          fulfillmentState: "fulfilled",
+        } as never)
+      ),
+      markFulfilled,
+    };
+
+    const effect = await processWebhookEffect({ reservations });
+    const error = await Effect.runPromise(
+      Effect.flip(
+        effect.pipe(
+          Effect.provideService(
+            ReservationInvoiceService,
+            ReservationInvoiceService.of({
+              processByPaymentAttemptId: processInvoice,
+            })
+          )
+        )
+      )
+    );
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_invoice_processing_failed",
+      workspaceReservationId: "reservation-id",
+      cause: invoiceFailure,
+    });
+    expect(processInvoice).toHaveBeenCalledWith({
+      paymentAttemptId: "payment-attempt-id",
+    });
+    expect(markFulfilled).not.toHaveBeenCalled();
   });
 
   test("fails Resend webhook processing without an API key", async () => {
     verifiedPayload = customerDeliveredPayload;
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const error = await processWebhookError({
       reservations,
@@ -251,11 +343,71 @@ describe("ResendWebhookService", () => {
     verifiedPayload = { data: { tags: [] }, type: 42 };
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const error = await processWebhookError({
       reservations,
     });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_payload_invalid",
+      eventId: "webhook-event-id",
+    });
+    expect(verifyWebhook).toHaveBeenCalled();
+    expect(reservations.findById).not.toHaveBeenCalled();
+  });
+
+  test("rejects an empty raw webhook event ID at the header boundary", async () => {
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    };
+
+    const error = await processWebhookError({
+      reservations,
+      request: {
+        ...validRawWebhookRequest,
+        headers: { ...validRawWebhookRequest.headers, id: "" },
+      },
+    });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_headers_missing",
+    });
+    expect(constructResend).not.toHaveBeenCalled();
+    expect(verifyWebhook).not.toHaveBeenCalled();
+  });
+
+  test("rejects an empty raw webhook body at the payload boundary", async () => {
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    };
+
+    const error = await processWebhookError({
+      reservations,
+      request: { ...validRawWebhookRequest, payload: "" },
+    });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_payload_invalid",
+      eventId: "webhook-event-id",
+    });
+    expect(constructResend).not.toHaveBeenCalled();
+    expect(verifyWebhook).not.toHaveBeenCalled();
+  });
+
+  test("rejects an empty Resend email ID in a verified delivery payload", async () => {
+    verifiedPayload = {
+      ...customerDeliveredPayload,
+      data: { ...customerDeliveredPayload.data, email_id: "" },
+    };
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    };
+
+    const error = await processWebhookError({ reservations });
 
     expect(error).toMatchObject({
       _tag: "ResendWebhookProcessingError",
@@ -278,7 +430,7 @@ describe("ResendWebhookService", () => {
         } as never)
       ),
       markFulfillmentDeliveryFailed,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({
       reservations,
@@ -316,7 +468,7 @@ describe("ResendWebhookService", () => {
         } as never)
       ),
       markFulfillmentDeliveryFailed,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({
       reservations,
@@ -338,7 +490,7 @@ describe("ResendWebhookService", () => {
       markFulfillmentDeliveryFailed: mock(() =>
         Effect.die("should not update")
       ),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({ reservations });
 
@@ -365,7 +517,7 @@ describe("ResendWebhookService", () => {
     const reservations = {
       findById: mock(() => Effect.die("should not load reservation")),
       markFulfilled: mock(() => Effect.die("should not update")),
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
 
     const result = await processWebhook({ reservations });
 
@@ -435,7 +587,6 @@ describe("ResendWebhookService", () => {
           },
           dotyposReservationId: "dotypos-reservation-id",
           dotyposCustomerId: "dotypos-customer-id",
-          customerAccessCode: "ACCESS-123",
           customer: {
             _cloudId: "customer-id",
             email: "customer@example.com",
@@ -470,12 +621,12 @@ describe("ResendWebhookService", () => {
       });
     }).pipe(
       Effect.provide(
-        WorkspaceReservationEmailService.Live.pipe(
+        WorkspaceReservationEmailService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(EmailServiceTag, emailService),
-              Layer.succeed(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Live
+              Layer.mock(EmailServiceTag, emailService),
+              Layer.mock(EmailConfigTag, emailConfig),
+              WorkspaceCheckoutNetworkDetailsService.Default
             )
           )
         )
@@ -537,11 +688,13 @@ describe("ResendWebhookService", () => {
         { date: customerAccessHeadingDate },
         { locale }
       );
-      const accessCodeLabel = emailView.getByText(
-        m.checkoutEmailAccessCodeLabel({}, { locale })
-      );
-      const accessCodeTable = accessCodeLabel.closest("table");
-      const accessCode = accessCodeLabel.nextElementSibling;
+      const accessLink = emailView.getByRole("link", {
+        name: m.checkoutEmailCustomerAccessButton({}, { locale }),
+      });
+      const invoiceLink = emailView.getByRole("link", {
+        name: m.checkoutEmailCustomerInvoiceDownload({}, { locale }),
+      });
+      const accessCodeTable = accessLink.closest("table");
       const tableLabel = emailView.getByText(
         m.checkoutEmailTableNumberLabel({}, { locale })
       );
@@ -574,14 +727,26 @@ describe("ResendWebhookService", () => {
       ).toBeNull();
       expect(emailView.queryByText("Ada Lovelace")).toBeNull();
       expect(emailView.queryByText("123456789")).toBeNull();
-      expect(accessCode?.textContent).toBe("ACCESS-123");
+      expect(customerHtml).not.toContain("ACCESS-123");
+      expect(customerText).not.toContain("ACCESS-123");
+      expect(accessLink.getAttribute("href")).toContain(
+        "/en-US/reservation/access/reservation-id?accessToken="
+      );
+      expect(invoiceLink.getAttribute("href")).toContain(
+        "/en-US/reservation/invoice/reservation-id?accessToken="
+      );
       expect(accessCodeTable?.getAttribute("bgcolor")).toBe("#00024f");
-      expect(accessCodeTable?.contains(accessCode ?? null)).toBe(true);
+      expect(accessCodeTable?.contains(accessLink)).toBe(true);
       expect(accessCodeTable?.getAttribute("style")).toContain(
         "background-color:#00024f"
       );
-      expect(accessCodeLabel.getAttribute("style")).toContain("color:#00df99");
-      expect(accessCode?.getAttribute("style")).toContain("color:#fff");
+      expect(accessCodeTable?.textContent).toContain(
+        m.checkoutEmailCustomerAccessButton({}, { locale })
+      );
+      expect(accessCodeTable?.contains(invoiceLink)).toBe(false);
+      expect(invoiceLink.closest("tr")?.textContent).toContain(
+        m.checkoutEmailCustomerInvoiceLabel({}, { locale })
+      );
       expect(networkHeading).toBeTruthy();
       expect(
         emailView.getByText(workspaceCheckoutPlaceholderNetworkDetails.ssid)
@@ -631,9 +796,6 @@ describe("ResendWebhookService", () => {
       expect(generateStaticMapImage).toHaveBeenCalledWith(
         workspaceLocationMapImageOptions
       );
-      expect(
-        emailView.queryByText(m.checkoutEmailCustomerAccessBody({}, { locale }))
-      ).toBeNull();
     } finally {
       unregisterWorkspaceComponentTestEnv();
     }
@@ -671,22 +833,22 @@ describe("ResendWebhookService", () => {
     expect(internalEmail.text).toContain("customer@example.com");
     expect(internalEmail.html).not.toContain("ACCESS-123");
     expect(internalEmail.text).not.toContain("ACCESS-123");
-    expect(internalEmail.html).not.toContain(
-      m.checkoutEmailAccessCodeLabel({}, { locale: internalLocale })
-    );
-    expect(internalEmail.text).not.toContain(
-      m.checkoutEmailAccessCodeLabel({}, { locale: internalLocale })
-    );
+    expect(internalEmail.html).not.toContain("/reservation/access/");
+    expect(internalEmail.text).not.toContain("/reservation/access/");
+    expect(internalEmail.html).not.toContain("accessToken=");
+    expect(internalEmail.text).not.toContain("accessToken=");
   });
 
   test("completes non-production fulfillment after the email provider accepts delivery", async () => {
     const { DotyposService } = await import("@deskohub/dotypos");
-    const {
-      WorkspacePaidFulfillmentService,
-      WorkspacePaidFulfillmentServiceLive,
-    } = await import("./paid-fulfillment.service");
+    const { WorkspacePaidFulfillmentService } = await import(
+      "./paid-fulfillment.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { WorkspaceCheckoutAccessCodeService } = await import(
+      "@/features/checkout/backend/reservation/access-code.service"
     );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
@@ -699,6 +861,7 @@ describe("ResendWebhookService", () => {
     );
     const existingReservation = {
       id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
       paymentState: "paid",
       fulfillmentState: "not_started",
     };
@@ -710,6 +873,7 @@ describe("ResendWebhookService", () => {
       dotyposCustomerId: "dotypos-customer-id",
     };
     const sendPaidReservationEmails = mock(() => Effect.void);
+    const resolveCustomerAccessCode = mock(() => Effect.succeed("access-code"));
     const emailReservation = {
       ...claimedReservation,
       reservationDetails: {
@@ -735,12 +899,12 @@ describe("ResendWebhookService", () => {
         Effect.succeed(claimedReservation as never)
       ),
       markFulfilled,
-    } as unknown as WorkspaceReservationRepositoryType;
+    };
     const dotypos = {
       confirmReservation: mock(() =>
         Effect.die("reservation is already confirmed")
       ),
-    } as unknown as typeof DotyposService.Service;
+    };
     const reservationEmails = {
       sendPaidReservationEmails,
     };
@@ -750,18 +914,21 @@ describe("ResendWebhookService", () => {
       return yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, reservations),
-              Layer.succeed(DotyposService, dotypos),
-              Layer.succeed(WorkspaceReservationService, workspaceReservations),
-              Layer.succeed(
-                WorkspaceReservationEmailService,
-                reservationEmails
-              ),
-              Layer.succeed(PostHogEventService, {
+              Layer.mock(WorkspaceReservationRepository, reservations),
+              Layer.mock(DotyposService, dotypos),
+              Layer.mock(WorkspaceReservationService, workspaceReservations),
+              Layer.mock(WorkspaceReservationEmailService, reservationEmails),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode,
+              }),
+              Layer.mock(PostHogEventService, {
                 capture: () => Effect.void,
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: () => Effect.void,
               })
             )
           )
@@ -777,6 +944,7 @@ describe("ResendWebhookService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
     });
+    expect(resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
     expect(markFulfilled).toHaveBeenCalledWith(
       expect.objectContaining({ id: "reservation-id" })
     );
@@ -801,7 +969,7 @@ describe("ResendWebhookService", () => {
     const provider = await EmailProviderTag.pipe(
       Effect.provide(
         ResendEmailProviderLive.pipe(
-          Layer.provide(Layer.succeed(EmailConfigTag, emailConfig))
+          Layer.provide(Layer.mock(EmailConfigTag, emailConfig))
         )
       ),
       Effect.runPromise

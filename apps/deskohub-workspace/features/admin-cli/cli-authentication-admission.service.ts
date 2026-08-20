@@ -16,7 +16,7 @@ export class CliAuthenticationAdmission extends Context.Service<
   CliAuthenticationAdmission,
   ICliAuthenticationAdmission
 >()("@deskohub-workspace/admin-cli/CliAuthenticationAdmission") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     isStartAllowed: HttpServerRequest.HttpServerRequest.pipe(
       Effect.flatMap((request) =>
         Effect.tryPromise({

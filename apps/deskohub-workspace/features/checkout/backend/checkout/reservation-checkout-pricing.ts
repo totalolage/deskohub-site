@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import {
   type CheckoutSummary,
   type CheckoutSummaryChangedKeys,
@@ -8,7 +8,8 @@ import type { ReservationQuotePayment } from "@/features/checkout/reservation-qu
 import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import {
   type AffirmedDiscountAdvertisementQuote,
-  type CanonicalDiscountCode,
+  affirmedDiscountAdvertisementQuoteCodec,
+  type CanonicalPromotionCode,
   type DiscountAdvertisementInput,
   type DiscountCommitment,
   type DiscountId,
@@ -18,6 +19,10 @@ import {
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import {
+  getSubmittedCodeMetadata,
+  type PayStateSubmittedCodeMetadata,
+} from "./pay-state-contract";
 
 type ReservationDetails = {
   readonly kind: string;
@@ -38,18 +43,20 @@ export type ReservationAdvertisementQuoteInput<
 > = {
   readonly reservation: Reservation;
   readonly locale: Locale;
+  readonly submittedCode?: CanonicalPromotionCode;
 };
 
 export type ReservationAdvertisementAffirmationInput<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
-> = ReservationAdvertisementQuoteInput<Reservation> & {
-  readonly advertisedQuote: Quote;
-};
+> = ReservationAdvertisementQuoteInput<Reservation> &
+  PayStateSubmittedCodeMetadata & {
+    readonly advertisedQuote: Quote;
+  };
 
 export type ReservationCustomerQuoteInput<
   Reservation extends ReservationDetails,
-> = {
+> = PayStateSubmittedCodeMetadata & {
   readonly reservation: Reservation;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
@@ -64,7 +71,7 @@ export type ReservationPaymentPriceAffirmationInput<
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly quote: Quote;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
 };
 
 export type ReservationDiscountCodePriceInput<
@@ -74,13 +81,13 @@ export type ReservationDiscountCodePriceInput<
   ReservationPaymentPriceAffirmationInput<Reservation, Quote>,
   "submittedCode"
 > & {
-  readonly submittedCode: CanonicalDiscountCode;
+  readonly submittedCode: CanonicalPromotionCode;
 };
 
 export type ReservationAdvertisementQuote<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
-> = {
+> = PayStateSubmittedCodeMetadata & {
   readonly kind: Reservation["kind"];
   readonly reservation: Reservation;
   readonly quote: Quote;
@@ -101,6 +108,14 @@ export type ReservationCustomerQuote<
   readonly reservation: Reservation;
   readonly quote: Quote;
 };
+
+export type ReservationPreparedCustomerQuote<
+  Reservation extends ReservationDetails,
+  Quote extends ReservationQuote,
+> = ReservationCustomerQuote<Reservation, Quote> &
+  PayStateSubmittedCodeMetadata & {
+    readonly advertisedPriceChanged?: boolean;
+  };
 
 export type ReservationPaymentPriceAffirmation<
   Reservation extends ReservationDetails,
@@ -168,7 +183,7 @@ interface ReservationCheckoutPricing<
   readonly quoteForCustomer: (
     input: ReservationCustomerQuoteInput<CustomerReservation>
   ) => Effect.Effect<
-    ReservationCustomerQuote<CustomerReservation, Quote>,
+    ReservationPreparedCustomerQuote<CustomerReservation, Quote>,
     Error
   >;
   readonly affirmForPayment: (
@@ -215,6 +230,40 @@ export const reservationCheckoutPricing = <
   Effect.gen(function* () {
     const discounts = yield* DiscountService;
 
+    const previewSubmittedCode = Effect.fn(
+      "ReservationCheckoutPricing.previewSubmittedCode"
+    )(function* (input: {
+      readonly discountQuote: DiscountQuote;
+      readonly locale: Locale;
+      readonly submittedCode?: CanonicalPromotionCode;
+    }) {
+      if (!input.submittedCode) return undefined;
+
+      const preview = Option.getOrUndefined(
+        yield* discounts
+          .previewDiscountCode({
+            baseQuote: input.discountQuote,
+            locale: input.locale,
+            submittedCode: input.submittedCode,
+          })
+          .pipe(Effect.option)
+      );
+      if (
+        !preview ||
+        input.discountQuote.discounts.some(
+          ({ discount }) => discount.id === preview.application.discount.id
+        )
+      ) {
+        return undefined;
+      }
+
+      return {
+        discountQuote: preview.quote,
+        submittedCode: input.submittedCode,
+        submittedCodeDiscountId: preview.application.discount.id,
+      };
+    });
+
     const quoteAdvertisement = Effect.fn(
       "ReservationCheckoutPricing.quoteAdvertisement"
     )((input: ReservationAdvertisementQuoteInput<Advertisement>) =>
@@ -226,13 +275,24 @@ export const reservationCheckoutPricing = <
             locale: input.locale,
           })
         ),
-        Effect.bind("quote", ({ discountQuote, pricing }) =>
-          domain.buildQuote({ pricing, discountQuote })
+        Effect.bind("preview", ({ discountQuote }) =>
+          previewSubmittedCode({
+            discountQuote,
+            locale: input.locale,
+            submittedCode: input.submittedCode,
+          })
         ),
-        Effect.map(({ quote }) => ({
+        Effect.bind("quote", ({ discountQuote, preview, pricing }) =>
+          domain.buildQuote({
+            pricing,
+            discountQuote: preview?.discountQuote ?? discountQuote,
+          })
+        ),
+        Effect.map(({ preview, quote }) => ({
           kind: input.reservation.kind,
           reservation: input.reservation,
           quote,
+          ...getSubmittedCodeMetadata(preview ?? {}),
         }))
       )
     );
@@ -246,19 +306,36 @@ export const reservationCheckoutPricing = <
           discounts.affirmAdvertisement({
             ...pricing.discountInput,
             locale: input.locale,
-            advertisedDiscountIds: input.advertisedQuote.payment.discounts.map(
-              ({ discount }) => discount.id
-            ),
+            advertisedDiscountIds: input.advertisedQuote.payment.discounts
+              .map(({ discount }) => discount.id)
+              .filter(
+                (discountId) => discountId !== input.submittedCodeDiscountId
+              ),
           })
         ),
-        Effect.bind("quote", ({ discountQuote, pricing }) =>
-          domain.buildQuote({ pricing, discountQuote })
+        Effect.bind("preview", ({ discountQuote }) =>
+          previewSubmittedCode({
+            discountQuote,
+            locale: input.locale,
+            submittedCode: input.submittedCode,
+          })
         ),
-        Effect.map(({ discountQuote, quote }) => ({
+        Effect.bind("quote", ({ discountQuote, preview, pricing }) =>
+          domain.buildQuote({
+            pricing,
+            discountQuote: preview?.discountQuote ?? discountQuote,
+          })
+        ),
+        Effect.map(({ discountQuote, preview, quote }) => ({
           kind: input.reservation.kind,
           reservation: input.reservation,
-          discountQuote,
+          discountQuote: preview
+            ? affirmedDiscountAdvertisementQuoteCodec.make(
+                preview.discountQuote
+              )
+            : discountQuote,
           quote,
+          ...getSubmittedCodeMetadata(preview ?? {}),
         }))
       )
     );
@@ -268,20 +345,26 @@ export const reservationCheckoutPricing = <
     )((input: ReservationCustomerQuoteInput<CustomerReservation>) =>
       domain.getPricingContext(input.reservation).pipe(
         Effect.bindTo("pricing"),
-        Effect.bind("discountQuote", () =>
+        Effect.bind("customerQuote", () =>
           discounts.applyCustomerDiscount({
             affirmedAdvertisement: input.affirmedAdvertisement,
             dotyposCustomerId: input.dotyposCustomerId,
             locale: input.locale,
+            ...getSubmittedCodeMetadata(input),
           })
         ),
-        Effect.bind("quote", ({ discountQuote, pricing }) =>
-          domain.buildQuote({ pricing, discountQuote })
+        Effect.bind("quote", ({ customerQuote, pricing }) =>
+          domain.buildQuote({ pricing, discountQuote: customerQuote })
         ),
-        Effect.map(({ quote }) => ({
+        Effect.map(({ customerQuote, quote }) => ({
+          advertisedPriceChanged: customerQuote.advertisedPriceChanged,
           kind: input.reservation.kind,
           reservation: input.reservation,
           quote,
+          ...getSubmittedCodeMetadata({
+            submittedCode: input.submittedCode,
+            submittedCodeDiscountId: customerQuote.submittedCodeDiscountId,
+          }),
         }))
       )
     );

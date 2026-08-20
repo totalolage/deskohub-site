@@ -10,9 +10,9 @@ export function useCookieConsent() {
   const [acceptedCategories, setAcceptedCategories] = useState<
     ConsentCategory[]
   >(() =>
-    typeof document === "undefined"
+    globalThis.document === undefined
       ? []
-      : getAcceptedConsentCategoriesFromCookie(document.cookie)
+      : getAcceptedConsentCategoriesFromCookie(globalThis.document.cookie)
   );
 
   useEffect(() => {

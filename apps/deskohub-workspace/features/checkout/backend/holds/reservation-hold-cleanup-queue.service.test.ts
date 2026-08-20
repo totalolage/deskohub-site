@@ -4,7 +4,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "./reservation-hold-cleanup.service";
 
 const now = Temporal.Instant.from("2026-06-01T10:00:00.000Z");
@@ -21,7 +20,6 @@ const makeReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
-    customerAccessCode: "ACCESS-123",
     reservationState: "held",
     paymentState: "not_started",
     fulfillmentState: "not_started",
@@ -46,7 +44,9 @@ const makeReservation = (
   }) as WorkspaceReservation;
 
 const runProcessMessage = async (
-  message: unknown,
+  message: Parameters<
+    typeof import("./reservation-hold-cleanup-queue.service").processReservationHoldCleanupScheduleMessage
+  >[0],
   input: {
     readonly findById?: ReturnType<typeof mock>;
     readonly cancelOrderHold?: ReturnType<typeof mock>;
@@ -73,10 +73,10 @@ const runProcessMessage = async (
   ).pipe(
     Effect.provide(
       Layer.mergeAll(
-        Layer.succeed(WorkspaceReservationRepository, {
+        Layer.mock(WorkspaceReservationRepository, {
           findById,
-        } as unknown as WorkspaceReservationRepositoryType),
-        Layer.succeed(ReservationHoldCleanupService, {
+        }),
+        Layer.mock(ReservationHoldCleanupService, {
           cancelOrderHold,
           sweepExpiredHolds: mock(() =>
             Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
@@ -213,7 +213,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.result).toBe("cancelled");
     expect(cancelOrderHold).toHaveBeenCalledWith({
       orderId: "order-id",
-      holdExpiredAt: dueNow,
+      checkedAt: dueNow,
     });
 
     for (const reservationState of [
@@ -234,7 +234,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
       expect(retryResult.result).toBe("cancelled");
       expect(retryCancelOrderHold).toHaveBeenCalledWith({
         orderId: "order-id",
-        holdExpiredAt: dueNow,
+        checkedAt: dueNow,
       });
     }
   });
@@ -252,9 +252,29 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.result).toBe("skipped");
     expect(cancelOrderHold).toHaveBeenCalledWith({
       orderId: "order-id",
-      holdExpiredAt: dueNow,
+      checkedAt: dueNow,
     });
     expect(findById).toHaveBeenCalledTimes(1);
+  });
+
+  test("retries cleanup while an empty provider order is inside the cutoff", async () => {
+    const cancelOrderHold = mock(() => Effect.succeed("deferred" as const));
+    const retryNow = dueNow.add({ minutes: 20 });
+
+    await expect(
+      runProcessMessage(duePayload, {
+        cancelOrderHold,
+        now: retryNow,
+      })
+    ).rejects.toMatchObject({
+      _tag: "ReservationHoldCleanupScheduleError",
+      message:
+        "Reservation hold cleanup is waiting for the provider abandonment cutoff.",
+    });
+    expect(cancelOrderHold).toHaveBeenCalledWith({
+      orderId: "order-id",
+      checkedAt: retryNow,
+    });
   });
 
   test("vercel config wires the queue trigger and daily repair cron", async () => {

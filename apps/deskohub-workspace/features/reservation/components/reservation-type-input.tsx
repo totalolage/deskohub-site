@@ -1,10 +1,8 @@
 "use client";
 
-import { Percent } from "lucide-react";
 import {
   createContext,
   type HTMLAttributes,
-  type Key,
   type ReactNode,
   type Ref,
   useContext,
@@ -15,6 +13,9 @@ import { cn } from "@/shared/utils";
 type ReservationTypeValue = string;
 
 type ReservationTypeInputContextValue = {
+  readonly ariaDescribedBy?: string;
+  readonly ariaInvalid?: boolean;
+  readonly ariaRequired?: boolean;
   readonly idPrefix: string;
   readonly name?: string;
   readonly onBlur?: () => void;
@@ -35,19 +36,10 @@ type ReservationTypeInputProps<Value extends ReservationTypeValue> = Omit<
   readonly value: Value;
 };
 
-export type ReservationTypeOptionDiscount = {
-  readonly details?: ReactNode;
-  readonly labels: ReadonlyArray<{
-    readonly id: Key;
-    readonly label: ReactNode;
-  }>;
-};
-
 type ReservationTypeOptionProps<Value extends ReservationTypeValue> = {
   readonly children?: ReactNode;
   readonly className?: string;
   readonly disabled?: boolean;
-  readonly discount?: ReservationTypeOptionDiscount;
   readonly price: ReactNode;
   readonly priceReady?: boolean;
   readonly title: ReactNode;
@@ -70,17 +62,32 @@ export function ReservationTypeInput<Value extends ReservationTypeValue>({
   onChange,
   ref,
   value,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
+  "aria-required": ariaRequired,
   ...props
 }: ReservationTypeInputProps<Value>) {
   const context = useMemo<ReservationTypeInputContextValue>(
     () => ({
       idPrefix,
+      ariaDescribedBy,
+      ariaInvalid: ariaInvalid === true || ariaInvalid === "true",
+      ariaRequired: ariaRequired === true || ariaRequired === "true",
       name,
       onBlur,
       onChange: (nextValue) => onChange(nextValue as Value),
       value,
     }),
-    [idPrefix, name, onBlur, onChange, value]
+    [
+      ariaDescribedBy,
+      ariaInvalid,
+      ariaRequired,
+      idPrefix,
+      name,
+      onBlur,
+      onChange,
+      value,
+    ]
   );
 
   return (
@@ -88,8 +95,12 @@ export function ReservationTypeInput<Value extends ReservationTypeValue>({
       <ReservationTypeInputContext.Provider value={context}>
         <div
           ref={ref}
+          role="radiogroup"
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
+          aria-required={ariaRequired}
           className={cn(
-            "grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(5,auto)] lg:space-y-0 lg:gap-x-3",
+            "grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(4,auto)] lg:space-y-0 lg:gap-x-3",
             className
           )}
           {...props}
@@ -105,7 +116,6 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
   children,
   className,
   disabled = false,
-  discount,
   price,
   priceReady = true,
   title,
@@ -121,54 +131,47 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
   }
 
   const inputId = `${input.idPrefix}-${value}`;
+  const priceId = `${inputId}-price`;
+  const titleId = `${inputId}-title`;
   const isSelected = input.value === value;
-  const hasDiscount = Boolean(discount?.labels.length);
-
   return (
-    <div
+    <label
+      htmlFor={inputId}
       data-reservation-type-option={value}
       className={cn(
-        "group relative grid cursor-pointer rounded-[1.4rem] px-4 outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
-        hasDiscount
-          ? "lg:row-start-1 lg:row-span-5"
-          : "lg:row-start-2 lg:row-span-4",
+        "group grid cursor-pointer rounded-[1.4rem] px-4 outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
+        "lg:row-span-4",
         disabled &&
           "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
-        hasDiscount &&
-          "glow-border glow-border-purple-300 glow-border-count-1 glow-border-duration-5000",
         isSelected &&
-          hasDiscount &&
-          "bg-purple-500/5 outline-purple-500 ring-4 ring-purple-500/10",
-        isSelected &&
-          !hasDiscount &&
           "bg-burned-orange/8 outline-burned-orange ring-4 ring-burned-orange/10",
         !isSelected && "bg-white outline-navy-blue/10",
-        !isSelected && hasDiscount && "hover:outline-purple-500/60",
-        !isSelected && !hasDiscount && "hover:outline-burned-orange/45",
+        !isSelected && "hover:outline-burned-orange/45",
         className
       )}
     >
-      {hasDiscount && discount && (
-        <div
-          className="pointer-events-none relative z-20 -mx-4 flex items-center gap-2 rounded-t-[1.3rem] border-b border-purple-300/60 bg-purple-100 px-4 py-2.5 text-sm font-semibold leading-5 text-purple-900"
-          data-reservation-type-discount-banner={value}
-        >
-          <Percent aria-hidden="true" className="size-4 shrink-0" />
-          <span className="flex flex-wrap gap-x-2 gap-y-0.5">
-            {discount.labels.map(({ id, label }) => (
-              <span key={id} data-reservation-type-discount={id}>
-                {label}
-              </span>
-            ))}
-          </span>
-        </div>
-      )}
-      <label
-        htmlFor={inputId}
-        className={cn(
-          "relative z-10 mt-4 mb-3 flex cursor-pointer items-start justify-between gap-2",
-          disabled && "cursor-not-allowed"
-        )}
+      <input
+        id={inputId}
+        aria-describedby={input.ariaDescribedBy}
+        aria-invalid={input.ariaInvalid}
+        aria-labelledby={`${titleId} ${priceId}`}
+        name={input.name}
+        type="radio"
+        className="sr-only"
+        checked={isSelected}
+        value={value}
+        disabled={disabled}
+        onChange={() => {
+          if (!disabled) {
+            input.onChange(value);
+          }
+        }}
+        onBlur={input.onBlur}
+        ref={inputRef}
+      />
+      <span
+        id={titleId}
+        className="mt-4 mb-3 flex items-start justify-between gap-2"
         data-reservation-type-title={value}
       >
         <span className="text-lg leading-6">{title}</span>
@@ -181,49 +184,21 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
               : "border-navy-blue/25"
           )}
         />
-      </label>
+      </span>
       <div
-        className="relative z-20 mb-3 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue"
+        className="mb-3 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue"
         data-reservation-type-price-row={value}
       >
-        <label
-          className={cn(
-            "flex cursor-pointer flex-col items-start gap-0.5",
-            disabled && "cursor-not-allowed"
-          )}
+        <span
+          id={priceId}
+          className="flex flex-col items-start gap-0.5"
           data-reservation-type-price={value}
           data-reservation-type-price-ready={priceReady}
-          htmlFor={inputId}
         >
           {price}
-        </label>
-        {hasDiscount && discount?.details}
+        </span>
       </div>
       {children}
-      <label
-        htmlFor={inputId}
-        className={cn(
-          "absolute inset-0 cursor-pointer rounded-[1.4rem]",
-          disabled && "cursor-not-allowed"
-        )}
-      >
-        <input
-          id={inputId}
-          name={input.name}
-          type="radio"
-          className="sr-only"
-          checked={isSelected}
-          value={value}
-          disabled={disabled}
-          onChange={() => {
-            if (!disabled) {
-              input.onChange(value);
-            }
-          }}
-          onBlur={input.onBlur}
-          ref={inputRef}
-        />
-      </label>
-    </div>
+    </label>
   );
 }

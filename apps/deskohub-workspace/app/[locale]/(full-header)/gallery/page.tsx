@@ -8,6 +8,7 @@ import { toGalleryPhotos } from "@/features/gallery/types/gallery-photo";
 import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { Container } from "@/shared/components/container";
+import { Skeleton } from "@/shared/components/ui/skeleton";
 
 export const instant = true;
 
@@ -52,10 +53,12 @@ async function GalleryContent() {
     tags: ["gallery"],
     maxResults: 80,
   });
-  const photos = toGalleryPhotos(assets);
+  const photos = toGalleryPhotos(assets, (index) =>
+    m.galleryImageFallbackAlt({ number: index + 1 })
+  );
 
   return photos.length > 0 ? (
-    <WorkspaceGalleryAlbum photos={photos} />
+    <WorkspaceGalleryAlbum photos={photos} openLabel={m.galleryOpenImage()} />
   ) : (
     <EmptyGallery assetsCount={assets.length} />
   );
@@ -68,9 +71,9 @@ function GalleryFallback() {
       aria-label={m.gallerySrTitle()}
       className="grid gap-4 sm:grid-cols-3"
     >
-      <div className="min-h-64 animate-pulse rounded-[1.35rem] bg-linear-to-br from-white via-[#f8efe3] to-burned-orange/24 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
-      <div className="min-h-80 animate-pulse rounded-[1.35rem] bg-linear-to-br from-[#fff9ef] via-white to-navy-blue/18 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
-      <div className="min-h-56 animate-pulse rounded-[1.35rem] bg-linear-to-br from-white via-sunset-yellow/20 to-chilean-fire/28 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
+      <Skeleton className="min-h-64 rounded-[1.35rem] bg-transparent bg-linear-to-br from-white via-[#f8efe3] to-burned-orange/24 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
+      <Skeleton className="min-h-80 rounded-[1.35rem] bg-transparent bg-linear-to-br from-[#fff9ef] via-white to-navy-blue/18 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
+      <Skeleton className="min-h-56 rounded-[1.35rem] bg-transparent bg-linear-to-br from-white via-sunset-yellow/20 to-chilean-fire/28 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
     </section>
   );
 }

@@ -13,7 +13,7 @@ export class FooService extends Context.Service<
   FooService,
   IFooService
 >()("FooService") {
-  static Live = Layer.effect(this, implementation);
+  static Default = Layer.effect(this, implementation);
 }
 ```
 
@@ -22,6 +22,16 @@ Select the Layer constructor by setup behavior:
 - Use `Layer.effect(this, ...)` for effectful or fallible setup.
 - Use `Layer.sync(this, ...)` for pure lazy construction.
 - Use `Layer.succeed(this, ...)` for an already-created implementation or test fake.
+
+Keep live Layers on their owning Context capability. Do not declare standalone
+aliases such as `FooServiceDefault` or `FooServiceLive`; callers use
+`FooService.Default` while composing dependencies and `FooService.Live` when
+the capability exposes a standard fully wired composition. This applies to
+repositories, configuration, and other Context capabilities as well as classes
+whose names end in `Service`.
+
+Name the default implementation `Default`, even when it still requires Context
+dependencies. Name a standard production composition `Live` when one exists.
 
 Represent service construction directly as an Effect when a factory adds no behavior or reuse. Do not add a `make*` function that merely returns one Effect expression.
 
@@ -33,9 +43,15 @@ Place newly introduced private helper definitions below their callers so the pri
 
 Keep the interface, Context service declaration, and live layer in the `*.service.ts` module. Put the mock layer in an adjacent `*.service.mock.ts` module and use `Layer.mock` for partial test implementations instead of inline test mocks.
 
+When a capability declaration must remain importable by a runtime that cannot
+load application environment modules, keep its static `Live` property on the
+class and lazily load an environment-bound provider factory. Name that export
+for construction (for example `makeFooLayer`), never as a standalone
+`FooLive` alias.
+
 When a service has one standard fully wired live composition, expose it as the
-service's static `LiveWithDependencies` layer. Do not create a separate runtime
-module whose only job is to export that composition.
+service's static `Live` layer. Do not create a separate runtime module whose
+only job is to export that composition.
 
 ## Model capabilities
 
@@ -45,7 +61,7 @@ Use Effect's `HttpClient` capability for outbound HTTP. Provide the live transpo
 
 Import HTTP modules as named namespaces from the `effect/unstable/http` barrel, for example `import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"`. Do not add per-module namespace imports such as `import * as HttpClient from "effect/unstable/http/HttpClient"` in handwritten code.
 
-Resolve capabilities while constructing the consuming service and close over them in its implementation so public methods accept domain input only. Let a service's `Live` layer require its dependencies from Context. Provide live dependency layers at the application composition boundary and replace them with test layers in tests.
+Resolve capabilities while constructing the consuming service and close over them in its implementation so public methods accept domain input only. Let a service's `Default` layer require its dependencies from Context. Provide live dependency layers in the service's `Live` composition and replace them with test layers in tests.
 
 ## Name and expose operations
 

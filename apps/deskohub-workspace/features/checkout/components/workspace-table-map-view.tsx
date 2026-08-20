@@ -1,3 +1,4 @@
+import type { DotyposTableId } from "@deskohub/dotypos";
 import { TableMap } from "@deskohub/dotypos/table-map";
 import type { CSSProperties } from "react";
 import { getWorkspaceRoomLayout } from "@/features/checkout/workspace-room-layouts";
@@ -27,12 +28,12 @@ const getRoomLayout = (roomName: string | undefined) => ({
 
 const isAssignedTable = (
   tableId: string | undefined,
-  assignedTableId: string
+  assignedTableId: DotyposTableId
 ) => tableId?.trim() === assignedTableId;
 
-const getTableShapeStyle = (
+const getTableAppearance = (
   tableId: string | undefined,
-  assignedTableId: string
+  assignedTableId: DotyposTableId
 ): CSSProperties =>
   isAssignedTable(tableId, assignedTableId)
     ? {
@@ -49,7 +50,7 @@ const getTableShapeStyle = (
 
 const getTableLabelStyle = (
   tableId: string | undefined,
-  assignedTableId: string
+  assignedTableId: DotyposTableId
 ): CSSProperties => ({
   fill: isAssignedTable(tableId, assignedTableId) ? "#ffffff" : "#00024f",
   fontFamily: workspaceTableMapFontStack,
@@ -72,7 +73,7 @@ export function WorkspaceTableMapView({
         getTableLabelStyle(table.id, tableMap.assignedTableId)
       }
       tableShapeInlineStyle={(table) =>
-        getTableShapeStyle(table.id, tableMap.assignedTableId)
+        getTableAppearance(table.id, tableMap.assignedTableId)
       }
       tableStyle={() => ""}
       tables={tableMap.tables}

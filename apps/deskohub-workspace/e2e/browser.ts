@@ -7,6 +7,7 @@ import type { WorkspaceE2EConfig } from "./config";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "./errors";
 import { pollUntil } from "./polling";
@@ -22,7 +23,7 @@ const runBrowserCommand = (
   options?: Parameters<Runner>[2]
 ) =>
   tryWorkspaceE2EPromise(operation, (signal) =>
-    run("agent-browser", ["--session", session, ...args], {
+    run("playwright", ["--session", session, ...args], {
       ...options,
       signal,
     })
@@ -40,6 +41,64 @@ export const readBrowserUrl = (
       result.exitCode === 0 ? result.stdout.trim() : undefined
     )
   );
+
+export const readActiveBrowserTabId = (
+  run: Runner,
+  session: string
+): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const tabs = yield* readBrowserTabs(run, session);
+    const tabId = tabs.find((tab) => tab.active)?.tabId;
+    if (!tabId) {
+      return yield* toWorkspaceE2EError(
+        "read active browser tab",
+        new Error("active browser tab missing")
+      );
+    }
+    return tabId;
+  });
+
+export type BrowserTab = {
+  readonly active: boolean;
+  readonly tabId: string;
+};
+
+export const readBrowserTabs = (
+  run: Runner,
+  session: string
+): Effect.Effect<readonly BrowserTab[], WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const result = yield* runBrowserCommand(
+      "read browser tabs",
+      run,
+      session,
+      ["--json", "tab", "list"],
+      { logOutput: false }
+    );
+    return yield* tryWorkspaceE2ESync("parse browser tabs", () => {
+      const response = JSON.parse(result.stdout) as {
+        readonly data?: {
+          readonly tabs?: readonly {
+            readonly active?: boolean;
+            readonly tabId?: string;
+          }[];
+        };
+      };
+      return (response.data?.tabs ?? []).map((tab) => {
+        if (!tab.tabId) throw new Error("browser tab id missing");
+        return { active: tab.active === true, tabId: tab.tabId };
+      });
+    });
+  });
+
+export const switchToBrowserTab = (
+  run: Runner,
+  session: string,
+  tabId: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("switch browser tab", run, session, ["tab", tabId], {
+    logOutput: false,
+  }).pipe(Effect.asVoid);
 
 export const getBrowserHeaderArgs = (config: WorkspaceE2EConfig) =>
   config.bypassSecret
@@ -416,12 +475,21 @@ export const startBrowserDiagnostics = (
       ["network", "requests", "--clear"],
     ];
 
-    yield* Effect.forEach(commands, (args) =>
-      runBrowserCommand(`clear browser ${args.join(" ")}`, run, session, args, {
-        allowFailure: true,
-        logOutput: false,
-        timeoutMs: 30_000,
-      })
+    yield* Effect.forEach(
+      commands,
+      (args) =>
+        runBrowserCommand(
+          `clear browser ${args.join(" ")}`,
+          run,
+          session,
+          args,
+          {
+            allowFailure: true,
+            logOutput: false,
+            timeoutMs: 30_000,
+          }
+        ),
+      { concurrency: "unbounded", discard: true }
     );
 
     const result = yield* runBrowserCommand(
@@ -550,7 +618,7 @@ const writeCommandArtifact = (
     const result = yield* tryWorkspaceE2EPromise(
       `write ${fileName} artifact`,
       (signal) =>
-        run("agent-browser", args, {
+        run("playwright", args, {
           allowFailure: true,
           logOutput: false,
           signal,
@@ -754,9 +822,11 @@ const hasSnapshotRole = (line: string, role: string | undefined) =>
 
 export const findEnabledSnapshotRef = (
   snapshot: string,
-  labels: readonly string[]
+  labels: readonly string[],
+  role?: string
 ) => {
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     if (hasDisabledSnapshotState(line)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
@@ -770,6 +840,7 @@ export const findEnabledSnapshotRef = (
   }
 
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     if (hasDisabledSnapshotState(line)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
@@ -860,8 +931,10 @@ export const requireEnabledSnapshotRef = ({
   );
 
 export const getSnapshotRef = (line: string) =>
-  line.match(/\bref=(e\d+)\b/)?.[1]?.replace(/^/, "@") ??
-  line.match(/@e\d+/)?.[0];
+  line.match(/\bref=((?:f\d+)?e\d+)\b/)?.[1]?.replace(/^/, "@") ??
+  line.match(/@(?:f\d+)?e\d+/)?.[0];
+
+export const isFrameSnapshotRef = (ref: string) => /^@f\d+e\d+$/.test(ref);
 
 export const waitForBrowserUrl = ({
   description,

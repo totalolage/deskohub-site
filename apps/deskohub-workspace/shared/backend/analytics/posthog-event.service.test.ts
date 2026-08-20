@@ -1,17 +1,24 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import {
+  PostHogDistinctId,
+  PostHogEventId,
+} from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
 import type { EventMessage } from "posthog-node";
 import { CENSORED_LOG_VALUE } from "@/shared/backend/logging/censorship";
 
 const config = {
   environment: "development",
-  host: "https://posthog.example",
+  ingestHost: "https://posthog.example",
   projectToken: "phc_test",
   serviceName: "workspace-test",
   serviceNamespace: "deskohub-test",
 };
+
+const reservationDistinctId = PostHogDistinctId.make("reservation-id");
+const eventId = PostHogEventId.make("019edbcf-5026-7ecc-821b-eda46998eaaa");
 
 describe("PostHogEventService", () => {
   test("captures lifecycle events with censored Effect context", async () => {
@@ -30,14 +37,14 @@ describe("PostHogEventService", () => {
     await Effect.runPromise(
       service
         .capture({
-          distinctId: "reservation-id",
+          distinctId: reservationDistinctId,
           event: "reservation started",
           properties: {
             reservation_id: "reservation-id",
             token: "explicit-secret",
           },
           timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
-          uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
+          uuid: eventId,
         })
         .pipe(
           Effect.annotateLogs({
@@ -85,10 +92,10 @@ describe("PostHogEventService", () => {
 
     await Effect.runPromise(
       service.capture({
-        distinctId: "reservation-id",
+        distinctId: reservationDistinctId,
         event: "reservation started",
         timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
-        uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
+        uuid: eventId,
       })
     );
   });

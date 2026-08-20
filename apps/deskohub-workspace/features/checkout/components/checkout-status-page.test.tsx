@@ -93,6 +93,19 @@ describe("CheckoutStatusPage", () => {
     ).toBeDefined();
   });
 
+  test("keeps reservation access outside the payment status page", () => {
+    const view = render(
+      <CheckoutStatusPage locale="en-US" status={baseStatus} />
+    );
+
+    expect(
+      view.container.querySelector("[data-reservation-access]")
+    ).toBeNull();
+    expect(
+      view.container.querySelector("[data-reservation-access-code]")
+    ).toBeNull();
+  });
+
   test("renders meeting-room timing and links to its current entry point", () => {
     const view = render(
       <CheckoutStatusPage
@@ -141,6 +154,37 @@ describe("CheckoutStatusPage", () => {
     expect(view.getByText("whole day")).toBeDefined();
     expect(view.queryByText(/12:00 AM/)).toBeNull();
     expect(view.getByText("CZK 2,320")).toBeDefined();
+  });
+
+  test("renders office dates and seats and links to its entry point", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "office",
+          summary: {
+            kind: "office",
+            reservedFrom: Temporal.Instant.from("2026-06-11T22:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-14T22:00:00Z"),
+            seats: 3,
+            price: { value: 442_500, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    expect(view.getByText("Private office")).toBeDefined();
+    expect(
+      view.getByText("Friday, June 12 – Sunday, June 14, 2026")
+    ).toBeDefined();
+    expect(view.getByText("Seats").parentElement?.textContent).toBe("Seats3");
+    expect(view.getByText("CZK 4,425")).toBeDefined();
+    expect(
+      view
+        .getByRole("link", { name: "Start a new reservation" })
+        .getAttribute("href")
+    ).toBe("/en-US/reservation/office");
   });
 
   test("renders not found without reservation summary copy", () => {
@@ -233,12 +277,12 @@ describe("CheckoutStatusPage", () => {
       [
         "Hi Deskohub Workspace,",
         "",
-        "My payment was received, but the access-code email did not arrive.",
+        "My payment was received, but the reservation confirmation email did not arrive.",
         "",
         "Order reference: reservation-status-page",
         "Reservation: Basic Day Pass on Saturday, June 20, 2026",
         "",
-        "Please help me get my workspace access codes.",
+        "Please help me get my secure access link.",
       ].join("\n")
     );
   });

@@ -4,7 +4,7 @@ import {
   type EffectActionState,
 } from "@deskohub/next-effect/effect-action";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Duration, Effect, References } from "effect";
+import { Duration, Effect, Predicate, References } from "effect";
 import type {
   FlattenedValidationErrors,
   ValidationErrors,
@@ -31,6 +31,11 @@ type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
 
 type WorkspaceActionValidationErrors<S extends StandardSchemaV1> =
   FlattenedValidationErrors<ValidationErrors<S>>;
+
+type WorkspaceActionValidationIssue = {
+  readonly message: string;
+  readonly path: readonly string[];
+};
 
 export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
   /**
@@ -62,7 +67,14 @@ export const defineWorkspaceAction = <
   EffectAction.fromClient(actionClient, {
     run: runWorkspaceEffect(options.operation, { boundary: "action" }),
   })
-    .inputSchema(options.schema)
+    .inputSchema(options.schema, {
+      handleValidationErrorsShape: (validationErrors) =>
+        handleWorkspaceActionValidationFailure(
+          options.operation,
+          validationErrors,
+          options.logInput !== false
+        ),
+    })
     .action((args) =>
       prepareWorkspaceAction(args, options, () =>
         handler(args.parsedInput, getWorkspaceActionContext(args))
@@ -84,7 +96,14 @@ export const defineWorkspaceStateAction = <
   EffectAction.fromClient(actionClient, {
     run: runWorkspaceEffect(options.operation, { boundary: "action" }),
   })
-    .inputSchema(options.schema)
+    .inputSchema(options.schema, {
+      handleValidationErrorsShape: (validationErrors) =>
+        handleWorkspaceActionValidationFailure(
+          options.operation,
+          validationErrors,
+          options.logInput !== false
+        ),
+    })
     .stateAction<A, Error | PublicSafeActionError>((args, state) =>
       prepareWorkspaceAction(args, options, () =>
         handler(args.parsedInput, getWorkspaceActionContext(args), state)
@@ -104,11 +123,11 @@ const prepareWorkspaceAction = <
     yield* Effect.logDebug("Safe action executed").pipe(
       Effect.annotateLogs({
         locale: args.ctx.locale,
-        ...(options.logInput === false ? {} : { input: args.parsedInput }),
+        input: options.logInput === false ? undefined : args.parsedInput,
       })
     );
     const result = yield* Effect.suspend(handler).pipe(
-      Effect.provide(BotProtectionService.Live)
+      Effect.provide(BotProtectionService.Default)
     );
     yield* Effect.logDebug("Action completed successfully");
     return result;
@@ -145,6 +164,90 @@ const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   clientInput: args.clientInput,
   locale: args.ctx.locale,
 });
+const handleWorkspaceActionValidationFailure = async <
+  S extends StandardSchemaV1,
+>(
+  operation: string,
+  validationErrors: ValidationErrors<S>,
+  logValidationPaths: boolean
+): Promise<WorkspaceActionValidationErrors<S>> => {
+  const issues = collectWorkspaceActionValidationIssues(validationErrors);
+
+  await Effect.gen(function* () {
+    yield* Effect.logWarning("Action input validation failed").pipe(
+      Effect.annotateLogs({
+        validationIssueCount: issues.length,
+        ...(logValidationPaths && {
+          validationPaths: [
+            ...new Set(
+              issues.map(({ path }) =>
+                formatWorkspaceActionValidationPath(path)
+              )
+            ),
+          ],
+        }),
+      })
+    );
+    yield* scheduleWorkspaceTelemetryFlush();
+  }).pipe(runWorkspaceEffect(operation, { boundary: "action" }));
+
+  const fieldErrors = Object.groupBy(
+    issues.filter(({ path }) => path.length > 0),
+    ({ path }) => path[0] ?? ""
+  );
+
+  return {
+    formErrors: issues
+      .filter(({ path }) => path.length === 0)
+      .map(({ message }) => message),
+    fieldErrors: Object.fromEntries(
+      Object.entries(fieldErrors).map(([field, fieldIssues]) => [
+        field,
+        (fieldIssues ?? []).map(({ message, path }) => {
+          const nestedPath = formatWorkspaceActionValidationPath(
+            path.slice(1),
+            ""
+          );
+          return nestedPath ? `${nestedPath}: ${message}` : message;
+        }),
+      ])
+    ),
+  } as WorkspaceActionValidationErrors<S>;
+};
+
+const collectWorkspaceActionValidationIssues = <T>(
+  value: T,
+  path: readonly string[] = []
+): readonly WorkspaceActionValidationIssue[] => {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) =>
+      Predicate.isString(item) ? [{ message: item, path }] : []
+    );
+  }
+  if (!Predicate.isObject(value)) return [];
+
+  return Object.entries(value).flatMap(([key, item]) =>
+    collectWorkspaceActionValidationIssues(
+      item,
+      key === "_errors" ? path : [...path, key]
+    )
+  );
+};
+
+const formatWorkspaceActionValidationPath = (
+  path: readonly string[],
+  root = "$"
+) => {
+  let formatted = root;
+  for (const segment of path) {
+    if (/^\d+$/.test(segment)) {
+      formatted = `${formatted}[${segment}]`;
+      continue;
+    }
+    formatted = formatted ? `${formatted}.${segment}` : segment;
+  }
+  return formatted;
+};
 
 const mapSafeActionFailure = (error: SafeActionFailure) => {
   if (error instanceof PublicSafeActionError) {

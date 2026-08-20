@@ -1,11 +1,14 @@
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Effect, Layer, Option, Schema, Scope } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
+import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { appendDiscounts, calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
-import { CodeDiscountProvider } from "./code-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
 import {
   type ActiveSale,
@@ -14,24 +17,28 @@ import {
   type AppliedDiscount,
   affirmedDiscountAdvertisementQuoteCodec,
   appliedDiscountCodec,
-  type CanonicalDiscountCode,
+  type CanonicalPromotionCode,
   type DiscountAdvertisementInput,
   type DiscountAdvertisementQuote,
   type DiscountId,
   type DiscountQuote,
   type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
+  discountCodec,
 } from "./contracts";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
+import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import {
   DiscountReleaseGateService,
   type DiscountReleaseGates,
 } from "./discount-release-gate.service";
 import {
   type DiscountCalculationError,
-  DiscountCodeUnavailableError,
   type DiscountResolutionError,
+  PromotionCodeUnavailableError,
 } from "./errors";
+import { PromotionCodeRepository } from "./promotion-code.repository";
+import { PromotionCodeProvider } from "./promotion-code-provider.service";
 import type { DiscountCandidate } from "./provider";
 import {
   type DiscountResolutionFailure,
@@ -43,7 +50,7 @@ import {
 
 export type DisplayedDiscountAffirmationInput = DiscountAdvertisementInput & {
   readonly dotyposCustomerId: DotyposCustomerId;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
   readonly displayedDiscountIds: readonly DiscountId[];
 };
 
@@ -61,14 +68,26 @@ export type ApplyCustomerDiscountInput = {
   readonly affirmedAdvertisement: AffirmedDiscountAdvertisementQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
+  readonly submittedCode?: CanonicalPromotionCode;
+  readonly submittedCodeDiscountId?: DiscountId;
+};
+
+export type AppliedCustomerDiscountQuote = DiscountQuote & {
+  readonly advertisedPriceChanged: boolean;
+  readonly submittedCodeDiscountId?: DiscountId;
 };
 
 export type ApplyDiscountCodeInput = {
   readonly baseQuote: DiscountQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
-  readonly submittedCode: CanonicalDiscountCode;
+  readonly submittedCode: CanonicalPromotionCode;
 };
+
+export type PreviewDiscountCodeInput = Omit<
+  ApplyDiscountCodeInput,
+  "dotyposCustomerId"
+>;
 
 export type AppliedDiscountCodeQuote = {
   readonly quote: DiscountQuote;
@@ -93,7 +112,10 @@ export interface IDiscountService {
   >;
   readonly applyCustomerDiscount: (
     input: ApplyCustomerDiscountInput
-  ) => Effect.Effect<DiscountQuote, DiscountCalculationError>;
+  ) => Effect.Effect<AppliedCustomerDiscountQuote, DiscountCalculationError>;
+  readonly previewDiscountCode: (
+    input: PreviewDiscountCodeInput
+  ) => Effect.Effect<AppliedDiscountCodeQuote, DiscountResolutionError>;
   readonly affirmDisplayedDiscounts: (
     input: DisplayedDiscountAffirmationInput
   ) => Effect.Effect<DisplayedDiscountAffirmation, DiscountCalculationError>;
@@ -106,12 +128,12 @@ export class DiscountService extends Context.Service<
   DiscountService,
   IDiscountService
 >()("@deskohub-workspace/discounts/DiscountService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const calendar = yield* CalendarDiscountProvider;
       const customer = yield* CustomerDiscountProvider;
-      const code = yield* CodeDiscountProvider;
+      const code = yield* PromotionCodeProvider;
       const releaseGates = yield* DiscountReleaseGateService;
 
       const resolveQuoteCandidates = Effect.fn(
@@ -160,7 +182,10 @@ export class DiscountService extends Context.Service<
               enabled: releaseGates.calendarSales,
               operation: "discover_active_sales",
               provider: "calendar",
-              resolve: () => calendar.discoverActiveSales(input),
+              resolve: () =>
+                calendar
+                  .discoverActiveSales(input)
+                  .pipe(Effect.map(({ activeSales }) => activeSales)),
             })
           ),
           Effect.map(({ activeSales }) => activeSales)
@@ -293,7 +318,31 @@ export class DiscountService extends Context.Service<
             Effect.bind("releaseGates", () =>
               releaseGates.evaluate({ operation: "apply_customer_discount" })
             ),
-            Effect.bind("candidates", ({ releaseGates }) =>
+            Effect.let("advertisedCandidates", () =>
+              input.affirmedAdvertisement.discounts.flatMap(
+                (application): DiscountCandidate[] =>
+                  application.discount.id === input.submittedCodeDiscountId
+                    ? []
+                    : [
+                        {
+                          discount: application.discount,
+                          provenance: {
+                            providerNamespace: "affirmed-advertisement",
+                            providerReference: application.discount.id,
+                          },
+                        },
+                      ]
+              )
+            ),
+            Effect.bind("advertised", ({ advertisedCandidates }) =>
+              calculateDiscounts({
+                product: input.affirmedAdvertisement.product,
+                discountableSubtotal:
+                  input.affirmedAdvertisement.discountableSubtotal,
+                candidates: advertisedCandidates,
+              })
+            ),
+            Effect.bind("customerCandidates", ({ releaseGates }) =>
               recoverGatedDiscountResolution({
                 enabled: releaseGates.customerDiscounts,
                 operation: "apply_customer_discount",
@@ -306,10 +355,43 @@ export class DiscountService extends Context.Service<
                   }),
               })
             ),
-            Effect.bind("quote", ({ candidates }) =>
+            Effect.bind("customerQuote", ({ advertised, customerCandidates }) =>
               appendDiscounts({
-                baseQuote: input.affirmedAdvertisement,
-                candidates,
+                baseQuote: advertised.quote,
+                candidates: customerCandidates,
+              })
+            ),
+            Effect.bind("codeCandidates", ({ releaseGates }) =>
+              recoverGatedDiscountResolution({
+                enabled:
+                  releaseGates.discountCodes &&
+                  input.submittedCode !== undefined,
+                operation: "apply_customer_discount",
+                provider: "code",
+                resolve: () =>
+                  code.revalidate({
+                    product: input.affirmedAdvertisement.product,
+                    discountableSubtotal:
+                      input.affirmedAdvertisement.discountableSubtotal,
+                    dotyposCustomerId: input.dotyposCustomerId,
+                    locale: input.locale,
+                    submittedCode: input.submittedCode,
+                  }),
+              }).pipe(
+                Effect.map((candidates) =>
+                  selectDiscountCandidates({
+                    selectedDiscountIds: input.submittedCodeDiscountId
+                      ? [input.submittedCodeDiscountId]
+                      : [],
+                    candidates,
+                  })
+                )
+              )
+            ),
+            Effect.bind("quote", ({ codeCandidates, customerQuote }) =>
+              appendDiscounts({
+                baseQuote: customerQuote,
+                candidates: codeCandidates,
               })
             ),
             Effect.tap(({ quote }) =>
@@ -317,9 +399,60 @@ export class DiscountService extends Context.Service<
                 calculation: { applications: quote.discounts },
               })
             ),
-            Effect.map(({ quote }) => quote)
+            Effect.map(({ codeCandidates, quote }) => {
+              const advertisedCode = input.affirmedAdvertisement.discounts.find(
+                ({ discount }) => discount.id === input.submittedCodeDiscountId
+              )?.discount;
+              const revalidatedCode = codeCandidates[0]?.discount;
+              const codeApplied = quote.discounts.some(
+                ({ discount }) => discount.id === input.submittedCodeDiscountId
+              );
+
+              return {
+                ...quote,
+                advertisedPriceChanged:
+                  advertisedCode !== undefined &&
+                  (!codeApplied ||
+                    revalidatedCode === undefined ||
+                    !discountEquals(advertisedCode, revalidatedCode)),
+                ...(codeApplied && {
+                  submittedCodeDiscountId: input.submittedCodeDiscountId,
+                }),
+              };
+            })
           ),
         withServiceAnnotations("apply_customer_discount")
+      );
+
+      const previewDiscountCode = Effect.fn(
+        "DiscountService.previewDiscountCode"
+      )(
+        (input: PreviewDiscountCodeInput) =>
+          Effect.succeed(input).pipe(
+            Effect.bind("releaseGates", () =>
+              releaseGates.evaluate({ operation: "apply_discount_code" })
+            ),
+            Effect.tap(({ releaseGates }) =>
+              requireDiscountCodesEnabled(releaseGates)
+            ),
+            Effect.tap(requireEligibleSubtotal),
+            Effect.bind("candidates", () =>
+              code.preview({
+                product: input.baseQuote.product,
+                discountableSubtotal: input.baseQuote.discountableSubtotal,
+                locale: input.locale,
+                submittedCode: input.submittedCode,
+              })
+            ),
+            Effect.bind("quote", ({ candidates }) =>
+              appendDiscounts({ baseQuote: input.baseQuote, candidates })
+            ),
+            Effect.bind("application", ({ quote }) =>
+              requireAppliedCode({ baseQuote: input.baseQuote, quote })
+            ),
+            Effect.map(({ application, quote }) => ({ application, quote }))
+          ),
+        withApplyDiscountCodeAnnotations
       );
 
       const affirmDisplayedDiscounts = Effect.fn(
@@ -395,10 +528,44 @@ export class DiscountService extends Context.Service<
         discoverAdvertisedDiscounts,
         affirmAdvertisement,
         applyCustomerDiscount,
+        previewDiscountCode,
         affirmDisplayedDiscounts,
         applyDiscountCode,
       } satisfies IDiscountService;
     })
+  );
+
+  static Live = makeDiscountServiceLayer(DiscountReleaseGateService.Live);
+}
+
+function makeDiscountServiceLayer(
+  releaseGates: Layer.Layer<DiscountReleaseGateService>
+) {
+  const discountRepositories = Layer.mergeAll(
+    DiscountDefinitionRepository.Default,
+    PromotionCodeRepository.Default
+  ).pipe(Layer.provide(WorkspaceDatabase.Default));
+  const providerDependencies = Layer.mergeAll(
+    discountRepositories,
+    WorkspaceGoogleCalendarLayer,
+    CalendarResourceConfig.Default,
+    WorkspaceDotyposLayer
+  );
+  const discountProviders = Layer.mergeAll(
+    CalendarDiscountProvider.Live,
+    CustomerDiscountProvider.Default,
+    PromotionCodeProvider.Default
+  ).pipe(Layer.provide(providerDependencies));
+  const dependencies = Layer.merge(discountProviders, releaseGates);
+  const processScope = Scope.makeUnsafe();
+  const processMemoMap = Layer.makeMemoMapUnsafe();
+
+  return Layer.fromBuild(() =>
+    Layer.buildWithMemoMap(
+      DiscountService.Default.pipe(Layer.provide(dependencies)),
+      processMemoMap,
+      processScope
+    )
   );
 }
 
@@ -489,20 +656,22 @@ const requireDiscountCodesEnabled = (releaseGates: DiscountReleaseGates) =>
   releaseGates.discountCodes
     ? Effect.void
     : Effect.fail(
-        new DiscountCodeUnavailableError({
+        new PromotionCodeUnavailableError({
           reason: "feature_disabled",
           message: "Discount code entry is disabled.",
         })
       );
 
-const requireEligibleSubtotal = (input: ApplyDiscountCodeInput) =>
+const requireEligibleSubtotal = (input: {
+  readonly baseQuote: DiscountQuote;
+}) =>
   Schema.decodeEffect(positiveWorkspaceMoneyCodec)(
     input.baseQuote.discountedSubtotal
   ).pipe(
     Effect.asVoid,
     Effect.mapError(
       (cause) =>
-        new DiscountCodeUnavailableError({
+        new PromotionCodeUnavailableError({
           reason: "no_eligible_subtotal",
           message: "No discountable subtotal remains for a discount code.",
           cause,
@@ -520,7 +689,7 @@ const requireAppliedCode = (input: {
     Effect.map(([application]) => application),
     Effect.mapError(
       (cause) =>
-        new DiscountCodeUnavailableError({
+        new PromotionCodeUnavailableError({
           reason: "no_eligible_subtotal",
           message: "The discount code has no applicable amount.",
           cause,
@@ -530,11 +699,11 @@ const requireAppliedCode = (input: {
 
 const withApplyDiscountCodeAnnotations = <A>(
   effect: Effect.Effect<A, DiscountResolutionError>,
-  input: ApplyDiscountCodeInput
+  input: { readonly baseQuote: DiscountQuote }
 ) =>
   effect.pipe(
     Effect.tapError((cause) =>
-      cause._tag === "DiscountCodeUnavailableError"
+      cause._tag === "PromotionCodeUnavailableError"
         ? Effect.logDebug("Discount code was unavailable", {
             discountBoundary: "resolution",
             discountProvider: "code",
@@ -564,3 +733,5 @@ const makeAffirmedDiscountAdvertisementQuote = (
   quote: DiscountQuote
 ): AffirmedDiscountAdvertisementQuote =>
   affirmedDiscountAdvertisementQuoteCodec.make(quote);
+
+const discountEquals = Schema.toEquivalence(discountCodec);

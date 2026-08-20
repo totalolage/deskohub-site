@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import {
   ResendWebhookProcessingError,
   ResendWebhookService,
-  ResendWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/fulfillment";
 import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 
@@ -92,7 +91,7 @@ export const POST = defineWorkspaceRoute(
         "ResendWebhookProcessingError",
         handleResendWebhookProcessingError
       ),
-      Effect.provide(ResendWebhookServiceLiveWithDependencies)
+      Effect.provide(ResendWebhookService.Live)
     )
 );
 

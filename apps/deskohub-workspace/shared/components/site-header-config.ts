@@ -1,6 +1,10 @@
 import { type Locale, m } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { getCoworkReservationPath } from "@/features/reservation/routes";
+import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
+import {
+  getCoworkReservationPath,
+  getOfficeReservationPath,
+} from "@/features/reservation/routes";
 
 const siteHeaderSectionIds = {
   overview: "overview",
@@ -15,6 +19,7 @@ const siteHeaderSectionIds = {
 export type SiteHeaderMenuItemId =
   | "locationMap"
   | "meetingRoom"
+  | "office"
   | "gallery"
   | "founders"
   | "faqContact"
@@ -37,11 +42,23 @@ export const getSiteHeaderLanguageLabels = (
   "en-US": m.languageEnglish({}, { locale }),
 });
 
+export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
+  closeNavigationMenuLabel: m.closeNavigationMenuLabel({}, { locale }),
+  languageSwitcherLabel: m.languageSwitcherLabel({}, { locale }),
+  mobilePrimaryNavigationLabel: m.mobilePrimaryNavigationLabel({}, { locale }),
+  openNavigationMenuLabel: m.openNavigationMenuLabel({}, { locale }),
+  primaryNavigationLabel: m.primaryNavigationLabel({}, { locale }),
+});
+
 export async function getSiteHeaderConfig(locale: Locale) {
-  const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
+  const [meetingRoomPageEnabled, officePageEnabled] = await Promise.all([
+    isMeetingRoomPageEnabled(),
+    isOfficePageEnabled(),
+  ]);
 
   return createSiteHeaderConfig(locale, {
     meetingRoom: !meetingRoomPageEnabled,
+    office: !officePageEnabled,
   });
 }
 
@@ -61,6 +78,11 @@ const createSiteHeaderConfig = (
       id: "meetingRoom",
       label: m.landingNavMeetingRoom({}, { locale }),
       href: `${localePath}/meeting-room`,
+    },
+    {
+      id: "office",
+      label: m.landingNavPrivateOffice({}, { locale }),
+      href: getOfficeReservationPath(locale),
     },
     {
       id: "gallery",
@@ -85,6 +107,7 @@ const createSiteHeaderConfig = (
   ] satisfies SiteHeaderMenuItem[];
 
   return {
+    ...getSiteHeaderAccessibilityLabels(locale),
     languageLabels: getSiteHeaderLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),

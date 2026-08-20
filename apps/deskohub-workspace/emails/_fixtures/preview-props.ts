@@ -1,6 +1,7 @@
 import type { ContactBusinessEmailProps } from "../contact-business";
 import type { ContactConfirmationEmailProps } from "../contact-confirmation";
 import type { CustomerReservationEmailProps } from "../customer-reservation";
+import type { InvoiceDeliveryEmailProps } from "../invoice-delivery";
 import type { ReservationNotificationEmailProps } from "../reservation-notification";
 
 const customerMessage =
@@ -35,11 +36,18 @@ export const contactConfirmationPreviewProps = {
 
 export const customerReservationPreviewProps = {
   locale: "en-US",
-  preview: "Your Deskohub Workspace access code is 4829",
-  heading: "Your workspace access is ready for Friday, June 12",
-  accessCode: "4829",
+  preview: "Your Deskohub Workspace reservation is confirmed",
+  heading: "Your workspace reservation is confirmed for Friday, June 12",
+  access: {
+    button: "Show access code",
+    url: "https://workspace.deskohub.cz/en-US/reservation/access/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
+  },
+  invoice: {
+    label: "Invoice",
+    download: "Download",
+    url: "https://workspace.deskohub.cz/en-US/reservation/invoice/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
+  },
   labels: {
-    accessCode: "Access code",
     location: "Where to go",
     directions: "Open route in Google Maps",
     table: "Table",
@@ -96,3 +104,10 @@ export const reservationNotificationPreviewProps = {
     },
   ],
 } satisfies ReservationNotificationEmailProps;
+
+export const invoiceDeliveryPreviewProps = {
+  locale: "en-US",
+  preview: "Invoice WS-FV-2026-000003",
+  heading: "Your invoice is attached",
+  body: "Invoice WS-FV-2026-000003 for order reservation-3 is attached as a PDF.",
+} satisfies InvoiceDeliveryEmailProps;

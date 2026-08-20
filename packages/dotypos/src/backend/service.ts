@@ -16,15 +16,32 @@ import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import type {
   CreateCustomerRequest,
   CreateReservationRequest,
-  Customer,
-  DiscountGroup,
   UpdateCustomerRequest,
   UpdateReservationRequest,
 } from "../generated/effect.gen";
 import type {
   CreateDotyposReservationInput,
+  DotyposCategoryId,
+  DotyposCustomer,
+  DotyposCustomerId,
+  DotyposDiscountGroup,
+  DotyposDiscountGroupId,
+  DotyposProduct,
+  DotyposReservationId,
   DotyposReservationInterval,
   UpdateDotyposReservationInput,
+} from "../types";
+import {
+  DotyposCategorySchema,
+  DotyposCustomerIdSchema,
+  DotyposCustomerSchema,
+  DotyposDiscountGroupIdSchema,
+  DotyposDiscountGroupSchema,
+  DotyposProductSchema,
+  DotyposReservationIdSchema,
+  DotyposReservationSchema,
+  DotyposTableIdSchema,
+  DotyposTableSchema,
 } from "../types";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
@@ -36,7 +53,8 @@ import {
 type DotyposError = ValidationError | ExternalAPIError | NetworkError;
 
 export type ReservationListOptions = {
-  readonly customerId?: string;
+  readonly ids?: readonly DotyposReservationId[];
+  readonly customerId?: DotyposCustomerId;
   readonly startsAtOrAfter?: string;
   readonly startsBefore?: string;
   readonly order?: "startDateAscending" | "startDateDescending";
@@ -56,7 +74,10 @@ const isRetryableDotyposError = (error: DotyposError) =>
   Match.value(error).pipe(
     Match.tag("NetworkError", () => true),
     Match.tag("ExternalAPIError", (apiError) =>
-      Boolean(apiError.statusCode && apiError.statusCode >= 500)
+      Boolean(
+        apiError.statusCode &&
+          (apiError.statusCode === 429 || apiError.statusCode >= 500)
+      )
     ),
     Match.orElse(() => false)
   );
@@ -192,13 +213,24 @@ export type DotyposCustomerLookupData = {
 
 export type DotyposCustomerDiscount = {
   readonly source: "dotypos-discount-group";
-  readonly discountGroupId: string;
+  readonly discountGroupId: DotyposDiscountGroupId;
   readonly percent: number;
 };
 
 export type DotyposCustomerDiscountGroup = {
-  readonly discountGroupId: string;
-  readonly discountPercent: DiscountGroup["discountPercent"];
+  readonly discountGroupId: DotyposDiscountGroupId;
+  readonly discountPercent: DotyposDiscountGroup["discountPercent"];
+};
+
+export type DotyposCustomerBillingDetails = {
+  readonly addressLine1: string;
+  readonly addressLine2: string;
+  readonly city: string;
+  readonly zip: string;
+  readonly country: string;
+  readonly companyName: string;
+  readonly companyId: string;
+  readonly vatId: string;
 };
 
 export type FindCustomerOptions = {
@@ -207,14 +239,18 @@ export type FindCustomerOptions = {
 
 export type FindCustomerResult = Data.TaggedEnum<{
   Matched: {
-    readonly customer: Customer;
-    readonly matches: readonly Customer[];
+    readonly customer: DotyposCustomer;
+    readonly matches: readonly DotyposCustomer[];
   };
   NotFound: {
     readonly matches: readonly [];
   };
   Ambiguous: {
-    readonly matches: readonly [Customer, Customer, ...Customer[]];
+    readonly matches: readonly [
+      DotyposCustomer,
+      DotyposCustomer,
+      ...DotyposCustomer[],
+    ];
   };
 }>;
 
@@ -237,6 +273,21 @@ const normalizeCustomerLookupData = (
     phone: normalizedPhone || undefined,
   };
 };
+
+const normalizeIdentifier = <A>(
+  schema: Schema.Decoder<A>,
+  value: string,
+  label: string
+) =>
+  Schema.decodeUnknownEffect(schema)(value.trim()).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ValidationError({
+          message: `${label} is required`,
+          cause,
+        })
+    )
+  );
 
 const getCustomerLookupLogAnnotations = (
   options?: FindCustomerOptions
@@ -275,7 +326,10 @@ const presentCreateCustomerRequestFields = (request: CreateCustomerRequest) =>
     ] as const satisfies readonly (keyof CreateCustomerRequest)[]
   ).filter((field) => request[field] !== undefined);
 
-const addUniqueCustomer = (customers: Customer[], customer: Customer) => {
+const addUniqueCustomer = (
+  customers: DotyposCustomer[],
+  customer: DotyposCustomer
+) => {
   const isDuplicate = customers.find((existing) =>
     customer.id ? existing.id === customer.id : existing === customer
   );
@@ -296,9 +350,12 @@ const parseDiscountPercent = (value: unknown) =>
   );
 
 const hasAtLeastTwoCustomers = (
-  customers: readonly Customer[]
-): customers is readonly [Customer, Customer, ...Customer[]] =>
-  customers.length >= 2;
+  customers: readonly DotyposCustomer[]
+): customers is readonly [
+  DotyposCustomer,
+  DotyposCustomer,
+  ...DotyposCustomer[],
+] => customers.length >= 2;
 
 const makeDotyposService = Effect.gen(function* () {
   const config = yield* DotyposRuntimeConfig;
@@ -338,32 +395,80 @@ const makeDotyposService = Effect.gen(function* () {
         );
   };
 
+  const decodeProviderEntity = <A>(
+    schema: Schema.Decoder<A>,
+    value: unknown,
+    operation: string
+  ) =>
+    Schema.decodeUnknownEffect(schema)(value).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ExternalAPIError({
+            service: "Dotypos",
+            operation,
+            message: "Dotypos returned malformed entity identifiers.",
+            statusCode: 502,
+            cause,
+          })
+      )
+    );
+
+  const decodeProviderEntities = <A>(
+    schema: Schema.Decoder<A>,
+    values: readonly unknown[],
+    operation: string
+  ) =>
+    Effect.forEach(values, (value) =>
+      decodeProviderEntity(schema, value, operation)
+    );
+
+  const decodeProviderPage = <A>(
+    schema: Schema.Decoder<A>,
+    page: DotyposPage<unknown>,
+    operation: string
+  ) =>
+    decodeProviderEntities(schema, page.data ?? [], operation).pipe(
+      Effect.map((data) => ({ ...page, data }))
+    );
+
   const getReservation = Effect.fn("getReservation")(
-    function* (id: string) {
+    function* (id: DotyposReservationId) {
+      const reservationId = yield* normalizeIdentifier(
+        DotyposReservationIdSchema,
+        id,
+        "Reservation ID"
+      );
       const reservationResult = yield* runDotyposRequest(
-        client.getReservation(config.cloudId, id, undefined),
+        client.getReservation(config.cloudId, reservationId, undefined),
         "getReservation"
       ).pipe(
         Effect.retry(retryPolicy),
         catchUnexpectedDotyposError("getReservation")
       );
 
-      const reservation = {
-        ...reservationResult,
-        id,
-      };
+      const reservation = yield* decodeProviderEntity(
+        DotyposReservationSchema,
+        { ...reservationResult, id: reservationId },
+        "getReservation"
+      );
 
       if (!reservation._customerId) {
         return yield* new ValidationError({
-          message: `Reservation ${id} has no customer ID`,
+          message: `Reservation ${reservationId} has no customer ID`,
         });
       }
 
-      const customerResult = yield* getCustomer(reservation._customerId);
-      const customer = {
-        ...customerResult,
-        id: reservation._customerId,
-      };
+      const customerId = yield* normalizeIdentifier(
+        DotyposCustomerIdSchema,
+        reservation._customerId,
+        "Customer ID"
+      );
+      const customerResult = yield* getCustomer(customerId);
+      const customer = yield* decodeProviderEntity(
+        DotyposCustomerSchema,
+        { ...customerResult, id: customerId },
+        "getCustomer"
+      );
 
       return { reservation, customer };
     },
@@ -376,13 +481,12 @@ const makeDotyposService = Effect.gen(function* () {
   );
 
   const getReservationStatus = Effect.fn("getReservationStatus")(
-    function* (id: string) {
-      const reservationId = id.trim();
-      if (!reservationId) {
-        return yield* new ValidationError({
-          message: "Reservation ID is required",
-        });
-      }
+    function* (id: DotyposReservationId) {
+      const reservationId = yield* normalizeIdentifier(
+        DotyposReservationIdSchema,
+        id,
+        "Reservation ID"
+      );
 
       const reservation = yield* runDotyposRequest(
         client.getReservation(config.cloudId, reservationId, undefined),
@@ -403,18 +507,16 @@ const makeDotyposService = Effect.gen(function* () {
       yield* Effect.annotateLogsScoped({ input });
       yield* Effect.logInfo("Dotypos reservation request build started");
 
-      const customerId = input.customerId.trim();
-      const tableId = input.tableId.trim();
-
-      if (!customerId) {
-        return yield* new ValidationError({
-          message: "Customer ID is required",
-        });
-      }
-
-      if (!tableId) {
-        return yield* new ValidationError({ message: "Table ID is required" });
-      }
+      const customerId = yield* normalizeIdentifier(
+        DotyposCustomerIdSchema,
+        input.customerId,
+        "Customer ID"
+      );
+      const tableId = yield* normalizeIdentifier(
+        DotyposTableIdSchema,
+        input.tableId,
+        "Table ID"
+      );
 
       if (!Number.isInteger(input.seats) || input.seats <= 0) {
         return yield* new ValidationError({
@@ -442,7 +544,7 @@ const makeDotyposService = Effect.gen(function* () {
       yield* Effect.annotateLogsScoped({ requestBody: request });
       yield* Effect.logInfo("Dotypos reservation API call started");
 
-      const reservation = yield* runDotyposRequest(
+      const reservationResult = yield* runDotyposRequest(
         client
           .createReservation(config.cloudId, { payload: [request] })
           .pipe(
@@ -459,6 +561,17 @@ const makeDotyposService = Effect.gen(function* () {
             error,
           })
         )
+      );
+
+      const reservationId = yield* normalizeIdentifier(
+        DotyposReservationIdSchema,
+        reservationResult.id ?? "",
+        "Reservation ID"
+      );
+      const reservation = yield* decodeProviderEntity(
+        DotyposReservationSchema,
+        { ...reservationResult, id: reservationId },
+        "createReservation"
       );
 
       yield* Effect.annotateLogsScoped({ reservation });
@@ -479,15 +592,13 @@ const makeDotyposService = Effect.gen(function* () {
   );
 
   const cancelReservation = Effect.fn("cancelReservation")(
-    function* (reservationId: string) {
+    function* (reservationId: DotyposReservationId) {
       yield* Effect.annotateLogsScoped({ reservationId });
-      const id = reservationId.trim();
-
-      if (!id) {
-        return yield* new ValidationError({
-          message: "Reservation ID is required",
-        });
-      }
+      const id = yield* normalizeIdentifier(
+        DotyposReservationIdSchema,
+        reservationId,
+        "Reservation ID"
+      );
 
       yield* Effect.logInfo("Dotypos reservation cancellation started");
 
@@ -511,7 +622,7 @@ const makeDotyposService = Effect.gen(function* () {
 
   const patchReservation = Effect.fn("DotyposService.patchReservation")(
     (input: {
-      readonly reservationId: string;
+      readonly reservationId: DotyposReservationId;
       readonly payload: UpdateReservationRequest;
     }) =>
       Effect.succeed(input).pipe(
@@ -543,21 +654,28 @@ const makeDotyposService = Effect.gen(function* () {
               payload,
             }),
             "patchReservation"
-          ).pipe(Effect.retry(retryPolicy))
+          ).pipe(
+            Effect.retry(retryPolicy),
+            Effect.flatMap((reservation) =>
+              decodeProviderEntity(
+                DotyposReservationSchema,
+                { ...reservation, id: reservation.id ?? reservationId },
+                "patchReservation"
+              )
+            )
+          )
         ),
         Effect.map(({ reservation }) => reservation)
       )
   );
 
   const confirmReservation = Effect.fn("confirmReservation")(
-    function* (reservationId: string) {
-      const id = reservationId.trim();
-
-      if (!id) {
-        return yield* new ValidationError({
-          message: "Reservation ID is required",
-        });
-      }
+    function* (reservationId: DotyposReservationId) {
+      const id = yield* normalizeIdentifier(
+        DotyposReservationIdSchema,
+        reservationId,
+        "Reservation ID"
+      );
 
       yield* Effect.logInfo("Dotypos reservation confirmation patch started");
 
@@ -582,14 +700,12 @@ const makeDotyposService = Effect.gen(function* () {
 
   const updateReservation = Effect.fn("DotyposService.updateReservation")(
     function* (input: UpdateDotyposReservationInput) {
-      const reservationId = input.reservationId.trim();
+      const reservationId = yield* normalizeIdentifier(
+        DotyposReservationIdSchema,
+        input.reservationId,
+        "Reservation ID"
+      );
       const note = input.note.trim();
-
-      if (!reservationId) {
-        return yield* new ValidationError({
-          message: "Reservation ID is required",
-        });
-      }
 
       if (!note) {
         return yield* new ValidationError({
@@ -620,8 +736,8 @@ const makeDotyposService = Effect.gen(function* () {
   );
 
   const getCustomer = Effect.fn("getCustomer")(
-    function* (id: string) {
-      return yield* runDotyposRequest(
+    function* (id: DotyposCustomerId) {
+      const customer = yield* runDotyposRequest(
         client.getCustomer(config.cloudId, id, undefined),
         "getCustomer"
       ).pipe(
@@ -639,6 +755,11 @@ const makeDotyposService = Effect.gen(function* () {
         ),
         catchUnexpectedDotyposError("getCustomer")
       );
+      return yield* decodeProviderEntity(
+        DotyposCustomerSchema,
+        { ...customer, id: customer.id ?? id },
+        "getCustomer"
+      );
     },
     (effect, customerId) =>
       effect.pipe(
@@ -647,6 +768,45 @@ const makeDotyposService = Effect.gen(function* () {
         })
       )
   );
+
+  const getCustomers = Effect.fn("getCustomers")(function* (
+    ids: readonly DotyposCustomerId[]
+  ) {
+    const uniqueIds = [...new Set(ids)];
+    if (uniqueIds.length === 0) return [];
+    if (uniqueIds.some((id) => !id.trim() || /[|;,]/.test(id))) {
+      return yield* new ValidationError({
+        message: "Customer IDs contain an invalid value",
+      });
+    }
+
+    return yield* loadAllDotyposPages({
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getCustomers(config.cloudId, {
+            params: {
+              filter: `id|in|${uniqueIds.join(",")};deleted|in|0,1`,
+              limit: 100,
+              page,
+            },
+          }),
+          "getCustomers"
+        ).pipe(
+          Effect.catchTag("ExternalAPIError", (error) =>
+            page === 1 && error.statusCode === 404
+              ? Effect.succeed({ data: [] as const })
+              : Effect.fail(error)
+          ),
+          Effect.flatMap((result) =>
+            decodeProviderPage(DotyposCustomerSchema, result, "getCustomers")
+          )
+        ),
+      operation: "getCustomers",
+    }).pipe(
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("getCustomers")
+    );
+  });
 
   const searchCustomers = Effect.fn("searchCustomers")(function* (
     rawQuery: string
@@ -677,6 +837,13 @@ const makeDotyposService = Effect.gen(function* () {
                   page === 1 && error.statusCode === 404
                     ? Effect.succeed({ data: [] as const })
                     : Effect.fail(error)
+                ),
+                Effect.flatMap((result) =>
+                  decodeProviderPage(
+                    DotyposCustomerSchema,
+                    result,
+                    "searchCustomers"
+                  )
                 )
               ),
             operation: "searchCustomers",
@@ -684,7 +851,7 @@ const makeDotyposService = Effect.gen(function* () {
       ),
       { concurrency: 4 }
     );
-    const customers: Customer[] = [];
+    const customers: DotyposCustomer[] = [];
     for (const match of matches.flat()) addUniqueCustomer(customers, match);
     return customers;
   });
@@ -701,7 +868,7 @@ const makeDotyposService = Effect.gen(function* () {
           const valueSanitized = value.replace("|", encodeURIComponent("|"));
           const filter = `${fieldName}|like|${valueSanitized}`;
 
-          return yield* runDotyposRequest(
+          const customers = yield* runDotyposRequest(
             client
               .getCustomers(config.cloudId, {
                 params: { limit: 100, filter },
@@ -710,11 +877,14 @@ const makeDotyposService = Effect.gen(function* () {
             "searchCustomers"
           ).pipe(
             Effect.catchTag("ExternalAPIError", (error) =>
-              error.statusCode === 404
-                ? Effect.succeed<Customer[]>([])
-                : Effect.fail(error)
+              error.statusCode === 404 ? Effect.succeed([]) : Effect.fail(error)
             ),
             Effect.retry(retryPolicy)
+          );
+          return yield* decodeProviderEntities(
+            DotyposCustomerSchema,
+            customers,
+            "searchCustomers"
           );
         });
 
@@ -722,7 +892,7 @@ const makeDotyposService = Effect.gen(function* () {
       const shouldLookupBy = (field: CustomerLookupField) =>
         lookupFields.includes(field);
 
-      const matchingCustomers: Customer[] = [];
+      const matchingCustomers: DotyposCustomer[] = [];
 
       if (shouldLookupBy("email") && normalizedCustomerData.email) {
         const customersByEmail = yield* searchByField(
@@ -889,6 +1059,13 @@ const makeDotyposService = Effect.gen(function* () {
             "updateCustomer"
           ).pipe(
             Effect.retry(retryPolicy),
+            Effect.flatMap((customer) =>
+              decodeProviderEntity(
+                DotyposCustomerSchema,
+                { ...customer, id: customer.id ?? customerId },
+                "updateCustomer"
+              )
+            ),
             Effect.tapError((error) =>
               Effect.logWarning("Dotypos customer update failed", {
                 error,
@@ -961,7 +1138,7 @@ const makeDotyposService = Effect.gen(function* () {
 
       yield* Effect.annotateLogsScoped({ createCustomerRequestFields });
 
-      const customer = yield* runDotyposRequest(
+      const customerResult = yield* runDotyposRequest(
         client
           .createCustomers(config.cloudId, { payload: [createRequest] })
           .pipe(
@@ -993,6 +1170,12 @@ const makeDotyposService = Effect.gen(function* () {
         })
       );
 
+      const customer = yield* decodeProviderEntity(
+        DotyposCustomerSchema,
+        customerResult,
+        "createCustomer"
+      );
+
       yield* Effect.logInfo("Dotypos customer created", { customer });
 
       return customer;
@@ -1004,36 +1187,43 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
-  const loadCustomerDiscountGroup = (customer: Customer) => {
-    const discountGroupId = customer._discountGroupId?.toString().trim();
-    if (!discountGroupId) return Effect.as(Effect.void, undefined);
+  const loadCustomerDiscountGroup = (customer: DotyposCustomer) =>
+    Effect.gen(function* () {
+      const rawDiscountGroupId = customer._discountGroupId?.toString().trim();
+      if (!rawDiscountGroupId) return undefined;
 
-    return runDotyposRequest(
-      client.getDiscountGroup(config.cloudId, discountGroupId, undefined),
-      "getDiscountGroup"
-    ).pipe(
-      Effect.retry(retryPolicy),
-      Effect.map(
-        (discountGroup) =>
-          ({
-            discountGroupId,
-            discountPercent: discountGroup.discountPercent,
-          }) satisfies DotyposCustomerDiscountGroup
-      )
-    );
-  };
+      const discountGroupId = yield* normalizeIdentifier(
+        DotyposDiscountGroupIdSchema,
+        rawDiscountGroupId,
+        "Discount group ID"
+      );
+
+      return yield* runDotyposRequest(
+        client.getDiscountGroup(config.cloudId, discountGroupId, undefined),
+        "getDiscountGroup"
+      ).pipe(
+        Effect.retry(retryPolicy),
+        Effect.map(
+          (discountGroup) =>
+            ({
+              discountGroupId,
+              discountPercent: discountGroup.discountPercent,
+            }) satisfies DotyposCustomerDiscountGroup
+        )
+      );
+    });
 
   const getCustomerDiscountGroup = Effect.fn(
     "DotyposService.getCustomerDiscountGroup"
   )(
-    (input: { readonly customerId: string }) =>
+    (input: { readonly customerId: DotyposCustomerId }) =>
       Effect.succeed(input).pipe(
-        Effect.let("normalizedCustomerId", ({ customerId }) =>
-          customerId.trim()
-        ),
-        Effect.filterOrFail(
-          ({ normalizedCustomerId }) => Boolean(normalizedCustomerId),
-          () => new ValidationError({ message: "Customer ID is required" })
+        Effect.bind("normalizedCustomerId", ({ customerId }) =>
+          normalizeIdentifier(
+            DotyposCustomerIdSchema,
+            customerId,
+            "Customer ID"
+          )
         ),
         Effect.bind("customer", ({ normalizedCustomerId }) =>
           getCustomer(normalizedCustomerId)
@@ -1048,7 +1238,7 @@ const makeDotyposService = Effect.gen(function* () {
   );
 
   const getCustomerDiscount = Effect.fn("getCustomerDiscount")(
-    function* (customer: Customer) {
+    function* (customer: DotyposCustomer) {
       const discountGroup = yield* loadCustomerDiscountGroup(customer);
       if (!discountGroup) return undefined;
 
@@ -1083,6 +1273,13 @@ const makeDotyposService = Effect.gen(function* () {
             page === 1 && error.statusCode === 404
               ? Effect.succeed({ data: [] as const })
               : Effect.fail(error)
+          ),
+          Effect.flatMap((result) =>
+            decodeProviderPage(
+              DotyposDiscountGroupSchema,
+              result,
+              "getDiscountGroups"
+            )
           )
         ),
       operation: "getDiscountGroups",
@@ -1092,17 +1289,15 @@ const makeDotyposService = Effect.gen(function* () {
     )
   );
 
-  const setCustomerDiscountGroup = Effect.fn(
-    "DotyposService.setCustomerDiscountGroup"
-  )(function* (customerId: string, discountGroupId: string | null) {
-    const normalizedCustomerId = customerId.trim();
-    const normalizedDiscountGroupId = discountGroupId?.trim() || null;
-
-    if (!normalizedCustomerId) {
-      return yield* new ValidationError({
-        message: "Customer ID is required",
-      });
-    }
+  const patchCustomer = Effect.fn("DotyposService.patchCustomer")(function* (
+    customerId: DotyposCustomerId,
+    payload: UpdateCustomerRequest
+  ) {
+    const normalizedCustomerId = yield* normalizeIdentifier(
+      DotyposCustomerIdSchema,
+      customerId,
+      "Customer ID"
+    );
 
     const [, response] = yield* runDotyposRequest(
       client.getCustomer(config.cloudId, normalizedCustomerId, {
@@ -1119,14 +1314,44 @@ const makeDotyposService = Effect.gen(function* () {
       });
     }
 
-    return yield* runDotyposRequest(
+    const customer = yield* runDotyposRequest(
       client.patchCustomer(config.cloudId, normalizedCustomerId, {
         params: { "If-Match": etag },
-        payload: { _discountGroupId: normalizedDiscountGroupId },
+        payload,
       }),
       "patchCustomer"
     ).pipe(Effect.retry(retryPolicy));
+    return yield* decodeProviderEntity(
+      DotyposCustomerSchema,
+      { ...customer, id: customer.id ?? normalizedCustomerId },
+      "patchCustomer"
+    );
   });
+
+  const setCustomerDiscountGroup = Effect.fn(
+    "DotyposService.setCustomerDiscountGroup"
+  )(function* (
+    customerId: DotyposCustomerId,
+    discountGroupId: DotyposDiscountGroupId | null
+  ) {
+    const normalizedDiscountGroupId = discountGroupId
+      ? yield* normalizeIdentifier(
+          DotyposDiscountGroupIdSchema,
+          discountGroupId,
+          "Discount group ID"
+        )
+      : null;
+
+    return yield* patchCustomer(customerId, {
+      _discountGroupId: normalizedDiscountGroupId,
+    });
+  });
+
+  const updateCustomerBillingDetails = Effect.fn(
+    "DotyposService.updateCustomerBillingDetails"
+  )((customerId: DotyposCustomerId, details: DotyposCustomerBillingDetails) =>
+    patchCustomer(customerId, details)
+  );
 
   const getTables = Effect.fn("getTables")(() =>
     loadAllDotyposPages({
@@ -1137,6 +1362,10 @@ const makeDotyposService = Effect.gen(function* () {
             params: { limit: 100, page },
           }),
           "getTables"
+        ).pipe(
+          Effect.flatMap((result) =>
+            decodeProviderPage(DotyposTableSchema, result, "getTables")
+          )
         ),
     }).pipe(Effect.retry(retryPolicy), catchUnexpectedDotyposError("getTables"))
   );
@@ -1163,6 +1392,13 @@ const makeDotyposService = Effect.gen(function* () {
             page === 1 && error.statusCode === 404
               ? Effect.succeed({ data: [] })
               : Effect.fail(error)
+          ),
+          Effect.flatMap((result) =>
+            decodeProviderPage(
+              DotyposReservationSchema,
+              result,
+              "listReservations"
+            )
           )
         ),
     }).pipe(
@@ -1173,19 +1409,25 @@ const makeDotyposService = Effect.gen(function* () {
   const listReservations = Effect.fn("listReservations")(function* (
     options: ReservationListOptions = {}
   ) {
+    const ids = [...new Set(options.ids ?? [])];
+    if (options.ids && ids.length === 0) return [];
     const filterValues = [
       options.customerId,
       options.startsAtOrAfter,
       options.startsBefore,
     ].filter((value): value is string => value !== undefined);
 
-    if (filterValues.some((value) => !value.trim() || /[|;]/.test(value))) {
+    if (
+      ids.some((id) => !id.trim() || /[|;,]/.test(id)) ||
+      filterValues.some((value) => !value.trim() || /[|;]/.test(value))
+    ) {
       return yield* new ValidationError({
         message: "Reservation filters contain an invalid value",
       });
     }
 
     const filter = [
+      ids.length > 0 && `id|in|${ids.join(",")}`,
       options.customerId && `_customerId|eq|${options.customerId}`,
       options.startsAtOrAfter && `startDate|gteq|${options.startsAtOrAfter}`,
       options.startsBefore && `startDate|lt|${options.startsBefore}`,
@@ -1210,7 +1452,7 @@ const makeDotyposService = Effect.gen(function* () {
   });
 
   const getProducts = Effect.fn("getProducts")(function* (options: {
-    categoryId?: string;
+    categoryId?: DotyposCategoryId;
     includeDeleted?: boolean;
   }) {
     return yield* runDotyposRequest(
@@ -1226,7 +1468,10 @@ const makeDotyposService = Effect.gen(function* () {
         .pipe(Effect.map((page) => [...(page.data ?? [])])),
       "getProducts"
     ).pipe(
-      Effect.map((products) =>
+      Effect.flatMap((products) =>
+        decodeProviderEntities(DotyposProductSchema, products, "getProducts")
+      ),
+      Effect.map((products: readonly DotyposProduct[]) =>
         options?.includeDeleted
           ? products
           : products.filter((product) => !product.deleted)
@@ -1237,12 +1482,17 @@ const makeDotyposService = Effect.gen(function* () {
   });
 
   const getCategories = Effect.fn("getCategories")(function* () {
-    return yield* runDotyposRequest(
+    const categories = yield* runDotyposRequest(
       client
         .getCategories(config.cloudId, { params: { limit: 100 } })
         .pipe(Effect.map((page) => [...(page.data ?? [])])),
       "getCategories"
     ).pipe(Effect.retry(retryPolicy));
+    return yield* decodeProviderEntities(
+      DotyposCategorySchema,
+      categories,
+      "getCategories"
+    );
   });
 
   return {
@@ -1253,11 +1503,13 @@ const makeDotyposService = Effect.gen(function* () {
     getReservation,
     getReservationStatus,
     getCustomer,
+    getCustomers,
     searchCustomers,
     getCustomerDiscountGroup,
     getCustomerDiscount,
     getDiscountGroups,
     setCustomerDiscountGroup,
+    updateCustomerBillingDetails,
     findCustomer,
     findOrCreateCustomer,
     getTables,
@@ -1275,14 +1527,11 @@ export class DotyposService extends Context.Service<
   DotyposService,
   Effect.Success<typeof makeDotyposService>
 >()("DotyposService") {
-  static DefaultWithoutDependencies = Layer.effect(
-    this,
-    makeDotyposService
-  ).pipe(
-    Layer.provide(DotyposGeneratedClient.Live),
-    Layer.provide(DotyposAccessToken.Live)
-  );
-  static Default = this.DefaultWithoutDependencies.pipe(
+  static Default = Layer.effect(this, makeDotyposService);
+
+  static Live = this.Default.pipe(
+    Layer.provide(DotyposGeneratedClient.Default),
+    Layer.provide(DotyposAccessToken.Default),
     Layer.provide(FetchHttpClient.layer)
   );
 }

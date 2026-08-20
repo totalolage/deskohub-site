@@ -1,3 +1,5 @@
+import { Predicate } from "effect";
+
 export type ConsentStatus = "granted" | "denied";
 
 export interface ConsentState {
@@ -26,11 +28,11 @@ type GtmQueueWindow = Window & {
 };
 
 function getGtmQueueWindow(): GtmQueueWindow | undefined {
-  if (typeof window === "undefined") return undefined;
+  if (globalThis.window === undefined) return undefined;
 
   window.dataLayer = window.dataLayer || [];
 
-  if (typeof window.gtag === "function") return window as GtmQueueWindow;
+  if (Predicate.isFunction(window.gtag)) return window as GtmQueueWindow;
 
   window.gtag = function gtag(...gtagArguments) {
     window.dataLayer?.push(gtagArguments);
@@ -54,7 +56,7 @@ export function updateConsentMode(consent: Partial<ConsentState>): void {
 }
 
 export function pushConsentUpdateEvent(): void {
-  if (typeof window === "undefined") return;
+  if (globalThis.window === undefined) return;
 
   window.dataLayer = window.dataLayer || [];
   window.dataLayer.push({ event: "consent_update" });

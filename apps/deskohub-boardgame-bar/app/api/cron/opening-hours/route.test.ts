@@ -32,7 +32,7 @@ beforeAll(async () => {
     "@/features/opening-hours/backend/opening-hours-calendar.service"
   );
 
-  OpeningHoursCalendarService.LiveWithDependencies = Layer.succeed(
+  OpeningHoursCalendarService.Live = Layer.succeed(
     OpeningHoursCalendarService,
     {
       listExceptions: () => Effect.succeed([]),

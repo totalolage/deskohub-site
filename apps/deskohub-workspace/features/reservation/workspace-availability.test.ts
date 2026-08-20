@@ -52,6 +52,46 @@ describe("parseWorkspaceAvailabilityQuery", () => {
     });
   });
 
+  test("parses office interval and seat availability fields", () => {
+    expect(
+      parseWorkspaceAvailabilityQuery(
+        new URLSearchParams({
+          kind: "office",
+          from: "2099-06-10",
+          to: "2099-06-12",
+          startsAt: "2099-06-09T22:00:00Z",
+          endsAt: "2099-06-12T22:00:00Z",
+          seats: "3",
+        })
+      )
+    ).toEqual({
+      kind: "office",
+      from: "2099-06-10",
+      to: "2099-06-12",
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-12T22:00:00Z",
+      seats: 3,
+    });
+  });
+
+  test.each([
+    "0",
+    "-1",
+    "1.5",
+    "invalid",
+  ])("drops an invalid office seat count of %s", (seats) => {
+    const query = parseWorkspaceAvailabilityQuery(
+      new URLSearchParams({
+        kind: "office",
+        from: "2099-06-10",
+        to: "2099-06-12",
+        seats,
+      })
+    );
+
+    expect(query).not.toHaveProperty("seats");
+  });
+
   test("drops interval fields from cowork availability queries", () => {
     const query = parseWorkspaceAvailabilityQuery(
       new URLSearchParams({
@@ -82,12 +122,14 @@ describe("parseWorkspaceAvailabilityResponse", () => {
       unavailableDates: [],
       unavailableCoworkTiers: ["plus"],
       meetingRoomUnavailable: false,
+      officeUnavailable: false,
       unavailableMonitorOptions: [],
       notices: [],
     });
 
     expect(response.unavailableCoworkTiers).toEqual(["plus"]);
     expect(response.meetingRoomUnavailable).toBe(false);
+    expect(response.officeUnavailable).toBe(false);
   });
 
   test("rejects the obsolete generic unavailableTiers field", () => {
@@ -98,6 +140,7 @@ describe("parseWorkspaceAvailabilityResponse", () => {
         unavailableDates: [],
         unavailableTiers: ["plus"],
         meetingRoomUnavailable: false,
+        officeUnavailable: false,
         unavailableMonitorOptions: [],
         notices: [],
       })

@@ -6,6 +6,52 @@ export type Locale = (typeof locales)[number];
 
 export const nexiMinorUnitExponent = 2;
 
+export const NexiOrderIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("NexiOrderId")
+).annotate({
+  identifier: "NexiOrderId",
+  description: "Opaque order identifier assigned to a Nexi payment.",
+});
+export type NexiOrderId = typeof NexiOrderIdSchema.Type;
+
+export const NexiCorrelationIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("NexiCorrelationId")
+).annotate({
+  identifier: "NexiCorrelationId",
+  description: "Correlation identifier sent with Nexi API requests.",
+});
+export type NexiCorrelationId = typeof NexiCorrelationIdSchema.Type;
+
+export const NexiOperationIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("NexiOperationId")
+).annotate({
+  identifier: "NexiOperationId",
+  description: "Opaque identifier assigned to a Nexi payment operation.",
+});
+export type NexiOperationId = typeof NexiOperationIdSchema.Type;
+
+export const NexiWebhookEventIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("NexiWebhookEventId")
+).annotate({
+  identifier: "NexiWebhookEventId",
+  description:
+    "Stable Nexi webhook event identifier, supplied by Nexi or deterministically derived from its payload.",
+});
+export type NexiWebhookEventId = typeof NexiWebhookEventIdSchema.Type;
+
+export const NexiCustomerReferenceSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("NexiCustomerReference")
+).annotate({
+  identifier: "NexiCustomerReference",
+  description: "Merchant customer reference supplied to Nexi.",
+});
+export type NexiCustomerReference = typeof NexiCustomerReferenceSchema.Type;
+
+const decodeNexiWebhookEventId = Schema.decodeUnknownSync(
+  NexiWebhookEventIdSchema
+);
+const decodeNexiOperationId = Schema.decodeUnknownSync(NexiOperationIdSchema);
+
 export const NexiCurrencySchema = Schema.Literals(["CZK", "EUR"]).annotate({
   identifier: "NexiCurrency",
   description:
@@ -28,8 +74,8 @@ export const NexiAmountSchema = Schema.Struct({
 export type NexiAmount = Schema.Schema.Type<typeof NexiAmountSchema>;
 
 export const NexiWebhookOperationSchema = Schema.Struct({
-  orderId: Schema.NonEmptyString,
-  operationId: Schema.optional(Schema.String),
+  orderId: NexiOrderIdSchema,
+  operationId: Schema.optional(NexiOperationIdSchema),
   operationType: Schema.optional(Schema.String),
   operationResult: Schema.optional(Schema.String),
   operationTime: Schema.optional(Schema.String),
@@ -46,7 +92,7 @@ export type NexiWebhookOperation = Schema.Schema.Type<
 >;
 
 export const NexiWebhookNotificationSchema = Schema.Struct({
-  eventId: Schema.optional(Schema.String),
+  eventId: Schema.optional(NexiWebhookEventIdSchema),
   eventTime: Schema.optional(Schema.String),
   securityToken: Schema.optional(Schema.String),
   operation: NexiWebhookOperationSchema,
@@ -67,7 +113,7 @@ const decodeUnknownNexiWebhookNotification = Schema.decodeUnknownEffect(
 export type NexiWebhookEventIdentitySource = "provider" | "derived";
 
 export interface NexiWebhookEventIdentity {
-  readonly eventId: string;
+  readonly eventId: NexiWebhookEventId;
   readonly source: NexiWebhookEventIdentitySource;
 }
 
@@ -80,7 +126,7 @@ export interface NexiWebhookSecurityTokenCheck {
 export type NexiFailureStatusKind = "cancelled" | "expired" | "failed";
 
 export interface NexiPaymentMetadata {
-  readonly providerOperationId: string;
+  readonly providerOperationId?: NexiOperationId;
   readonly providerStatus?: string;
 }
 
@@ -89,15 +135,29 @@ const cleanOptionalString = (value: string | undefined) => {
   return trimmed ? trimmed : undefined;
 };
 
+const cleanOptionalNexiWebhookEventId = (
+  value: NexiWebhookEventId | undefined
+) => {
+  const cleaned = cleanOptionalString(value);
+  return cleaned ? decodeNexiWebhookEventId(cleaned) : undefined;
+};
+
+const cleanOptionalNexiOperationId = (value: NexiOperationId | undefined) => {
+  const cleaned = cleanOptionalString(value);
+  return cleaned ? decodeNexiOperationId(cleaned) : undefined;
+};
+
 export const normalizeNexiWebhookNotification = (
   notification: NexiWebhookNotification
 ): NexiWebhookNotification => ({
-  eventId: cleanOptionalString(notification.eventId),
+  eventId: cleanOptionalNexiWebhookEventId(notification.eventId),
   eventTime: cleanOptionalString(notification.eventTime),
   securityToken: cleanOptionalString(notification.securityToken),
   operation: {
     orderId: notification.operation.orderId,
-    operationId: cleanOptionalString(notification.operation.operationId),
+    operationId: cleanOptionalNexiOperationId(
+      notification.operation.operationId
+    ),
     operationType: cleanOptionalString(notification.operation.operationType),
     operationResult: cleanOptionalString(
       notification.operation.operationResult
@@ -126,16 +186,18 @@ export const deriveNexiWebhookEventIdentity = (
 
   const operation = normalized.operation;
   return {
-    eventId: [
-      "nexi",
-      operation.orderId,
-      operation.operationId ?? "no-operation-id",
-      operation.operationType ?? "no-operation-type",
-      operation.operationResult ?? "no-operation-result",
-      normalized.eventTime ?? operation.operationTime ?? "no-operation-time",
-      operation.operationAmount ?? "no-operation-amount",
-      operation.operationCurrency ?? "no-operation-currency",
-    ].join(":"),
+    eventId: decodeNexiWebhookEventId(
+      [
+        "nexi",
+        operation.orderId,
+        operation.operationId ?? "no-operation-id",
+        operation.operationType ?? "no-operation-type",
+        operation.operationResult ?? "no-operation-result",
+        normalized.eventTime ?? operation.operationTime ?? "no-operation-time",
+        operation.operationAmount ?? "no-operation-amount",
+        operation.operationCurrency ?? "no-operation-currency",
+      ].join(":")
+    ),
     source: "derived",
   };
 };
@@ -173,16 +235,15 @@ export const classifyNexiFailureStatus = (
 export const getNexiPaymentMetadata = (
   verification: PaymentVerificationResult
 ): NexiPaymentMetadata => ({
-  providerOperationId:
-    verification.provider.operationId ?? verification.provider.orderId,
+  providerOperationId: verification.provider.operationId,
   providerStatus:
     verification.provider.orderStatus ??
     (verification.provider.captureExecuted ? "capture_executed" : undefined),
 });
 
 export interface CreateHostedPaymentPageInput {
-  readonly orderId: string;
-  readonly correlationId: string;
+  readonly orderId: NexiOrderId;
+  readonly correlationId: NexiCorrelationId;
   /** Integer minor-unit/scaled amount string, e.g. "5000" for 50.00. */
   readonly amount: string;
   readonly currency: NexiCurrency;
@@ -194,7 +255,7 @@ export interface CreateHostedPaymentPageInput {
 }
 
 export interface HostedPaymentCustomer {
-  readonly id?: string;
+  readonly id?: NexiCustomerReference;
   readonly name: string;
   readonly email?: string;
   readonly mobilePhone?: {
@@ -204,8 +265,8 @@ export interface HostedPaymentCustomer {
 }
 
 export interface VerifyPaymentOutcomeInput {
-  readonly orderId: string;
-  readonly correlationId: string;
+  readonly orderId: NexiOrderId;
+  readonly correlationId: NexiCorrelationId;
   /** Integer minor-unit/scaled amount string, matching the submitted order amount. */
   readonly amount: string;
   readonly currency?: NexiCurrency;
@@ -215,10 +276,13 @@ export interface VerifyPaymentOutcomeInput {
 export type PaymentOutcomeStatus = "success" | "failure" | "pending";
 
 export interface ProviderPaymentFacts {
-  readonly orderId: string;
-  readonly operationId?: string;
+  readonly orderId: NexiOrderId;
+  readonly operationId?: NexiOperationId;
+  readonly operationCount: number;
   readonly amount?: string;
   readonly currency?: string;
+  readonly authorizedAmount?: string;
+  readonly capturedAmount?: string;
   readonly orderStatus?: string;
   readonly captureExecuted: boolean;
 }
@@ -232,24 +296,24 @@ export interface PaymentVerificationResult {
 }
 
 export interface GetNexiOrderInput {
-  readonly orderId: string;
-  readonly correlationId: string;
+  readonly orderId: NexiOrderId;
+  readonly correlationId: NexiCorrelationId;
 }
 
 export interface ListNexiOrdersInput {
-  readonly correlationId: string;
+  readonly correlationId: NexiCorrelationId;
   readonly fromTime?: string;
   readonly toTime?: string;
   readonly maxRecords?: number;
 }
 
 export interface GetNexiOperationInput {
-  readonly correlationId: string;
-  readonly operationId: string;
+  readonly correlationId: NexiCorrelationId;
+  readonly operationId: NexiOperationId;
 }
 
 export interface ListNexiOperationsInput {
-  readonly correlationId: string;
+  readonly correlationId: NexiCorrelationId;
   readonly fromTime?: string;
   readonly toTime?: string;
   readonly maxRecords?: number;
@@ -258,19 +322,19 @@ export interface ListNexiOperationsInput {
 }
 
 export interface NexiOperation {
-  readonly orderId?: string;
-  readonly operationId?: string;
+  readonly orderId?: NexiOrderId;
+  readonly operationId?: NexiOperationId;
   readonly channel?: string;
   readonly operationType?: string;
   readonly operationResult?: string;
   readonly operationTime?: string;
   readonly amount?: string;
   readonly currency?: string;
-  readonly cancelledOperationId?: string;
+  readonly cancelledOperationId?: NexiOperationId;
 }
 
 export interface NexiOrder {
-  readonly orderId: string;
+  readonly orderId: NexiOrderId;
   readonly amount?: string;
   readonly currency?: string;
   readonly authorizedAmount?: string;

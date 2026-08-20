@@ -3,10 +3,11 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import type { Customer } from "@deskohub/dotypos/generated";
-import type {
-  EmailMessage,
-  EmailProviderConfig,
-  EmailSendResult,
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailProviderConfig,
+  type EmailSendResult,
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import { Effect, Layer } from "effect";
@@ -38,7 +39,6 @@ const makeReservation = (
   id: "reservation-id",
   dotyposCustomerId: "dotypos-customer-id",
   dotyposReservationId: "dotypos-reservation-id",
-  customerAccessCode: "1234",
   reservationDetails: {
     kind: "cowork",
     entryTier: "basic",
@@ -48,11 +48,12 @@ const makeReservation = (
   customer,
   reservedFrom: Temporal.Instant.from("2026-06-12T07:00:00Z"),
   reservedUntil: Temporal.Instant.from("2026-06-12T11:00:00Z"),
+  seats: 1,
   ...overrides,
 });
 
 const sentResult = (id: string): EmailSendResult => ({
-  id,
+  id: EmailDeliveryIdSchema.make(id),
   status: "sent",
   provider: "test",
   timestamp: new Date(),
@@ -137,7 +138,33 @@ describe("workspace reservation email details", () => {
     expect(internalHtml).not.toContain("Monitory");
   });
 
-  test("renders a DST whole-day meeting-room reservation as the calendar day", async () => {
+  test("renders the inclusive office date range and seats", async () => {
+    const { createReservationRows } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const reservation = makeReservation({
+      reservationDetails: { kind: "office" },
+      reservedFrom: Temporal.Instant.from("2026-06-11T22:00:00Z"),
+      reservedUntil: Temporal.Instant.from("2026-06-14T22:00:00Z"),
+      seats: 3,
+    });
+
+    expect(createReservationRows(reservation, "en-US")).toEqual([
+      { label: "Reservation", value: "Private office" },
+      {
+        label: "Reservation date",
+        value: "Friday, June 12 – Sunday, June 14, 2026",
+      },
+      { label: "Seats", value: "3" },
+      {
+        label: "Reservation reference",
+        value: "dotypos-reservation-id",
+      },
+      { label: "Order reference", value: "reservation-id" },
+    ]);
+  });
+
+  test("renders localized whole-day reservation and cancellation emails", async () => {
     const { createReservationRows, WorkspaceReservationEmailService } =
       await import("./workspace-reservation-email.service");
     const { EmailConfigTag, EmailServiceTag } = await import(
@@ -180,32 +207,63 @@ describe("workspace reservation email details", () => {
       },
     };
 
-    await Effect.gen(function* () {
-      const service = yield* WorkspaceReservationEmailService;
-      yield* service.sendPaidReservationEmails({ reservation });
-    }).pipe(
-      Effect.provide(
-        WorkspaceReservationEmailService.Live.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(EmailServiceTag, emailService),
-              Layer.succeed(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Live
+    const { env } = await import("@/env");
+    const previousPreviewBypassSecret = env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    Object.assign(env, {
+      VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
+    });
+    try {
+      await Effect.gen(function* () {
+        const service = yield* WorkspaceReservationEmailService;
+        yield* service.sendPaidReservationEmails({ reservation });
+        yield* service.sendCancellationEmail({ reservation });
+      }).pipe(
+        Effect.provide(
+          WorkspaceReservationEmailService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(EmailServiceTag, emailService),
+                Layer.succeed(EmailConfigTag, emailConfig),
+                WorkspaceCheckoutNetworkDetailsService.Default
+              )
             )
           )
-        )
-      ),
-      Effect.runPromise
-    );
+        ),
+        Effect.runPromise
+      );
+    } finally {
+      Object.assign(env, {
+        VERCEL_AUTOMATION_BYPASS_SECRET: previousPreviewBypassSecret,
+      });
+    }
 
-    expect(sentMessages).toHaveLength(2);
+    expect(sentMessages).toHaveLength(3);
     const customerMessage = sentMessages[0];
+    expect(customerMessage?.attachments).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ contentType: "application/pdf" }),
+      ])
+    );
     expect(customerMessage?.html).toContain("Sunday, March 28, 2027");
     expect(customerMessage?.html).toContain("whole day");
     expect(customerMessage?.text).toContain("Sunday, March 28, 2027");
     expect(customerMessage?.text).toContain("whole day");
     expect(customerMessage?.html).not.toContain("12:00 AM");
     expect(customerMessage?.text).not.toContain("12:00 AM");
+    expect(customerMessage?.html).toContain("/reservation/access/");
+    expect(customerMessage?.text).toContain("/reservation/access/");
+    expect(customerMessage?.html).toContain("/reservation/invoice/");
+    expect(customerMessage?.text).toContain("/reservation/invoice/");
+    expect(customerMessage?.html).toContain("accessToken=");
+    expect(customerMessage?.text).toContain("accessToken=");
+    expect(customerMessage?.html).not.toContain("statusToken=");
+    expect(customerMessage?.text).not.toContain("statusToken=");
+    expect(customerMessage?.html).toContain("x-vercel-protection-bypass=");
+    expect(customerMessage?.text).toContain("x-vercel-protection-bypass=");
+    expect(customerMessage?.html).toContain("x-vercel-set-bypass-cookie=true");
+    expect(customerMessage?.text).toContain("x-vercel-set-bypass-cookie=true");
+    expect(customerMessage?.html).not.toContain(">1234<");
+    expect(customerMessage?.text).not.toContain("1234");
 
     const internalMessage = sentMessages[1];
     expect(internalMessage?.html).toContain("neděle 28. března 2027");
@@ -214,5 +272,19 @@ describe("workspace reservation email details", () => {
     expect(internalMessage?.text).toContain("celý den");
     expect(internalMessage?.html).not.toContain("0:00");
     expect(internalMessage?.text).not.toContain("0:00");
+
+    const cancellationMessage = sentMessages[2];
+    expect(cancellationMessage?.subject).toBe(
+      "Your Deskohub Workspace reservation was cancelled"
+    );
+    expect(cancellationMessage?.tags).toEqual([
+      "workspace-reservation-cancellation",
+    ]);
+    expect(cancellationMessage?.metadata?.workspaceReservationId).toBe(
+      reservation.id
+    );
+    expect(cancellationMessage?.html).toContain("Sunday, March 28, 2027");
+    expect(cancellationMessage?.html).not.toContain("accessToken=");
+    expect(cancellationMessage?.text).not.toContain("1234");
   });
 });

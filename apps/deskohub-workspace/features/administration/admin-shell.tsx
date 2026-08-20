@@ -5,14 +5,20 @@ import {
   CalendarRange,
   ChevronRight,
   CircleGauge,
+  Gift,
   Menu,
   SquareTerminal,
   Ticket,
   Users,
 } from "lucide-react";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ComponentType, ReactNode, SVGProps } from "react";
+import {
+  type ComponentType,
+  type ReactNode,
+  Suspense,
+  type SVGProps,
+} from "react";
+import { SkipLink } from "@/shared/components/skip-link";
 import { Button } from "@/shared/components/ui/button";
 import {
   Sheet,
@@ -24,6 +30,8 @@ import {
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
 import { cn } from "@/shared/utils";
+import { AdministrationLink as Link } from "./admin-link";
+import { AdministrationBreadcrumbLoading } from "./loading";
 
 type NavItem = {
   readonly href: string;
@@ -43,6 +51,7 @@ const navigation = [
       },
       { href: "/admin/customers", icon: Users, label: "Customers" },
       { href: "/admin/codes", icon: Ticket, label: "Codes" },
+      { href: "/admin/vouchers", icon: Gift, label: "Vouchers" },
       { href: "/admin/sales", icon: BadgePercent, label: "Sales" },
       {
         href: "/admin/cli/sessions",
@@ -56,8 +65,18 @@ const navigation = [
 const isActive = (pathname: string, href: string) =>
   href === "/admin" ? pathname === href : pathname.startsWith(href);
 
-function Navigation({ mobile = false }: { readonly mobile?: boolean }) {
+function ActiveNavigation({ mobile = false }: { readonly mobile?: boolean }) {
   const pathname = usePathname();
+  return <Navigation mobile={mobile} pathname={pathname} />;
+}
+
+function Navigation({
+  mobile = false,
+  pathname,
+}: {
+  readonly mobile?: boolean;
+  readonly pathname?: string;
+}) {
   return (
     <nav aria-label="Administration" className="space-y-7">
       {navigation.map((section) => (
@@ -91,9 +110,9 @@ function NavigationLink({
 }: {
   readonly item: NavItem;
   readonly mobile: boolean;
-  readonly pathname: string;
+  readonly pathname?: string;
 }) {
-  const active = isActive(pathname, item.href);
+  const active = pathname ? isActive(pathname, item.href) : false;
   const Icon = item.icon;
   const link = (
     <Link
@@ -113,21 +132,22 @@ function NavigationLink({
   return mobile ? <SheetClose asChild>{link}</SheetClose> : link;
 }
 
-const breadcrumbNames: Record<string, string> = {
-  admin: "Overview",
-  bookings: "Bookings",
-  cli: "CLI",
-  codes: "Codes",
-  customers: "Customers",
-  "create-code": "Create discount code",
-  discounts: "Discounts",
-  authenticate: "Authenticate",
-  operations: "Operations",
-  orders: "Orders",
-  reservations: "Reservations",
-  sales: "Sales",
-  sessions: "Sessions",
-};
+const breadcrumbNames = new Map([
+  ["admin", "Overview"],
+  ["bookings", "Bookings"],
+  ["cli", "CLI"],
+  ["codes", "Codes"],
+  ["customers", "Customers"],
+  ["create-code", "Create discount code"],
+  ["discounts", "Discounts"],
+  ["authenticate", "Authenticate"],
+  ["operations", "Operations"],
+  ["orders", "Orders"],
+  ["reservations", "Reservations"],
+  ["sales", "Sales"],
+  ["vouchers", "Vouchers"],
+  ["sessions", "Sessions"],
+]);
 
 export function AdministrationBreadcrumbs({
   entityLabel,
@@ -143,7 +163,7 @@ export function AdministrationBreadcrumbs({
     label:
       segmentLabels?.[segment] ||
       (index === segments.length - 1 && entityLabel) ||
-      breadcrumbNames[segment] ||
+      breadcrumbNames.get(segment) ||
       ({
         codes: "Code",
         bookings: "Booking",
@@ -151,6 +171,7 @@ export function AdministrationBreadcrumbs({
         operations: "Operation",
         orders: "Order",
         reservations: "Reservation",
+        vouchers: "Voucher",
       }[segments[index - 1] ?? ""] ??
         segment),
   }));
@@ -209,10 +230,13 @@ export function AdminShell({
 }) {
   return (
     <div className="min-h-screen bg-[#f6f6f3] text-navy-blue lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <SkipLink label="Skip to main content" />
       <aside className="hidden border-r border-navy-blue/10 bg-white px-4 py-5 lg:sticky lg:top-0 lg:block lg:h-screen">
         <Brand />
         <div className="mt-9">
-          <Navigation />
+          <Suspense fallback={<Navigation />}>
+            <ActiveNavigation />
+          </Suspense>
         </div>
       </aside>
 
@@ -239,18 +263,26 @@ export function AdminShell({
                 </SheetHeader>
                 <Brand />
                 <div className="mt-9">
-                  <Navigation mobile />
+                  <Suspense fallback={<Navigation mobile />}>
+                    <ActiveNavigation mobile />
+                  </Suspense>
                 </div>
               </SheetContent>
             </Sheet>
             <div className="lg:hidden">
               <Brand />
             </div>
-            <div className="hidden min-w-0 lg:block">{breadcrumb}</div>
+            <div className="hidden min-w-0 lg:block">
+              <Suspense fallback={<AdministrationBreadcrumbLoading />}>
+                {breadcrumb}
+              </Suspense>
+            </div>
           </div>
         </header>
         <div className="border-b border-navy-blue/10 bg-white px-4 py-3 lg:hidden">
-          {breadcrumb}
+          <Suspense fallback={<AdministrationBreadcrumbLoading />}>
+            {breadcrumb}
+          </Suspense>
         </div>
         {children}
       </div>

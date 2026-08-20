@@ -9,15 +9,18 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
+import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import {
   CENSORED_LOG_VALUE,
   censorDatabaseQueryParams,
 } from "@/shared/backend/logging/censorship";
 import {
   accountingDocumentSnapshotSchema,
+  decodeStoredAccountingDocumentSnapshot,
+  encodeStoredAccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
-import { AccountingSnapshotKeyService } from "./backend/accounting-snapshot-key.service";
 import {
   decryptAccountingSnapshot,
   encryptAccountingSnapshot,
@@ -50,10 +53,25 @@ const makeSnapshot = () =>
     prepared,
   });
 
+const officeReservation = normalizedOfficeReservationOrderSchema.make({
+  kind: "office",
+  startsOn: "2099-06-20",
+  endsOn: "2099-06-21",
+  seats: 3,
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420 777 777 777",
+});
+
+const officePrepared: PreparedCustomerQuote = {
+  kind: "office",
+  reservation: officeReservation,
+  quote: Effect.runSync(buildOfficeReservationQuote(officeReservation)),
+};
+
 describe("accounting document snapshot", () => {
   test("freezes supplier, buyer, reservation, and accepted quote facts", () => {
     expect(makeSnapshot()).toMatchObject({
-      schemaVersion: 1,
       workspaceReservationId: "reservation-id",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
@@ -67,6 +85,9 @@ describe("accounting document snapshot", () => {
         kind: "person",
         legalName: "Ada Lovelace",
       },
+      delivery: {
+        email: "ada@example.com",
+      },
       reservation: {
         kind: "cowork",
         date: "2099-01-01",
@@ -75,37 +96,48 @@ describe("accounting document snapshot", () => {
     });
   });
 
-  test("does not copy contact or free-form customer data", () => {
+  test("freezes only the reservation email needed for invoice delivery", () => {
     const serialized = JSON.stringify(makeSnapshot());
 
-    expect(serialized).not.toContain("ada@example.com");
+    expect(serialized).toContain("ada@example.com");
     expect(serialized).not.toContain("+420 777 777 777");
     expect(serialized).not.toContain('"message"');
   });
 
-  test("supports a reservation-specific business billing identity", () => {
+  test("freezes office reservation and accepted quote facts", async () => {
     const snapshot = makeAccountingDocumentSnapshot({
-      workspaceReservationId: "business-reservation",
-      dotyposReservationId: "dotypos-reservation-id",
+      workspaceReservationId: "office-reservation-id",
+      dotyposReservationId: "dotypos-office-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
-      locale: "cs-CZ",
-      prepared,
-      buyer: {
-        kind: "business",
-        legalName: "Analytical Engines s.r.o.",
-        companyId: "12345678",
-        vatId: "CZ12345678",
-        address: {
-          line1: "Počernická 1",
-          city: "Praha",
-          postalCode: "100 00",
-          country: "CZ",
-        },
-      },
+      locale: "en-US",
+      prepared: officePrepared,
     });
 
-    expect(snapshot.buyer).toEqual({
-      kind: "business",
+    expect(snapshot).toMatchObject({
+      reservation: {
+        kind: "office",
+        startsOn: "2099-06-20",
+        endsOn: "2099-06-21",
+        seats: 3,
+      },
+      quote: officePrepared.quote,
+    });
+    await expect(
+      Effect.runPromise(
+        Schema.decodeUnknownEffect(accountingDocumentSnapshotSchema, {
+          onExcessProperty: "error",
+        })(snapshot)
+      )
+    ).resolves.toEqual(snapshot);
+
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).toContain("ada@example.com");
+    expect(serialized).not.toContain("+420 777 777 777");
+  });
+
+  test("supports a reservation-specific business billing identity", () => {
+    const buyer = {
+      kind: "business" as const,
       legalName: "Analytical Engines s.r.o.",
       companyId: "12345678",
       vatId: "CZ12345678",
@@ -115,10 +147,25 @@ describe("accounting document snapshot", () => {
         postalCode: "100 00",
         country: "CZ",
       },
+    };
+    const snapshot = makeAccountingDocumentSnapshot({
+      workspaceReservationId: "business-reservation",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      locale: "cs-CZ",
+      prepared: {
+        ...prepared,
+        reservation: {
+          ...prepared.reservation,
+          billing: { purpose: "business", invoice: "required", buyer },
+        },
+      },
     });
+
+    expect(snapshot.buyer).toEqual(buyer);
   });
 
-  test("round-trips strictly through the versioned schema", async () => {
+  test("round-trips strictly through the schema", async () => {
     const snapshot = makeSnapshot();
     const decode = Schema.decodeUnknownEffect(
       accountingDocumentSnapshotSchema,
@@ -133,6 +180,54 @@ describe("accounting document snapshot", () => {
     await expect(
       Effect.runPromise(decode({ ...snapshot, unexpected: true }))
     ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(decode({ ...snapshot, schemaVersion: 1 }))
+    ).rejects.toBeDefined();
+  });
+
+  test("decodes historical snapshots without an invoice instruction", async () => {
+    const { billing: _billing, ...historicalSnapshot } = makeSnapshot();
+
+    const decoded = await Effect.runPromise(
+      decodeStoredAccountingDocumentSnapshot(historicalSnapshot)
+    );
+
+    expect(decoded.billing).toBeUndefined();
+  });
+
+  test("rejects schema-version metadata from stored snapshots", async () => {
+    const snapshot = makeSnapshot();
+
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          schemaVersion: 1,
+        })
+      )
+    ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          unexpected: true,
+        })
+      )
+    ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          schemaVersion: 2,
+        })
+      )
+    ).rejects.toBeDefined();
+  });
+
+  test("writes versionless snapshots", () => {
+    const snapshot = makeSnapshot();
+
+    expect(encodeStoredAccountingDocumentSnapshot(snapshot)).toEqual(snapshot);
   });
 
   test("parameterizes both plaintext and key in pgcrypto SQL", () => {
@@ -178,11 +273,14 @@ describe("accounting document snapshot", () => {
   });
 
   test("resolves a nonempty environment passphrase by key ID", async () => {
+    const { AccountingSnapshotKeyService } = await import(
+      "./backend/accounting-snapshot-key.service"
+    );
     const key = await Effect.gen(function* () {
       const keys = yield* AccountingSnapshotKeyService;
       return yield* keys.getActive;
     }).pipe(
-      Effect.provide(AccountingSnapshotKeyService.Live),
+      Effect.provide(AccountingSnapshotKeyService.Default),
       Effect.runPromise
     );
 

@@ -1,63 +1,49 @@
 import { Effect } from "effect";
-import { connection } from "next/server";
 import { Suspense } from "react";
-import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
 import type { Locale } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
+import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { getActiveLandingPageSaleBanner } from "../landing-page-sale-banner.server";
 import { LandingPageHeroSection } from "./landing-page-hero-section";
+import { LandingPageSaleBanner } from "./landing-page-sale-banner";
 
 type LandingPageHeroProps = {
   locale: Locale;
   overviewSectionId: string;
 };
 
-export function LandingPageHero({
+export async function LandingPageHero({
   locale,
   overviewSectionId,
 }: LandingPageHeroProps) {
-  return (
-    <Suspense
-      fallback={
-        <LandingPageHeroSection
-          isPending
-          locale={locale}
-          meetingRoomPageEnabled={false}
-          overviewSectionId={overviewSectionId}
-        />
-      }
-    >
-      <LandingPageHeroContent
-        locale={locale}
-        overviewSectionId={overviewSectionId}
-      />
-    </Suspense>
-  );
-}
-
-async function LandingPageHeroContent({
-  locale,
-  overviewSectionId,
-}: LandingPageHeroProps) {
-  await connection();
-  const [meetingRoomPageEnabled, saleBanner] = await Promise.all([
-    isMeetingRoomPageEnabled(),
-    getActiveLandingPageSaleBanner({ locale }).pipe(
-      Effect.provide(DiscountServiceLiveWithDependencies),
-      runWorkspaceEffect("landing-page.sale-banner.load", {
-        boundary: "page",
-      })
-    ),
-  ]);
+  const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
 
   return (
     <LandingPageHeroSection
-      isPending={false}
       locale={locale}
       meetingRoomPageEnabled={meetingRoomPageEnabled}
       overviewSectionId={overviewSectionId}
-      saleBanner={saleBanner}
+      saleBanner={
+        <Suspense fallback={null}>
+          <ActiveLandingPageSaleBanner locale={locale} />
+        </Suspense>
+      }
     />
   );
+}
+
+async function ActiveLandingPageSaleBanner({ locale }: { locale: Locale }) {
+  const saleBanner = await getActiveLandingPageSaleBanner({ locale }).pipe(
+    Effect.provide(OfficeReservationFeatureFlagService.Live),
+    runWorkspaceEffect("landing-page.sale-banner.load", {
+      boundary: "page",
+    })
+  );
+
+  return saleBanner ? (
+    <div data-landing-page-sale-banner="">
+      <LandingPageSaleBanner content={saleBanner} />
+    </div>
+  ) : null;
 }

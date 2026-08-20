@@ -11,9 +11,14 @@ import {
   type AdministrationCustomerSearchQueryType,
   type AdministrationCustomerSearchResultType,
   type AdministrationDiscountCodeDetailType,
+  type AdministrationDiscountCodeIdType,
   type AdministrationDiscountDashboardType,
   type AdministrationDiscountMutationResultType,
   type AdministrationDiscountMutationType,
+  type AdministrationDotyposCustomerIdType,
+  type AdministrationDotyposReservationIdType,
+  type AdministrationNexiOperationIdType,
+  type AdministrationNexiOrderIdType,
   type AdministrationOperationDetailType,
   type AdministrationOperationListType,
   type AdministrationOperationQueryType,
@@ -21,10 +26,17 @@ import {
   type AdministrationOrderQueryType,
   type AdministrationOrderType,
   type AdministrationOverviewType,
+  type AdministrationReservationAccessGrantType,
+  type AdministrationReservationAccessMutationType,
+  type AdministrationReservationCancellationInputType,
+  type AdministrationReservationCancellationResultType,
   type AdministrationReservationDetailType,
   type AdministrationReservationLookupResultType,
   type AdministrationReservationPageType,
   type AdministrationReservationQueryType,
+  type AdministrationVoucherDetailType,
+  type AdministrationVoucherIdType,
+  type AdministrationWorkspaceReservationIdType,
   type CliAccessTokenType,
   type CliAuthenticationCodeType,
   CliAuthenticationRateLimited,
@@ -108,10 +120,36 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getReservation: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    reservationId: string
+    reservationId: AdministrationWorkspaceReservationIdType
   ) => Effect.Effect<
     AdministrationReservationDetailType,
     | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly cancelReservation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    reservationId: AdministrationWorkspaceReservationIdType,
+    input: AdministrationReservationCancellationInputType
+  ) => Effect.Effect<
+    AdministrationReservationCancellationResultType,
+    | CliApiRequestError
+    | CliMutationRejected
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly mutateReservationAccess: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    requestId: CliMutationRequestIdType,
+    reservationId: AdministrationWorkspaceReservationIdType,
+    mutation: AdministrationReservationAccessMutationType
+  ) => Effect.Effect<
+    AdministrationReservationAccessGrantType,
+    | CliApiRequestError
+    | CliMutationInProgress
+    | CliMutationRejected
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
@@ -132,7 +170,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getBooking: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    bookingId: string
+    bookingId: AdministrationDotyposReservationIdType
   ) => Effect.Effect<
     AdministrationBookingDetailType,
     | CliApiRequestError
@@ -149,7 +187,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getOrder: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    orderId: string
+    orderId: AdministrationNexiOrderIdType
   ) => Effect.Effect<
     AdministrationOrderType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
@@ -163,7 +201,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getOperation: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    operationId: string
+    operationId: AdministrationNexiOperationIdType
   ) => Effect.Effect<
     AdministrationOperationDetailType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
@@ -184,14 +222,14 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getCustomer: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    customerId: string
+    customerId: AdministrationDotyposCustomerIdType
   ) => Effect.Effect<
     AdministrationCustomerDetailType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly listCustomerReservations: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    customerId: string,
+    customerId: AdministrationDotyposCustomerIdType,
     query: AdministrationCustomerReservationsQueryType
   ) => Effect.Effect<
     AdministrationCustomerReservationPageType,
@@ -205,9 +243,19 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getDiscountCode: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    codeId: string
+    codeId: AdministrationDiscountCodeIdType
   ) => Effect.Effect<
     AdministrationDiscountCodeDetailType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly getVoucher: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    voucherId: AdministrationVoucherIdType
+  ) => Effect.Effect<
+    AdministrationVoucherDetailType,
     | CliApiRequestError
     | CliResourceNotFound
     | CliSessionUnauthorized
@@ -256,7 +304,7 @@ export class WorkspaceAdminApiClient extends Context.Service<
   WorkspaceAdminApiClient,
   IWorkspaceAdminApiClient
 >()("WorkspaceAdminApiClient") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.suspend(() => makeWorkspaceAdminApiClient)
   );
@@ -340,7 +388,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     getReservation: Effect.fn("WorkspaceAdminApiClient.getReservation")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        reservationId: string
+        reservationId: AdministrationWorkspaceReservationIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
@@ -350,6 +398,27 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           ),
           Effect.mapError(sanitizeResourceError)
         )
+    ),
+    mutateReservationAccess: Effect.fn(
+      "WorkspaceAdminApiClient.mutateReservationAccess"
+    )((accessToken, requestId, reservationId, mutation) =>
+      makeClient(accessToken).pipe(
+        Effect.flatMap((authorized) =>
+          authorized.administration.mutateReservationAccess({
+            params: { reservationId },
+            payload: { requestId, mutation },
+          })
+        ),
+        Effect.retry({
+          schedule: Schedule.spaced("250 millis"),
+          times: 20,
+          while: (cause) =>
+            cause instanceof CliMutationInProgress ||
+            cause instanceof CliServiceUnavailable ||
+            HttpClientError.isHttpClientError(cause),
+        }),
+        Effect.mapError(sanitizeMutationError)
+      )
     ),
     findReservation: Effect.fn("WorkspaceAdminApiClient.findReservation")(
       (
@@ -378,7 +447,10 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         )
     ),
     getBooking: Effect.fn("WorkspaceAdminApiClient.getBooking")(
-      (accessToken: Redacted.Redacted<CliAccessTokenType>, bookingId: string) =>
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        bookingId: AdministrationDotyposReservationIdType
+      ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.getBooking({ params: { bookingId } })
@@ -399,7 +471,10 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         )
     ),
     getOrder: Effect.fn("WorkspaceAdminApiClient.getOrder")(
-      (accessToken: Redacted.Redacted<CliAccessTokenType>, orderId: string) =>
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        orderId: AdministrationNexiOrderIdType
+      ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.getOrder({ params: { orderId } })
@@ -422,7 +497,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     getOperation: Effect.fn("WorkspaceAdminApiClient.getOperation")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        operationId: string
+        operationId: AdministrationNexiOperationIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
@@ -460,7 +535,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     getCustomer: Effect.fn("WorkspaceAdminApiClient.getCustomer")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        customerId: string
+        customerId: AdministrationDotyposCustomerIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
@@ -474,7 +549,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     )(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        customerId: string,
+        customerId: AdministrationDotyposCustomerIdType,
         query: AdministrationCustomerReservationsQueryType
       ) =>
         makeClient(accessToken).pipe(
@@ -497,11 +572,42 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         Effect.mapError(sanitizeSessionError)
       )
     ),
+    cancelReservation: Effect.fn("WorkspaceAdminApiClient.cancelReservation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        reservationId: AdministrationWorkspaceReservationIdType,
+        input: AdministrationReservationCancellationInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.cancelReservation({
+              params: { reservationId },
+              payload: input,
+            })
+          ),
+          Effect.mapError(sanitizeReservationMutationError)
+        )
+    ),
     getDiscountCode: Effect.fn("WorkspaceAdminApiClient.getDiscountCode")(
-      (accessToken: Redacted.Redacted<CliAccessTokenType>, codeId: string) =>
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        codeId: AdministrationDiscountCodeIdType
+      ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.getDiscountCode({ params: { codeId } })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    getVoucher: Effect.fn("WorkspaceAdminApiClient.getVoucher")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        voucherId: AdministrationVoucherIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getVoucher({ params: { voucherId } })
           ),
           Effect.mapError(sanitizeResourceError)
         )
@@ -663,3 +769,14 @@ const sanitizeMutationError = (
   }
   return sanitizeResourceError(cause);
 };
+
+const sanitizeReservationMutationError = (
+  cause:
+    | CliMutationRejected
+    | CliResourceNotFound
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliMutationRejected ? cause : sanitizeResourceError(cause);

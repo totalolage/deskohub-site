@@ -1,5 +1,6 @@
-import { definePostHogFeatureFlags } from "./contract";
+import { PostHogDistinctId } from "../identifiers";
 import type { PostHogFeatureFlagOverrides } from "./contract";
+import { definePostHogFeatureFlags } from "./contract";
 import {
   createPostHogNodeFeatureFlags,
   makePostHogNodeFeatureFlagService,
@@ -62,12 +63,17 @@ const featureFlags = createPostHogNodeFeatureFlags(contract, {
     }),
 });
 
-const program = featureFlags.evaluateFlags("public-site", {
+const publicSiteId = PostHogDistinctId.make("public-site");
+const visitorId = PostHogDistinctId.make("visitor-id");
+
+const program = featureFlags.evaluateFlags(publicSiteId, {
   flagKeys: ["meeting_room_page"],
 });
 
-// @ts-expect-error The generated contract rejects unknown flag keys.
-void featureFlags.evaluateFlags("public-site", { flagKeys: ["seasonal_menu"] });
+void featureFlags.evaluateFlags(publicSiteId, {
+  // @ts-expect-error The generated contract rejects unknown flag keys.
+  flagKeys: ["seasonal_menu"],
+});
 
 void program;
 
@@ -82,7 +88,7 @@ const service = makePostHogNodeFeatureFlagService(contract, {
 });
 
 const subject = {
-  distinctId: "visitor-id",
+  distinctId: visitorId,
   sendFeatureFlagEvents: true,
 } as const;
 

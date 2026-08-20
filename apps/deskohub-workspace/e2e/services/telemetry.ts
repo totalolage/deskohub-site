@@ -1,11 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option, Schema } from "effect";
 import {
   makeWorkspaceE2EDateAllocation,
   type WorkspaceE2EDateAllocation,
 } from "../allocation";
 import type { E2EEnvironment } from "../e2e-env";
 import { isWorkspaceE2ETimeout, WorkspaceE2EError } from "../errors";
+import {
+  type GitHubActionsRunId,
+  githubActionsRunIdSchema,
+  type WorkspaceE2ERunId,
+  workspaceE2ERunIdSchema,
+} from "../run-identifiers";
 import { log } from "../runtime";
 import { formatWorkspaceE2EDuration } from "../timeouts";
 
@@ -17,10 +23,11 @@ export type E2EPhaseId =
   | "case-finalization"
   | "cowork-availability-preparation"
   | "fixture-seeding"
-  | "independent-case-phase"
+  | "invoice-persistence"
   | "meeting-room-availability-preparation"
+  | "office-availability-preparation"
   | "preview-readiness"
-  | "shared-fixture-phase"
+  | "provider-preparation"
   | "suite-cleanup";
 
 export type E2EResult =
@@ -40,9 +47,9 @@ export type E2ERunContext = {
   readonly allocation: WorkspaceE2EDateAllocation;
   readonly executionContext: E2EExecutionContext;
   readonly githubRunAttempt?: number;
-  readonly githubRunId?: string;
+  readonly githubRunId?: GitHubActionsRunId;
   readonly prNumber?: number;
-  readonly runId: string;
+  readonly runId: WorkspaceE2ERunId;
   readonly targetSha?: string;
 };
 
@@ -79,6 +86,8 @@ export class E2ERunContextService extends Context.Service<
     Layer.sync(this, () => ({
       value: makeE2ERunContext(environment),
     }));
+
+  static layerValue = (value: E2ERunContext) => Layer.succeed(this, { value });
 }
 
 export interface E2ETelemetry {
@@ -107,7 +116,7 @@ export class E2ETelemetryService extends Context.Service<
   E2ETelemetryService,
   E2ETelemetry
 >()("E2ETelemetryService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { value: runContext } = yield* E2ERunContextService;
@@ -145,14 +154,19 @@ export const makeE2ERunContext = (
     environment.GITHUB_ACTIONS,
     environment.GITHUB_EVENT_NAME
   );
-  const githubRunId = environment.GITHUB_RUN_ID;
+  const githubRunId = environment.GITHUB_RUN_ID
+    ? Schema.decodeUnknownSync(githubActionsRunIdSchema)(
+        environment.GITHUB_RUN_ID
+      )
+    : undefined;
   const githubRunAttempt = environment.GITHUB_RUN_ATTEMPT;
   const prNumber = environment.WORKSPACE_E2E_PR_NUMBER;
   const targetSha = environment.TARGET_SHA;
-  const runId =
+  const runId = Schema.decodeUnknownSync(workspaceE2ERunIdSchema)(
     githubRunId && githubRunAttempt
       ? `${githubRunId}-${githubRunAttempt}`
-      : `manual-${makeManualRunId()}`;
+      : `manual-${makeManualRunId()}`
+  );
 
   return {
     allocation: makeWorkspaceE2EDateAllocation({

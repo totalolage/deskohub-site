@@ -1,26 +1,29 @@
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import Link from "next/link";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
-import { cn } from "@/shared/utils";
+"use client";
+
+import type { NexiOrderId } from "@deskohub/nexi";
+import { useMemo } from "react";
+import { AdministrationLink as Link } from "./admin-link";
 import type {
   AdministrationReservationSort,
-  AdministrationReservationSortDirection,
   AdministrationReservationSummary,
 } from "./administration.service";
+import {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "./data-table";
 import { EmptyState } from "./empty-state";
 import {
   formatAdministrationDateTime,
   formatAdministrationMoney,
   formatAdministrationReservationDate,
 } from "./formatters";
+import { NexiOrderLink } from "./nexi-order-link";
 import type { AdministrationReservationStatus } from "./reservation-status";
+import { AdministrationStatusBadge } from "./status-badge";
+import {
+  type AdministrationTableSorting,
+  getAdministrationTableSortHref,
+} from "./table-sort";
 
 export function ReservationStatusBadge({
   status,
@@ -28,30 +31,25 @@ export function ReservationStatusBadge({
   readonly status: AdministrationReservationStatus;
 }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-        status.group === "attention" &&
-          "border-burned-orange/25 bg-burned-orange/10 text-burned-orange-ink",
-        status.group === "in_progress" &&
-          "border-sunset-yellow/35 bg-sunset-yellow/15 text-navy-blue",
-        status.group === "complete" &&
-          "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
-        status.group === "cancelled" &&
-          "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/60"
-      )}
+    <AdministrationStatusBadge
+      tone={
+        {
+          attention: "attention",
+          cancelled: "neutral",
+          complete: "positive",
+          in_progress: "progress",
+        }[status.group] as "attention" | "neutral" | "positive" | "progress"
+      }
     >
       {status.label}
-    </span>
+    </AdministrationStatusBadge>
   );
 }
 
-export type ReservationTableSorting = {
-  readonly basePath: string;
-  readonly direction: AdministrationReservationSortDirection;
-  readonly field: AdministrationReservationSort;
-  readonly params?: Readonly<Record<string, string | undefined>>;
-};
+export type ReservationTableSorting =
+  AdministrationTableSorting<AdministrationReservationSort> & {
+    readonly basePath: string;
+  };
 
 export function ReservationTable({
   emptyMessage = "No reservations match this view.",
@@ -64,145 +62,140 @@ export function ReservationTable({
   readonly showCustomer?: boolean;
   readonly sorting?: ReservationTableSorting;
 }) {
+  const columns = useMemo<
+    AdministrationDataTableColumn<AdministrationReservationSummary>[]
+  >(
+    () => [
+      {
+        accessorFn: (reservation) =>
+          reservation.date ?? reservation.startsAt ?? "",
+        cell: ({ row }) => <ReservationDate reservation={row.original} />,
+        header: "Date",
+        id: "date",
+      },
+      {
+        accessorFn: (reservation) => reservation.status.label,
+        cell: ({ row }) => <ReservationStatus reservation={row.original} />,
+        header: "Status",
+        id: "status",
+      },
+      ...(showCustomer
+        ? [
+            {
+              accessorFn: (reservation) =>
+                reservation.customer?.displayName ?? "",
+              cell: ({ row }) => (
+                <ReservationCustomer reservation={row.original} />
+              ),
+              enableSorting: false,
+              header: "Customer",
+              id: "customer",
+            } satisfies AdministrationDataTableColumn<AdministrationReservationSummary>,
+          ]
+        : []),
+      {
+        accessorKey: "typeLabel",
+        cell: ({ row }) => <ReservationReference reservation={row.original} />,
+        header: "Reservation",
+        id: "reservation",
+      },
+      {
+        accessorKey: "createdAt",
+        cell: ({ row }) => (
+          <span className="text-sm text-navy-blue/65">
+            {formatAdministrationDateTime(row.original.createdAt)}
+          </span>
+        ),
+        header: "Created",
+        id: "created",
+      },
+      {
+        accessorFn: (reservation) => reservation.latestPayment?.amount.value,
+        cell: ({ row }) => <ReservationPayment reservation={row.original} />,
+        enableSorting: false,
+        header: "Payment",
+        id: "payment",
+      },
+    ],
+    [showCustomer]
+  );
+
   if (reservations.length === 0) {
     return <EmptyState message={emptyMessage} />;
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-      <div className="hidden overflow-x-auto md:block">
-        <Table
-          aria-label="Reservations"
-          className={showCustomer ? "min-w-[1060px]" : "min-w-[880px]"}
-        >
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <ReservationSortHead field="date" sorting={sorting}>
-                Date
-              </ReservationSortHead>
-              <ReservationSortHead field="status" sorting={sorting}>
-                Status
-              </ReservationSortHead>
-              {showCustomer && <TableHead>Customer</TableHead>}
-              <ReservationSortHead field="reservation" sorting={sorting}>
-                Reservation
-              </ReservationSortHead>
-              <ReservationSortHead field="created" sorting={sorting}>
-                Created
-              </ReservationSortHead>
-              <TableHead>Payment</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reservations.map((reservation) => (
-              <TableRow className="relative" key={reservation.id}>
-                <TableCell>
-                  <ReservationDate reservation={reservation} />
-                </TableCell>
-                <TableCell>
-                  <ReservationStatus reservation={reservation} />
-                </TableCell>
-                {showCustomer && (
-                  <TableCell>
-                    <ReservationCustomer reservation={reservation} />
-                  </TableCell>
-                )}
-                <TableCell>
-                  <ReservationReference reservation={reservation} />
-                </TableCell>
-                <TableCell>
-                  <span className="text-sm text-navy-blue/65">
-                    {formatAdministrationDateTime(reservation.createdAt)}
-                  </span>
-                </TableCell>
-                <TableCell>
-                  <ReservationPayment reservation={reservation} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <ul className="divide-y divide-navy-blue/10 md:hidden">
-        {reservations.map((reservation) => (
-          <li key={reservation.id}>
-            <div className="px-4 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold">
-                    <Link
-                      className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                      href={`/admin/reservations/${reservation.id}`}
-                    >
-                      {showCustomer
-                        ? (reservation.customer?.displayName ??
-                          reservation.typeLabel)
-                        : reservation.typeLabel}
-                    </Link>
-                  </p>
-                  <p className="mt-1 text-sm text-navy-blue/65">
-                    {formatAdministrationReservationDate(reservation) ??
-                      "Booking details unavailable"}
-                  </p>
+    <AdministrationDataTable
+      ariaLabel="Reservations"
+      columns={columns}
+      data={reservations}
+      getRowId={(reservation) => reservation.id}
+      getSortHref={
+        sorting
+          ? (field, direction) =>
+              getAdministrationTableSortHref({
+                basePath: sorting.basePath,
+                direction,
+                field,
+                params: sorting.params,
+              })
+          : undefined
+      }
+      mobile={
+        <ul className="divide-y divide-navy-blue/10">
+          {reservations.map((reservation) => (
+            <li key={reservation.id}>
+              <div className="px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">
+                      <Link
+                        className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
+                        href={`/admin/reservations/${reservation.id}`}
+                      >
+                        {showCustomer
+                          ? (reservation.customer?.displayName ??
+                            reservation.typeLabel)
+                          : reservation.typeLabel}
+                      </Link>
+                    </p>
+                    <p className="mt-1 text-sm text-navy-blue/65">
+                      {formatAdministrationReservationDate(reservation) ??
+                        "Booking details unavailable"}
+                    </p>
+                  </div>
+                  <ReservationStatus reservation={reservation} alignRight />
                 </div>
-                <ReservationStatus reservation={reservation} alignRight />
-              </div>
-              <p className="mt-3 text-xs text-navy-blue/65">
-                {reservation.typeLabel}
-                {reservation.latestPayment && (
-                  <>
-                    {" "}
-                    ·{" "}
-                    {formatAdministrationMoney(
-                      reservation.latestPayment.amount
-                    )}
-                  </>
+                <p className="mt-3 text-xs text-navy-blue/65">
+                  {reservation.typeLabel}
+                  {reservation.latestPayment && (
+                    <>
+                      {" "}
+                      ·{" "}
+                      {formatAdministrationMoney(
+                        reservation.latestPayment.amount
+                      )}
+                    </>
+                  )}
+                </p>
+                {reservation.latestPayment?.providerOrderId && (
+                  <PaymentLink
+                    className="mt-2 block break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
+                    providerOrderId={reservation.latestPayment.providerOrderId}
+                  />
                 )}
-              </p>
-              {reservation.latestPayment?.providerOrderId && (
-                <PaymentLink
-                  className="mt-2 block break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
-                  providerOrderId={reservation.latestPayment.providerOrderId}
-                />
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function ReservationSortHead({
-  children,
-  field,
-  sorting,
-}: {
-  readonly children: string;
-  readonly field: AdministrationReservationSort;
-  readonly sorting: ReservationTableSorting | undefined;
-}) {
-  if (!sorting) return <TableHead>{children}</TableHead>;
-  const sorted = sorting.field === field ? sorting.direction : false;
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(sorting.params ?? {})) {
-    if (value) search.set(key, value);
-  }
-  search.set("sort", field);
-  search.set("direction", sorted === "asc" ? "desc" : "asc");
-  let ariaSort: "ascending" | "descending" | "none" = "none";
-  if (sorted === "asc") ariaSort = "ascending";
-  else if (sorted === "desc") ariaSort = "descending";
-  return (
-    <TableHead aria-sort={ariaSort}>
-      <Link
-        className="-ml-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-left hover:bg-navy-blue/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
-        href={`${sorting.basePath}?${search.toString()}`}
-      >
-        {children}
-        <SortIcon sorted={sorted} />
-      </Link>
-    </TableHead>
+              </div>
+            </li>
+          ))}
+        </ul>
+      }
+      sorting={
+        sorting
+          ? [{ id: sorting.field, desc: sorting.direction === "desc" }]
+          : undefined
+      }
+      tableClassName={showCustomer ? "min-w-[1060px]" : "min-w-[880px]"}
+    />
   );
 }
 
@@ -327,25 +320,13 @@ function PaymentLink({
   providerOrderId,
 }: {
   readonly className: string;
-  readonly providerOrderId: string;
+  readonly providerOrderId: NexiOrderId;
 }) {
   return (
-    <a
-      aria-label={`Payment ${providerOrderId} (opens in XPay)`}
+    <NexiOrderLink
+      accessibleLabel={`Payment ${providerOrderId}`}
       className={className}
-      href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(providerOrderId)}`}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {providerOrderId} ↗
-    </a>
+      orderId={providerOrderId}
+    />
   );
-}
-
-function SortIcon({ sorted }: { readonly sorted: false | "asc" | "desc" }) {
-  if (sorted === "asc") return <ArrowUp aria-hidden className="size-3.5" />;
-  if (sorted === "desc") {
-    return <ArrowDown aria-hidden className="size-3.5" />;
-  }
-  return <ArrowUpDown aria-hidden className="size-3.5 opacity-55" />;
 }

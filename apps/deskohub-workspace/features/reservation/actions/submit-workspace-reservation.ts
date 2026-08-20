@@ -20,6 +20,7 @@ export const submitWorkspaceReservation = Effect.fn(
       {
         payStateToken: input.payStateToken,
         legalConsent: input.legalConsent,
+        earlyPerformanceConsent: input.earlyPerformanceConsent,
       },
       locale
     );
@@ -50,6 +51,12 @@ export const submitWorkspaceReservation = Effect.fn(
                   Match.value(checkoutError.code).pipe(
                     Match.when("meeting_room_reservation_ended", () =>
                       m.reservationValidationMeetingRoomEnded(
+                        {},
+                        { locale: input.locale }
+                      )
+                    ),
+                    Match.when("office_reservation_ended", () =>
+                      m.reservationValidationOfficeEnded(
                         {},
                         { locale: input.locale }
                       )

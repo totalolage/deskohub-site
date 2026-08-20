@@ -1,15 +1,16 @@
+import type { GoogleCalendarId } from "@deskohub/google-calendar";
 import { Context, Layer } from "effect";
 import { env } from "@/env";
 
 export interface IOpeningHoursCalendarConfig {
-  readonly calendarId: string;
+  readonly calendarId: GoogleCalendarId;
 }
 
 export class OpeningHoursCalendarConfig extends Context.Service<
   OpeningHoursCalendarConfig,
   IOpeningHoursCalendarConfig
 >()("@deskohub-boardgame-bar/opening-hours/OpeningHoursCalendarConfig") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     calendarId: env.GOOGLE_CALENDAR_OPENING_HOURS_ID,
   });
 }

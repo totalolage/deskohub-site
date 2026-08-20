@@ -1,5 +1,9 @@
 import { deepStrictEqual } from "node:assert/strict";
 import {
+  NexiOperationIdSchema,
+  NexiWebhookEventIdSchema,
+} from "@deskohub/nexi";
+import {
   and,
   asc,
   count,
@@ -21,13 +25,25 @@ import {
 } from "effect/unstable/http";
 import type { DatabaseClient } from "@/db/database-client";
 import {
+  accountingDocumentSnapshots,
   discountApplications,
   discountCodeRedemptions,
+  latePaymentRecoveries,
   legalEvidenceEvents,
   paymentAttempts,
+  voucherRedemptions,
+  vouchers,
   webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
+import type {
+  PaymentAttemptId,
+  StoredWebhookEventId,
+} from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import type { VoucherId } from "@/features/discounts/persistence-contracts";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   isNexiWebhookDiagnosticCode,
@@ -54,7 +70,7 @@ import {
 } from "./database-operation";
 
 export const requireProviderSessionRowAfterRedirect = (
-  orderId: string,
+  orderId: WorkspaceReservationId,
   options: {
     readonly onRow?: (row: CheckoutRow) => void;
     readonly timeoutMs: number;
@@ -141,8 +157,8 @@ export const getProviderSessionRowDiagnosticCode = (
 type ProviderSessionRow = CheckoutRow & {
   readonly amount_value: number;
   readonly currency: string;
-  readonly payment_attempt_id: string;
-  readonly provider_order_id: string;
+  readonly payment_attempt_id: NonNullable<CheckoutRow["payment_attempt_id"]>;
+  readonly provider_order_id: NonNullable<CheckoutRow["provider_order_id"]>;
   readonly provider_redirect_url: string;
   readonly security_token: string;
 };
@@ -173,14 +189,16 @@ export const replayNexiWebhook = (
     const response = yield* HttpClientRequest.post(webhookUrl).pipe(
       HttpClientRequest.setHeaders(previewWebhookHeaders(config)),
       HttpClientRequest.bodyJson({
-        eventId: `workspace-e2e-nexi-${row.reservation_id}`,
+        eventId: NexiWebhookEventIdSchema.make(
+          `workspace-e2e-nexi-${row.reservation_id}`
+        ),
         eventTime: new Date().toISOString(),
         securityToken: row.security_token,
         operation: {
           orderId: row.provider_order_id,
           operationId:
             row.last_provider_operation_id ??
-            `workspace-e2e-${row.reservation_id}`,
+            NexiOperationIdSchema.make(`workspace-e2e-${row.reservation_id}`),
           operationType: "CAPTURE",
           operationResult: "EXECUTED",
           operationTime: new Date().toISOString(),
@@ -229,7 +247,7 @@ const previewWebhookHeaders = (config: WorkspaceE2EConfig) => ({
 export const validatePostgres = (
   config: DatasourceConfig,
   data: CheckoutData,
-  orderId: string,
+  orderId: WorkspaceReservationId,
   onRow?: (row: CheckoutRow) => void
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -274,7 +292,7 @@ export const validatePostgres = (
   });
 
 export interface ExpectedDiscountApplication {
-  readonly basisPoints: number;
+  readonly adjustment: DiscountAdjustment;
   readonly hasExpiration?: boolean;
   readonly label: string;
   readonly redemptionState?: "redeemed";
@@ -282,7 +300,7 @@ export interface ExpectedDiscountApplication {
 
 export const validateDiscountApplications = (
   config: DatasourceConfig,
-  orderId: string,
+  orderId: WorkspaceReservationId,
   expected: readonly ExpectedDiscountApplication[]
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -307,13 +325,19 @@ export const validateDiscountApplications = (
           subtotal_after_currency: discountApplications.subtotalAfterCurrency,
           expires_at: discountApplications.expiresAt,
           countdown_starts_at: discountApplications.countdownStartsAt,
-          redemption_state: discountCodeRedemptions.state,
-          redeemed_at: discountCodeRedemptions.redeemedAt,
+          redemption_state: sql<
+            string | null
+          >`coalesce(${discountCodeRedemptions.state}, ${voucherRedemptions.state})`,
+          redeemed_at: sql<Date | null>`coalesce(${discountCodeRedemptions.redeemedAt}, ${voucherRedemptions.redeemedAt})`,
         })
         .from(discountApplications)
         .leftJoin(
           discountCodeRedemptions,
           eq(discountCodeRedemptions.applicationId, discountApplications.id)
+        )
+        .leftJoin(
+          voucherRedemptions,
+          eq(voucherRedemptions.applicationId, discountApplications.id)
         )
         .where(eq(discountApplications.workspaceReservationId, orderId))
         .orderBy(asc(discountApplications.sequence))
@@ -326,10 +350,7 @@ export const validateDiscountApplications = (
   });
 
 export interface DiscountApplicationRow {
-  readonly adjustment: {
-    readonly basisPoints?: number;
-    readonly kind?: string;
-  };
+  readonly adjustment: DiscountAdjustment;
   readonly applied_amount_currency: string;
   readonly applied_amount_exponent: number;
   readonly applied_amount_value: number;
@@ -364,16 +385,23 @@ export const assertDiscountApplications = (
       row.label === expectation.label,
       `unexpected discount label at sequence ${index}`
     );
-    assert(
-      row.adjustment.kind === "percentage" &&
-        row.adjustment.basisPoints === expectation.basisPoints,
+    deepStrictEqual(
+      row.adjustment,
+      expectation.adjustment,
       `unexpected discount adjustment at sequence ${index}`
     );
+    const expectedAppliedValue =
+      expectation.adjustment.kind === "percentage"
+        ? Math.round(
+            (row.subtotal_before_value * expectation.adjustment.basisPoints) /
+              10_000
+          )
+        : Math.min(
+            row.subtotal_before_value,
+            expectation.adjustment.amount.value
+          );
     assert(
-      row.applied_amount_value ===
-        Math.round(
-          (row.subtotal_before_value * expectation.basisPoints) / 10_000
-        ),
+      row.applied_amount_value === expectedAppliedValue,
       `unexpected discount benefit at sequence ${index}`
     );
     assert(
@@ -429,7 +457,7 @@ export const assertDiscountApplications = (
 };
 
 export const assertNoDiscountPaymentState = (
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -479,10 +507,132 @@ export const assertNoDiscountPaymentState = (
     log("Unavailable discount code created no payment state");
   });
 
+export const validateVoucherRedemptions = (
+  config: DatasourceConfig,
+  voucherId: VoucherId,
+  expected: readonly {
+    readonly adjustmentValue: number;
+    readonly appliedValue: number;
+    readonly orderId: WorkspaceReservationId;
+    readonly subtotalAfter: "positive" | "zero";
+  }[],
+  creditPerRun: WorkspaceMoney
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runRetrySafeDatabaseOperation(
+      "read voucher redemption history",
+      db
+        .select({
+          adjustment: sql<
+            VoucherRedemptionRow["adjustment"]
+          >`${discountApplications.adjustment}`,
+          appliedAmountCurrency: discountApplications.appliedAmountCurrency,
+          appliedAmountExponent: discountApplications.appliedAmountExponent,
+          appliedAmountValue: discountApplications.appliedAmountValue,
+          claimState: voucherRedemptions.state,
+          issuedAmountCurrency: vouchers.issuedAmountCurrency,
+          issuedAmountExponent: vouchers.issuedAmountExponent,
+          issuedAmountValue: vouchers.issuedAmountValue,
+          redeemedAt: voucherRedemptions.redeemedAt,
+          reservationId: discountApplications.workspaceReservationId,
+          subtotalAfterValue: discountApplications.subtotalAfterValue,
+          subtotalBeforeValue: discountApplications.subtotalBeforeValue,
+        })
+        .from(voucherRedemptions)
+        .innerJoin(
+          discountApplications,
+          eq(discountApplications.id, voucherRedemptions.applicationId)
+        )
+        .innerJoin(vouchers, eq(vouchers.id, voucherRedemptions.voucherId))
+        .where(
+          and(
+            eq(voucherRedemptions.voucherId, voucherId),
+            inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+          )
+        )
+    );
+
+    yield* tryWorkspaceE2ESync("assert voucher redemption history", () => {
+      assert(expected.length > 0, "expected at least one voucher checkout");
+      const currentRows = expected.map(({ orderId }) => {
+        const matching = rows.filter(
+          ({ reservationId }) => reservationId === orderId
+        );
+        assert(
+          matching.length === 1,
+          "expected one voucher claim per checkout"
+        );
+        return matching[0]!;
+      });
+
+      currentRows.forEach((row, index) => {
+        const expectation = expected[index]!;
+        assert(row.claimState === "redeemed", "voucher claim was not redeemed");
+        assert(row.redeemedAt, "voucher redemption timestamp missing");
+        assert(
+          row.adjustment.kind === "fixed" &&
+            row.adjustment.amount?.value === expectation.adjustmentValue,
+          "unexpected remaining voucher adjustment"
+        );
+        assert(
+          row.appliedAmountValue === expectation.appliedValue &&
+            row.subtotalBeforeValue - row.appliedAmountValue ===
+              row.subtotalAfterValue,
+          "voucher did not cover the expected checkout subtotal"
+        );
+        assert(
+          expectation.subtotalAfter === "zero"
+            ? row.subtotalAfterValue === 0
+            : row.subtotalAfterValue > 0,
+          "voucher left an unexpected checkout balance"
+        );
+        assert(
+          row.appliedAmountCurrency === config.expectedCurrency &&
+            row.appliedAmountExponent === creditPerRun.exponent,
+          "unexpected voucher application money"
+        );
+      });
+      assert(
+        currentRows.reduce((sum, row) => sum + row.appliedAmountValue, 0) ===
+          creditPerRun.value,
+        "current checkouts did not consume the seeded voucher credit"
+      );
+
+      const issuedValue = rows[0]?.issuedAmountValue;
+      assert(
+        issuedValue !== null && issuedValue !== undefined,
+        "voucher issued credit missing"
+      );
+      assert(
+        rows.every(
+          (row) =>
+            row.issuedAmountValue === issuedValue &&
+            row.issuedAmountCurrency === creditPerRun.currency &&
+            row.issuedAmountExponent === creditPerRun.exponent
+        ),
+        "voucher issued credit changed across claims"
+      );
+      assert(
+        rows.reduce((sum, row) => sum + row.appliedAmountValue, 0) ===
+          issuedValue,
+        "voucher should be exhausted after the expected checkouts"
+      );
+    });
+    log("Voucher redemption history validated");
+  });
+
+interface VoucherRedemptionRow {
+  readonly adjustment: {
+    readonly amount?: WorkspaceMoney;
+    readonly kind?: string;
+  };
+}
+
 export const validateInternalPostgres = (
   config: DatasourceConfig,
   data: CheckoutData,
-  orderId: string,
+  orderId: WorkspaceReservationId,
   onRow?: (row: CheckoutRow) => void
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -566,7 +716,7 @@ const checkoutRowSelection = {
 
 const readCheckoutRowFromDatabase = (
   db: DatabaseClient,
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
   runRetrySafeDatabaseOperation(
     "read checkout row",
@@ -586,7 +736,7 @@ const readCheckoutRowFromDatabase = (
   ).pipe(Effect.map((rows) => rows[0]));
 
 export const readCheckoutRow = (
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -595,7 +745,7 @@ export const readCheckoutRow = (
 
 export const waitForCheckoutRow = (
   config: DatasourceConfig,
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -647,14 +797,16 @@ export const readCleanupCheckoutRows = (
   });
 
 export const markPaymentTerminalForE2E = (
-  orderId: string,
-  paymentAttemptId: string,
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId,
   scenario: PaymentTerminalScenario
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
     const failureCode = `workspace_e2e_nexi_${scenario.state}`;
-    const providerOperationId = `workspace-e2e-${scenario.state}-${orderId}`;
+    const providerOperationId = NexiOperationIdSchema.make(
+      `workspace-e2e-${scenario.state}-${orderId}`
+    );
     const now = Temporal.Now.instant();
 
     yield* runDatabaseOperation(
@@ -717,8 +869,256 @@ export const markPaymentTerminalForE2E = (
     );
   });
 
+const latePaymentAbandonmentFailureCode =
+  "payment_abandoned_after_provider_cutoff";
+
+export const releaseReservationForLatePaymentRecoveryE2E = (
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId,
+  options: { readonly removeAccountingSnapshot: boolean }
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const now = Temporal.Now.instant();
+
+    const result = yield* runDatabaseOperation(
+      "release reservation for late payment recovery",
+      db.transaction((tx) =>
+        Effect.gen(function* () {
+          const [attempt] = yield* tx
+            .update(paymentAttempts)
+            .set({
+              state: "expired",
+              failureCode: latePaymentAbandonmentFailureCode,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(paymentAttempts.id, paymentAttemptId),
+                eq(paymentAttempts.workspaceReservationId, orderId),
+                eq(paymentAttempts.state, "pending")
+              )
+            )
+            .returning({ id: paymentAttempts.id });
+
+          const [reservation] = yield* tx
+            .update(workspaceReservations)
+            .set({
+              reservationState: "cancelled",
+              paymentState: "expired",
+              reservationHoldExpiredAt: now,
+              reservationCancelledAt: now,
+              failureCode: latePaymentAbandonmentFailureCode,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, orderId),
+                eq(
+                  workspaceReservations.activePaymentAttemptId,
+                  paymentAttemptId
+                ),
+                eq(workspaceReservations.reservationState, "held"),
+                eq(workspaceReservations.paymentState, "pending")
+              )
+            )
+            .returning({ id: workspaceReservations.id });
+
+          const removedSnapshots = options.removeAccountingSnapshot
+            ? yield* tx
+                .delete(accountingDocumentSnapshots)
+                .where(
+                  eq(
+                    accountingDocumentSnapshots.paymentAttemptId,
+                    paymentAttemptId
+                  )
+                )
+                .returning({
+                  paymentAttemptId:
+                    accountingDocumentSnapshots.paymentAttemptId,
+                })
+            : [];
+
+          return { attempt, reservation, removedSnapshots };
+        })
+      )
+    );
+
+    yield* tryWorkspaceE2ESync(
+      "assert released late-payment recovery fixture",
+      () => {
+        assert(result.attempt?.id === paymentAttemptId, "attempt not expired");
+        assert(
+          result.reservation?.id === orderId,
+          "reservation was not released"
+        );
+        if (options.removeAccountingSnapshot) {
+          assert(
+            result.removedSnapshots[0]?.paymentAttemptId === paymentAttemptId,
+            "accounting snapshot was not removed"
+          );
+        }
+      }
+    );
+
+    const row = yield* readCheckoutRowFromDatabase(db, orderId);
+    return yield* tryWorkspaceE2ESync(
+      "assert released late-payment checkout row",
+      () => {
+        assert(row, "released late-payment checkout row missing");
+        assert(
+          row.reservation_state === "cancelled",
+          "reservation not cancelled"
+        );
+        assert(row.payment_state === "expired", "payment not expired");
+        assert(
+          row.payment_attempt_state === "expired",
+          "payment attempt not expired"
+        );
+        return row;
+      }
+    );
+  });
+
+type LatePaymentRecoveryExpectation =
+  | { readonly state: "recovered" }
+  | {
+      readonly state: "refund_required";
+      readonly failureCode: string;
+    };
+
+type ObservedLatePaymentRecovery = {
+  readonly checkoutRow: CheckoutRow;
+  readonly recovery: typeof latePaymentRecoveries.$inferSelect;
+};
+
+export const waitForLatePaymentRecoveryOutcome = (
+  config: DatasourceConfig,
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId,
+  originalDotyposReservationId: NonNullable<
+    CheckoutRow["dotypos_reservation_id"]
+  >,
+  expected: LatePaymentRecoveryExpectation
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const observed = yield* pollUntil(
+      Effect.gen(function* () {
+        const [recovery] = yield* runRetrySafeDatabaseOperation(
+          "read late payment recovery",
+          db
+            .select()
+            .from(latePaymentRecoveries)
+            .where(eq(latePaymentRecoveries.paymentAttemptId, paymentAttemptId))
+            .limit(1)
+        );
+        if (recovery?.state !== expected.state) return undefined;
+
+        const checkoutRow = yield* readCheckoutRowFromDatabase(db, orderId);
+        if (!checkoutRow) return undefined;
+        if (
+          expected.state === "recovered" &&
+          checkoutRow.fulfillment_state !== "processing" &&
+          checkoutRow.fulfillment_state !== "fulfilled"
+        ) {
+          return undefined;
+        }
+        return { checkoutRow, recovery };
+      }),
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        label: `late payment recovery for ${orderId}`,
+        timeoutMs: config.timeouts.datasource,
+      }
+    );
+
+    yield* assertLatePaymentRecoveryOutcome(
+      observed,
+      originalDotyposReservationId,
+      expected
+    );
+    log(`Late payment recovery reached ${expected.state}`);
+    return observed.checkoutRow;
+  });
+
+export const assertLatePaymentRecoveryOutcome = (
+  observed: ObservedLatePaymentRecovery,
+  originalDotyposReservationId: NonNullable<
+    CheckoutRow["dotypos_reservation_id"]
+  >,
+  expected: LatePaymentRecoveryExpectation
+): Effect.Effect<void, WorkspaceE2EError> =>
+  tryWorkspaceE2ESync("assert late payment recovery outcome", () => {
+    const { checkoutRow, recovery } = observed;
+    assert(recovery.state === expected.state, "unexpected recovery state");
+    assert(recovery.completedAt, "recovery completion time missing");
+    assert(
+      recovery.originalDotyposReservationId === originalDotyposReservationId,
+      "recovery original reservation mismatch"
+    );
+    assert(checkoutRow.payment_state === "paid", "late payment not recorded");
+    assert(
+      checkoutRow.payment_attempt_state === "paid",
+      "late payment attempt not recorded"
+    );
+    assert(checkoutRow.webhook_state === "processed", "webhook not processed");
+
+    if (expected.state === "recovered") {
+      assert(
+        recovery.failureCode === null,
+        "recovered payment has failure code"
+      );
+      assert(
+        recovery.recoveredDotyposReservationId &&
+          recovery.recoveredDotyposReservationId !==
+            originalDotyposReservationId,
+        "replacement reservation was not recorded"
+      );
+      assert(
+        checkoutRow.dotypos_reservation_id ===
+          recovery.recoveredDotyposReservationId,
+        "checkout replacement reservation mismatch"
+      );
+      assert(
+        checkoutRow.reservation_state === "confirmed",
+        "recovered reservation not confirmed"
+      );
+      assert(
+        checkoutRow.failure_code === null,
+        "recovered checkout has failure"
+      );
+      return;
+    }
+
+    assert(
+      recovery.failureCode === expected.failureCode,
+      "refund recovery failure code mismatch"
+    );
+    assert(
+      recovery.recoveredDotyposReservationId === null,
+      "refund recovery created a reservation"
+    );
+    assert(
+      checkoutRow.dotypos_reservation_id === originalDotyposReservationId,
+      "refund recovery replaced the reservation"
+    );
+    assert(
+      checkoutRow.reservation_state === "cancelled",
+      "refund recovery restored the reservation"
+    );
+    assert(
+      checkoutRow.fulfillment_state === "not_started",
+      "refund recovery started fulfillment"
+    );
+    assert(
+      checkoutRow.failure_code === expected.failureCode,
+      "refund checkout failure code mismatch"
+    );
+  });
+
 export const markFulfillmentFailedForE2E = (
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -753,7 +1153,7 @@ export const markFulfillmentFailedForE2E = (
 
 export const markPreviewFulfillmentDeliveredForE2E = (
   config: DatasourceConfig,
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -1020,19 +1420,24 @@ const assertInternalDiscountState = (
           subtotal_before_value: discountApplications.subtotalBeforeValue,
           applied_amount_value: discountApplications.appliedAmountValue,
           subtotal_after_value: discountApplications.subtotalAfterValue,
-          redemption_state: discountCodeRedemptions.state,
-          redeemed_at: discountCodeRedemptions.redeemedAt,
+          redemption_state: sql<
+            string | null
+          >`coalesce(${discountCodeRedemptions.state}, ${voucherRedemptions.state})`,
+          redeemed_at: sql<Date | null>`coalesce(${discountCodeRedemptions.redeemedAt}, ${voucherRedemptions.redeemedAt})`,
         })
         .from(discountApplications)
         .leftJoin(
           discountCodeRedemptions,
           eq(discountCodeRedemptions.applicationId, discountApplications.id)
         )
+        .leftJoin(
+          voucherRedemptions,
+          eq(voucherRedemptions.applicationId, discountApplications.id)
+        )
         .where(
-          eq(
-            discountApplications.paymentAttemptId,
-            row.payment_attempt_id ?? ""
-          )
+          row.payment_attempt_id
+            ? eq(discountApplications.paymentAttemptId, row.payment_attempt_id)
+            : sql`false`
         )
     );
 
@@ -1058,10 +1463,10 @@ export const assertInternalDiscountApplications = (
   );
   assert(
     redeemedApplications.length === 1,
-    "expected one redeemed code application"
+    "expected one redeemed promotion application"
   );
   const application = redeemedApplications[0];
-  assert(application, "redeemed code application missing");
+  assert(application, "redeemed promotion application missing");
   assert(
     application.applied_amount_value === application.subtotal_before_value,
     "discount did not cover the full subtotal"
@@ -1072,14 +1477,14 @@ export const assertInternalDiscountApplications = (
   );
   assert(
     application.redemption_state === "redeemed",
-    "discount code claim was not redeemed"
+    "promotion claim was not redeemed"
   );
-  assert(application.redeemed_at, "discount code redeemed_at missing");
+  assert(application.redeemed_at, "promotion redeemed_at missing");
 };
 
 const assertLegalEvidence = (
   db: DatabaseClient,
-  orderId: string,
+  orderId: WorkspaceReservationId,
   locale: CheckoutData["locale"]
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -1135,9 +1540,9 @@ export const assertLegalEvidenceRows = (
 
 const assertNoLocalPii = (
   db: DatabaseClient,
-  orderId: string,
-  paymentAttemptId: string | null,
-  webhookEventId: string | null,
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId | null,
+  webhookEventId: StoredWebhookEventId | null,
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -1174,7 +1579,9 @@ const assertNoLocalPii = (
             .from(paymentAttempts)
             .where(
               and(
-                eq(paymentAttempts.id, paymentAttemptId ?? ""),
+                paymentAttemptId
+                  ? eq(paymentAttempts.id, paymentAttemptId)
+                  : sql`false`,
                 or(
                   ...patterns.map((pattern) =>
                     ilike(sql`to_jsonb(${paymentAttempts})::text`, pattern)
@@ -1187,7 +1594,9 @@ const assertNoLocalPii = (
             .from(webhookEvents)
             .where(
               and(
-                eq(webhookEvents.id, webhookEventId ?? ""),
+                webhookEventId
+                  ? eq(webhookEvents.id, webhookEventId)
+                  : sql`false`,
                 or(
                   ...patterns.map((pattern) =>
                     ilike(sql`to_jsonb(${webhookEvents})::text`, pattern)

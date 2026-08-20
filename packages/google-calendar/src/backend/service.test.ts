@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { GoogleCalendarRuntimeConfig } from "../config";
+import {
+  GoogleCalendarChannelIdSchema,
+  GoogleCalendarEventIdSchema,
+  GoogleCalendarICalUidSchema,
+  GoogleCalendarIdSchema,
+  GoogleCalendarResourceIdSchema,
+} from "../types";
 
 type CalendarListQuery = {
   readonly calendarId: string;
@@ -62,6 +69,21 @@ const config = {
   timeZone: "Europe/Prague",
 };
 
+const decodeCalendarId = Schema.decodeUnknownSync(GoogleCalendarIdSchema);
+const decodeEventId = Schema.decodeUnknownSync(GoogleCalendarEventIdSchema);
+const decodeICalUid = Schema.decodeUnknownSync(GoogleCalendarICalUidSchema);
+const decodeChannelId = Schema.decodeUnknownSync(GoogleCalendarChannelIdSchema);
+const decodeResourceId = Schema.decodeUnknownSync(
+  GoogleCalendarResourceIdSchema
+);
+
+const calendarId = decodeCalendarId("calendar-id");
+const workspaceLimitationsCalendarId = decodeCalendarId(
+  "workspace-limitations-calendar"
+);
+const salesCalendarId = decodeCalendarId("sales-calendar");
+const requestedChannelId = decodeChannelId("requested-channel-id");
+
 beforeEach(() => {
   listEvents = mock<ListEventsImplementation>(async () => ({
     data: { items: [] },
@@ -77,7 +99,7 @@ const runWithCalendar = <A, E>(
   Effect.runPromise(
     effect.pipe(
       Effect.provide(
-        GoogleCalendarService.Live.pipe(
+        GoogleCalendarService.Default.pipe(
           Layer.provide(Layer.succeed(GoogleCalendarRuntimeConfig, config))
         )
       )
@@ -130,7 +152,7 @@ describe("GoogleCalendarService", () => {
       Effect.gen(function* () {
         const googleCalendar = yield* GoogleCalendarService;
         return yield* googleCalendar.listEvents({
-          calendarId: "calendar-id",
+          calendarId,
           from: "2026-06-20",
           to: "2026-06-21",
         });
@@ -158,10 +180,10 @@ describe("GoogleCalendarService", () => {
     });
     expect(result).toEqual([
       {
-        id: "event-1",
+        id: decodeEventId("event-1"),
         htmlLink: "https://calendar.google.com/event?eid=event-1",
-        iCalUID: "ical-1",
-        recurringEventId: "recurring-event-1",
+        iCalUID: decodeICalUid("ical-1"),
+        recurringEventId: decodeEventId("recurring-event-1"),
         status: "confirmed",
         summary: "Summary",
         description: "Description",
@@ -176,7 +198,7 @@ describe("GoogleCalendarService", () => {
         },
       },
       {
-        id: "event-2",
+        id: decodeEventId("event-2"),
         start: { date: "2026-06-22" },
         end: { date: "2026-06-23" },
       },
@@ -203,12 +225,12 @@ describe("GoogleCalendarService", () => {
 
         return yield* Effect.all([
           googleCalendar.listEvents({
-            calendarId: "workspace-limitations-calendar",
+            calendarId: workspaceLimitationsCalendarId,
             from: "2026-06-20",
             to: "2026-06-21",
           }),
           googleCalendar.listEvents({
-            calendarId: "sales-calendar",
+            calendarId: salesCalendarId,
             from: "2026-06-20",
             to: "2026-06-21",
           }),
@@ -217,12 +239,12 @@ describe("GoogleCalendarService", () => {
     );
 
     expect(workspaceEvents.map(({ id }) => id)).toEqual([
-      "workspace-limitations-calendar-first",
-      "workspace-limitations-calendar-second",
+      decodeEventId("workspace-limitations-calendar-first"),
+      decodeEventId("workspace-limitations-calendar-second"),
     ]);
     expect(salesEvents.map(({ id }) => id)).toEqual([
-      "sales-calendar-first",
-      "sales-calendar-second",
+      decodeEventId("sales-calendar-first"),
+      decodeEventId("sales-calendar-second"),
     ]);
     expect(listEvents).toHaveBeenCalledTimes(4);
     expect(
@@ -261,7 +283,7 @@ describe("GoogleCalendarService", () => {
         const googleCalendar = yield* GoogleCalendarService;
         return yield* googleCalendar
           .listEvents({
-            calendarId: "calendar-id",
+            calendarId,
             from: "2026-06-20",
             to: "2026-06-21",
           })
@@ -295,8 +317,8 @@ describe("GoogleCalendarService", () => {
       Effect.gen(function* () {
         const googleCalendar = yield* GoogleCalendarService;
         return yield* googleCalendar.watchEvents({
-          calendarId: "calendar-id",
-          channelId: "requested-channel-id",
+          calendarId,
+          channelId: requestedChannelId,
           webhookUrl:
             "https://bar.example.test/api/webhooks/google-calendar/opening-hours",
           webhookToken: "derived-webhook-token",
@@ -317,8 +339,8 @@ describe("GoogleCalendarService", () => {
       },
     });
     expect(result).toEqual({
-      channelId: "returned-channel-id",
-      resourceId: "resource-id",
+      channelId: decodeChannelId("returned-channel-id"),
+      resourceId: decodeResourceId("resource-id"),
       resourceUri:
         "https://www.googleapis.com/calendar/v3/calendars/calendar-id/events",
       expiration: 1_785_902_400_000,
@@ -337,8 +359,8 @@ describe("GoogleCalendarService", () => {
         const googleCalendar = yield* GoogleCalendarService;
         return yield* googleCalendar
           .watchEvents({
-            calendarId: "calendar-id",
-            channelId: "channel-id",
+            calendarId,
+            channelId: decodeChannelId("channel-id"),
             webhookUrl: "https://bar.example.test/webhook",
             webhookToken: "derived-webhook-token",
             ttlSeconds: 259_200,
@@ -358,11 +380,76 @@ describe("GoogleCalendarService", () => {
     }
   });
 
+  test.each([
+    "id",
+    "iCalUID",
+    "recurringEventId",
+  ] as const)("rejects an empty provider event %s", async (field) => {
+    listEvents = mock<ListEventsImplementation>(async () => ({
+      data: { items: [{ [field]: "" }] },
+    }));
+
+    const result = await runWithCalendar(
+      Effect.gen(function* () {
+        const googleCalendar = yield* GoogleCalendarService;
+        return yield* googleCalendar
+          .listEvents({
+            calendarId,
+            from: "2026-06-20",
+            to: "2026-06-21",
+          })
+          .pipe(Effect.result);
+      })
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "GoogleCalendarAPIError",
+        operation: "events.list",
+        message: "Google Calendar returned a malformed identifier.",
+      },
+    });
+  });
+
+  test.each([
+    "id",
+    "resourceId",
+  ] as const)("rejects an empty provider watch-channel %s", async (field) => {
+    watchEvents = mock<WatchEventsImplementation>(async () => ({
+      data: { [field]: "" },
+    }));
+
+    const result = await runWithCalendar(
+      Effect.gen(function* () {
+        const googleCalendar = yield* GoogleCalendarService;
+        return yield* googleCalendar
+          .watchEvents({
+            calendarId,
+            channelId: requestedChannelId,
+            webhookUrl: "https://bar.example.test/webhook",
+            webhookToken: "derived-webhook-token",
+            ttlSeconds: 259_200,
+          })
+          .pipe(Effect.result);
+      })
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "GoogleCalendarAPIError",
+        operation: "events.watch",
+        message: "Google Calendar returned a malformed identifier.",
+      },
+    });
+  });
+
   test("fails empty config", async () => {
     const result = await Effect.runPromise(
       GoogleCalendarService.pipe(
         Effect.provide(
-          GoogleCalendarService.Live.pipe(
+          GoogleCalendarService.Default.pipe(
             Layer.provide(
               Layer.succeed(GoogleCalendarRuntimeConfig, {
                 ...config,

@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import type { Locale } from "@/features/i18n";
 import { getLocalizedParamsDecoder } from "@/features/i18n/server/route-params";
 import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
+import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
@@ -19,12 +23,12 @@ type LocalizedCheckoutPaymentRouteContext = {
 
 type CheckoutPaymentReturn = {
   readonly locale: Locale;
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly outcome: CheckoutStatusRefreshInput["returnOutcome"];
 };
 
 const decodeCheckoutPaymentParams = getLocalizedParamsDecoder({
-  orderId: Schema.NonEmptyString,
+  orderId: workspaceReservationIdSchema,
 });
 
 const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(

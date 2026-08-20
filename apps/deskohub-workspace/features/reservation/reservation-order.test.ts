@@ -2,11 +2,7 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Result } from "effect";
 import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
-import {
-  getReservationProductCoffee,
-  getReservationProductMonitorOption,
-  reservationOrderSchema as reservationOrderDefinition,
-} from "./reservation-order";
+import { reservationOrderSchema as reservationOrderDefinition } from "./reservation-order";
 
 const reservationOrderSchema = makeSchemaParser(reservationOrderDefinition);
 
@@ -83,36 +79,6 @@ describe("reservation schema", () => {
     }
   });
 
-  test("projects product options by reservation family", () => {
-    expect(
-      getReservationProductCoffee({
-        kind: "cowork",
-        entryTier: "basic",
-        coffee: true,
-      })
-    ).toBe(true);
-    expect(
-      getReservationProductCoffee({
-        kind: "meeting-room",
-        duration: { unit: "hour", amount: 1 },
-      })
-    ).toBe(false);
-    expect(
-      getReservationProductMonitorOption({
-        kind: "cowork",
-        entryTier: "profi",
-        coffee: true,
-        monitorOption: "2x27-qhd",
-      })
-    ).toBe("2x27-qhd");
-    expect(
-      getReservationProductMonitorOption({
-        kind: "meeting-room",
-        duration: { unit: "hour", amount: 1 },
-      })
-    ).toBeUndefined();
-  });
-
   test("rejects missing and unknown reservation kinds", () => {
     const { kind: _kind, ...withoutKind } = validMeetingRoomReservation;
 
@@ -169,6 +135,7 @@ describe("reservation schema", () => {
     if (Result.isSuccess(result)) {
       expect(result.success).toEqual({
         ...validMeetingRoomReservation,
+        billing: { purpose: "personal", invoice: "none" },
         startsAt: "2099-06-10T07:00:00Z",
         endsAt: "2099-06-10T08:00:00Z",
       });

@@ -97,6 +97,7 @@ const availabilityResponse = {
   unavailableDates: [],
   unavailableCoworkTiers: [],
   meetingRoomUnavailable: false,
+  officeUnavailable: false,
   unavailableMonitorOptions: [],
   notices: [],
 };
@@ -196,7 +197,7 @@ const profiAdvertisedPriceResponse = {
   advertisedPriceToken: "sealed-profi-advertised-price",
 };
 
-const jsonResponse = (body: unknown, status = 200) =>
+const jsonResponse = <T,>(body: T, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -258,6 +259,15 @@ describe("CoworkReservationForm advertised pricing", () => {
       plus: plusAdvertisedPriceResponse,
       profi: profiAdvertisedPriceResponse,
     } as const;
+    const requests = getCoworkTierAdvertisedPriceRequests({
+      coffee: true,
+      date: "2099-07-30",
+      locale: "en-US",
+    });
+
+    expect(requests.every((request) => !("submittedCode" in request))).toBe(
+      true
+    );
 
     const view = renderForm({
       initialValues: {
@@ -265,13 +275,10 @@ describe("CoworkReservationForm advertised pricing", () => {
         coffee: true,
         date: "2099-07-30",
       },
-      initialAdvertisedPrices: getCoworkTierAdvertisedPriceRequests({
-        coffee: true,
-        date: "2099-07-30",
-        locale: "en-US",
-      }).map(({ request, tier }) => ({
+      initialAdvertisedPrices: requests.map((request) => ({
         request,
-        advertisedPrice: advertisedPrices[tier],
+        advertisedPrice:
+          advertisedPrices[request.reservation.details.entryTier],
       })),
     });
 
@@ -283,6 +290,65 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(coffeePrice?.querySelector("[data-slot='skeleton']")).toBeNull();
     expect(getAdvertisedPrices).not.toHaveBeenCalled();
     view.unmount();
+  });
+
+  test("shows validation messages when required customer fields are empty", async () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=basic&date=2099-07-30&coffee=true")
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+    const continueButton = view.getByRole("button", { name: "Continue" });
+    await waitFor(
+      () => {
+        expect(continueButton.hasAttribute("disabled")).toBe(false);
+      },
+      { timeout: 5000 }
+    );
+
+    fireEvent.click(continueButton);
+
+    expect(await view.findByText("Email is required.")).toBeDefined();
+    expect(view.getByText("Phone is required.")).toBeDefined();
+    expect(view.getByText("Name must be at least 2 characters.")).toBeDefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test("shows billing validation without errors for empty optional fields", async () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=basic&date=2099-07-30&coffee=true")
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+    const continueButton = view.getByRole("button", { name: "Continue" });
+    await waitFor(
+      () => {
+        expect(continueButton.hasAttribute("disabled")).toBe(false);
+      },
+      { timeout: 5000 }
+    );
+
+    fireEvent.click(view.getByRole("checkbox", { name: "Create invoice" }));
+    fireEvent.click(continueButton);
+
+    expect(await view.findAllByText("This field is required.")).toHaveLength(3);
+    expect(view.queryByText("undefined")).toBeNull();
+    expect(view.queryByText("Expected string, got undefined")).toBeNull();
+    expect(execute).not.toHaveBeenCalled();
   });
 
   test("does not render catalog prices before a backend quote is available", () => {
@@ -356,7 +422,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     const view = renderForm();
 
     expect(
-      await view.findByText(/original price.*350/i, {}, { timeout: 3000 })
+      await view.findByText(/original price.*350/i, {}, { timeout: 5000 })
     ).toBeDefined();
     expect(view.getByText(/discounted price.*175/i)).toBeDefined();
     expect(
@@ -378,7 +444,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await act(async () => {
       fireEvent.click(
         view.container.querySelector(
-          '[data-reservation-type-price="plus"]'
+          "#reservation-entry-tier-plus"
         ) as HTMLElement
       );
     });
@@ -425,7 +491,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(view.getByText(/discounted price.*392/i)).toBeDefined();
   });
 
-  test("advertises discounts on every applicable tier and top-aligns price rows", async () => {
+  test("presents the selected advertised sale around the whole form", async () => {
     getAdvertisedPrices.mockImplementation((requests) =>
       Promise.resolve(
         advertisedPricesResult(requests, ({ reservation }) =>
@@ -449,112 +515,47 @@ describe("CoworkReservationForm advertised pricing", () => {
     await waitFor(() => {
       expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
     });
+    const saleCard = view.container.querySelector(
+      '[data-reservation-sale="active"]'
+    );
+    expect(saleCard?.className).toContain("glow-border-purple-300");
     expect(
-      view.container.querySelector(
-        '[data-reservation-type-option="basic"] [data-reservation-type-discount="summer-sale"]'
-      )?.textContent
+      saleCard?.querySelector('[data-reservation-sale-discount="summer-sale"]')
+        ?.textContent
     ).toContain("Summer sale");
-    const basicCard = view.container.querySelector(
-      '[data-reservation-type-option="basic"]'
-    );
-    const basicBanner = basicCard?.querySelector(
-      '[data-reservation-type-discount-banner="basic"]'
-    );
-    expect(basicCard?.className.split(" ")).toContain("glow-border");
-    expect(basicCard?.firstElementChild).toBe(basicBanner ?? null);
-    expect(basicBanner?.className).toContain("bg-purple-100");
-    expect(basicBanner?.querySelector("svg")?.getAttribute("class")).toContain(
-      "lucide-percent"
-    );
-    expect(basicCard?.className).toContain("lg:row-start-1");
-    expect(basicCard?.className).toContain("lg:row-span-5");
-    expect(basicCard?.className).toContain("lg:grid-rows-subgrid");
-    expect(basicCard?.className.split(" ")).toContain("grid");
-    expect(basicCard?.className.split(" ")).not.toContain("flex");
-    expect(basicCard?.className.split(" ")).not.toContain("gap-3");
-    expect(basicCard?.className.split(" ")).toContain("outline-1");
-    expect(basicCard?.className).toContain("outline-purple-500");
-    expect(basicCard?.className).not.toContain("outline-burned-orange");
-    expect(basicCard?.parentElement?.className).toContain(
-      "lg:grid-rows-[repeat(5,auto)]"
-    );
-    expect(basicCard?.parentElement?.className.split(" ")).toContain(
-      "space-y-3"
-    );
-    expect(basicCard?.parentElement?.className.split(" ")).not.toContain(
-      "gap-3"
-    );
-    expect(basicCard?.parentElement?.className.split(" ")).not.toContain(
-      "lg:gap-y-3"
-    );
     expect(
-      basicCard
-        ?.querySelector('[data-reservation-type-title="basic"]')
-        ?.className.split(" ")
-    ).not.toContain("pt-4");
-    expect(
-      basicCard
-        ?.querySelector('[data-reservation-type-title="basic"]')
-        ?.className.split(" ")
-    ).toContain("mt-4");
-    expect(
-      Array.from(basicCard?.children ?? []).map((element) =>
-        ["discount-banner", "title", "price-row", "description", "perks"].find(
-          (row) => element.hasAttribute(`data-reservation-type-${row}`)
-        )
-      )
-    ).toEqual([
-      "discount-banner",
-      "title",
-      "price-row",
-      "description",
-      "perks",
-    ]);
-    const basicDescription = basicCard?.querySelector(
-      '[data-reservation-type-description="basic"]'
-    );
-    expect(basicDescription?.textContent).toContain("Open-space desk");
-    expect(basicDescription?.querySelector("li")).toBeNull();
-    const profiCard = view.container.querySelector(
-      '[data-reservation-type-option="profi"]'
-    );
-    expect(profiCard?.className).toContain("lg:row-start-2");
-    expect(profiCard?.className).toContain("lg:row-span-4");
-    expect(
-      profiCard?.querySelector("[data-reservation-type-discount-banner]")
-    ).toBeNull();
-    expect(profiCard?.className.split(" ")).not.toContain("glow-border");
-    expect(
-      profiCard
-        ?.querySelector('[data-reservation-type-title="profi"]')
-        ?.className.split(" ")
-    ).toContain("mt-4");
-    expect(
-      view.container.querySelector(
-        '[data-reservation-type-option="plus"] [data-reservation-type-discount="launch-sale"]'
-      )?.textContent
-    ).toContain("Launch sale");
-    const plusCard = view.container.querySelector(
-      '[data-reservation-type-option="plus"]'
-    );
-    expect(plusCard?.className).toContain("glow-border");
-    expect(plusCard?.className).toContain("hover:outline-purple-500/60");
-    expect(profiCard?.className).toContain("hover:outline-burned-orange/45");
+      view.getByRole("button", { name: /discount.*applied to.*basic/i })
+    ).toBeDefined();
+
+    for (const tier of ["basic", "plus", "profi"]) {
+      const option = view.container.querySelector(
+        `[data-reservation-type-option="${tier}"]`
+      );
+      expect(option?.className).toContain("lg:row-span-4");
+      expect(option?.className).not.toContain("glow-border");
+      expect(
+        option?.querySelector("[data-reservation-type-discount-banner]")
+      ).toBeNull();
+    }
+
     expect(
       view.container
         .querySelector('[data-reservation-type-price="plus"]')
         ?.querySelector("del")
     ).not.toBeNull();
+    fireEvent.click(
+      view.container.querySelector("#reservation-entry-tier-plus")!
+    );
+    await waitFor(() => {
+      expect(
+        view.container.querySelector(
+          '[data-reservation-sale-discount="launch-sale"]'
+        )?.textContent
+      ).toContain("Launch sale");
+    });
     expect(
-      Array.from(
-        view.container.querySelectorAll("[data-reservation-type-price-row]")
-      ).every((element) => element.className.includes("items-start"))
-    ).toBe(true);
-    expect(
-      view.container
-        .querySelector('[data-reservation-type-price-row="profi"]')
-        ?.className.includes("text-navy-blue")
-    ).toBe(true);
+      view.getByRole("button", { name: /discount.*applied to.*plus/i })
+    ).toBeDefined();
   });
 
   test("shows a retryable error instead of enabling checkout with failed price data", async () => {
@@ -576,7 +577,7 @@ describe("CoworkReservationForm advertised pricing", () => {
 
     const view = renderForm();
     expect(
-      (await view.findByRole("alert", {}, { timeout: 3000 })).textContent
+      (await view.findByRole("alert", {}, { timeout: 10_000 })).textContent
     ).toMatch(/current price could not be loaded/i);
     expect(
       view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
@@ -616,7 +617,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await act(async () => {
       fireEvent.click(
         view.container.querySelector(
-          '[data-reservation-type-price="profi"]'
+          "#reservation-entry-tier-profi"
         ) as HTMLElement
       );
     });

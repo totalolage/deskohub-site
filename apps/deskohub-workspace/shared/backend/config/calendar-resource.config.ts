@@ -1,18 +1,10 @@
-import { Context, Layer } from "effect";
-import { env } from "@/env";
-
-export interface ICalendarResourceConfig {
-  readonly workspaceLimitationsCalendarId: string;
-  readonly salesCalendarId: string;
-}
-
-export class CalendarResourceConfig extends Context.Service<
+export type {
+  ICalendarResourceConfig,
+  SalesCalendarId,
+  WorkspaceLimitationsCalendarId,
+} from "./google-calendar.config";
+export {
   CalendarResourceConfig,
-  ICalendarResourceConfig
->()("@deskohub-workspace/config/CalendarResourceConfig") {
-  static Live = Layer.succeed(this, {
-    workspaceLimitationsCalendarId:
-      env.GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID,
-    salesCalendarId: env.GOOGLE_CALENDAR_SALES_ID,
-  });
-}
+  salesCalendarIdSchema,
+  workspaceLimitationsCalendarIdSchema,
+} from "./google-calendar.config";

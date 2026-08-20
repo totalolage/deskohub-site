@@ -13,8 +13,13 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
-import { Cause, Effect, Layer, Logger, References } from "effect";
+import { Cause, type Context, Effect, Layer, Logger, References } from "effect";
 import { createTracingLive } from "../observability/otel-tracing";
+
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
+
 import {
   CENSORED_LOG_VALUE,
   censorDatabaseQueryParams,
@@ -65,8 +70,19 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("phone")).toBe(true);
     expect(isSensitiveLogKey("firstName")).toBe(true);
     expect(isSensitiveLogKey("lastName")).toBe(true);
+    expect(isSensitiveLogKey("recipient")).toBe(true);
+    expect(isSensitiveLogKey("subject")).toBe(true);
     expect(isSensitiveLogKey("db.namespace")).toBe(true);
     expect(isSensitiveLogKey("server.address")).toBe(true);
+    expect(isSensitiveLogKey("billingDetails")).toBe(true);
+    expect(isSensitiveLogKey("addressLine1")).toBe(true);
+    expect(isSensitiveLogKey("addressLine2")).toBe(true);
+    expect(isSensitiveLogKey("companyId")).toBe(true);
+    expect(isSensitiveLogKey("vatId")).toBe(true);
+    expect(isSensitiveLogKey("postalCode")).toBe(true);
+    expect(isSensitiveLogKey("city")).toBe(true);
+    expect(isSensitiveLogKey("zip")).toBe(true);
+    expect(isSensitiveLogKey("country")).toBe(true);
   });
 
   test("matches common prefixed camelCase credential key shapes", () => {
@@ -103,6 +119,75 @@ describe("isSensitiveLogKey", () => {
 });
 
 describe("censorLogValue", () => {
+  test("censors billing identities without hiding operational metadata", () => {
+    const value = censorLogValue({
+      operation: "updateCustomerBillingDetails",
+      customerId: "safe-customer-id",
+      request: {
+        body: {
+          addressLine1: "Private street 1",
+          addressLine2: "Private unit",
+          city: "Private city",
+          zip: "12345",
+          country: "CZ",
+          companyName: "Private company",
+          companyId: "12345678",
+          vatId: "CZ12345678",
+        },
+      },
+      cause: {
+        billingDetails: {
+          address: {
+            line1: "Private street 1",
+            city: "Private city",
+            postalCode: "12345",
+            country: "CZ",
+          },
+        },
+        safeStatus: 412,
+      },
+    });
+
+    expect(value).toEqual({
+      operation: "updateCustomerBillingDetails",
+      customerId: "safe-customer-id",
+      request: {
+        body: {
+          addressLine1: CENSORED_LOG_VALUE,
+          addressLine2: CENSORED_LOG_VALUE,
+          city: CENSORED_LOG_VALUE,
+          zip: CENSORED_LOG_VALUE,
+          country: CENSORED_LOG_VALUE,
+          companyName: CENSORED_LOG_VALUE,
+          companyId: CENSORED_LOG_VALUE,
+          vatId: CENSORED_LOG_VALUE,
+        },
+      },
+      cause: { billingDetails: CENSORED_LOG_VALUE, safeStatus: 412 },
+    });
+  });
+
+  test("censors email attachment payloads without hiding safe metadata", () => {
+    const value = censorLogValue({
+      attachments: [
+        {
+          filename: "WS-FV-2026-000001.pdf",
+          content: Buffer.from("private invoice bytes"),
+        },
+      ],
+      recipient: "synthetic@example.test",
+      subject: "Invoice for Synthetic Customer",
+      invoiceId: "safe-invoice-id",
+    });
+
+    expect(value).toEqual({
+      attachments: CENSORED_LOG_VALUE,
+      recipient: CENSORED_LOG_VALUE,
+      subject: CENSORED_LOG_VALUE,
+      invoiceId: "safe-invoice-id",
+    });
+  });
+
   test("redacts nested sensitive object keys without mutating input", () => {
     const input = {
       user: "deskohub",
@@ -114,8 +199,8 @@ describe("censorLogValue", () => {
         stripeApiKey: "secret-stripe-api-key",
         githubAccessToken: "secret-github-access-token",
         userRefreshToken: "secret-user-refresh-token",
-        customerAccessCode: "123456",
         accessCode: "654321",
+        pin: "987654321",
         oauthClientSecret: "secret-oauth-client-secret",
         requestAuthorization: "Bearer secret",
         discountCode: "SUMMER50",
@@ -147,8 +232,8 @@ describe("censorLogValue", () => {
         stripeApiKey: CENSORED_LOG_VALUE,
         githubAccessToken: CENSORED_LOG_VALUE,
         userRefreshToken: CENSORED_LOG_VALUE,
-        customerAccessCode: CENSORED_LOG_VALUE,
         accessCode: CENSORED_LOG_VALUE,
+        pin: CENSORED_LOG_VALUE,
         oauthClientSecret: CENSORED_LOG_VALUE,
         requestAuthorization: CENSORED_LOG_VALUE,
         discountCode: CENSORED_LOG_VALUE,
@@ -186,8 +271,14 @@ describe("censorLogValue", () => {
   });
 
   test("handles cycles while preserving the censored cycle shape", () => {
-    const input: { name: string; self?: unknown; token?: string } = {
+    type CyclicLogInput = {
+      readonly name: string;
+      self?: CyclicLogInput;
+      readonly token?: string;
+    };
+    const input = {
       name: "cycle",
+      self: undefined as CyclicLogInput | undefined,
       token: "secret-token",
     };
     input.self = input;
@@ -292,6 +383,28 @@ describe("censorLogValue", () => {
       errorType: "Error",
       message: CENSORED_LOG_VALUE,
     });
+  });
+
+  test("projects errors when the runtime does not provide Error.isError", () => {
+    const nativeIsError = Error.isError;
+    Object.defineProperty(Error, "isError", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+
+    try {
+      expect(censorLogValue(new Error("private value"))).toEqual({
+        errorType: "Error",
+        message: CENSORED_LOG_VALUE,
+      });
+    } finally {
+      Object.defineProperty(Error, "isError", {
+        configurable: true,
+        value: nativeIsError,
+        writable: true,
+      });
+    }
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {
@@ -428,7 +541,7 @@ describe("censorLoggerOptions", () => {
       date: new Date(0),
       fiber: {
         id: 1,
-        getRef: (ref: unknown) =>
+        getRef: <T>(ref: T) =>
           ref === References.CurrentLogAnnotations ? annotations : [],
       },
     } as Logger.Options<unknown>;
@@ -461,7 +574,7 @@ describe("censorLoggerOptions", () => {
       date: new Date(0),
       fiber: {
         id: 1,
-        getRef: (ref: unknown) =>
+        getRef: <T>(ref: T) =>
           ref === References.CurrentLogAnnotations ? annotations : [],
       },
     } as Logger.Options<unknown>;
@@ -476,7 +589,7 @@ describe("censorLoggerOptions", () => {
   });
 
   test("database query logging retains only selectively censored parameters", async () => {
-    let capturedAnnotations: Readonly<Record<string, unknown>> = {};
+    let capturedAnnotations: LogAnnotations = {};
     const captureLogger = Logger.make((options) => {
       capturedAnnotations = options.fiber.getRef(
         References.CurrentLogAnnotations

@@ -18,6 +18,7 @@ import {
   type OrderListResponse,
   type OrderResponse,
 } from "../generated/effect.gen";
+import type { NexiCorrelationId, NexiOperationId, NexiOrderId } from "../types";
 
 const NEXI_API_PATH = "/api/phoenix-0.0/psp/api/v1";
 
@@ -51,28 +52,28 @@ export const makeNexiClient = ({
 
 interface INexiGeneratedClient {
   readonly createHostedPaymentPage: (input: {
-    readonly correlationId: string;
+    readonly correlationId: NexiCorrelationId;
     readonly payload: CreateHostedPaymentPageRequest;
   }) => Effect.Effect<
     CreateHostedPaymentPageResponse,
     ExternalAPIError | NetworkError
   >;
   readonly getOrder: (input: {
-    readonly correlationId: string;
-    readonly orderId: string;
+    readonly correlationId: NexiCorrelationId;
+    readonly orderId: NexiOrderId;
   }) => Effect.Effect<OrderResponse, ExternalAPIError | NetworkError>;
   readonly listOrders: (input: {
-    readonly correlationId: string;
+    readonly correlationId: NexiCorrelationId;
     readonly fromTime?: string;
     readonly toTime?: string;
     readonly maxRecords?: number;
   }) => Effect.Effect<OrderListResponse, ExternalAPIError | NetworkError>;
   readonly getOperation: (input: {
-    readonly correlationId: string;
-    readonly operationId: string;
+    readonly correlationId: NexiCorrelationId;
+    readonly operationId: NexiOperationId;
   }) => Effect.Effect<Operation, ExternalAPIError | NetworkError>;
   readonly listOperations: (input: {
-    readonly correlationId: string;
+    readonly correlationId: NexiCorrelationId;
     readonly fromTime?: string;
     readonly toTime?: string;
     readonly maxRecords?: number;
@@ -90,7 +91,7 @@ const makeNexiGeneratedClient = Effect.gen(function* () {
   const config = yield* NexiRuntimeConfig;
   const httpClient = yield* HttpClient.HttpClient;
 
-  const clientFor = (correlationId: string) =>
+  const clientFor = (correlationId: NexiCorrelationId) =>
     makeNexiClient({
       config,
       httpClient,
@@ -153,7 +154,7 @@ export class NexiGeneratedClient extends Context.Service<
   NexiGeneratedClient,
   INexiGeneratedClient
 >()("NexiGeneratedClient") {
-  static Live = Layer.effect(this, makeNexiGeneratedClient);
+  static Default = Layer.effect(this, makeNexiGeneratedClient);
 }
 
 export const mapNexiClientError = (

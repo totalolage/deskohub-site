@@ -1,13 +1,68 @@
 # Reservation families
 
-- Workspace reservation families use `kind: "cowork" | "meeting-room"`.
+## Contents
+
+- [Family boundaries](#family-boundaries)
+- [Meeting-room duration intent](#meeting-room-duration-intent)
+- [Product identities and keys](#product-identities-and-keys)
+
+## Family boundaries
+
+- Workspace reservation families use `kind: "cowork" | "meeting-room" | "office"`.
 - Complete family branches use `Match.discriminatorsExhaustive("kind")`.
 - `entryTier` refines cowork reservations only and never contains
   `"meeting-room"`.
 - Effect-native errors and protocol unions may still use `_tag`; this rule only
   concerns the reservation-family domain discriminator.
 
-Keep reservation-family-specific schemas and projections in the corresponding cowork or meeting-room domain modules. Generic checkout and reservation modules compose those family contracts instead of redeclaring family rules.
+Keep reservation-family-specific schemas and projections in the corresponding cowork, meeting-room, or office domain modules. Generic checkout and reservation modules compose those family contracts instead of redeclaring family rules.
+
+Office reservations span an inclusive range of Prague calendar dates. They
+always start at Prague midnight on the first date and end at Prague midnight
+after the last date, so DST days remain whole calendar days rather than fixed
+24-hour periods. Price each selected day as the base daily office price plus
+the per-seat daily price for every reserved seat. Carry the total positive
+integer as `seats` through the form, advertised price, normalized reservation,
+availability query, quote, checkout, Dotypos hold, email, and status view.
+Never translate it through guest, attendee, additional-person, or party-size
+fields. The reservation form presents seat counts from one through the table
+capacity, and Dotypos `seats` stores that same value. On the reservation page,
+source every visible office price from the advertised quote: show its
+`accessAmount` as the base price and derive each seat choice from its
+`seatAmount` multiplied by `seats`. Do not reproduce catalog amounts as
+client-side constants.
+
+The office form captures one `startsOn` date and a positive `dayCount`, then
+derives the inclusive `endsOn` date at the form-to-order boundary. Query office
+calendar availability without seats or an interval for every date from the
+current Prague date through one calendar month later. Use the returned
+`unavailableDates` both to disable start dates and to cap `dayCount` at the day
+before the first unavailable date. The inclusive last reservation day must
+never be later than the current Prague date plus one calendar month; enforce
+that at both the form and untrusted server input boundaries.
+
+The exact elapsed interval between the first Prague midnight and the Prague
+midnight after the last selected day must not exceed 672 hours. Apply this in
+addition to the one-month horizon and unavailable-date cap. Do not reduce the
+rule to `dayCount <= 28`: 28 calendar days spanning the autumn daylight-saving
+transition are 673 hours and must be capped to 27 days, while the corresponding
+spring interval is 671 hours and remains valid. Keep historical/provider-owned
+reservation projections structural so this current purchase policy does not
+make older data undecodable.
+
+Office product identity is `{ kind: "office", seats, dayCount }` with product
+key `office:${seats}:${dayCount}`. Build `dayCount` from the inclusive Prague
+date range. Persist only `{ kind: "office" }` locally because Dotypos owns the
+reservation facts; project confirmed timing and seats from Dotypos. Do not
+weaken the sold-product identity to model discount eligibility.
+
+Exactly one assignable Dotypos table may carry the office reservation tag. It
+is exclusive for the entire reservation interval. Its configured seat capacity
+determines the seat choices shown by the form, so calendar availability is
+independent of the selected choice. Any existing occupancy greater than zero
+makes it unavailable regardless of the remaining capacity. Treat multiple
+assignable office-tagged tables as invalid configuration instead of silently
+selecting among them.
 
 Meeting-room eligibility is bounded by the reservation's exclusive end, not its
 start. A reservation may be submitted or paid after it starts while its end has
@@ -37,8 +92,8 @@ only when it spans consecutive Prague midnights. `Temporal.PlainDate` and
 encode the required midnight anchor.
 
 Use semantic meeting-room durations as the only catalog, quote, summary,
-discount, checkout, and integration identity. Do not retain or derive a
-minute-count product identity. Meeting-room product keys use
+discount-application, checkout, and integration identity. Do not retain or
+derive a minute-count product identity. Meeting-room product keys use
 `meeting-room:hour:1`, `meeting-room:hour:4`, and `meeting-room:day:1`.
 
 Local stored meeting-room details contain only the reservation-family
@@ -54,10 +109,39 @@ A product key must encode the complete product identity, including its reservati
 
 - Cowork identities use `{ kind: "cowork", tier }` and keys use `cowork:${tier}`.
 - Meeting-room identities use `{ kind: "meeting-room", duration }` and keys use `meeting-room:${unit}:${amount}`.
+- Office identities use `{ kind: "office", seats, dayCount }` and keys use
+  `office:${seats}:${dayCount}`.
 - Checkout summary item keys add the presentation prefix, for example `product:cowork:basic`.
+
+Discount configuration targets reservation families, not exact products. Its
+strict target union is `{ kind: "cowork" } | { kind: "meeting-room" } |
+{ kind: "office" }`, and a target matches every exact product identity with
+the same `kind`. Persist these values as `product_target`. Quotes, purchases,
+commitments, summaries, and immutable discount applications continue to carry
+the complete `product_identity`; reduce an identity to `{ kind }` only when
+checking discount eligibility.
+
+Define each family target schema beside that family's exact identity schema,
+then compose the cross-family target as their strict union. Family-sensitive
+availability errors and other shared projections compose those family-owned
+types instead of redeclaring an anonymous union. Cross-family conversion and
+dispatch must be exhaustive so a new reservation family produces a type error.
 
 Define each identity schema, key schema, and key constructor in its reservation-family domain module. The cross-family product-identity module only composes those schemas and dispatches exhaustively to the family constructors.
 
 Derive downstream schemas from the family identity schema fields instead of redeclaring the same literals. Import family identity types and codecs directly; do not introduce feature-specific aliases or re-exports for them.
 
-Construct keys through the family constructor or the cross-family dispatcher. Do not independently interpolate them in discount targeting, checkout quote construction, or rendering code, and do not create persistence-specific aliases for a family product key.
+Construct identity keys through the family constructor or the cross-family
+dispatcher. Do not independently interpolate them in checkout quote
+construction or rendering code, and do not use exact identity keys for
+family-only discount targets.
+
+An advertised-price batch contains the typed request as its only selection
+state. Derive cowork tier, meeting-room duration, and office seats from the
+request's family details; do not return a parallel `{ tier | duration | seats,
+request }` wrapper that can drift from the quoted reservation.
+
+Generic checkout pages own cross-family exhaustive dispatch and shared visual
+primitives. Family-specific status projections and summary item rendering live
+in family-named modules, including existing families when one new family would
+otherwise introduce a one-off branch in the generic component.

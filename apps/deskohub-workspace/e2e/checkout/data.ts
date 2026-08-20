@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import type {
   WorkspaceCoworkProductTier,
@@ -15,6 +15,12 @@ import {
   getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
+import {
+  getOfficeReservationIntervalInput,
+  getOfficeReservationMaximumEndsOn,
+  officeReservationDetailsSchema,
+} from "@/features/reservation/office-reservation";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
   formatWorkspaceE2EAllocation,
@@ -32,6 +38,10 @@ import {
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
+import {
+  workspaceE2EOfficeReservationDayCount,
+  workspaceE2EOfficeReservationSeats,
+} from "../office";
 import { assert, log } from "../runtime";
 import type { CheckoutData, CheckoutFlow } from "../types";
 
@@ -48,6 +58,19 @@ export type MeetingRoomAvailability = {
   readonly unavailableDates: readonly string[];
 };
 
+export type OfficeCheckoutSlot = {
+  readonly endsAt: ReservationInterval["endsAt"];
+  readonly endsOn: string;
+  readonly seats: number;
+  readonly startsAt: ReservationInterval["startsAt"];
+  readonly startsOn: string;
+};
+
+export type OfficeAvailability = {
+  readonly officeUnavailable: boolean;
+  readonly unavailableDates: readonly string[];
+};
+
 export type CoworkAvailabilitySelection = {
   readonly allocation?: WorkspaceE2EDateAllocation;
   readonly entryTier?: WorkspaceCoworkProductTier;
@@ -57,6 +80,9 @@ export type CoworkAvailabilitySelection = {
 let checkoutContactSequence = 0;
 const emailLocalPartLimit = 64;
 const deliveredEmailPrefix = "delivered+";
+const decodeOfficeReservationDetails = Schema.decodeUnknownSync(
+  officeReservationDetailsSchema
+);
 
 export const checkoutFlows: readonly CheckoutFlow[] = [
   {
@@ -141,6 +167,28 @@ export const makeMeetingRoomCheckoutData = (
 ): CheckoutData => {
   const contact = makeCheckoutContact(flowId);
   return makeMeetingRoomCheckoutDataWithContact(checkoutBaseUrl, slot, contact);
+};
+
+export const makeOfficeCheckoutData = (
+  checkoutBaseUrl: string,
+  slot: OfficeCheckoutSlot,
+  flowId = "office-paid-multi-day"
+): CheckoutData => {
+  const contact = makeCheckoutContact(flowId);
+  const locale: CheckoutData["locale"] = "en-US";
+
+  return {
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/office`,
+    date: slot.startsOn,
+    email: contact.email,
+    expectedReservationDetails: { kind: "office" },
+    locale,
+    message: contact.message,
+    name: contact.name,
+    office: slot,
+    orderIdHint: "",
+    phone: contact.phone,
+  };
 };
 
 export const reuseMeetingRoomCheckoutContact = (
@@ -506,6 +554,155 @@ export const selectAvailableMeetingRoomSlots = (
         return slots as readonly MeetingRoomCheckoutSlot[];
       }
     );
+  });
+
+export const selectAvailableOfficeSlot = (
+  config: WorkspaceE2EConfig,
+  allocation: WorkspaceE2EDateAllocation = workspaceE2EFullDateAllocation
+): Effect.Effect<
+  OfficeCheckoutSlot,
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
+  Effect.gen(function* () {
+    const allocationLastCandidateDate = getWorkspaceE2ECandidateDate(
+      allocation.toOffsetDays
+    );
+    const bookingHorizon = getOfficeReservationMaximumEndsOn(
+      getCurrentWorkspaceDate()
+    ).toString();
+    const lastCandidateDate =
+      allocationLastCandidateDate < bookingHorizon
+        ? allocationLastCandidateDate
+        : bookingHorizon;
+
+    for (
+      let offset = allocation.fromOffsetDays;
+      offset <= allocation.toOffsetDays;
+      offset += 1
+    ) {
+      const startsOn = getWorkspaceE2ECandidateDate(offset);
+      const officeBlockIndex =
+        (offset - allocation.fromOffsetDays) /
+        workspaceE2EOfficeReservationDayCount;
+      if (
+        !Number.isInteger(officeBlockIndex) ||
+        officeBlockIndex % allocation.shardCount !== allocation.shardIndex
+      ) {
+        continue;
+      }
+
+      const slot = yield* makeOfficeCheckoutSlot(startsOn);
+      if (slot.endsOn > lastCandidateDate) continue;
+
+      const availability = yield* loadOfficeAvailability(config, slot);
+      if (
+        availability.officeUnavailable ||
+        availability.unavailableDates.length > 0
+      ) {
+        continue;
+      }
+
+      log(
+        `Selected available office range ${slot.startsOn} through ${slot.endsOn}`
+      );
+      return slot;
+    }
+
+    return yield* workspaceE2EError(
+      `No available reservation:office ${workspaceE2EOfficeReservationDayCount}-day range with ${workspaceE2EOfficeReservationSeats} seats found in ${formatWorkspaceE2EAllocation(allocation)} for supported concurrency ${workspaceE2EConcurrentRunTarget}`,
+      { operation: "select available office checkout range" }
+    );
+  });
+
+const makeOfficeCheckoutSlot = (
+  startsOn: string
+): Effect.Effect<OfficeCheckoutSlot, WorkspaceE2EError> =>
+  tryWorkspaceE2ESync("create office checkout interval", () => {
+    const endsOn = Temporal.PlainDate.from(startsOn)
+      .add({ days: workspaceE2EOfficeReservationDayCount - 1 })
+      .toString();
+    const details = decodeOfficeReservationDetails({
+      kind: "office",
+      startsOn,
+      endsOn,
+      seats: workspaceE2EOfficeReservationSeats,
+    });
+    const interval = getOfficeReservationIntervalInput(details);
+
+    return {
+      startsOn,
+      endsOn,
+      seats: workspaceE2EOfficeReservationSeats,
+      startsAt: interval.startsAt,
+      endsAt: interval.endsAt,
+    };
+  });
+
+export const loadOfficeAvailability = (
+  config: WorkspaceE2EConfig,
+  slot: OfficeCheckoutSlot
+): Effect.Effect<
+  OfficeAvailability,
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
+  Effect.gen(function* () {
+    const params = new URLSearchParams({
+      kind: "office",
+      from: slot.startsOn,
+      to: slot.endsOn,
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+      seats: String(slot.seats),
+    });
+    const httpClient = yield* HttpClient.HttpClient;
+    const request = HttpClientRequest.get(
+      `${config.baseUrl}/api/workspace/availability?${params}`
+    ).pipe(
+      HttpClientRequest.setHeaders(
+        config.bypassSecret
+          ? { "x-vercel-protection-bypass": config.bypassSecret }
+          : {}
+      )
+    );
+    const response = yield* httpClient.execute(request).pipe(
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError("fetch office availability", cause)
+      ),
+      Effect.filterOrFail(
+        ({ status }) => status >= 200 && status < 300,
+        ({ status }) =>
+          workspaceE2EError(`office availability check failed with ${status}`, {
+            operation: "fetch office availability",
+          })
+      )
+    );
+    const availability = (yield* response.json.pipe(
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError("read office availability response", cause)
+      )
+    )) as {
+      readonly officeUnavailable?: unknown;
+      readonly unavailableDates?: unknown;
+    };
+
+    return yield* tryWorkspaceE2ESync("parse office availability", () => {
+      assert(
+        typeof availability.officeUnavailable === "boolean",
+        "availability response missing officeUnavailable"
+      );
+      assert(
+        Array.isArray(availability.unavailableDates),
+        "availability response missing unavailableDates"
+      );
+      return {
+        officeUnavailable: availability.officeUnavailable,
+        unavailableDates: availability.unavailableDates.filter(
+          (date): date is string => typeof date === "string"
+        ),
+      };
+    });
   });
 
 const makeMeetingRoomCheckoutSlot = (

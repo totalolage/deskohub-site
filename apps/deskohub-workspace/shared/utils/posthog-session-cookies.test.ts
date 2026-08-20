@@ -25,4 +25,13 @@ describe("PostHog session cookies", () => {
       `${POSTHOG_SESSION_ID_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax`,
     ]);
   });
+
+  test("rejects empty identifiers from the PostHog browser SDK", () => {
+    expect(() =>
+      createPostHogSessionCookieStrings({
+        distinctId: "",
+        sessionId: "session-id",
+      })
+    ).toThrow();
+  });
 });

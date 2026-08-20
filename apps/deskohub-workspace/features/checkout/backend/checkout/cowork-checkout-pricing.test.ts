@@ -3,10 +3,10 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import type { DiscountCommitment } from "@/features/discounts";
+import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
-  canonicalDiscountCodeSchema,
+  canonicalPromotionCodeSchema,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
   discountQuoteCodec,
@@ -27,9 +27,14 @@ const advertisedDiscountId =
 const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
   "customer-id"
 );
-const submittedCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+const submittedCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
   "SAVE20"
 );
+const emptyCommitment = () =>
+  makeDiscountCommitment({
+    product: { kind: "cowork", tier: "basic" },
+    applications: [],
+  });
 
 const advertisementQuote = discountAdvertisementQuoteCodec.make({
   product: { kind: "cowork", tier: "basic" },
@@ -104,6 +109,64 @@ describe("cowork checkout pricing", () => {
     expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
   });
 
+  test("previews a submitted query code in the advertised quote", async () => {
+    const baseQuote = discountAdvertisementQuoteCodec.make({
+      product: { kind: "cowork", tier: "basic" },
+      discountableSubtotal: money(35_000),
+      discounts: [],
+      totalDiscount: money(0),
+      discountedSubtotal: money(35_000),
+    });
+    const codeDiscountId = Schema.decodeUnknownSync(discountIdSchema)("code");
+    const application = {
+      discount: {
+        id: codeDiscountId,
+        label: "Campaign code",
+        adjustment: { kind: "percentage" as const, basisPoints: 2000 },
+      },
+      subtotalBefore: money(35_000),
+      amount: money(7000),
+      subtotalAfter: money(28_000),
+    };
+    const previewDiscountCode = mock(() =>
+      Effect.succeed({
+        application,
+        quote: discountQuoteCodec.make({
+          ...baseQuote,
+          discounts: [application],
+          totalDiscount: money(7000),
+          discountedSubtotal: money(28_000),
+        }),
+      })
+    );
+
+    const result = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* coworkCheckoutPricing;
+        return yield* pricing.quoteAdvertisement({
+          reservation: advertisedReservation,
+          locale: "en-US",
+          submittedCode,
+        });
+      }),
+      DiscountServiceMock({
+        discoverAdvertisedDiscounts: () => Effect.succeed(baseQuote),
+        previewDiscountCode,
+      })
+    );
+
+    expect(previewDiscountCode).toHaveBeenCalledWith({
+      baseQuote,
+      locale: "en-US",
+      submittedCode,
+    });
+    expect(result).toMatchObject({
+      submittedCode,
+      submittedCodeDiscountId: codeDiscountId,
+      quote: { payment: { expectedPrice: money(33_000) } },
+    });
+  });
+
   test("freshly affirms exactly the discounts in the advertisement", async () => {
     const affirmAdvertisement = mock(() =>
       Effect.succeed(affirmedAdvertisement)
@@ -164,7 +227,7 @@ describe("cowork checkout pricing", () => {
   });
 
   test("affirms displayed discounts for payment and preserves the commitment", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
@@ -201,7 +264,7 @@ describe("cowork checkout pricing", () => {
   });
 
   test("affirms the displayed price before appending a submitted code", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
@@ -275,7 +338,7 @@ describe("cowork checkout pricing", () => {
   });
 
   test("returns pricing_changed before resolving a submitted code", async () => {
-    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const commitment = emptyCommitment();
     const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({
         quote: discountQuoteCodec.make({

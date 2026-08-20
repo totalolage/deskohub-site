@@ -19,7 +19,7 @@ export class GithubRunStatusService extends Context.Service<
   GithubRunStatusService,
   IGithubRunStatusService
 >()("WorkspaceE2E/GithubRunStatusService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* AllocationRuntimeConfig;

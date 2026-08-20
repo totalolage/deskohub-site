@@ -1,7 +1,9 @@
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
-import { PostHogFeatureFlagConfig } from "./config";
-import { PostHogFeatureFlagService } from "./definitions";
+import type { PostHogProjectId } from "../identifiers";
+import {
+  loadPostHogFeatureFlagDefinitions,
+  PostHogFeatureFlagService,
+} from "./definitions";
 import type { PostHogFeatureFlagError } from "./errors";
 import {
   PostHogFeatureFlagContractFile,
@@ -14,7 +16,7 @@ export interface GeneratePostHogFeatureFlagContractOptions {
   readonly apiKey: string;
   readonly host: URL;
   readonly outputFile: string | URL;
-  readonly projectId: string;
+  readonly projectId: PostHogProjectId;
 }
 
 export const generatePostHogFeatureFlagContract = Effect.fn(
@@ -23,20 +25,12 @@ export const generatePostHogFeatureFlagContract = Effect.fn(
   (
     options: GeneratePostHogFeatureFlagContractOptions
   ): Effect.Effect<PostHogFeatureFlagSyncResult, PostHogFeatureFlagError> => {
-    const featureFlagServiceLive = PostHogFeatureFlagService.Live.pipe(
-      Layer.provide(
-        PostHogFeatureFlagConfig.from({
-          apiKey: options.apiKey,
-          host: options.host,
-          projectId: options.projectId,
-        })
-      ),
-      Layer.provide(FetchHttpClient.layer)
-    );
-    const featureFlagSyncLive = PostHogFeatureFlagSync.Live.pipe(
+    const featureFlagSyncLive = PostHogFeatureFlagSync.Default.pipe(
       Layer.provide(
         Layer.merge(
-          featureFlagServiceLive,
+          Layer.succeed(PostHogFeatureFlagService, {
+            listDefinitions: loadPostHogFeatureFlagDefinitions(options),
+          }),
           PostHogFeatureFlagContractFile.from(options.outputFile)
         )
       )

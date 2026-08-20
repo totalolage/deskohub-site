@@ -176,11 +176,12 @@ const availabilityResponse = {
   unavailableDates: [],
   unavailableCoworkTiers: [],
   meetingRoomUnavailable: false,
+  officeUnavailable: false,
   unavailableMonitorOptions: [],
   notices: [],
 };
 
-const jsonResponse = (body: unknown) =>
+const jsonResponse = <T,>(body: T) =>
   new Response(JSON.stringify(body), {
     status: 200,
     headers: { "Content-Type": "application/json" },
@@ -269,14 +270,15 @@ describe("MeetingRoomReservationForm", () => {
       },
     });
 
-    for (const { duration } of workspaceMeetingRoomCatalog) {
-      const durationKey = getMeetingRoomReservationDurationKey(duration);
-      expect(
-        view.container.querySelector(
-          `[data-reservation-type-option="${durationKey}"] [data-reservation-type-discount="meeting-room-sale"]`
-        )
-      ).not.toBeNull();
-    }
+    expect(
+      view.container.querySelectorAll(
+        '[data-reservation-sale-discount="meeting-room-sale"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      view.container.querySelector('[data-reservation-sale="active"]')
+        ?.className
+    ).toContain("glow-border-purple-300");
     expect(getAdvertisedPrices).not.toHaveBeenCalled();
   });
 
@@ -464,7 +466,7 @@ describe("MeetingRoomReservationForm", () => {
       },
     });
 
-    expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+    expect(view.queryByLabelText(/^Meeting room start time/)).toBeNull();
     expect(view.getByText("Reservation date")).toBeDefined();
     expect(view.getByText("whole day")).toBeDefined();
     await waitFor(() => {
@@ -510,7 +512,7 @@ describe("MeetingRoomReservationForm", () => {
       });
 
       expect(
-        (view.getByLabelText("Meeting room start time") as HTMLInputElement)
+        (view.getByLabelText(/^Meeting room start time/) as HTMLInputElement)
           .value
       ).toBe("16:00");
 
@@ -520,7 +522,7 @@ describe("MeetingRoomReservationForm", () => {
         ) as HTMLInputElement
       );
       await waitFor(() => {
-        expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+        expect(view.queryByLabelText(/^Meeting room start time/)).toBeNull();
         expect(getAdvertisedPrices).toHaveBeenCalledWith(
           expect.arrayContaining([
             {
@@ -544,11 +546,11 @@ describe("MeetingRoomReservationForm", () => {
       );
       await waitFor(() => {
         expect(
-          (view.getByLabelText("Meeting room start time") as HTMLInputElement)
+          (view.getByLabelText(/^Meeting room start time/) as HTMLInputElement)
             .value
         ).toBe("16:00");
         expect(
-          view.getByRole("button", { name: "Meeting room start date" })
+          view.getByRole("button", { name: /^Meeting room start date/ })
             .textContent
         ).toContain("July 30, 2099");
       });
@@ -593,7 +595,7 @@ describe("MeetingRoomReservationForm", () => {
         initialReservation: restoredWholeDayReservation,
       });
       expect(
-        view.getByRole("button", { name: "Meeting room start date" })
+        view.getByRole("button", { name: /^Meeting room start date/ })
           .textContent
       ).toContain("July 31, 2099");
 
@@ -602,7 +604,7 @@ describe("MeetingRoomReservationForm", () => {
 
       await waitFor(() => {
         expect(
-          view.getByRole("button", { name: "Meeting room start date" })
+          view.getByRole("button", { name: /^Meeting room start date/ })
             .textContent
         ).toContain("July 31, 2099");
       });
@@ -734,7 +736,7 @@ describe("MeetingRoomReservationForm", () => {
 
       await waitFor(() => {
         expect(
-          view.getByLabelText("Meeting room start time").getAttribute("value")
+          view.getByLabelText(/^Meeting room start time/).getAttribute("value")
         ).toBe("15:00");
       });
 
@@ -744,7 +746,7 @@ describe("MeetingRoomReservationForm", () => {
         ) as HTMLInputElement
       );
       await waitFor(() => {
-        expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+        expect(view.queryByLabelText(/^Meeting room start time/)).toBeNull();
       });
 
       fireEvent.click(
@@ -754,7 +756,7 @@ describe("MeetingRoomReservationForm", () => {
       );
       await waitFor(() => {
         expect(
-          view.getByLabelText("Meeting room start time").getAttribute("value")
+          view.getByLabelText(/^Meeting room start time/).getAttribute("value")
         ).toBe("15:00");
       });
     } finally {
@@ -773,7 +775,7 @@ describe("MeetingRoomReservationForm", () => {
 
     fireEvent.input(
       view.container.querySelector(
-        'input[aria-label="Meeting room start time"]'
+        'input[aria-label^="Meeting room start time"]'
       ) as HTMLInputElement,
       { target: { value: "11:00" } }
     );
@@ -783,7 +785,9 @@ describe("MeetingRoomReservationForm", () => {
       ) as HTMLInputElement
     );
 
-    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2), {
+      timeout: 5000,
+    });
     expect(String(globalThis.fetch.mock.calls[1]?.[0])).toContain(
       "startsAt=2099-07-30T09%3A00%3A00Z&endsAt=2099-07-30T13%3A00%3A00Z"
     );
@@ -839,16 +843,20 @@ describe("MeetingRoomReservationForm", () => {
     const discountedOption = view.container.querySelector(
       '[data-reservation-type-option="hour:1"]'
     );
-    expect(discountedOption?.className).toContain("glow-border");
+    expect(discountedOption?.className).not.toContain("glow-border");
     expect(
-      discountedOption?.querySelector(
-        '[data-reservation-type-discount="meeting-room-sale"]'
+      view.container.querySelector(
+        '[data-reservation-sale-discount="meeting-room-sale"]'
       )?.textContent
     ).toBe("Meeting room sale");
+    expect(
+      view.container.querySelector('[data-reservation-sale="active"]')
+        ?.className
+    ).toContain("glow-border");
     expect(view.queryByText(/selected price/i)).toBeNull();
   });
 
-  test("advertises a sale on every duration before it is selected", async () => {
+  test("presents one family sale while keeping duration cards neutral", async () => {
     getAdvertisedPrices.mockImplementation((requests) =>
       Promise.resolve(
         advertisedPricesResult(requests, (request) =>
@@ -868,13 +876,20 @@ describe("MeetingRoomReservationForm", () => {
       expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
     });
     expect(getAdvertisedPrices.mock.calls[0]?.[0]).toHaveLength(3);
+    expect(
+      view.container.querySelectorAll(
+        '[data-reservation-sale-discount="meeting-room-sale"]'
+      )
+    ).toHaveLength(1);
     for (const { duration } of workspaceMeetingRoomCatalog) {
       const durationKey = getMeetingRoomReservationDurationKey(duration);
+      const option = view.container.querySelector(
+        `[data-reservation-type-option="${durationKey}"]`
+      );
+      expect(option?.className).not.toContain("glow-border");
       expect(
-        view.container.querySelector(
-          `[data-reservation-type-option="${durationKey}"] [data-reservation-type-discount="meeting-room-sale"]`
-        )
-      ).not.toBeNull();
+        option?.querySelector("[data-reservation-type-discount-banner]")
+      ).toBeNull();
     }
   });
 

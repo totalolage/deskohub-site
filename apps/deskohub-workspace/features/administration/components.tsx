@@ -1,47 +1,72 @@
-import { AlertCircle, ArrowRight, CheckCircle2 } from "lucide-react";
-import Link from "next/link";
+import type {
+  DotyposCustomerId,
+  DotyposReservationId,
+} from "@deskohub/dotypos";
+import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
-import { Badge } from "@/shared/components/ui/badge";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
 import { cn } from "@/shared/utils";
+import { AdministrationLink as Link } from "./admin-link";
 import type {
   AdministrationBookingSummary,
   AdministrationPaymentAttempt,
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
-import { EmptyState } from "./empty-state";
 import {
   formatAdministrationDateTime,
   formatAdministrationMoney,
   formatAdministrationReservationDate,
 } from "./formatters";
+import { NexiOrderLink } from "./nexi-order-link";
 
+export { BookingStatusBadge, BookingTable } from "./booking-table";
+export { AdministrationCustomerTable } from "./customer-table";
+export {
+  AdministrationDataTable,
+  type AdministrationDataTableColumn,
+} from "./data-table";
+export {
+  AdministrationDetailSection,
+  AdministrationFact,
+} from "./detail-components";
 export { EmptyState } from "./empty-state";
+export {
+  AdministrationFilterField,
+  AdministrationFilterForm,
+  AdministrationFilterInput,
+  AdministrationFilterSelect,
+} from "./filter-controls";
 export {
   formatAdministrationDateTime,
   formatAdministrationMoney,
   formatAdministrationPlainDate,
   formatAdministrationReservationDate,
 } from "./formatters";
+export { NexiOrderLink } from "./nexi-order-link";
+export {
+  AdministrationAlert,
+  type AdministrationNotice,
+  AdministrationNoticeBanner,
+} from "./notice";
 export {
   ReservationStatusBadge,
   ReservationTable,
 } from "./reservation-table";
-export { AdministrationTableToolbar } from "./table-toolbar";
-
-export type AdministrationNotice = {
-  readonly message: string;
-  readonly status: "error" | "success";
-};
+export { AdministrationSortHead } from "./sort-head";
+export {
+  AdministrationStatusBadge,
+  type AdministrationStatusTone,
+} from "./status-badge";
+export {
+  AdministrationResponsiveTable,
+  AdministrationTableFrame,
+} from "./table-frame";
+export {
+  AdministrationTableCount,
+  AdministrationTableToolbar,
+} from "./table-toolbar";
 
 export const getBookingTableLabel = (
   booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null
@@ -60,6 +85,8 @@ export function AdministrationPage({
 }) {
   return (
     <main
+      id="main-content"
+      tabIndex={-1}
       className={cn(
         "mx-auto w-full max-w-[92rem] px-4 py-7 sm:px-6 lg:px-8 lg:py-9",
         className
@@ -72,13 +99,11 @@ export function AdministrationPage({
 
 export function AdministrationPageHeader({
   actions,
-  count,
   description,
   eyebrow,
   title,
 }: {
   readonly actions?: ReactNode;
-  readonly count?: number;
   readonly description?: string;
   readonly eyebrow?: string;
   readonly title: string;
@@ -91,12 +116,9 @@ export function AdministrationPageHeader({
             {eyebrow}
           </p>
         )}
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl leading-tight tracking-[-0.025em] sm:text-4xl">
-            {title}
-          </h1>
-          {count !== undefined && <Badge variant="subtle">{count}</Badge>}
-        </div>
+        <h1 className="text-3xl leading-tight tracking-[-0.025em] sm:text-4xl">
+          {title}
+        </h1>
         {description && (
           <p className="mt-2 max-w-2xl text-sm leading-6 text-navy-blue/62">
             {description}
@@ -104,32 +126,6 @@ export function AdministrationPageHeader({
         )}
       </div>
       {actions}
-    </div>
-  );
-}
-
-export function AdministrationNoticeBanner({
-  notice,
-}: {
-  readonly notice?: AdministrationNotice;
-}) {
-  if (!notice) return null;
-  return (
-    <div
-      className={cn(
-        "mb-5 flex items-start gap-3 rounded-xl px-4 py-3",
-        notice.status === "success"
-          ? "bg-aquamarine-green/15 text-aquamarine-ink"
-          : "bg-burned-orange/10 text-burned-orange-ink"
-      )}
-      role={notice.status === "error" ? "alert" : "status"}
-    >
-      {notice.status === "success" ? (
-        <CheckCircle2 aria-hidden className="mt-0.5 size-5 shrink-0" />
-      ) : (
-        <AlertCircle aria-hidden className="mt-0.5 size-5 shrink-0" />
-      )}
-      <p className="text-sm font-semibold leading-6">{notice.message}</p>
     </div>
   );
 }
@@ -153,19 +149,15 @@ export function PaymentAttemptList({
             </p>
             {attempt.providerOrderId && (
               <div className="mt-2 text-sm font-semibold text-burned-orange-ink">
-                <a
-                  aria-label={`Nexi order ${attempt.providerOrderId} (opens in XPay)`}
-                  className="inline-flex flex-wrap items-baseline gap-1.5 underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
-                  href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
-                  rel="noreferrer"
-                  target="_blank"
+                <NexiOrderLink
+                  className="flex-wrap"
+                  orderId={attempt.providerOrderId}
                 >
                   <span>Nexi order</span>
                   <span className="break-all font-mono text-xs">
                     {attempt.providerOrderId}
                   </span>
-                  <span aria-hidden>↗</span>
-                </a>
+                </NexiOrderLink>
               </div>
             )}
           </div>
@@ -175,147 +167,16 @@ export function PaymentAttemptList({
             </p>
             <p className="mt-1 text-sm text-navy-blue/65">
               {attempt.stateLabel}
+              {attempt.refundState === "required" && (
+                <span className="block font-semibold text-burned-orange-ink">
+                  Needs refund
+                </span>
+              )}
             </p>
           </div>
         </li>
       ))}
     </ul>
-  );
-}
-
-export function BookingStatusBadge({
-  booking,
-}: {
-  readonly booking: Pick<
-    AdministrationBookingSummary,
-    "status" | "statusLabel"
-  >;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-        booking.status === "CONFIRMED" &&
-          "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
-        booking.status === "NEW" &&
-          "border-sunset-yellow/35 bg-sunset-yellow/15 text-navy-blue",
-        booking.status === "CANCELLED" &&
-          "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/60"
-      )}
-    >
-      {booking.statusLabel}
-    </span>
-  );
-}
-
-export function BookingTable({
-  bookings,
-  emptyMessage = "No bookings match this date.",
-}: {
-  readonly bookings: readonly AdministrationBookingSummary[];
-  readonly emptyMessage?: string;
-}) {
-  if (bookings.length === 0) return <EmptyState message={emptyMessage} />;
-  return (
-    <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-      <div className="hidden overflow-x-auto md:block">
-        <Table aria-label="Bookings" className="min-w-[820px]">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Booking</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Table</TableHead>
-              <TableHead>Reservation</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {bookings.map((booking) => (
-              <TableRow className="relative" key={booking.id}>
-                <TableCell>
-                  <Link
-                    className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-                    href={`/admin/bookings/${booking.id}`}
-                  >
-                    {formatAdministrationDateTime(booking.startsAt)}
-                  </Link>
-                  <p className="mt-1 text-xs text-navy-blue/65">
-                    {booking.seats} {booking.seats === "1" ? "guest" : "guests"}
-                  </p>
-                </TableCell>
-                <TableCell>
-                  {booking.customer && booking.customerId ? (
-                    <Link
-                      className="relative z-10 font-medium hover:underline"
-                      href={`/admin/customers/${booking.customerId}`}
-                    >
-                      {booking.customer.displayName}
-                    </Link>
-                  ) : (
-                    <span className="text-sm text-navy-blue/65">
-                      Details unavailable
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <p className="font-medium">
-                    {booking.tableName ?? "Not assigned"}
-                  </p>
-                  {booking.tableLocation && (
-                    <p className="mt-1 text-xs text-navy-blue/65">
-                      {booking.tableLocation}
-                    </p>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {booking.linkedReservation ? (
-                    <Link
-                      className="relative z-10 font-medium hover:underline"
-                      href={`/admin/reservations/${booking.linkedReservation.id}`}
-                    >
-                      {booking.linkedReservation.label}
-                    </Link>
-                  ) : (
-                    <span className="text-sm text-navy-blue/65">
-                      Not linked
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <BookingStatusBadge booking={booking} />
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <ul className="divide-y divide-navy-blue/10 md:hidden">
-        {bookings.map((booking) => (
-          <li key={booking.id}>
-            <Link
-              className="block px-4 py-4 hover:bg-navy-blue/[0.025]"
-              href={`/admin/bookings/${booking.id}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold">
-                    {formatAdministrationDateTime(booking.startsAt)}
-                  </p>
-                  <p className="mt-1 text-sm text-navy-blue/65">
-                    {booking.customer?.displayName ?? "Customer unavailable"}
-                  </p>
-                </div>
-                <BookingStatusBadge booking={booking} />
-              </div>
-              <p className="mt-3 text-xs text-navy-blue/65">
-                {booking.tableName ?? "No table assigned"} · {booking.seats}{" "}
-                {booking.seats === "1" ? "guest" : "guests"}
-              </p>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
@@ -383,14 +244,22 @@ export function RelatedReservationLink({
       className="group flex items-center justify-between gap-3 rounded-lg px-3 py-3 hover:bg-navy-blue/[0.035]"
       href={`/admin/reservations/${reservation.id}`}
     >
-      <span>
+      <span className="min-w-0">
         <span className="block text-sm font-semibold">
           {formatAdministrationReservationDate(reservation) ??
             reservation.typeLabel}
         </span>
+        <span className="mt-2 block text-sm font-medium">
+          {reservation.customer?.displayName ?? "Customer unavailable"}
+        </span>
+        {reservation.customer && (
+          <span className="mt-0.5 block break-all text-xs text-navy-blue/65">
+            {reservation.customer.email ?? "No email address"}
+          </span>
+        )}
         <span
           className={cn(
-            "mt-1 block text-xs",
+            "mt-2 block text-xs",
             reservation.statusNote
               ? "font-medium text-burned-orange-ink"
               : "text-navy-blue/65"
@@ -416,9 +285,9 @@ export function ReservationReferences({
   references,
 }: {
   readonly references: {
-    readonly workspaceReservationId: string;
-    readonly dotyposReservationId: string | null;
-    readonly customerId: string;
+    readonly workspaceReservationId: WorkspaceReservationId;
+    readonly dotyposReservationId: DotyposReservationId | null;
+    readonly customerId: DotyposCustomerId;
   };
 }) {
   return (

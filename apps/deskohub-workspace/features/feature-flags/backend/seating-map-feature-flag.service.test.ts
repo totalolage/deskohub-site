@@ -14,7 +14,7 @@ describe("SeatingMapFeatureFlagService", () => {
       const featureFlag = yield* SeatingMapFeatureFlagService;
       return yield* featureFlag.isEnabled;
     }).pipe(
-      Effect.provide(SeatingMapFeatureFlagService.Live),
+      Effect.provide(SeatingMapFeatureFlagService.Default),
       Effect.provide(
         WorkspaceFeatureFlagServiceMock({
           isEnabled: () =>

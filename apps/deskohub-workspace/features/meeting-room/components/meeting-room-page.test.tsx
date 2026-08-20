@@ -7,7 +7,9 @@ import {
   mock,
   test,
 } from "bun:test";
+import { CloudinaryAssetSchema } from "@deskohub/cloudinary/schema";
 import { cleanup, fireEvent, render } from "@testing-library/react";
+import * as Schema from "effect/Schema";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import {
   registerWorkspaceComponentTestEnv,
@@ -56,17 +58,18 @@ type CloudinaryCustomContext = NonNullable<
 const createCloudinaryAsset = (
   publicId: string,
   custom?: CloudinaryCustomContext
-): CloudinaryAsset => ({
-  created_at: "2026-07-31T00:00:00Z",
-  format: "jpg",
-  height: 1200,
-  public_id: publicId,
-  resource_type: "image",
-  secure_url: `https://example.test/${publicId}.jpg`,
-  url: `http://example.test/${publicId}.jpg`,
-  width: 1600,
-  ...(custom ? { context: { custom } } : {}),
-});
+): CloudinaryAsset =>
+  Schema.decodeUnknownSync(CloudinaryAssetSchema)({
+    created_at: "2026-07-31T00:00:00Z",
+    format: "jpg",
+    height: 1200,
+    public_id: publicId,
+    resource_type: "image",
+    secure_url: `https://example.test/${publicId}.jpg`,
+    url: `http://example.test/${publicId}.jpg`,
+    width: 1600,
+    context: custom ? { custom } : undefined,
+  });
 
 describe("MeetingRoomPage", () => {
   beforeAll(() => {

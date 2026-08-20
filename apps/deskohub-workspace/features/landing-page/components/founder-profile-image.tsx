@@ -1,11 +1,12 @@
 "use client";
 
+import type { CloudinaryPublicId } from "@deskohub/cloudinary/schema";
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { ImageOff } from "lucide-react";
 import { useState } from "react";
 
 type FounderProfileImageProps = {
-  publicId: string;
+  publicId: CloudinaryPublicId;
 };
 
 export function FounderProfileImage({ publicId }: FounderProfileImageProps) {

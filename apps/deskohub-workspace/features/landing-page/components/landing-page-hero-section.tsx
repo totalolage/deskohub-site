@@ -1,5 +1,6 @@
 import Image, { getImageProps } from "next/image";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
@@ -14,17 +15,12 @@ import heroImage from "../images/hero.jpeg";
 import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
 import { LandingPageHexagon } from "./landing-page-hexagon";
 import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
-import {
-  LandingPageSaleBanner,
-  type LandingPageSaleBannerContent,
-} from "./landing-page-sale-banner";
 
 type LandingPageHeroSectionProps = {
-  isPending: boolean;
   locale: Locale;
   meetingRoomPageEnabled: boolean;
   overviewSectionId: string;
-  saleBanner?: LandingPageSaleBannerContent;
+  saleBanner?: ReactNode;
 };
 
 export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
@@ -33,7 +29,6 @@ export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
   };
 
 export function LandingPageHeroSection({
-  isPending,
   locale,
   meetingRoomPageEnabled,
   overviewSectionId,
@@ -59,7 +54,7 @@ export function LandingPageHeroSection({
         {m.landingHeroSubtitle({}, { locale })}
       </p>
 
-      <div className="mt-20 flex w-full flex-col items-center gap-12 sm:mt-9">
+      <div className="mt-20 flex w-full flex-col items-center gap-16 sm:mt-9">
         <div className="flex flex-col items-center justify-center gap-x-8 gap-y-16 sm:flex-row">
           {meetingRoomPageEnabled && (
             <Button
@@ -138,29 +133,24 @@ export function LandingPageHeroSection({
 
   return (
     <LandingPageHeroScrollScene
-      ariaBusy={isPending}
       ariaLabelledBy="landing-page-heading"
-      background={<Background />}
+      background={<Background locale={locale} />}
       bottomSection={orangeMaskSection}
-      className={
-        saleBanner
-          ? "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+10rem)] text-white sm:pt-[calc(var(--site-header-height)+6rem)]"
-          : "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white"
-      }
+      className="group relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white has-[[data-landing-page-sale-banner]]:pt-(--site-header-height)"
       id={overviewSectionId}
-      overlay={saleBanner && <LandingPageSaleBanner content={saleBanner} />}
+      saleBanner={saleBanner}
     >
       {heroContent}
     </LandingPageHeroScrollScene>
   );
 }
 
-function Background() {
+function Background({ locale }: { readonly locale: Locale }) {
   return (
     <div className="absolute inset-0">
       <Image
         src={heroImage}
-        alt="Deskohub workspace interior"
+        alt={m.landingHeroImageAlt({}, { locale })}
         fill
         priority
         className="object-cover object-right"

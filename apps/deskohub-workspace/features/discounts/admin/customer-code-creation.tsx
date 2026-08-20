@@ -1,9 +1,12 @@
 "use client";
 
+import { Schema } from "effect";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
-import type { StoredDiscountId } from "@/features/discounts/persistence-contracts";
+import { AdministrationAlert } from "@/features/administration/notice";
+import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -27,7 +30,7 @@ export function DiscountCodeCreationForm({
   discounts,
 }: {
   readonly completion?: "back" | "customer";
-  readonly customerId?: string;
+  readonly customerId?: DotyposCustomerId;
   readonly customerName?: string;
   readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
 }) {
@@ -86,15 +89,18 @@ export function DiscountCodeCreationForm({
     event.preventDefault();
     setError(null);
     const formData = new FormData(event.currentTarget);
-    const discount: CreateCustomerDiscountCodeAdminInput["discount"] =
-      discountKind === "existing"
-        ? {
-            kind: "existing",
-            discountId: formData
-              .get("discountId")
-              ?.toString() as StoredDiscountId,
-          }
-        : { kind: "new", discount: readDiscountForm(formData) };
+    const discount: CreateCustomerDiscountCodeAdminInput["discount"] = {
+      existing: () => ({
+        kind: "existing" as const,
+        discountId: Schema.decodeUnknownSync(storedDiscountIdSchema)(
+          formData.get("discountId")?.toString()
+        ),
+      }),
+      new: () => ({
+        kind: "new" as const,
+        discount: readDiscountForm(formData),
+      }),
+    }[discountKind]();
     const code = readDiscountCodeConfigurationForm(formData);
     if (customerId) {
       execute({
@@ -104,7 +110,11 @@ export function DiscountCodeCreationForm({
         discount,
       });
     } else {
-      execute({ kind: "create-code", code, discount });
+      execute({
+        kind: "create-code",
+        code,
+        discount,
+      });
     }
   };
 
@@ -163,7 +173,7 @@ export function DiscountCodeCreationForm({
       </fieldset>
 
       <div className="mt-6">
-        {discountKind === "existing" ? (
+        {discountKind === "existing" && (
           <Label className="grid gap-2">
             <span>Discount</span>
             <select
@@ -178,27 +188,27 @@ export function DiscountCodeCreationForm({
               ))}
             </select>
           </Label>
-        ) : (
-          <DiscountDefinitionFields />
         )}
+        {discountKind === "new" && <DiscountDefinitionFields />}
       </div>
 
       <div className="my-7 border-t border-navy-blue/10" />
       <div>
         <h2 className="text-lg">Code details</h2>
         <p className="mb-4 mt-1 text-sm text-navy-blue/65">
-          Set the code, availability window, and optional usage limit.
+          Set the code and its availability window.
         </p>
         <DiscountCodeConfigurationFields />
       </div>
 
       {error && (
-        <p
-          className="mt-5 rounded-xl bg-burned-orange/10 px-4 py-3 text-sm font-semibold text-burned-orange-ink"
+        <AdministrationAlert
+          className="mt-5 font-semibold"
           role="alert"
+          status="error"
         >
           {error}
-        </p>
+        </AdministrationAlert>
       )}
 
       <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-navy-blue/10 pt-5">
@@ -223,7 +233,7 @@ export function CustomerDiscountCodeCreationForm({
   discounts,
 }: {
   readonly completion: "back" | "customer";
-  readonly customerId: string;
+  readonly customerId: DotyposCustomerId;
   readonly customerName: string;
   readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
 }) {

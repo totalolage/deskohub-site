@@ -189,6 +189,7 @@ describe("meetingRoomReservationSchema", () => {
       duration: "hour:4",
       ...customer,
       message: "Workshop",
+      billing: { purpose: "personal", invoice: "none" },
       marketingConsent: false,
     });
     expect(

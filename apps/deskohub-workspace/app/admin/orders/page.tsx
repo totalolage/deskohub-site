@@ -1,39 +1,111 @@
+import { Suspense } from "react";
 import {
+  AdministrationAlert,
+  AdministrationFilterField,
+  AdministrationFilterForm,
+  AdministrationFilterInput,
   AdministrationPage,
-  AdministrationPageHeader,
+  AdministrationTableCount,
+  AdministrationTableToolbar,
 } from "@/features/administration/components";
+import {
+  AdministrationCollectionLoading,
+  AdministrationCountLoading,
+  AdministrationFiltersLoading,
+} from "@/features/administration/loading";
 import type { AdministrationSearchParams } from "@/features/administration/page-data.server";
-import { loadAdministrationOrders } from "@/features/administration/page-data.server";
-import { OrderTable } from "@/features/administration/payment-components";
+import {
+  type loadAdministrationOrders,
+  loadAdministrationOrdersPage,
+} from "@/features/administration/page-data.server";
+import { OrderTable } from "@/features/administration/payment-tables";
 import { Button } from "@/shared/components/ui/button";
 
-export default async function OrdersAdministrationPage({
+export default function OrdersAdministrationPage({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
-  const { range, result } = await loadAdministrationOrders(searchParams);
+  const { range, result } = loadAdministrationOrdersPage(searchParams);
+
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
-        count={result.items.length}
-        description="Nexi orders reconciled with local payment attempts and their Workspace reservations."
-        eyebrow="Payments"
-        title="Orders"
+      <h1 className="sr-only">Orders</h1>
+      <AdministrationTableToolbar
+        count={
+          <Suspense fallback={<AdministrationCountLoading label="order" />}>
+            <OrderCount result={result} />
+          </Suspense>
+        }
+        filters={
+          <Suspense fallback={<AdministrationFiltersLoading fields={2} />}>
+            <OrderFiltersContent range={range} />
+          </Suspense>
+        }
+        itemLabel="order"
       />
-      <form className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-navy-blue/10 bg-white p-4">
-        <DateField defaultValue={range.from} label="From" name="from" />
-        <DateField defaultValue={range.to} label="To" name="to" />
-        <Button
-          className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
-          size="sm"
-          type="submit"
-        >
-          Show orders
-        </Button>
-      </form>
+      <Suspense
+        fallback={
+          <AdministrationCollectionLoading label="orders" columns={6} />
+        }
+      >
+        <OrderResultsContent result={result} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+type OrdersData = Awaited<ReturnType<typeof loadAdministrationOrders>>;
+
+async function OrderCount({
+  result,
+}: {
+  readonly result: Promise<OrdersData["result"]>;
+}) {
+  return (
+    <AdministrationTableCount
+      count={(await result).items.length}
+      itemLabel="order"
+    />
+  );
+}
+
+async function OrderFiltersContent({
+  range,
+}: {
+  readonly range: Promise<OrdersData["range"]>;
+}) {
+  return <OrderFilters range={await range} />;
+}
+
+async function OrderResultsContent({
+  result,
+}: {
+  readonly result: Promise<OrdersData["result"]>;
+}) {
+  return <OrderResults result={await result} />;
+}
+
+function OrderFilters({ range }: { readonly range: OrdersData["range"] }) {
+  return (
+    <AdministrationFilterForm variant="standalone">
+      <DateField defaultValue={range.from} label="From" name="from" />
+      <DateField defaultValue={range.to} label="To" name="to" />
+      <Button className="min-h-10" size="sm" type="submit">
+        Show orders
+      </Button>
+    </AdministrationFilterForm>
+  );
+}
+
+function OrderResults({ result }: { readonly result: OrdersData["result"] }) {
+  return (
+    <>
       {!result.providerAvailable && (
-        <ProviderUnavailable message="Nexi is temporarily unavailable. Local orders are still shown, but provider-only orders and current status may be missing." />
+        <AdministrationAlert className="mb-5" status="warning">
+          Nexi is temporarily unavailable. Local orders are still shown, but
+          provider-only orders and current status may be missing.
+        </AdministrationAlert>
       )}
       {result.truncated && (
         <p className="mb-4 text-sm text-navy-blue/65">
@@ -42,7 +114,7 @@ export default async function OrdersAdministrationPage({
         </p>
       )}
       <OrderTable orders={result.items} />
-    </AdministrationPage>
+    </>
   );
 }
 
@@ -56,22 +128,13 @@ function DateField({
   readonly name: string;
 }) {
   return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      {label}
-      <input
-        className="h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15"
+    <AdministrationFilterField htmlFor={`order-${name}`} label={label}>
+      <AdministrationFilterInput
         defaultValue={defaultValue}
+        id={`order-${name}`}
         name={name}
         type="date"
       />
-    </label>
-  );
-}
-
-function ProviderUnavailable({ message }: { readonly message: string }) {
-  return (
-    <p className="mb-5 rounded-xl border border-sunset-yellow/35 bg-sunset-yellow/10 px-4 py-3 text-sm">
-      {message}
-    </p>
+    </AdministrationFilterField>
   );
 }

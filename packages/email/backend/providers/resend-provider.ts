@@ -1,14 +1,18 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { Resend } from "resend";
-import type { EmailMessage, EmailSendResult } from "../../types/email.types";
-import { NetworkError } from "../network-error";
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailSendResult,
+} from "../../types/email.types";
 import {
   EmailConfigTag,
   type EmailProvider,
   EmailProviderTag,
   EmailServiceError,
   isRetryableEmailError,
-} from "../service";
+} from "../capabilities";
+import { NetworkError } from "../network-error";
 
 const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
 
@@ -175,12 +179,25 @@ const createResendProvider = (apiKey: string): EmailProvider => {
           )
         );
 
-        const sendResult = {
-          id: result.data?.id || `resend-${Date.now()}`,
+        const deliveryId = yield* Schema.decodeUnknownEffect(
+          EmailDeliveryIdSchema
+        )(result.data?.id).pipe(
+          Effect.mapError(
+            (cause) =>
+              new EmailServiceError(
+                "Resend response did not contain a valid email delivery ID",
+                cause,
+                "resend"
+              )
+          )
+        );
+
+        const sendResult: EmailSendResult = {
+          id: deliveryId,
           status: "sent",
           provider: "resend",
           timestamp: new Date(),
-        } satisfies EmailSendResult;
+        };
 
         yield* Effect.annotateLogsScoped({ result: sendResult });
         yield* Effect.logDebug("Resend email send result created", {
@@ -256,6 +273,8 @@ const createResendProvider = (apiKey: string): EmailProvider => {
 };
 
 const getResendIdempotencyKey = (message: EmailMessage) => {
+  if (message.idempotencyKey) return message.idempotencyKey.slice(0, 256);
+
   const workspaceReservationId = message.metadata?.workspaceReservationId;
   const category = message.tags?.[0];
 

@@ -8,8 +8,7 @@ export const unixTimestampSecondsSchema = Schema.Int.check(
 });
 
 export const TemporalInstantSchema = Schema.declare(
-  (input: unknown): input is Temporal.Instant =>
-    input instanceof Temporal.Instant,
+  (input): input is Temporal.Instant => input instanceof Temporal.Instant,
   {
     identifier: "TemporalInstant",
     description: "Temporal instant value.",
@@ -17,8 +16,7 @@ export const TemporalInstantSchema = Schema.declare(
 );
 
 export const TemporalPlainDateSchema = Schema.declare(
-  (input: unknown): input is Temporal.PlainDate =>
-    input instanceof Temporal.PlainDate,
+  (input): input is Temporal.PlainDate => input instanceof Temporal.PlainDate,
   {
     identifier: "TemporalPlainDate",
     description: "Temporal plain date value.",
@@ -26,8 +24,7 @@ export const TemporalPlainDateSchema = Schema.declare(
 );
 
 export const TemporalPlainTimeSchema = Schema.declare(
-  (input: unknown): input is Temporal.PlainTime =>
-    input instanceof Temporal.PlainTime,
+  (input): input is Temporal.PlainTime => input instanceof Temporal.PlainTime,
   {
     identifier: "TemporalPlainTime",
     description: "Temporal plain time value.",
@@ -205,6 +202,27 @@ export const isMidnight = (
   value.microsecond === 0 &&
   value.nanosecond === 0;
 
+export const isWholeHour = (
+  value: Temporal.PlainTime | Temporal.PlainDateTime | Temporal.ZonedDateTime
+) =>
+  value.minute === 0 &&
+  value.second === 0 &&
+  value.millisecond === 0 &&
+  value.microsecond === 0 &&
+  value.nanosecond === 0;
+
+export const floorToWholeHour = (value: Temporal.ZonedDateTime) =>
+  value.with({
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+    microsecond: 0,
+    nanosecond: 0,
+  });
+
+export const ceilToWholeHour = (value: Temporal.ZonedDateTime) =>
+  isWholeHour(value) ? value : floorToWholeHour(value).add({ hours: 1 });
+
 export const makeWholeHourInstantStringSchema = (timeZone: string) =>
   instantStringSchema.check(
     Schema.makeFilter((value) => {
@@ -213,13 +231,7 @@ export const makeWholeHourInstantStringSchema = (timeZone: string) =>
           .toZonedDateTimeISO(timeZone)
           .toPlainTime();
 
-        return (
-          time.minute === 0 &&
-          time.second === 0 &&
-          time.millisecond === 0 &&
-          time.microsecond === 0 &&
-          time.nanosecond === 0
-        );
+        return isWholeHour(time);
       } catch {
         return false;
       }

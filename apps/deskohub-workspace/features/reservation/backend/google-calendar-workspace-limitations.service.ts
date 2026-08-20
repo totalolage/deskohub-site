@@ -1,11 +1,14 @@
 import {
   type GoogleCalendarError,
   type GoogleCalendarEvent,
+  type GoogleCalendarEventId,
   type GoogleCalendarEventQuery,
+  type GoogleCalendarICalUid,
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { isMidnight } from "@/shared/utils/temporal";
 
@@ -15,14 +18,14 @@ const partialMarker = "[workspace:partial]";
 export type WorkspaceCalendarLimitation = Data.TaggedEnum<{
   FullyOccupied: {
     readonly date: string;
-    readonly sourceEventId: string;
+    readonly sourceEventId: GoogleCalendarEventId | GoogleCalendarICalUid;
     readonly summary?: string;
   };
   PartiallyOccupied: {
     readonly date: string;
     readonly startsAt: string;
     readonly endsAt: string;
-    readonly sourceEventId: string;
+    readonly sourceEventId: GoogleCalendarEventId | GoogleCalendarICalUid;
     readonly summary?: string;
   };
 }>;
@@ -45,7 +48,7 @@ export class GoogleCalendarWorkspaceLimitationsService extends Context.Service<
 >()(
   "@deskohub-workspace/reservation/GoogleCalendarWorkspaceLimitationsService"
 ) {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const calendar = yield* GoogleCalendarService;
@@ -92,6 +95,11 @@ export class GoogleCalendarWorkspaceLimitationsService extends Context.Service<
 
       return { listLimitations };
     })
+  );
+
+  static Live = this.Default.pipe(
+    Layer.provide(WorkspaceGoogleCalendarLayer),
+    Layer.provide(CalendarResourceConfig.Default)
   );
 }
 

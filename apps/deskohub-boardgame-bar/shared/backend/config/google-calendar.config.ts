@@ -7,7 +7,7 @@ import { Layer } from "effect";
 import { env } from "@/env";
 import { siteConstants } from "@/shared/utils/constants";
 
-export const GoogleCalendarRuntimeConfigLive = Layer.succeed(
+const boardgameGoogleCalendarConfigLayer = Layer.succeed(
   GoogleCalendarRuntimeConfig,
   {
     serviceAccountEmail: env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL,
@@ -16,6 +16,6 @@ export const GoogleCalendarRuntimeConfigLive = Layer.succeed(
   } satisfies IGoogleCalendarRuntimeConfig
 );
 
-export const GoogleCalendarServiceLive = GoogleCalendarService.Live.pipe(
-  Layer.provide(GoogleCalendarRuntimeConfigLive)
+export const BoardgameGoogleCalendarLayer = GoogleCalendarService.Default.pipe(
+  Layer.provide(boardgameGoogleCalendarConfigLayer)
 );

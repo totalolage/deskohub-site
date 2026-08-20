@@ -1,4 +1,4 @@
-import { DotyposService } from "@deskohub/dotypos";
+import { type DotyposDiscountGroupId, DotyposService } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
@@ -25,7 +25,7 @@ export class CustomerDiscountConfigurationError extends Data.TaggedError(
   "CustomerDiscountConfigurationError"
 )<{
   readonly message: string;
-  readonly discountGroupId: string;
+  readonly discountGroupId: DotyposDiscountGroupId;
   readonly discountPercent: DiscountGroup["discountPercent"];
 }> {}
 
@@ -33,7 +33,7 @@ export class CustomerDiscountProvider extends Context.Service<
   CustomerDiscountProvider,
   ICustomerDiscountProvider
 >()("@deskohub-workspace/discounts/CustomerDiscountProvider") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
@@ -74,7 +74,7 @@ const providerNamespace = "dotypos-customer-discount";
 const toCustomerDiscountCandidate = (input: {
   readonly discountGroup:
     | {
-        readonly discountGroupId: string;
+        readonly discountGroupId: DotyposDiscountGroupId;
         readonly discountPercent: DiscountGroup["discountPercent"];
       }
     | undefined;

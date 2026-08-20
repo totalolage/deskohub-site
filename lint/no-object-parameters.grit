@@ -1,0 +1,20 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      JsFormalParameter() as $object_parameter,
+      JsRestParameter() as $object_parameter
+    } where {
+      $object_parameter <: r"(?s)^.*:\s*object(?:\s*=.*)?$",
+      register_diagnostic(
+        span = $object_parameter,
+        message = "[anti-slop/no-object-parameters] Use the expected owner type instead of the broad object type.",
+        severity = "error"
+      )
+    }
+  }
+}

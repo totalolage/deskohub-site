@@ -11,7 +11,7 @@ import {
   isCoworkAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
-import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   isWorkspaceProductMonitorOption,
   type WorkspaceCoworkProductTier,
@@ -22,15 +22,17 @@ import {
 import {
   getWorkspaceProductMessage,
   getWorkspaceProductTierTitle,
+  type WorkspaceProductTierCardMessages,
   workspaceProductMonitorMessages,
   workspaceProductTierCardMessages,
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
-import { ReservationDatePicker } from "@/features/reservation/components/reservation-date-picker";
+import { ReservationFormDatePicker } from "@/features/reservation/components/reservation-date-picker";
 import {
   ReservationCustomerFieldsFallback,
   ReservationSkeletonBlock,
@@ -82,8 +84,9 @@ type CoworkReservationFormProps = {
   initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   initialValues?: CoworkReservationInput;
   locale: Locale;
-  checkoutSessionId?: string;
+  checkoutSessionId?: CheckoutSessionId;
   replacementToken?: string;
+  submittedCode?: CanonicalPromotionCode;
 };
 
 type CoworkReservationFormFallbackProps = Pick<
@@ -154,6 +157,7 @@ export function CoworkReservationForm({
   locale,
   checkoutSessionId,
   replacementToken,
+  submittedCode,
 }: CoworkReservationFormProps) {
   const searchParams = useSearchParams();
   const defaultValues = useMemo(
@@ -215,10 +219,11 @@ export function CoworkReservationForm({
       coffee: Boolean(selectedCoffee),
       date: selectedDate,
       locale,
+      submittedCode,
     });
-  }, [locale, selectedCoffee, selectedDate]);
+  }, [locale, selectedCoffee, selectedDate, submittedCode]);
   const advertisedPriceQueryResults = useAdvertisedPrices(
-    advertisedPriceRequests.map(({ request }) => request),
+    advertisedPriceRequests,
     initialAdvertisedPrices
   );
   const coffeeAdvertisedPriceRequest = useMemo(
@@ -227,10 +232,11 @@ export function CoworkReservationForm({
         ? getCoworkCoffeeAdvertisedPriceRequest({
             date: selectedDate,
             locale,
+            submittedCode,
             tier: selectedTier,
           })
         : undefined,
-    [locale, selectedDate, selectedTier]
+    [locale, selectedDate, selectedTier, submittedCode]
   );
   const [coffeeAdvertisedPriceQueryResult] = useAdvertisedPrices(
     coffeeAdvertisedPriceRequest ? [coffeeAdvertisedPriceRequest] : [],
@@ -260,12 +266,15 @@ export function CoworkReservationForm({
       queryResult.data &&
       isCoworkAdvertisedPrice(queryResult.data)
     ) {
-      advertisedPricesByTier.set(request.tier, queryResult.data);
+      advertisedPricesByTier.set(
+        request.reservation.details.entryTier,
+        queryResult.data
+      );
     }
   }
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    ({ tier }) => tier === selectedTier
+    ({ reservation }) => reservation.details.entryTier === selectedTier
   );
   const advertisedPriceQueryResult =
     advertisedPriceQueryResults[selectedAdvertisedPriceIndex];
@@ -325,6 +334,12 @@ export function CoworkReservationForm({
         isFetching: Boolean(advertisedPriceQueryResult?.isFetching),
         isError: Boolean(advertisedPriceQueryResult?.isError),
         retry: () => void advertisedPriceQueryResult?.refetch(),
+        sale: advertisedPrice
+          ? {
+              discounts: advertisedPrice.quote.payment.discounts,
+              productLabel: getWorkspaceProductTierTitle(selectedTier, locale),
+            }
+          : undefined,
       }}
       afterCustomerFields={
         shouldShowMonitors && (
@@ -358,6 +373,7 @@ export function CoworkReservationForm({
             </ReservationFormLabel>
             <FormControl>
               <ReservationTypeInput
+                aria-required="true"
                 idPrefix="reservation-entry-tier"
                 inputRef={field.ref}
                 name={field.name}
@@ -382,14 +398,6 @@ export function CoworkReservationForm({
                         item.product.kind === "cowork" &&
                         item.product.tier === option.value
                     );
-                  const advertisedDiscounts =
-                    advertisedProductItem &&
-                    "discounts" in advertisedProductItem
-                      ? advertisedProductItem.discounts
-                      : undefined;
-                  const hasAdvertisedDiscounts = Boolean(
-                    advertisedDiscounts?.length
-                  );
                   return (
                     <ReservationTypeOption
                       key={option.value}
@@ -401,38 +409,12 @@ export function CoworkReservationForm({
                         }[option.value]
                       }
                       disabled={isUnavailable}
-                      discount={
-                        hasAdvertisedDiscounts && advertisedDiscounts
-                          ? {
-                              labels: advertisedDiscounts.map(
-                                ({ discount }) => ({
-                                  id: discount.id,
-                                  label: discount.label,
-                                })
-                              ),
-                              details:
-                                advertisedProductItem &&
-                                "originalAmount" in advertisedProductItem &&
-                                advertisedProductItem.originalAmount ? (
-                                  <CheckoutSummaryDiscountDetails
-                                    discounts={advertisedDiscounts}
-                                    locale={locale}
-                                    productLabel={getWorkspaceProductTierTitle(
-                                      option.value,
-                                      locale
-                                    )}
-                                  />
-                                ) : undefined,
-                            }
-                          : undefined
-                      }
                       price={
                         advertisedProductItem ? (
                           <ReservationAdvertisedPrice
                             amount={advertisedProductItem.amount}
                             locale={locale}
                             originalAmount={
-                              advertisedDiscounts &&
                               "originalAmount" in advertisedProductItem
                                 ? advertisedProductItem.originalAmount
                                 : undefined
@@ -574,7 +556,8 @@ function CoworkTierPerks({
   readonly locale: Locale;
   readonly tier: WorkspaceCoworkProductTier;
 }) {
-  const content = workspaceProductTierCardMessages[tier];
+  const content: WorkspaceProductTierCardMessages =
+    workspaceProductTierCardMessages[tier];
 
   return (
     <div
@@ -637,7 +620,11 @@ function CoworkMonitorField({
             {m.reservationMonitorLabel({}, { locale })}
           </FormLabel>
           <FormControl>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div
+              role="radiogroup"
+              aria-required="true"
+              className="grid gap-3 sm:grid-cols-3"
+            >
               {monitorOptions
                 .filter((option) =>
                   allowedMonitorOptions.includes(option.value)
@@ -713,7 +700,7 @@ function CoworkReservationDateField({
           <ReservationFormLabel required>
             {m.reservationDateLabel({}, { locale })}
           </ReservationFormLabel>
-          <ReservationDatePicker
+          <ReservationFormDatePicker
             ariaLabel={m.reservationDateLabel({}, { locale })}
             displayValue={formatDisplayDate(field.value, locale)}
             isDateDisabled={(date) => unavailableDates.has(date.toString())}

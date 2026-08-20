@@ -1,3 +1,7 @@
+import {
+  PostHogEventId,
+  type PostHogProjectId,
+} from "@deskohub/posthog/identifiers";
 import { Context, Effect, Layer, Schema } from "effect";
 import {
   FetchHttpClient,
@@ -6,6 +10,7 @@ import {
   HttpClientResponse,
 } from "effect/unstable/http";
 import { env } from "@/env";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { AdministrationTimelineItem } from "./administration.service";
 
 const lifecycleEvents = [
@@ -26,7 +31,7 @@ const postHogHistoryResponseSchema = Schema.Struct({
     Schema.Tuple([
       lifecycleEventSchema,
       Schema.String,
-      Schema.String,
+      PostHogEventId,
       Schema.Union([Schema.String, Schema.Null]),
       Schema.Union([Schema.String, Schema.Null]),
     ])
@@ -90,7 +95,7 @@ export type PostHogHistoryConfig = {
   readonly apiKey?: string;
   readonly environment: string;
   readonly host?: string;
-  readonly projectId?: string;
+  readonly projectId?: PostHogProjectId;
   readonly serviceName: string;
 };
 
@@ -98,10 +103,10 @@ export class PostHogHistoryRuntimeConfig extends Context.Service<
   PostHogHistoryRuntimeConfig,
   PostHogHistoryConfig
 >()("@deskohub-workspace/administration/PostHogHistoryRuntimeConfig") {
-  static Live = Layer.succeed(this, {
-    apiKey: env.POSTHOG_HISTORY_API_KEY,
+  static Default = Layer.succeed(this, {
+    apiKey: env.POSTHOG_API_KEY,
     environment: env.VERCEL_ENV,
-    host: env.POSTHOG_HOST,
+    host: env.POSTHOG_API_HOST,
     projectId: env.POSTHOG_PROJECT_ID,
     serviceName: env.POSTHOG_SERVICE_NAME,
   });
@@ -135,18 +140,18 @@ export class PostHogReservationHistory extends Context.Service<
   PostHogReservationHistory,
   {
     readonly load: (
-      workspaceReservationId: string
+      workspaceReservationId: WorkspaceReservationId
     ) => Effect.Effect<ReservationHistoryResult>;
   }
 >()("@deskohub-workspace/administration/PostHogReservationHistory") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* PostHogHistoryRuntimeConfig;
       const httpClient = yield* HttpClient.HttpClient;
 
       const load = Effect.fn("PostHogReservationHistory.load")(
-        (workspaceReservationId: string) => {
+        (workspaceReservationId: WorkspaceReservationId) => {
           if (!config.apiKey || !config.host || !config.projectId) {
             return Effect.succeed({
               kind: "unavailable",
@@ -216,8 +221,8 @@ export class PostHogReservationHistory extends Context.Service<
     })
   );
 
-  static Default = this.Live.pipe(
-    Layer.provide(PostHogHistoryRuntimeConfig.Live),
+  static Live = this.Default.pipe(
+    Layer.provide(PostHogHistoryRuntimeConfig.Default),
     Layer.provide(FetchHttpClient.layer)
   );
 }

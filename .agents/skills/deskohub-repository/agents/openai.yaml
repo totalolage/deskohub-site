@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Repository"
+  short_description: "Develop within the Deskohub monorepo"
+  default_prompt: "Use $deskohub-repository to make this repository-wide development or architecture change."

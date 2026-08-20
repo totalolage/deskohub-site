@@ -1,10 +1,20 @@
-import type { Table } from "@deskohub/dotypos/generated";
+import {
+  type DotyposTable,
+  type DotyposTableId,
+  ValidationError,
+} from "@deskohub/dotypos";
+import { Effect, Match, Schema } from "effect";
 import { workspaceCoworkTiers } from "@/features/checkout/product-catalog";
+import {
+  type WorkspaceReservationKind,
+  workspaceReservationKindSchema,
+} from "@/features/reservation/reservation-kind";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
-import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
+import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
 
 export const workspaceMeetingRoomReservationTableTag =
   "reservation:meeting-room";
+export const workspaceOfficeReservationTableTag = "reservation:office";
 
 const fallbackRoomKey = "__workspace-table-selection:fallback-room__";
 
@@ -13,7 +23,19 @@ const tableNameCollator = new Intl.Collator("en", {
   sensitivity: "base",
 });
 
-const compareWorkspaceTables = (left: Table, right: Table) => {
+const workspaceTableSeatCapacitySchema = Schema.NumberFromString.pipe(
+  Schema.check(Schema.isInt(), Schema.isGreaterThan(0))
+).annotate({
+  identifier: "WorkspaceTableSeatCapacity",
+  description: "Positive integer seat capacity configured on a Dotypos table.",
+});
+
+interface WorkspaceTableCandidate {
+  readonly table: DotyposTable;
+  readonly seatCapacity: number;
+}
+
+const compareWorkspaceTables = (left: DotyposTable, right: DotyposTable) => {
   const nameComparison = tableNameCollator.compare(left.name, right.name);
 
   if (nameComparison !== 0) return nameComparison;
@@ -22,45 +44,87 @@ const compareWorkspaceTables = (left: Table, right: Table) => {
 };
 
 export const getWorkspaceTableCandidates = (
-  tables: readonly Table[],
+  tables: readonly DotyposTable[],
   requiredTags: readonly string[]
 ) => tables.filter((table) => isAssignableWorkspaceTable(table, requiredTags));
 
+export const getWorkspaceTableSeatCapacity = Effect.fn(
+  "WorkspaceTable.getSeatCapacity"
+)((table: DotyposTable) =>
+  Schema.decodeUnknownEffect(workspaceTableSeatCapacitySchema)(
+    table.seats
+  ).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ValidationError({
+          message: `Dotypos workspace table ${table.id ?? table.name} has an invalid seat capacity.`,
+          cause,
+        })
+    )
+  )
+);
+
 export const hasAvailableWorkspaceTableCandidate = (
-  tables: readonly Table[],
+  tables: readonly DotyposTable[],
   requiredTags: readonly string[],
-  occupancyByTableId: ReadonlyMap<string, number>,
-  guestCount = workspaceBookingGuestCount,
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
+  seats = workspaceBookingSeatCount,
   requireEmpty = false
 ) =>
-  getWorkspaceTableCandidates(tables, requiredTags).some((table) =>
-    hasWorkspaceTableCapacity(
-      table,
-      occupancyByTableId,
-      guestCount,
-      requireEmpty
+  decodeWorkspaceTableCandidates(
+    getWorkspaceTableCandidates(tables, requiredTags)
+  ).pipe(
+    Effect.map((candidates) =>
+      candidates.some((candidate) =>
+        hasWorkspaceTableCapacity(
+          candidate,
+          occupancyByTableId,
+          seats,
+          requireEmpty
+        )
+      )
     )
   );
 
 export const selectWorkspaceTableFromCandidates = (
-  candidates: readonly Table[],
-  allTables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>,
-  guestCount = workspaceBookingGuestCount,
+  candidates: readonly DotyposTable[],
+  allTables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
+  seats = workspaceBookingSeatCount,
   requireEmpty = false
+) =>
+  decodeWorkspaceTableCandidates(candidates).pipe(
+    Effect.map((decodedCandidates) =>
+      selectDecodedWorkspaceTableFromCandidates(
+        decodedCandidates,
+        allTables,
+        occupancyByTableId,
+        seats,
+        requireEmpty
+      )
+    )
+  );
+
+const selectDecodedWorkspaceTableFromCandidates = (
+  candidates: readonly WorkspaceTableCandidate[],
+  allTables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
+  seats: number,
+  requireEmpty: boolean
 ) => {
   const scoringTablesByRoom = getWorkspaceScoringTablesByRoom(allTables);
   const maxDistanceByRoom =
     getWorkspaceTableMaxDistanceByRoom(scoringTablesByRoom);
-  let selectedTable: Table | undefined;
+  let selectedTable: DotyposTable | undefined;
   let selectedScore = Number.NEGATIVE_INFINITY;
 
-  for (const table of candidates) {
+  for (const candidate of candidates) {
+    const { table } = candidate;
     if (
       !hasWorkspaceTableCapacity(
-        table,
+        candidate,
         occupancyByTableId,
-        guestCount,
+        seats,
         requireEmpty
       )
     ) {
@@ -89,8 +153,15 @@ export const selectWorkspaceTableFromCandidates = (
   return selectedTable;
 };
 
+const decodeWorkspaceTableCandidates = (tables: readonly DotyposTable[]) =>
+  Effect.forEach(tables, (table) =>
+    getWorkspaceTableSeatCapacity(table).pipe(
+      Effect.map((seatCapacity) => ({ table, seatCapacity }))
+    )
+  );
+
 const isAssignableWorkspaceTable = (
-  table: Table,
+  table: DotyposTable,
   requiredTags: readonly string[]
 ) => {
   const tableId = getAssignableDotyposTableId(table);
@@ -102,29 +173,28 @@ const isAssignableWorkspaceTable = (
 };
 
 const hasWorkspaceTableCapacity = (
-  table: Table,
-  occupancyByTableId: ReadonlyMap<string, number>,
-  guestCount: number,
+  candidate: WorkspaceTableCandidate,
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
+  seats: number,
   requireEmpty: boolean
 ) => {
+  const { seatCapacity: capacity, table } = candidate;
   const tableId = getAssignableDotyposTableId(table);
   if (!tableId) return false;
-  const capacity = parsePositiveNumber(table.seats);
-  if (!capacity) return false;
   const occupancy = occupancyByTableId.get(tableId) ?? 0;
 
-  if (requireEmpty) return occupancy === 0;
+  if (requireEmpty) return occupancy === 0 && seats <= capacity;
 
   // Workspace bookings are assigned as whole parties to one table. Splitting a
   // party across multiple tables would need separate assignment logic later.
-  return occupancy + guestCount <= capacity;
+  return occupancy + seats <= capacity;
 };
 
 const scoreWorkspaceTableCandidate = (
-  candidate: Table,
-  scoringTables: readonly Table[],
+  candidate: DotyposTable,
+  scoringTables: readonly DotyposTable[],
   maxDistance: number,
-  occupancyByTableId: ReadonlyMap<string, number>
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>
 ) => {
   const candidateTableId = getAssignableDotyposTableId(candidate);
   const candidateOccupancy = candidateTableId
@@ -153,8 +223,8 @@ const scoreWorkspaceTableCandidate = (
   return distanceScore - 2 * candidateOccupancy ** 2;
 };
 
-const getWorkspaceScoringTablesByRoom = (tables: readonly Table[]) => {
-  const scoringTablesByRoom = new Map<string, Table[]>();
+const getWorkspaceScoringTablesByRoom = (tables: readonly DotyposTable[]) => {
+  const scoringTablesByRoom = new Map<string, DotyposTable[]>();
 
   for (const table of tables) {
     if (!isDisplayableWorkspaceTable(table)) continue;
@@ -171,23 +241,36 @@ const getWorkspaceScoringTablesByRoom = (tables: readonly Table[]) => {
   return scoringTablesByRoom;
 };
 
-export const isDisplayableWorkspaceTable = (table: Table) => {
+export const isDisplayableWorkspaceTable = (table: DotyposTable) => {
   const tableId = getAssignableDotyposTableId(table);
   if (!tableId) return false;
   if (table.enabled !== true || table.display !== true) return false;
 
   const tableTags = new Set(table.tags ?? []);
-  return (
-    workspaceCoworkTiers.some((tier) => tableTags.has(`tier:${tier}`)) ||
-    tableTags.has(workspaceMeetingRoomReservationTableTag)
+  return workspaceReservationKindSchema.literals.some((kind) =>
+    hasWorkspaceReservationTableTag(tableTags, kind)
   );
 };
 
-const getWorkspaceTableRoomKey = (table: Table) =>
+const hasWorkspaceReservationTableTag = (
+  tableTags: ReadonlySet<string>,
+  kind: WorkspaceReservationKind
+) =>
+  Match.value({ kind }).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: () =>
+        workspaceCoworkTiers.some((tier) => tableTags.has(`tier:${tier}`)),
+      "meeting-room": () =>
+        tableTags.has(workspaceMeetingRoomReservationTableTag),
+      office: () => tableTags.has(workspaceOfficeReservationTableTag),
+    })
+  );
+
+const getWorkspaceTableRoomKey = (table: DotyposTable) =>
   table.locationName ?? fallbackRoomKey;
 
 const getWorkspaceTableMaxDistanceByRoom = (
-  scoringTablesByRoom: ReadonlyMap<string, readonly Table[]>
+  scoringTablesByRoom: ReadonlyMap<string, readonly DotyposTable[]>
 ) => {
   const maxDistanceByRoom = new Map<string, number>();
 
@@ -198,13 +281,13 @@ const getWorkspaceTableMaxDistanceByRoom = (
   return maxDistanceByRoom;
 };
 
-const getWorkspaceTableDistance = (left: Table, right: Table) =>
+const getWorkspaceTableDistance = (left: DotyposTable, right: DotyposTable) =>
   Math.hypot(
     parseCoordinate(left.positionX) - parseCoordinate(right.positionX),
     parseCoordinate(left.positionY) - parseCoordinate(right.positionY)
   );
 
-const getWorkspaceTableMaxDistance = (tables: readonly Table[]) => {
+const getWorkspaceTableMaxDistance = (tables: readonly DotyposTable[]) => {
   let maxDistance = 0;
 
   for (const left of tables) {
@@ -222,9 +305,4 @@ const getWorkspaceTableMaxDistance = (tables: readonly Table[]) => {
 const parseCoordinate = (value: string | undefined) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const parsePositiveNumber = (value: string | undefined) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };

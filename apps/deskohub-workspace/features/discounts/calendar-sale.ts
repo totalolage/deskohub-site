@@ -1,5 +1,6 @@
 import type { GoogleCalendarEvent } from "@deskohub/google-calendar";
 import { Data, Effect, Option, Schema } from "effect";
+import type { SalesCalendarId } from "@/shared/backend/config/calendar-resource.config";
 import {
   plainDateStringSchema,
   temporalInstantToIsoString,
@@ -65,7 +66,7 @@ export class CalendarSaleConfigurationError extends Data.TaggedError(
 }> {}
 
 export type CalendarSale = {
-  readonly calendarId: string;
+  readonly calendarId: SalesCalendarId;
   readonly eventReference: CalendarEventReference;
   readonly occurrenceReference: CalendarSaleOccurrenceReference;
   readonly occurrenceDate: string;
@@ -76,7 +77,7 @@ export type CalendarSale = {
 
 export const normalizeCalendarSales = Effect.fn("CalendarSale.normalizeAll")(
   (input: {
-    readonly calendarId: string;
+    readonly calendarId: SalesCalendarId;
     readonly events: readonly GoogleCalendarEvent[];
     readonly reservationDate: string;
   }) =>
@@ -109,7 +110,7 @@ export const normalizeCalendarSales = Effect.fn("CalendarSale.normalizeAll")(
 );
 
 const normalizeCalendarSale = (input: {
-  readonly calendarId: string;
+  readonly calendarId: SalesCalendarId;
   readonly event: GoogleCalendarEvent;
   readonly reservationDate: string;
 }): Effect.Effect<
@@ -196,7 +197,7 @@ const decodeCalendarSaleEventMetadata = (input: {
   );
 
 const getCalendarSaleOccurrence = (input: {
-  readonly calendarId: string;
+  readonly calendarId: SalesCalendarId;
   readonly event: GoogleCalendarEvent;
   readonly metadata: {
     readonly eventReference: CalendarEventReference;
@@ -240,7 +241,7 @@ const getCalendarSaleOccurrence = (input: {
 };
 
 const toCalendarSale = (input: {
-  readonly calendarId: string;
+  readonly calendarId: SalesCalendarId;
   readonly discountId: StoredDiscountId;
   readonly metadata: Schema.Schema.Type<typeof calendarSaleEventMetadataSchema>;
   readonly occurrence: {

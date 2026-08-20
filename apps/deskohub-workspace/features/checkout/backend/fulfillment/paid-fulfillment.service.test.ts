@@ -3,14 +3,19 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
+
+mock.module("server-only", () => ({}));
+
+const { WorkspaceCheckoutAccessCodeService } = await import(
+  "@/features/checkout/backend/reservation/access-code.service"
+);
 
 const {
   PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
   WorkspacePaidFulfillmentService,
-  WorkspacePaidFulfillmentServiceLive,
 } = await import("./paid-fulfillment.service");
 const { WorkspaceReservationEmailService } = await import(
   "./workspace-reservation-email.service"
@@ -29,6 +34,7 @@ describe("WorkspacePaidFulfillmentService", () => {
   test("retries stale processing paid orders and completes non-production fulfillment after send acceptance", async () => {
     const order = {
       id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
       paymentState: "paid",
       fulfillmentState: "processing",
       updatedAt: Temporal.Now.instant().subtract({
@@ -61,37 +67,55 @@ describe("WorkspacePaidFulfillmentService", () => {
     const markReservationConfirmed = mock(() =>
       Effect.die("already confirmed reservations do not update confirmation")
     );
-    const sendPaidReservationEmails = mock(() => Effect.void);
+    const deliverySteps: string[] = [];
+    const sendPaidReservationEmails = mock(() =>
+      Effect.sync(() => {
+        deliverySteps.push("email");
+      })
+    );
+    const resolveCustomerAccessCode = mock(() =>
+      Effect.sync(() => {
+        deliverySteps.push("access");
+        return "access-code";
+      })
+    );
     const markFulfilled = mock(() => Effect.void);
+    const processInvoice = mock(() => Effect.void);
 
     await Effect.gen(function* () {
       const service = yield* WorkspacePaidFulfillmentService;
       yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, {
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment,
                 markReservationConfirmed,
                 markFulfilled,
                 markFulfillmentFailed: mock(() => Effect.void),
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(DotyposService, {
+              }),
+              Layer.mock(DotyposService, {
                 confirmReservation,
-              } as unknown as typeof DotyposService.Service),
-              Layer.succeed(WorkspaceReservationService, {
+              }),
+              Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.succeed(emailReservation as never)
                 ),
               } satisfies IWorkspaceReservationService),
-              Layer.succeed(WorkspaceReservationEmailService, {
+              Layer.mock(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(PostHogEventService, {
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode,
+              }),
+              Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: processInvoice,
               })
             )
           )
@@ -111,14 +135,25 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
     });
+    expect(resolveCustomerAccessCode).toHaveBeenCalledWith({
+      reservationId: emailReservation.id,
+      dotyposReservationId: emailReservation.dotyposReservationId,
+      reservedFrom: emailReservation.reservedFrom,
+      reservedUntil: emailReservation.reservedUntil,
+    });
+    expect(deliverySteps).toEqual(["access", "email"]);
     expect(markFulfilled).toHaveBeenCalledWith(
       expect.objectContaining({ id: "reservation-id" })
     );
+    expect(processInvoice).toHaveBeenCalledWith({
+      paymentAttemptId: "payment-attempt-id",
+    });
   });
 
   test("confirms held paid orders, sends emails, and completes non-production fulfillment", async () => {
     const order = {
       id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
       paymentState: "paid",
       fulfillmentState: "not_started",
     };
@@ -145,16 +180,17 @@ describe("WorkspacePaidFulfillmentService", () => {
     const markReservationConfirmed = mock(() => Effect.void);
     const sendPaidReservationEmails = mock(() => Effect.void);
     const markFulfilled = mock(() => Effect.void);
+    const processInvoice = mock(() => Effect.void);
 
     await Effect.gen(function* () {
       const service = yield* WorkspacePaidFulfillmentService;
       yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, {
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
@@ -162,20 +198,28 @@ describe("WorkspacePaidFulfillmentService", () => {
                 markReservationConfirmed,
                 markFulfilled,
                 markFulfillmentFailed: mock(() => Effect.void),
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(DotyposService, {
+              }),
+              Layer.mock(DotyposService, {
                 confirmReservation,
-              } as unknown as typeof DotyposService.Service),
-              Layer.succeed(WorkspaceReservationService, {
+              }),
+              Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.succeed(emailReservation as never)
                 ),
               } satisfies IWorkspaceReservationService),
-              Layer.succeed(WorkspaceReservationEmailService, {
+              Layer.mock(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(PostHogEventService, {
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: processInvoice,
               })
             )
           )
@@ -194,6 +238,62 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(markFulfilled).toHaveBeenCalledWith(
       expect.objectContaining({ id: "reservation-id" })
     );
+    expect(processInvoice).toHaveBeenCalledWith({
+      paymentAttemptId: "payment-attempt-id",
+    });
+  });
+
+  test("retries invoice processing without reverting completed access fulfillment", async () => {
+    const invoiceFailure = new Error("synthetic invoice failure");
+    const processInvoice = mock(() => Effect.fail(invoiceFailure));
+    const markFulfillmentFailed = mock(() => Effect.void);
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "fulfilled",
+    };
+
+    const result = await Effect.gen(function* () {
+      const service = yield* WorkspacePaidFulfillmentService;
+      return yield* service
+        .fulfillPaidOrder({ orderId: "reservation-id" })
+        .pipe(Effect.result);
+    }).pipe(
+      Effect.provide(
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(WorkspaceReservationService, {}),
+              Layer.mock(WorkspaceReservationEmailService, {}),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {}),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: processInvoice,
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "WorkspacePaidFulfillmentError",
+        failureCode: "invoice_processing_failed",
+        cause: invoiceFailure,
+      },
+    });
+    expect(markFulfillmentFailed).not.toHaveBeenCalled();
   });
 
   test("releases the fulfillment claim after an unexpected infrastructure failure", async () => {
@@ -219,10 +319,10 @@ describe("WorkspacePaidFulfillmentService", () => {
         .pipe(Effect.result);
     }).pipe(
       Effect.provide(
-        WorkspacePaidFulfillmentServiceLive.pipe(
+        WorkspacePaidFulfillmentService.Default.pipe(
           Layer.provide(
             Layer.mergeAll(
-              Layer.succeed(WorkspaceReservationRepository, {
+              Layer.mock(WorkspaceReservationRepository, {
                 findById: mock(() => Effect.succeed(order as never)),
                 claimPaidFulfillment: mock(() =>
                   Effect.succeed(claimed as never)
@@ -232,22 +332,32 @@ describe("WorkspacePaidFulfillmentService", () => {
                 ),
                 markFulfilled: mock(() => Effect.void),
                 markFulfillmentFailed,
-              } as unknown as WorkspaceReservationRepositoryType),
-              Layer.succeed(DotyposService, {
+              }),
+              Layer.mock(DotyposService, {
                 confirmReservation: mock(() => Effect.void),
-              } as unknown as typeof DotyposService.Service),
-              Layer.succeed(WorkspaceReservationService, {
+              }),
+              Layer.mock(WorkspaceReservationService, {
                 getReservation: mock(() =>
                   Effect.die("email flow should not start")
                 ),
               } satisfies IWorkspaceReservationService),
-              Layer.succeed(WorkspaceReservationEmailService, {
+              Layer.mock(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails: mock(() =>
                   Effect.die("email flow should not start")
                 ),
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(PostHogEventService, {
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.die("access flow should not start")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
                 capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("invoice processing should not start")
+                ),
               })
             )
           )

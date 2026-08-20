@@ -2,12 +2,16 @@
 
 import type { FormEvent, ReactNode } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { Form } from "@/shared/components/ui/form";
+import { ReservationBillingFields } from "./reservation-billing-fields";
 import { ReservationCustomerFields } from "./reservation-customer-fields";
 import { ReservationFormCard } from "./reservation-form-card";
+import { ReservationFormSale } from "./reservation-form-sale";
 import { ReservationMarketingConsentField } from "./reservation-marketing-consent-field";
 import { ReservationPrivacyNotice } from "./reservation-privacy-notice";
 import { ReservationSubmitSection } from "./reservation-submit-section";
@@ -26,13 +30,17 @@ type ReservationCheckoutFormProps<
     readonly isFetching: boolean;
     readonly retry: () => void;
     readonly token?: string;
+    readonly sale?: {
+      readonly discounts: readonly CheckoutSummaryDiscount[];
+      readonly productLabel: string;
+    };
   };
   readonly availability: {
     readonly isFetching: boolean;
     readonly unavailableMessage?: string;
   };
   readonly afterCustomerFields?: ReactNode;
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: CheckoutSessionId;
   readonly children: ReactNode;
   readonly form: UseFormReturn<Input, unknown, Data>;
   readonly getReservation: (data: Data) => ReservationOrderData;
@@ -94,14 +102,25 @@ export function ReservationCheckoutForm<
   }
 
   return (
-    <ReservationFormCard>
+    <ReservationFormCard
+      sale={
+        advertisedPrice.sale?.discounts.length ? (
+          <ReservationFormSale
+            discounts={advertisedPrice.sale.discounts}
+            locale={locale}
+            productLabel={advertisedPrice.sale.productLabel}
+          />
+        ) : undefined
+      }
+    >
       <Form {...form}>
-        <form className="space-y-7" onSubmit={handleSubmit}>
+        <form className="space-y-7" noValidate onSubmit={handleSubmit}>
           {children}
           <ReservationCustomerFields
             locale={locale}
             messagePlaceholder={messagePlaceholder}
           />
+          <ReservationBillingFields locale={locale} />
           {afterCustomerFields}
           <ReservationPrivacyNotice locale={locale} />
           <ReservationMarketingConsentField locale={locale} />

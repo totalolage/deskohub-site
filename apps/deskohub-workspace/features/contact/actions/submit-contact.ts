@@ -1,12 +1,19 @@
 "use server";
 
-import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect, Layer, Schema, SchemaGetter, SchemaParser } from "effect";
+import { EmailServiceTag } from "@deskohub/email/backend/service";
+import {
+  Effect,
+  Layer,
+  Predicate,
+  Schema,
+  SchemaGetter,
+  SchemaParser,
+} from "effect";
 import {
   type ContactFormValues,
   processContactSubmission,
 } from "@/features/contact/actions/contact";
-import { ContactServiceLive } from "@/features/contact/backend/contact.service";
+import { ContactService } from "@/features/contact/backend/contact.service";
 import { locales } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { defineWorkspaceStateAction } from "@/shared/backend/workspace-action";
@@ -16,7 +23,7 @@ const getSubmittedString = (
   name: keyof ContactFormValues | "locale"
 ) => {
   const value = formData.get(name);
-  return typeof value === "string" ? value : "";
+  return Predicate.isString(value) ? value : "";
 };
 
 const contactFormValuesSchema = Schema.Struct({
@@ -65,10 +72,8 @@ const contactFormDataStandardSchema = Schema.toStandardSchemaV1(
   contactFormDataSchema
 );
 
-const ContactActionLive = ContactServiceLive.pipe(
-  Layer.provide(
-    StandaloneEmailServiceLayer.pipe(Layer.provideMerge(EmailConfigLayer))
-  )
+const ContactActionLive = ContactService.Default.pipe(
+  Layer.provide(EmailServiceTag.Live.pipe(Layer.provideMerge(EmailConfigLayer)))
 );
 
 const submitContactAction = defineWorkspaceStateAction(

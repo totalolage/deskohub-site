@@ -26,7 +26,7 @@ const runWithProvider = <A, E>(
 ) =>
   effect.pipe(
     Effect.provide(
-      CustomerDiscountProvider.Live.pipe(
+      CustomerDiscountProvider.Default.pipe(
         Layer.provide(DotyposServiceMock({ getCustomerDiscountGroup }))
       )
     ),

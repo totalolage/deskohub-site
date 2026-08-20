@@ -2,7 +2,9 @@ import { Effect } from "effect";
 import {
   AdvertisedPriceMismatchError,
   CheckoutPricingService,
+  getSubmittedCodeMetadata,
   openSubmittedAdvertisedPriceState,
+  type PayStateSubmittedCodeMetadata,
 } from "@/features/checkout/backend/checkout";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
@@ -14,20 +16,22 @@ import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
+  type CoworkReservationDetails,
   coworkAdvertisedPriceReservationEquals,
   getCoworkAdvertisedPriceReservation,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import type { PrepareCoworkPayStateInput } from "./prepare-cowork-pay-state.schema";
 
-export type PreparedCoworkAdvertisement = {
+export type PreparedCoworkAdvertisement = PayStateSubmittedCodeMetadata & {
   readonly kind: "cowork";
   readonly reservation: NormalizedCoworkReservationOrder;
+  readonly advertisedQuote: CoworkReservationQuote;
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 };
 
-export type PreparedCoworkPayState = {
+export type PreparedCoworkPayState = PayStateSubmittedCodeMetadata & {
   readonly kind: "cowork";
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: CoworkReservationQuote;
@@ -66,22 +70,20 @@ export const prepareCoworkAdvertisement = Effect.fn(
   }
 
   const pricing = yield* CheckoutPricingService;
-  const affirmed = yield* pricing.affirmAdvertisement({
+  const affirmed = yield* pricing.affirmCoworkAdvertisement({
     reservation: state.reservation,
     locale: input.locale,
     advertisedQuote: state.quote,
+    ...getSubmittedCodeMetadata(state),
   });
-  if (affirmed.kind !== "cowork") {
-    return yield* Effect.die(
-      "Cowork advertisement affirmation returned another reservation family."
-    );
-  }
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
 
   return {
     kind: input.reservation.kind,
     reservation: input.reservation,
+    advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
+    ...getSubmittedCodeMetadata(affirmed),
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getCoworkCheckoutSummary(state.reservation.details, state.quote),
@@ -93,7 +95,10 @@ export const prepareCoworkAdvertisement = Effect.fn(
 
 export const ensureCoworkPayStateAvailable = (input: {
   readonly availability: typeof WorkspaceAvailabilityService.Service;
-  readonly reservation: NormalizedCoworkReservationOrder;
+  readonly reservation: Pick<
+    CoworkReservationDetails,
+    "kind" | "date" | "entryTier" | "monitorOption"
+  >;
 }) =>
   input.availability.ensureAvailable({
     kind: input.reservation.kind,

@@ -1,5 +1,9 @@
 import { Option, Schema } from "effect";
 import type { Locale } from "@/features/i18n";
+import {
+  formatInstantDate,
+  formatInstantDateRange,
+} from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   plainDateStringSchema,
@@ -25,6 +29,12 @@ const reservationDisplayTimeFormatOptions: Intl.DateTimeFormatOptions = {
   timeZone: workspaceSiteConstants.location.timeZone,
 };
 
+const reservationDisplayDateTimeFormatOptions: Intl.DateTimeFormatOptions = {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: workspaceSiteConstants.location.timeZone,
+};
+
 const decodePlainDate = Schema.decodeUnknownOption(plainDateStringSchema);
 
 export const parseReservationInputDate = (date: string) =>
@@ -43,9 +53,29 @@ export const formatReservationDisplayDate = (
   date: Temporal.Instant,
   locale: Locale
 ) =>
-  new Intl.DateTimeFormat(locale, reservationDisplayDateFormatOptions).format(
-    temporalInstantToDate(date)
+  formatInstantDate({
+    instant: date,
+    locale,
+    dateStyle: reservationDisplayDateFormatOptions.dateStyle,
+    timeZone: workspaceSiteConstants.location.timeZone,
+  });
+
+export const formatReservationDisplayDateRange = (
+  start: Temporal.Instant,
+  exclusiveEnd: Temporal.Instant,
+  locale: Locale
+) => {
+  const inclusiveEnd = Temporal.Instant.fromEpochMilliseconds(
+    exclusiveEnd.epochMilliseconds - 1
   );
+  return formatInstantDateRange({
+    start,
+    end: inclusiveEnd,
+    locale,
+    dateStyle: reservationDisplayDateFormatOptions.dateStyle,
+    timeZone: workspaceSiteConstants.location.timeZone,
+  });
+};
 
 export const formatReservationInputDate = (
   date: string,
@@ -71,3 +101,12 @@ export const formatReservationDisplayTimeRange = (
     locale,
     reservationDisplayTimeFormatOptions
   ).formatRange(temporalInstantToDate(start), temporalInstantToDate(end));
+
+export const formatReservationDisplayDateTime = (
+  instant: Temporal.Instant,
+  locale: Locale
+) =>
+  new Intl.DateTimeFormat(
+    locale,
+    reservationDisplayDateTimeFormatOptions
+  ).format(temporalInstantToDate(instant));

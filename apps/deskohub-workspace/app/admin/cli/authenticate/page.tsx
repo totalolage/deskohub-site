@@ -1,14 +1,43 @@
-import { CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
+import { CheckCircle2, ShieldAlert } from "lucide-react";
+import { Suspense } from "react";
 import { approveCliAuthentication } from "@/features/admin-cli/actions";
 import { loadCliAuthenticationApproval } from "@/features/admin-cli/page-data.server";
 import {
+  AdministrationAlert,
   AdministrationPage,
   AdministrationPageHeader,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { AdministrationPanelLoading } from "@/features/administration/loading";
 import { Button } from "@/shared/components/ui/button";
 
-export default async function CliAuthenticationApprovalPage({
+export default function CliAuthenticationApprovalPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{
+    readonly code?: string;
+    readonly result?: string;
+  }>;
+}) {
+  return (
+    <AdministrationPage className="max-w-4xl">
+      <AdministrationPageHeader
+        description="Confirm that this command-line client may access the Workspace administration API."
+        eyebrow="CLI security"
+        title="Approve CLI authentication"
+      />
+      <Suspense
+        fallback={
+          <AdministrationPanelLoading label="CLI authentication request" />
+        }
+      >
+        <CliAuthenticationRequest searchParams={searchParams} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+async function CliAuthenticationRequest({
   searchParams,
 }: {
   readonly searchParams: Promise<{
@@ -20,13 +49,7 @@ export default async function CliAuthenticationApprovalPage({
   const request = await loadCliAuthenticationApproval(params.code);
 
   return (
-    <AdministrationPage className="max-w-4xl">
-      <AdministrationPageHeader
-        description="Confirm that this command-line client may access the Workspace administration API."
-        eyebrow="CLI security"
-        title="Approve CLI authentication"
-      />
-
+    <>
       {!request ? (
         <AuthenticationMessage
           description="Return to the CLI and run dhw auth again to create a fresh request."
@@ -47,7 +70,7 @@ export default async function CliAuthenticationApprovalPage({
           </div>
         </div>
       )}
-    </AdministrationPage>
+    </>
   );
 }
 
@@ -63,14 +86,13 @@ function AuthenticationRequestState({
   if (request.state === "pending") {
     return (
       <>
-        <div className="mb-5 flex items-start gap-3 rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm leading-6">
-          <Clock3 aria-hidden className="mt-0.5 size-5 shrink-0" />
+        <AdministrationAlert className="mb-5" status="warning">
           <p>
             This request expires at{" "}
             <strong>{formatAdministrationDateTime(request.expiresAt)}</strong>.
             Approve it only if you initiated the request in your terminal.
           </p>
-        </div>
+        </AdministrationAlert>
         <form action={approveCliAuthentication}>
           <input name="code" type="hidden" value={code} />
           <Button type="submit">Approve this CLI</Button>

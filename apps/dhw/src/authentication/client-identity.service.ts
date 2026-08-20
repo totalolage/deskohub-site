@@ -10,7 +10,7 @@ export class ClientIdentity extends Context.Service<
   ClientIdentity,
   IClientIdentity
 >()("ClientIdentity") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     defaultName: Effect.try({
       try: hostname,
       catch: () => undefined,

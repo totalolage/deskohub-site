@@ -17,9 +17,9 @@ const defaultRoomLayout: TableMapRoomLayout = {
 };
 
 // ponytail: first-pass rectangle; replace with measured room geometry as the map gets tuned.
-const workspaceRoomLayouts: Record<string, TableMapRoomLayout> = {
-  "Main room": defaultRoomLayout,
-};
+const workspaceRoomLayouts = new Map<string, TableMapRoomLayout>([
+  ["Main room", defaultRoomLayout],
+]);
 
 export const getWorkspaceRoomLayout = (roomName: string | undefined) =>
-  (roomName && workspaceRoomLayouts[roomName]) || defaultRoomLayout;
+  (roomName && workspaceRoomLayouts.get(roomName)) || defaultRoomLayout;

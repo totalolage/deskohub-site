@@ -1,4 +1,4 @@
-import { Context, Effect, type Layer, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { defineWorkspaceAction } from "./workspace-action";
 import { generateWorkspaceLocationMapImage } from "./workspace-location-map";
 import { defineWorkspaceRoute, WorkspaceRouteFailure } from "./workspace-route";
@@ -6,9 +6,9 @@ import { defineWorkspaceRoute, WorkspaceRouteFailure } from "./workspace-route";
 class TestService extends Context.Service<
   TestService,
   { readonly value: string }
->()("WorkspaceBoundaryTypecheckService") {}
-
-declare const TestServiceLive: Layer.Layer<TestService>;
+>()("WorkspaceBoundaryTypecheckService") {
+  static Default = Layer.succeed(this, { value: "typecheck" });
+}
 
 const typecheck = false as boolean;
 
@@ -38,7 +38,7 @@ if (typecheck) {
       operation: "type.action-provided",
       schema: Schema.toStandardSchemaV1(Schema.String),
     },
-    () => TestService.pipe(Effect.provide(TestServiceLive))
+    () => TestService.pipe(Effect.provide(TestService.Default))
   );
 
   defineWorkspaceAction(

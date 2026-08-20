@@ -26,7 +26,7 @@ export async function getUpcomingOpeningHoursExceptions(): Promise<
     const openingHoursCalendar = yield* OpeningHoursCalendarService;
     return yield* openingHoursCalendar.listExceptions(query);
   }).pipe(
-    Effect.provide(OpeningHoursCalendarService.LiveWithDependencies),
+    Effect.provide(OpeningHoursCalendarService.Live),
     Effect.map((exceptions) => exceptions.slice(0, maximumDisplayedExceptions))
   );
 

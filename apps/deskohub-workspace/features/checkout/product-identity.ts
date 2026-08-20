@@ -1,9 +1,5 @@
 import { Match, Schema } from "effect";
 import {
-  workspaceCoworkProductCatalog,
-  workspaceMeetingRoomCatalog,
-} from "@/features/checkout/product-catalog";
-import {
   getWorkspaceCoworkProductKey,
   workspaceCoworkProductIdentitySchema,
   workspaceCoworkProductKeySchema,
@@ -13,10 +9,16 @@ import {
   workspaceMeetingRoomProductIdentitySchema,
   workspaceMeetingRoomProductKeySchema,
 } from "@/features/reservation/meeting-room-reservation";
+import {
+  getWorkspaceOfficeProductKey,
+  workspaceOfficeProductIdentitySchema,
+  workspaceOfficeProductKeySchema,
+} from "@/features/reservation/office-reservation";
 
 export const workspaceProductIdentitySchema = Schema.Union([
   workspaceCoworkProductIdentitySchema,
   workspaceMeetingRoomProductIdentitySchema,
+  workspaceOfficeProductIdentitySchema,
 ]);
 
 export type WorkspaceProductIdentity =
@@ -25,20 +27,10 @@ export type WorkspaceProductIdentity =
 export const workspaceProductKeySchema = Schema.Union([
   workspaceCoworkProductKeySchema,
   workspaceMeetingRoomProductKeySchema,
+  workspaceOfficeProductKeySchema,
 ]);
 
 export type WorkspaceProductKey = typeof workspaceProductKeySchema.Type;
-
-export const workspaceProductIdentities = [
-  ...workspaceCoworkProductCatalog.map(({ tier }) => ({
-    kind: "cowork" as const,
-    tier,
-  })),
-  ...workspaceMeetingRoomCatalog.map(({ duration }) => ({
-    kind: "meeting-room" as const,
-    duration,
-  })),
-] satisfies readonly WorkspaceProductIdentity[];
 
 export const getWorkspaceProductKey = (
   product: WorkspaceProductIdentity
@@ -47,6 +39,7 @@ export const getWorkspaceProductKey = (
     Match.discriminatorsExhaustive("kind")({
       cowork: getWorkspaceCoworkProductKey,
       "meeting-room": getWorkspaceMeetingRoomProductKey,
+      office: getWorkspaceOfficeProductKey,
     })
   );
 
@@ -60,5 +53,6 @@ export const getCanonicalWorkspaceProductIdentity = (
         kind,
         duration,
       }),
+      office: ({ dayCount, kind, seats }) => ({ kind, seats, dayCount }),
     })
   );

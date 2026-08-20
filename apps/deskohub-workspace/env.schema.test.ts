@@ -26,6 +26,44 @@ const validateFeatureFlagOverrideEnvironment = (
     stdout: "pipe",
   });
 
+const validateMissingIgloohomeEnvironment = (
+  missing: "credentials" | "target-device",
+  vercelEnvironment: "production" | "preview"
+) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      missing === "credentials"
+        ? 'delete process.env.IGLOOHOME_CLIENT_ID; delete process.env.IGLOOHOME_CLIENT_SECRET; await import("./env.ts");'
+        : 'delete process.env.IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID; await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: { ...process.env, VERCEL_ENV: vercelEnvironment },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
+const validateMissingBrowserPostHogHost = () =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      'delete process.env.NEXT_PUBLIC_POSTHOG_HOST; await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: "phc_test",
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
     const decodeTimeout = Schema.decodeUnknownSync(
@@ -34,20 +72,58 @@ describe("workspace environment schemas", () => {
     const decodeServiceName = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.POSTHOG_SERVICE_NAME
     );
+    const decodeIgloohomeTimeout = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.IGLOOHOME_API_TIMEOUT
+    );
+    const decodePostHogProjectId = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.POSTHOG_PROJECT_ID
+    );
 
     expect(decodeTimeout(undefined)).toBe(5_000);
     expect(decodeTimeout("2500")).toBe(2_500);
     expect(decodeServiceName(undefined)).toBe("deskohub-workspace");
+    expect(decodeIgloohomeTimeout(undefined)).toBe(10_000);
+    expect(`${decodePostHogProjectId("42")}`).toBe("42");
+    expect(decodePostHogProjectId(undefined)).toBeUndefined();
+    expect(() => decodePostHogProjectId("")).toThrow();
     expect(() => decodeTimeout("1.5")).toThrow();
     expect(() => decodeTimeout("0")).toThrow();
+  });
+
+  test("always requires the Igloohome target device and requires credentials only in production", () => {
+    const previewCredentials = validateMissingIgloohomeEnvironment(
+      "credentials",
+      "preview"
+    );
+    const productionCredentials = validateMissingIgloohomeEnvironment(
+      "credentials",
+      "production"
+    );
+    const previewTarget = validateMissingIgloohomeEnvironment(
+      "target-device",
+      "preview"
+    );
+
+    expect(previewCredentials.exitCode).toBe(0);
+    expect(productionCredentials.exitCode).toBe(1);
+    expect(productionCredentials.stderr.toString()).toContain(
+      "Invalid Igloohome client credential configuration."
+    );
+    expect(previewTarget.exitCode).toBe(1);
+    expect(previewTarget.stderr.toString()).toContain(
+      "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID"
+    );
   });
 
   test("validates URLs without changing their string representation", () => {
     const decodeDatabaseUrl = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.DATABASE_URL
     );
-    const decodePostHogHost = Schema.decodeUnknownSync(
-      workspaceServerEnvSchema.fields.POSTHOG_HOST
+    const decodePostHogApiHost = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.POSTHOG_API_HOST
+    );
+    const decodePostHogIngestHost = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.POSTHOG_INGEST_HOST
     );
     const decodeE2EBaseUrl = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.WORKSPACE_E2E_BASE_URL
@@ -55,12 +131,17 @@ describe("workspace environment schemas", () => {
     const databaseUrl = "postgres://user:pass@localhost:5432/workspace";
 
     expect(decodeDatabaseUrl(databaseUrl)).toBe(databaseUrl);
-    expect(decodePostHogHost(undefined)).toBeUndefined();
-    expect(decodePostHogHost("https://eu.posthog.com")).toBe(
+    expect(() => decodePostHogApiHost(undefined)).toThrow();
+    expect(decodePostHogApiHost("https://eu.posthog.com")).toBe(
       "https://eu.posthog.com"
     );
+    expect(() => decodePostHogIngestHost(undefined)).toThrow();
+    expect(decodePostHogIngestHost("https://eu.i.posthog.com")).toBe(
+      "https://eu.i.posthog.com"
+    );
     expect(() => decodeDatabaseUrl("not a URL")).toThrow();
-    expect(() => decodePostHogHost("not a URL")).toThrow();
+    expect(() => decodePostHogApiHost("not a URL")).toThrow();
+    expect(() => decodePostHogIngestHost("not a URL")).toThrow();
     expect(decodeE2EBaseUrl(undefined)).toBeUndefined();
     expect(decodeE2EBaseUrl("https://workspace.example")).toBe(
       "https://workspace.example"
@@ -79,9 +160,9 @@ describe("workspace environment schemas", () => {
     expect(() => decodeHash("G".repeat(64))).toThrow();
   });
 
-  test("accepts an optional hosted browser executable", () => {
+  test("accepts an optional Playwright Chromium executable", () => {
     const decodeExecutablePath = Schema.decodeUnknownSync(
-      workspaceServerEnvSchema.fields.AGENT_BROWSER_EXECUTABLE_PATH
+      workspaceServerEnvSchema.fields.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
     );
 
     expect(decodeExecutablePath(undefined)).toBeUndefined();
@@ -130,6 +211,15 @@ describe("workspace environment schemas", () => {
     expect(decodeVercelEnvironment("preview")).toBe("preview");
     expect(decodeVercelEnvironment("production")).toBe("production");
     expect(() => decodeVercelEnvironment("staging")).toThrow();
+  });
+
+  test("requires the browser PostHog proxy when browser analytics is enabled", () => {
+    const validation = validateMissingBrowserPostHogHost();
+
+    expect(validation.exitCode).toBe(1);
+    expect(validation.stderr.toString()).toContain(
+      "NEXT_PUBLIC_POSTHOG_HOST is required when browser PostHog is enabled."
+    );
   });
 
   test("retains server cross-field checks through T3 Env composition", () => {

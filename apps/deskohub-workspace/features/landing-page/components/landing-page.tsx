@@ -27,7 +27,7 @@ export function LandingPage({ locale }: LandingPageProps) {
         overviewSectionId={siteHeaderSectionIds.overview}
       />
 
-      <LandingPagePhotoCarouselSection />
+      <LandingPagePhotoCarouselSection locale={locale} />
 
       <LandingPageLocationMapSection
         locale={locale}

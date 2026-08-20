@@ -16,18 +16,21 @@ export const getAdministrationPagination = ({
   };
 };
 
-export const getAdministrationExternalOrderPageIds = ({
+export const getAdministrationExternalOrderPageIds = <
+  ExternalId extends string,
+  Id extends string,
+>({
   offset,
   orderedExternalIds,
   pageSize,
   references,
 }: {
   readonly offset: number;
-  readonly orderedExternalIds: readonly string[];
+  readonly orderedExternalIds: readonly ExternalId[];
   readonly pageSize: number;
   readonly references: readonly {
-    readonly externalId: string | null;
-    readonly id: string;
+    readonly externalId: ExternalId | null;
+    readonly id: Id;
   }[];
 }) => {
   const externalOrder = new Map(

@@ -1,6 +1,16 @@
-import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
+import {
+  Context,
+  DateTime,
+  Duration,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Schedule,
+  Schema,
+} from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import type { ExternalAPIError, NetworkError } from "../errors";
+import { ExternalAPIError, type NetworkError } from "../errors";
 import type {
   CreateHostedPaymentPageRequest,
   Operation,
@@ -19,6 +29,7 @@ import type {
   PaymentVerificationResult,
   VerifyPaymentOutcomeInput,
 } from "../types";
+import { NexiOperationIdSchema, NexiOrderIdSchema } from "../types";
 import { NexiGeneratedClient } from "./api";
 
 const DEFAULT_PAYMENT_SERVICE = "CARDS";
@@ -27,6 +38,33 @@ const DEFAULT_ACTION_TYPE = "PAY";
 const AUTHORIZATION_OPERATION_TYPE = "AUTHORIZATION";
 const CAPTURE_OPERATION_TYPE = "CAPTURE";
 const EXECUTED_OPERATION_RESULT = "EXECUTED";
+
+const decodeProviderIdentifier = <A>(
+  schema: Schema.Decoder<A>,
+  operation: string
+) =>
+  Effect.fn(operation)((value: unknown) =>
+    Schema.decodeUnknownEffect(schema)(value).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ExternalAPIError({
+            service: "Nexi",
+            operation,
+            message: "Nexi returned a malformed identifier.",
+            cause,
+          })
+      )
+    )
+  );
+
+const decodeNexiOrderId = decodeProviderIdentifier(
+  NexiOrderIdSchema,
+  "NexiService.decodeOrderId"
+);
+const decodeNexiOperationId = decodeProviderIdentifier(
+  NexiOperationIdSchema,
+  "NexiService.decodeOperationId"
+);
 
 const localeToNexiLanguage: Record<Locale, "CZE" | "ENG"> = {
   "cs-CZ": "CZE",
@@ -149,8 +187,11 @@ const makeNexiService = Effect.gen(function* () {
         providerOrderId: response.orderId ?? input.orderId,
       });
 
+      const orderId = response.orderId
+        ? yield* decodeNexiOrderId(response.orderId)
+        : input.orderId;
       const result = {
-        orderId: response.orderId ?? input.orderId,
+        orderId,
         hostedPage: response.hostedPage,
         securityToken: response.securityToken,
       };
@@ -204,6 +245,12 @@ const makeNexiService = Effect.gen(function* () {
       const providerOrderId = providerOrder?.orderId ?? order.orderId;
       const providerOperationId =
         executedPaymentOperation?.operationId ?? failedOperation?.operationId;
+      const resolvedProviderOrderId = providerOrderId
+        ? yield* decodeNexiOrderId(providerOrderId)
+        : input.orderId;
+      const resolvedProviderOperationId = providerOperationId
+        ? yield* decodeNexiOperationId(providerOperationId)
+        : undefined;
 
       yield* Effect.logDebug("Nexi selected payment operations", {
         executedOperationId: executedPaymentOperation?.operationId,
@@ -249,10 +296,13 @@ const makeNexiService = Effect.gen(function* () {
       const result = {
         status,
         provider: {
-          orderId: providerOrderId ?? input.orderId,
-          operationId: providerOperationId,
+          orderId: resolvedProviderOrderId,
+          operationId: resolvedProviderOperationId,
+          operationCount: operations.length,
           amount: providerAmount?.amount,
           currency: providerAmount?.currency,
+          authorizedAmount: order.orderStatus?.authorizedAmount,
+          capturedAmount: order.orderStatus?.capturedAmount,
           orderStatus: providerStatus,
           captureExecuted: Boolean(executedPaymentOperation),
         },
@@ -280,10 +330,13 @@ const makeNexiService = Effect.gen(function* () {
         .getOrder(input)
         .pipe(Effect.retry(retryPolicy));
       const providerOrder = response.orderStatus?.order;
-      const orderId =
-        providerOrder?.orderId ?? response.orderId ?? input.orderId;
-      const operations = (response.operations ?? []).map((operation) =>
-        toNexiOperation(operation, orderId)
+      const rawOrderId = providerOrder?.orderId ?? response.orderId;
+      const orderId = rawOrderId
+        ? yield* decodeNexiOrderId(rawOrderId)
+        : input.orderId;
+      const operations = yield* Effect.forEach(
+        response.operations ?? [],
+        (operation) => toNexiOperation(operation, orderId)
       );
       const amount = response.amount ?? providerOrder;
       const result: NexiOrder = {
@@ -297,7 +350,9 @@ const makeNexiService = Effect.gen(function* () {
           capturedAmount: response.orderStatus.capturedAmount,
         }),
         ...(response.orderStatus?.lastOperationTime && {
-          lastOperationTime: response.orderStatus.lastOperationTime,
+          lastOperationTime: normalizeNexiTimestamp(
+            response.orderStatus.lastOperationTime
+          ),
         }),
         ...(response.orderStatus?.lastOperationType && {
           lastOperationType: response.orderStatus.lastOperationType,
@@ -324,7 +379,7 @@ const makeNexiService = Effect.gen(function* () {
       const response = yield* nexiClient
         .listOrders(input)
         .pipe(Effect.retry(retryPolicy));
-      return (response.orders ?? []).map(toNexiOrderStatus);
+      return yield* Effect.forEach(response.orders ?? [], toNexiOrderStatus);
     },
     (effect, input) =>
       effect.pipe(Effect.annotateLogs({ correlationId: input.correlationId }))
@@ -335,7 +390,7 @@ const makeNexiService = Effect.gen(function* () {
       const response = yield* nexiClient
         .getOperation(input)
         .pipe(Effect.retry(retryPolicy));
-      return toNexiOperation(response);
+      return yield* toNexiOperation(response);
     },
     (effect, input) =>
       effect.pipe(
@@ -351,7 +406,7 @@ const makeNexiService = Effect.gen(function* () {
       const response = yield* nexiClient
         .listOperations(input)
         .pipe(Effect.retry(retryPolicy));
-      return (response.operations ?? []).map((operation) =>
+      return yield* Effect.forEach(response.operations ?? [], (operation) =>
         toNexiOperation(operation)
       );
     },
@@ -373,9 +428,10 @@ export class NexiService extends Context.Service<
   NexiService,
   Effect.Success<typeof makeNexiService>
 >()("NexiService") {
-  static DefaultWithoutDependencies = Layer.effect(this, makeNexiService);
-  static Default = this.DefaultWithoutDependencies.pipe(
-    Layer.provide(NexiGeneratedClient.Live),
+  static Default = Layer.effect(this, makeNexiService);
+
+  static Live = this.Default.pipe(
+    Layer.provide(NexiGeneratedClient.Default),
     Layer.provide(FetchHttpClient.layer)
   );
 }
@@ -411,42 +467,77 @@ const getOperationAmount = (
 
 const toNexiOperation = (
   operation: Operation,
-  fallbackOrderId?: string
-): NexiOperation => {
-  const amount = getOperationAmount(operation);
-  const orderId = operation.orderId ?? fallbackOrderId;
-  return {
-    ...(orderId && { orderId }),
-    ...(operation.operationId && { operationId: operation.operationId }),
-    ...(operation.channel && { channel: operation.channel }),
-    ...(operation.operationType && {
-      operationType: operation.operationType,
-    }),
-    ...(operation.operationResult && {
-      operationResult: operation.operationResult,
-    }),
-    ...(operation.operationTime && {
-      operationTime: operation.operationTime,
-    }),
-    ...(amount?.amount && { amount: amount.amount }),
-    ...(amount?.currency && { currency: amount.currency }),
-    ...(operation.cancelledOperationId && {
-      cancelledOperationId: operation.cancelledOperationId,
-    }),
-  };
-};
+  fallbackOrderId?: NexiOrder["orderId"]
+) =>
+  Effect.gen(function* () {
+    const amount = getOperationAmount(operation);
+    const orderId = operation.orderId
+      ? yield* decodeNexiOrderId(operation.orderId)
+      : fallbackOrderId;
+    const operationId = operation.operationId
+      ? yield* decodeNexiOperationId(operation.operationId)
+      : undefined;
+    const cancelledOperationId = operation.cancelledOperationId
+      ? yield* decodeNexiOperationId(operation.cancelledOperationId)
+      : undefined;
+    return {
+      ...(orderId && { orderId }),
+      ...(operationId && { operationId }),
+      ...(operation.channel && { channel: operation.channel }),
+      ...(operation.operationType && {
+        operationType: operation.operationType,
+      }),
+      ...(operation.operationResult && {
+        operationResult: operation.operationResult,
+      }),
+      ...(operation.operationTime && {
+        operationTime: normalizeNexiTimestamp(operation.operationTime),
+      }),
+      ...(amount?.amount && { amount: amount.amount }),
+      ...(amount?.currency && { currency: amount.currency }),
+      ...(cancelledOperationId && { cancelledOperationId }),
+    } satisfies NexiOperation;
+  });
 
-const toNexiOrderStatus = (status: OrderStatus): NexiOrder => ({
-  orderId: status.order.orderId,
-  amount: status.order.amount,
-  currency: status.order.currency,
-  ...(status.authorizedAmount && { authorizedAmount: status.authorizedAmount }),
-  ...(status.capturedAmount && { capturedAmount: status.capturedAmount }),
-  ...(status.lastOperationTime && {
-    lastOperationTime: status.lastOperationTime,
-  }),
-  ...(status.lastOperationType && {
-    lastOperationType: status.lastOperationType,
-  }),
-  operations: [],
-});
+const toNexiOrderStatus = (status: OrderStatus) =>
+  decodeNexiOrderId(status.order.orderId).pipe(
+    Effect.map(
+      (orderId): NexiOrder => ({
+        orderId,
+        amount: status.order.amount,
+        currency: status.order.currency,
+        ...(status.authorizedAmount && {
+          authorizedAmount: status.authorizedAmount,
+        }),
+        ...(status.capturedAmount && {
+          capturedAmount: status.capturedAmount,
+        }),
+        ...(status.lastOperationTime && {
+          lastOperationTime: normalizeNexiTimestamp(status.lastOperationTime),
+        }),
+        ...(status.lastOperationType && {
+          lastOperationType: status.lastOperationType,
+        }),
+        operations: [],
+      })
+    )
+  );
+
+// XPay read APIs can omit their documented offset and return Rome wall time.
+const nexiLocalTimestampPattern =
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d+)?$/;
+
+const normalizeNexiTimestamp = (value: string) => {
+  if (!nexiLocalTimestampPattern.test(value)) return value;
+
+  return Option.match(
+    DateTime.makeZoned(value.replace(" ", "T"), {
+      timeZone: "Europe/Rome",
+      adjustForTimeZone: true,
+    }),
+    {
+      onNone: () => value,
+      onSome: DateTime.formatIso,
+    }
+  );
+};

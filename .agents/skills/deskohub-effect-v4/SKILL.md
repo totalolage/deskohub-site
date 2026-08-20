@@ -1,6 +1,6 @@
 ---
 name: deskohub-effect-v4
-description: Apply Deskohub conventions when creating or refactoring Effect V4 services, Context capabilities, Layers, providers, repositories, declarative Effect workflows, schemas, branded domain values, errors, or their tests.
+description: Effect V4 service, Layer, workflow, schema, error, and tagged-union handling.
 ---
 
 # Deskohub Effect V4
@@ -13,3 +13,5 @@ Read only the references relevant to the change:
 - For discriminated unions, `_tag` construction, and Effect Match, read [references/tagged-unions-and-match.md](references/tagged-unions-and-match.md).
 
 For a broad service or feature refactor, read all relevant references before editing. Update the relevant reference when developer feedback changes a durable convention.
+
+Use the repository's patched `@effect/tsgo` TypeScript installation so Effect diagnostics run in typechecks. The `multipleEffectProvide` diagnostic only covers chained `Effect.provide`; compose independent Layer dependencies with one `Layer.provide(Layer.mergeAll(...))`.

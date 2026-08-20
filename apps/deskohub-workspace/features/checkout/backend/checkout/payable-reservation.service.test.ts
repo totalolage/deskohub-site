@@ -5,10 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
-import {
-  WorkspaceReservationRepository,
-  type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
-} from "@/features/reservation/backend/workspace-reservation.repository";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
 import {
   PayableReservationService,
@@ -46,14 +43,14 @@ const runRequireCurrent = (input: {
   const repository = {
     findById: mock(() => Effect.succeed(candidate)),
     findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(current)),
-  } as unknown as WorkspaceReservationRepositoryType;
-  const layer = PayableReservationService.Live.pipe(
+  };
+  const layer = PayableReservationService.Default.pipe(
     Layer.provide(
       Layer.merge(
-        Layer.succeed(WorkspaceReservationRepository, repository),
-        Layer.succeed(DotyposService, {
+        Layer.mock(WorkspaceReservationRepository, repository),
+        Layer.mock(DotyposService, {
           getReservationStatus,
-        } as unknown as typeof DotyposService.Service)
+        })
       )
     )
   );

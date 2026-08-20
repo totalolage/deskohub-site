@@ -1,10 +1,20 @@
+import {
+  DotyposBranchIdSchema,
+  DotyposClientIdSchema,
+  DotyposCloudIdSchema,
+  DotyposEmployeeIdSchema,
+} from "@deskohub/dotypos";
+import { GoogleCalendarIdSchema } from "@deskohub/google-calendar";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { createEnv } from "@t3-oss/env-nextjs";
 import { Schema } from "effect";
 import { z } from "zod";
 import { siteConstants } from "@/shared/utils/constants";
 
-const nonEmptyStringSchema = Schema.toStandardSchemaV1(Schema.NonEmptyString);
+const toEnvironmentSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
+  Schema.toStandardSchemaV1(schema);
+
+const nonEmptyStringSchema = toEnvironmentSchema(Schema.NonEmptyString);
 
 const normalizeOptionalUrl = (
   input: string | undefined
@@ -17,17 +27,17 @@ const normalizeOptionalUrl = (
 };
 
 export const boardgameBarServerSchema = {
-  DOTYPOS_CLIENT_ID: z.string().min(1, "DOTYPOS_CLIENT_ID is required"),
+  DOTYPOS_CLIENT_ID: toEnvironmentSchema(DotyposClientIdSchema),
   DOTYPOS_CLIENT_SECRET: z.string().min(1, "DOTYPOS_CLIENT_SECRET is required"),
   DOTYPOS_REFRESH_TOKEN: z.string().min(1, "DOTYPOS_REFRESH_TOKEN is required"),
   DOTYPOS_API_URL: z.url(),
-  DOTYPOS_BRANCH_ID: z.string(),
-  DOTYPOS_CLOUD_ID: z.string(),
-  DOTYPOS_EMPLOYEE_ID: z.string(),
+  DOTYPOS_BRANCH_ID: toEnvironmentSchema(DotyposBranchIdSchema),
+  DOTYPOS_CLOUD_ID: toEnvironmentSchema(DotyposCloudIdSchema),
+  DOTYPOS_EMPLOYEE_ID: toEnvironmentSchema(DotyposEmployeeIdSchema),
   DOTYPOS_API_TIMEOUT: z.coerce.number().int().positive().default(30000),
   DOTYPOS_WEBHOOK_SECRET: z.uuid(),
   EMAIL_API_KEY: z.string().optional(),
-  GOOGLE_CALENDAR_OPENING_HOURS_ID: nonEmptyStringSchema,
+  GOOGLE_CALENDAR_OPENING_HOURS_ID: toEnvironmentSchema(GoogleCalendarIdSchema),
   GOOGLE_CALENDAR_PRIVATE_KEY: nonEmptyStringSchema,
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
   CRON_SECRET: Schema.toStandardSchemaV1(

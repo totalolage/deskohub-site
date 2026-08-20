@@ -30,7 +30,7 @@ export const makeWorkspaceE2EDateAllocation = ({
   shardIndex: leasedShardIndex,
 }: {
   readonly prNumber?: number;
-  readonly runId: string;
+  readonly runId: WorkspaceE2ERunId;
   readonly shardIndex?: number;
 }): WorkspaceE2EDateAllocation => {
   const shardCount = workspaceE2EConcurrentRunTarget;
@@ -78,7 +78,7 @@ export const formatWorkspaceE2EAllocation = (
   allocation: WorkspaceE2EDateAllocation
 ) => `shard ${allocation.shardIndex + 1} of ${allocation.shardCount}`;
 
-const hashAllocationKey = (value: string) => {
+const hashAllocationKey = (value: WorkspaceE2ERunId) => {
   let hash = 2_166_136_261;
 
   for (const character of value) {
@@ -91,3 +91,5 @@ const hashAllocationKey = (value: string) => {
 
 const positiveModulo = (value: number, divisor: number) =>
   ((value % divisor) + divisor) % divisor;
+
+import type { WorkspaceE2ERunId } from "./run-identifiers";

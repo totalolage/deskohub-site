@@ -8,7 +8,7 @@ import { normalizeExpression } from "@deskohub/cloudinary";
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
-import { CloudinaryServiceLive } from "../backend/cloudinary.service";
+import { GalleryCloudinaryLayer } from "../backend/cloudinary.service";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
 
 // Cached function using 'use cache' directive
@@ -64,7 +64,7 @@ export async function getCloudinaryImages(options: {
 
       return result;
     }).pipe(Effect.scoped, Effect.annotateLogs({ options, normalizedTags })),
-    CloudinaryServiceLive
+    GalleryCloudinaryLayer
   ).pipe(
     Effect.catch((error) =>
       Effect.logError("Cloudinary search failed", error).pipe(Effect.as([]))

@@ -7,6 +7,14 @@ import {
   type MeetingRoomReservationQuote,
   meetingRoomReservationQuoteSchema,
 } from "@/features/checkout/reservation-quote-meeting-room";
+import {
+  type OfficeReservationQuote,
+  officeReservationQuoteSchema,
+} from "@/features/checkout/reservation-quote-office";
+import {
+  canonicalPromotionCodeSchema,
+  discountIdSchema,
+} from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
   type CoworkAdvertisedPriceReservation,
@@ -17,28 +25,79 @@ import {
   meetingRoomAdvertisedPriceReservationSchema,
 } from "@/features/reservation/meeting-room-reservation";
 import {
+  type OfficeAdvertisedPriceReservation,
+  officeAdvertisedPriceReservationSchema,
+} from "@/features/reservation/office-reservation";
+import {
   type CheckoutStateCryptoOptions,
   CheckoutStateTokenError,
   createCheckoutStateClaims,
   openCheckoutState,
   sealCheckoutState,
 } from "./checkout-state-token";
+import {
+  getSubmittedCodeMetadata,
+  type PayStateSubmittedCodeMetadata,
+} from "./pay-state-contract";
 import { workspaceCheckoutPriceStateSchema } from "./workspace-checkout-price-state";
 
 export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 
+const absentSubmittedCodeMetadataSchema = Schema.Struct({
+  submittedCode: Schema.optionalKey(Schema.Never),
+  submittedCodeDiscountId: Schema.optionalKey(Schema.Never),
+});
+
+const submittedCodeMetadataSchema = Schema.Struct({
+  submittedCode: canonicalPromotionCodeSchema,
+  submittedCodeDiscountId: discountIdSchema,
+});
+
+const coworkAdvertisedPriceStateSchema = Schema.Struct({
+  ...workspaceCheckoutPriceStateSchema.fields,
+  kind: coworkAdvertisedPriceReservationSchema.fields.kind,
+  reservation: coworkAdvertisedPriceReservationSchema,
+  quote: coworkReservationQuoteSchema,
+});
+
+const meetingRoomAdvertisedPriceStateSchema = Schema.Struct({
+  ...workspaceCheckoutPriceStateSchema.fields,
+  kind: meetingRoomAdvertisedPriceReservationSchema.fields.kind,
+  reservation: meetingRoomAdvertisedPriceReservationSchema,
+  quote: meetingRoomReservationQuoteSchema,
+});
+
+const officeAdvertisedPriceStateSchema = Schema.Struct({
+  ...workspaceCheckoutPriceStateSchema.fields,
+  kind: officeAdvertisedPriceReservationSchema.fields.kind,
+  reservation: officeAdvertisedPriceReservationSchema,
+  quote: officeReservationQuoteSchema,
+});
+
 export const advertisedPriceStateSchema = Schema.Union([
   Schema.Struct({
-    ...workspaceCheckoutPriceStateSchema.fields,
-    kind: coworkAdvertisedPriceReservationSchema.fields.kind,
-    reservation: coworkAdvertisedPriceReservationSchema,
-    quote: coworkReservationQuoteSchema,
+    ...coworkAdvertisedPriceStateSchema.fields,
+    ...absentSubmittedCodeMetadataSchema.fields,
   }),
   Schema.Struct({
-    ...workspaceCheckoutPriceStateSchema.fields,
-    kind: meetingRoomAdvertisedPriceReservationSchema.fields.kind,
-    reservation: meetingRoomAdvertisedPriceReservationSchema,
-    quote: meetingRoomReservationQuoteSchema,
+    ...coworkAdvertisedPriceStateSchema.fields,
+    ...submittedCodeMetadataSchema.fields,
+  }),
+  Schema.Struct({
+    ...meetingRoomAdvertisedPriceStateSchema.fields,
+    ...absentSubmittedCodeMetadataSchema.fields,
+  }),
+  Schema.Struct({
+    ...meetingRoomAdvertisedPriceStateSchema.fields,
+    ...submittedCodeMetadataSchema.fields,
+  }),
+  Schema.Struct({
+    ...officeAdvertisedPriceStateSchema.fields,
+    ...absentSubmittedCodeMetadataSchema.fields,
+  }),
+  Schema.Struct({
+    ...officeAdvertisedPriceStateSchema.fields,
+    ...submittedCodeMetadataSchema.fields,
   }),
 ]).annotate({
   identifier: "AdvertisedPriceState",
@@ -48,7 +107,7 @@ export const advertisedPriceStateSchema = Schema.Union([
 
 export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type;
 
-type AdvertisedPriceStateInput =
+type AdvertisedPriceStateInput = (
   | {
       readonly kind: "cowork";
       readonly locale: Locale;
@@ -62,7 +121,16 @@ type AdvertisedPriceStateInput =
       readonly reservation: MeetingRoomAdvertisedPriceReservation;
       readonly quote: MeetingRoomReservationQuote;
       readonly ttlMilliseconds?: number;
-    };
+    }
+  | {
+      readonly kind: "office";
+      readonly locale: Locale;
+      readonly reservation: OfficeAdvertisedPriceReservation;
+      readonly quote: OfficeReservationQuote;
+      readonly ttlMilliseconds?: number;
+    }
+) &
+  PayStateSubmittedCodeMetadata;
 
 export class AdvertisedPriceStateTokenError extends Data.TaggedError(
   "AdvertisedPriceStateTokenError"
@@ -117,6 +185,7 @@ export const buildAdvertisedPriceState = Effect.fn(
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
+    ...getSubmittedCodeMetadata(input),
   }).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
 });
 
@@ -130,7 +199,7 @@ export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
       { onExcessProperty: "error" }
     )(state).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
 
-    return yield* sealCheckoutState(encodedState, options).pipe(
+    return yield* sealCheckoutState(encodedState, state.kid, options).pipe(
       Effect.mapError(toAdvertisedPriceStateTokenError)
     );
   }

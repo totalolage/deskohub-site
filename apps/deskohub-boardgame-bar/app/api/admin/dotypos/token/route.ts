@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       return response;
     }).pipe(
       Effect.scoped,
-      Effect.provide(DotyposOAuthService.Live),
+      Effect.provide(DotyposOAuthService.Default),
       Effect.catchTags({
         DotyposOAuthConfigError: (error: { readonly message: string }) =>
           Effect.succeed(

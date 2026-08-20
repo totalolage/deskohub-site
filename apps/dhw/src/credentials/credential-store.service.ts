@@ -22,7 +22,7 @@ export class CredentialStore extends Context.Service<
   CredentialStore,
   ICredentialStore
 >()("CredentialStore") {
-  static Live = Layer.succeed(this, {
+  static Default = Layer.succeed(this, {
     get: Effect.fn("CredentialStore.get")((name: string) =>
       Effect.tryPromise({
         try: () => Bun.secrets.get({ service: credentialService, name }),

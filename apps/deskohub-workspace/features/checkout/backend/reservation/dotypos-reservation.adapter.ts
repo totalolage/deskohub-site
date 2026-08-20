@@ -1,7 +1,9 @@
 import {
   type CreateDotyposReservationInput,
+  type DotyposCustomerId,
   type DotyposReservationStatus,
   DotyposService,
+  type DotyposTableId,
   type ExternalAPIError,
   type NetworkError,
   type Reservation,
@@ -12,28 +14,27 @@ import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomDurationLabel,
   getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceOfficeProductTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
-import {
-  getReservationDate,
-  getReservationIntervalNormalization,
-} from "@/features/reservation/reservation-interval";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { getReservationDate } from "@/features/reservation/reservation-interval";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
+  getWorkspaceReservationInterval,
   type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
 } from "./workspace-table-assignment.service";
-import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
+import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
 
 export interface CreateWorkspaceDotyposReservationInput {
-  readonly paymentOrderId: string;
-  readonly dotyposCustomerId: string;
+  readonly paymentOrderId: WorkspaceReservationId;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly checkoutDetails: CheckoutDetails;
   readonly reservation: WorkspaceTableAssignmentReservation;
   readonly status: DotyposReservationStatus;
@@ -54,26 +55,29 @@ export const createWorkspaceDotyposReservation: (
 
     const dotypos = yield* DotyposService;
     const tableAssignments = yield* WorkspaceTableAssignmentService;
-    const reservationIntervalInput = Match.value(input.reservation).pipe(
-      Match.discriminatorsExhaustive("kind")({
-        cowork: ({ date }) => getCoworkReservationIntervalInput(date),
-        "meeting-room": (meetingRoomReservation) => meetingRoomReservation,
-      })
-    );
-    const { startsAt, endsAt } = yield* getReservationIntervalNormalization(
-      reservationIntervalInput
+    const { startsAt, endsAt } = yield* getWorkspaceReservationInterval(
+      input.reservation
     ).pipe(
       Effect.mapError(
         (cause) => new ValidationError({ message: cause.message, cause })
       )
     );
-    const tableId = yield* tableAssignments.assignTableId(input.reservation);
+    const tableId: DotyposTableId = yield* tableAssignments.assignTableId(
+      input.reservation
+    );
+    const seats = Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: () => workspaceBookingSeatCount,
+        "meeting-room": () => workspaceBookingSeatCount,
+        office: ({ seats }) => seats,
+      })
+    );
 
     const reservationInput: CreateDotyposReservationInput = {
       customerId: input.dotyposCustomerId,
       startDate: temporalInstantToDate(Temporal.Instant.from(startsAt)),
       endDate: temporalInstantToDate(Temporal.Instant.from(endsAt)),
-      seats: workspaceBookingGuestCount,
+      seats,
       tableId,
       status: input.status,
       note: formatWorkspaceReservationNote(input),
@@ -142,6 +146,13 @@ export const formatWorkspaceReservationNote = (
           )}`,
         ],
       }),
+      office: (officeReservation) => ({
+        productLabel: getWorkspaceOfficeProductTitle(checkoutDetails.locale),
+        reservationRows: [
+          `Dates: ${officeReservation.startsOn}-${officeReservation.endsOn}`,
+          `Seats: ${officeReservation.seats}`,
+        ],
+      }),
     })
   );
   const lines = [
@@ -176,6 +187,11 @@ const getReservationLogAnnotations = (
           interval: meetingRoomReservation,
           timeZone: workspaceSiteConstants.location.timeZone,
         }),
+      }),
+      office: (officeReservation) => ({
+        startsOn: officeReservation.startsOn,
+        endsOn: officeReservation.endsOn,
+        seats: officeReservation.seats,
       }),
     })
   );

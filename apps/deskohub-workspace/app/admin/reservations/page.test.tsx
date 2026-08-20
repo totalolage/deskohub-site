@@ -18,6 +18,7 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 mock.module("server-only", () => ({}));
+mock.module("next/server", () => ({ connection: () => Promise.resolve() }));
 
 type LoadedReservationPage = {
   readonly input: AdministrationReservationListInput;
@@ -43,6 +44,10 @@ let reservationPage: LoadedReservationPage = defaultReservationPage;
 
 mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationReservations: () => Promise.resolve(reservationPage),
+  loadAdministrationReservationsPage: () => ({
+    input: Promise.resolve(reservationPage.input),
+    result: Promise.resolve(reservationPage.result),
+  }),
 }));
 
 mock.module("@/features/administration/reservation-lookup", () => ({
@@ -60,9 +65,9 @@ describe("ReservationsAdministrationPage", () => {
   });
 
   test("shows the reservation count as a compact accessible badge", async () => {
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({}),
       })
     );
@@ -103,9 +108,9 @@ describe("ReservationsAdministrationPage", () => {
         dateSortUnavailable: false,
       },
     };
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({
           direction: "asc",
           page: "2",
@@ -133,23 +138,25 @@ describe("ReservationsAdministrationPage", () => {
     reservationPage = {
       input: {
         customerId: "customer-one",
-        date: "2026-08-10",
         direction: "asc",
+        from: "2026-08-04",
         sort: "status",
         status: "complete",
+        to: "2026-08-10",
         type: "cowork",
       },
       result: defaultReservationPage.result,
     };
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({
           customerId: "customer-one",
-          date: "2026-08-10",
           direction: "asc",
+          from: "2026-08-04",
           sort: "status",
           status: "complete",
+          to: "2026-08-10",
           type: "cowork",
         }),
       })
@@ -158,8 +165,91 @@ describe("ReservationsAdministrationPage", () => {
     expect(
       view.getByRole("link", { name: "Clear customer" }).getAttribute("href")
     ).toBe(
-      "/admin/reservations?date=2026-08-10&direction=asc&sort=status&status=complete&type=cowork"
+      "/admin/reservations?direction=asc&from=2026-08-04&sort=status&status=complete&to=2026-08-10&type=cowork"
     );
+  });
+
+  test("shows the selected inclusive start-date range", async () => {
+    reservationPage = {
+      input: {
+        direction: "asc",
+        from: "2026-08-04",
+        sort: "date",
+        to: "2026-08-10",
+      },
+      result: {
+        ...defaultReservationPage.result,
+        page: 2,
+        pageCount: 3,
+      },
+    };
+    const { ReservationsAdministrationContent } = await import("./page");
+    const view = render(
+      await ReservationsAdministrationContent({
+        searchParams: Promise.resolve({
+          direction: "asc",
+          from: "2026-08-04",
+          sort: "date",
+          to: "2026-08-10",
+        }),
+      })
+    );
+
+    expect(view.getByLabelText("Start date from").getAttribute("value")).toBe(
+      "2026-08-04"
+    );
+    expect(view.getByLabelText("Start date to").getAttribute("value")).toBe(
+      "2026-08-10"
+    );
+    expect(view.getByRole("link", { name: "Next" }).getAttribute("href")).toBe(
+      "/admin/reservations?direction=asc&from=2026-08-04&sort=date&to=2026-08-10&page=3"
+    );
+  });
+
+  test("places date shortcuts before right-aligned clear and apply actions", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2026-08-12T10:00:00Z");
+    reservationPage = {
+      input: {
+        direction: "asc",
+        from: "2026-08-04",
+        sort: "date",
+        status: "complete",
+        to: "2026-08-10",
+        type: "cowork",
+      },
+      result: defaultReservationPage.result,
+    };
+
+    try {
+      const { ReservationsAdministrationContent } = await import("./page");
+      const view = render(
+        await ReservationsAdministrationContent({
+          searchParams: Promise.resolve({}),
+        })
+      );
+      const shortcuts = view.getByRole("navigation", {
+        name: "Reservation date shortcuts",
+      });
+      const shortcutLinks = within(shortcuts).getAllByRole("link");
+
+      expect(shortcutLinks.map((link) => link.textContent)).toEqual([
+        "Today",
+        "Upcoming",
+        "Past",
+      ]);
+      expect(shortcutLinks.map((link) => link.getAttribute("href"))).toEqual([
+        "/admin/reservations?direction=asc&from=2026-08-12&sort=date&status=complete&to=2026-08-12&type=cowork",
+        "/admin/reservations?direction=asc&from=2026-08-13&sort=date&status=complete&type=cowork",
+        "/admin/reservations?direction=asc&sort=date&status=complete&to=2026-08-11&type=cowork",
+      ]);
+
+      const actions = view.getByRole("group", { name: "Filter actions" });
+      expect(actions.className).toContain("justify-end");
+      expect(actions.textContent).toBe("ClearApply filters");
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
   });
 
   test("explains the fallback when provider date sorting is unavailable", async () => {
@@ -170,9 +260,9 @@ describe("ReservationsAdministrationPage", () => {
         dateSortUnavailable: true,
       },
     };
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({ direction: "asc", sort: "date" }),
       })
     );

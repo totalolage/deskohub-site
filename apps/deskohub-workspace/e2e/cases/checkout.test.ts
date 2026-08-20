@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import { formatReservationDisplayDateRange } from "@/features/reservation/reservation-date";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
@@ -137,7 +139,7 @@ test("observes fulfillment across server and runner whitespace variants", async 
       stderr: "",
       stdout: readsUrl
         ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
-        : "Your workspace access is ready. Access details were sent by email. Tuesday, August 25, 2026 10:00\u202fAM\u2009–\u20092:00\u202fPM CZK\u00a00",
+        : "Your reservation is confirmed. Your payment is complete and the secure access link has been sent by email. Tuesday, August 25, 2026 10:00\u202fAM\u2009–\u20092:00\u202fPM CZK\u00a00",
     };
   }) as Runner;
 
@@ -172,15 +174,69 @@ test("observes fulfillment across server and runner whitespace variants", async 
   expect(commands.filter((args) => args.includes("eval"))).toHaveLength(2);
 });
 
-test("scopes reservation, hosted-payment, and verification capacity", async () => {
-  let insideHostedPaymentSession = false;
+test("asserts office range, seats, and price on the fulfilled status page", async () => {
+  const reservedFrom = Temporal.Instant.from("2099-08-31T22:00:00Z");
+  const reservedUntil = Temporal.Instant.from("2099-09-02T22:00:00Z");
+  const expectedDateRange = formatReservationDisplayDateRange(
+    reservedFrom,
+    reservedUntil,
+    "en-US"
+  );
+  const expectedPrice = formatWorkspaceMoney(
+    { value: 232_000, exponent: 2, currency: "CZK" },
+    "en-US"
+  );
+  const run = (async (_command: string, args: string[]) => {
+    const readsUrl = args.at(-2) === "get" && args.at(-1) === "url";
+
+    return {
+      exitCode: 0,
+      stderr: "",
+      stdout: readsUrl
+        ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
+        : `Your reservation is confirmed. Your payment is complete and the secure access link has been sent by email. Private office ${expectedDateRange} SEATS 2 ${expectedPrice}`,
+    };
+  }) as Runner;
+
+  await Effect.runPromise(
+    assertFulfilledStatusPage({
+      checkoutRow: {
+        amount_exponent: 2,
+        amount_value: 232_000,
+        currency: "CZK",
+      } as CheckoutRow,
+      config: {
+        expectedHost: "workspace.test",
+        timeouts: workspaceE2ETimeouts,
+      } as WorkspaceE2EConfig,
+      data: {
+        locale: "en-US",
+        office: {
+          seats: 2,
+          startsOn: "2099-09-01",
+          endsOn: "2099-09-02",
+          startsAt: reservedFrom.toString(),
+          endsAt: reservedUntil.toString(),
+        },
+      } as CheckoutData,
+      dotyposReservation: {
+        customer,
+        reservedFrom,
+        reservedUntil,
+      },
+      orderId: "order-id",
+      run,
+      session: "office-status-page",
+    }).pipe(
+      Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
+    )
+  );
+});
+
+test("preserves semantic reservation and verification capacities and payment step order", async () => {
   const observedSteps: Array<{
-    readonly capacity:
-      | "provider-verification"
-      | "reservation-start"
-      | undefined;
+    readonly capacity: "provider-verification" | undefined;
     readonly id: string;
-    readonly insideHostedPaymentSession: boolean;
     readonly timeoutMs: number;
   }> = [];
   const orderId = "019f70bd-0131-7f30-9f8a-48e768f00292";
@@ -189,7 +245,6 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
     observedSteps.push({
       capacity: step.capacity,
       id: step.id,
-      insideHostedPaymentSession,
       timeoutMs: step.timeoutMs,
     });
     if (step.id === "prepare-checkout-pay-page") {
@@ -238,19 +293,6 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
           timeoutMs: workspaceE2ETimeouts.browserAction,
         },
       ],
-      resources: {
-        withHostedPaymentSession: (effect) =>
-          Effect.acquireUseRelease(
-            Effect.sync(() => {
-              insideHostedPaymentSession = true;
-            }),
-            () => effect,
-            () =>
-              Effect.sync(() => {
-                insideHostedPaymentSession = false;
-              })
-          ),
-      },
       run: (() =>
         Promise.reject(new Error("runner must not execute"))) as Runner,
       runStep,
@@ -264,10 +306,6 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
       capacity === undefined ? [] : [{ capacity, id }]
     )
   ).toEqual([
-    {
-      capacity: "reservation-start",
-      id: "prepare-checkout-pay-page",
-    },
     {
       capacity: "provider-verification",
       id: "replay-payment-webhook",
@@ -283,16 +321,6 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
     "reach-checkout-status-page",
     "replay-payment-webhook",
     "complete-test-fulfillment",
-  ]);
-  expect(
-    observedSteps
-      .filter(({ insideHostedPaymentSession }) => insideHostedPaymentSession)
-      .map(({ id }) => id)
-  ).toEqual([
-    "start-checkout-payment",
-    "read-provider-session-row",
-    "complete-hosted-payment",
-    "reach-checkout-status-page",
   ]);
   expect(
     observedSteps.slice(-6).map(({ id, timeoutMs }) => ({ id, timeoutMs }))

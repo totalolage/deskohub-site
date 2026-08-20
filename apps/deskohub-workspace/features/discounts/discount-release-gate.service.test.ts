@@ -5,7 +5,7 @@ import {
   PostHogFeatureFlagEvaluationError,
   type TypedPostHogFeatureFlagEvaluationSnapshot,
 } from "@deskohub/posthog/feature-flags/node";
-import { Effect, Logger, References } from "effect";
+import { type Context, Effect, Logger, References } from "effect";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type {
   PostHogFeatureFlagDefinitions,
@@ -14,6 +14,9 @@ import type {
 import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
 const flagValues = new Map<PostHogFeatureFlagKey, boolean | undefined>();
+type LogAnnotations = Context.Service.Shape<
+  typeof References.CurrentLogAnnotations
+>;
 
 const makeSnapshot = () =>
   ({
@@ -40,7 +43,7 @@ const runGateEvaluation = () =>
       operation: "discover_advertised_discounts",
     });
   }).pipe(
-    Effect.provide(DiscountReleaseGateService.Live),
+    Effect.provide(DiscountReleaseGateService.Default),
     Effect.provide(featureFlagLayer),
     Effect.runPromise
   );
@@ -80,7 +83,7 @@ describe("DiscountReleaseGateService", () => {
         operation: "discover_advertised_discounts",
       });
     }).pipe(
-      Effect.provide(DiscountReleaseGateService.Live),
+      Effect.provide(DiscountReleaseGateService.Default),
       Effect.provide(featureFlagLayer),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise
@@ -101,7 +104,7 @@ describe("DiscountReleaseGateService", () => {
   ] as const)("fails only %s closed when PostHog omits it", async (flag, gate) => {
     flagValues.delete(flag);
     const logRecords: {
-      readonly annotations: Record<string, unknown>;
+      readonly annotations: LogAnnotations;
       readonly level: string;
     }[] = [];
     const logger = Logger.make((options) => {
@@ -117,7 +120,7 @@ describe("DiscountReleaseGateService", () => {
         operation: "affirm_displayed_discounts",
       });
     }).pipe(
-      Effect.provide(DiscountReleaseGateService.Live),
+      Effect.provide(DiscountReleaseGateService.Default),
       Effect.provide(featureFlagLayer),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise
@@ -153,7 +156,7 @@ describe("DiscountReleaseGateService", () => {
         ),
     });
     const logRecords: {
-      readonly annotations: Record<string, unknown>;
+      readonly annotations: LogAnnotations;
       readonly level: string;
     }[] = [];
     const logger = Logger.make((options) => {
@@ -169,7 +172,7 @@ describe("DiscountReleaseGateService", () => {
         operation: "discover_advertised_discounts",
       });
     }).pipe(
-      Effect.provide(DiscountReleaseGateService.Live),
+      Effect.provide(DiscountReleaseGateService.Default),
       Effect.provide(failingFeatureFlags),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise

@@ -40,7 +40,7 @@ const validDiscount = {
     kind: "percentage",
     basisPoints: 1000,
   },
-  products: [{ kind: "cowork", tier: "basic" }],
+  products: [{ kind: "cowork" }],
 };
 
 const validCode = {
@@ -50,6 +50,7 @@ const validCode = {
   validFrom: "2026-08-01T00:00:00+02:00",
   validUntil: "2026-09-01T00:00:00+02:00",
   maxUses: 100,
+  maxUsesPerCustomer: 2,
 };
 
 describe("discount administration inputs", () => {
@@ -69,10 +70,7 @@ describe("discount administration inputs", () => {
     expect(() =>
       decodeDiscount({
         ...validDiscount,
-        products: [
-          { kind: "cowork", tier: "basic" },
-          { kind: "cowork", tier: "basic" },
-        ],
+        products: [{ kind: "cowork" }, { kind: "cowork" }],
       })
     ).toThrow();
   });
@@ -118,6 +116,9 @@ describe("discount administration inputs", () => {
       })
     ).toThrow();
     expect(() => decodeCode({ ...validCode, maxUses: 0 })).toThrow();
+    expect(() => decodeCode({ ...validCode, maxUsesPerCustomer: 0 })).toThrow();
+    const { maxUsesPerCustomer: _, ...legacyCode } = validCode;
+    expect(() => decodeCode(legacyCode)).not.toThrow();
   });
 
   test("accepts audience and Dotypos group operations but no claim mutations", () => {
@@ -149,7 +150,7 @@ describe("discount administration inputs", () => {
     ).toThrow();
   });
 
-  test("creates a code with an existing or new discount", () => {
+  test("creates discount codes and vouchers through separate mutations", () => {
     const code = {
       code: validCode.code,
       enabled: validCode.enabled,
@@ -165,6 +166,30 @@ describe("discount administration inputs", () => {
         discount: { kind: "new", discount: validDiscount },
       })
     ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "create-voucher",
+        voucher: {
+          code: code.code,
+          enabled: code.enabled,
+          validFrom: code.validFrom,
+          validUntil: code.validUntil,
+          credit: { value: 10_000, exponent: 2, currency: "CZK" },
+        },
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "create-voucher",
+        voucher: {
+          code: code.code,
+          enabled: code.enabled,
+          validFrom: code.validFrom,
+          validUntil: code.validUntil,
+          credit: { value: 0, exponent: 2, currency: "CZK" },
+        },
+      })
+    ).toThrow();
     expect(() =>
       decodeMutation({
         kind: "create-customer-code",

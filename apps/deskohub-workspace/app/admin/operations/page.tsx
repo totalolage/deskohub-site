@@ -1,66 +1,138 @@
+import { Suspense } from "react";
 import {
+  AdministrationAlert,
+  AdministrationFilterField,
+  AdministrationFilterForm,
+  AdministrationFilterInput,
+  AdministrationFilterSelect,
   AdministrationPage,
-  AdministrationPageHeader,
+  AdministrationTableCount,
+  AdministrationTableToolbar,
 } from "@/features/administration/components";
 import {
+  AdministrationCollectionLoading,
+  AdministrationCountLoading,
+  AdministrationFiltersLoading,
+} from "@/features/administration/loading";
+import {
   type AdministrationSearchParams,
-  loadAdministrationOperations,
+  type loadAdministrationOperations,
+  loadAdministrationOperationsPage,
 } from "@/features/administration/page-data.server";
 import {
   nexiOperationChannels,
   nexiOperationTypes,
 } from "@/features/administration/payment-administration-filters";
-import { OperationTable } from "@/features/administration/payment-components";
+import { OperationTable } from "@/features/administration/payment-tables";
 import { Button } from "@/shared/components/ui/button";
 
-export default async function OperationsAdministrationPage({
+export default function OperationsAdministrationPage({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
-  const { input, range, result } =
-    await loadAdministrationOperations(searchParams);
+  const { criteria, result } = loadAdministrationOperationsPage(searchParams);
+
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
-        count={result.items.length}
-        description="Live Nexi payment operations linked back to their orders and Workspace reservations."
-        eyebrow="Payments"
-        title="Operations"
+      <h1 className="sr-only">Operations</h1>
+      <AdministrationTableToolbar
+        count={
+          <Suspense fallback={<AdministrationCountLoading label="operation" />}>
+            <OperationCount result={result} />
+          </Suspense>
+        }
+        filters={
+          <Suspense fallback={<AdministrationFiltersLoading fields={4} />}>
+            <OperationFiltersContent criteria={criteria} />
+          </Suspense>
+        }
+        itemLabel="operation"
       />
-      <form className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-navy-blue/10 bg-white p-4">
-        <FilterField
-          defaultValue={range.from}
-          label="From"
-          name="from"
-          type="date"
-        />
-        <FilterField defaultValue={range.to} label="To" name="to" type="date" />
-        <SelectField
-          defaultValue={input.channel}
-          label="Origin"
-          name="channel"
-          options={nexiOperationChannels}
-        />
-        <SelectField
-          defaultValue={input.operationType}
-          label="Type"
-          name="operationType"
-          options={nexiOperationTypes}
-        />
-        <Button
-          className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
-          size="sm"
-          type="submit"
-        >
-          Show operations
-        </Button>
-      </form>
+      <Suspense
+        fallback={
+          <AdministrationCollectionLoading label="operations" columns={6} />
+        }
+      >
+        <OperationResultsContent result={result} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+type OperationsData = Awaited<ReturnType<typeof loadAdministrationOperations>>;
+type OperationCriteria = Pick<OperationsData, "input" | "range">;
+
+async function OperationCount({
+  result,
+}: {
+  readonly result: Promise<OperationsData["result"]>;
+}) {
+  return (
+    <AdministrationTableCount
+      count={(await result).items.length}
+      itemLabel="operation"
+    />
+  );
+}
+
+async function OperationFiltersContent({
+  criteria,
+}: {
+  readonly criteria: Promise<OperationCriteria>;
+}) {
+  return <OperationFilters {...(await criteria)} />;
+}
+
+async function OperationResultsContent({
+  result,
+}: {
+  readonly result: Promise<OperationsData["result"]>;
+}) {
+  return <OperationResults result={await result} />;
+}
+
+function OperationFilters({ input, range }: OperationCriteria) {
+  return (
+    <AdministrationFilterForm variant="standalone">
+      <FilterField
+        defaultValue={range.from}
+        label="From"
+        name="from"
+        type="date"
+      />
+      <FilterField defaultValue={range.to} label="To" name="to" type="date" />
+      <SelectField
+        defaultValue={input.channel}
+        label="Origin"
+        name="channel"
+        options={nexiOperationChannels}
+      />
+      <SelectField
+        defaultValue={input.operationType}
+        label="Type"
+        name="operationType"
+        options={nexiOperationTypes}
+      />
+      <Button className="min-h-10" size="sm" type="submit">
+        Show operations
+      </Button>
+    </AdministrationFilterForm>
+  );
+}
+
+function OperationResults({
+  result,
+}: {
+  readonly result: OperationsData["result"];
+}) {
+  return (
+    <>
       {!result.providerAvailable && (
-        <p className="mb-5 rounded-xl border border-sunset-yellow/35 bg-sunset-yellow/10 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-5" status="warning">
           Nexi operations are temporarily unavailable. No operation snapshot is
           persisted locally, so try again later.
-        </p>
+        </AdministrationAlert>
       )}
       {result.truncated && (
         <p className="mb-4 text-sm text-navy-blue/65">
@@ -69,7 +141,7 @@ export default async function OperationsAdministrationPage({
         </p>
       )}
       <OperationTable operations={result.items} />
-    </AdministrationPage>
+    </>
   );
 }
 
@@ -85,15 +157,14 @@ function FilterField({
   readonly type: "date";
 }) {
   return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      {label}
-      <input
-        className="h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15"
+    <AdministrationFilterField htmlFor={`operation-${name}`} label={label}>
+      <AdministrationFilterInput
         defaultValue={defaultValue}
+        id={`operation-${name}`}
         name={name}
         type={type}
       />
-    </label>
+    </AdministrationFilterField>
   );
 }
 
@@ -109,11 +180,10 @@ function SelectField({
   readonly options: readonly string[];
 }) {
   return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      {label}
-      <select
-        className="h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15"
+    <AdministrationFilterField htmlFor={`operation-${name}`} label={label}>
+      <AdministrationFilterSelect
         defaultValue={defaultValue ?? ""}
+        id={`operation-${name}`}
         name={name}
       >
         <option value="">All</option>
@@ -122,7 +192,7 @@ function SelectField({
             {option.replaceAll("_", " ")}
           </option>
         ))}
-      </select>
-    </label>
+      </AdministrationFilterSelect>
+    </AdministrationFilterField>
   );
 }

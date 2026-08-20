@@ -61,7 +61,7 @@ const loadWorkspaceAvailabilityRequest = Effect.fn(
 
 const isValidationError = (cause: unknown): cause is ValidationError =>
   Predicate.isTagged(cause, "ValidationError") &&
-  typeof (cause as { message?: unknown }).message === "string";
+  Predicate.isString((cause as { message?: unknown }).message);
 
 const handleAvailabilityRouteError = Effect.fn("handleAvailabilityRouteError")(
   function* (cause: unknown) {
@@ -95,8 +95,8 @@ export const GET = defineWorkspaceRoute(
       ),
       Effect.provide(
         Layer.merge(
-          WorkspaceAvailabilityService.LiveWithDependencies,
-          ReservationSupersessionService.LiveWithDependencies
+          WorkspaceAvailabilityService.Live,
+          ReservationSupersessionService.Live
         )
       ),
       Effect.catch(handleAvailabilityRouteError)

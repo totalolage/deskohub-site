@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  EmailDeliveryIdSchema,
   type EmailMessage,
   type EmailSendResult,
   EmailServiceError,
@@ -8,10 +9,7 @@ import {
 import { Effect, Layer } from "effect";
 import { type Locale, locales } from "@/features/i18n";
 import { formatDurationMinutes } from "@/shared/utils/date-formatting";
-import {
-  TrainingReservationService,
-  TrainingReservationServiceLive,
-} from "./training-reservation.service";
+import { TrainingReservationService } from "./training-reservation.service";
 
 const input = {
   firstName: "Ada",
@@ -27,7 +25,7 @@ const input = {
 };
 
 const sent = (id: string): EmailSendResult => ({
-  id,
+  id: EmailDeliveryIdSchema.make(id),
   status: "sent",
   provider: "fake",
   timestamp: new Date("2026-06-20T12:00:00.000Z"),
@@ -44,7 +42,7 @@ const runSubmit = (
       return yield* service.submit({ ...input, duration }, locale);
     }).pipe(
       Effect.provide(
-        TrainingReservationServiceLive.pipe(
+        TrainingReservationService.Default.pipe(
           Layer.provide(
             Layer.succeed(EmailServiceTag, {
               send,

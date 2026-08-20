@@ -41,7 +41,7 @@ export class CloudinaryWebhookVerifier extends Context.Service<
   CloudinaryWebhookVerifier,
   ICloudinaryWebhookVerifier
 >()("@deskohub/cloudinary/CloudinaryWebhookVerifier") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const rawConfig = yield* CloudinaryRuntimeConfig;

@@ -50,12 +50,12 @@ describe("createWorkspaceDotyposReservation", () => {
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
     );
     const testLayer = Layer.mergeAll(
-      Layer.succeed(WorkspaceTableAssignmentService, {
+      Layer.mock(WorkspaceTableAssignmentService, {
         assignTableId,
       } satisfies IWorkspaceTableAssignmentService),
-      Layer.succeed(DotyposService, {
+      Layer.mock(DotyposService, {
         createReservation,
-      } as unknown as typeof DotyposService.Service)
+      })
     );
 
     await createWorkspaceDotyposReservation({
@@ -88,12 +88,12 @@ describe("createWorkspaceDotyposReservation", () => {
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
     );
     const testLayer = Layer.mergeAll(
-      Layer.succeed(WorkspaceTableAssignmentService, {
+      Layer.mock(WorkspaceTableAssignmentService, {
         assignTableId,
       } satisfies IWorkspaceTableAssignmentService),
-      Layer.succeed(DotyposService, {
+      Layer.mock(DotyposService, {
         createReservation,
-      } as unknown as typeof DotyposService.Service)
+      })
     );
     const input = {
       paymentOrderId: "payment-order-id",

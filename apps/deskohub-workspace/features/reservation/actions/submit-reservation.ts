@@ -1,7 +1,7 @@
 "use server";
 
 import { Effect } from "effect";
-import { CheckoutServiceLiveWithDependencies } from "@/features/checkout/backend/checkout";
+import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { submitReservationSchema } from "@/features/reservation/actions/submit-reservation-input";
 import { submitWorkspaceReservation } from "@/features/reservation/actions/submit-workspace-reservation";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -12,9 +12,7 @@ const submitReservationAction = defineWorkspaceAction(
     schema: submitReservationSchema,
   },
   (input) =>
-    submitWorkspaceReservation(input).pipe(
-      Effect.provide(CheckoutServiceLiveWithDependencies)
-    )
+    submitWorkspaceReservation(input).pipe(Effect.provide(CheckoutService.Live))
 );
 
 export const submitReservation: typeof submitReservationAction = async (

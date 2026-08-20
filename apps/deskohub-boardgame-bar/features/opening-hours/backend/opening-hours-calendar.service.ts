@@ -6,7 +6,7 @@ import type {
 } from "@deskohub/google-calendar";
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match, Option } from "effect";
-import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
+import { BoardgameGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { siteConstants } from "@/shared/utils/constants";
 import { OpeningHoursCalendarConfig } from "./opening-hours-calendar.config";
 
@@ -52,7 +52,7 @@ export class OpeningHoursCalendarService extends Context.Service<
   OpeningHoursCalendarService,
   IOpeningHoursCalendarService
 >()("@deskohub-boardgame-bar/opening-hours/OpeningHoursCalendarService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const calendar = yield* GoogleCalendarService;
@@ -108,9 +108,9 @@ export class OpeningHoursCalendarService extends Context.Service<
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(GoogleCalendarServiceLive),
-    Layer.provide(OpeningHoursCalendarConfig.Live)
+  static Live = this.Default.pipe(
+    Layer.provide(BoardgameGoogleCalendarLayer),
+    Layer.provide(OpeningHoursCalendarConfig.Default)
   );
 }
 

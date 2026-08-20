@@ -1,7 +1,9 @@
 import { Effect } from "effect";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
   openBrowserPage,
+  switchToBrowserTab,
   switchToMainFrame,
   waitForBrowserText,
   waitForBrowserUrl,
@@ -25,7 +27,6 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   PaymentTerminalScenario,
-  WorkspaceE2ECaseResources,
   WorkspaceE2EStepRunner,
 } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
@@ -48,7 +49,6 @@ export const assertPaymentTerminalPath = ({
   config,
   data,
   reservationPath,
-  resources,
   run,
   runStep,
   scenario,
@@ -59,7 +59,6 @@ export const assertPaymentTerminalPath = ({
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   reservationPath: string;
-  resources: WorkspaceE2ECaseResources;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   scenario: PaymentTerminalScenario;
@@ -70,7 +69,6 @@ export const assertPaymentTerminalPath = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
-      capacity: "reservation-start",
       execute: prepareCheckoutPaymentAttempt({
         config,
         data,
@@ -85,18 +83,20 @@ export const assertPaymentTerminalPath = ({
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
-    yield* resources.withHostedPaymentSession(
-      Effect.suspend(() =>
-        runStep({
-          execute: submitPaymentAndWaitForHostedPage({
-            run,
-            session,
-            timeouts: config.timeouts,
-          }),
-          id: "start-hosted-payment",
-          timeoutMs: config.timeouts.providerTransition,
-        })
-      )
+    yield* Effect.suspend(() =>
+      runStep({
+        execute: submitPaymentAndWaitForHostedPage({
+          run,
+          session,
+          timeouts: config.timeouts,
+        }).pipe(
+          Effect.tap(({ checkoutTabId }) =>
+            switchToBrowserTab(run, session, checkoutTabId)
+          )
+        ),
+        id: "start-hosted-payment",
+        timeoutMs: config.timeouts.providerTransition,
+      })
     );
     log(`Started hosted payment attempt for order ${orderId}`);
     yield* runStep({
@@ -141,7 +141,7 @@ const preparePaymentTerminalState = ({
   state,
   timeoutMs,
 }: {
-  orderId: string;
+  orderId: WorkspaceReservationId;
   scenario: PaymentTerminalScenario;
   state: CheckoutFlowState;
   timeoutMs: number;
@@ -192,7 +192,7 @@ const assertTerminalStatusPage = ({
   session,
 }: {
   config: WorkspaceE2EConfig;
-  orderId: string;
+  orderId: WorkspaceReservationId;
   run: Runner;
   scenario: PaymentTerminalScenario;
   session: string;
@@ -227,7 +227,7 @@ export const activateStatusReserveAgain = (
   reservationPath: string,
   timeouts: WorkspaceE2ETimeouts
 ) => {
-  const selector = `a[href="${reservationPath}"]`;
+  const selector = `#checkout-status-reserve-again[href="${reservationPath}"]`;
 
   return activateHydratedBrowserElement(run, session, selector, {
     timeoutMs: timeouts.uiTransition,

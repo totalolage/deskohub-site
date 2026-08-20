@@ -6,8 +6,8 @@ export {
   type AppliedDiscount,
   affirmedDiscountAdvertisementQuoteCodec,
   appliedDiscountCodec,
-  type CanonicalDiscountCode,
-  canonicalDiscountCodeSchema,
+  type CanonicalPromotionCode,
+  canonicalPromotionCodeSchema,
   type Discount,
   type DiscountAdjustment,
   type DiscountAdvertisementInput,
@@ -17,11 +17,12 @@ export {
   type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
-  discountProductIdentitySchema,
+  discountProductTargetSchema,
   discountQuoteCodec,
   isAppliedDiscount,
 } from "./contracts";
 export {
+  type AppliedCustomerDiscountQuote,
   type AppliedDiscountCodeQuote,
   type ApplyCustomerDiscountInput,
   type ApplyDiscountCodeInput,
@@ -30,17 +31,21 @@ export {
   type DisplayedDiscountAffirmation,
   type DisplayedDiscountAffirmationInput,
   type IDiscountService,
+  type PreviewDiscountCodeInput,
 } from "./discount.service";
-export { normalizeSubmittedDiscountCode } from "./discount-code";
 export {
   DiscountCalculationError,
   type DiscountCalculationFailureReason,
   DiscountClaimError,
   type DiscountClaimFailureReason,
-  DiscountCodeUnavailableError,
-  type DiscountCodeUnavailableReason,
   type DiscountError,
   DiscountProviderError,
   type DiscountProviderFailureReason,
   type DiscountResolutionError,
+  PromotionCodeUnavailableError,
+  type PromotionCodeUnavailableReason,
 } from "./errors";
+export {
+  discountCodeQueryParam,
+  normalizeSubmittedPromotionCode,
+} from "./promotion-code";

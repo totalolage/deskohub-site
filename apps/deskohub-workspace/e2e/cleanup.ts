@@ -1,3 +1,4 @@
+import type { DotyposReservationId } from "@deskohub/dotypos";
 import { Cause, Effect, Exit } from "effect";
 import { getWorkspaceE2EDateInterval } from "./capacity";
 import type { DatasourceConfig } from "./config";
@@ -101,7 +102,9 @@ export const cleanupCheckoutFlowStates = (
       ];
       const completedReservationIds = new Set(
         flowStates.flatMap((state) => {
-          const reservationId = state.checkoutRow?.dotypos_reservation_id;
+          const reservationId =
+            state.completedDotyposReservationId ??
+            state.checkoutRow?.dotypos_reservation_id;
           return state.cleanupComplete && reservationId ? [reservationId] : [];
         })
       );
@@ -185,7 +188,10 @@ export const cleanupOwnedCheckoutFlowStates = (
 ): Effect.Effect<WorkspaceE2EError | undefined, never, E2EDatabase> =>
   Effect.gen(function* () {
     const cleanupErrors: WorkspaceE2EError[] = [];
-    const reservationOwners = new Map<string, CheckoutFlowState[]>();
+    const reservationOwners = new Map<
+      DotyposReservationId,
+      CheckoutFlowState[]
+    >();
     const lookupResults = yield* Effect.all(
       flowStates.map((state) => {
         if (state.checkoutRow?.dotypos_reservation_id || !state.orderId) {
@@ -231,14 +237,21 @@ export const cleanupOwnedCheckoutFlowStates = (
       [...reservationOwners].map(([reservationId, owners]) =>
         Effect.exit(
           dependencies.cancelDotyposReservation(datasourceConfig, reservationId)
-        ).pipe(Effect.map((exit) => ({ exit, owners })))
+        ).pipe(Effect.map((exit) => ({ exit, owners, reservationId })))
       ),
       { concurrency: "unbounded" }
     );
 
-    for (const { exit: cleanupExit, owners } of cancellationResults) {
+    for (const {
+      exit: cleanupExit,
+      owners,
+      reservationId,
+    } of cancellationResults) {
       if (Exit.isSuccess(cleanupExit)) {
-        for (const state of owners) state.cleanupComplete = true;
+        for (const state of owners) {
+          state.cleanupComplete = true;
+          state.completedDotyposReservationId = reservationId;
+        }
         continue;
       }
 

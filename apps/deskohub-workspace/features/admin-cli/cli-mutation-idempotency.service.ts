@@ -1,24 +1,24 @@
 import {
   AdministrationDiscountMutationResult,
-  type AdministrationDiscountMutationResultType,
-  type AdministrationDiscountMutationType,
+  AdministrationReservationAccessGrant,
   type CliMutationRequestIdType,
   type CliSessionIdType,
 } from "@deskohub/workspace-admin-api";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, lte } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  WorkspaceDatabase,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
-import { cliMutationRequests } from "@/db/schema";
+  type CliStoredMutation,
+  type CliStoredMutationResult,
+  cliMutationRequests,
+} from "@/db/schema";
 
 export type CliMutationClaim =
   | { readonly kind: "claimed" }
   | {
       readonly kind: "completed";
-      readonly result: AdministrationDiscountMutationResultType;
+      readonly result: CliStoredMutationResult;
     }
   | { readonly kind: "in-progress" }
   | { readonly kind: "mismatch" };
@@ -26,7 +26,7 @@ export type CliMutationClaim =
 type CliMutationRequest = {
   readonly sessionId: CliSessionIdType;
   readonly requestId: CliMutationRequestIdType;
-  readonly mutation: AdministrationDiscountMutationType;
+  readonly mutation: CliStoredMutation;
 };
 
 interface ICliMutationIdempotency {
@@ -38,19 +38,25 @@ interface ICliMutationIdempotency {
   >;
   readonly complete: (
     request: CliMutationRequest & {
-      readonly result: AdministrationDiscountMutationResultType;
+      readonly result: CliStoredMutationResult;
     }
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
   readonly release: (
     request: CliMutationRequest
   ) => Effect.Effect<void, EffectDrizzleQueryError>;
+  readonly reclaimStale: (
+    request: CliMutationRequest & {
+      readonly reclaimedAt: Temporal.Instant;
+      readonly staleBefore: Temporal.Instant;
+    }
+  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
 }
 
 export class CliMutationIdempotency extends Context.Service<
   CliMutationIdempotency,
   ICliMutationIdempotency
 >()("@deskohub-workspace/admin-cli/CliMutationIdempotency") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
@@ -83,7 +89,10 @@ export class CliMutationIdempotency extends Context.Service<
         if (row.result === null) return { kind: "in-progress" } as const;
 
         const result = yield* Schema.decodeUnknownEffect(
-          AdministrationDiscountMutationResult
+          Schema.Union([
+            AdministrationDiscountMutationResult,
+            AdministrationReservationAccessGrant,
+          ])
         )(row.result);
         return { kind: "completed", result } as const;
       });
@@ -91,7 +100,7 @@ export class CliMutationIdempotency extends Context.Service<
       const complete = Effect.fn("CliMutationIdempotency.complete")(
         (
           request: CliMutationRequest & {
-            readonly result: AdministrationDiscountMutationResultType;
+            readonly result: CliStoredMutationResult;
           }
         ) =>
           db
@@ -137,11 +146,37 @@ export class CliMutationIdempotency extends Context.Service<
             .pipe(Effect.asVoid)
       );
 
-      return { claim, complete, release } satisfies ICliMutationIdempotency;
+      const reclaimStale = Effect.fn("CliMutationIdempotency.reclaimStale")(
+        (
+          request: CliMutationRequest & {
+            readonly reclaimedAt: Temporal.Instant;
+            readonly staleBefore: Temporal.Instant;
+          }
+        ) =>
+          db
+            .update(cliMutationRequests)
+            .set({ createdAt: request.reclaimedAt })
+            .where(
+              and(
+                eq(cliMutationRequests.sessionId, request.sessionId),
+                eq(cliMutationRequests.requestId, request.requestId),
+                eq(cliMutationRequests.mutation, request.mutation),
+                isNull(cliMutationRequests.result),
+                lte(cliMutationRequests.createdAt, request.staleBefore)
+              )
+            )
+            .returning({ requestId: cliMutationRequests.requestId })
+            .pipe(Effect.map((rows) => rows.length > 0))
+      );
+
+      return {
+        claim,
+        complete,
+        reclaimStale,
+        release,
+      } satisfies ICliMutationIdempotency;
     })
   );
 
-  static LiveWithDependencies = this.Live.pipe(
-    Layer.provide(WorkspaceDatabaseLive)
-  );
+  static Live = this.Default.pipe(Layer.provide(WorkspaceDatabase.Default));
 }

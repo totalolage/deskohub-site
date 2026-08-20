@@ -2,12 +2,14 @@ import { Data, Effect, Match, Schema } from "effect";
 import type { CheckoutSummary } from "@/features/checkout/checkout-summary";
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import type { AppliedDiscount } from "@/features/discounts";
 import {
   type CheckoutStateCryptoOptions,
   type CheckoutStateKey,
   CheckoutStateTokenError,
   createCheckoutStateClaims,
+  decodeCheckoutState,
   openCheckoutState,
   parseCheckoutStateKey,
   sealCheckoutState,
@@ -22,6 +24,11 @@ import {
   buildSignedMeetingRoomPayState,
   meetingRoomSignedPayStateSchema,
 } from "./meeting-room-pay-state";
+import {
+  type BuildSignedOfficePayStateInput,
+  buildSignedOfficePayState,
+  officeSignedPayStateSchema,
+} from "./office-pay-state";
 import type { PayStateSubmittedCodeMetadata } from "./pay-state-contract";
 
 export const payStateTokenQueryParam = "payState" as const;
@@ -30,6 +37,7 @@ export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 export const signedPayStateSchema = Schema.Union([
   coworkSignedPayStateSchema,
   meetingRoomSignedPayStateSchema,
+  officeSignedPayStateSchema,
 ])
   .check(
     Schema.makeFilter(
@@ -64,7 +72,8 @@ export type SealPayStateForUrlResult = {
 
 export type BuildSignedPayStateInput =
   | BuildSignedCoworkPayStateInput
-  | BuildSignedMeetingRoomPayStateInput;
+  | BuildSignedMeetingRoomPayStateInput
+  | BuildSignedOfficePayStateInput;
 
 export const getSignedPayStateCheckoutSummary = (
   state: SignedPayState
@@ -75,6 +84,9 @@ export const getSignedPayStateCheckoutSummary = (
     ),
     Match.when({ reservation: { kind: "meeting-room" } }, ({ quote }) =>
       getMeetingRoomCheckoutSummary(quote)
+    ),
+    Match.when({ reservation: { kind: "office" } }, ({ quote }) =>
+      getOfficeCheckoutSummary(quote)
     ),
     Match.exhaustive
   );
@@ -150,6 +162,9 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
     Match.when({ reservation: { kind: "meeting-room" } }, (meetingRoomInput) =>
       buildSignedMeetingRoomPayState(envelope, meetingRoomInput)
     ),
+    Match.when({ reservation: { kind: "office" } }, (officeInput) =>
+      buildSignedOfficePayState(envelope, officeInput)
+    ),
     Match.exhaustive
   );
 
@@ -169,7 +184,7 @@ export const sealPayState = Effect.fn("payState.seal")(function* (
     onExcessProperty: "error",
   })(state).pipe(Effect.mapError(toPayStateTokenError));
 
-  return yield* sealCheckoutState(encodedState, options).pipe(
+  return yield* sealCheckoutState(encodedState, state.kid, options).pipe(
     Effect.mapError(toPayStateTokenError)
   );
 });
@@ -178,6 +193,14 @@ export const openPayState = Effect.fn("payState.open")(
   (token: string, options: CheckoutStateCryptoOptions = {}) =>
     openCheckoutState(token, signedPayStateSchema, options).pipe(
       Effect.map(preserveSignedPayStateMetadataInvariant),
+      Effect.mapError(toPayStateTokenError)
+    )
+);
+
+export const getPayStateRestartKind = Effect.fn("payState.getRestartKind")(
+  (token: string, options: CheckoutStateCryptoOptions = {}) =>
+    decodeCheckoutState(token, signedPayStateSchema, options).pipe(
+      Effect.map((state) => state.reservation.kind),
       Effect.mapError(toPayStateTokenError)
     )
 );

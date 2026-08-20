@@ -29,13 +29,6 @@ mock.module(
   })
 );
 
-mock.module(
-  "@/features/meeting-room/components/meeting-room-page-feature",
-  () => ({
-    MeetingRoomPageFeature: () => null,
-  })
-);
-
 mock.module("@/features/meeting-room/components/meeting-room-page", () => ({
   MeetingRoomPage: () => null,
 }));

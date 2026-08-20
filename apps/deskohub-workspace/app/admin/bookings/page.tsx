@@ -1,61 +1,136 @@
+import { Suspense } from "react";
 import {
+  AdministrationFilterField,
+  AdministrationFilterForm,
+  AdministrationFilterInput,
   AdministrationPage,
-  AdministrationPageHeader,
+  AdministrationTableCount,
+  AdministrationTableToolbar,
   BookingTable,
   Pagination,
 } from "@/features/administration/components";
 import {
+  AdministrationCollectionLoading,
+  AdministrationCountLoading,
+  AdministrationFiltersLoading,
+} from "@/features/administration/loading";
+import {
   type AdministrationSearchParams,
-  loadAdministrationBookings,
+  type loadAdministrationBookings,
+  loadAdministrationBookingsPage,
 } from "@/features/administration/page-data.server";
 import { Button } from "@/shared/components/ui/button";
 
-export default async function BookingsAdministrationPage({
+export default function BookingsAdministrationPage({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
-  const { input, result } = await loadAdministrationBookings(searchParams);
+  const { input, result } = loadAdministrationBookingsPage(searchParams);
+
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
-        count={result.total}
-        description="Bookings recorded in Dotypos, with their customer, table, and linked Workspace reservation."
-        eyebrow="Operations"
-        title="Bookings"
+      <h1 className="sr-only">Bookings</h1>
+      <AdministrationTableToolbar
+        count={
+          <Suspense fallback={<AdministrationCountLoading label="booking" />}>
+            <BookingCount result={result} />
+          </Suspense>
+        }
+        filters={
+          <Suspense fallback={<AdministrationFiltersLoading fields={1} />}>
+            <BookingFiltersContent input={input} />
+          </Suspense>
+        }
+        itemLabel="booking"
       />
+      <Suspense
+        fallback={
+          <AdministrationCollectionLoading label="bookings" columns={5} />
+        }
+      >
+        <BookingResultsContent input={input} result={result} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
 
-      <form className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-navy-blue/10 bg-white p-4">
-        <label
-          className="grid gap-1.5 text-sm font-semibold"
-          htmlFor="booking-date"
-        >
-          Booking date
-          <input
-            className="h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15"
-            defaultValue={input.date}
-            id="booking-date"
-            name="date"
-            required
-            type="date"
-          />
-        </label>
-        <Button
-          className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
-          size="sm"
-          type="submit"
-        >
-          Show bookings
-        </Button>
-      </form>
+type BookingsData = Awaited<ReturnType<typeof loadAdministrationBookings>>;
 
-      <BookingTable bookings={result.items} />
+async function BookingCount({
+  result,
+}: {
+  readonly result: Promise<BookingsData["result"]>;
+}) {
+  return (
+    <AdministrationTableCount
+      count={(await result).total}
+      itemLabel="booking"
+    />
+  );
+}
+
+async function BookingFiltersContent({
+  input,
+}: {
+  readonly input: Promise<BookingsData["input"]>;
+}) {
+  return <BookingFilters input={await input} />;
+}
+
+async function BookingResultsContent({
+  input,
+  result,
+}: {
+  readonly input: Promise<BookingsData["input"]>;
+  readonly result: Promise<BookingsData["result"]>;
+}) {
+  const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
+  return <BookingResults input={resolvedInput} result={resolvedResult} />;
+}
+
+function BookingFilters({ input }: { readonly input: BookingsData["input"] }) {
+  return (
+    <AdministrationFilterForm variant="standalone">
+      <AdministrationFilterField htmlFor="booking-date" label="Booking date">
+        <AdministrationFilterInput
+          defaultValue={input.date}
+          id="booking-date"
+          name="date"
+          required
+          type="date"
+        />
+      </AdministrationFilterField>
+      <input name="sort" type="hidden" value={input.sort} />
+      <input name="direction" type="hidden" value={input.direction} />
+      <Button className="min-h-10" size="sm" type="submit">
+        Show bookings
+      </Button>
+    </AdministrationFilterForm>
+  );
+}
+
+function BookingResults({ input, result }: BookingsData) {
+  return (
+    <>
+      <BookingTable
+        bookings={result.items}
+        sorting={{
+          direction: input.direction ?? "asc",
+          field: input.sort ?? "booking",
+          params: { date: input.date },
+        }}
+      />
       <Pagination
         basePath="/admin/bookings"
         page={result.page}
         pageCount={result.pageCount}
-        params={{ date: input.date }}
+        params={{
+          date: input.date,
+          direction: input.direction,
+          sort: input.sort,
+        }}
       />
-    </AdministrationPage>
+    </>
   );
 }

@@ -4,6 +4,17 @@
  * Core types for the email service that are provider-agnostic
  */
 
+import { Schema } from "effect";
+
+export const EmailDeliveryIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("EmailDeliveryId")
+).annotate({
+  identifier: "EmailDeliveryId",
+  description:
+    "Opaque identifier for an email delivery accepted by a provider.",
+});
+export type EmailDeliveryId = typeof EmailDeliveryIdSchema.Type;
+
 /**
  * Email recipient type
  */
@@ -37,6 +48,7 @@ export interface EmailMessage {
   attachments?: EmailAttachment[];
   replyTo?: EmailRecipient;
   headers?: Record<string, string>;
+  idempotencyKey?: string;
   tags?: string[];
   metadata?: Record<string, unknown>;
 }
@@ -45,7 +57,7 @@ export interface EmailMessage {
  * Email send result
  */
 export interface EmailSendResult {
-  id: string;
+  id: EmailDeliveryId;
   status: "sent" | "queued" | "failed";
   provider: string;
   timestamp: Date;
@@ -57,7 +69,6 @@ export interface EmailSendResult {
  */
 export interface ReservationConfirmationData {
   customerName: string;
-  reservationId: string;
   datetime: Date;
   duration: number;
   guestCount: number;

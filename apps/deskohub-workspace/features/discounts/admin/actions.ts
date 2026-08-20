@@ -5,13 +5,13 @@ import { revalidatePath } from "next/cache";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { requireDiscountAdminAuthorization } from "./basic-auth.server";
+import { refreshCalendarDiscountSourceAfterMutation } from "./calendar-discount-source-maintenance.server";
 import {
   type DiscountAdminCustomerSearch,
   type DiscountAdminMutation,
   discountAdminCustomerSearchStandardSchema,
   discountAdminMutationStandardSchema,
 } from "./contracts";
-import { DiscountAdministrationLive } from "./discount-administration.runtime";
 import { DiscountAdministration } from "./discount-administration.service";
 import { executeDiscountAdminMutation } from "./execute-discount-admin-mutation";
 
@@ -19,10 +19,13 @@ const executeDiscountAdminActionMutation = Effect.fn(
   "DiscountAdministration.executeActionMutation"
 )(function* (input: DiscountAdminMutation) {
   const result = yield* executeDiscountAdminMutation(input);
-  const customerPath =
-    input.kind === "create-customer-code"
-      ? `/admin/customers/${input.customerId}`
-      : null;
+  yield* refreshCalendarDiscountSourceAfterMutation(input);
+  let customerPath: string | null = null;
+  if (input.kind === "create-customer-code") {
+    customerPath = `/admin/customers/${input.customerId}`;
+  } else if (input.kind === "create-customer-voucher") {
+    customerPath = `/admin/customers/${input.voucher.customerId}`;
+  }
   yield* Option.fromNullOr(customerPath).pipe(
     Option.match({
       onNone: () => Effect.void,
@@ -54,6 +57,25 @@ const executeDiscountAdminActionMutation = Effect.fn(
         () => "Customer removed from the code audience."
       ),
       Match.when("make-code-unrestricted", () => "Code made unrestricted."),
+      Match.when("create-voucher", () => "Voucher created."),
+      Match.when(
+        "create-customer-voucher",
+        () => "Voucher created for this customer."
+      ),
+      Match.when("update-voucher", () => "Voucher updated."),
+      Match.when("delete-voucher", () => "Voucher deleted."),
+      Match.when(
+        "add-voucher-customer",
+        () => "Customer added to the voucher audience."
+      ),
+      Match.when(
+        "remove-voucher-customer",
+        () => "Customer removed from the voucher audience."
+      ),
+      Match.when(
+        "make-voucher-unrestricted",
+        () => "Voucher made unrestricted."
+      ),
       Match.when(
         "set-customer-discount-group",
         () => "Customer discount group updated."
@@ -71,7 +93,7 @@ const discountAdminMutationAction = defineWorkspaceAction(
   (input) =>
     requireDiscountAdminAuthorization().pipe(
       Effect.andThen(executeDiscountAdminActionMutation(input)),
-      Effect.provide(DiscountAdministrationLive),
+      Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
@@ -108,7 +130,7 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
   (input) =>
     requireDiscountAdminAuthorization().pipe(
       Effect.andThen(executeCustomerSearch(input)),
-      Effect.provide(DiscountAdministrationLive),
+      Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

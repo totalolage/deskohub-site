@@ -14,7 +14,7 @@ type WorkspaceProductMessage = (
 ) => string;
 type WorkspaceProductTierPerkMarker = "bullet" | "plus";
 
-type WorkspaceProductTierCardMessages = {
+export type WorkspaceProductTierCardMessages = {
   readonly description: WorkspaceProductMessage;
   readonly perksLabel: WorkspaceProductMessage;
   readonly perks: readonly {
@@ -24,13 +24,7 @@ type WorkspaceProductTierCardMessages = {
   }[];
 };
 
-export const workspaceProductTierMessages: Record<
-  WorkspaceCoworkProductTier,
-  {
-    readonly title: WorkspaceProductMessage;
-    readonly description: WorkspaceProductMessage;
-  }
-> = {
+export const workspaceProductTierMessages = {
   basic: {
     title: m.reservationTierBasicTitle,
     description: m.reservationTierBasicDescription,
@@ -43,19 +37,19 @@ export const workspaceProductTierMessages: Record<
     title: m.reservationTierProfiTitle,
     description: m.reservationTierProfiDescription,
   },
-};
-
-export const workspaceProductTierCardMessages: Record<
+} satisfies Record<
   WorkspaceCoworkProductTier,
-  WorkspaceProductTierCardMessages
-> = {
+  {
+    readonly title: WorkspaceProductMessage;
+    readonly description: WorkspaceProductMessage;
+  }
+>;
+
+export const workspaceProductTierCardMessages = {
   basic: {
     description: m.reservationTierBasicBulletDesk,
     perksLabel: m.reservationTierPerksLabel,
-    perks: [
-      { message: m.reservationTierBasicPerkWifi },
-      { message: m.reservationTierBasicPerkWater },
-    ],
+    perks: [{ message: m.reservationTierBasicPerkWifi }],
   },
   plus: {
     description: m.reservationTierCoworkBulletDesk,
@@ -73,15 +67,12 @@ export const workspaceProductTierCardMessages: Record<
       { message: m.reservationTierPerkProSetup, marker: "plus" },
     ],
   },
-};
+} satisfies Record<
+  WorkspaceCoworkProductTier,
+  WorkspaceProductTierCardMessages
+>;
 
-export const workspaceProductMonitorMessages: Record<
-  WorkspaceProductMonitorOption,
-  {
-    readonly title: WorkspaceProductMessage;
-    readonly description: WorkspaceProductMessage;
-  }
-> = {
+export const workspaceProductMonitorMessages = {
   "2x27-qhd": {
     title: m.reservationMonitor2x27QhdTitle,
     description: m.reservationMonitor2x27QhdDescription,
@@ -98,7 +89,13 @@ export const workspaceProductMonitorMessages: Record<
     title: m.reservationMonitor2x32FourKTitle,
     description: m.reservationMonitor2x32FourKDescription,
   },
-};
+} satisfies Record<
+  WorkspaceProductMonitorOption,
+  {
+    readonly title: WorkspaceProductMessage;
+    readonly description: WorkspaceProductMessage;
+  }
+>;
 
 export const getWorkspaceProductMessage = (
   message: WorkspaceProductMessage,
@@ -113,6 +110,9 @@ export const getWorkspaceProductTierTitle = (
 
 export const getWorkspaceMeetingRoomProductTitle = (locale: Locale) =>
   getWorkspaceProductMessage(m.reservationTierMeetingRoomTitle, locale);
+
+export const getWorkspaceOfficeProductTitle = (locale: Locale) =>
+  getWorkspaceProductMessage(m.reservationOfficeProductTitle, locale);
 
 export const getWorkspaceProductMonitorTitle = (
   option: WorkspaceProductMonitorOption,

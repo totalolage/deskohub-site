@@ -76,14 +76,30 @@ describe("ReservationTypeInput", () => {
     expect(oneHour.name).toBe("duration");
     expect(inputRef).toHaveBeenCalled();
 
-    fireEvent.click(fourHours);
+    fireEvent.click(
+      view.container.querySelector(
+        '[data-reservation-type-title="hour:4"]'
+      ) as HTMLElement
+    );
     expect(onChange).toHaveBeenCalledWith("hour:4");
+
+    fireEvent.click(
+      view.container.querySelector(
+        '[data-reservation-type-price="hour:4"]'
+      ) as HTMLElement
+    );
+    expect(onChange).toHaveBeenCalledTimes(2);
+    expect(onChange).toHaveBeenLastCalledWith("hour:4");
 
     fireEvent.blur(fourHours);
     expect(onBlur).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(oneDay);
-    expect(onChange).toHaveBeenCalledTimes(1);
+    fireEvent.click(
+      view.container.querySelector(
+        '[data-reservation-type-title="day:1"]'
+      ) as HTMLElement
+    );
+    expect(onChange).toHaveBeenCalledTimes(2);
     expect(oneDay.disabled).toBe(true);
     expect(
       view.container.querySelector('[data-reservation-type-option="day:1"]')
@@ -91,14 +107,10 @@ describe("ReservationTypeInput", () => {
     ).toContain("cursor-not-allowed");
   });
 
-  test("renders the shared discount treatment around caller-owned content", () => {
+  test("renders caller-owned content without pricing campaign state", () => {
     const view = render(
       <ReservationTypeInput onChange={() => undefined} value="basic">
         <ReservationTypeOption
-          discount={{
-            labels: [{ id: "summer-sale", label: "Summer sale" }],
-            details: <button type="button">Discount details</button>,
-          }}
           price="CZK 175 / day"
           title="Basic"
           value="basic"
@@ -111,24 +123,11 @@ describe("ReservationTypeInput", () => {
       '[data-reservation-type-option="basic"]'
     );
 
-    expect(option?.className).toContain("outline-purple-500");
-    expect(
-      option?.querySelector('[data-reservation-type-discount="summer-sale"]')
-        ?.textContent
-    ).toBe("Summer sale");
-    expect(option?.className.split(" ")).toEqual(
-      expect.arrayContaining([
-        "glow-border",
-        "glow-border-purple-300",
-        "glow-border-count-1",
-        "glow-border-duration-5000",
-      ])
-    );
+    expect(option?.className).toContain("outline-burned-orange");
+    expect(option?.className).toContain("lg:row-span-4");
+    expect(option?.className).not.toContain("glow-border");
     expect(
       option?.querySelector("[data-domain-description]")?.textContent
     ).toBe("Open-space desk");
-    expect(
-      view.getByRole("button", { name: "Discount details" })
-    ).toBeDefined();
   });
 });

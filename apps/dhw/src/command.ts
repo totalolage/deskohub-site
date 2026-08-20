@@ -1,25 +1,35 @@
 import {
   type AdministrationBookingQueryType,
-  AdministrationCanonicalDiscountCode,
+  AdministrationCanonicalPromotionCode,
   type AdministrationCustomerQueryType,
   type AdministrationDiscountAdjustmentType,
   AdministrationDiscountCodeId,
+  type AdministrationDiscountCodeType,
   type AdministrationDiscountDefinitionInputType,
   AdministrationDiscountMutation,
   type AdministrationDiscountMutationResultType,
   type AdministrationDiscountMutationType,
   AdministrationDotyposCustomerId,
+  AdministrationDotyposDiscountGroupId,
+  AdministrationDotyposReservationId,
   AdministrationInstant,
+  AdministrationNexiOperationId,
+  AdministrationNexiOrderId,
   type AdministrationOperationQueryType,
   type AdministrationOrderQueryType,
   type AdministrationOverviewMetricType,
-  type AdministrationReservationQueryType,
+  type AdministrationReservationAccessGrantType,
+  type AdministrationReservationAccessMutationType,
+  AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
   AdministrationStoredDiscountId,
-  type AdministrationWorkspaceProductType,
+  AdministrationVoucherId,
+  type AdministrationWorkspaceProductTargetType,
+  AdministrationWorkspaceReservationId,
+  type AdministrationWorkspaceReservationIdType,
   type CliAccessTokenType,
   CliClientName,
-  type CliMutationRequestIdType,
+  CliMutationRequestId,
   CliSessionId,
   type CliSessionType,
   CliSessionUnauthorized,
@@ -143,7 +153,7 @@ const reservationsListCommand = Command.make(
       "complete",
       "cancelled",
     ]).pipe(Flag.optional, Flag.withDescription("Reservation status")),
-    type: Flag.choice("type", ["cowork", "meeting-room"]).pipe(
+    type: Flag.choice("type", ["cowork", "meeting-room", "office"]).pipe(
       Flag.optional,
       Flag.withDescription("Reservation type")
     ),
@@ -151,7 +161,9 @@ const reservationsListCommand = Command.make(
   ({ customer, date, direction, page, sort, status, type }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const query: AdministrationReservationQueryType = {
+        const query = yield* Schema.decodeUnknownEffect(
+          AdministrationReservationQuery
+        )({
           ...(Option.isSome(customer) && { customerId: customer.value }),
           ...(Option.isSome(date) && { date: date.value }),
           ...(Option.isSome(direction) && { direction: direction.value }),
@@ -159,7 +171,7 @@ const reservationsListCommand = Command.make(
           ...(Option.isSome(sort) && { sort: sort.value }),
           ...(Option.isSome(status) && { status: status.value }),
           ...(Option.isSome(type) && { type: type.value }),
-        };
+        });
         const result = yield* api.listReservations(accessToken, query);
         if (json) {
           yield* Console.log(JSON.stringify(result));
@@ -177,7 +189,11 @@ const reservationsListCommand = Command.make(
 
 const reservationsGetCommand = Command.make(
   "get",
-  { reservationId: Argument.string("reservation-id") },
+  {
+    reservationId: Argument.string("reservation-id").pipe(
+      Argument.withSchema(AdministrationWorkspaceReservationId)
+    ),
+  },
   ({ reservationId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
@@ -198,6 +214,11 @@ const reservationsGetCommand = Command.make(
         );
         yield* Console.log(
           `${detail.paymentAttempts.length} payment attempts · ${detail.orders.length} provider orders · ${detail.discounts.length} discounts`
+        );
+        yield* Console.log(
+          detail.accessGrant
+            ? formatReservationAccessGrant(detail.accessGrant)
+            : "Access: not provisioned"
         );
       })
     )
@@ -221,12 +242,121 @@ const reservationsFindCommand = Command.make(
   Command.withDescription("Find a reservation by reservation or payment ID")
 );
 
+const reservationsCancelCommand = Command.make(
+  "cancel",
+  {
+    reservationId: Argument.string("reservation-id"),
+    providerCredentialRemoved: Flag.boolean(
+      "confirm-access-credential-removed"
+    ).pipe(
+      Flag.withDescription(
+        "Confirm any active door PIN was removed in Igloohome"
+      )
+    ),
+    sendCancellationEmail: Flag.boolean("send-cancellation-email").pipe(
+      Flag.withDescription("Email the customer after cancellation")
+    ),
+    yes: confirmationFlag,
+  },
+  ({ providerCredentialRemoved, reservationId, sendCancellationEmail, yes }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const decodedReservationId = yield* Schema.decodeUnknownEffect(
+          AdministrationWorkspaceReservationId
+        )(reservationId);
+        const confirmed = yield* confirmChange(
+          yes,
+          json,
+          "Cancel this reservation? Paid online payments will be marked as needing a refund; no refund is issued automatically."
+        );
+        if (!confirmed) {
+          yield* reportCancellation(json);
+          return;
+        }
+        const accessGrantUpdatedAt = providerCredentialRemoved
+          ? ((yield* api.getReservation(accessToken, decodedReservationId))
+              .accessGrant?.updatedAt ?? null)
+          : null;
+        const result = yield* api.cancelReservation(
+          accessToken,
+          decodedReservationId,
+          {
+            accessGrantUpdatedAt,
+            providerCredentialRemoved,
+            sendCancellationEmail,
+          }
+        );
+        yield* Console.log(
+          json
+            ? JSON.stringify(result)
+            : {
+                failed:
+                  "Reservation cancelled, but the cancellation email could not be sent.",
+                not_requested:
+                  "Reservation cancelled without emailing the customer.",
+                sent: "Reservation cancelled and the customer was emailed.",
+              }[result.email]
+        );
+      })
+    )
+).pipe(Command.withDescription("Cancel a reservation in Dotypos"));
+
+const reservationsRetryAccessCommand = Command.make(
+  "retry-access",
+  {
+    reservationId: Argument.string("reservation-id").pipe(
+      Argument.withSchema(AdministrationWorkspaceReservationId)
+    ),
+    yes: confirmationFlag,
+  },
+  ({ reservationId, yes }) =>
+    runConfirmedReservationAccessMutation({
+      confirmation: `Retry failed access issuance for ${reservationId}?`,
+      mutation: { kind: "retry-failed" },
+      reservationId,
+      yes,
+    })
+).pipe(Command.withDescription("Retry definitively failed access issuance"));
+
+const reservationsReconcileAccessCommand = Command.make(
+  "reconcile-access",
+  {
+    reservationId: Argument.string("reservation-id").pipe(
+      Argument.withSchema(AdministrationWorkspaceReservationId)
+    ),
+    providerCredentialRemoved: Flag.boolean("provider-credential-removed").pipe(
+      Flag.withDescription(
+        "Confirm the possible AlgoPIN was removed or verified absent in Igloohome"
+      )
+    ),
+    yes: confirmationFlag,
+  },
+  ({ providerCredentialRemoved, reservationId, yes }) =>
+    runConfirmedReservationAccessMutation({
+      confirmation: `Confirm the possible Igloohome credential for ${reservationId} was removed, then retry access issuance?`,
+      mutation: {
+        kind: "confirm-provider-credential-removed",
+        providerCredentialRemoved: true,
+      },
+      providerCredentialRemoved,
+      reservationId,
+      yes,
+    })
+).pipe(
+  Command.withDescription(
+    "Reconcile uncertain access after manual provider removal"
+  )
+);
+
 const reservationsCommand = Command.make("reservations").pipe(
-  Command.withDescription("Inspect Workspace reservations"),
+  Command.withDescription("Inspect and cancel Workspace reservations"),
   Command.withSubcommands([
     reservationsListCommand,
     reservationsGetCommand,
     reservationsFindCommand,
+    reservationsCancelCommand,
+    reservationsRetryAccessCommand,
+    reservationsReconcileAccessCommand,
   ])
 );
 
@@ -280,7 +410,10 @@ const bookingsGetCommand = Command.make(
   ({ bookingId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const detail = yield* api.getBooking(accessToken, bookingId);
+        const decodedBookingId = yield* Schema.decodeUnknownEffect(
+          AdministrationDotyposReservationId
+        )(bookingId);
+        const detail = yield* api.getBooking(accessToken, decodedBookingId);
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -361,7 +494,10 @@ const ordersGetCommand = Command.make(
   ({ orderId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const order = yield* api.getOrder(accessToken, orderId);
+        const decodedOrderId = yield* Schema.decodeUnknownEffect(
+          AdministrationNexiOrderId
+        )(orderId);
+        const order = yield* api.getOrder(accessToken, decodedOrderId);
         if (json) {
           yield* Console.log(JSON.stringify(order));
           return;
@@ -442,7 +578,10 @@ const operationsGetCommand = Command.make(
   ({ operationId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const detail = yield* api.getOperation(accessToken, operationId);
+        const decodedOperationId = yield* Schema.decodeUnknownEffect(
+          AdministrationNexiOperationId
+        )(operationId);
+        const detail = yield* api.getOperation(accessToken, decodedOperationId);
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -541,7 +680,10 @@ const customersGetCommand = Command.make(
   ({ customerId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const detail = yield* api.getCustomer(accessToken, customerId);
+        const decodedCustomerId = yield* Schema.decodeUnknownEffect(
+          AdministrationDotyposCustomerId
+        )(customerId);
+        const detail = yield* api.getCustomer(accessToken, decodedCustomerId);
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -582,9 +724,12 @@ const customersReservationsCommand = Command.make(
   ({ customerId, page }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
+        const decodedCustomerId = yield* Schema.decodeUnknownEffect(
+          AdministrationDotyposCustomerId
+        )(customerId);
         const result = yield* api.listCustomerReservations(
           accessToken,
-          customerId,
+          decodedCustomerId,
           { ...(Option.isSome(page) && { page: page.value }) }
         );
         if (json) {
@@ -607,7 +752,9 @@ const customersSetDiscountGroupCommand = Command.make(
     customerId: Argument.string("customer-id").pipe(
       Argument.withSchema(AdministrationDotyposCustomerId)
     ),
-    discountGroupId: Argument.string("discount-group-id"),
+    discountGroupId: Argument.string("discount-group-id").pipe(
+      Argument.withSchema(AdministrationDotyposDiscountGroupId)
+    ),
     yes: confirmationFlag,
   },
   ({ customerId, discountGroupId, yes }) =>
@@ -664,24 +811,14 @@ const discountDefinitionFlags = {
     Flag.withDescription("English customer-facing label")
   ),
   products: Flag.choiceWithValue("product", [
-    ["cowork:basic", { kind: "cowork", tier: "basic" }],
-    ["cowork:plus", { kind: "cowork", tier: "plus" }],
-    ["cowork:profi", { kind: "cowork", tier: "profi" }],
-    [
-      "meeting-room:hour:1",
-      { kind: "meeting-room", duration: { unit: "hour", amount: 1 } },
-    ],
-    [
-      "meeting-room:hour:4",
-      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
-    ],
-    [
-      "meeting-room:day:1",
-      { kind: "meeting-room", duration: { unit: "day", amount: 1 } },
-    ],
+    ["cowork", { kind: "cowork" }],
+    ["meeting-room", { kind: "meeting-room" }],
+    ["office", { kind: "office" }],
   ] as const).pipe(
     Flag.atLeast(1),
-    Flag.withDescription("Eligible product; repeat for multiple products")
+    Flag.withDescription(
+      "Eligible reservation family; repeat for multiple families"
+    )
   ),
 };
 
@@ -729,11 +866,11 @@ const percentageFlag = Flag.string("percentage").pipe(
 
 const fixedValueFlag = Flag.integer("fixed-value").pipe(
   Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
-  Flag.withDescription("Fixed discount in minor currency units")
+  Flag.withDescription("Money value in minor currency units")
 );
 
 const fixedCurrencyFlag = Flag.choice("currency", ["CZK", "EUR"]).pipe(
-  Flag.withDescription("Currency for a fixed discount")
+  Flag.withDescription("Currency for the money value")
 );
 
 const discountIdArgument = Argument.string("discount-id").pipe(
@@ -888,7 +1025,7 @@ const discountsCommand = Command.make("discounts").pipe(
 
 const discountCodeArgument = Argument.string("code").pipe(
   Argument.map((code) => code.trim().toUpperCase()),
-  Argument.withSchema(AdministrationCanonicalDiscountCode)
+  Argument.withSchema(AdministrationCanonicalPromotionCode)
 );
 
 const discountCodeIdArgument = Argument.string("code-id").pipe(
@@ -910,6 +1047,11 @@ const discountCodeCreateFlags = {
     Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
     Flag.optional,
     Flag.withDescription("Maximum successful redemptions")
+  ),
+  maxUsesPerCustomer: Flag.integer("max-uses-per-customer").pipe(
+    Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
+    Flag.optional,
+    Flag.withDescription("Maximum successful redemptions per customer")
   ),
   validFrom: Flag.string("valid-from").pipe(
     Flag.withSchema(AdministrationInstant),
@@ -996,6 +1138,58 @@ const codesCreateFixedCommand = Command.make(
     )
 ).pipe(Command.withDescription("Create a code and fixed discount atomically"));
 
+const creditValueFlag = Flag.integer("credit-value").pipe(
+  Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
+  Flag.withDescription("Issued credit in minor currency units")
+);
+
+const vouchersCreateCommand = Command.make(
+  "create",
+  {
+    code: discountCodeArgument,
+    customer: discountCodeCreateFlags.customer,
+    disabled: discountCodeCreateFlags.disabled,
+    validFrom: discountCodeCreateFlags.validFrom,
+    validUntil: discountCodeCreateFlags.validUntil,
+    currency: fixedCurrencyFlag,
+    creditValue: creditValueFlag,
+  },
+  (input) =>
+    Option.match(input.customer, {
+      onNone: () =>
+        runDiscountMutation({
+          kind: "create-voucher",
+          voucher: {
+            code: input.code,
+            enabled: !input.disabled,
+            validFrom: Option.getOrNull(input.validFrom),
+            validUntil: Option.getOrNull(input.validUntil),
+            credit: {
+              value: input.creditValue,
+              exponent: 2,
+              currency: input.currency,
+            },
+          },
+        }),
+      onSome: (customerId) =>
+        runDiscountMutation({
+          kind: "create-customer-voucher",
+          voucher: {
+            customerId,
+            code: input.code,
+            enabled: !input.disabled,
+            validFrom: Option.getOrNull(input.validFrom),
+            validUntil: Option.getOrNull(input.validUntil),
+            credit: {
+              value: input.creditValue,
+              exponent: 2,
+              currency: input.currency,
+            },
+          },
+        }),
+    })
+).pipe(Command.withDescription("Create a promotional credit voucher"));
+
 const codesCreateCommand = Command.make("create").pipe(
   Command.withDescription("Create a managed discount code"),
   Command.withSubcommands([
@@ -1016,10 +1210,20 @@ const codesUpdateCommand = Command.make(
       ["false", false],
     ] as const),
     maxUses: discountCodeCreateFlags.maxUses,
+    maxUsesPerCustomer: discountCodeCreateFlags.maxUsesPerCustomer,
     validFrom: discountCodeCreateFlags.validFrom,
     validUntil: discountCodeCreateFlags.validUntil,
   },
-  ({ code, codeId, discountId, enabled, maxUses, validFrom, validUntil }) =>
+  ({
+    code,
+    codeId,
+    discountId,
+    enabled,
+    maxUses,
+    maxUsesPerCustomer,
+    validFrom,
+    validUntil,
+  }) =>
     runDiscountMutation({
       kind: "update-code",
       code: {
@@ -1028,18 +1232,59 @@ const codesUpdateCommand = Command.make(
         code,
         enabled,
         maxUses: Option.getOrNull(maxUses),
+        maxUsesPerCustomer: Option.getOrNull(maxUsesPerCustomer),
         validFrom: Option.getOrNull(validFrom),
         validUntil: Option.getOrNull(validUntil),
       },
     })
 ).pipe(Command.withDescription("Replace a managed discount code"));
 
+const voucherIdArgument = Argument.string("voucher-id").pipe(
+  Argument.withSchema(AdministrationVoucherId)
+);
+
+const vouchersUpdateCommand = Command.make(
+  "update",
+  {
+    voucherId: voucherIdArgument,
+    code: discountCodeArgument,
+    enabled: Flag.choiceWithValue("enabled", [
+      ["true", true],
+      ["false", false],
+    ] as const),
+    validFrom: discountCodeCreateFlags.validFrom,
+    validUntil: discountCodeCreateFlags.validUntil,
+    currency: fixedCurrencyFlag,
+    creditValue: creditValueFlag,
+  },
+  ({
+    code,
+    voucherId,
+    currency,
+    enabled,
+    creditValue,
+    validFrom,
+    validUntil,
+  }) =>
+    runDiscountMutation({
+      kind: "update-voucher",
+      voucher: {
+        id: voucherId,
+        code,
+        credit: { value: creditValue, exponent: 2, currency },
+        enabled,
+        validFrom: Option.getOrNull(validFrom),
+        validUntil: Option.getOrNull(validUntil),
+      },
+    })
+).pipe(Command.withDescription("Replace a managed voucher"));
+
 const codesDeleteCommand = Command.make(
   "delete",
   { codeId: discountCodeIdArgument, yes: confirmationFlag },
   ({ codeId, yes }) =>
     runConfirmedDiscountMutation({
-      confirmation: `Delete discount code ${codeId}? Redeemed codes cannot be deleted. This cannot be undone.`,
+      confirmation: `Delete discount code ${codeId}? Codes with claim history cannot be deleted. This cannot be undone.`,
       mutation: { kind: "delete-code", id: codeId },
       yes,
     })
@@ -1110,9 +1355,10 @@ const codesListCommand = Command.make("list", {}, () =>
           [
             code.id,
             code.code,
-            discountLabels.get(code.discountId) ?? code.discountId,
+            formatCodeBenefit(code, discountLabels),
             code.enabled ? "Enabled" : "Disabled",
-            code.remainingUses ?? "Unlimited",
+            `${formatCodeRemaining(code)} globally`,
+            `${code.maxUsesPerCustomer ?? "Unlimited"} per customer`,
           ].join("\t")
         );
       }
@@ -1122,7 +1368,7 @@ const codesListCommand = Command.make("list", {}, () =>
 
 const codesGetCommand = Command.make(
   "get",
-  { codeId: Argument.string("code-id") },
+  { codeId: discountCodeIdArgument },
   ({ codeId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
@@ -1137,15 +1383,64 @@ const codesGetCommand = Command.make(
             detail.code.code,
             detail.discountLabel,
             detail.code.enabled ? "Enabled" : "Disabled",
-            detail.code.remainingUses ?? "Unlimited uses",
+            `${formatCodeRemaining(detail.code)} globally`,
+            `${detail.code.maxUsesPerCustomer ?? "Unlimited"} per customer`,
           ].join("\t")
         );
         yield* Console.log(
-          `${detail.customers.length} customers · ${detail.claims.length} claims`
+          `Validity\t${detail.code.validFrom ?? "No start"}\t${detail.code.validUntil ?? "No end"}`
         );
+        yield* Console.log(
+          detail.customers.length === 0
+            ? "Audience\tUnrestricted"
+            : `Audience\t${detail.customers.length} customers`
+        );
+        for (const { customer, customerId } of detail.customers) {
+          yield* Console.log(
+            [
+              "Customer",
+              customerId,
+              customer?.displayName ?? "Unavailable",
+            ].join("\t")
+          );
+        }
+        yield* Console.log(`Claims\t${detail.claims.length}`);
+        for (const claim of detail.claims) {
+          yield* Console.log(
+            [
+              claim.state,
+              formatMoney(claim.appliedAmount),
+              claim.dotyposCustomerId,
+              claim.workspaceReservationId,
+              claim.reservedAt,
+              claim.redeemedAt ?? claim.releasedAt ?? "Pending",
+            ].join("\t")
+          );
+        }
       })
     )
 ).pipe(Command.withDescription("Show a discount code and its claims"));
+
+const formatMoney = (
+  money: {
+    readonly value: number;
+    readonly exponent: number;
+    readonly currency: string;
+  } | null
+) =>
+  money === null
+    ? "Amount unavailable"
+    : `${money.value / 10 ** money.exponent} ${money.currency}`;
+
+const formatCodeBenefit = (
+  code: AdministrationDiscountCodeType,
+  discountLabels: ReadonlyMap<string, string>
+) => discountLabels.get(code.discountId) ?? code.discountId;
+
+const formatCodeRemaining = (
+  code: AdministrationDiscountCodeType,
+  unlimitedLabel: string | number = "Unlimited"
+) => code.remainingUses ?? unlimitedLabel;
 
 const codesCommand = Command.make("codes").pipe(
   Command.withDescription("Inspect and manage discount codes"),
@@ -1158,6 +1453,151 @@ const codesCommand = Command.make("codes").pipe(
     codesAddCustomerCommand,
     codesRemoveCustomerCommand,
     codesMakeUnrestrictedCommand,
+  ])
+);
+
+const vouchersDeleteCommand = Command.make(
+  "delete",
+  { voucherId: voucherIdArgument, yes: confirmationFlag },
+  ({ voucherId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Delete voucher ${voucherId}? Vouchers with claim history cannot be deleted. This cannot be undone.`,
+      mutation: { kind: "delete-voucher", id: voucherId },
+      yes,
+    })
+).pipe(Command.withDescription("Delete an unused voucher"));
+
+const voucherCustomerArguments = {
+  voucherId: voucherIdArgument,
+  customerId: Argument.string("customer-id").pipe(
+    Argument.withSchema(AdministrationDotyposCustomerId)
+  ),
+  yes: confirmationFlag,
+};
+
+const vouchersAddCustomerCommand = Command.make(
+  "add-customer",
+  voucherCustomerArguments,
+  ({ customerId, voucherId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Add customer ${customerId} to voucher ${voucherId}?`,
+      mutation: { kind: "add-voucher-customer", voucherId, customerId },
+      yes,
+    })
+).pipe(Command.withDescription("Add a customer to a voucher audience"));
+
+const vouchersRemoveCustomerCommand = Command.make(
+  "remove-customer",
+  voucherCustomerArguments,
+  ({ customerId, voucherId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Remove customer ${customerId} from voucher ${voucherId}?`,
+      mutation: { kind: "remove-voucher-customer", voucherId, customerId },
+      yes,
+    })
+).pipe(Command.withDescription("Remove a customer from a voucher audience"));
+
+const vouchersMakeUnrestrictedCommand = Command.make(
+  "make-unrestricted",
+  { voucherId: voucherIdArgument, yes: confirmationFlag },
+  ({ voucherId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Make voucher ${voucherId} available to every customer?`,
+      mutation: { kind: "make-voucher-unrestricted", voucherId },
+      yes,
+    })
+).pipe(Command.withDescription("Remove all voucher customer restrictions"));
+
+const vouchersListCommand = Command.make("list", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const { vouchers } = yield* api.getDiscountDashboard(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(vouchers));
+        return;
+      }
+      yield* Console.log(`Vouchers: ${vouchers.length}`);
+      for (const voucher of vouchers) {
+        yield* Console.log(
+          [
+            voucher.id,
+            voucher.code,
+            formatMoney(voucher.issuedCredit),
+            formatMoney(voucher.remainingCredit),
+            voucher.enabled ? "Enabled" : "Disabled",
+          ].join("\t")
+        );
+      }
+    })
+  )
+).pipe(Command.withDescription("List managed vouchers"));
+
+const vouchersGetCommand = Command.make(
+  "get",
+  { voucherId: voucherIdArgument },
+  ({ voucherId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const detail = yield* api.getVoucher(accessToken, voucherId);
+        if (json) {
+          yield* Console.log(JSON.stringify(detail));
+          return;
+        }
+        const voucher = detail.voucher;
+        yield* Console.log(
+          [
+            voucher.id,
+            voucher.code,
+            `${formatMoney(voucher.issuedCredit)} issued`,
+            `${formatMoney(voucher.remainingCredit)} remaining`,
+            voucher.enabled ? "Enabled" : "Disabled",
+          ].join("\t")
+        );
+        yield* Console.log(
+          `Validity\t${voucher.validFrom ?? "No start"}\t${voucher.validUntil ?? "No end"}`
+        );
+        yield* Console.log(
+          detail.customers.length === 0
+            ? "Audience\tUnrestricted"
+            : `Audience\t${detail.customers.length} customers`
+        );
+        for (const { customer, customerId } of detail.customers) {
+          yield* Console.log(
+            [
+              "Customer",
+              customerId,
+              customer?.displayName ?? "Unavailable",
+            ].join("\t")
+          );
+        }
+        yield* Console.log(`Claims\t${detail.claims.length}`);
+        for (const claim of detail.claims) {
+          yield* Console.log(
+            [
+              claim.state,
+              formatMoney(claim.appliedAmount),
+              claim.dotyposCustomerId,
+              claim.workspaceReservationId,
+              claim.reservedAt,
+              claim.redeemedAt ?? claim.releasedAt ?? "Pending",
+            ].join("\t")
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("Show a voucher and its claims"));
+
+const vouchersCommand = Command.make("vouchers").pipe(
+  Command.withDescription("Inspect and manage promotional vouchers"),
+  Command.withSubcommands([
+    vouchersListCommand,
+    vouchersGetCommand,
+    vouchersCreateCommand,
+    vouchersUpdateCommand,
+    vouchersDeleteCommand,
+    vouchersAddCustomerCommand,
+    vouchersRemoveCustomerCommand,
+    vouchersMakeUnrestrictedCommand,
   ])
 );
 
@@ -1408,6 +1848,7 @@ export const dhwCommand = rootCommand.pipe(
     salesCommand,
     sessionsCommand,
     updateCommand,
+    vouchersCommand,
   ])
 );
 
@@ -1526,7 +1967,7 @@ const makeDiscountDefinition = ({
   readonly adjustment: AdministrationDiscountDefinitionInputType["adjustment"];
   readonly labelCs: string;
   readonly labelEn: string;
-  readonly products: ReadonlyArray<AdministrationWorkspaceProductType>;
+  readonly products: ReadonlyArray<AdministrationWorkspaceProductTargetType>;
 }): AdministrationDiscountDefinitionInputType => ({
   adjustment,
   labels: { "cs-CZ": labelCs, "en-US": labelEn },
@@ -1548,6 +1989,7 @@ const makeCreateCodeMutation = (
     readonly customer: Option.Option<CreateCustomerCodeMutation["customerId"]>;
     readonly disabled: boolean;
     readonly maxUses: Option.Option<number>;
+    readonly maxUsesPerCustomer: Option.Option<number>;
     readonly validFrom: Option.Option<
       NonNullable<CreateCodeMutation["code"]["validFrom"]>
     >;
@@ -1561,6 +2003,7 @@ const makeCreateCodeMutation = (
     code: input.code,
     enabled: !input.disabled,
     maxUses: Option.getOrNull(input.maxUses),
+    maxUsesPerCustomer: Option.getOrNull(input.maxUsesPerCustomer),
     validFrom: Option.getOrNull(input.validFrom),
     validUntil: Option.getOrNull(input.validUntil),
   };
@@ -1600,6 +2043,46 @@ const runConfirmedDiscountMutation = ({
     })
   );
 
+const runConfirmedReservationAccessMutation = ({
+  confirmation,
+  mutation,
+  providerCredentialRemoved,
+  reservationId,
+  yes,
+}: {
+  readonly confirmation: string;
+  readonly mutation: AdministrationReservationAccessMutationType;
+  readonly providerCredentialRemoved?: boolean;
+  readonly reservationId: AdministrationWorkspaceReservationIdType;
+  readonly yes: boolean;
+}) =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      if (providerCredentialRemoved === false) {
+        return yield* new InvalidMutationInputError({
+          message:
+            "Verify the credential in Igloohome, then pass --provider-credential-removed.",
+        });
+      }
+      const confirmed = yield* confirmChange(yes, json, confirmation);
+      if (!confirmed) {
+        yield* reportCancellation(json);
+        return;
+      }
+      const crypto = yield* Crypto.Crypto;
+      const requestId = CliMutationRequestId.make(yield* crypto.randomUUIDv7);
+      const grant = yield* api.mutateReservationAccess(
+        accessToken,
+        requestId,
+        reservationId,
+        mutation
+      );
+      yield* Console.log(
+        json ? JSON.stringify(grant) : formatReservationAccessGrant(grant)
+      );
+    })
+  );
+
 const executeAndReportDiscountMutation = (
   api: WorkspaceAdminApiClient["Service"],
   accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -1619,7 +2102,7 @@ const executeAndReportDiscountMutation = (
       )
     );
     const crypto = yield* Crypto.Crypto;
-    const requestId = (yield* crypto.randomUUIDv7) as CliMutationRequestIdType;
+    const requestId = CliMutationRequestId.make(yield* crypto.randomUUIDv7);
     const result = yield* api.mutateDiscounts(
       accessToken,
       requestId,
@@ -1647,13 +2130,27 @@ const formatMutationResult = (
       () => "Customer removed from code audience."
     ),
     Match.when("make-code-unrestricted", () => "Code made unrestricted."),
+    Match.when("create-voucher", () => "Voucher created."),
+    Match.when("create-customer-voucher", () => "Customer voucher created."),
+    Match.when("update-voucher", () => "Voucher updated."),
+    Match.when("delete-voucher", () => "Voucher deleted."),
+    Match.when(
+      "add-voucher-customer",
+      () => "Customer added to voucher audience."
+    ),
+    Match.when(
+      "remove-voucher-customer",
+      () => "Customer removed from voucher audience."
+    ),
+    Match.when("make-voucher-unrestricted", () => "Voucher made unrestricted."),
     Match.when(
       "set-customer-discount-group",
       () => "Customer discount group updated."
     ),
     Match.exhaustive
   );
-  const createdId = result.createdDiscountId ?? result.createdCodeId;
+  const createdId =
+    result.createdDiscountId ?? result.createdCodeId ?? result.createdVoucherId;
   return createdId === null ? notice : `${notice} ${createdId}`;
 };
 
@@ -1686,12 +2183,17 @@ const formatReservationRow = (
     reservation.status.label,
   ].join("\t");
 
+const formatReservationAccessGrant = (
+  grant: AdministrationReservationAccessGrantType
+) =>
+  `Access: ${grant.state} · ${grant.startsAt}–${grant.endsAt} · ${grant.accessName}`;
+
 const formatDiscountAdjustment = (
   adjustment: AdministrationDiscountAdjustmentType
 ) =>
   adjustment.kind === "percentage"
     ? `${adjustment.basisPoints / 100}%`
-    : `${adjustment.amount.value / 10 ** adjustment.amount.exponent} ${adjustment.amount.currency}`;
+    : formatMoney(adjustment.amount);
 
 const offerAutomaticUpdate = (json: boolean) =>
   Effect.gen(function* () {

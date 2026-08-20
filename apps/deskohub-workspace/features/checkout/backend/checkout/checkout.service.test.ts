@@ -11,20 +11,21 @@ import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-su
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
+import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import type {
-  CanonicalDiscountCode,
+  CanonicalPromotionCode,
   DiscountQuote,
 } from "@/features/discounts/contracts";
 import {
-  canonicalDiscountCodeSchema,
+  canonicalPromotionCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
+import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
@@ -99,7 +100,7 @@ const money = (value: number, currency = "CZK") => ({
 });
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
-const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
+const canonicalCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema);
 
 const application = {
   discount: {
@@ -188,17 +189,19 @@ const fullyDiscountedCommitment = makeDiscountCommitment({
 const buildPayStateToken = (input: {
   readonly orderId: string;
   readonly locale?: Locale;
+  readonly reservation?: typeof reservationData;
   readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
   Effect.runSync(
     Effect.gen(function* () {
+      const reservation = input.reservation ?? reservationData;
       const state = yield* buildSignedPayState({
         locale: input.locale ?? "en-US",
-        reservation: reservationData,
-        quote: input.quote ?? buildCoworkReservationQuote(reservationData),
+        reservation,
+        quote: input.quote ?? buildCoworkReservationQuote(reservation),
         orderId: input.orderId,
         checkoutSessionId: input.checkoutSessionId ?? "checkout-session-id",
         ...(input.submittedCode !== undefined && {
@@ -236,7 +239,7 @@ const buildMeetingRoomPayStateToken = (input: {
   readonly checkoutSessionId?: string;
   readonly quote?: ReturnType<typeof buildMeetingRoomQuote>;
   readonly reservation?: typeof meetingRoomReservationData;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
 }) =>
   Effect.runSync(
     Effect.gen(function* () {
@@ -311,6 +314,43 @@ const buildEndedMeetingRoomReservation = () => {
   });
 };
 
+const buildEndedOfficeReservation = () => {
+  const yesterday = Temporal.Now.zonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  )
+    .toPlainDate()
+    .subtract({ days: 1 });
+
+  return normalizedOfficeReservationOrderSchema.make({
+    kind: "office",
+    startsOn: yesterday.toString(),
+    endsOn: yesterday.toString(),
+    seats: 3,
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
+};
+
+const buildOfficePayStateToken = (input: {
+  readonly orderId: string;
+  readonly reservation: ReturnType<typeof buildEndedOfficeReservation>;
+}) =>
+  Effect.runSync(
+    Effect.gen(function* () {
+      const quote = yield* buildOfficeReservationQuote(input.reservation);
+      const state = yield* buildSignedPayState({
+        locale: "en-US",
+        reservation: input.reservation,
+        quote,
+        orderId: input.orderId,
+        checkoutSessionId: "office-checkout-session-id",
+        ttlMilliseconds: 10 * 60 * 1000,
+      });
+      return yield* sealPayState(state);
+    })
+  );
+
 const makeAttempt = (input: {
   readonly id: string;
   readonly orderId: string;
@@ -334,9 +374,9 @@ const makeAttempt = (input: {
   updatedAt: testInstant(),
 });
 
-const makeReservation = (
+const makeReservation = <Overrides extends object>(
   orderId: string,
-  overrides: Record<string, unknown> = {}
+  overrides?: Overrides
 ) => ({
   id: orderId,
   checkoutSessionKey: "session-key",
@@ -344,7 +384,6 @@ const makeReservation = (
   correlationId: "correlation-id",
   dotyposCustomerId: "stored-dotypos-customer-id",
   dotyposReservationId: "dotypos-reservation-id",
-  customerAccessCode: "test-access-code",
   productTier: reservationData.entryTier,
   productCoffee: reservationData.coffee,
   productMonitorOption: reservationData.monitorOption,
@@ -378,15 +417,17 @@ const makeReservation = (
   ...overrides,
 });
 
-type CheckoutHarnessOptions = {
+type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly orderId: string;
+  readonly legalConsent?: boolean;
+  readonly earlyPerformanceConsent?: boolean;
   readonly payStateToken?: string;
   readonly locale?: Locale;
   readonly acceptedQuote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
-  readonly submittedCode?: CanonicalDiscountCode;
+  readonly submittedCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
-  readonly reservationOverrides?: Record<string, unknown>;
+  readonly reservationOverrides?: ReservationOverrides;
   readonly requireCurrent?: ReturnType<typeof mock>;
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
   readonly affirm?: ReturnType<typeof mock>;
@@ -397,11 +438,11 @@ type CheckoutHarnessOptions = {
   readonly capture?: ReturnType<typeof mock>;
 };
 
-const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
+const createCheckoutHarness = async <ReservationOverrides extends object>(
+  options: CheckoutHarnessOptions<ReservationOverrides>
+) => {
   const locale = options.locale ?? "en-US";
-  const { CheckoutService, CheckoutServiceLive } = await import(
-    "./checkout.service"
-  );
+  const { CheckoutService } = await import("./checkout.service");
   const { PayableReservationService } = await import(
     "./payable-reservation.service"
   );
@@ -455,6 +496,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     );
   const fulfillPaidOrder = options.fulfillPaidOrder ?? mock(() => Effect.void);
   const capture = options.capture ?? mock(() => Effect.void);
+  const recordLegalEvidence = mock((_input: readonly unknown[]) => Effect.void);
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
   const attachHostedPaymentPage = mock(() => Effect.succeed(attachedAttempt));
   const markTerminalForReservation = mock(() =>
@@ -500,7 +542,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
     updateReservationDetails,
-  } as unknown as WorkspaceReservationRepositoryType;
+  };
   const updateReservation = mock(
     (_input: {
       readonly note?: string;
@@ -508,7 +550,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   );
   const dotypos = {
     updateReservation,
-  } as unknown as typeof DotyposService.Service;
+  };
   const createHostedPaymentPage =
     options.createHostedPaymentPage ??
     mock(() =>
@@ -520,7 +562,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const nexi = {
     createHostedPaymentPage,
     verifyPaymentOutcome: mock(() => Effect.die("not used")),
-  } as unknown as typeof NexiService.Service;
+  };
   const affirm =
     options.affirm ??
     mock(() =>
@@ -552,34 +594,35 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
             submittedCode: options.submittedCode,
             changedKeys: options.changedKeys,
           }),
-        legalConsent: true,
+        legalConsent: options.legalConsent ?? true,
+        earlyPerformanceConsent: options.earlyPerformanceConsent ?? true,
       },
       locale
     );
   }).pipe(
     Effect.provide(
-      CheckoutServiceLive.pipe(
+      CheckoutService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
             CheckoutPricingServiceMock({
               affirmForPayment: affirmForPayment as never,
             }),
-            Layer.succeed(DotyposService, dotypos),
-            Layer.succeed(NexiService, nexi),
-            Layer.succeed(WorkspaceReservationRepository, reservations),
-            Layer.succeed(PayableReservationService, {
+            Layer.mock(DotyposService, dotypos),
+            Layer.mock(NexiService, nexi),
+            Layer.mock(WorkspaceReservationRepository, reservations),
+            Layer.mock(PayableReservationService, {
               requireCurrent,
             }),
-            Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-            Layer.succeed(PaymentLifecycleRepository, paymentLifecycle),
-            Layer.succeed(WorkspacePaidFulfillmentService, {
+            Layer.mock(PaymentAttemptRepository, paymentAttempts),
+            Layer.mock(PaymentLifecycleRepository, paymentLifecycle),
+            Layer.mock(WorkspacePaidFulfillmentService, {
               fulfillPaidOrder,
             }),
-            Layer.succeed(PostHogEventService, {
+            Layer.mock(PostHogEventService, {
               capture,
             }),
-            Layer.succeed(LegalEvidenceEventRepository, {
-              recordMany: mock((_input: readonly unknown[]) => Effect.void),
+            Layer.mock(LegalEvidenceEventRepository, {
+              recordMany: recordLegalEvidence,
             })
           )
         )
@@ -600,11 +643,100 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     createHostedPaymentPage,
     fulfillPaidOrder,
     capture,
+    recordLegalEvidence,
     requireCurrent,
   };
 };
 
 describe("CheckoutService", () => {
+  test("does not require an early-performance request after the withdrawal period", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-after-withdrawal-period",
+      earlyPerformanceConsent: false,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result.status).toBe("redirect");
+    expect(harness.recordLegalEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        evidence: expect.not.objectContaining({
+          acknowledgements: expect.anything(),
+        }),
+      }),
+      expect.anything(),
+    ]);
+  });
+
+  test("rejects checkout when the required early-performance request is missing", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-missing-early-performance-consent",
+      earlyPerformanceConsent: false,
+      payStateToken: buildPayStateToken({
+        orderId: "reservation-missing-early-performance-consent",
+        reservation: nearTermReservation,
+      }),
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      code: "checkout_failed",
+      message: "Early performance consent is required before checkout.",
+    });
+    expect(harness.requireCurrent).toHaveBeenCalled();
+    expect(harness.affirm).toHaveBeenCalled();
+    expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("records the accepted documents and separate withdrawal acknowledgements", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-records-legal-evidence",
+      payStateToken: buildPayStateToken({
+        orderId: "reservation-records-legal-evidence",
+        reservation: nearTermReservation,
+      }),
+    });
+
+    await Effect.runPromise(harness.effect);
+
+    expect(harness.recordLegalEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          documentKey: "termsAndConditions",
+          acknowledgements: {
+            earlyPerformanceConsent: true,
+          },
+        }),
+      }),
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          documentKey: "operatingRules",
+        }),
+      }),
+    ]);
+  });
+
   test("prepares fallible local provider inputs before committing an attempt", async () => {
     const source = await Bun.file(
       new URL("./checkout.service.ts", import.meta.url)
@@ -656,6 +788,8 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl: "https://payments.example/existing",
+      statusUrl:
+        "/en-US/reservation/status/reservation-reuses-provider-attempt",
     });
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
     expect(harness.affirm).not.toHaveBeenCalled();
@@ -864,9 +998,10 @@ describe("CheckoutService", () => {
       commitment: fullyDiscountedCommitment,
       locale: "en-US",
       accountingSnapshot: expect.objectContaining({
-        schemaVersion: 1,
         workspaceReservationId: "reservation-zero-total",
         buyer: { kind: "person", legalName: "Ada Lovelace" },
+        billing: { purpose: "personal", invoice: "none" },
+        delivery: { email: "ada@example.com" },
       }),
     });
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
@@ -987,6 +1122,41 @@ describe("CheckoutService", () => {
     });
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.completeInternalPayment).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("recovers an already-paid checkout after early-performance consent becomes required", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const orderId = "reservation-paid-after-consent-cutoff";
+    const harness = await createCheckoutHarness({
+      orderId,
+      earlyPerformanceConsent: false,
+      payStateToken: buildPayStateToken({
+        orderId,
+        reservation: nearTermReservation,
+      }),
+      reservationOverrides: {
+        paymentState: "paid",
+        paidAt: testInstant(),
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: `/en-US/reservation/status/${orderId}?outcome=success`,
+    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({ orderId });
+    expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
@@ -1142,6 +1312,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl: "https://payments.example/hosted",
+      statusUrl: `/en-US/reservation/status/${orderId}`,
     });
     expect(harness.requireCurrent).toHaveBeenCalled();
     expect(harness.affirm).toHaveBeenCalled();
@@ -1178,7 +1349,35 @@ describe("CheckoutService", () => {
 
     expect(error).toMatchObject({
       _tag: "CheckoutError",
-      message: "Meeting-room reservation has already ended.",
+      code: "meeting_room_reservation_ended",
+    });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("rejects payment after an office reservation ends", async () => {
+    const endedReservation = buildEndedOfficeReservation();
+    const orderId = "office-ended";
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildOfficePayStateToken({
+        orderId,
+        reservation: endedReservation,
+      }),
+      reservationOverrides: {
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "office" },
+      },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "office_reservation_ended",
     });
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
@@ -1201,6 +1400,7 @@ describe("CheckoutService", () => {
     };
     const harness = await createCheckoutHarness({
       orderId,
+      earlyPerformanceConsent: false,
       payStateToken: buildMeetingRoomPayStateToken({
         orderId,
         reservation: endedReservation,
@@ -1221,6 +1421,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl: "https://payments.example/existing",
+      statusUrl: `/en-US/reservation/status/${orderId}`,
     });
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
     expect(harness.affirm).not.toHaveBeenCalled();
@@ -1459,6 +1660,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl: "https://payments.example/hosted",
+      statusUrl: "/en-US/reservation/status/reservation-refreshes-note",
     });
     expect(events).toEqual(["note-updated", "provider-created"]);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);

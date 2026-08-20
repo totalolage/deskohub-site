@@ -13,9 +13,9 @@ const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
 );
 
 mock.module(
-  "@/features/checkout/backend/checkout/checkout-pricing.runtime",
+  "@/features/checkout/backend/checkout/checkout-pricing.service",
   () => ({
-    CheckoutPricingServiceLiveWithDependencies: Layer.empty,
+    CheckoutPricingService: { Live: Layer.empty },
   })
 );
 mock.module("@/features/reservation/backend/advertised-prices.server", () => ({
@@ -48,6 +48,7 @@ test("preloads the preserved quote for a restored hourly slot that has started",
     });
 
     expect(loadAdvertisedPrices).toHaveBeenCalledTimes(1);
+    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toHaveLength(1);
     expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
       locale: "en-US",
       reservation: {
@@ -55,17 +56,6 @@ test("preloads the preserved quote for a restored hourly slot that has started",
         details: {
           kind: "meeting-room",
           duration: { unit: "hour", amount: 4 },
-          reservationDate: "2099-07-30",
-        },
-      },
-    });
-    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
-      locale: "en-US",
-      reservation: {
-        kind: "meeting-room",
-        details: {
-          kind: "meeting-room",
-          duration: { unit: "hour", amount: 1 },
           reservationDate: "2099-07-30",
         },
       },
@@ -105,6 +95,7 @@ test("restores a whole-day reservation after its start and before its end", asyn
       email: "ada@example.com",
       phone: "+420777777777",
     });
+    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toHaveLength(1);
     expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
       locale: "en-US",
       reservation: {
@@ -116,6 +107,31 @@ test("restores a whole-day reservation after its start and before its end", asyn
         },
       },
     });
+  } finally {
+    Temporal.Now.instant = originalNow;
+  }
+});
+
+test("preloads only the default selected duration", async () => {
+  const originalNow = Temporal.Now.instant;
+  Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
+
+  try {
+    await renderMeetingRoomReservationContent({ locale: "en-US" });
+
+    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toEqual([
+      {
+        locale: "en-US",
+        reservation: {
+          kind: "meeting-room",
+          details: {
+            kind: "meeting-room",
+            duration: { unit: "hour", amount: 1 },
+            reservationDate: "2099-07-30",
+          },
+        },
+      },
+    ]);
   } finally {
     Temporal.Now.instant = originalNow;
   }

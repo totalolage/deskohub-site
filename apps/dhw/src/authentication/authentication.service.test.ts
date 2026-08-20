@@ -28,6 +28,8 @@ describe("AuthenticationService", () => {
       getOverview: () => Effect.die("not used"),
       listReservations: () => Effect.die("not used"),
       getReservation: () => Effect.die("not used"),
+      cancelReservation: () => Effect.die("not used"),
+      mutateReservationAccess: () => Effect.die("not used"),
       findReservation: () => Effect.die("not used"),
       listBookings: () => Effect.die("not used"),
       getBooking: () => Effect.die("not used"),
@@ -41,6 +43,7 @@ describe("AuthenticationService", () => {
       listCustomerReservations: () => Effect.die("not used"),
       getDiscountDashboard: () => Effect.die("not used"),
       getDiscountCode: () => Effect.die("not used"),
+      getVoucher: () => Effect.die("not used"),
       listSessions: () => Effect.die("not used"),
       mutateDiscounts: () => Effect.die("not used"),
       renameSession: () => Effect.die("not used"),
@@ -57,7 +60,7 @@ describe("AuthenticationService", () => {
 
     const current = await AuthenticationService.pipe(
       Effect.flatMap((authentication) => authentication.current),
-      Effect.provide(AuthenticationService.Live),
+      Effect.provide(AuthenticationService.Default),
       Effect.provide(apiLayer),
       Effect.provide(credentialLayer),
       Effect.runPromise

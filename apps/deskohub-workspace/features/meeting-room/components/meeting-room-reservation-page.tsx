@@ -1,5 +1,7 @@
 import { Effect } from "effect";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
+import type { CanonicalPromotionCode } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
@@ -9,7 +11,10 @@ import {
   meetingRoomReservationDefaultValues,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
-import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomReservationDuration,
+  getMeetingRoomReservationDurationKey,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import { getEarliestMeetingRoomStartDateTime } from "@/features/reservation/meeting-room-reservation-time";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -34,11 +39,13 @@ export async function renderMeetingRoomReservationContent({
   initialReservation,
   locale,
   replacementToken,
+  submittedCode,
 }: {
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: CheckoutSessionId;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly locale: Locale;
   readonly replacementToken?: string;
+  readonly submittedCode?: CanonicalPromotionCode;
 }) {
   const minimumStartDateTime = getEarliestMeetingRoomStartDateTime(
     getMeetingRoomReservationDuration(
@@ -56,9 +63,14 @@ export async function renderMeetingRoomReservationContent({
     getMeetingRoomDurationAdvertisedPriceRequests({
       locale,
       startDateTime: initialValues.startDateTime,
-    }).map(({ request }) => request)
+      submittedCode,
+    }).filter(
+      ({ reservation }) =>
+        getMeetingRoomReservationDurationKey(reservation.details.duration) ===
+        initialValues.duration
+    )
   ).pipe(
-    Effect.provide(CheckoutPricingServiceLiveWithDependencies),
+    Effect.provide(CheckoutPricingService.Live),
     Effect.scoped,
     runWorkspaceEffect("reservation.meeting-room.load-advertised-prices")
   );
@@ -73,6 +85,7 @@ export async function renderMeetingRoomReservationContent({
       initialValues={initialValues}
       locale={locale}
       replacementToken={replacementToken}
+      submittedCode={submittedCode}
     />
   );
 }

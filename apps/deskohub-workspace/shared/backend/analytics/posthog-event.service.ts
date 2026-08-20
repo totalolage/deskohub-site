@@ -1,10 +1,13 @@
 import "server-only";
 
+import type {
+  PostHogDistinctId,
+  PostHogEventId,
+} from "@deskohub/posthog/identifiers";
 import { Context, Effect, Layer, Option, References } from "effect";
 import { type EventMessage, PostHog } from "posthog-node";
 import {
   PostHogRuntimeConfig,
-  PostHogRuntimeConfigLive,
   type PostHogRuntimeConfigObj,
 } from "@/shared/backend/config/posthog.config";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
@@ -13,11 +16,11 @@ import { temporalInstantToDate } from "@/shared/utils/temporal";
 export type PostHogEventProperties = NonNullable<EventMessage["properties"]>;
 
 export interface CapturePostHogEventInput {
-  readonly distinctId: string;
+  readonly distinctId: PostHogDistinctId;
   readonly event: string;
   readonly properties?: PostHogEventProperties;
   readonly timestamp: Temporal.Instant;
-  readonly uuid: string;
+  readonly uuid: PostHogEventId;
 }
 
 export interface IPostHogEventService {
@@ -37,7 +40,7 @@ export class PostHogEventService extends Context.Service<
   PostHogEventService,
   IPostHogEventService
 >()("@deskohub-workspace/analytics/PostHogEventService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* PostHogRuntimeConfig;
@@ -47,18 +50,16 @@ export class PostHogEventService extends Context.Service<
       });
     })
   );
+
+  static Live = this.Default.pipe(Layer.provide(PostHogRuntimeConfig.Default));
 }
 
-export const PostHogEventServiceLive = PostHogEventService.Live.pipe(
-  Layer.provide(PostHogRuntimeConfigLive)
-);
-
 const createPostHogCaptureClient = ({
-  host,
+  ingestHost,
   projectToken,
 }: PostHogRuntimeConfigObj): PostHogCaptureClient | undefined => {
   if (!projectToken) return undefined;
-  return new PostHog(projectToken, { host });
+  return new PostHog(projectToken, { host: ingestHost });
 };
 
 const collectContextProperties = Effect.gen(function* () {
@@ -79,16 +80,16 @@ const collectContextProperties = Effect.gen(function* () {
       ...logAnnotations,
       effect: {
         spanAnnotations,
-        ...(Option.isSome(currentSpan)
-          ? { spanAttributes: Object.fromEntries(currentSpan.value.attributes) }
-          : {}),
+        spanAttributes: Option.isSome(currentSpan)
+          ? Object.fromEntries(currentSpan.value.attributes)
+          : undefined,
       },
     },
     spanMetadata,
   };
 });
 
-const compactProperties = (properties: Record<string, unknown>) =>
+const compactProperties = (properties: PostHogEventProperties) =>
   Object.fromEntries(
     Object.entries(properties).filter(([, value]) => value !== undefined)
   ) as PostHogEventProperties;
@@ -106,7 +107,7 @@ export const makePostHogEventService = ({
         censorLogValue({
           ...contextProperties.properties,
           ...input.properties,
-        }) as Record<string, unknown>
+        }) as PostHogEventProperties
       );
       const properties = compactProperties({
         ...censoredProperties,

@@ -1,158 +1,149 @@
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import {
+  AdministrationAlert,
   AdministrationNoticeBanner,
   AdministrationPage,
-  AdministrationPageHeader,
+  AdministrationTableToolbar,
+  EmptyState,
 } from "@/features/administration/components";
 import { Button } from "@/shared/components/ui/button";
 import {
   CalendarSalesAdminTable,
-  CreateDiscountForm,
   DiscountCodesAdminTable,
-  DiscountsAdminTable,
   type DiscountTableItem,
+  VouchersAdminTable,
 } from "./admin-tables";
 import {
   DiscountCodeCreationDialog,
   SaleDiscountCreationDialog,
+  VoucherCreationDialog,
 } from "./creation-dialogs";
-import type { DiscountAdminDashboard } from "./discount-administration.service";
+import type {
+  DiscountAdminCodesPage,
+  DiscountAdminDashboard,
+  DiscountAdminSalesPage,
+  DiscountAdminVouchersPage,
+} from "./discount-administration.service";
 
-type DiscountAdministrationProps = {
-  readonly dashboard: DiscountAdminDashboard;
+type DiscountAdministrationProps<Dashboard> = {
+  readonly dashboard: Dashboard;
   readonly notice?: {
     readonly message: string;
     readonly status: "error" | "success";
   };
 };
 
-export function DiscountsAdministrationPage({
-  dashboard,
-  notice,
-}: DiscountAdministrationProps) {
-  const discounts = toDiscountTableItems(dashboard);
-
-  return (
-    <AdminPageShell
-      activeSection="discounts"
-      count={discounts.length}
-      notice={notice}
-      title="Discounts"
-    >
-      <section>
-        <details className="group rounded-xl border border-navy-blue/10 bg-white">
-          <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
-            <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
-              <Plus aria-hidden className="size-4" />
-            </span>
-            Create a discount
-          </summary>
-          <div className="px-5 pb-6">
-            <CreateDiscountForm />
-          </div>
-        </details>
-
-        <div className="mt-4">
-          {discounts.length === 0 ? (
-            <EmptyState message="No discounts yet. Create the first definition above." />
-          ) : (
-            <DiscountsAdminTable discounts={discounts} />
-          )}
-        </div>
-      </section>
-    </AdminPageShell>
-  );
-}
-
 export function CodesAdministrationPage({
   dashboard,
   notice,
-}: DiscountAdministrationProps) {
+}: DiscountAdministrationProps<DiscountAdminCodesPage>) {
+  return (
+    <AdministrationPage>
+      <h1 className="sr-only">Codes</h1>
+      <AdministrationNoticeBanner notice={notice} />
+      <AdministrationTableToolbar
+        actions={<CodesAdministrationActions dashboard={dashboard} />}
+        count={dashboard.codes.length}
+        itemLabel="discount code"
+      />
+      <CodesAdministrationCollection dashboard={dashboard} />
+    </AdministrationPage>
+  );
+}
+
+export function CodesAdministrationActions({
+  dashboard,
+}: {
+  readonly dashboard: DiscountAdminCodesPage;
+}) {
+  return (
+    <DiscountCodeCreationDialog discounts={toDiscountTableItems(dashboard)} />
+  );
+}
+
+export function CodesAdministrationCollection({
+  dashboard,
+}: {
+  readonly dashboard: DiscountAdminCodesPage;
+}) {
   const discounts = toDiscountTableItems(dashboard);
-  const codes = dashboard.codes.map((code) => ({
-    code: code.code,
-    discountId: code.discountId,
-    enabled: code.enabled,
-    id: code.id,
-    maxUses: code.maxUses,
-    audienceSize: code.audienceSize,
-    reservedUses: code.reservedUses,
-    redeemedUses: code.redeemedUses,
-    remainingUses: code.remainingUses,
-    validFrom: code.validFrom?.toString() ?? null,
-    validUntil: code.validUntil?.toString() ?? null,
-  }));
+  const codes = toDiscountCodeTableItems(dashboard);
 
   return (
-    <AdminPageShell
-      activeSection="codes"
-      count={codes.length}
-      notice={notice}
-      showHeader={false}
-      title="Codes"
-    >
-      <h1 className="sr-only">Codes</h1>
-      <div>
-        <section aria-labelledby="discount-codes-heading">
-          <h2 className="sr-only" id="discount-codes-heading">
-            Codes
-          </h2>
-          <div className="flex justify-end">
-            <DiscountCodeCreationDialog discounts={discounts} />
-          </div>
+    <section aria-labelledby="discount-codes-heading">
+      <h2 className="sr-only" id="discount-codes-heading">
+        Codes
+      </h2>
+      {codes.length === 0 ? (
+        <EmptyState message="No discount codes yet." />
+      ) : (
+        <DiscountCodesAdminTable codes={codes} discounts={discounts} />
+      )}
+    </section>
+  );
+}
 
-          <div className="mt-4">
-            {codes.length === 0 ? (
-              <EmptyState message="No discount codes yet." />
-            ) : (
-              <DiscountCodesAdminTable codes={codes} discounts={discounts} />
-            )}
-          </div>
-        </section>
-      </div>
-    </AdminPageShell>
+export function VouchersAdministrationActions() {
+  return <VoucherCreationDialog />;
+}
+
+export function VouchersAdministrationCollection({
+  dashboard,
+}: {
+  readonly dashboard: DiscountAdminVouchersPage;
+}) {
+  return (
+    <section aria-labelledby="vouchers-heading">
+      <h2 className="sr-only" id="vouchers-heading">
+        Vouchers
+      </h2>
+      {dashboard.vouchers.length === 0 ? (
+        <EmptyState message="No vouchers yet." />
+      ) : (
+        <VouchersAdminTable
+          vouchers={dashboard.vouchers.map((voucher) => ({
+            ...voucher,
+            validFrom: voucher.validFrom?.toString() ?? null,
+            validUntil: voucher.validUntil?.toString() ?? null,
+          }))}
+        />
+      )}
+    </section>
   );
 }
 
 export function SalesAdministrationPage({
   dashboard,
   notice,
-}: DiscountAdministrationProps) {
-  const discounts = toDiscountTableItems(dashboard);
+}: DiscountAdministrationProps<DiscountAdminSalesPage>) {
   return (
-    <AdminPageShell
-      activeSection="sales"
-      count={dashboard.calendar.events.length}
-      notice={notice}
-      showHeader={false}
-      title="Sales"
-    >
+    <AdministrationPage>
       <h1 className="sr-only">Sales</h1>
-      <CalendarSection calendar={dashboard.calendar} discounts={discounts} />
-    </AdminPageShell>
+      <AdministrationNoticeBanner notice={notice} />
+      <AdministrationTableToolbar
+        actions={<SalesAdministrationActions />}
+        count={dashboard.calendar.events.length}
+        itemLabel="sale"
+      />
+      <SalesAdministrationCollection dashboard={dashboard} />
+    </AdministrationPage>
   );
 }
 
-export function AdminPageShell({
-  children,
-  count,
-  notice,
-  showHeader = true,
-  title,
+export function SalesAdministrationActions() {
+  return <SaleDiscountCreationDialog />;
+}
+
+export function SalesAdministrationCollection({
+  dashboard,
 }: {
-  readonly activeSection: "codes" | "customers" | "discounts" | "sales";
-  readonly children: React.ReactNode;
-  readonly count: number;
-  readonly notice: DiscountAdministrationProps["notice"];
-  readonly showHeader?: boolean;
-  readonly title: string;
+  readonly dashboard: DiscountAdminSalesPage;
 }) {
   return (
-    <AdministrationPage>
-      {showHeader && <AdministrationPageHeader count={count} title={title} />}
-      <AdministrationNoticeBanner notice={notice} />
-      {children}
-    </AdministrationPage>
+    <CalendarSection
+      calendar={dashboard.calendar}
+      discounts={toDiscountTableItems(dashboard)}
+    />
   );
 }
 
@@ -168,7 +159,10 @@ function CalendarSection({
   );
   if (calendar.unavailable) {
     calendarContent = (
-      <EmptyState message="Google Calendar is temporarily unavailable. Database editing still works." />
+      <AdministrationAlert status="warning">
+        Google Calendar is temporarily unavailable. Database editing still
+        works.
+      </AdministrationAlert>
     );
   } else if (calendar.events.length === 0) {
     calendarContent = <EmptyState message="No Calendar sale events found." />;
@@ -180,10 +174,7 @@ function CalendarSection({
         <h2 className="sr-only" id="calendar-sales-heading">
           Calendar sales
         </h2>
-        <div className="flex justify-end">
-          <SaleDiscountCreationDialog />
-        </div>
-        <div className="mt-4">{calendarContent}</div>
+        {calendarContent}
       </section>
 
       <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5 xl:sticky xl:top-24">
@@ -205,21 +196,31 @@ function CalendarSection({
   );
 }
 
-export function EmptyState({ message }: { readonly message: string }) {
-  return (
-    <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-10 text-center text-sm text-navy-blue/62">
-      {message}
-    </div>
-  );
-}
-
 const toDiscountTableItems = ({
   discounts,
-}: DiscountAdminDashboard): readonly DiscountTableItem[] =>
+}: Pick<DiscountAdminDashboard, "discounts">): readonly DiscountTableItem[] =>
   discounts.map(({ codeCount, id, labels, adjustment, products }) => ({
     adjustment,
     codeCount,
     id,
     labels,
     products,
+  }));
+
+const toDiscountCodeTableItems = ({
+  codes,
+}: Pick<DiscountAdminCodesPage, "codes">) =>
+  codes.map((code) => ({
+    code: code.code,
+    discountId: code.discountId,
+    enabled: code.enabled,
+    id: code.id,
+    maxUses: code.maxUses,
+    maxUsesPerCustomer: code.maxUsesPerCustomer,
+    audienceSize: code.audienceSize,
+    reservedUses: code.reservedUses,
+    redeemedUses: code.redeemedUses,
+    remainingUses: code.remainingUses,
+    validFrom: code.validFrom?.toString() ?? null,
+    validUntil: code.validUntil?.toString() ?? null,
   }));

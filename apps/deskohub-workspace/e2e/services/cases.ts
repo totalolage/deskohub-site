@@ -1,14 +1,14 @@
 import { Context, Effect, Layer } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { makeWorkspaceE2ECases } from "../cases";
+import { makeWorkspaceE2ECases, type WorkspaceE2EPreparation } from "../cases";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
 import type { WorkspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
 import {
-  runWorkspaceE2ECases,
+  runWorkspaceE2ECase,
   type WorkspaceE2EFailureReporter,
 } from "../suite";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
@@ -22,19 +22,24 @@ interface IWorkspaceE2ECaseService {
     readonly config: WorkspaceE2EConfig;
     readonly datasourceConfig: DatasourceConfig;
     readonly flowStates: CheckoutFlowState[];
+    readonly preparation: WorkspaceE2EPreparation;
     readonly run: Runner;
-  }) => Effect.Effect<
-    readonly WorkspaceE2ECase[],
-    WorkspaceE2EError,
-    E2EDatabase
-  >;
-  readonly runCases: (input: {
+  }) => Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError>;
+  readonly reconstructCases: (input: {
+    readonly allocation: WorkspaceE2EDateAllocation;
+    readonly config: WorkspaceE2EConfig;
+    readonly datasourceConfig: DatasourceConfig;
+    readonly flowStates: CheckoutFlowState[];
+    readonly preparation: WorkspaceE2EPreparation;
+    readonly run: Runner;
+  }) => Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError>;
+  readonly runCase: (input: {
     readonly artifactRoot: string;
-    readonly cases: readonly WorkspaceE2ECase[];
     readonly datasourceConfig: DatasourceConfig;
     readonly reportFailure?: WorkspaceE2EFailureReporter;
     readonly run: Runner;
     readonly sessionPrefix: string;
+    readonly testCase: WorkspaceE2ECase;
     readonly timeouts: WorkspaceE2ETimeouts;
   }) => Effect.Effect<void, WorkspaceE2EError, E2EDatabase>;
 }
@@ -43,7 +48,7 @@ export class WorkspaceE2ECaseService extends Context.Service<
   WorkspaceE2ECaseService,
   IWorkspaceE2ECaseService
 >()("WorkspaceE2ECaseService") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;
@@ -57,8 +62,13 @@ export class WorkspaceE2ECaseService extends Context.Service<
             Effect.provideService(HttpClient.HttpClient, httpClient),
             Effect.provideService(E2ETelemetryService, telemetry)
           ),
-        runCases: (input) =>
-          runWorkspaceE2ECases(input).pipe(
+        reconstructCases: (input) =>
+          makeWorkspaceE2ECases({ ...input, traceConstruction: false }).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
+            Effect.provideService(E2ETelemetryService, telemetry)
+          ),
+        runCase: (input) =>
+          runWorkspaceE2ECase(input).pipe(
             Effect.provideService(WorkspaceE2ECleanupService, cleanup),
             Effect.provideService(
               WorkspaceE2EProviderVerificationPermitService,

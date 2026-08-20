@@ -13,8 +13,8 @@ import {
 import { PayableReservationUnavailableError } from "@/features/checkout/backend/checkout/payable-reservation.service";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
-  DiscountCodeUnavailableError,
   discountIdSchema,
+  PromotionCodeUnavailableError,
 } from "@/features/discounts";
 
 mock.module("server-only", () => ({}));
@@ -177,7 +177,7 @@ describe("applyDiscountCodeToPayState", () => {
   test("maps a specific backend eligibility reason to the generic field result", async () => {
     const applyDiscountCode = mock(() =>
       Effect.fail(
-        new DiscountCodeUnavailableError({
+        new PromotionCodeUnavailableError({
           reason: "already_redeemed",
           message: "Already redeemed.",
         })

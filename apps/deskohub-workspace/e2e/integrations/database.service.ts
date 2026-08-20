@@ -11,10 +11,9 @@ interface IE2EDatabase {
   readonly db: DatabaseClient;
 }
 
-export class E2EDatabase extends Context.Service<
-  E2EDatabase,
-  IE2EDatabase
->()("E2EDatabase") {
+export class E2EDatabase extends Context.Service<E2EDatabase, IE2EDatabase>()(
+  "E2EDatabase"
+) {
   static layer = (config: DatasourceConfig) =>
     Layer.effect(
       this,
@@ -23,7 +22,7 @@ export class E2EDatabase extends Context.Service<
           makeDatabasePool({
             connectionString: config.databaseUrlUnpooled,
             connectionTimeoutMillis: config.timeouts.datasource,
-            max: 10,
+            max: 2,
             query_timeout: config.timeouts.datasource,
             statement_timeout: config.timeouts.datasource,
           })

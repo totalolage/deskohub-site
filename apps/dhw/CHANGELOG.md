@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.8.2](https://github.com/totalolage/deskohub-site/compare/dhw-v1.8.1...dhw-v1.8.2) (2026-08-14)
+
+
+### Bug Fixes
+
+* **dhw:** align default and live layer naming ([c09a411](https://github.com/totalolage/deskohub-site/commit/c09a4110769574d90274ba5ee6543d94eb62bbeb))
+
+## [1.8.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.8.0...dhw-v1.8.1) (2026-08-14)
+
+
+### Bug Fixes
+
+* **dhw:** decode pre-voucher customer responses ([ba4930e](https://github.com/totalolage/deskohub-site/commit/ba4930e3776e22d4c7053fd2507d76c10c26eaaf))
+* **dhw:** satisfy compatibility lint ([5cc5764](https://github.com/totalolage/deskohub-site/commit/5cc5764299d0afe0abd4bad870acbefe0c185ab4))
+
+## [1.8.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.7.0...dhw-v1.8.0) (2026-08-13)
+
+
+### Features
+
+* **dhw:** add per-customer discount use limits ([b254679](https://github.com/totalolage/deskohub-site/commit/b25467996d641395478758fe0050cbfbea8888cb))
+
+## [1.7.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.6.0...dhw-v1.7.0) (2026-08-13)
+
+
+### Features
+
+* **dhw:** administer reservation access ([78231b4](https://github.com/totalolage/deskohub-site/commit/78231b4c34e47461e5408710003f0871785e3649))
+
+
+### Bug Fixes
+
+* **dhw:** replay reservation access mutations ([9e737be](https://github.com/totalolage/deskohub-site/commit/9e737bee6f21b53b2817534f7b796122fb13bcfa))
+
+## [1.6.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.5.0...dhw-v1.6.0) (2026-08-11)
+
+
+### Features
+
+* **dhw:** enforce branded identifier contracts ([ff8a8f7](https://github.com/totalolage/deskohub-site/commit/ff8a8f762f1cf2787e851564c598204b36f626e0))
+
+
+### Bug Fixes
+
+* **dhw:** clarify CLI business documentation ([04eb193](https://github.com/totalolage/deskohub-site/commit/04eb19316d96e127a87a979644fa72b8b3069b0b))
+* **dhw:** narrow mutation retry guarantee ([8c013ec](https://github.com/totalolage/deskohub-site/commit/8c013eca92b2ffcd4595d796f53eb5e3e14c7ea0))
+
+## [1.5.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.4.0...dhw-v1.5.0) (2026-08-10)
+
+
+### Features
+
+* **dhw:** add administration mutations ([636df93](https://github.com/totalolage/deskohub-site/commit/636df93489d1a4811911ca3754745c8f73bcc823))
+* **dhw:** add administration mutations ([926140a](https://github.com/totalolage/deskohub-site/commit/926140a2bbe470ba37a191057f3846902186cdf0))
+
 ## [1.4.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.3.0...dhw-v1.4.0) (2026-08-10)
 
 

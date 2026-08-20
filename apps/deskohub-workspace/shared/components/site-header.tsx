@@ -4,7 +4,10 @@ import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
-import { LocaleSwitcherLinks } from "@/shared/components/locale-switcher-links";
+import {
+  LocaleSwitcherLabels,
+  LocaleSwitcherLinks,
+} from "@/shared/components/locale-switcher-links";
 import { HorizontalLogo } from "@/shared/components/logo";
 import type { SiteHeaderMenuItem } from "@/shared/components/site-header-config";
 import { Button } from "@/shared/components/ui/button";
@@ -16,6 +19,11 @@ type SiteHeaderProps = {
   links: SiteHeaderMenuItem[];
   contactLabel: string;
   contactHref: string;
+  closeNavigationMenuLabel: string;
+  languageSwitcherLabel: string;
+  mobilePrimaryNavigationLabel: string;
+  openNavigationMenuLabel: string;
+  primaryNavigationLabel: string;
 };
 
 export function SiteHeader({
@@ -24,6 +32,11 @@ export function SiteHeader({
   links,
   contactLabel,
   contactHref,
+  closeNavigationMenuLabel,
+  languageSwitcherLabel,
+  mobilePrimaryNavigationLabel,
+  openNavigationMenuLabel,
+  primaryNavigationLabel,
 }: SiteHeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -43,7 +56,10 @@ export function SiteHeader({
           />
         </Link>
 
-        <nav aria-label="Primary" className="hidden items-center gap-6 xl:flex">
+        <nav
+          aria-label={primaryNavigationLabel}
+          className="hidden items-center gap-6 xl:flex"
+        >
           {links.map((link) => (
             <Link
               key={link.id}
@@ -65,10 +81,18 @@ export function SiteHeader({
           </Link>
 
           <nav
-            aria-label="Language switcher"
+            aria-label={languageSwitcherLabel}
+            data-locale-switcher
             className="hidden rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block"
           >
-            <Suspense fallback={null}>
+            <Suspense
+              fallback={
+                <LocaleSwitcherLabels
+                  currentLocale={currentLocale}
+                  languageLabels={languageLabels}
+                />
+              }
+            >
               <LocaleSwitcherLinks
                 currentLocale={currentLocale}
                 languageLabels={languageLabels}
@@ -84,7 +108,9 @@ export function SiteHeader({
             aria-expanded={mobileMenuOpen}
             aria-controls="site-header-mobile-menu"
             aria-label={
-              mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
+              mobileMenuOpen
+                ? closeNavigationMenuLabel
+                : openNavigationMenuLabel
             }
             onClick={() => setMobileMenuOpen((open) => !open)}
           >
@@ -100,12 +126,14 @@ export function SiteHeader({
       <div
         id="site-header-mobile-menu"
         className={cn(
-          "overflow-hidden bg-navy-blue/98 transition-[max-height] duration-300 xl:hidden",
-          mobileMenuOpen ? "max-h-128 border-t border-white/10" : "max-h-0"
+          "overflow-hidden bg-navy-blue/98 transition-[max-height,visibility] duration-300 motion-reduce:transition-none xl:hidden",
+          mobileMenuOpen
+            ? "visible max-h-128 border-t border-white/10"
+            : "invisible max-h-0"
         )}
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
-          <nav aria-label="Mobile primary" className="grid gap-2">
+          <nav aria-label={mobilePrimaryNavigationLabel} className="grid gap-2">
             {links.map((link) => (
               <Link
                 key={link.id}
@@ -118,8 +146,19 @@ export function SiteHeader({
             ))}
           </nav>
 
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72">
-            <Suspense fallback={null}>
+          <div
+            data-locale-switcher
+            className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72"
+          >
+            <Suspense
+              fallback={
+                <LocaleSwitcherLabels
+                  currentLocale={currentLocale}
+                  languageLabels={languageLabels}
+                  isMobile
+                />
+              }
+            >
               <LocaleSwitcherLinks
                 currentLocale={currentLocale}
                 languageLabels={languageLabels}

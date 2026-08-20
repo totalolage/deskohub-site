@@ -1,19 +1,12 @@
 import { Option, Schema } from "effect";
-import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import type { MeetingRoomAdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import type { CanonicalPromotionCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
-import {
-  type MeetingRoomReservationDuration,
-  meetingRoomReservationDurations,
-} from "@/features/reservation/meeting-room-reservation-duration";
+import { meetingRoomReservationDurations } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   localDateTimeSchema,
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
-
-export type MeetingRoomDurationAdvertisedPriceRequest = {
-  readonly duration: MeetingRoomReservationDuration;
-  readonly request: AdvertisedPriceRequest;
-};
 
 const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
@@ -21,10 +14,12 @@ const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 export const getMeetingRoomDurationAdvertisedPriceRequests = ({
   locale,
   startDateTime,
+  submittedCode,
 }: {
   readonly locale: Locale;
   readonly startDateTime: string;
-}): ReadonlyArray<MeetingRoomDurationAdvertisedPriceRequest> =>
+  readonly submittedCode?: CanonicalPromotionCode;
+}): ReadonlyArray<MeetingRoomAdvertisedPriceRequest> =>
   decodeLocalDateTime(startDateTime).pipe(
     Option.map((dateTime) =>
       decodePlainDate(
@@ -33,16 +28,14 @@ export const getMeetingRoomDurationAdvertisedPriceRequests = ({
     ),
     Option.map((reservationDate) =>
       meetingRoomReservationDurations.map((duration) => ({
-        duration,
-        request: {
-          locale,
-          reservation: {
+        locale,
+        ...(submittedCode && { submittedCode }),
+        reservation: {
+          kind: "meeting-room" as const,
+          details: {
             kind: "meeting-room" as const,
-            details: {
-              kind: "meeting-room" as const,
-              duration,
-              reservationDate,
-            },
+            duration,
+            reservationDate,
           },
         },
       }))

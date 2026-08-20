@@ -71,7 +71,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       }),
       Effect.scoped,
       Effect.provide(
-        CloudinaryWebhookVerifier.Live.pipe(
+        CloudinaryWebhookVerifier.Default.pipe(
           Layer.provide(
             makeCloudinaryRuntimeConfigLayer({
               cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,

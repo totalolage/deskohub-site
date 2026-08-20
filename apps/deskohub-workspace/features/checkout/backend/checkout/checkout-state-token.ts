@@ -5,8 +5,16 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
+export const checkoutStateKeyIdSchema = Schema.Trim.check(Schema.isNonEmpty())
+  .pipe(Schema.brand("CheckoutStateKeyId"))
+  .annotate({
+    identifier: "CheckoutStateKeyId",
+    description: "Identifier selecting a checkout state encryption key.",
+  });
+export type CheckoutStateKeyId = typeof checkoutStateKeyIdSchema.Type;
+
 export const checkoutStateClaimsSchema = Schema.Struct({
-  kid: Schema.NonEmptyString,
+  kid: checkoutStateKeyIdSchema,
   iat: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   exp: Schema.Int.check(Schema.isGreaterThan(0)),
 });
@@ -18,7 +26,7 @@ export const checkoutStateProtectedHeaderSchema = Schema.Struct({
 export type CheckoutStateClaims = typeof checkoutStateClaimsSchema.Type;
 
 export type CheckoutStateKey = {
-  readonly kid: string;
+  readonly kid: CheckoutStateKeyId;
   readonly key: Buffer;
 };
 
@@ -69,6 +77,13 @@ const base64UrlDecode = Effect.fn("checkoutStateToken.base64UrlDecode")(
 
 export const parseCheckoutStateKey = Effect.fn("checkoutStateToken.parseKey")(
   function* (kid: string, base64UrlKey: string) {
+    const decodedKid = yield* Schema.decodeUnknownEffect(
+      checkoutStateKeyIdSchema
+    )(kid).pipe(
+      Effect.mapError((cause) =>
+        invalidSecret("Checkout state key ID is invalid.", cause)
+      )
+    );
     const key = yield* Effect.try({
       try: () => Buffer.from(base64UrlKey, "base64url"),
       catch: (cause) =>
@@ -84,7 +99,7 @@ export const parseCheckoutStateKey = Effect.fn("checkoutStateToken.parseKey")(
       );
     }
 
-    return { kid, key } satisfies CheckoutStateKey;
+    return { kid: decodedKid, key } satisfies CheckoutStateKey;
   }
 );
 
@@ -183,7 +198,10 @@ export const createCheckoutStateClaims = Effect.fn(
 });
 
 const getCheckoutStateKeyByKid = Effect.fn("checkoutStateToken.getKeyByKid")(
-  function* (kid: string, options: CheckoutStateCryptoOptions = {}) {
+  function* (
+    kid: CheckoutStateKeyId,
+    options: CheckoutStateCryptoOptions = {}
+  ) {
     const keys = yield* getCheckoutStateKeys(options);
     const key = keys.find((candidate) => candidate.kid === kid);
     if (!key) {
@@ -230,7 +248,7 @@ const parseJson = Effect.fn("checkoutStateToken.parseJson")(
 );
 
 const stringifyJson = Effect.fn("checkoutStateToken.stringifyJson")(
-  (value: unknown) =>
+  <T>(value: T) =>
     Effect.try({
       try: () => JSON.stringify(value),
       catch: (cause) =>
@@ -244,11 +262,12 @@ const decodeProtectedHeader = Schema.decodeUnknownEffect(
 );
 
 export const sealCheckoutState = Effect.fn("checkoutStateToken.seal")(
-  function* (
-    state: { readonly kid: string },
+  function* <T>(
+    state: T,
+    keyId: CheckoutStateKeyId,
     options: CheckoutStateCryptoOptions = {}
   ) {
-    const key = yield* getCheckoutStateKeyByKid(state.kid, options);
+    const key = yield* getCheckoutStateKeyByKid(keyId, options);
     const headerJson = yield* stringifyJson({ kid: key.kid });
     const stateJson = yield* stringifyJson(state);
 
@@ -280,7 +299,12 @@ export const sealCheckoutState = Effect.fn("checkoutStateToken.seal")(
   }
 );
 
-export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
+/**
+ * Authenticates, decrypts, and decodes checkout state without accepting it as
+ * current. Callers may project recovery metadata from expired state, but all
+ * checkout operations must continue through `openCheckoutState`.
+ */
+export const decodeCheckoutState = Effect.fn("checkoutStateToken.decode")(
   function* <A extends CheckoutStateClaims>(
     token: string,
     schema: Schema.Decoder<A>,
@@ -333,6 +357,18 @@ export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
     if (state.kid !== header.kid) {
       return yield* invalidToken("Invalid checkout state token payload.");
     }
+
+    return state;
+  }
+);
+
+export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
+  function* <A extends CheckoutStateClaims>(
+    token: string,
+    schema: Schema.Decoder<A>,
+    options: CheckoutStateCryptoOptions = {}
+  ) {
+    const state = yield* decodeCheckoutState(token, schema, options);
 
     const nowMilliseconds = yield* getCheckoutStateNowMilliseconds(options);
     if (state.exp <= Math.floor(nowMilliseconds / 1000)) {

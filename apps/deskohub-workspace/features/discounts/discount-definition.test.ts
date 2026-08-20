@@ -19,7 +19,7 @@ const labels = {
   "cs-CZ": " Letní sleva ",
 } as const;
 
-const untrustedLabels = (value: unknown): DiscountDefinitionRow["labels"] =>
+const untrustedLabels = <T>(value: T): DiscountDefinitionRow["labels"] =>
   value as DiscountDefinitionRow["labels"];
 
 const percentageRow = (
@@ -36,7 +36,7 @@ const percentageRow = (
   productTargets: [
     {
       discountId,
-      productIdentity: { kind: "cowork", tier: "basic" },
+      productTarget: { kind: "cowork" },
     },
   ],
   ...overrides,
@@ -56,7 +56,7 @@ describe("stored discount definitions", () => {
         "cs-CZ": "Letní sleva",
       },
       adjustment: { kind: "percentage", basisPoints: 5000 },
-      products: [{ kind: "cowork", tier: "basic" }],
+      products: [{ kind: "cowork" }],
     });
   });
 
@@ -85,19 +85,14 @@ describe("stored discount definitions", () => {
           productTargets: [
             {
               discountId,
-              productIdentity: {
-                kind: "meeting-room",
-                duration: { unit: "hour", amount: 4 },
-              },
+              productTarget: { kind: "meeting-room" },
             },
           ],
         })
       )
     );
 
-    expect(result.products).toEqual([
-      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
-    ]);
+    expect(result.products).toEqual([{ kind: "meeting-room" }]);
   });
 
   test.each([
@@ -138,12 +133,21 @@ describe("stored discount definitions", () => {
     ],
     ["empty targets", percentageRow({ productTargets: [] })],
     [
+      "duplicate family targets",
+      percentageRow({
+        productTargets: [
+          { discountId, productTarget: { kind: "cowork" } },
+          { discountId, productTarget: { kind: "cowork" } },
+        ],
+      }),
+    ],
+    [
       "target from another discount",
       percentageRow({
         productTargets: [
           {
             discountId: otherDiscountId,
-            productIdentity: { kind: "cowork", tier: "basic" },
+            productTarget: { kind: "cowork" },
           },
         ],
       }),
@@ -154,26 +158,10 @@ describe("stored discount definitions", () => {
         productTargets: [
           {
             discountId,
-            productIdentity: {
+            productTarget: {
               kind: "cowork",
-              tier: "basic",
               provider: "private",
             },
-          },
-        ],
-      }),
-    ],
-    [
-      "duplicate product identities",
-      percentageRow({
-        productTargets: [
-          {
-            discountId,
-            productIdentity: { kind: "cowork", tier: "basic" },
-          },
-          {
-            discountId,
-            productIdentity: { kind: "cowork", tier: "basic" },
           },
         ],
       }),

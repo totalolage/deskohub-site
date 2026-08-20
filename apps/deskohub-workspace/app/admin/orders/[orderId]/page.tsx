@@ -1,19 +1,40 @@
-import Link from "next/link";
+import { Suspense } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
+  AdministrationAlert,
+  AdministrationFact,
   AdministrationPage,
   AdministrationPageHeader,
+  NexiOrderLink,
 } from "@/features/administration/components";
+import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationOrder } from "@/features/administration/page-data.server";
 import {
   formatOrderMoney,
   formatProviderDateTime,
   formatProviderMoney,
-  OperationTable,
   ProviderStatusBadge,
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
+import { OperationTable } from "@/features/administration/payment-tables";
 
-export default async function OrderAdministrationDetailPage({
+export default function OrderAdministrationDetailPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly orderId: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="order details" />}
+      >
+        <OrderAdministrationDetail params={params} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+export async function OrderAdministrationDetail({
   params,
 }: {
   readonly params: Promise<{ readonly orderId: string }>;
@@ -25,55 +46,56 @@ export default async function OrderAdministrationDetailPage({
     linkedReservationId: order.link?.reservationId ?? null,
   }));
   return (
-    <AdministrationPage>
+    <>
       <AdministrationPageHeader
         actions={
-          <a
+          <NexiOrderLink
             className="inline-flex rounded-lg border border-navy-blue/15 px-3 py-2 text-sm font-semibold hover:bg-navy-blue/5"
-            href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(order.orderId)}`}
-            rel="noreferrer"
-            target="_blank"
+            orderId={order.orderId}
           >
-            Open in XPay ↗
-          </a>
+            Open in XPay
+          </NexiOrderLink>
         }
         description="Provider facts, local reconciliation, and every operation returned for this order."
         eyebrow="Nexi order"
         title={order.orderId}
       />
       {order.providerStatus === "not_found" && (
-        <p className="mb-5 rounded-xl border border-burned-orange/30 bg-burned-orange/10 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-5" status="error">
           Nexi did not find this locally referenced order. Use the XPay link to
           confirm the merchant account and identifier.
-        </p>
+        </AdministrationAlert>
       )}
       {order.providerStatus === "unavailable" && (
-        <p className="mb-5 rounded-xl border border-sunset-yellow/35 bg-sunset-yellow/10 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-5" status="warning">
           Nexi details are temporarily unavailable. Local relationship data is
           still shown below.
-        </p>
+        </AdministrationAlert>
       )}
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-6">
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
             <h2 className="text-xl">Order details</h2>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <OrderFact label="Amount" value={formatOrderMoney(order)} />
-              <OrderFact
+              <AdministrationFact
+                label="Amount"
+                value={formatOrderMoney(order)}
+              />
+              <AdministrationFact
                 label="Authorized"
                 value={formatProviderMoney(
                   order.provider?.authorizedAmount,
                   order.provider?.currency
                 )}
               />
-              <OrderFact
+              <AdministrationFact
                 label="Captured"
                 value={formatProviderMoney(
                   order.provider?.capturedAmount,
                   order.provider?.currency
                 )}
               />
-              <OrderFact
+              <AdministrationFact
                 label="Last operation"
                 value={
                   order.provider?.lastOperationType
@@ -81,13 +103,13 @@ export default async function OrderAdministrationDetailPage({
                     : "Not reported"
                 }
               />
-              <OrderFact
+              <AdministrationFact
                 label="Last provider activity"
                 value={formatProviderDateTime(
                   order.provider?.lastOperationTime
                 )}
               />
-              <OrderFact
+              <AdministrationFact
                 label={
                   order.link?.providerOrderCreatedAtEstimated
                     ? "Nexi order created (estimated)"
@@ -145,23 +167,6 @@ export default async function OrderAdministrationDetailPage({
           )}
         </aside>
       </div>
-    </AdministrationPage>
-  );
-}
-
-function OrderFact({
-  label,
-  value,
-}: {
-  readonly label: string;
-  readonly value: string;
-}) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
-        {label}
-      </dt>
-      <dd className="mt-1.5 font-medium">{value}</dd>
-    </div>
+    </>
   );
 }

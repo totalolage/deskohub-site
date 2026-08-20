@@ -3,9 +3,8 @@ import { NextResponse } from "next/server";
 import {
   NexiWebhookProcessingError,
   NexiWebhookService,
-  NexiWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/payment";
-import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
+import { WorkspaceNexiLayer } from "@/shared/backend/config/nexi.config";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -18,6 +17,8 @@ const nexiWebhookProcessingErrorStatuses = {
   nexi_webhook_invalid_currency: 202,
   nexi_webhook_verification_failed: 500,
   nexi_webhook_verification_mismatch: 202,
+  nexi_webhook_late_payment: 202,
+  nexi_webhook_late_payment_recovery_failed: 500,
   nexi_webhook_transition_failed: 500,
   nexi_webhook_fulfillment_failed: 500,
 } satisfies Record<NexiWebhookProcessingError["errorCode"], 202 | 400 | 500>;
@@ -68,7 +69,8 @@ export const POST = defineWorkspaceRoute(
 
           if (
             error.errorCode === "nexi_webhook_fulfillment_failed" ||
-            error.errorCode === "nexi_webhook_transition_failed"
+            error.errorCode === "nexi_webhook_transition_failed" ||
+            error.errorCode === "nexi_webhook_late_payment"
           ) {
             yield* Effect.logFatal("Nexi webhook processing failed", details);
           } else {
@@ -133,9 +135,7 @@ export const POST = defineWorkspaceRoute(
         )
       ),
       Effect.provide(
-        NexiWebhookServiceLiveWithDependencies.pipe(
-          Layer.provide(NexiServiceLive)
-        )
+        NexiWebhookService.Live.pipe(Layer.provide(WorkspaceNexiLayer))
       ),
       Effect.mapError(
         WorkspaceRouteFailure.internal("Nexi webhook processing failed")

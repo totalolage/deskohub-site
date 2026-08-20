@@ -1,4 +1,13 @@
-import { Context, Effect, Layer, Option, Predicate, Ref, Schema } from "effect";
+import {
+  Cache,
+  Context,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+  Predicate,
+  Schema,
+} from "effect";
 import {
   HttpClient,
   HttpClientError,
@@ -25,11 +34,6 @@ interface IDotyposAccessToken {
 interface IDotyposGeneratedClient {
   readonly client: DotyposClient;
 }
-
-type AccessTokenCache = {
-  readonly token: string;
-  readonly expiresAt: number;
-};
 
 type GeneratedClientError = {
   readonly response: HttpClientResponse.HttpClientResponse;
@@ -60,39 +64,32 @@ export class DotyposAccessToken extends Context.Service<
   DotyposAccessToken,
   IDotyposAccessToken
 >()("@deskohub/dotypos/DotyposAccessToken") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* DotyposRuntimeConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const client = makeDotyposClient({ config, httpClient });
-      const tokenCache = yield* Ref.make<AccessTokenCache | null>(null);
-      const get = Effect.gen(function* () {
-        const cached = yield* Ref.get(tokenCache);
-        const now = Date.now();
-        if (cached && now < cached.expiresAt) return cached.token;
+      const tokenCache = yield* Cache.makeWith(
+        (_key: "access-token") =>
+          client
+            .getAccessToken({
+              params: { Authorization: `User ${config.refreshToken}` },
+              payload: { _cloudId: config.cloudId },
+            })
+            .pipe(
+              Effect.map((response) => response.accessToken),
+              Effect.mapError((error) =>
+                mapDotyposClientError(error, "Get access token", config.apiUrl)
+              )
+            ),
+        {
+          capacity: 1,
+          timeToLive: (exit) => (Exit.isSuccess(exit) ? "59 minutes" : 0),
+        }
+      );
 
-        const token = yield* client
-          .getAccessToken({
-            params: { Authorization: `User ${config.refreshToken}` },
-            payload: { _cloudId: config.cloudId },
-          })
-          .pipe(
-            Effect.map((response) => response.accessToken),
-            Effect.mapError((error) =>
-              mapDotyposClientError(error, "Get access token", config.apiUrl)
-            )
-          );
-
-        yield* Ref.set(tokenCache, {
-          token,
-          expiresAt: now + 59 * 60 * 1000,
-        });
-
-        return token;
-      });
-
-      return { get };
+      return { get: Cache.get(tokenCache, "access-token") };
     })
   );
 }
@@ -101,7 +98,7 @@ export class DotyposGeneratedClient extends Context.Service<
   DotyposGeneratedClient,
   IDotyposGeneratedClient
 >()("@deskohub/dotypos/DotyposGeneratedClient") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const config = yield* DotyposRuntimeConfig;

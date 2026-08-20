@@ -37,7 +37,7 @@ export class ExecutableInstaller extends Context.Service<
   ExecutableInstaller,
   IExecutableInstaller
 >()("ExecutableInstaller") {
-  static Live = Layer.effect(
+  static Default = Layer.effect(
     this,
     Effect.gen(function* () {
       const crypto = yield* Crypto.Crypto;

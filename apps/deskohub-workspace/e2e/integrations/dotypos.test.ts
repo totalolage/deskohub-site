@@ -1,4 +1,8 @@
 import { expect, test } from "bun:test";
+import {
+  DotyposDiscountGroupIdSchema,
+  DotyposReservationIdSchema,
+} from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect } from "effect";
 import {
@@ -66,17 +70,18 @@ test("waits for Dotypos to expose the confirmed reservation state", async () => 
 
 test("waits for cancelled reservations to leave active inventory", async () => {
   let reads = 0;
+  const reservationId = DotyposReservationIdSchema.make("target-reservation");
   await Effect.runPromise(
     waitForDotyposCancellationConvergence(
       Effect.sync(() => {
         reads += 1;
         return [
           ...(reads < 3
-            ? [{ id: "target-reservation", status: "CONFIRMED" as const }]
+            ? [{ id: reservationId, status: "CONFIRMED" as const }]
             : []),
         ];
       }),
-      ["target-reservation"],
+      [reservationId],
       { intervalMs: 1, timeoutMs: 500 }
     )
   );
@@ -97,15 +102,16 @@ test("uses the active-overlap read model for cleanup convergence", async () => {
 
 test("waits for a customer discount-group change to become readable", async () => {
   let reads = 0;
+  const discountGroupId = DotyposDiscountGroupIdSchema.make("group-id");
   const customer = await Effect.runPromise(
     waitForDotyposCustomerDiscountGroup(
       Effect.sync(() => {
         reads += 1;
         return {
-          _discountGroupId: reads < 3 ? null : "group-id",
+          _discountGroupId: reads < 3 ? null : discountGroupId,
         };
       }),
-      "group-id",
+      discountGroupId,
       { intervalMs: 1, timeoutMs: 500 }
     )
   );
@@ -116,12 +122,13 @@ test("waits for a customer discount-group change to become readable", async () =
 
 test("waits for a removed customer discount group to become readable", async () => {
   let reads = 0;
+  const discountGroupId = DotyposDiscountGroupIdSchema.make("group-id");
   const customer = await Effect.runPromise(
     waitForDotyposCustomerDiscountGroup(
       Effect.sync(() => {
         reads += 1;
         return {
-          _discountGroupId: reads < 2 ? "group-id" : null,
+          _discountGroupId: reads < 2 ? discountGroupId : null,
         };
       }),
       null,

@@ -1,7 +1,13 @@
+import {
+  PostHogDistinctId,
+  PostHogEventId,
+} from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import type { PaymentAttempt } from "@/features/checkout/backend/repositories/payment-attempt.repository";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { toWorkspaceMoneyMajorAmount } from "@/features/checkout/workspace-money";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   type PostHogEventProperties,
   PostHogEventService,
@@ -29,26 +35,24 @@ const paymentProperties = (
   reservation_id: attempt.workspaceReservationId,
   payment_attempt_id: attempt.id,
   provider: attempt.provider,
-  ...(attempt.providerOrderId
-    ? { provider_order_id: attempt.providerOrderId }
-    : {}),
+  provider_order_id: attempt.providerOrderId ?? undefined,
 });
 
 const captureLifecycleEvent = (input: {
-  readonly distinctId: string;
+  readonly distinctId: WorkspaceReservationId;
   readonly event: string;
-  readonly id: string;
+  readonly id: WorkspaceReservationId | PaymentAttemptId;
   readonly properties: PostHogEventProperties;
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   Effect.gen(function* () {
     const posthog = yield* PostHogEventService;
     yield* posthog.capture({
-      distinctId: input.distinctId,
+      distinctId: PostHogDistinctId.make(input.distinctId),
       event: input.event,
       properties: input.properties,
       timestamp: input.timestamp,
-      uuid: `${input.id}:${input.event}`,
+      uuid: PostHogEventId.make(`${input.id}:${input.event}`),
     });
   });
 
@@ -65,9 +69,8 @@ export const captureReservationStarted = (input: {
     id: input.reservation.id,
     properties: {
       ...reservationProperties(input.reservation),
-      ...(input.reservation.dotyposReservationId
-        ? { dotypos_reservation_id: input.reservation.dotyposReservationId }
-        : {}),
+      dotypos_reservation_id:
+        input.reservation.dotyposReservationId ?? undefined,
     },
     timestamp: input.timestamp,
   });
@@ -100,9 +103,8 @@ export const captureReservationCompleted = (input: {
     id: input.reservation.id,
     properties: {
       ...reservationProperties(input.reservation),
-      ...(input.reservation.dotyposReservationId
-        ? { dotypos_reservation_id: input.reservation.dotyposReservationId }
-        : {}),
+      dotypos_reservation_id:
+        input.reservation.dotyposReservationId ?? undefined,
     },
     timestamp: input.timestamp,
   });
@@ -121,9 +123,8 @@ export const captureReservationFulfilled = (input: {
     properties: {
       ...reservationProperties(input.reservation),
       dotypos_customer_id: input.reservation.dotyposCustomerId,
-      ...(input.reservation.dotyposReservationId
-        ? { dotypos_reservation_id: input.reservation.dotyposReservationId }
-        : {}),
+      dotypos_reservation_id:
+        input.reservation.dotyposReservationId ?? undefined,
     },
     timestamp: input.timestamp,
   });

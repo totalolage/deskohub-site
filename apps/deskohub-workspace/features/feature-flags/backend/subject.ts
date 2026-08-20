@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { PostHogFeatureFlagSubject } from "@deskohub/posthog/feature-flags/node";
+import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
 import {
   getPostHogRequestContextFromRequestHeadersWithDiagnostics,
@@ -9,8 +10,8 @@ import {
 } from "@/shared/backend/analytics/posthog-request-context";
 import { getRequestHeaders } from "@/shared/backend/utils/request-headers";
 
-const globalReleaseSubject = {
-  distinctId: "deskohub-workspace:global-release",
+export const workspaceReleaseSubject = {
+  distinctId: PostHogDistinctId.make("deskohub-workspace:global-release"),
   sendFeatureFlagEvents: false,
 } as const satisfies PostHogFeatureFlagSubject;
 
@@ -32,7 +33,7 @@ export const getCurrentPostHogFeatureFlagSubject = Effect.fn(
     ),
     Effect.catch((error) =>
       Effect.logWarning(error.message, { cause: error.cause }).pipe(
-        Effect.as(globalReleaseSubject)
+        Effect.as(workspaceReleaseSubject)
       )
     )
   )
@@ -51,5 +52,5 @@ function getPostHogFeatureFlagSubject({
 }: PostHogRequestContext): PostHogFeatureFlagSubject {
   return distinctId
     ? { distinctId, sendFeatureFlagEvents: true }
-    : globalReleaseSubject;
+    : workspaceReleaseSubject;
 }

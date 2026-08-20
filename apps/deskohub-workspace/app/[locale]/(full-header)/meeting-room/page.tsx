@@ -6,7 +6,6 @@ import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { MeetingRoomPage } from "@/features/meeting-room/components/meeting-room-page";
-import { MeetingRoomPageFeature } from "@/features/meeting-room/components/meeting-room-page-feature";
 import {
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
@@ -71,13 +70,11 @@ export default async function LocalizedMeetingRoomPage() {
     ]);
 
     return (
-      <MeetingRoomPageFeature initialEnabled={meetingRoomPageEnabled}>
-        <MeetingRoomPage
-          galleryImages={galleryImages}
-          heroImage={heroImages[0]}
-          locale={locale}
-        />
-      </MeetingRoomPageFeature>
+      <MeetingRoomPage
+        galleryImages={galleryImages}
+        heroImage={heroImages[0]}
+        locale={locale}
+      />
     );
   });
 }

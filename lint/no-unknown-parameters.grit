@@ -1,0 +1,21 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      JsFormalParameter() as $unknown_parameter,
+      JsRestParameter() as $unknown_parameter
+    } where {
+      $unknown_parameter <: r"(?s)^.*:\s*unknown(?:\s*=.*)?$",
+      $unknown_parameter <: not r"(?s).*\bcause\??\s*:\s*unknown",
+      register_diagnostic(
+        span = $unknown_parameter,
+        message = "[anti-slop/no-unknown-parameters] Parse the input into its expected owner type at the I/O boundary.",
+        severity = "error"
+      )
+    }
+  }
+}

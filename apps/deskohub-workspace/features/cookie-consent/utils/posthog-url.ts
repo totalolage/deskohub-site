@@ -1,10 +1,15 @@
+import { Predicate } from "effect";
+import type { Properties } from "posthog-js";
+
 const SENSITIVE_QUERY_PARAMS = new Set([
   "checkouttoken",
+  "accesstoken",
   "paystate",
   "paystateref",
   "token",
   "state",
   "secret",
+  "statustoken",
   "x-vercel-protection-bypass",
 ]);
 
@@ -29,10 +34,10 @@ function sanitizePostHogUrl(value: string) {
 }
 
 export function sanitizePostHogProperties(
-  properties: Record<string, unknown> | undefined,
+  properties: Properties | undefined,
   posthogEnvironment: string
 ) {
-  const sanitizedProperties: Record<string, unknown> = {
+  const sanitizedProperties: Properties = {
     ...properties,
     "deployment.environment.name": posthogEnvironment,
   };
@@ -44,7 +49,7 @@ export function sanitizePostHogProperties(
     "$initial_referrer",
   ]) {
     const url = sanitizedProperties[property];
-    if (typeof url === "string") {
+    if (Predicate.isString(url)) {
       sanitizedProperties[property] = sanitizePostHogUrl(url);
     }
   }

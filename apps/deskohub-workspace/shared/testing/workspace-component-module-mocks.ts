@@ -1,13 +1,14 @@
 import { mock } from "bun:test";
 
 export const workspaceRouterPush = mock((_href: string) => undefined);
+export const workspaceRouterRefresh = mock(() => undefined);
 export const workspaceRouterReplace = mock((_href: string) => undefined);
 export const workspaceUseSearchParams = mock(() => new URLSearchParams());
 export const workspaceUseFeatureFlagEnabled = mock(
   (_flag: string, _initialEnabled: boolean): boolean | undefined => undefined
 );
 export const workspaceApplyFeatureFlagOverrides = mock(
-  (_posthog: unknown, _overrides: unknown) => undefined
+  <PostHog, Overrides>(_posthog: PostHog, _overrides: Overrides) => undefined
 );
 export const workspaceUseFeatureFlagPayload = mock(
   (_flag: string): unknown => undefined
@@ -19,17 +20,18 @@ export const workspaceUseFeatureFlagVariantKey = mock(
   (_flag: string): unknown => undefined
 );
 export const workspaceUseAction = mock(
-  (_action: unknown, _options: unknown): unknown => undefined
+  <Action, Options>(_action: Action, _options: Options) => undefined
 );
 
 mock.module("next/navigation", () => ({
   useRouter: () => ({
     push: workspaceRouterPush,
+    refresh: workspaceRouterRefresh,
     replace: workspaceRouterReplace,
   }),
   useSearchParams: workspaceUseSearchParams,
-  unstable_rethrow: (error: unknown) => {
-    throw error;
+  unstable_rethrow: (cause: unknown) => {
+    throw cause;
   },
 }));
 

@@ -1,11 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  EmailDeliveryIdSchema,
   type EmailSendResult,
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email";
 import { Effect, Layer } from "effect";
-import { ContactService, ContactServiceLive } from "./contact.service";
+import { ContactService } from "./contact.service";
 
 const input = {
   name: "Ada Lovelace",
@@ -15,7 +16,7 @@ const input = {
 };
 
 const sent = (id: string): EmailSendResult => ({
-  id,
+  id: EmailDeliveryIdSchema.make(id),
   status: "sent",
   provider: "fake",
   timestamp: new Date("2026-06-20T12:00:00.000Z"),
@@ -28,7 +29,7 @@ const runSubmit = (send: ReturnType<typeof mock>) =>
       return yield* service.submit(input, "en-US");
     }).pipe(
       Effect.provide(
-        ContactServiceLive.pipe(
+        ContactService.Default.pipe(
           Layer.provide(
             Layer.succeed(EmailServiceTag, {
               send,

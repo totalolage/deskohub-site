@@ -1,8 +1,8 @@
+import { Predicate } from "effect";
 import {
-  getWorkspaceProductKey,
-  type WorkspaceProductIdentity,
-  workspaceProductIdentities,
-} from "@/features/checkout/product-identity";
+  type WorkspaceProductTarget,
+  workspaceProductTargets,
+} from "@/features/discounts/product-target";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import {
   localDateTimeToTemporalInstantString,
@@ -12,6 +12,7 @@ import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateDiscountAdminInput,
   CreateDiscountCodeAdminInput,
+  CreateVoucherAdminInput,
 } from "./contracts";
 
 export const readDiscountForm = (
@@ -46,8 +47,8 @@ export const readDiscountForm = (
     products: formData
       .getAll("products")
       .flatMap((value) =>
-        typeof value === "string" ? (productIdentities[value] ?? []) : []
-      ) as [WorkspaceProductIdentity, ...WorkspaceProductIdentity[]],
+        Predicate.isString(value) ? (productTargets[value] ?? []) : []
+      ) as [WorkspaceProductTarget, ...WorkspaceProductTarget[]],
   };
 };
 
@@ -77,11 +78,36 @@ export const readDiscountCodeConfigurationForm = (
     "validUntil"
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
   maxUses: readOptionalNumber(formData, "maxUses"),
+  maxUsesPerCustomer: readOptionalNumber(formData, "maxUsesPerCustomer"),
 });
+
+export const readVoucherCreditForm = (
+  formData: FormData
+): CreateVoucherAdminInput["credit"] => {
+  const currency = findWorkspaceCurrencyDefinition(
+    readString(formData, "voucherCurrency").toUpperCase()
+  );
+  return {
+    value: Number(readString(formData, "voucherValue")),
+    exponent: currency?.exponent ?? -1,
+    currency: currency?.code ?? "",
+  };
+};
+
+export const readVoucherConfigurationForm = (
+  formData: FormData
+): Omit<CreateVoucherAdminInput, "credit"> => {
+  const {
+    maxUses: _maxUses,
+    maxUsesPerCustomer: _maxUsesPerCustomer,
+    ...configuration
+  } = readDiscountCodeConfigurationForm(formData);
+  return configuration;
+};
 
 const readString = (formData: FormData, field: string) => {
   const value = formData.get(field);
-  return typeof value === "string" ? value : "";
+  return Predicate.isString(value) ? value : "";
 };
 
 const readOptionalString = (formData: FormData, field: string) => {
@@ -104,11 +130,8 @@ const readOptionalNumber = (formData: FormData, field: string) => {
   return value === null ? null : Number(value);
 };
 
-const productIdentities: Readonly<
-  Record<string, readonly WorkspaceProductIdentity[]>
+const productTargets: Readonly<
+  Record<string, readonly WorkspaceProductTarget[]>
 > = Object.fromEntries(
-  workspaceProductIdentities.map((product) => [
-    getWorkspaceProductKey(product),
-    [product],
-  ])
+  workspaceProductTargets.map((product) => [product.kind, [product]])
 );

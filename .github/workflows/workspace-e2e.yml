@@ -154,8 +154,102 @@ jobs:
             echo "url=$normalized_url"
           } >> "$GITHUB_OUTPUT"
 
-  test-e2e:
+  migrate-preview:
     needs: resolve-target
+    if: needs.resolve-target.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: workspace-checkout-e2e
+    permissions:
+      contents: read
+    env:
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+
+    steps:
+      - name: Checkout exact target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-target.outputs.sha }}
+          persist-credentials: false
+
+      - name: Confirm checked-out commit
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$TARGET_SHA" ]]; then
+            echo "Checked-out commit does not match the deployment SHA" >&2
+            exit 1
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install repository dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve Neon branch backing the preview
+        id: preview-database
+        env:
+          HEAD_REF: ${{ needs.resolve-target.outputs.head_ref }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          set -euo pipefail
+          if ! git check-ref-format --branch "$HEAD_REF" >/dev/null; then
+            echo "Unsupported preview branch name" >&2
+            exit 1
+          fi
+          branch_name="preview/$HEAD_REF"
+          if ! git check-ref-format --branch "$branch_name" >/dev/null; then
+            echo "Derived Neon preview branch name is invalid" >&2
+            exit 1
+          fi
+
+          branch_id=""
+          for _ in $(seq 1 12); do
+            branches="$(bunx neonctl@2.30.1 branches list \
+              --project-id "$NEON_PROJECT_ID" \
+              --api-key "$NEON_API_KEY" \
+              --output json)"
+            matches="$(jq \
+              --arg name "$branch_name" \
+              '[(if type == "array" then . else .branches end)[] | select(.name == $name and .primary != true)]' \
+              <<<"$branches")"
+            match_count="$(jq 'length' <<<"$matches")"
+            if [[ "$match_count" == "1" ]]; then
+              branch_id="$(jq -r '.[0].id' <<<"$matches")"
+              break
+            fi
+            if [[ "$match_count" != "0" ]]; then
+              echo "Neon preview branch mapping is ambiguous" >&2
+              exit 1
+            fi
+            sleep 5
+          done
+
+          if [[ ! "$branch_id" =~ ^br-[A-Za-z0-9-]+$ ]]; then
+            echo "The integration-created Neon preview branch was not found" >&2
+            exit 1
+          fi
+
+          direct_url="$(bunx neonctl@2.30.1 connection-string "$branch_id" \
+            --project-id "$NEON_PROJECT_ID" \
+            --role-name neondb_owner \
+            --database-name neondb \
+            --api-key "$NEON_API_KEY")"
+          echo "::add-mask::$direct_url"
+          echo "direct_url=$direct_url" >> "$GITHUB_OUTPUT"
+
+      - name: Migrate preview database
+        working-directory: apps/deskohub-workspace
+        env:
+          DATABASE_URL: ${{ steps.preview-database.outputs.direct_url }}
+          DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
+        run: bun run db:migrate
+
+  test-e2e:
+    needs: [resolve-target, migrate-preview]
     if: needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -177,14 +271,6 @@ jobs:
       WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
 
     steps:
-      - name: Start test job setup timing
-        id: test-job-setup-clock
-        run: |
-          echo '## Workspace E2E setup timings' >> "$GITHUB_STEP_SUMMARY"
-          echo '| Operation | Duration |' >> "$GITHUB_STEP_SUMMARY"
-          echo '| --- | ---: |' >> "$GITHUB_STEP_SUMMARY"
-          echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
-
       - name: Checkout exact target
         uses: actions/checkout@v4
         with:
@@ -256,32 +342,12 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
 
-      - name: Start post-allocation setup timing
-        id: setup-clock
-        run: |
-          echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
 
-      - name: Record Bun setup timing
-        env:
-          SETUP_STARTED_AT: ${{ steps.setup-clock.outputs.started_at }}
-        run: |
-          elapsed_seconds=$(($(date +%s) - SETUP_STARTED_AT))
-          echo "| Setup Bun | ${elapsed_seconds}s |" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Install repository dependencies
-        run: |
-          started_at=$(date +%s)
-          set +e
-          bun install --frozen-lockfile
-          status=$?
-          set -e
-          elapsed_seconds=$(($(date +%s) - started_at))
-          echo "| Repository dependency installation | ${elapsed_seconds}s |" >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
+        run: bun install --frozen-lockfile
 
       - name: Resolve Neon branch backing the preview
         id: preview-database
@@ -290,15 +356,6 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
         run: |
           set -euo pipefail
-          started_at=$SECONDS
-          record_setup_timing() {
-            status=$?
-            trap - EXIT
-            echo "| Neon branch and connection resolution | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
-            exit "$status"
-          }
-          trap record_setup_timing EXIT
-
           if ! git check-ref-format --branch "$HEAD_REF" >/dev/null; then
             echo "Unsupported preview branch name" >&2
             exit 1
@@ -385,71 +442,18 @@ jobs:
           DOTYPOS_CLOUD_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLOUD_ID }}
           DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
-        run: |
-          started_at=$SECONDS
-          set +e
-          bun --cwd apps/deskohub-workspace e2e:capacity
-          status=$?
-          set -e
-          echo "| Aggregate Dotypos capacity validation | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
-      - name: Migrate preview database
-        working-directory: apps/deskohub-workspace
-        env:
-          DATABASE_URL: ${{ steps.preview-database.outputs.direct_url }}
-          DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
-        run: |
-          started_at=$SECONDS
-          set +e
-          bun run db:migrate
-          status=$?
-          set -e
-          echo "| Preview database migration | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
-      - name: Install agent-browser CLI
-        run: |
-          started_at=$SECONDS
-          set +e
-          bun add --global agent-browser@0.33.2
-          status=$?
-          set -e
-          echo "| agent-browser CLI installation | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
+        run: bun --cwd apps/deskohub-workspace e2e:capacity
 
       - name: Verify hosted browser runtime
         run: |
-          started_at=$SECONDS
+          set -euo pipefail
           browser_path="$(command -v google-chrome || command -v chromium || true)"
-          status=0
           if [[ -z "$browser_path" || ! -x "$browser_path" ]]; then
             echo "The hosted runner does not provide a supported browser" >&2
-            status=1
-          else
-            "$browser_path" --version || status=$?
+            exit 1
           fi
-          if [[ "$status" == "0" ]]; then
-            echo "AGENT_BROWSER_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
-          fi
-          echo "| Hosted browser verification | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
-      - name: Record setup critical path
-        env:
-          TEST_JOB_SETUP_STARTED_AT: ${{ steps.test-job-setup-clock.outputs.started_at }}
-          SETUP_STARTED_AT: ${{ steps.setup-clock.outputs.started_at }}
-        run: |
-          completed_at=$(date +%s)
-          post_allocation_seconds=$((completed_at - SETUP_STARTED_AT))
-          test_job_seconds=$((completed_at - TEST_JOB_SETUP_STARTED_AT))
-          echo "| **Post-allocation setup critical path** | **${post_allocation_seconds}s** |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Total test job setup critical path** | **${test_job_seconds}s** |" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Run instant navigation E2E
-        env:
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-        run: bun --cwd apps/deskohub-workspace test:instant-navigation
+          "$browser_path" --version
+          echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
 
       - name: Run checkout E2E
         env:

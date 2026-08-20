@@ -1,32 +1,254 @@
-import Link from "next/link";
+import { Suspense } from "react";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import {
+  AdministrationAlert,
+  AdministrationFilterField,
+  AdministrationFilterForm,
+  AdministrationFilterInput,
+  AdministrationFilterSelect,
   AdministrationPage,
+  AdministrationTableCount,
   AdministrationTableToolbar,
   Pagination,
   ReservationTable,
 } from "@/features/administration/components";
 import {
+  AdministrationCollectionLoading,
+  AdministrationCountLoading,
+  AdministrationFiltersLoading,
+} from "@/features/administration/loading";
+import {
   type AdministrationSearchParams,
   loadAdministrationReservations,
+  loadAdministrationReservationsPage,
 } from "@/features/administration/page-data.server";
+import {
+  type AdministrationReservationDateRange,
+  getAdministrationReservationDateShortcuts,
+} from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
 
-const selectClassName =
-  "h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15";
+export default function ReservationsAdministrationPage({
+  searchParams,
+}: {
+  readonly searchParams: AdministrationSearchParams;
+}) {
+  const { input, result } = loadAdministrationReservationsPage(searchParams);
 
-export default async function ReservationsAdministrationPage({
+  return (
+    <AdministrationPage>
+      <h1 className="sr-only">Reservations</h1>
+      <AdministrationTableToolbar
+        count={
+          <Suspense
+            fallback={<AdministrationCountLoading label="reservation" />}
+          >
+            <ReservationCount result={result} />
+          </Suspense>
+        }
+        filters={
+          <Suspense fallback={<AdministrationFiltersLoading fields={4} />}>
+            <ReservationFiltersContent input={input} />
+          </Suspense>
+        }
+        itemLabel="reservation"
+        search={<ReservationLookup variant="toolbar" />}
+      />
+      <Suspense
+        fallback={
+          <AdministrationCollectionLoading label="reservations" columns={6} />
+        }
+      >
+        <ReservationResultsContent input={input} result={result} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+type ReservationsData = Awaited<
+  ReturnType<typeof loadAdministrationReservations>
+>;
+
+async function ReservationCount({
+  result,
+}: {
+  readonly result: Promise<ReservationsData["result"]>;
+}) {
+  return (
+    <AdministrationTableCount
+      count={(await result).total}
+      itemLabel="reservation"
+    />
+  );
+}
+
+async function ReservationFiltersContent({
+  input,
+}: {
+  readonly input: Promise<ReservationsData["input"]>;
+}) {
+  return <ReservationFilters input={await input} />;
+}
+
+async function ReservationResultsContent({
+  input,
+  result,
+}: {
+  readonly input: Promise<ReservationsData["input"]>;
+  readonly result: Promise<ReservationsData["result"]>;
+}) {
+  const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
+  return <ReservationResults input={resolvedInput} result={resolvedResult} />;
+}
+
+export async function ReservationsAdministrationContent({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
   const { input, result } = await loadAdministrationReservations(searchParams);
+  return (
+    <>
+      <h1 className="sr-only">Reservations</h1>
+      <AdministrationTableToolbar
+        count={result.total}
+        filters={<ReservationFilters input={input} />}
+        itemLabel="reservation"
+        search={<ReservationLookup variant="toolbar" />}
+      />
+      <ReservationResults input={input} result={result} />
+    </>
+  );
+}
+
+function ReservationFilters({
+  input,
+}: {
+  readonly input: ReservationsData["input"];
+}) {
+  const shortcutRanges = getAdministrationReservationDateShortcuts();
+  const shortcutHref = (range: AdministrationReservationDateRange) => {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries({
+      customerId: input.customerId,
+      direction: input.direction,
+      from: range.from,
+      sort: input.sort,
+      status: input.status,
+      to: range.to,
+      type: input.type,
+    })) {
+      if (value) search.set(key, value);
+    }
+    return `/admin/reservations?${search.toString()}`;
+  };
+
+  return (
+    <AdministrationFilterForm className="2xl:grid-cols-[10rem_12rem_10rem_10rem]">
+      <AdministrationFilterField
+        htmlFor="reservation-status"
+        label="Deskohub status"
+      >
+        <AdministrationFilterSelect
+          defaultValue={input.status ?? ""}
+          id="reservation-status"
+          name="status"
+        >
+          <option value="">All statuses</option>
+          <option value="in_progress">In progress</option>
+          <option value="complete">Complete</option>
+          <option value="cancelled">Cancelled</option>
+        </AdministrationFilterSelect>
+      </AdministrationFilterField>
+      <AdministrationFilterField
+        htmlFor="reservation-type"
+        label="Reservation type"
+      >
+        <AdministrationFilterSelect
+          defaultValue={input.type ?? ""}
+          id="reservation-type"
+          name="type"
+        >
+          <option value="">All reservation types</option>
+          <option value="cowork">Coworking</option>
+          <option value="meeting-room">Meeting room</option>
+        </AdministrationFilterSelect>
+      </AdministrationFilterField>
+      <AdministrationFilterField
+        htmlFor="reservation-date-from"
+        label="Start date from"
+      >
+        <AdministrationFilterInput
+          defaultValue={input.from ?? ""}
+          id="reservation-date-from"
+          name="from"
+          type="date"
+        />
+      </AdministrationFilterField>
+      <AdministrationFilterField
+        htmlFor="reservation-date-to"
+        label="Start date to"
+      >
+        <AdministrationFilterInput
+          defaultValue={input.to ?? ""}
+          id="reservation-date-to"
+          name="to"
+          type="date"
+        />
+      </AdministrationFilterField>
+      {input.customerId && (
+        <input name="customerId" type="hidden" value={input.customerId} />
+      )}
+      <input name="sort" type="hidden" value={input.sort} />
+      <input name="direction" type="hidden" value={input.direction} />
+      <div className="flex flex-col gap-3 sm:col-span-2 sm:flex-row sm:items-center sm:justify-between 2xl:col-span-4">
+        <nav
+          aria-label="Reservation date shortcuts"
+          className="flex flex-wrap items-center gap-2"
+        >
+          {(
+            [
+              ["Today", shortcutRanges.today],
+              ["Upcoming", shortcutRanges.upcoming],
+              ["Past", shortcutRanges.past],
+            ] as const
+          ).map(([label, range]) => (
+            <Button asChild key={label} size="sm" variant="secondary">
+              <Link href={shortcutHref(range)}>{label}</Link>
+            </Button>
+          ))}
+        </nav>
+        <fieldset
+          aria-label="Filter actions"
+          className="flex min-w-0 items-center justify-end gap-2 border-0 p-0"
+        >
+          {(input.customerId ||
+            input.from ||
+            input.status ||
+            input.to ||
+            input.type) && (
+            <Button asChild className="min-h-10" size="sm" variant="ghost">
+              <Link href="/admin/reservations">Clear</Link>
+            </Button>
+          )}
+          <Button className="min-h-10" size="sm" type="submit">
+            Apply filters
+          </Button>
+        </fieldset>
+      </div>
+    </AdministrationFilterForm>
+  );
+}
+
+function ReservationResults({ input, result }: ReservationsData) {
   const clearCustomerSearch = new URLSearchParams();
   for (const [key, value] of Object.entries({
-    date: input.date,
     direction: input.direction,
+    from: input.from,
     sort: input.sort,
     status: input.status,
+    to: input.to,
     type: input.type,
   })) {
     if (value) clearCustomerSearch.set(key, value);
@@ -36,65 +258,7 @@ export default async function ReservationsAdministrationPage({
     ? `/admin/reservations?${clearCustomerQuery}`
     : "/admin/reservations";
   return (
-    <AdministrationPage>
-      <h1 className="sr-only">Reservations</h1>
-      <AdministrationTableToolbar
-        count={result.total}
-        itemLabel="reservation"
-        primaryControls={<ReservationLookup variant="toolbar" />}
-        secondaryControls={
-          <form className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-[11rem_13rem_12rem_auto_auto] 2xl:items-end 2xl:justify-end">
-            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-              Deskohub status
-              <select
-                className={selectClassName}
-                defaultValue={input.status ?? ""}
-                name="status"
-              >
-                <option value="">All statuses</option>
-                <option value="in_progress">In progress</option>
-                <option value="complete">Complete</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-              Reservation type
-              <select
-                className={selectClassName}
-                defaultValue={input.type ?? ""}
-                name="type"
-              >
-                <option value="">All reservation types</option>
-                <option value="cowork">Coworking</option>
-                <option value="meeting-room">Meeting room</option>
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-              Start date
-              <input
-                className={selectClassName}
-                defaultValue={input.date ?? ""}
-                name="date"
-                type="date"
-              />
-            </label>
-            {input.customerId && (
-              <input name="customerId" type="hidden" value={input.customerId} />
-            )}
-            <input name="sort" type="hidden" value={input.sort} />
-            <input name="direction" type="hidden" value={input.direction} />
-            <Button className="min-h-10" size="sm" type="submit">
-              Apply filters
-            </Button>
-            {(input.customerId || input.date || input.status || input.type) && (
-              <Button asChild className="min-h-10" size="sm" variant="ghost">
-                <Link href="/admin/reservations">Clear</Link>
-              </Button>
-            )}
-          </form>
-        }
-      />
-
+    <>
       {input.customerId && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-navy-blue/10 bg-white px-4 py-3 text-sm">
           <p>Showing reservations for the selected customer.</p>
@@ -107,16 +271,16 @@ export default async function ReservationsAdministrationPage({
         </div>
       )}
       {result.dateFilterUnavailable && (
-        <output className="mb-4 block rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-4" status="warning">
           Booking dates are temporarily unavailable. Try this date again
           shortly.
-        </output>
+        </AdministrationAlert>
       )}
       {result.dateSortUnavailable && (
-        <output className="mb-4 block rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-4" status="warning">
           Reservation dates are temporarily unavailable for sorting. Showing
           newest records instead.
-        </output>
+        </AdministrationAlert>
       )}
       <ReservationTable
         reservations={result.items}
@@ -125,7 +289,8 @@ export default async function ReservationsAdministrationPage({
           direction: input.direction ?? "desc",
           field: input.sort ?? "created",
           params: {
-            date: input.date,
+            from: input.from,
+            to: input.to,
             customerId: input.customerId,
             status: input.status,
             type: input.type,
@@ -137,14 +302,15 @@ export default async function ReservationsAdministrationPage({
         page={result.page}
         pageCount={result.pageCount}
         params={{
-          date: input.date,
           customerId: input.customerId,
           direction: input.direction,
+          from: input.from,
           sort: input.sort,
           status: input.status,
+          to: input.to,
           type: input.type,
         }}
       />
-    </AdministrationPage>
+    </>
   );
 }

@@ -1,10 +1,20 @@
 "use client";
 
+import {
+  DotyposCustomerIdSchema,
+  type DotyposDiscountGroupId,
+  DotyposDiscountGroupIdSchema,
+} from "@deskohub/dotypos";
+import { Schema } from "effect";
 import { Minus, Plus, Search } from "lucide-react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
-import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
+import { AdministrationLink as Link } from "@/features/administration/admin-link";
+import { AdministrationAlert } from "@/features/administration/notice";
+import type {
+  DiscountCodeId,
+  VoucherId,
+} from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -29,6 +39,18 @@ import type {
 
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
+
+const decodeDotyposDiscountGroupId = Schema.decodeUnknownSync(
+  DotyposDiscountGroupIdSchema
+);
+const decodeDotyposCustomerId = Schema.decodeUnknownSync(
+  DotyposCustomerIdSchema
+);
+
+const getOptionalDiscountGroupId = (
+  value: FormDataEntryValue | null
+): DotyposDiscountGroupId | null =>
+  value?.toString() ? decodeDotyposDiscountGroupId(value.toString()) : null;
 
 export function CustomerSearch({
   variant = "card",
@@ -65,9 +87,11 @@ export function CustomerSearch({
     <div className="space-y-4">
       <form
         className={
-          variant === "card"
-            ? "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
-            : "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+          {
+            card: "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+            toolbar:
+              "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+          }[variant]
         }
         onSubmit={(event) => {
           event.preventDefault();
@@ -100,12 +124,13 @@ export function CustomerSearch({
       </form>
 
       {error && (
-        <p
-          className="rounded-xl bg-burned-orange/10 px-4 py-3 text-sm font-semibold text-burned-orange-ink"
+        <AdministrationAlert
+          className="font-semibold"
           role="alert"
+          status="error"
         >
           {error}
-        </p>
+        </AdministrationAlert>
       )}
       {result && (
         <div
@@ -164,10 +189,9 @@ export function AddCodeCustomerForm({
       buildMutation={(formData) => ({
         kind: "add-code-customer",
         codeId,
-        customerId: formData
-          .get("customerId")
-          ?.toString()
-          .trim() as DotyposCustomerId,
+        customerId: decodeDotyposCustomerId(
+          formData.get("customerId")?.toString().trim()
+        ),
       })}
       formRef={formRef}
       submitLabel="Add customer"
@@ -187,13 +211,46 @@ export function AddCodeCustomerForm({
   );
 }
 
+export function AddVoucherCustomerForm({
+  voucherId,
+}: {
+  readonly voucherId: VoucherId;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  return (
+    <AdminMutationForm
+      buildMutation={(formData) => ({
+        kind: "add-voucher-customer",
+        voucherId,
+        customerId: decodeDotyposCustomerId(
+          formData.get("customerId")?.toString().trim()
+        ),
+      })}
+      formRef={formRef}
+      submitLabel="Add customer"
+    >
+      <div className="grid gap-1.5">
+        <Label htmlFor={`voucher-audience-customer-${voucherId}`}>
+          Dotypos customer ID
+        </Label>
+        <Input
+          autoComplete="off"
+          id={`voucher-audience-customer-${voucherId}`}
+          name="customerId"
+          required
+        />
+      </div>
+    </AdminMutationForm>
+  );
+}
+
 export function CustomerDiscountGroupForm({
   customerId,
   currentGroupId,
   discountGroups,
 }: {
   readonly customerId: DotyposCustomerId;
-  readonly currentGroupId: string | null;
+  readonly currentGroupId: DotyposDiscountGroupId | null;
   readonly discountGroups: readonly AdminDiscountGroup[];
 }) {
   const currentIsAvailable =
@@ -205,7 +262,9 @@ export function CustomerDiscountGroupForm({
       buildMutation={(formData) => ({
         kind: "set-customer-discount-group",
         customerId,
-        discountGroupId: formData.get("discountGroupId")?.toString() || null,
+        discountGroupId: getOptionalDiscountGroupId(
+          formData.get("discountGroupId")
+        ),
       })}
       submitLabel="Save group"
     >
@@ -273,9 +332,9 @@ export function AdminMutationButton({
         {isExecuting ? "Saving…" : children}
       </Button>
       {error && (
-        <span className="sr-only" role="alert">
+        <AdministrationAlert className="mt-3" role="alert" status="error">
           {error}
-        </span>
+        </AdministrationAlert>
       )}
     </>
   );

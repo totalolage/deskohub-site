@@ -7,11 +7,13 @@ import {
 } from "@deskohub/cloudinary";
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
+import { cacheTag } from "next/cache";
 import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
   type CloudinaryAsset,
-  CloudinaryServiceLive,
+  WorkspaceCloudinaryLayer,
 } from "../backend/cloudinary.service";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
 
@@ -25,6 +27,9 @@ export async function getCloudinaryImages({
   sortBy,
   sortDirection,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
+  "use cache";
+  cacheTag(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults ?? 50));
+
   return getGalleryImages(normalizeExpression(tags), {
     maxResults,
     sortBy,
@@ -40,7 +45,7 @@ export async function getCloudinaryImages({
     Effect.tapError((error) =>
       Effect.logError("Workspace Cloudinary gallery search failed", error)
     ),
-    Effect.provide(CloudinaryServiceLive),
+    Effect.provide(WorkspaceCloudinaryLayer),
     runWorkspaceEffect("gallery.images.load")
   );
 }

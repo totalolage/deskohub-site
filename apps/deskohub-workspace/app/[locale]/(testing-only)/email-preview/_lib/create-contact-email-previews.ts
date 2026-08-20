@@ -1,9 +1,10 @@
 import "server-only";
 
-import type {
-  EmailMessage,
-  EmailProviderConfig,
-  EmailSendResult,
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailProviderConfig,
+  type EmailSendResult,
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import {
@@ -11,10 +12,7 @@ import {
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
 import { Effect, Layer } from "effect";
-import {
-  ContactService,
-  ContactServiceLive,
-} from "@/features/contact/backend/contact.service";
+import { ContactService } from "@/features/contact/backend/contact.service";
 import type { Locale } from "@/features/i18n";
 
 const previewSubmission = {
@@ -41,7 +39,7 @@ export const createContactEmailPreviews = (locale: Locale) => {
         sentMessages.push(message);
 
         return {
-          id: `preview-${sentMessages.length}`,
+          id: EmailDeliveryIdSchema.make(`preview-${sentMessages.length}`),
           status: "sent",
           provider: "preview",
           timestamp: new Date(),
@@ -51,7 +49,7 @@ export const createContactEmailPreviews = (locale: Locale) => {
     verify: Effect.succeed(true),
   };
 
-  const PreviewContactService = ContactServiceLive.pipe(
+  const PreviewContactService = ContactService.Default.pipe(
     Layer.provide(
       Layer.mergeAll(
         Layer.succeed(EmailServiceTag, emailService),

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  AdministrationCanonicalDiscountCode,
+  AdministrationCanonicalPromotionCode,
   AdministrationDiscountCodeId,
   type AdministrationDiscountMutationType,
   AdministrationDotyposCustomerId,
@@ -12,6 +12,7 @@ import {
   CliMutationRejected,
   CliMutationRequestId,
   CliResourceNotFound,
+  CliServiceUnavailable,
   CliSessionId,
   CurrentCliSession,
   WorkspaceAdminApi,
@@ -20,6 +21,11 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
 import { AdministrationService } from "@/features/administration/administration.service";
+import {
+  ReservationAccessAdministration,
+  ReservationAccessAdministrationError,
+} from "@/features/administration/reservation-access-administration.service";
+import { ReservationAdministrationService } from "@/features/administration/reservation-administration.service";
 import {
   type AdminDiscount,
   type AdminDiscountCode,
@@ -40,14 +46,27 @@ const UnusedCliAuthentication = Layer.succeed(
   CliAuthentication,
   {} as CliAuthentication["Service"]
 );
+const UnusedReservationAdministration = Layer.succeed(
+  ReservationAdministrationService,
+  {} as ReservationAdministrationService["Service"]
+);
 const AllowCliAuthenticationStarts = Layer.succeed(CliAuthenticationAdmission, {
   isStartAllowed: Effect.succeed(true),
 });
 const ClaimEveryCliMutation = Layer.succeed(CliMutationIdempotency, {
   claim: () => Effect.succeed({ kind: "claimed" as const }),
   complete: () => Effect.void,
+  reclaimStale: () => Effect.succeed(false),
   release: () => Effect.void,
 });
+const UnusedReservationAccessAdministration = Layer.succeed(
+  ReservationAccessAdministration,
+  {} as ReservationAccessAdministration["Service"]
+);
+const UnusedDiscountAdministration = Layer.succeed(
+  DiscountAdministration,
+  {} as DiscountAdministration["Service"]
+);
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
   clientName: "test client",
@@ -148,6 +167,7 @@ describe("Workspace Admin API", () => {
     const operationInputs: unknown[] = [];
     const orderInputs: unknown[] = [];
     const reservationInputs: unknown[] = [];
+    const reservationCancellations: unknown[] = [];
     const reservationLookups: string[] = [];
     const timestamp = "2026-08-10T10:00:00.000Z";
     const booking = {
@@ -195,13 +215,15 @@ describe("Workspace Admin API", () => {
       operationResult: "AUTHORIZED",
       linkedReservationId: reservation.id,
     };
-    const discountId = "discount-1" as AdminDiscount["id"];
-    const codeId = "code-1" as AdminDiscountCode["id"];
+    const discountId = AdministrationStoredDiscountId.make(
+      "01980000-0000-7000-8000-000000000001"
+    );
+    const codeId = AdministrationDiscountCodeId.make("code-1");
     const discount = {
       id: discountId,
       labels: { "en-US": "Summer sale", "cs-CZ": "Letní sleva" },
       adjustment: { kind: "percentage" as const, basisPoints: 1000 },
-      products: [{ kind: "cowork" as const, tier: "basic" as const }],
+      products: [{ kind: "cowork" as const }],
       codeCount: 1,
       createdAt: Temporal.Instant.from(timestamp),
       updatedAt: Temporal.Instant.from(timestamp),
@@ -214,6 +236,7 @@ describe("Workspace Admin API", () => {
       validFrom: null,
       validUntil: null,
       maxUses: null,
+      maxUsesPerCustomer: null,
       audienceSize: 0,
       reservedUses: 0,
       redeemedUses: 0,
@@ -225,6 +248,7 @@ describe("Workspace Admin API", () => {
     const discountDashboard = {
       discounts: [discount],
       codes: [discountCode],
+      vouchers: [],
       calendar: {
         events: [],
         unavailable: false,
@@ -263,6 +287,8 @@ describe("Workspace Admin API", () => {
           id === reservation.id
             ? {
                 reservation,
+                canCancel: true,
+                requiresProviderCredentialRemoval: false,
                 booking,
                 lifecycle: {
                   currentStage: "complete" as const,
@@ -279,6 +305,7 @@ describe("Workspace Admin API", () => {
                 paymentAttempts: [],
                 orders: [],
                 discounts: [],
+                accessGrant: null,
                 otherCustomerReservations: [],
                 sameDateReservations: [],
                 references: {
@@ -391,6 +418,16 @@ describe("Workspace Admin API", () => {
       ...({} as CliAuthentication["Service"]),
       listSessions: () => Effect.succeed([{ ...session, revokedAt: null }]),
     });
+    const reservationAdministration = Layer.succeed(
+      ReservationAdministrationService,
+      {
+        cancel: (input) =>
+          Effect.sync(() => {
+            reservationCancellations.push(input);
+            return { outcome: "cancelled", email: "sent" } as const;
+          }),
+      }
+    );
 
     const result = await Effect.gen(function* () {
       const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
@@ -402,6 +439,14 @@ describe("Workspace Admin API", () => {
       });
       const reservationDetail = yield* client.administration.getReservation({
         params: { reservationId: reservation.id },
+      });
+      const cancellation = yield* client.administration.cancelReservation({
+        params: { reservationId: reservation.id },
+        payload: {
+          accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+          providerCredentialRemoved: true,
+          sendCancellationEmail: true,
+        },
       });
       const reservationLookup = yield* client.administration.findReservation({
         query: { identifier: "payment-1" },
@@ -455,6 +500,7 @@ describe("Workspace Admin API", () => {
       return {
         bookingDetail,
         bookings,
+        cancellation,
         customerSearch,
         customer,
         customerReservations,
@@ -476,9 +522,11 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(reservationAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
       Effect.provide(administration),
+      Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -487,6 +535,18 @@ describe("Workspace Admin API", () => {
     expect(result.overview.today.value).toBe(3);
     expect(result.reservations.page).toBe(2);
     expect(result.reservationDetail.reservation.id).toBe(reservation.id);
+    expect(result.cancellation).toEqual({
+      outcome: "cancelled",
+      email: "sent",
+    });
+    expect(reservationCancellations).toEqual([
+      {
+        accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+        providerCredentialRemoved: true,
+        reservationId: reservation.id,
+        sendCancellationEmail: true,
+      },
+    ]);
     expect(result.reservationLookup.reservationId).toBe(reservation.id);
     expect(result.bookings.page).toBe(4);
     expect(result.bookingDetail.booking.id).toBe(booking.id);
@@ -536,7 +596,7 @@ describe("Workspace Admin API", () => {
     const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
       "01980000-0000-7000-8000-000000000003"
     );
-    const code = Schema.decodeUnknownSync(AdministrationCanonicalDiscountCode)(
+    const code = Schema.decodeUnknownSync(AdministrationCanonicalPromotionCode)(
       "SUMMER10"
     );
     const calls: Array<readonly [string, unknown]> = [];
@@ -547,7 +607,7 @@ describe("Workspace Admin API", () => {
     const discountDefinition = {
       labels: { "cs-CZ": "Léto", "en-US": "Summer" },
       adjustment: { kind: "percentage" as const, basisPoints: 1000 },
-      products: [{ kind: "cowork" as const, tier: "basic" as const }] as const,
+      products: [{ kind: "cowork" as const }] as const,
     };
     const codeConfiguration = {
       code,
@@ -555,6 +615,7 @@ describe("Workspace Admin API", () => {
       validFrom: null,
       validUntil: null,
       maxUses: 10,
+      maxUsesPerCustomer: 2,
     };
     const mutations = [
       { kind: "create-discount", discount: discountDefinition },
@@ -576,7 +637,11 @@ describe("Workspace Admin API", () => {
       },
       {
         kind: "update-code",
-        code: { id: codeId, discountId, ...codeConfiguration },
+        code: {
+          id: codeId,
+          discountId,
+          ...codeConfiguration,
+        },
       },
       { kind: "delete-code", id: codeId },
       { kind: "add-code-customer", codeId, customerId },
@@ -638,6 +703,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(UnusedReservationAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
       Effect.provide(
@@ -646,6 +712,7 @@ describe("Workspace Admin API", () => {
           {} as AdministrationService["Service"]
         )
       ),
+      Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise
@@ -673,6 +740,206 @@ describe("Workspace Admin API", () => {
     ]);
   });
 
+  test("returns safe access metadata and maps invalid recovery", async () => {
+    const instant = Temporal.Instant.from("2026-08-10T10:00:00Z");
+    const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000020"
+    );
+    const rejectedRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000021"
+    );
+    const retryableRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000022"
+    );
+    const staleRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000023"
+    );
+    const currentRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000024"
+    );
+    const grant = {
+      id: "access-1" as ReservationAccessGrant["id"],
+      reservationId: "reservation-1",
+      provider: "igloohome",
+      credentialType: "algopin-hourly",
+      deviceId: "EK1X16f8898a",
+      state: "issued" as const,
+      providerCredentialId: "pin-1",
+      scheduledAccessStartsAt: instant,
+      accessStartsAt: instant,
+      accessEndsAt: instant,
+      provisioningStartedAt: instant,
+      issuedAt: instant,
+      failedAt: null,
+      failureCode: null,
+      createdAt: instant,
+      updatedAt: instant,
+    } satisfies ReservationAccessGrant;
+    let executions = 0;
+    let retryableExecutions = 0;
+    let staleExecutions = 0;
+    const reservationAccess = Layer.succeed(ReservationAccessAdministration, {
+      resumeInterruptedMutation: () =>
+        Effect.sync(() => {
+          staleExecutions += 1;
+          return grant;
+        }),
+      mutate: (mutation) => {
+        if (mutation.reservationId === "transient-reservation") {
+          retryableExecutions += 1;
+          return retryableExecutions === 1
+            ? Effect.fail(
+                new ReservationAccessAdministrationError({
+                  reason: "retryable_failure",
+                  message: "Dotypos is temporarily unavailable.",
+                })
+              )
+            : Effect.succeed(grant);
+        }
+        return mutation.kind === "retry-failed"
+          ? Effect.sync(() => {
+              executions += 1;
+              return grant;
+            })
+          : Effect.fail(
+              new ReservationAccessAdministrationError({
+                reason: "invalid_state",
+                message: "Only uncertain access can be reconciled.",
+              })
+            );
+      },
+    });
+    const completed = new Map<string, unknown>();
+    const claims = new Set<string>();
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: ({ requestId: claimedRequestId }) =>
+        Effect.sync(() => {
+          if (
+            claimedRequestId === staleRequestId ||
+            claimedRequestId === currentRequestId
+          ) {
+            return { kind: "in-progress" as const };
+          }
+          if (completed.has(claimedRequestId)) {
+            return {
+              kind: "completed" as const,
+              result: completed.get(claimedRequestId) as never,
+            };
+          }
+          if (claims.has(claimedRequestId)) {
+            return { kind: "in-progress" as const };
+          }
+          claims.add(claimedRequestId);
+          return { kind: "claimed" as const };
+        }),
+      complete: ({ requestId: completedRequestId, result }) =>
+        Effect.sync(() => {
+          completed.set(completedRequestId, result);
+        }),
+      reclaimStale: ({ requestId: reclaimedRequestId }) =>
+        Effect.succeed(reclaimedRequestId === staleRequestId),
+      release: ({ requestId: releasedRequestId }) =>
+        Effect.sync(() => {
+          claims.delete(releasedRequestId);
+        }),
+    });
+    const result = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      const recovered = yield* client.administration.mutateReservationAccess({
+        params: { reservationId: grant.reservationId },
+        payload: { requestId, mutation: { kind: "retry-failed" } },
+      });
+      const replayed = yield* client.administration.mutateReservationAccess({
+        params: { reservationId: grant.reservationId },
+        payload: { requestId, mutation: { kind: "retry-failed" } },
+      });
+      const rejected = yield* client.administration
+        .mutateReservationAccess({
+          params: { reservationId: grant.reservationId },
+          payload: {
+            requestId: rejectedRequestId,
+            mutation: {
+              kind: "confirm-provider-credential-removed",
+              providerCredentialRemoved: true,
+            },
+          },
+        })
+        .pipe(Effect.flip);
+      const retryable = yield* client.administration
+        .mutateReservationAccess({
+          params: { reservationId: "transient-reservation" },
+          payload: {
+            requestId: retryableRequestId,
+            mutation: { kind: "retry-failed" },
+          },
+        })
+        .pipe(Effect.flip);
+      const retried = yield* client.administration.mutateReservationAccess({
+        params: { reservationId: "transient-reservation" },
+        payload: {
+          requestId: retryableRequestId,
+          mutation: { kind: "retry-failed" },
+        },
+      });
+      const reclaimed = yield* client.administration.mutateReservationAccess({
+        params: { reservationId: "stale-reservation" },
+        payload: {
+          requestId: staleRequestId,
+          mutation: { kind: "retry-failed" },
+        },
+      });
+      const current = yield* client.administration
+        .mutateReservationAccess({
+          params: { reservationId: "current-reservation" },
+          payload: {
+            requestId: currentRequestId,
+            mutation: { kind: "retry-failed" },
+          },
+        })
+        .pipe(Effect.flip);
+      return {
+        current,
+        reclaimed,
+        recovered,
+        rejected,
+        replayed,
+        retried,
+        retryable,
+      };
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(idempotency),
+      Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(
+        Layer.succeed(
+          AdministrationService,
+          {} as AdministrationService["Service"]
+        )
+      ),
+      Effect.provide(reservationAccess),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.runPromise
+    );
+
+    expect(result.recovered.state).toBe("issued");
+    expect(result.replayed).toEqual(result.recovered);
+    expect(executions).toBe(1);
+    expect("accessCode" in result.recovered).toBe(false);
+    expect(result.rejected).toBeInstanceOf(CliMutationRejected);
+    expect(result.retryable).toBeInstanceOf(CliServiceUnavailable);
+    expect(result.retried.state).toBe("issued");
+    expect(retryableExecutions).toBe(2);
+    expect(result.reclaimed.state).toBe("issued");
+    expect(staleExecutions).toBe(1);
+    expect(result.current).toBeInstanceOf(CliMutationInProgress);
+  });
+
   test("replays completed mutations and preserves deterministic conflicts", async () => {
     const discountId = Schema.decodeUnknownSync(AdministrationStoredDiscountId)(
       "01980000-0000-7000-8000-000000000001"
@@ -693,6 +960,7 @@ describe("Workspace Admin API", () => {
       kind: mutation.kind,
       createdDiscountId: null,
       createdCodeId: null,
+      createdVoucherId: null,
     };
     const idempotency = Layer.succeed(CliMutationIdempotency, {
       claim: ({ requestId }) =>
@@ -706,6 +974,7 @@ describe("Workspace Admin API", () => {
           return { kind: "claimed" as const };
         }),
       complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
       release: () =>
         Effect.sync(() => {
           releases += 1;
@@ -747,6 +1016,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
+      Effect.provide(UnusedReservationAdministration),
       Effect.provide(discounts),
       Effect.provide(UnusedCliAuthentication),
       Effect.provide(
@@ -755,6 +1025,7 @@ describe("Workspace Admin API", () => {
           {} as AdministrationService["Service"]
         )
       ),
+      Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
       Effect.runPromise

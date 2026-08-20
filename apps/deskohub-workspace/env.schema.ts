@@ -1,3 +1,4 @@
+import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
 import {
   postHogFeatureFlagOverridesEnvironmentCheck,
@@ -14,13 +15,46 @@ const nonEmptyStringSchema = toEnvSchema(Schema.NonEmptyString);
 const urlEnvSchema = toEnvSchema(urlStringSchema);
 
 const optionalStringSchema = toEnvSchema(Schema.optional(Schema.String));
+const optionalNonEmptyStringSchema = toEnvSchema(
+  Schema.optional(Schema.NonEmptyString)
+);
 const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
+
+const postHogBrowserEnvironmentCheck = Schema.makeFilter<{
+  readonly NEXT_PUBLIC_POSTHOG_HOST?: string | undefined;
+  readonly NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN?: string | undefined;
+}>((environment) =>
+  environment.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN !== undefined &&
+  environment.NEXT_PUBLIC_POSTHOG_HOST === undefined
+    ? [
+        {
+          path: ["NEXT_PUBLIC_POSTHOG_HOST"],
+          issue:
+            "NEXT_PUBLIC_POSTHOG_HOST is required when browser PostHog is enabled.",
+        },
+      ]
+    : undefined
+);
+
+const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
+  readonly VERCEL_ENV: "production" | "preview" | "development";
+  readonly IGLOOHOME_CLIENT_ID?: string | undefined;
+  readonly IGLOOHOME_CLIENT_SECRET?: string | undefined;
+}>((environment) => {
+  if (environment.VERCEL_ENV !== "production") return undefined;
+
+  return (["IGLOOHOME_CLIENT_ID", "IGLOOHOME_CLIENT_SECRET"] as const).flatMap(
+    (key) =>
+      environment[key] === undefined
+        ? [{ path: [key], issue: `${key} is required in production.` }]
+        : []
+  );
+});
 
 export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
     Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/))
   ),
-  AGENT_BROWSER_EXECUTABLE_PATH: optionalStringSchema,
   CLOUDINARY_API_KEY: nonEmptyStringSchema,
   CLOUDINARY_API_SECRET: nonEmptyStringSchema,
   DATABASE_URL: urlEnvSchema,
@@ -45,9 +79,35 @@ export const workspaceServerEnvSchema = Schema.Struct({
   GOOGLE_CALENDAR_SALES_ID: nonEmptyStringSchema,
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
   GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID: nonEmptyStringSchema,
+  GITHUB_STEP_SUMMARY: optionalStringSchema,
+  IGLOOHOME_API_TIMEOUT: toEnvSchema(
+    Schema.FiniteFromString.check(Schema.isInt())
+      .check(Schema.isGreaterThan(0))
+      .pipe(Schema.withDecodingDefaultType(Effect.succeed(10_000)))
+  ),
+  IGLOOHOME_API_URL: toEnvSchema(
+    urlStringSchema.pipe(
+      Schema.withDecodingDefaultType(
+        Effect.succeed("https://api.igloodeveloper.co/igloohome")
+      )
+    )
+  ),
+  IGLOOHOME_AUTH_URL: toEnvSchema(
+    urlStringSchema.pipe(
+      Schema.withDecodingDefaultType(
+        Effect.succeed("https://auth.igloohome.co")
+      )
+    )
+  ),
+  IGLOOHOME_CLIENT_ID: optionalNonEmptyStringSchema,
+  IGLOOHOME_CLIENT_SECRET: optionalNonEmptyStringSchema,
+  IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: nonEmptyStringSchema,
   RESEND_WEBHOOK_SECRET: optionalStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isMinLength(32)))
+  ),
+  RESERVATION_ACCESS_TOKEN_SECRET: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
   ),
   CRON_SECRET: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
@@ -66,19 +126,24 @@ export const workspaceServerEnvSchema = Schema.Struct({
       Schema.withDecodingDefaultType(Effect.succeed("deskohub"))
     )
   ),
+  POSTHOG_API_KEY: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
+  POSTHOG_API_HOST: urlEnvSchema,
   POSTHOG_FEATURE_FLAG_OVERRIDES: toEnvSchema(
     postHogFeatureFlagOverridesSchema
   ),
-  POSTHOG_HOST: optionalUrlEnvSchema,
-  POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
-  POSTHOG_HISTORY_API_KEY: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
+  POSTHOG_INGEST_HOST: urlEnvSchema,
+  POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(PostHogProjectId)),
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalStringSchema,
   VERCEL_ENV: toEnvSchema(vercelEnvironmentSchema),
   VERCEL_GIT_COMMIT_SHA: optionalStringSchema,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
-}).check(postHogFeatureFlagOverridesEnvironmentCheck);
+}).check(
+  postHogFeatureFlagOverridesEnvironmentCheck,
+  igloohomeProductionEnvironmentCheck
+);
 
 export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: stringSchema,
@@ -90,7 +155,7 @@ export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_VERCEL_ENV: toEnvSchema(
     Schema.optional(Schema.Literals(["production", "preview", "development"]))
   ),
-});
+}).check(postHogBrowserEnvironmentCheck);
 
 /**
  * T3 Env normally validates the field dictionary, which cannot retain checks
@@ -102,11 +167,14 @@ export const createEnvironmentSchema = (
     typeof workspaceClientEnvSchema.fields,
   isServer: boolean
 ) => {
-  const schema = Schema.Struct(fields);
+  const schema = Schema.Struct(fields).check(postHogBrowserEnvironmentCheck);
 
   return Schema.toStandardSchemaV1(
     isServer
-      ? schema.check(postHogFeatureFlagOverridesEnvironmentCheck)
+      ? schema.check(
+          postHogFeatureFlagOverridesEnvironmentCheck,
+          igloohomeProductionEnvironmentCheck
+        )
       : schema
   );
 };

@@ -7,7 +7,6 @@ import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
-import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
@@ -24,9 +23,10 @@ import {
   discountAdvertisementQuoteCodec,
 } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
+import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { ICustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
@@ -37,11 +37,13 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
     Effect.succeed({
       privacyPolicy: {
         path: "/legal/privacy.md",
+        content: "Privacy test content",
         hash: "privacy-hash",
         hashAlgorithm: "sha256",
       },
       marketingCommunications: {
         path: "/legal/marketing.md",
+        content: "Marketing test content",
         hash: "marketing-hash",
         hashAlgorithm: "sha256",
       },
@@ -62,6 +64,7 @@ const reservation = {
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420 777 777 777",
+  billing: { purpose: "personal" as const, invoice: "none" as const },
 };
 
 const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
@@ -216,7 +219,6 @@ const makeReusableReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
-    customerAccessCode: "ACCESS-123",
     reservationState: "held",
     paymentState: "not_started",
     fulfillmentState: "not_started",
@@ -263,11 +265,12 @@ const runReusableReservationScenario = async (input: {
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
   readonly grantMarketingConsent?: ReturnType<typeof mock>;
+  readonly reservation?:
+    | typeof reservation
+    | (Omit<typeof reservation, "billing"> & { readonly billing: unknown });
+  readonly updateCustomerBillingDetails?: ReturnType<typeof mock>;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
-  const { WorkspaceCheckoutAccessCodeService } = await import(
-    "@/features/checkout/backend/reservation"
-  );
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
@@ -331,17 +334,19 @@ const runReusableReservationScenario = async (input: {
   const findOrCreateCustomer = mock(() =>
     Effect.succeed({ id: "customer-id" })
   );
+  const updateCustomerBillingDetails =
+    input.updateCustomerBillingDetails ?? mock(() => Effect.void);
   const testLayer = Layer.mergeAll(
     CheckoutPricingServiceMock({
-      affirmAdvertisement,
+      affirmCoworkAdvertisement: affirmAdvertisement,
       quoteForCustomer: quoteForCustomerResult as never,
     }),
     BotProtectionServiceMock({ verifyHuman }),
-    Layer.succeed(WorkspaceAvailabilityService, {
+    Layer.mock(WorkspaceAvailabilityService, {
       getAvailability: mock(() => Effect.die("unused")),
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
-    Layer.succeed(WorkspaceReservationRepository, {
+    Layer.mock(WorkspaceReservationRepository, {
       findByAttemptKey: input.findByAttemptKey,
       findCurrentByCheckoutSessionKey:
         input.findCurrentByCheckoutSessionKey ??
@@ -357,28 +362,26 @@ const runReusableReservationScenario = async (input: {
       completeSupersessionAndCreateDraft,
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
-    } as unknown as WorkspaceReservationRepositoryType),
-    Layer.succeed(WorkspaceCheckoutAccessCodeService, {
-      generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-    } satisfies WorkspaceCheckoutAccessCodeServiceType),
-    Layer.succeed(CustomerMarketingConsentRepository, {
+    }),
+    Layer.mock(CustomerMarketingConsentRepository, {
       grant: grantMarketingConsent,
     } satisfies ICustomerMarketingConsentRepository),
-    Layer.succeed(ReservationHoldCleanupScheduleService, {
+    Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
     WorkspaceTableAssignmentServiceMock({
       assignTableId: mock(() => Effect.succeed("table-id")),
     }),
-    Layer.succeed(PostHogEventService, {
+    Layer.mock(PostHogEventService, {
       capture: mock(() => Effect.void),
     }),
-    Layer.succeed(DotyposService, {
+    Layer.mock(DotyposService, {
       findOrCreateCustomer,
+      updateCustomerBillingDetails,
       getReservationStatus,
       cancelReservation,
       createReservation,
-    } as unknown as typeof DotyposService.Service)
+    })
   );
 
   const result = await prepareWorkspacePayState({
@@ -387,7 +390,7 @@ const runReusableReservationScenario = async (input: {
     checkoutAttemptId: "attempt-id",
     advertisedPriceToken:
       input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
-    reservation,
+    reservation: input.reservation ?? reservation,
     marketingConsent: input.marketingConsent,
   }).pipe(Effect.provide(testLayer), Effect.runPromise);
 
@@ -410,6 +413,7 @@ const runReusableReservationScenario = async (input: {
     affirmAdvertisement,
     quoteForCustomer,
     findOrCreateCustomer,
+    updateCustomerBillingDetails,
   };
 };
 
@@ -434,9 +438,6 @@ const runMeetingRoomNewHoldScenario = async (
   );
   const { CustomerMarketingConsentRepository } = await import(
     "@/features/legal/backend/customer-marketing-consent.repository"
-  );
-  const { WorkspaceCheckoutAccessCodeService } = await import(
-    "@/features/checkout/backend/reservation"
   );
   const { DiscountServiceMock } = await import(
     "@/features/discounts/discount.service.mock"
@@ -500,7 +501,7 @@ const runMeetingRoomNewHoldScenario = async (
       })
   );
   const testLayer = Layer.mergeAll(
-    CheckoutPricingService.Live.pipe(
+    CheckoutPricingService.Default.pipe(
       Layer.provide(
         DiscountServiceMock({
           discoverAdvertisedDiscounts,
@@ -510,11 +511,11 @@ const runMeetingRoomNewHoldScenario = async (
       )
     ),
     BotProtectionServiceMock({ verifyHuman: mock(() => Effect.void) }),
-    Layer.succeed(WorkspaceAvailabilityService, {
+    Layer.mock(WorkspaceAvailabilityService, {
       getAvailability: mock(() => Effect.die("unused")),
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
-    Layer.succeed(WorkspaceReservationRepository, {
+    Layer.mock(WorkspaceReservationRepository, {
       findByAttemptKey: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
       createDraft,
@@ -528,22 +529,19 @@ const runMeetingRoomNewHoldScenario = async (
       completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
       markCancelled: mock(() => Effect.void),
       markCancellationFailed: mock(() => Effect.void),
-    } as unknown as WorkspaceReservationRepositoryType),
-    Layer.succeed(WorkspaceCheckoutAccessCodeService, {
-      generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-    } satisfies WorkspaceCheckoutAccessCodeServiceType),
-    Layer.succeed(CustomerMarketingConsentRepository, {
+    }),
+    Layer.mock(CustomerMarketingConsentRepository, {
       grant: mock(() => Effect.void),
     } satisfies ICustomerMarketingConsentRepository),
     WorkspaceTableAssignmentServiceMock({ assignTableId }),
-    Layer.succeed(ReservationHoldCleanupScheduleService, {
+    Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
-    Layer.succeed(DotyposService, {
+    Layer.mock(DotyposService, {
       findOrCreateCustomer: mock(() => Effect.succeed({ id: "customer-id" })),
       createReservation,
-    } as unknown as typeof DotyposService.Service),
-    Layer.succeed(PostHogEventService, {
+    }),
+    Layer.mock(PostHogEventService, {
       capture: mock(() => Effect.void),
     })
   );
@@ -573,6 +571,51 @@ const runMeetingRoomNewHoldScenario = async (
 };
 
 describe("prepareWorkspacePayState", () => {
+  test("rejects office reservation issuance while the office flag is disabled", async () => {
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { BotProtectionServiceMock } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service.mock"
+    );
+    const verifyHuman = mock(() => Effect.void);
+    const effect = prepareWorkspacePayState({
+      locale: "en-US",
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      advertisedPriceToken: "disabled-office-has-no-price-token",
+      reservation: {
+        kind: "office",
+        startsOn: "2099-06-10",
+        endsOn: "2099-06-11",
+        seats: 3,
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420 777 777 777",
+      },
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          BotProtectionServiceMock({ verifyHuman }),
+          CheckoutPricingServiceMock({}),
+          OfficeReservationFeatureFlagService.Default.pipe(
+            Layer.provide(
+              WorkspaceFeatureFlagServiceMock({
+                isEnabled: mock(() => Effect.succeed(false)),
+              })
+            )
+          )
+        )
+      )
+    ) as Effect.Effect<never, unknown, never>;
+
+    const error = await Effect.runPromise(Effect.flip(effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      cause: { _tag: "OfficeReservationsDisabledError" },
+    });
+    expect(verifyHuman).toHaveBeenCalledTimes(1);
+  });
+
   test("accepts meeting-room preparation with its family advertisement", async () => {
     const { preparePayStateSchema } = await import(
       "./prepare-pay-state.schema"
@@ -725,9 +768,6 @@ describe("prepareWorkspacePayState", () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
-    const { WorkspaceCheckoutAccessCodeService } = await import(
-      "@/features/checkout/backend/reservation"
-    );
     const { CustomerMarketingConsentRepository } = await import(
       "@/features/legal/backend/customer-marketing-consent.repository"
     );
@@ -768,7 +808,6 @@ describe("prepareWorkspacePayState", () => {
         paymentState: "not_started",
         fulfillmentState: "not_started",
         dotyposCustomerId: input.dotyposCustomerId,
-        customerAccessCode: input.customerAccessCode,
         reservationDetails: input.reservationDetails,
         productTier: "basic",
         productCoffee: false,
@@ -823,15 +862,15 @@ describe("prepareWorkspacePayState", () => {
       );
     const testLayer = Layer.mergeAll(
       CheckoutPricingServiceMock({
-        affirmAdvertisement,
+        affirmCoworkAdvertisement: affirmAdvertisement,
         quoteForCustomer: quoteForCustomerResult as never,
       }),
       BotProtectionServiceMock({ verifyHuman }),
-      Layer.succeed(WorkspaceAvailabilityService, {
+      Layer.mock(WorkspaceAvailabilityService, {
         getAvailability: mock(() => Effect.die("unused")),
         ensureAvailable,
       } satisfies IWorkspaceAvailabilityService),
-      Layer.succeed(WorkspaceReservationRepository, {
+      Layer.mock(WorkspaceReservationRepository, {
         findByAttemptKey: mock(() => Effect.succeed(null)),
         findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
         createDraft,
@@ -845,24 +884,21 @@ describe("prepareWorkspacePayState", () => {
         completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
         markCancelled: mock(() => Effect.void),
         markCancellationFailed: mock(() => Effect.void),
-      } as unknown as WorkspaceReservationRepositoryType),
-      Layer.succeed(WorkspaceCheckoutAccessCodeService, {
-        generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
-      } satisfies WorkspaceCheckoutAccessCodeServiceType),
-      Layer.succeed(CustomerMarketingConsentRepository, {
+      }),
+      Layer.mock(CustomerMarketingConsentRepository, {
         grant: grantMarketingConsent,
       } satisfies ICustomerMarketingConsentRepository),
       WorkspaceTableAssignmentServiceMock({
         assignTableId,
       }),
-      Layer.succeed(ReservationHoldCleanupScheduleService, {
+      Layer.mock(ReservationHoldCleanupScheduleService, {
         enqueueCleanup,
       } as never),
-      Layer.succeed(DotyposService, {
+      Layer.mock(DotyposService, {
         findOrCreateCustomer,
         createReservation,
-      } as unknown as typeof DotyposService.Service),
-      Layer.succeed(PostHogEventService, {
+      }),
+      Layer.mock(PostHogEventService, {
         capture: mock(() => Effect.void),
       })
     );
@@ -957,6 +993,33 @@ describe("prepareWorkspacePayState", () => {
         dotyposCustomerId: existingReservation.dotyposCustomerId,
       })
     );
+  });
+
+  test("does not mutate reusable Dotypos billing before payment", async () => {
+    const updateCustomerBillingDetails = mock(() => Effect.void);
+    const address = {
+      line1: "Synthetic street 1",
+      line2: "Unit 2",
+      city: "Prague",
+      postalCode: "100 00",
+      country: "CZ",
+    };
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      reservation: {
+        ...reservation,
+        billing: { purpose: "personal", invoice: "requested", address },
+      },
+      updateCustomerBillingDetails,
+    });
+
+    expect(updateCustomerBillingDetails).not.toHaveBeenCalled();
+    expect(result.updateReservationDetails).toHaveBeenCalled();
+
+    const personalResult = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+    });
+    expect(personalResult.updateCustomerBillingDetails).not.toHaveBeenCalled();
   });
 
   test("records marketing opt-in against the resolved customer", async () => {

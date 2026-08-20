@@ -1,15 +1,25 @@
-import type { DotyposReservationInterval } from "@deskohub/dotypos";
-import type { Reservation } from "@deskohub/dotypos/generated";
+import type {
+  DotyposReservation,
+  DotyposReservationId,
+  DotyposReservationInterval,
+  DotyposTableId,
+} from "@deskohub/dotypos";
+import { Option, Schema } from "effect";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval";
+import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
-export const workspaceBookingGuestCount = 1;
+export const workspaceBookingSeatCount = 1;
+
+const decodeReservationSeats = Schema.decodeUnknownOption(
+  dotyposReservationSeatsSchema
+);
 
 export const getWorkspaceTableOccupancyById = (
-  reservations: readonly Reservation[],
+  reservations: readonly DotyposReservation[],
   input: ReservationInterval | Temporal.PlainDate
 ) => {
-  const occupancyByTableId = new Map<string, number>();
+  const occupancyByTableId = new Map<DotyposTableId, number>();
   const interval = getWorkspaceReservationIntervalDates(input);
   const startsAt = interval.startDate.getTime();
   const endsAt = interval.endDate.getTime();
@@ -34,7 +44,7 @@ export const getWorkspaceTableOccupancyById = (
       occupancyByTableId.set(
         tableId,
         (occupancyByTableId.get(tableId) ?? 0) +
-          (parsePositiveNumber(reservation.seats) ?? 1)
+          Option.getOrElse(decodeReservationSeats(reservation.seats), () => 1)
       );
     }
   }
@@ -67,8 +77,8 @@ export const getWorkspaceReservationIntervalDates = (
 };
 
 export const excludeDotyposReservationsById = (
-  reservations: readonly Reservation[],
-  excludedDotyposReservationIds: readonly string[]
+  reservations: readonly DotyposReservation[],
+  excludedDotyposReservationIds: readonly DotyposReservationId[]
 ) => {
   if (excludedDotyposReservationIds.length === 0) return reservations;
 
@@ -76,9 +86,4 @@ export const excludeDotyposReservationsById = (
   return reservations.filter(
     (reservation) => !reservation.id || !excludedIds.has(reservation.id)
   );
-};
-
-const parsePositiveNumber = (value: string | undefined) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };

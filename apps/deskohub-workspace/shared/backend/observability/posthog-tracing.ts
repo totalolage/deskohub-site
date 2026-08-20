@@ -7,7 +7,6 @@ import {
 import { createCensoredOtelSpanExporter } from "../logging/censorship";
 import { workspaceServiceResourceAttributes } from "./workspace-service";
 
-const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 const POSTHOG_TRACES_PATH = "/i/v1/traces";
 const postHogTraceExportTimeoutMs = 2_000;
 
@@ -20,7 +19,7 @@ type PostHogTracerProviderOptions = {
   readonly serviceVersion?: string;
 };
 
-export function getPostHogTracesEndpoint(posthogHost = DEFAULT_POSTHOG_HOST) {
+export function getPostHogTracesEndpoint(posthogHost: string) {
   return new URL(POSTHOG_TRACES_PATH, posthogHost).toString();
 }
 
@@ -33,14 +32,19 @@ export function createPostHogTracerProvider({
   serviceVersion,
 }: PostHogTracerProviderOptions) {
   if (!posthogProjectToken) return undefined;
+  if (!posthogHost) {
+    throw new Error(
+      "POSTHOG_INGEST_HOST is required when PostHog tracing is enabled"
+    );
+  }
 
   return new BasicTracerProvider({
     resource: resourceFromAttributes({
       "deployment.environment.name": deploymentEnvironment,
       ...workspaceServiceResourceAttributes,
-      ...(serviceName ? { "service.name": serviceName } : {}),
-      ...(serviceNamespace ? { "service.namespace": serviceNamespace } : {}),
-      ...(serviceVersion ? { "service.version": serviceVersion } : {}),
+      "service.name": serviceName,
+      "service.namespace": serviceNamespace,
+      "service.version": serviceVersion,
     }),
     spanProcessors: [
       new BatchSpanProcessor(

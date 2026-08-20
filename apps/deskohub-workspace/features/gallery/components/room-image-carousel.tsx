@@ -1,5 +1,6 @@
 "use client";
 
+import type { CloudinaryPublicId } from "@deskohub/cloudinary/schema";
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { motion, type Transition } from "motion/react";
 import Image, { type StaticImageData } from "next/image";
@@ -37,7 +38,7 @@ type RoomImageCarouselImage =
       alt: string;
       caption?: string;
       height: number;
-      id: string;
+      id: CloudinaryPublicId;
       kind: "cloudinary";
       source: CloudinaryAsset;
       src: string;
@@ -72,8 +73,11 @@ const getSlideMotion = (offset: number) => ({
   zIndex: Math.abs(offset) < 0.5 ? 2 : 1,
 });
 
-const getImageLabel = (image: RoomImageCarouselImage) =>
-  image.caption?.trim() || image.alt.trim() || image.id;
+const getImageLabel = (
+  image: RoomImageCarouselImage,
+  index: number,
+  fallback: string
+) => image.caption?.trim() || image.alt.trim() || `${fallback} ${index + 1}`;
 
 export function RoomImageCarousel({
   images,
@@ -99,8 +103,8 @@ export function RoomImageCarousel({
       : []);
   const carouselImages: readonly RoomImageCarouselImage[] =
     images.length > 0
-      ? images.map((image) => ({
-          alt: image.context?.custom?.alt || image.public_id,
+      ? images.map((image, index) => ({
+          alt: image.context?.custom?.alt || `${openLabel} ${index + 1}`,
           caption: image.context?.custom?.caption,
           height: image.height,
           id: image.public_id,
@@ -253,6 +257,7 @@ export function RoomImageCarousel({
               {image.kind === "cloudinary" ? (
                 <CloudinaryImage
                   source={image.source}
+                  alt={image.alt}
                   className="absolute inset-0 transition duration-300 group-hover:scale-[1.025]"
                   draggable={false}
                   preload={logicalIndex === activeIndex}
@@ -286,7 +291,9 @@ export function RoomImageCarousel({
           activeIndex={activeIndex}
           count={carouselImages.length}
           getKey={(dotIndex) => carouselImages[dotIndex]?.id ?? dotIndex}
-          getLabel={(dotIndex) => getImageLabel(carouselImages[dotIndex]!)}
+          getLabel={(dotIndex) =>
+            getImageLabel(carouselImages[dotIndex]!, dotIndex, openLabel)
+          }
           onSelect={moveToIndex}
           variant="navy"
         />

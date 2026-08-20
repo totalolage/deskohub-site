@@ -2,7 +2,7 @@ import { NexiAmountSchema, nexiMinorUnitExponent } from "@deskohub/nexi";
 import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
 import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 
-const invalidValue = (actual: unknown, message: string) =>
+const invalidValue = <T>(actual: T, message: string) =>
   new SchemaIssue.InvalidValue(Option.some(actual), { message });
 
 export const NexiAmountFromWorkspaceMoney = NexiAmountSchema.pipe(

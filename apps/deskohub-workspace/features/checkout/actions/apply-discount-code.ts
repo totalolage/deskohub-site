@@ -1,13 +1,12 @@
 "use server";
 
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Predicate } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import {
-  discountCodeErrorQueryParam,
+  buildCheckoutPayPathFromToken,
   PayableReservationService,
 } from "@/features/checkout/backend/checkout";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
-import { payStateTokenQueryParam } from "@/features/checkout/backend/checkout/pay-state";
+import { CheckoutPricingService } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import type { Locale } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
@@ -21,10 +20,7 @@ const applyDiscountCodeAction = defineWorkspaceAction(
   (input) =>
     applyDiscountCodeToPayState(input).pipe(
       Effect.provide(
-        Layer.merge(
-          CheckoutPricingServiceLiveWithDependencies,
-          PayableReservationService.LiveWithDependencies
-        )
+        Layer.merge(CheckoutPricingService.Live, PayableReservationService.Live)
       )
     )
 );
@@ -45,7 +41,7 @@ export async function applyDiscountCodeForm(
   const result = await applyDiscountCode({
     locale,
     payStateToken,
-    submittedCode: typeof submittedCode === "string" ? submittedCode : "",
+    submittedCode: Predicate.isString(submittedCode) ? submittedCode : "",
   });
 
   if (
@@ -55,9 +51,10 @@ export async function applyDiscountCodeForm(
     redirect(result.data.freshPayUrl, RedirectType.replace);
   }
 
-  const searchParams = new URLSearchParams({
-    [payStateTokenQueryParam]: payStateToken,
-    [discountCodeErrorQueryParam]: "unavailable",
-  });
-  redirect(`/${locale}/checkout/pay?${searchParams}`, RedirectType.replace);
+  redirect(
+    buildCheckoutPayPathFromToken(locale, payStateToken, {
+      discountCodeError: "unavailable",
+    }),
+    RedirectType.replace
+  );
 }

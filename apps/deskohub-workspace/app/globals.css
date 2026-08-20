@@ -22,6 +22,7 @@
   --radius-lg: var(--radius);
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-skeleton-glimmer: skeleton-glimmer 1.5s ease-out infinite;
   --container-8xl: 100rem;
 
   @keyframes accordion-down {
@@ -41,6 +42,16 @@
       height: 0;
     }
   }
+
+  @keyframes skeleton-glimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    66.667%,
+    100% {
+      transform: translateX(200%);
+    }
+  }
 }
 
 :root {
@@ -48,7 +59,7 @@
   --brand-silver: #d8d8d8;
   --brand-sunset-yellow: #eca423;
   --brand-chilean-fire: #f57c00;
-  --brand-burned-orange: #dd480a;
+  --brand-burned-orange: #b83b06;
   --brand-burned-orange-ink: #7a2e0a;
   --brand-aquamarine-green: #00df99;
   --brand-aquamarine-ink: #004c3b;

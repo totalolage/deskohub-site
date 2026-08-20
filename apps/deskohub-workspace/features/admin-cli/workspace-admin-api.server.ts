@@ -1,4 +1,6 @@
 import {
+  AdministrationDiscountMutationResult,
+  AdministrationReservationAccessGrant,
   CliAuthenticationRateLimited,
   CliBearerAuthentication,
   CliGrantRejected,
@@ -11,29 +13,41 @@ import {
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
-import { Effect, Layer, Match, Redacted } from "effect";
+import { Effect, Layer, Match, Redacted, Schema } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
-import { AdministrationLive } from "@/features/administration/administration.runtime";
 import { AdministrationService } from "@/features/administration/administration.service";
 import {
   getAdministrationOperationFilters,
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "@/features/administration/payment-administration-filters";
-import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
+import {
+  ReservationAccessAdministration,
+  type ReservationAccessAdministrationError,
+} from "@/features/administration/reservation-access-administration.service";
+import {
+  type ReservationAdministrationError,
+  ReservationAdministrationService,
+} from "@/features/administration/reservation-administration.service";
+import { refreshCalendarDiscountSourceAfterMutation } from "@/features/discounts/admin/calendar-discount-source-maintenance.server";
 import {
   type AdminCustomerProfile,
   type AdminDiscountCode,
   type AdminDiscountCodeClaim,
   type AdminDiscountCodeDetail,
+  type AdminVoucher,
+  type AdminVoucherClaim,
+  type AdminVoucherDetail,
   type DiscountAdminDashboard,
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
 import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute-discount-admin-mutation";
-import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
-import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import {
+  type ReservationAccessGrant,
+  reservationAccessProvisioningStaleAfterMilliseconds,
+} from "@/features/reservation-access";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
@@ -89,6 +103,8 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
+      const reservationAdministration = yield* ReservationAdministrationService;
+      const reservationAccess = yield* ReservationAccessAdministration;
       const authentication = yield* CliAuthentication;
       const discounts = yield* DiscountAdministration;
       const mutationIdempotency = yield* CliMutationIdempotency;
@@ -110,6 +126,106 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   })
             )
           )
+        )
+        .handle("cancelReservation", ({ params, payload }) =>
+          reservationAdministration
+            .cancel({
+              accessGrantUpdatedAt: payload.accessGrantUpdatedAt,
+              providerCredentialRemoved: payload.providerCredentialRemoved,
+              reservationId: params.reservationId,
+              sendCancellationEmail: payload.sendCancellationEmail,
+            })
+            .pipe(Effect.mapError(mapReservationCancellationFailure))
+        )
+        .handle("mutateReservationAccess", ({ params, payload }) =>
+          Effect.gen(function* () {
+            const session = yield* CurrentCliSession;
+            const request = {
+              sessionId: session.id,
+              requestId: payload.requestId,
+              mutation: {
+                kind: "reservation-access" as const,
+                reservationId: params.reservationId,
+                mutation: payload.mutation,
+              },
+            };
+            const claim = yield* mutationIdempotency
+              .claim(request)
+              .pipe(mapServiceFailure);
+            const applyMutation = reservationAccess
+              .mutate({
+                reservationId: params.reservationId,
+                ...payload.mutation,
+              })
+              .pipe(
+                Effect.map(toCliReservationAccessGrant),
+                Effect.tapError((cause) =>
+                  cause.reason === "recovery_failed"
+                    ? Effect.void
+                    : mutationIdempotency
+                        .release(request)
+                        .pipe(Effect.catch(() => Effect.void))
+                ),
+                Effect.mapError(mapReservationAccessMutationFailure),
+                Effect.tap((result) =>
+                  mutationIdempotency
+                    .complete({ ...request, result })
+                    .pipe(mapServiceFailure)
+                )
+              );
+            const resumeInterruptedMutation = Effect.gen(function* () {
+              const reclaimedAt = Temporal.Now.instant();
+              const reclaimed = yield* mutationIdempotency
+                .reclaimStale({
+                  ...request,
+                  reclaimedAt,
+                  staleBefore: reclaimedAt.subtract({
+                    milliseconds:
+                      reservationAccessProvisioningStaleAfterMilliseconds,
+                  }),
+                })
+                .pipe(mapServiceFailure);
+              if (!reclaimed) {
+                return yield* new CliMutationInProgress({
+                  requestId: payload.requestId,
+                  message:
+                    "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
+                });
+              }
+              return yield* reservationAccess
+                .resumeInterruptedMutation(params.reservationId)
+                .pipe(
+                  Effect.map(toCliReservationAccessGrant),
+                  Effect.tapError(() =>
+                    mutationIdempotency
+                      .release(request)
+                      .pipe(Effect.catch(() => Effect.void))
+                  ),
+                  Effect.mapError(mapReservationAccessMutationFailure),
+                  Effect.tap((result) =>
+                    mutationIdempotency
+                      .complete({ ...request, result })
+                      .pipe(mapServiceFailure)
+                  )
+                );
+            });
+
+            return yield* Match.value(claim).pipe(
+              Match.discriminatorsExhaustive("kind")({
+                claimed: () => applyMutation,
+                completed: ({ result }) =>
+                  Schema.decodeUnknownEffect(
+                    AdministrationReservationAccessGrant
+                  )(result).pipe(Effect.mapError(makeServiceUnavailable)),
+                "in-progress": () => resumeInterruptedMutation,
+                mismatch: () =>
+                  new CliMutationRejected({
+                    message:
+                      "This mutation request identifier was already used for different input.",
+                  }),
+              })
+            );
+          })
         )
         .handle("findReservation", ({ query }) =>
           administration.findReservationId(query.identifier).pipe(
@@ -185,7 +301,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               activity: administration.loadCustomerActivity(params.customerId),
               profile: discounts
                 .loadCustomerProfile({
-                  customerId: params.customerId as DotyposCustomerId,
+                  customerId: params.customerId,
                 })
                 .pipe(
                   Effect.map(toCliCustomerProfile),
@@ -209,23 +325,38 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
         )
         .handle("getDiscountCode", ({ params }) =>
-          discounts
-            .loadCodeDetail({ codeId: params.codeId as DiscountCodeId })
-            .pipe(
-              Effect.map(toCliDiscountCodeDetail),
-              Effect.catchTag(
-                "DiscountAdminNotFoundError",
-                () =>
-                  new CliResourceNotFound({
-                    message: "The discount code was not found.",
-                  })
-              ),
-              Effect.mapError((cause) =>
-                cause instanceof CliResourceNotFound
-                  ? cause
-                  : makeServiceUnavailable()
-              )
+          discounts.loadCodeDetail({ codeId: params.codeId }).pipe(
+            Effect.map(toCliDiscountCodeDetail),
+            Effect.catchTag(
+              "DiscountAdminNotFoundError",
+              () =>
+                new CliResourceNotFound({
+                  message: "The discount code was not found.",
+                })
+            ),
+            Effect.mapError((cause) =>
+              cause instanceof CliResourceNotFound
+                ? cause
+                : makeServiceUnavailable()
             )
+          )
+        )
+        .handle("getVoucher", ({ params }) =>
+          discounts.loadVoucherDetail({ voucherId: params.voucherId }).pipe(
+            Effect.map(toCliVoucherDetail),
+            Effect.catchTag(
+              "DiscountAdminNotFoundError",
+              () =>
+                new CliResourceNotFound({
+                  message: "The voucher was not found.",
+                })
+            ),
+            Effect.mapError((cause) =>
+              cause instanceof CliResourceNotFound
+                ? cause
+                : makeServiceUnavailable()
+            )
+          )
         )
         .handle("listSessions", () =>
           authentication.listSessions().pipe(mapServiceFailure)
@@ -248,6 +379,11 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                   executeDiscountAdminMutation(payload.mutation).pipe(
                     Effect.provideService(DiscountAdministration, discounts),
                     Effect.mapError(mapDiscountMutationFailure),
+                    Effect.tap(() =>
+                      refreshCalendarDiscountSourceAfterMutation(
+                        payload.mutation
+                      )
+                    ),
                     Effect.tapError((cause) =>
                       cause instanceof CliResourceNotFound ||
                       cause instanceof CliMutationRejected
@@ -262,7 +398,17 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                         .pipe(mapServiceFailure)
                     )
                   ),
-                completed: ({ result }) => Effect.succeed(result),
+                completed: ({ result }) =>
+                  Schema.decodeUnknownEffect(
+                    AdministrationDiscountMutationResult
+                  )(result).pipe(
+                    Effect.mapError(makeServiceUnavailable),
+                    Effect.tap(() =>
+                      refreshCalendarDiscountSourceAfterMutation(
+                        payload.mutation
+                      )
+                    )
+                  ),
                 "in-progress": () =>
                   new CliMutationInProgress({
                     requestId: payload.requestId,
@@ -353,10 +499,60 @@ const mapDiscountMutationFailure = (
     Match.orElse(makeServiceUnavailable)
   );
 
+const mapReservationCancellationFailure = (
+  cause: ReservationAdministrationError
+) => {
+  if (cause.code === "not_found") {
+    return new CliResourceNotFound({ message: cause.message });
+  }
+  if (cause.code === "not_cancellable") {
+    return new CliMutationRejected({ message: cause.message });
+  }
+  return makeServiceUnavailable();
+};
+
+const mapReservationAccessMutationFailure = (
+  cause: ReservationAccessAdministrationError
+) =>
+  Match.value(cause.reason).pipe(
+    Match.when(
+      "not_found",
+      () => new CliResourceNotFound({ message: cause.message })
+    ),
+    Match.when(
+      "invalid_state",
+      () => new CliMutationRejected({ message: cause.message })
+    ),
+    Match.when("retryable_failure", makeServiceUnavailable),
+    Match.when("recovery_failed", makeServiceUnavailable),
+    Match.exhaustive
+  );
+
+const toCliReservationAccessGrant = (grant: ReservationAccessGrant) => ({
+  id: grant.id,
+  state: grant.state,
+  provider: grant.provider,
+  credentialType: grant.credentialType,
+  deviceId: grant.deviceId,
+  providerCredentialId: grant.providerCredentialId,
+  accessName: `Deskohub ${grant.reservationId}`.slice(0, 60),
+  scheduledStartsAt: grant.scheduledAccessStartsAt.toString(),
+  startsAt: grant.accessStartsAt.toString(),
+  endsAt: grant.accessEndsAt.toString(),
+  provisioningStartedAt: grant.provisioningStartedAt?.toString() ?? null,
+  issuedAt: grant.issuedAt?.toString() ?? null,
+  failedAt: grant.failedAt?.toString() ?? null,
+  failureCode: grant.failureCode,
+  createdAt: grant.createdAt.toString(),
+  updatedAt: grant.updatedAt.toString(),
+});
+
 const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
   ...profile,
   codes: profile.codes.map(toCliDiscountCode),
   claims: profile.claims.map(toCliDiscountCodeClaim),
+  vouchers: profile.vouchers.map(toCliVoucher),
+  voucherClaims: profile.voucherClaims.map(toCliVoucherClaim),
 });
 
 const toCliDiscountCode = <Code extends AdminDiscountCode>(code: Code) => ({
@@ -375,6 +571,22 @@ const toCliDiscountCodeClaim = (claim: AdminDiscountCodeClaim) => ({
   releasedAt: claim.releasedAt?.toString() ?? null,
 });
 
+const toCliVoucher = <Voucher extends AdminVoucher>(voucher: Voucher) => ({
+  ...voucher,
+  validFrom: voucher.validFrom?.toString() ?? null,
+  validUntil: voucher.validUntil?.toString() ?? null,
+  createdAt: voucher.createdAt.toString(),
+  updatedAt: voucher.updatedAt.toString(),
+});
+
+const toCliVoucherClaim = (claim: AdminVoucherClaim) => ({
+  ...claim,
+  reservationExpiresAt: claim.reservationExpiresAt.toString(),
+  reservedAt: claim.reservedAt.toString(),
+  redeemedAt: claim.redeemedAt?.toString() ?? null,
+  releasedAt: claim.releasedAt?.toString() ?? null,
+});
+
 const toCliDiscountDashboard = (dashboard: DiscountAdminDashboard) => ({
   ...dashboard,
   discounts: dashboard.discounts.map((discount) => ({
@@ -383,12 +595,19 @@ const toCliDiscountDashboard = (dashboard: DiscountAdminDashboard) => ({
     updatedAt: discount.updatedAt.toString(),
   })),
   codes: dashboard.codes.map(toCliDiscountCode),
+  vouchers: dashboard.vouchers.map(toCliVoucher),
 });
 
 const toCliDiscountCodeDetail = (detail: AdminDiscountCodeDetail) => ({
   ...detail,
   code: toCliDiscountCode(detail.code),
   claims: detail.claims.map(toCliDiscountCodeClaim),
+});
+
+const toCliVoucherDetail = (detail: AdminVoucherDetail) => ({
+  ...detail,
+  voucher: toCliVoucher(detail.voucher),
+  claims: detail.claims.map(toCliVoucherClaim),
 });
 
 const noStore = HttpRouter.middleware(
@@ -408,11 +627,13 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(AdminCliApiHandlers),
     Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
-    Layer.provide(AdministrationLive),
-    Layer.provide(DiscountAdministrationLive),
-    Layer.provide(CliMutationIdempotency.LiveWithDependencies),
-    Layer.provide(CliAuthenticationAdmission.Live),
-    Layer.provide(CliAuthentication.LiveWithDependencies)
+    Layer.provide(AdministrationService.Live),
+    Layer.provide(ReservationAdministrationService.Live),
+    Layer.provide(ReservationAccessAdministration.Live),
+    Layer.provide(DiscountAdministration.Live),
+    Layer.provide(CliMutationIdempotency.Live),
+    Layer.provide(CliAuthenticationAdmission.Default),
+    Layer.provide(CliAuthentication.Live)
   ),
   noStore
 ).pipe(Layer.provide(NodeHttpServer.layerHttpServices));
