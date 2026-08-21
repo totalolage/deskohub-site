@@ -71,7 +71,7 @@ describe("AdministrationService", () => {
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
               ),
-              PaymentAdministrationServiceMock({})
+              NexiAdministrationServiceMock({})
             )
           )
         )
