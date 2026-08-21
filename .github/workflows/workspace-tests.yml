@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-alpine
+        image: ghcr.io/fboulnois/pg_uuidv7@sha256:bc82ea4d74252366e41f5ec537bdf80b47eb3ec27027877438e8fd6a5a8a4433
         env:
           POSTGRES_DB: workspace_account_tests
           POSTGRES_PASSWORD: workspace_test_password
