@@ -5,7 +5,7 @@ import {
   type NexiCorrelationId,
   NexiCorrelationIdSchema,
 } from "@deskohub/nexi";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -14,8 +14,10 @@ import {
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
 import {
+  discountApplications,
   goodsCartItems,
   goodsCarts,
+  legalEvidenceEvents,
   type OrderRow,
   orderLines,
   orders,
@@ -24,6 +26,8 @@ import {
   type LegalEvidenceEventInputError,
   persistLegalEvidenceEvents,
 } from "@/features/checkout/backend/repositories/legal-evidence-event.repository";
+import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { GoodsBasketDiscountCommitment } from "@/features/discounts";
 import {
   type OrderDiscountEvidenceStateError,
@@ -143,7 +147,7 @@ const issueGoodsOrder = Effect.fn("GoodsOrderRepository.issueTransaction")(
       .returning();
 
     if (!inserted) {
-      return yield* loadIdempotentOrder(tx, input.customerId, correlationId);
+      return yield* loadIdempotentOrder(tx, input, correlationId);
     }
 
     const [cart] = yield* tx
@@ -221,7 +225,7 @@ const loadIdempotentOrder = Effect.fn(
   "GoodsOrderRepository.loadIdempotentOrder"
 )(function* (
   tx: GoodsOrderTransaction,
-  customerId: DotyposCustomerId,
+  input: IssueGoodsOrderRepositoryInput,
   correlationId: NexiCorrelationId
 ) {
   const [order] = yield* tx
@@ -231,15 +235,76 @@ const loadIdempotentOrder = Effect.fn(
     .limit(1)
     .for("share");
   if (
-    !order ||
-    order.kind !== "goods" ||
-    order.dotyposCustomerId !== customerId
+    order?.kind !== "goods" ||
+    order.dotyposCustomerId !== input.customerId
   ) {
     return yield* new GoodsOrderIssuanceConflictError({
       message: "The issuance identifier belongs to another order.",
     });
   }
-  return yield* loadGoodsOrderDetail(tx, order);
+  const detail = yield* loadGoodsOrderDetail(tx, order);
+  const evidence = yield* tx
+    .select({
+      accepted: legalEvidenceEvents.accepted,
+      documentHash: legalEvidenceEvents.documentHash,
+      documentKey: legalEvidenceEvents.documentKey,
+      documentPath: legalEvidenceEvents.documentPath,
+      hashAlgorithm: legalEvidenceEvents.hashAlgorithm,
+      locale: legalEvidenceEvents.locale,
+    })
+    .from(legalEvidenceEvents)
+    .where(
+      and(
+        eq(legalEvidenceEvents.orderId, order.id),
+        eq(legalEvidenceEvents.source, goodsOrderIssueLegalEvidenceSource)
+      )
+    )
+    .orderBy(asc(legalEvidenceEvents.documentKey));
+  const expectedEvidence = input.legalDocuments
+    .map(({ documentKey, document }) => ({
+      accepted: true,
+      documentHash: document.hash,
+      documentKey,
+      documentPath: document.path,
+      hashAlgorithm: document.hashAlgorithm,
+      locale: input.locale,
+    }))
+    .toSorted((left, right) =>
+      left.documentKey.localeCompare(right.documentKey)
+    );
+  const [storedDiscountApplication] = yield* tx
+    .select({ id: discountApplications.id })
+    .from(discountApplications)
+    .where(
+      and(
+        eq(discountApplications.orderId, order.id),
+        isNull(discountApplications.paymentAttemptId)
+      )
+    )
+    .limit(1);
+
+  if (
+    !goodsOrderLinesEqual(detail.lines, input.lines) ||
+    !evidence.every((event, index) =>
+      legalEvidenceMatches(event, expectedEvidence[index])
+    ) ||
+    evidence.length !== expectedEvidence.length ||
+    Boolean(storedDiscountApplication) !== Boolean(input.discountCommitment)
+  ) {
+    return yield* new GoodsOrderIssuanceConflictError({
+      message: "The issuance identifier was reused with different order facts.",
+    });
+  }
+  if (input.discountCommitment) {
+    yield* persistIssuedGoodsDiscountEvidence({
+      tx,
+      orderId: order.id,
+      commitment: input.discountCommitment,
+      locale: input.locale,
+      issuedAt: order.fulfilledAt!,
+    });
+  }
+  return detail;
 });
 
 const listGoodsOrders = Effect.fn("GoodsOrderRepository.listTransaction")(
@@ -430,3 +495,49 @@ const goodsCartsEqual = (left: GoodsCart, right: GoodsCart) => {
     ({ productId, quantity }) => rightItems.get(productId) === quantity
   );
 };
+
+const goodsOrderLinesEqual = (
+  left: readonly GoodsOrderLine[],
+  right: readonly GoodsOrderLine[]
+) =>
+  left.length === right.length &&
+  left.every((line, index) => {
+    const expected = right[index];
+    return (
+      expected !== undefined &&
+      getWorkspaceProductKey(line.product) ===
+        getWorkspaceProductKey(expected.product) &&
+      line.description === expected.description &&
+      line.quantity === expected.quantity &&
+      workspaceMoneyEquals(line.unitPrice, expected.unitPrice) &&
+      workspaceMoneyEquals(
+        line.undiscountedTotal,
+        expected.undiscountedTotal
+      ) &&
+      workspaceMoneyEquals(line.payableTotal, expected.payableTotal)
+    );
+  });
+
+const workspaceMoneyEquals = (left: WorkspaceMoney, right: WorkspaceMoney) =>
+  left.value === right.value &&
+  left.exponent === right.exponent &&
+  left.currency === right.currency;
+
+const legalEvidenceMatches = (
+  left: {
+    readonly accepted: boolean;
+    readonly documentHash: string;
+    readonly documentKey: string;
+    readonly documentPath: string;
+    readonly hashAlgorithm: string;
+    readonly locale: string;
+  },
+  right: typeof left | undefined
+) =>
+  right !== undefined &&
+  left.accepted === right.accepted &&
+  left.documentHash === right.documentHash &&
+  left.documentKey === right.documentKey &&
+  left.documentPath === right.documentPath &&
+  left.hashAlgorithm === right.hashAlgorithm &&
+  left.locale === right.locale;

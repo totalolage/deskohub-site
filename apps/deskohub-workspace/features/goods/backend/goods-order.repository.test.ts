@@ -37,6 +37,23 @@ describe("GoodsOrderRepository", () => {
       ".onConflictDoNothing({ target: orders.correlationId })"
     );
     expect(source).toContain('order.kind !== "goods"');
-    expect(source).toContain("order.dotyposCustomerId !== customerId");
+    expect(source).toContain("order.dotyposCustomerId !== input.customerId");
+  });
+
+  test("accepts only an exact replay of persisted issuance facts", async () => {
+    const source = await Bun.file(
+      new URL("./goods-order.repository.ts", import.meta.url)
+    ).text();
+    const replay = source.slice(
+      source.indexOf('"GoodsOrderRepository.loadIdempotentOrder"'),
+      source.indexOf('"GoodsOrderRepository.listTransaction"')
+    );
+
+    expect(source).toContain("loadIdempotentOrder(tx, input, correlationId)");
+    expect(replay).toContain("goodsOrderLinesEqual");
+    expect(replay).toContain("legalEvidenceEvents");
+    expect(replay).toContain("discountApplications");
+    expect(replay).toContain("persistIssuedGoodsDiscountEvidence");
+    expect(replay).toContain("GoodsOrderIssuanceConflictError");
   });
 });
