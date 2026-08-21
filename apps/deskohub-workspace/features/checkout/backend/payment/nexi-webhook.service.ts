@@ -309,17 +309,8 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               "Nexi webhook payment attempt link completed"
             );
 
-            if (!attempt.workspaceReservationId) {
-              return yield* new NexiWebhookProcessingError({
-                errorCode: "nexi_webhook_unknown_order",
-                eventId,
-                orderId: providerOrderId,
-                message:
-                  "This webhook handler cannot yet fulfill a non-reservation order.",
-              });
-            }
             const reservation = yield* reservations
-              .findById(attempt.workspaceReservationId)
+              .findById(attempt.workspaceReservationId!)
               .pipe(
                 Effect.mapError(
                   (cause) =>
