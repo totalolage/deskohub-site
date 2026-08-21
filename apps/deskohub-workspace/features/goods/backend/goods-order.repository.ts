@@ -27,10 +27,7 @@ import {
   persistLegalEvidenceEvents,
 } from "@/features/checkout/backend/repositories/legal-evidence-event.repository";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
-import {
-  type WorkspaceMoney,
-  workspaceMoneyEquals,
-} from "@/features/checkout/workspace-money";
+import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import {
   appliedDiscountCodec,
   type GoodsBasketDiscountCommitment,
@@ -819,11 +816,6 @@ const goodsOrderLinesEqual = (
       workspaceMoneyEquals(line.payableTotal, expected.payableTotal)
     );
   });
-
-const workspaceMoneyEquals = (left: WorkspaceMoney, right: WorkspaceMoney) =>
-  left.value === right.value &&
-  left.exponent === right.exponent &&
-  left.currency === right.currency;
 
 const legalEvidenceMatches = (
   left: {

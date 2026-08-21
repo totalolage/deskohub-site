@@ -563,32 +563,34 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
                   "Nexi webhook payment attempt marked paid"
                 );
 
-                yield* completion
-                  .complete({
-                    orderId: order.id,
-                    kind: order.kind,
-                    paymentAttemptId: attempt.id,
-                  })
-                  .pipe(
-                    Effect.mapError(
-                      (cause) =>
-                        new NexiWebhookProcessingError({
-                          errorCode: "nexi_webhook_fulfillment_failed",
-                          eventId,
-                          orderId: providerOrderId,
-                          message: "Paid order completion failed.",
-                          cause,
-                        })
-                    ),
-                    Effect.catch((error) =>
-                      failAfterMarkingEvent(
-                        webhookEvents,
-                        { type: "eventId", eventId },
-                        error
+                if (transition.attempt.refundState !== "required") {
+                  yield* completion
+                    .complete({
+                      orderId: order.id,
+                      kind: order.kind,
+                      paymentAttemptId: attempt.id,
+                    })
+                    .pipe(
+                      Effect.mapError(
+                        (cause) =>
+                          new NexiWebhookProcessingError({
+                            errorCode: "nexi_webhook_fulfillment_failed",
+                            eventId,
+                            orderId: providerOrderId,
+                            message: "Paid order completion failed.",
+                            cause,
+                          })
+                      ),
+                      Effect.catch((error) =>
+                        failAfterMarkingEvent(
+                          webhookEvents,
+                          { type: "eventId", eventId },
+                          error
+                        )
                       )
-                    )
-                  );
-                yield* Effect.logInfo("Nexi webhook paid order completed");
+                    );
+                  yield* Effect.logInfo("Nexi webhook paid order completed");
+                }
               }
             } else if (verification.status === "failure") {
               const failureKind = classifyNexiFailureStatus(providerStatus);
