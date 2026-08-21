@@ -163,6 +163,18 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
+  test("invoice ownership supports manual, reservation, goods, and rollout rows", async () => {
+    const schema = await readAppFile("db/schema/invoices.ts");
+
+    expect(schema).toContain('orderId: text("order_id")');
+    expect(schema).toContain("${t.paymentAttemptId} is null");
+    expect(schema).toContain("${t.orderId} is null");
+    expect(schema).toContain("${t.workspaceReservationId} is null");
+    expect(schema).toContain("${t.orderId} is not null");
+    expect(schema).toContain("${t.workspaceReservationId} is not null");
+    expect(schema).toContain("${t.paymentAttemptId} is not null");
+  });
+
   test("invoice email delivery state stores no recipient or document payload", async () => {
     const [schema, migration] = await Promise.all([
       readAppFile("db/schema/invoice-email-deliveries.ts"),
