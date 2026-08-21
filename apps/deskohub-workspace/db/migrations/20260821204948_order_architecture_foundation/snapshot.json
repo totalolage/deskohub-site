@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "7318cba6-d407-4bf6-bcf0-b9ac5ccefa77",
+  "id": "463efab4-b710-423f-9eb1-dfc9c97951a2",
   "prevIds": [
-    "9f0354e5-bb7f-4822-bea2-796926d008e6"
+    "35880a20-2c56-47bd-b1d2-03514fb5b133"
   ],
   "ddl": [
     {
@@ -129,6 +129,12 @@
     {
       "isRlsEnabled": false,
       "name": "legal_evidence_events",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "manual_invoice_creation_requests",
       "entityType": "tables",
       "schema": "public"
     },
@@ -358,6 +364,19 @@
       "default": null,
       "generated": null,
       "identity": null,
+      "name": "approved_by",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_authentication_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
       "name": "grant_token",
       "entityType": "columns",
       "schema": "public",
@@ -489,6 +508,19 @@
       "generated": null,
       "identity": null,
       "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "approved_by",
       "entityType": "columns",
       "schema": "public",
       "table": "cli_sessions"
@@ -2004,7 +2036,7 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": true,
+      "notNull": false,
       "dimensions": 0,
       "default": null,
       "generated": null,
@@ -2017,7 +2049,7 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": true,
+      "notNull": false,
       "dimensions": 0,
       "default": null,
       "generated": null,
@@ -2442,6 +2474,71 @@
       "entityType": "columns",
       "schema": "public",
       "table": "legal_evidence_events"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "invoice_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "key_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "request_digest",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "claimed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
     },
     {
       "type": "text",
@@ -5326,7 +5423,7 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
+      "onDelete": "NO ACTION",
       "name": "order_lines_order_id_orders_id_fkey",
       "entityType": "fks",
       "schema": "public",
@@ -5599,6 +5696,16 @@
     },
     {
       "columns": [
+        "invoice_id"
+      ],
+      "nameExplicit": false,
+      "name": "manual_invoice_creation_requests_pkey",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -5766,7 +5873,7 @@
       "table": "cli_authentication_requests"
     },
     {
-      "value": "(\n        \"approved_at\" is null\n        and \"grant_token\" is null\n        and \"grant_expires_at\" is null\n      ) or (\n        \"approved_at\" is not null\n        and \"grant_expires_at\" is not null\n      )",
+      "value": "(\n        \"approved_at\" is null\n        and \"approved_by\" is null\n        and \"grant_token\" is null\n        and \"grant_expires_at\" is null\n      ) or (\n        \"approved_at\" is not null\n        and \"grant_expires_at\" is not null\n      )",
       "name": "cli_authentication_requests_approval_check",
       "entityType": "checks",
       "schema": "public",
@@ -5831,6 +5938,13 @@
     {
       "value": "\"revoked_at\" is null or \"revoked_at\" >= \"created_at\"",
       "name": "cli_sessions_revoked_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "value": "\"approved_by\" is null or char_length(btrim(\"approved_by\")) between 1 and 80",
+      "name": "cli_sessions_approved_by_check",
       "entityType": "checks",
       "schema": "public",
       "table": "cli_sessions"
@@ -6116,6 +6230,13 @@
       "table": "invoices"
     },
     {
+      "value": "(\"workspace_reservation_id\" is null) = (\"payment_attempt_id\" is null)",
+      "name": "invoices_source_reference_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
       "value": "\"key_id\" ~ '^[A-Z][A-Z0-9_]{2,31}$'",
       "name": "invoices_key_id_check",
       "entityType": "checks",
@@ -6165,6 +6286,34 @@
       "table": "legal_evidence_events"
     },
     {
+      "value": "\"invoice_id\" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'",
+      "name": "manual_invoice_creation_requests_invoice_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"key_id\" ~ '^[A-Z][A-Z0-9_]{2,31}$'",
+      "name": "manual_invoice_creation_requests_key_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"request_digest\" ~ '^[A-Za-z0-9_-]{43}$'",
+      "name": "manual_invoice_creation_requests_digest_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"completed_at\" is null or \"completed_at\" >= \"claimed_at\"",
+      "name": "manual_invoice_creation_requests_completion_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
       "value": "\"sequence\" >= 0",
       "name": "order_lines_sequence_check",
       "entityType": "checks",
@@ -6200,14 +6349,14 @@
       "table": "order_lines"
     },
     {
-      "value": "\"amount_exponent\" between 0 and 20",
+      "value": "\"amount_exponent\" = 2",
       "name": "order_lines_amount_exponent_check",
       "entityType": "checks",
       "schema": "public",
       "table": "order_lines"
     },
     {
-      "value": "\"currency\" ~ '^[A-Z]{3}$'",
+      "value": "\"currency\" = 'CZK'",
       "name": "order_lines_currency_check",
       "entityType": "checks",
       "schema": "public",

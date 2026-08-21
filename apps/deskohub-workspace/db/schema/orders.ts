@@ -89,7 +89,7 @@ export const orderLines = pgTable(
     orderId: text("order_id")
       .notNull()
       .$type<OrderId>()
-      .references(() => orders.id, { onDelete: "cascade" }),
+      .references(() => orders.id),
     sequence: integer("sequence").notNull(),
     productIdentity: jsonb("product_identity").notNull().$type<unknown>(),
     description: text("description").notNull(),
@@ -125,9 +125,9 @@ export const orderLines = pgTable(
     ),
     check(
       "order_lines_amount_exponent_check",
-      sql`${t.amountExponent} between 0 and 20`
+      sql`${t.amountExponent} = 2`
     ),
-    check("order_lines_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
+    check("order_lines_currency_check", sql`${t.currency} = 'CZK'`),
   ]
 );
 

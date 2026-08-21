@@ -21,8 +21,8 @@ CREATE TABLE "order_lines" (
         and "undiscounted_total_value" = "unit_price_value" * "quantity"
         and "payable_total_value" >= 0
         and "payable_total_value" <= "undiscounted_total_value"),
-	CONSTRAINT "order_lines_amount_exponent_check" CHECK ("amount_exponent" between 0 and 20),
-	CONSTRAINT "order_lines_currency_check" CHECK ("currency" ~ '^[A-Z]{3}$')
+	CONSTRAINT "order_lines_amount_exponent_check" CHECK ("amount_exponent" = 2),
+	CONSTRAINT "order_lines_currency_check" CHECK ("currency" = 'CZK')
 );
 --> statement-breakpoint
 CREATE TABLE "orders" (
@@ -47,40 +47,11 @@ CREATE TABLE "orders" (
 	CONSTRAINT "orders_fulfillment_failed_check" CHECK ("fulfillment_state" <> 'failed' or ("fulfillment_failed_at" is not null and "fulfillment_failure_code" is not null))
 );
 --> statement-breakpoint
-INSERT INTO "orders" (
-	"id",
-	"kind",
-	"correlation_id",
-	"dotypos_customer_id",
-	"payment_state",
-	"fulfillment_state",
-	"paid_at",
-	"fulfilled_at",
-	"fulfillment_failed_at",
-	"fulfillment_failure_code",
-	"created_at",
-	"updated_at"
-)
-SELECT
-	"id",
-	'reservation',
-	"correlation_id",
-	"dotypos_customer_id",
-	"payment_state",
-	"fulfillment_state",
-	"paid_at",
-	"fulfilled_at",
-	"fulfillment_failed_at",
-	"fulfillment_failure_code",
-	"created_at",
-	"updated_at"
-FROM "workspace_reservations";
---> statement-breakpoint
 CREATE UNIQUE INDEX "order_lines_order_sequence_unique_idx" ON "order_lines" ("order_id","sequence");--> statement-breakpoint
 CREATE INDEX "order_lines_order_idx" ON "order_lines" ("order_id");--> statement-breakpoint
 CREATE INDEX "orders_customer_created_idx" ON "orders" ("dotypos_customer_id","created_at");--> statement-breakpoint
 CREATE INDEX "orders_states_idx" ON "orders" ("payment_state","fulfillment_state");--> statement-breakpoint
-ALTER TABLE "order_lines" ADD CONSTRAINT "order_lines_order_id_orders_id_fkey" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE;
+ALTER TABLE "order_lines" ADD CONSTRAINT "order_lines_order_id_orders_id_fkey" FOREIGN KEY ("order_id") REFERENCES "orders"("id");
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION reject_order_line_mutation()
 RETURNS trigger
