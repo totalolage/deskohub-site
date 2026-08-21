@@ -47,7 +47,7 @@ describe("payment attempt providers", () => {
     );
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260816181927_order_payment_ledger_expand/migration.sql",
+        "../migrations/20260821205013_order_payment_ledger_expand/migration.sql",
         import.meta.url
       )
     ).text();
