@@ -1,6 +1,6 @@
 "use server";
 
-import { Effect, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { revalidatePath } from "next/cache";
 import { m } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -38,7 +38,7 @@ const requireActionAccountId = () =>
   requireActionUser().pipe(
     Effect.flatMap((user) => {
       const accountId = Option.getOrUndefined(
-        Schema.decodeUnknownOption(customerAccountIdSchema)(user.id)
+        Schema.decodeOption(customerAccountIdSchema)(user.id)
       );
       return accountId
         ? Effect.succeed(accountId)
@@ -110,8 +110,12 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
           cause
         )
       ),
-      Effect.provide(CustomerAuthentication.Default),
-      Effect.provide(CustomerAccountLinkRepository.Live)
+      Effect.provide(
+        Layer.merge(
+          CustomerAuthentication.Default,
+          CustomerAccountLinkRepository.Live
+        )
+      )
     )
 );
 

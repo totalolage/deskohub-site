@@ -35,10 +35,10 @@ const accessError = (
 
 const decodeSessionIdentity = (user: CustomerAuthUser) => {
   const accountId = Option.getOrUndefined(
-    Schema.decodeUnknownOption(customerAccountIdSchema)(user.id)
+    Schema.decodeOption(customerAccountIdSchema)(user.id)
   );
   const email = Option.getOrUndefined(
-    Schema.decodeUnknownOption(reservationCustomerEmailSchema)(user.email)
+    Schema.decodeOption(reservationCustomerEmailSchema)(user.email)
   );
   if (!accountId || !email) {
     return Effect.fail(accessError("unauthenticated"));
@@ -85,7 +85,7 @@ export const resolveCustomerAccount = (
 ): Effect.Effect<LinkedCustomerAccount, CustomerAccountAccessError> =>
   Effect.gen(function* () {
     const user = yield* dependencies.currentUser();
-    if (!user) return yield* Effect.fail(accessError("unauthenticated"));
+    if (!user) return yield* accessError("unauthenticated");
     const identity = yield* decodeSessionIdentity(user);
 
     return yield* dependencies
@@ -94,11 +94,11 @@ export const resolveCustomerAccount = (
         Effect.gen(function* () {
           const lockedUser = yield* dependencies.currentUser();
           if (!lockedUser) {
-            return yield* Effect.fail(accessError("unauthenticated"));
+            return yield* accessError("unauthenticated");
           }
           const lockedIdentity = yield* decodeSessionIdentity(lockedUser);
           if (lockedIdentity.accountId !== identity.accountId) {
-            return yield* Effect.fail(accessError("unauthenticated"));
+            return yield* accessError("unauthenticated");
           }
 
           const existingCustomerId = yield* dependencies
@@ -121,14 +121,10 @@ export const resolveCustomerAccount = (
               )
             );
           if (match.kind === "not-found") {
-            return yield* Effect.fail(
-              accessError("link-required", "not-found")
-            );
+            return yield* accessError("link-required", "not-found");
           }
           if (match.kind === "ambiguous") {
-            return yield* Effect.fail(
-              accessError("link-required", "ambiguous")
-            );
+            return yield* accessError("link-required", "ambiguous");
           }
 
           const claimed = yield* dependencies
@@ -137,7 +133,7 @@ export const resolveCustomerAccount = (
               Effect.mapError(mapCustomerAccountFailure("account-link.claim"))
             );
           if (claimed.kind === "claimed") {
-            return yield* Effect.fail(accessError("link-required", "claimed"));
+            return yield* accessError("link-required", "claimed");
           }
           return {
             accountId: lockedIdentity.accountId,

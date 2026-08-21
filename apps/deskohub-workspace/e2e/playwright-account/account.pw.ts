@@ -346,9 +346,9 @@ const waitForCustomerAccountLink = (
 ) =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const decodedAccountId = Schema.decodeUnknownSync(customerAccountIdSchema)(
-      accountId
-    );
+    const decodedAccountId = yield* Schema.decodeEffect(
+      customerAccountIdSchema
+    )(accountId);
     yield* pollUntil(
       runRetrySafeDatabaseOperation(
         "read customer account link",
@@ -377,8 +377,11 @@ const deleteCustomerAccountLinks = (accountIds: ReadonlySet<string>) =>
   Effect.gen(function* () {
     if (accountIds.size === 0) return;
     const { db } = yield* E2EDatabase;
-    const decodedAccountIds = [...accountIds].map((accountId) =>
-      Schema.decodeUnknownSync(customerAccountIdSchema)(accountId)
+    const decodedAccountIds = yield* Effect.all(
+      [...accountIds].map((accountId) =>
+        Schema.decodeEffect(customerAccountIdSchema)(accountId)
+      ),
+      { concurrency: "inherit" }
     );
     yield* runRetrySafeDatabaseOperation(
       "delete synthetic customer account links",

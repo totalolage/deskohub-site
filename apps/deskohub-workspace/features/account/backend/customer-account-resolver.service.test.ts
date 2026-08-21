@@ -157,16 +157,19 @@ describe("customer account resolution", () => {
   test.each([
     ["not-found", "not-found"],
     ["ambiguous", "ambiguous"],
-  ] as const)("requires manual linking for a %s lookup", async (kind, reason) => {
-    const error = await runError(
-      dependencies({ findCustomer: () => Effect.succeed({ kind }) })
-    );
+  ] as const)(
+    "requires manual linking for a %s lookup",
+    async (kind, reason) => {
+      const error = await runError(
+        dependencies({ findCustomer: () => Effect.succeed({ kind }) })
+      );
 
-    expect(error).toMatchObject({
-      reason: "link-required",
-      linkReason: reason,
-    });
-  });
+      expect(error).toMatchObject({
+        reason: "link-required",
+        linkReason: reason,
+      });
+    }
+  );
 
   test("rejects a Dotypos customer already claimed by another account", async () => {
     const error = await runError(
@@ -209,36 +212,39 @@ describe("customer account resolution", () => {
     ["lookup", "dotypos.customer-lookup"],
     ["claim", "account-link.claim"],
     ["lock", "account-link.lock"],
-  ] as const)("maps a %s provider failure to a sanitized unavailable cause", async (failure, code) => {
-    const rawFailure = new Error("sensitive-provider-payload");
-    const failed = Effect.fail(rawFailure);
-    let overrides: Partial<CustomerAccountResolutionDependencies>;
-    switch (failure) {
-      case "session":
-        overrides = {
-          currentUser: () =>
-            Effect.fail(customerAccountUnavailable("authentication.session")),
-        };
-        break;
-      case "database":
-        overrides = { findLink: () => failed };
-        break;
-      case "lookup":
-        overrides = { findCustomer: () => failed };
-        break;
-      case "claim":
-        overrides = { claimLink: () => failed };
-        break;
-      case "lock":
-        overrides = { withAccountLock: () => failed };
-        break;
-    }
+  ] as const)(
+    "maps a %s provider failure to a sanitized unavailable cause",
+    async (failure, code) => {
+      const rawFailure = new Error("sensitive-provider-payload");
+      const failed = Effect.fail(rawFailure);
+      let overrides: Partial<CustomerAccountResolutionDependencies>;
+      switch (failure) {
+        case "session":
+          overrides = {
+            currentUser: () =>
+              Effect.fail(customerAccountUnavailable("authentication.session")),
+          };
+          break;
+        case "database":
+          overrides = { findLink: () => failed };
+          break;
+        case "lookup":
+          overrides = { findCustomer: () => failed };
+          break;
+        case "claim":
+          overrides = { claimLink: () => failed };
+          break;
+        case "lock":
+          overrides = { withAccountLock: () => failed };
+          break;
+      }
 
-    const error = await runError(dependencies(overrides));
-    expect(error).toMatchObject({ reason: "unavailable", cause: { code } });
-    expect(censorLogValue(error)).toMatchObject({ cause: { code } });
-    expect(JSON.stringify(error)).not.toContain("sensitive-provider-payload");
-  });
+      const error = await runError(dependencies(overrides));
+      expect(error).toMatchObject({ reason: "unavailable", cause: { code } });
+      expect(censorLogValue(error)).toMatchObject({ cause: { code } });
+      expect(JSON.stringify(error)).not.toContain("sensitive-provider-payload");
+    }
+  );
 
   test("keeps account IDs opaque", () => {
     const otherAccountId = Schema.decodeUnknownSync(customerAccountIdSchema)(

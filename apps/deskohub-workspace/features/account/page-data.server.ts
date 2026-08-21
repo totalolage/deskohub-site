@@ -85,8 +85,8 @@ export const loadCustomerAccountPage = cache(
           service.load(account.success)
         ).pipe(
           Effect.provide(CustomerReservationHistoryService.Live),
-          Effect.catch(() =>
-            Effect.succeed(unavailableHistory("provider-unavailable"))
+          Effect.orElseSucceed(() =>
+            unavailableHistory("provider-unavailable")
           ),
           runWorkspaceEffect("account.reservation-history", {
             boundary: "page",

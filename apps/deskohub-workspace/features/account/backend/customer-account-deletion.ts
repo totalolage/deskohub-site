@@ -20,9 +20,9 @@ export const deleteCustomerIdentity = <E, R, E2, R2, E3, R3>(
         Effect.mapError(mapCustomerAccountFailure("authentication.session"))
       );
       if (lockedAccountId !== accountId) {
-        return yield* Effect.fail(
-          new CustomerAccountAccessError({ reason: "unauthenticated" })
-        );
+        return yield* new CustomerAccountAccessError({
+          reason: "unauthenticated",
+        });
       }
       yield* unlink(accountId).pipe(
         Effect.mapError(mapCustomerAccountFailure("account-link.unlink"))

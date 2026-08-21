@@ -33,7 +33,7 @@ describe("customer account links", () => {
   test("migration is additive and contains no auth data or PII", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260815103004_stormy_wilson_fisk/migration.sql",
+        "../migrations/20260821202645_customer_account_links/migration.sql",
         import.meta.url
       )
     ).text();

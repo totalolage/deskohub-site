@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "9f0354e5-bb7f-4822-bea2-796926d008e6",
+  "id": "35880a20-2c56-47bd-b1d2-03514fb5b133",
   "prevIds": [
-    "edea7477-78ba-475f-b8db-07c1a813a8ad"
+    "b4530a5e-e181-4e4c-9551-461785e62764"
   ],
   "ddl": [
     {
@@ -32,13 +32,13 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "customer_marketing_consents",
+      "name": "customer_account_links",
       "entityType": "tables",
       "schema": "public"
     },
     {
       "isRlsEnabled": false,
-      "name": "customer_account_links",
+      "name": "customer_marketing_consents",
       "entityType": "tables",
       "schema": "public"
     },
@@ -129,6 +129,12 @@
     {
       "isRlsEnabled": false,
       "name": "legal_evidence_events",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "manual_invoice_creation_requests",
       "entityType": "tables",
       "schema": "public"
     },
@@ -346,6 +352,19 @@
       "default": null,
       "generated": null,
       "identity": null,
+      "name": "approved_by",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_authentication_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
       "name": "grant_token",
       "entityType": "columns",
       "schema": "public",
@@ -484,6 +503,19 @@
     {
       "type": "text",
       "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "approved_by",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
       "default": null,
@@ -580,6 +612,32 @@
       "default": null,
       "generated": null,
       "identity": null,
+      "name": "customer_account_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "customer_account_links"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "dotypos_customer_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "customer_account_links"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
       "name": "dotypos_customer_id",
       "entityType": "columns",
       "schema": "public",
@@ -636,32 +694,6 @@
       "entityType": "columns",
       "schema": "public",
       "table": "customer_marketing_consents"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "customer_account_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "customer_account_links"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "dotypos_customer_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "customer_account_links"
     },
     {
       "type": "text",
@@ -1992,7 +2024,7 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": true,
+      "notNull": false,
       "dimensions": 0,
       "default": null,
       "generated": null,
@@ -2005,7 +2037,7 @@
     {
       "type": "text",
       "typeSchema": null,
-      "notNull": true,
+      "notNull": false,
       "dimensions": 0,
       "default": null,
       "generated": null,
@@ -2430,6 +2462,71 @@
       "entityType": "columns",
       "schema": "public",
       "table": "legal_evidence_events"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "invoice_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "key_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "request_digest",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "claimed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
     },
     {
       "type": "text",
@@ -5013,22 +5110,22 @@
     },
     {
       "columns": [
-        "dotypos_customer_id"
-      ],
-      "nameExplicit": false,
-      "name": "customer_marketing_consents_pkey",
-      "schema": "public",
-      "table": "customer_marketing_consents",
-      "entityType": "pks"
-    },
-    {
-      "columns": [
         "customer_account_id"
       ],
       "nameExplicit": false,
       "name": "customer_account_links_pkey",
       "schema": "public",
       "table": "customer_account_links",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "dotypos_customer_id"
+      ],
+      "nameExplicit": false,
+      "name": "customer_marketing_consents_pkey",
+      "schema": "public",
+      "table": "customer_marketing_consents",
       "entityType": "pks"
     },
     {
@@ -5149,6 +5246,16 @@
       "name": "legal_evidence_events_pkey",
       "schema": "public",
       "table": "legal_evidence_events",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "invoice_id"
+      ],
+      "nameExplicit": false,
+      "name": "manual_invoice_creation_requests_pkey",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests",
       "entityType": "pks"
     },
     {
@@ -5289,7 +5396,7 @@
       "table": "cli_authentication_requests"
     },
     {
-      "value": "(\n        \"approved_at\" is null\n        and \"grant_token\" is null\n        and \"grant_expires_at\" is null\n      ) or (\n        \"approved_at\" is not null\n        and \"grant_expires_at\" is not null\n      )",
+      "value": "(\n        \"approved_at\" is null\n        and \"approved_by\" is null\n        and \"grant_token\" is null\n        and \"grant_expires_at\" is null\n      ) or (\n        \"approved_at\" is not null\n        and \"grant_expires_at\" is not null\n      )",
       "name": "cli_authentication_requests_approval_check",
       "entityType": "checks",
       "schema": "public",
@@ -5354,6 +5461,13 @@
     {
       "value": "\"revoked_at\" is null or \"revoked_at\" >= \"created_at\"",
       "name": "cli_sessions_revoked_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "cli_sessions"
+    },
+    {
+      "value": "\"approved_by\" is null or char_length(btrim(\"approved_by\")) between 1 and 80",
+      "name": "cli_sessions_approved_by_check",
       "entityType": "checks",
       "schema": "public",
       "table": "cli_sessions"
@@ -5639,6 +5753,13 @@
       "table": "invoices"
     },
     {
+      "value": "(\"workspace_reservation_id\" is null) = (\"payment_attempt_id\" is null)",
+      "name": "invoices_source_reference_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "invoices"
+    },
+    {
       "value": "\"key_id\" ~ '^[A-Z][A-Z0-9_]{2,31}$'",
       "name": "invoices_key_id_check",
       "entityType": "checks",
@@ -5686,6 +5807,34 @@
       "entityType": "checks",
       "schema": "public",
       "table": "legal_evidence_events"
+    },
+    {
+      "value": "\"invoice_id\" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'",
+      "name": "manual_invoice_creation_requests_invoice_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"key_id\" ~ '^[A-Z][A-Z0-9_]{2,31}$'",
+      "name": "manual_invoice_creation_requests_key_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"request_digest\" ~ '^[A-Za-z0-9_-]{43}$'",
+      "name": "manual_invoice_creation_requests_digest_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
+    },
+    {
+      "value": "\"completed_at\" is null or \"completed_at\" >= \"claimed_at\"",
+      "name": "manual_invoice_creation_requests_completion_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "manual_invoice_creation_requests"
     },
     {
       "value": "\"provider\" in ('nexi', 'internal')",
