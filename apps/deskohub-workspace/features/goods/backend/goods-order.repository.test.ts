@@ -36,7 +36,7 @@ describe("GoodsOrderRepository", () => {
     expect(source).toContain(
       ".onConflictDoNothing({ target: orders.correlationId })"
     );
-    expect(source).toContain('order.kind !== "goods"');
+    expect(source).toContain('order?.kind !== "goods"');
     expect(source).toContain("order.dotyposCustomerId !== input.customerId");
   });
 
