@@ -162,4 +162,22 @@ describe("DotyposService.getMenuItems", () => {
     expect(result.products).toEqual([]);
     expect(result.categories).toEqual([category({ id: "broken" })]);
   });
+
+  test("preserves the readonly paginated category result", async () => {
+    const categories = Object.freeze([category({ id: "readonly" })]);
+
+    const result = await runWithShared(
+      (DotyposService) =>
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.getMenuItems;
+        }),
+      {
+        getCategories: mock(() => Effect.succeed(categories)),
+        getProducts: mock(() => Effect.succeed([])),
+      }
+    );
+
+    expect(result.categories).toBe(categories);
+  });
 });
