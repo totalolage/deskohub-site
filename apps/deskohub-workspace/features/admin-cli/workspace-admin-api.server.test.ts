@@ -188,6 +188,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(ClaimEveryCliMutation),
       Effect.provide(UnusedAdministrationService),
       Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedOrderAdministration),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(UnusedDiscountAdministration),
       Effect.provide(UnusedCliAuthentication),
@@ -312,6 +313,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedCliAuthentication),
       Effect.provide(
         Layer.succeed(

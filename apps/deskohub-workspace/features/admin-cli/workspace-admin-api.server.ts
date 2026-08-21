@@ -678,7 +678,7 @@ const toCliDiscountCode = <Code extends AdminDiscountCode>(code: Code) => ({
 
 const toCliDiscountCodeClaim = (claim: AdminDiscountCodeClaim) => ({
   ...claim,
-  reservationExpiresAt: claim.reservationExpiresAt.toString(),
+  reservationExpiresAt: claim.reservationExpiresAt?.toString() ?? null,
   reservedAt: claim.reservedAt.toString(),
   redeemedAt: claim.redeemedAt?.toString() ?? null,
   releasedAt: claim.releasedAt?.toString() ?? null,
@@ -694,7 +694,7 @@ const toCliVoucher = <Voucher extends AdminVoucher>(voucher: Voucher) => ({
 
 const toCliVoucherClaim = (claim: AdminVoucherClaim) => ({
   ...claim,
-  reservationExpiresAt: claim.reservationExpiresAt.toString(),
+  reservationExpiresAt: claim.reservationExpiresAt?.toString() ?? null,
   reservedAt: claim.reservedAt.toString(),
   redeemedAt: claim.redeemedAt?.toString() ?? null,
   releasedAt: claim.releasedAt?.toString() ?? null,

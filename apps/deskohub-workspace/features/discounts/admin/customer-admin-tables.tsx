@@ -44,13 +44,14 @@ type ClaimHistoryItem = {
   readonly appliedAmount: Money;
   readonly codeId?: string;
   readonly dotyposCustomerId: string;
+  readonly orderId: string;
   readonly redeemedAt: string | null;
   readonly releasedAt: string | null;
   readonly releaseReason: string | null;
   readonly reservedAt: string;
   readonly state: AdminDiscountCodeClaim["state"];
   readonly voucherId?: string;
-  readonly workspaceReservationId: string;
+  readonly workspaceReservationId: string | null;
 };
 
 const getDiscountLabel = (code: CustomerCodeEligibilityItem) =>
@@ -361,16 +362,25 @@ export function ClaimHistoryTable({
         meta: { cellClassName: "whitespace-nowrap" },
       },
       {
-        accessorKey: "workspaceReservationId",
-        header: "Reservation",
-        cell: ({ row }) => (
-          <Link
-            className="font-semibold underline underline-offset-4"
-            href={`/admin/reservations/${row.original.workspaceReservationId}`}
-          >
-            Open reservation
-          </Link>
-        ),
+        accessorFn: (claim) => claim.workspaceReservationId ?? claim.orderId,
+        id: "order",
+        header: "Order",
+        cell: ({ row }) =>
+          row.original.workspaceReservationId ? (
+            <Link
+              className="font-semibold underline underline-offset-4"
+              href={`/admin/reservations/${row.original.workspaceReservationId}`}
+            >
+              Open reservation
+            </Link>
+          ) : (
+            <Link
+              className="font-semibold underline underline-offset-4"
+              href={`/admin/orders/${row.original.orderId}`}
+            >
+              Open order
+            </Link>
+          ),
       },
     ],
     [resource, showsCustomer, subjectLabel]

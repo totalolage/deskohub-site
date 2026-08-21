@@ -163,6 +163,7 @@ describe("administration contract", () => {
         dotyposCustomerId: "customer-id",
         state: "redeemed",
         paymentAttemptId: "payment-attempt-id",
+        orderId: "reservation-id",
         workspaceReservationId: "reservation-id",
         reservationExpiresAt: "2026-08-10T11:00:00Z",
         reservedAt: "2026-08-10T10:00:00Z",
@@ -171,6 +172,26 @@ describe("administration contract", () => {
         releaseReason: null,
       }).appliedAmount
     ).toBeNull();
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountCodeClaim)({
+        id: "goods-claim-id",
+        codeId: "01980000-0000-7000-8000-000000000001",
+        dotyposCustomerId: "customer-id",
+        state: "redeemed",
+        paymentAttemptId: null,
+        orderId: "goods-order-id",
+        workspaceReservationId: null,
+        reservationExpiresAt: null,
+        reservedAt: "2026-08-10T10:00:00Z",
+        redeemedAt: "2026-08-10T10:00:00Z",
+        releasedAt: null,
+        releaseReason: null,
+      })
+    ).toMatchObject({
+      orderId: "goods-order-id",
+      workspaceReservationId: null,
+    });
   });
 
   test("keeps discount codes and vouchers as separate read models", () => {

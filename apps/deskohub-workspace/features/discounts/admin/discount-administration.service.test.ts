@@ -2,10 +2,64 @@ import { describe, expect, test } from "bun:test";
 import {
   findDiscountAdminConflict,
   getAdminDiscountCodeUsage,
+  toAdminDiscountCodeClaim,
+  toAdminVoucherClaim,
   voucherDenominationCanChange,
 } from "./discount-administration.service";
 
 describe("discount administration read models", () => {
+  test("keeps issued goods claims visible without reservation payment facts", () => {
+    const reservedAt = Temporal.Instant.from("2026-08-16T12:00:00Z");
+    const application = {
+      orderId: "goods-order-id",
+      workspaceReservationId: null,
+      appliedAmountValue: 3500,
+      appliedAmountExponent: 2,
+      appliedAmountCurrency: "CZK",
+    };
+    const claim = {
+      dotyposCustomerId: "customer-id",
+      state: "redeemed",
+      paymentAttemptId: null,
+      orderId: "goods-order-id",
+      reservationExpiresAt: null,
+      reservedAt,
+      redeemedAt: reservedAt,
+      releasedAt: null,
+      releaseReason: null,
+      application,
+    } as never;
+
+    expect(
+      toAdminDiscountCodeClaim({
+        ...claim,
+        id: "discount-code-claim-id",
+        codeId: "discount-code-id",
+      })
+    ).toEqual([
+      expect.objectContaining({
+        orderId: "goods-order-id",
+        workspaceReservationId: null,
+        paymentAttemptId: null,
+        reservationExpiresAt: null,
+      }),
+    ]);
+    expect(
+      toAdminVoucherClaim({
+        ...claim,
+        id: "voucher-claim-id",
+        voucherId: "voucher-id",
+      })
+    ).toEqual([
+      expect.objectContaining({
+        orderId: "goods-order-id",
+        workspaceReservationId: null,
+        paymentAttemptId: null,
+        reservationExpiresAt: null,
+      }),
+    ]);
+  });
+
   test("counts reserved and redeemed claims against capacity but excludes releases", () => {
     expect(
       getAdminDiscountCodeUsage({

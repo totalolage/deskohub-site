@@ -760,6 +760,7 @@ function ClaimHistory({
           ? { codeId: claim.codeId }
           : { voucherId: claim.voucherId }),
         dotyposCustomerId: claim.dotyposCustomerId,
+        orderId: claim.orderId,
         redeemedAt: claim.redeemedAt?.toString() ?? null,
         releasedAt: claim.releasedAt?.toString() ?? null,
         releaseReason: claim.releaseReason,

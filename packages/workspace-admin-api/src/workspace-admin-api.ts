@@ -1317,12 +1317,13 @@ export type AdministrationCustomerVoucher =
 const administrationPromotionClaimFields = {
   dotyposCustomerId: AdministrationDotyposCustomerId,
   state: Schema.Literals(["reserved", "redeemed", "released"]),
-  paymentAttemptId: AdministrationPaymentAttemptId,
-  workspaceReservationId: AdministrationWorkspaceReservationId,
+  paymentAttemptId: Schema.NullOr(AdministrationPaymentAttemptId),
+  orderId: AdministrationOrderId,
+  workspaceReservationId: Schema.NullOr(AdministrationWorkspaceReservationId),
   appliedAmount: Schema.NullOr(AdministrationMoney).pipe(
     Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
   ),
-  reservationExpiresAt: Schema.String,
+  reservationExpiresAt: Schema.NullOr(Schema.String),
   reservedAt: Schema.String,
   redeemedAt: Schema.NullOr(Schema.String),
   releasedAt: Schema.NullOr(Schema.String),
