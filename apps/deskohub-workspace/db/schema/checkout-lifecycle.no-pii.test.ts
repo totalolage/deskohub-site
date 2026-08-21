@@ -105,6 +105,25 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
+  test("moves encrypted accounting ownership to orders without rewriting ciphertext", async () => {
+    const migration = await readAppFile(
+      "db/migrations/20260821210820_order-accounting/migration.sql"
+    );
+
+    expect(migration).toContain('ADD COLUMN "order_id" text');
+    expect(migration).toContain('SET "order_id" = COALESCE(');
+    expect(migration).not.toContain('encrypted_snapshot" =');
+    expect(migration).not.toContain('encrypted_document" =');
+    expect(migration).toContain(
+      "snapshot.order_id, snapshot.workspace_reservation_id"
+    );
+    expect(migration).toContain("fulfillment_state = 'fulfilled'");
+    expect(migration).toContain(
+      "EXECUTE FUNCTION reject_accounting_document_snapshot_mutation()"
+    );
+    expect(migration).not.toContain("OLD.payment_attempt_id");
+  });
+
   test("late-payment recovery stores identifiers and state without customer data", async () => {
     const schema = await readAppFile("db/schema/late-payment-recoveries.ts");
     expect(schema).not.toContain("jsonb(");
@@ -164,15 +183,29 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("invoice ownership supports manual, reservation, goods, and rollout rows", async () => {
-    const schema = await readAppFile("db/schema/invoices.ts");
+    const [schema, migration] = await Promise.all([
+      readAppFile("db/schema/invoices.ts"),
+      readAppFile(
+        "db/migrations/20260821210820_order-accounting/migration.sql"
+      ),
+    ]);
 
     expect(schema).toContain('orderId: text("order_id")');
-    expect(schema).toContain("${t.paymentAttemptId} is null");
-    expect(schema).toContain("${t.orderId} is null");
-    expect(schema).toContain("${t.workspaceReservationId} is null");
-    expect(schema).toContain("${t.orderId} is not null");
-    expect(schema).toContain("${t.workspaceReservationId} is not null");
-    expect(schema).toContain("${t.paymentAttemptId} is not null");
+    expect(schema).toContain('"invoices_source_reference_check"');
+    expect(migration).toContain(
+      '("payment_attempt_id" is null and "order_id" is null and "workspace_reservation_id" is null) or ("payment_attempt_id" is not null and ("order_id" is not null or "workspace_reservation_id" is not null))'
+    );
+    expect(migration).toContain(
+      "IF NEW.order_id IS NULL\n\t\tAND NEW.workspace_reservation_id IS NULL\n\t\tAND NEW.payment_attempt_id IS NULL THEN"
+    );
+    expect(migration).toContain("WHERE NEW.order_id IS NOT NULL");
+    expect(migration).toContain("WHERE NEW.order_id IS NULL");
+    expect(migration).toContain(
+      "invoice source must be manual or the active paid attempt"
+    );
+    expect(migration).not.toContain(
+      "CREATE OR REPLACE FUNCTION reject_accounting_document_snapshot_mutation"
+    );
   });
 
   test("invoice email delivery state stores no recipient or document payload", async () => {

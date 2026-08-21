@@ -5,6 +5,8 @@ export const relations = defineRelations(schema, (r) => ({
   orders: {
     lines: r.many.orderLines(),
     paymentAttempts: r.many.paymentAttempts(),
+    accountingDocumentSnapshots: r.many.accountingDocumentSnapshots(),
+    invoices: r.many.invoices(),
     activePaymentAttempt: r.one.paymentAttempts({
       from: r.orders.activePaymentAttemptId,
       to: r.paymentAttempts.id,
@@ -30,6 +32,10 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
   accountingDocumentSnapshots: {
+    order: r.one.orders({
+      from: r.accountingDocumentSnapshots.orderId,
+      to: r.orders.id,
+    }),
     invoice: r.one.invoices({
       from: r.accountingDocumentSnapshots.paymentAttemptId,
       to: r.invoices.paymentAttemptId,
@@ -42,10 +48,13 @@ export const relations = defineRelations(schema, (r) => ({
     workspaceReservation: r.one.workspaceReservations({
       from: r.accountingDocumentSnapshots.workspaceReservationId,
       to: r.workspaceReservations.id,
-      optional: false,
     }),
   },
   invoices: {
+    order: r.one.orders({
+      from: r.invoices.orderId,
+      to: r.orders.id,
+    }),
     accountingDocumentSnapshot: r.one.accountingDocumentSnapshots({
       from: r.invoices.paymentAttemptId,
       to: r.accountingDocumentSnapshots.paymentAttemptId,

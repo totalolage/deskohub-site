@@ -7,8 +7,10 @@ import { accountingDocumentSnapshots } from "@/db/schema";
 import {
   type AccountingDocumentSnapshot,
   decodeStoredAccountingDocumentSnapshot,
+  getAccountingDocumentOrderId,
 } from "@/features/accounting/accounting-document-snapshot";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { OrderId } from "@/features/order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
 import { decryptAccountingSnapshot } from "./accounting-snapshot-sql";
@@ -16,6 +18,7 @@ import { decryptAccountingSnapshot } from "./accounting-snapshot-sql";
 export type AccountingPaymentReference =
   | { readonly type: "paymentAttemptId"; readonly id: PaymentAttemptId }
   | { readonly type: "providerOrderId"; readonly id: NexiOrderId }
+  | { readonly type: "orderId"; readonly id: OrderId }
   | {
       readonly type: "workspaceReservationId";
       readonly id: WorkspaceReservationId;
@@ -53,7 +56,12 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
           "AccountingDocumentSnapshotRepository.findByPaymentAttemptId"
         )(function* (paymentAttemptId: PaymentAttemptId) {
           const [metadata] = yield* db
-            .select({ keyId: accountingDocumentSnapshots.keyId })
+            .select({
+              keyId: accountingDocumentSnapshots.keyId,
+              orderId: accountingDocumentSnapshots.orderId,
+              workspaceReservationId:
+                accountingDocumentSnapshots.workspaceReservationId,
+            })
             .from(accountingDocumentSnapshots)
             .where(
               eq(accountingDocumentSnapshots.paymentAttemptId, paymentAttemptId)
@@ -127,7 +135,9 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
               }),
           });
 
-          return yield* decodeStoredAccountingDocumentSnapshot(encoded).pipe(
+          const snapshot = yield* decodeStoredAccountingDocumentSnapshot(
+            encoded
+          ).pipe(
             Effect.mapError(
               () =>
                 new AccountingDocumentSnapshotStorageError({
@@ -140,6 +150,23 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
                 })
             )
           );
+
+          if (
+            getAccountingDocumentOrderId(snapshot) !==
+            (metadata.orderId ?? metadata.workspaceReservationId)
+          ) {
+            return yield* new AccountingDocumentSnapshotStorageError({
+              operation: "validate",
+              paymentReference: {
+                type: "paymentAttemptId",
+                id: paymentAttemptId,
+              },
+              message:
+                "Accounting snapshot metadata does not match its encrypted document.",
+            });
+          }
+
+          return snapshot;
         }),
       } satisfies IAccountingDocumentSnapshotRepository;
     })
