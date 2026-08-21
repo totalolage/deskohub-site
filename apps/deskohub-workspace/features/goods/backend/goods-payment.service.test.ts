@@ -223,6 +223,24 @@ describe("GoodsPaymentService", () => {
     expect(scenario.startOrResume).not.toHaveBeenCalled();
   });
 
+  test("drops an invalid provider phone without discarding the payer", async () => {
+    const scenario = await runPayment(
+      { status: "in_progress" },
+      { ...fixture.customer, phone: "not-a-phone" }
+    );
+
+    expect(scenario.startOrResume).toHaveBeenCalledTimes(1);
+    expect(scenario.startOrResume.mock.calls[0]?.[0]).toMatchObject({
+      payer: {
+        id: fixture.customer.id,
+        email: fixture.customer.email,
+      },
+    });
+    expect(scenario.startOrResume.mock.calls[0]?.[0].payer).not.toHaveProperty(
+      "phone"
+    );
+  });
+
   test("preserves the atomically selected oldest outstanding order", async () => {
     const scenario = await runPayment({
       status: "outstanding_order",

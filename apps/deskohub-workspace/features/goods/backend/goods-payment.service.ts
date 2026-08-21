@@ -3,7 +3,6 @@ import {
   type DotyposCustomerId,
   DotyposService,
 } from "@deskohub/dotypos";
-import type { HostedPaymentCustomer } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import {
   type GoodsBillingIntent,
@@ -173,15 +172,11 @@ const makeGoodsPayer = Effect.fn("GoodsPaymentService.makePayer")(function* (
   const phone = customer.phone?.trim();
   if (!(id && name && email)) return undefined;
 
-  return yield* Effect.try({
-    try: (): HostedPaymentCustomer =>
-      getNexiHostedPaymentCustomer({ id, name, email, phone }),
-    catch: () => new Error("Invalid Dotypos customer phone."),
-  }).pipe(
-    Effect.catch(() =>
-      Effect.succeed(getNexiHostedPaymentCustomer({ id, name, email }))
-    )
-  );
+  try {
+    return getNexiHostedPaymentCustomer({ id, name, email, phone });
+  } catch {
+    return getNexiHostedPaymentCustomer({ id, name, email });
+  }
 });
 
 const makeGoodsPaymentCallbacks = Effect.fn(
