@@ -3,6 +3,7 @@ import {
   type DotyposCustomerId,
   DotyposService,
 } from "@deskohub/dotypos";
+import type { HostedPaymentCustomer } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import {
   type GoodsBillingIntent,
@@ -95,7 +96,7 @@ export class GoodsPaymentService extends Context.Service<
                       : Effect.fail(new GoodsPaymentConflictError({ cause }))
                 )
               );
-            const payer = yield* makeGoodsPayer(customer);
+            const payer = makeGoodsPayer(customer);
             if (!accountingSnapshot || !payer) {
               return { status: "billing_details_required" } as const;
             }
@@ -159,9 +160,9 @@ export class GoodsPaymentService extends Context.Service<
   );
 }
 
-const makeGoodsPayer = Effect.fn("GoodsPaymentService.makePayer")(function* (
+const makeGoodsPayer = (
   customer: DotyposCustomer
-) {
+): HostedPaymentCustomer | undefined => {
   const id = customer.id;
   const name =
     [customer.firstName, customer.lastName]
@@ -177,7 +178,7 @@ const makeGoodsPayer = Effect.fn("GoodsPaymentService.makePayer")(function* (
   } catch {
     return getNexiHostedPaymentCustomer({ id, name, email });
   }
-});
+};
 
 const makeGoodsPaymentCallbacks = Effect.fn(
   "GoodsPaymentService.makeCallbacks"
