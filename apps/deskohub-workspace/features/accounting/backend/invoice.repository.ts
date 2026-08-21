@@ -9,6 +9,7 @@ import {
   invoices,
   orders,
   paymentAttempts,
+  workspaceReservations,
 } from "@/db/schema";
 import { getAccountingDocumentOrderId } from "@/features/accounting/accounting-document-snapshot";
 import {
@@ -338,8 +339,28 @@ export class InvoiceRepository extends Context.Service<
 
         const outcome = yield* db.transaction((tx) =>
           Effect.gen(function* () {
-            const [locked] = yield* tx
+            const [attemptReference] = yield* tx
               .select({
+                orderId: paymentAttempts.orderId,
+                workspaceReservationId: paymentAttempts.workspaceReservationId,
+              })
+              .from(paymentAttempts)
+              .where(eq(paymentAttempts.id, paymentAttemptId))
+              .limit(1);
+
+            const effectiveOrderId =
+              attemptReference?.orderId ??
+              attemptReference?.workspaceReservationId;
+            if (!effectiveOrderId) {
+              return yield* wrapInvoiceEligibilityError(
+                paymentAttemptId,
+                "The payment attempt does not exist."
+              );
+            }
+
+            const [orderRow] = yield* tx
+              .select({
+                persistedOrderId: orders.id,
                 orderId: orders.id,
                 orderPaymentState: orders.paymentState,
                 activePaymentAttemptId: orders.activePaymentAttemptId,
@@ -350,13 +371,38 @@ export class InvoiceRepository extends Context.Service<
                 paymentAttemptState: paymentAttempts.state,
               })
               .from(paymentAttempts)
-              .innerJoin(
-                orders,
-                sql`${orders.id} = coalesce(${paymentAttempts.orderId}, ${paymentAttempts.workspaceReservationId})`
-              )
+              .innerJoin(orders, sql`${orders.id} = ${effectiveOrderId}`)
               .where(eq(paymentAttempts.id, paymentAttemptId))
               .limit(1)
               .for("update");
+
+            const [legacyReservationRow] = orderRow
+              ? []
+              : yield* tx
+                  .select({
+                    persistedOrderId: sql<null>`null`,
+                    orderId: workspaceReservations.id,
+                    orderPaymentState: workspaceReservations.paymentState,
+                    activePaymentAttemptId:
+                      workspaceReservations.activePaymentAttemptId,
+                    dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                    paidAt: workspaceReservations.paidAt,
+                    fulfillmentState: workspaceReservations.fulfillmentState,
+                    fulfilledAt: workspaceReservations.fulfilledAt,
+                    paymentAttemptState: paymentAttempts.state,
+                  })
+                  .from(paymentAttempts)
+                  .innerJoin(
+                    workspaceReservations,
+                    eq(
+                      workspaceReservations.id,
+                      paymentAttempts.workspaceReservationId
+                    )
+                  )
+                  .where(eq(paymentAttempts.id, paymentAttemptId))
+                  .limit(1)
+                  .for("update");
+            const locked = orderRow ?? legacyReservationRow;
 
             if (!locked) {
               return yield* wrapInvoiceEligibilityError(
@@ -485,7 +531,7 @@ export class InvoiceRepository extends Context.Service<
             yield* tx
               .insert(invoices)
               .values({
-                orderId: locked.orderId,
+                orderId: locked.persistedOrderId,
                 workspaceReservationId: source.workspaceReservationId,
                 paymentAttemptId,
                 dotyposCustomerId: locked.dotyposCustomerId,

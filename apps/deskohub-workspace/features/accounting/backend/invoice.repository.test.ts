@@ -64,6 +64,18 @@ describe("invoice repository persistence contract", () => {
     expect(issue).toContain("existing.paymentAttemptId !== paymentAttemptId");
   });
 
+  test("keeps rollout reservations invoiceable before their order row exists", async () => {
+    const source = await readRepository();
+    const issue = source.slice(
+      source.indexOf('const issue = Effect.fn("InvoiceRepository.issue")')
+    );
+
+    expect(issue).toContain("legacyReservationRow");
+    expect(issue).toContain("workspaceReservations.id");
+    expect(issue).toContain("persistedOrderId");
+    expect(issue).toContain("orderId: locked.persistedOrderId");
+  });
+
   test("requires and validates complete buyer details instead of using the source buyer", async () => {
     const source = await readRepository();
     const issue = source.slice(
