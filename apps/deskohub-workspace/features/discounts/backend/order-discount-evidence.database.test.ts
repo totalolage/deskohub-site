@@ -171,7 +171,8 @@ const seed = Effect.fn("OrderDiscountEvidenceDatabaseTest.seed")(function* (
   input: Awaited<ReturnType<typeof fixture>>,
   target: WorkspaceProductTarget = {
     kind: "goods",
-  }
+  },
+  payableValues: readonly [number, number] = [50, 100]
 ) {
   const issuedAt = Temporal.Instant.from("2026-08-16T20:00:00Z");
   yield* tx.insert(orders).values({
@@ -194,7 +195,7 @@ const seed = Effect.fn("OrderDiscountEvidenceDatabaseTest.seed")(function* (
       quantity: 1,
       unitPriceValue: sequence === 0 ? 100 : 200,
       undiscountedTotalValue: sequence === 0 ? 100 : 200,
-      payableTotalValue: sequence === 0 ? 50 : 100,
+      payableTotalValue: payableValues[sequence]!,
       amountExponent: 2,
       currency: "CZK",
       createdAt: issuedAt,
@@ -310,15 +311,58 @@ describe.skipIf(!databaseTestsEnabled)(
           })
         );
 
-        expect(result.applications.map(({ value }) => value).sort()).toEqual([
-          50, 100,
-        ]);
+        expect(
+          result.applications
+            .map(({ value }) => value)
+            .sort((left, right) => left - right)
+        ).toEqual([50, 100]);
         expect(result.claims).toEqual([
           { applicationId: null, appliedAmountValue: 150, state: "redeemed" },
         ]);
         if (kind === "voucher") expect(result.voucherUsage?.value).toBe(150);
       });
     }
+
+    test("persists an issued basket with no discount applications", async () => {
+      const input = await fixture("discount_code");
+      const calculation = await Effect.runPromise(
+        calculateGoodsBasketDiscounts({
+          lines: [
+            { product: input.products[0]!, discountableSubtotal: money(100) },
+            { product: input.products[1]!, discountableSubtotal: money(200) },
+          ],
+          candidates: [],
+        })
+      );
+      const commitment = makeGoodsBasketDiscountCommitment({
+        quote: calculation.quote,
+        applications: calculation.applications,
+      });
+
+      const result = await inspectTransaction((tx) =>
+        Effect.gen(function* () {
+          const issuedAt = yield* seed(
+            tx,
+            input,
+            { kind: "goods" },
+            [100, 200]
+          );
+          yield* persistIssuedGoodsDiscountEvidence({
+            tx,
+            orderId: input.orderId,
+            commitment,
+            locale: "en-US",
+            issuedAt,
+          });
+          return yield* tx
+            .select()
+            .from(discountApplications)
+            .where(eq(discountApplications.orderId, input.orderId));
+        })
+      );
+
+      expect(result).toEqual([]);
+    });
 
     for (const mismatch of ["target", "line", "money"] as const) {
       test(`rolls back ${mismatch} mismatches without leaving allocations or claims`, async () => {

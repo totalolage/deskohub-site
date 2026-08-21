@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isDeepStrictEqual } from "node:util";
 import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
 import { Data, Effect, Match, Option, Schema } from "effect";
@@ -34,9 +35,10 @@ import {
   type GoodsBasketDiscountCommitmentPayload,
   getGoodsBasketDiscountCommitmentPayload,
 } from "@/features/discounts/commitment";
-import type {
-  AppliedDiscount,
-  DiscountAdjustment,
+import {
+  type AppliedDiscount,
+  type DiscountAdjustment,
+  discountAdjustmentSchema,
 } from "@/features/discounts/contracts";
 import { decodeDiscountDefinition } from "@/features/discounts/discount-definition";
 import { DiscountClaimError } from "@/features/discounts/errors";
@@ -180,6 +182,10 @@ const persistDiscountApplicationRows = Effect.fn(
   readonly applications: readonly DiscountApplicationEvidence[];
   readonly owner: DiscountEvidenceOwner;
 }) {
+  if (input.applications.length === 0) {
+    return [] satisfies PersistedDiscountApplication[];
+  }
+
   return yield* input.tx
     .insert(discountApplications)
     .values(
@@ -1504,12 +1510,23 @@ const storedApplicationsMatchEvidence = (
     const committed = applications[row.sequence];
     if (!committed) return false;
     const { application, product, provenance } = committed;
+    const adjustment = Option.getOrUndefined(
+      Schema.decodeUnknownOption(discountAdjustmentSchema, {
+        onExcessProperty: "error",
+      })(row.adjustment)
+    );
+    const productIdentity = Option.getOrUndefined(
+      Schema.decodeUnknownOption(workspaceProductIdentitySchema, {
+        onExcessProperty: "error",
+      })(row.productIdentity)
+    );
     return (
+      adjustment !== undefined &&
+      productIdentity !== undefined &&
       row.publicDiscountId === application.discount.id &&
       row.label === application.discount.label &&
-      JSON.stringify(row.adjustment) ===
-        JSON.stringify(application.discount.adjustment) &&
-      JSON.stringify(row.productIdentity) === JSON.stringify(product) &&
+      discountAdjustmentsEqual(adjustment, application.discount.adjustment) &&
+      workspaceProductIdentityEquals(productIdentity, product) &&
       row.subtotalBeforeValue === application.subtotalBefore.value &&
       row.subtotalBeforeExponent === application.subtotalBefore.exponent &&
       row.subtotalBeforeCurrency === application.subtotalBefore.currency &&
@@ -1523,7 +1540,7 @@ const storedApplicationsMatchEvidence = (
         application.discount.expiresAt &&
       (row.countdownStartsAt?.toString() ?? undefined) ===
         application.discount.countdownStartsAt &&
-      JSON.stringify(row.provenance) === JSON.stringify(provenance)
+      isDeepStrictEqual(row.provenance, provenance)
     );
   });
 
