@@ -502,7 +502,7 @@ export const makeGoodsAccountingDocumentSnapshot = Effect.fn(
     orderId: input.order.id,
     dotyposCustomerId: input.order.dotyposCustomerId,
     locale: input.locale,
-    supplier,
+    supplier: workspaceAccountingSupplier,
     buyer,
     billing,
     delivery: { email: deliveryEmail },

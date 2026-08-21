@@ -106,6 +106,10 @@ export interface InvoiceIssuance {
   readonly changed: boolean;
 }
 
+export interface OrderInvoiceIssuance extends InvoiceIssuance {
+  readonly invoice: OrderInvoice;
+}
+
 export interface OrderInvoice extends Invoice {
   readonly orderId: string;
   readonly paymentAttemptId: string;
@@ -116,7 +120,7 @@ export interface ReservationInvoice extends OrderInvoice {
   readonly workspaceReservationId: string;
 }
 
-export interface ReservationInvoiceIssuance extends InvoiceIssuance {
+export interface ReservationInvoiceIssuance extends OrderInvoiceIssuance {
   readonly invoice: ReservationInvoice;
 }
 
@@ -157,7 +161,7 @@ export interface IInvoiceRepository {
     readonly provenance?: {
       readonly source: "reservation-request" | "post-order-link";
     };
-  }) => Effect.Effect<InvoiceIssuance, InvoiceRepositoryError>;
+  }) => Effect.Effect<OrderInvoiceIssuance, InvoiceRepositoryError>;
   readonly issueManual: (
     input: ManualInvoiceInput
   ) => Effect.Effect<ManualInvoiceIssuance, InvoiceRepositoryError>;

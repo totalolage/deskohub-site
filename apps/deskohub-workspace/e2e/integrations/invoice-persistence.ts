@@ -569,6 +569,10 @@ const createPaidFixture = (
       locale: "en-US",
       prepared,
     });
+    let fulfillmentState: "fulfilled" | "not_started" | "processing" =
+      "not_started";
+    if (fulfilled) fulfillmentState = "fulfilled";
+    else if (paid) fulfillmentState = "processing";
 
     yield* db.transaction((tx) =>
       Effect.gen(function* () {
@@ -578,11 +582,7 @@ const createPaidFixture = (
           correlationId,
           dotyposCustomerId,
           paymentState: paid ? "paid" : "pending",
-          fulfillmentState: fulfilled
-            ? "fulfilled"
-            : paid
-              ? "processing"
-              : "not_started",
+          fulfillmentState,
           paidAt: paid ? now : null,
           fulfilledAt: fulfilled ? now : null,
         });

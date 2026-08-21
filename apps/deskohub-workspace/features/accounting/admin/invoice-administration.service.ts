@@ -577,15 +577,7 @@ const toListItem = (
 ): InvoiceAdministrationListItem => {
   const document = invoice.document;
   const manual = isManualInvoiceDocument(document);
-  const money = manual
-    ? { total: document.total, currency: document.currency }
-    : {
-        total: minorUnitsToDecimal(
-          document.quote.payment.expectedPrice.value,
-          document.quote.payment.expectedPrice.exponent
-        ),
-        currency: document.quote.payment.expectedPrice.currency,
-      };
+  const money = getInvoiceAdministrationMoney(document);
   return {
     id: AdministrationInvoiceId.make(invoice.id),
     invoiceNumber: invoice.invoiceNumber,
@@ -599,6 +591,20 @@ const toListItem = (
     actor: manual ? document.provenance.actor : null,
     delivery,
     needsAttention,
+  };
+};
+
+const getInvoiceAdministrationMoney = (document: InvoiceDocument) => {
+  if (isManualInvoiceDocument(document)) {
+    return { total: document.total, currency: document.currency };
+  }
+  const total =
+    "orderId" in document
+      ? document.totals.payable
+      : document.quote.payment.expectedPrice;
+  return {
+    total: minorUnitsToDecimal(total.value, total.exponent),
+    currency: total.currency,
   };
 };
 
