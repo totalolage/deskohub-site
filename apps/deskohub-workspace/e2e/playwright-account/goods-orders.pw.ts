@@ -267,7 +267,46 @@ test("authenticated goods order lifecycle", async ({
             yield* assertPaidGoodsAccounting(firstOrder.id);
 
             const admittedPayment = yield* startPayment(page, secondOrder.id);
-            yield* requirePaymentRedirect(admittedPayment);
+            const admittedRedirectUrl =
+              yield* requirePaymentRedirect(admittedPayment);
+            const admittedProviderSession = `workspace-goods-e2e-${crypto.randomUUID()}`;
+            yield* openBrowserPage(
+              config,
+              browserRunner,
+              admittedProviderSession,
+              admittedRedirectUrl,
+              { timeoutMs: config.timeouts.providerTransition }
+            );
+            yield* completeNexiHostedPayment({
+              data: state.data,
+              run: browserRunner,
+              session: admittedProviderSession,
+              timeouts: config.timeouts,
+            });
+            yield* pollUntil(
+              requestJson(page, {
+                method: "GET",
+                path: `/api/v1/goods/orders/${encodeURIComponent(secondOrder.id)}?paymentOutcome=completed`,
+              }).pipe(
+                Effect.flatMap((response) =>
+                  response.status === 200
+                    ? decodeResponse(
+                        "settled second goods order detail",
+                        response,
+                        goodsOrderDetailSchema
+                      )
+                    : Effect.succeed(undefined)
+                ),
+                Effect.map((detail) =>
+                  detail?.paymentState === "paid" ? detail : undefined
+                )
+              ),
+              {
+                intervalMs: workspaceE2EPollIntervalMs.datasource,
+                label: "paid second goods order after provider return",
+                timeoutMs: config.timeouts.providerTransition,
+              }
+            );
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
