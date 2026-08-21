@@ -443,7 +443,7 @@ describe("discount persistence contracts", () => {
   test("stores aggregate basket claim amounts without a representative allocation", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260816201632_order-basket-discount-evidence/migration.sql",
+        "../migrations/20260821213539_order-basket-discount-evidence/migration.sql",
         import.meta.url
       )
     ).text();
