@@ -51,6 +51,7 @@ import {
   goodsOrderIssueLegalEvidenceSource,
 } from "../goods-order";
 import { workspaceGoodsProductIdentitySchema } from "../goods-product";
+import { getGoodsOrderIssuanceFingerprint } from "./goods-order-issuance-fingerprint";
 
 export class GoodsOrderCartChangedError extends Data.TaggedError(
   "GoodsOrderCartChangedError"
@@ -131,12 +132,14 @@ type GoodsOrderTransaction = Parameters<
 const issueGoodsOrder = Effect.fn("GoodsOrderRepository.issueTransaction")(
   function* (tx: GoodsOrderTransaction, input: IssueGoodsOrderRepositoryInput) {
     const correlationId = NexiCorrelationIdSchema.make(input.issuanceId);
+    const issuanceFingerprint = getGoodsOrderIssuanceFingerprint(input);
     const [inserted] = yield* tx
       .insert(orders)
       .values({
         kind: "goods",
         correlationId,
         dotyposCustomerId: input.customerId,
+        issuanceFingerprint,
         paymentState: "not_started",
         fulfillmentState: "fulfilled",
         fulfilledAt: input.issuedAt,
@@ -147,7 +150,12 @@ const issueGoodsOrder = Effect.fn("GoodsOrderRepository.issueTransaction")(
       .returning();
 
     if (!inserted) {
-      return yield* loadIdempotentOrder(tx, input, correlationId);
+      return yield* loadIdempotentOrder(
+        tx,
+        input,
+        correlationId,
+        issuanceFingerprint
+      );
     }
 
     const [cart] = yield* tx
@@ -226,7 +234,8 @@ const loadIdempotentOrder = Effect.fn(
 )(function* (
   tx: GoodsOrderTransaction,
   input: IssueGoodsOrderRepositoryInput,
-  correlationId: NexiCorrelationId
+  correlationId: NexiCorrelationId,
+  issuanceFingerprint: string
 ) {
   const [order] = yield* tx
     .select()
@@ -236,7 +245,8 @@ const loadIdempotentOrder = Effect.fn(
     .for("share");
   if (
     order?.kind !== "goods" ||
-    order.dotyposCustomerId !== input.customerId
+    order.dotyposCustomerId !== input.customerId ||
+    order.issuanceFingerprint !== issuanceFingerprint
   ) {
     return yield* new GoodsOrderIssuanceConflictError({
       message: "The issuance identifier belongs to another order.",

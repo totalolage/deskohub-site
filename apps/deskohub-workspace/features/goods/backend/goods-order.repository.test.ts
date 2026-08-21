@@ -49,11 +49,13 @@ describe("GoodsOrderRepository", () => {
       source.indexOf('"GoodsOrderRepository.listTransaction"')
     );
 
-    expect(source).toContain("loadIdempotentOrder(tx, input, correlationId)");
+    expect(source).toContain("loadIdempotentOrder(");
+    expect(source).toContain("issuanceFingerprint");
     expect(replay).toContain("goodsOrderLinesEqual");
     expect(replay).toContain("legalEvidenceEvents");
     expect(replay).toContain("discountApplications");
     expect(replay).toContain("persistIssuedGoodsDiscountEvidence");
+    expect(replay).toContain("order.issuanceFingerprint !== issuanceFingerprint");
     expect(replay).toContain("GoodsOrderIssuanceConflictError");
   });
 });
