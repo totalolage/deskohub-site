@@ -203,6 +203,7 @@ export const discountCodeRedemptions = pgTable(
       sql`${t.applicationId} is not null or (
         ${t.orderId} is not null
         and ${t.paymentAttemptId} is null
+        and ${t.appliedAmountValue} is not null
         and ${t.appliedAmountValue} > 0
       )`
     ),
@@ -311,6 +312,7 @@ export const voucherRedemptions = pgTable(
       sql`${t.applicationId} is not null or (
         ${t.orderId} is not null
         and ${t.paymentAttemptId} is null
+        and ${t.appliedAmountValue} is not null
         and ${t.appliedAmountValue} > 0
       )`
     ),

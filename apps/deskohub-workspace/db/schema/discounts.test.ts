@@ -447,6 +447,9 @@ describe("discount persistence contracts", () => {
         import.meta.url
       )
     ).text();
+    const schemaSource = await Bun.file(
+      new URL("./discount-applications.ts", import.meta.url)
+    ).text();
 
     for (const table of [discountCodeRedemptions, voucherRedemptions]) {
       const config = configOf(table);
@@ -461,6 +464,9 @@ describe("discount persistence contracts", () => {
     expect(migration).toContain(
       '"application_id" is not null or (\n        "order_id" is not null'
     );
+    expect(
+      schemaSource.match(/and \$\{t\.appliedAmountValue\} is not null/g)
+    ).toHaveLength(2);
     expect(migration).toContain('and "payment_attempt_id" is null');
     expect(migration).toContain('and "applied_amount_value" > 0');
     expect(migration).not.toContain("customer_email");
