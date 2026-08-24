@@ -358,6 +358,7 @@ export type AdministrationCustomerSummary = {
 };
 
 export type AdministrationOverviewMetric = {
+  readonly completed: number;
   readonly unavailable: boolean;
   readonly value: number;
 };
@@ -562,6 +563,7 @@ const countLinkedReservations = (input: {
   readonly linkedReservationIds: ReadonlySet<DotyposReservationId>;
   readonly range: AdministrationReservationDateRange;
   readonly reservations: readonly DotyposReservation[];
+  readonly status?: DotyposReservation["status"];
 }) =>
   new Set(
     input.reservations.flatMap((reservation) => {
@@ -570,7 +572,8 @@ const countLinkedReservations = (input: {
       );
       return id &&
         input.linkedReservationIds.has(id) &&
-        isReservationInRange(reservation, input.range)
+        isReservationInRange(reservation, input.range) &&
+        (!input.status || reservation.status === input.status)
         ? [id]
         : [];
     })
@@ -2589,7 +2592,11 @@ export class AdministrationService extends Context.Service<
               })
             );
           if (reservations.kind === "unavailable") {
-            const unavailable = { unavailable: true, value: 0 } as const;
+            const unavailable = {
+              completed: 0,
+              unavailable: true,
+              value: 0,
+            } as const;
             return {
               ranges,
               today: unavailable,
@@ -2598,6 +2605,12 @@ export class AdministrationService extends Context.Service<
             };
           }
           const getMetric = (range: AdministrationReservationDateRange) => ({
+            completed: countLinkedReservations({
+              linkedReservationIds,
+              range,
+              reservations: reservations.items,
+              status: "CONFIRMED",
+            }),
             unavailable: false,
             value: countLinkedReservations({
               linkedReservationIds,

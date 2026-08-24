@@ -85,8 +85,26 @@ function OverviewMetric({
           {label}
         </Link>
       </dt>
-      <dd className="mt-4 text-4xl leading-none tracking-[-0.03em]">
-        {metric.unavailable ? "—" : metric.value}
+      <dd className="mt-4 flex items-baseline gap-2 text-4xl leading-none tracking-[-0.03em]">
+        {metric.unavailable ? (
+          <>
+            <span className="sr-only">Reservation count unavailable</span>
+            <span aria-hidden="true">—</span>
+          </>
+        ) : (
+          <>
+            <span className="sr-only">
+              {metric.completed} completed out of {metric.value} total
+              reservations
+            </span>
+            <span aria-hidden="true" className="text-aquamarine-ink">
+              {metric.completed}
+            </span>
+            <span aria-hidden="true" className="text-lg text-navy-blue/58">
+              / {metric.value}
+            </span>
+          </>
+        )}
       </dd>
       <dd className="mt-3 text-xs leading-5 text-navy-blue/58">
         {metric.unavailable ? "Live booking dates unavailable" : note}
