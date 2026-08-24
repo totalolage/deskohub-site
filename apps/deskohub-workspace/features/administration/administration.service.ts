@@ -2566,11 +2566,25 @@ export class AdministrationService extends Context.Service<
           const currentDate = getCurrentWorkspaceDate();
           const ranges = getAdministrationOverviewDateRanges(currentDate);
           const linkedRows = yield* db
-            .select({ id: workspaceReservations.dotyposReservationId })
+            .select({
+              id: workspaceReservations.dotyposReservationId,
+              failureCode: workspaceReservations.failureCode,
+              fulfillmentState: workspaceReservations.fulfillmentState,
+              paymentState: workspaceReservations.paymentState,
+              reservationState: workspaceReservations.reservationState,
+            })
             .from(workspaceReservations)
             .where(isNotNull(workspaceReservations.dotyposReservationId));
           const linkedReservationIds = new Set(
             linkedRows.flatMap(({ id }) => (id ? [id] : []))
+          );
+          const completedReservationIds = new Set(
+            linkedRows.flatMap((row) =>
+              row.id &&
+              getAdministrationReservationStatus(row).group === "complete"
+                ? [row.id]
+                : []
+            )
           );
           const overviewRange = {
             from: ranges.lastSevenDays.from,
@@ -2606,7 +2620,7 @@ export class AdministrationService extends Context.Service<
           }
           const getMetric = (range: AdministrationReservationDateRange) => ({
             completed: countLinkedReservations({
-              linkedReservationIds,
+              linkedReservationIds: completedReservationIds,
               range,
               reservations: reservations.items,
               status: "CONFIRMED",

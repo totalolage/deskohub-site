@@ -576,6 +576,7 @@ describe("AdministrationService", () => {
       "upcoming",
       "cancelled-today",
       "new-today",
+      "failed-today",
     ];
     const listInputs: unknown[] = [];
     const providerReservation = (id: string, date: Temporal.PlainDate) => ({
@@ -605,7 +606,18 @@ describe("AdministrationService", () => {
                 WorkspaceDatabase,
                 WorkspaceDatabase.of({
                   db: {
-                    select: () => makeQuery(linkedIds.map((id) => ({ id }))),
+                    select: () =>
+                      makeQuery(
+                        linkedIds.map((id) => ({
+                          id,
+                          failureCode:
+                            id === "failed-today" ? "access_failed" : null,
+                          fulfillmentState:
+                            id === "failed-today" ? "failed" : "fulfilled",
+                          paymentState: "paid",
+                          reservationState: "confirmed",
+                        }))
+                      ),
                   } as never,
                 })
               ),
@@ -627,6 +639,7 @@ describe("AdministrationService", () => {
                         ...providerReservation("new-today", currentDate),
                         status: "NEW" as const,
                       },
+                      providerReservation("failed-today", currentDate),
                       providerReservation(
                         "upcoming",
                         currentDate.add({ days: 1 })
@@ -654,7 +667,7 @@ describe("AdministrationService", () => {
     expect(result.today).toEqual({
       completed: 1,
       unavailable: false,
-      value: 3,
+      value: 4,
     });
     expect(result.upcoming).toEqual({
       completed: 1,
@@ -664,7 +677,7 @@ describe("AdministrationService", () => {
     expect(result.lastSevenDays).toEqual({
       completed: 2,
       unavailable: false,
-      value: 4,
+      value: 5,
     });
   });
 
