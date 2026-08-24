@@ -2429,7 +2429,8 @@ const reportCancellation = (json: boolean) =>
 const formatOverviewMetric = (
   label: string,
   metric: AdministrationOverviewMetricType
-) => `${label}: ${metric.unavailable ? "unavailable" : metric.value}`;
+) =>
+  `${label}: ${metric.unavailable ? "unavailable" : `${metric.completed} / ${metric.value}`}`;
 
 const formatReservationRow = (
   reservation: AdministrationReservationSummaryType

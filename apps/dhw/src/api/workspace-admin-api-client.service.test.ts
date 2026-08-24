@@ -466,9 +466,9 @@ describe("WorkspaceAdminApiClient", () => {
             `Bearer ${accessToken}`
           );
           return Response.json({
-            today: { unavailable: false, value: 3 },
-            upcoming: { unavailable: false, value: 8 },
-            lastSevenDays: { unavailable: false, value: 5 },
+            today: { completed: 2, unavailable: false, value: 3 },
+            upcoming: { completed: 7, unavailable: false, value: 8 },
+            lastSevenDays: { completed: 4, unavailable: false, value: 5 },
           });
         }
         if (url.pathname === "/api/v1/cli/reservations") {
