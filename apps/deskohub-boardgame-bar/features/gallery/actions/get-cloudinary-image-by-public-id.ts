@@ -16,7 +16,7 @@ export async function getCloudinaryImageByPublicId(
 
   const imageLookup = Effect.provide(
     Effect.gen(function* () {
-      const decodedPublicId = yield* Schema.decodeUnknownEffect(
+      const decodedPublicId = yield* Schema.decodeEffect(
         CloudinaryPublicIdSchema
       )(publicId);
 

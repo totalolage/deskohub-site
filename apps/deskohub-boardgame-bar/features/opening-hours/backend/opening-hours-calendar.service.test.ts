@@ -25,13 +25,13 @@ const defaultQuery = {
 
 const plainDate = Temporal.PlainDate.from;
 const plainTime = Temporal.PlainTime.from;
-const eventId = Schema.decodeUnknownSync(GoogleCalendarEventIdSchema);
-const openingHoursCalendarId = Schema.decodeUnknownSync(GoogleCalendarIdSchema)(
+const eventId = Schema.decodeSync(GoogleCalendarEventIdSchema);
+const openingHoursCalendarId = Schema.decodeSync(GoogleCalendarIdSchema)(
   "opening-hours-calendar"
 );
-const openingHoursChannelId = Schema.decodeUnknownSync(
-  GoogleCalendarChannelIdSchema
-)("channel-id");
+const openingHoursChannelId = Schema.decodeSync(GoogleCalendarChannelIdSchema)(
+  "channel-id"
+);
 
 const runWithEvents = async (
   events: readonly GoogleCalendarEvent[],

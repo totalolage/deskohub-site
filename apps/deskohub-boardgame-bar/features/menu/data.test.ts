@@ -13,7 +13,7 @@ import { siteConstants } from "@/shared/utils/constants";
 setBoardgameTestEnv();
 
 const category = (overrides: Partial<Category>): DotyposCategory =>
-  Schema.decodeUnknownSync(DotyposCategorySchema)({
+  Schema.decodeSync(DotyposCategorySchema)({
     id: "category-id",
     name: "Category",
     display: true,
@@ -22,7 +22,7 @@ const category = (overrides: Partial<Category>): DotyposCategory =>
   });
 
 const product = (overrides: Partial<Product>): DotyposProduct =>
-  Schema.decodeUnknownSync(DotyposProductSchema)({
+  Schema.decodeSync(DotyposProductSchema)({
     id: "product-id",
     _categoryId: "category-id",
     name: "Product",

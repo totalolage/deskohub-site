@@ -44,9 +44,9 @@ export async function GET(request: Request): Promise<Response> {
 
   const maintainOpeningHours = Effect.gen(function* () {
     const openingHoursCalendar = yield* OpeningHoursCalendarService;
-    const channelId = yield* Schema.decodeUnknownEffect(
-      GoogleCalendarChannelIdSchema
-    )(randomUUID());
+    const channelId = yield* Schema.decodeEffect(GoogleCalendarChannelIdSchema)(
+      randomUUID()
+    );
 
     const watchExit = yield* Effect.exit(
       openingHoursCalendar.watchChanges({
