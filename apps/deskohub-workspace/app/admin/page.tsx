@@ -8,12 +8,16 @@ import {
   CustomerActivity,
   ReservationActivity,
 } from "@/features/administration/overview-activity";
-import { loadAdministrationOverview } from "@/features/administration/page-data.server";
+import {
+  loadAdministrationOverview,
+  loadAdministrationReservationOverview,
+} from "@/features/administration/page-data.server";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 
 export default function AdminPage() {
-  const overview = loadAdministrationOverview();
+  const customerOverview = loadAdministrationOverview();
+  const reservationOverview = loadAdministrationReservationOverview();
 
   return (
     <AdministrationPage>
@@ -24,7 +28,7 @@ export default function AdminPage() {
           </h1>
         </div>
         <Suspense fallback={<AdministrationMetricsLoading />}>
-          <ReservationActivity overview={overview} />
+          <ReservationActivity overview={reservationOverview} />
         </Suspense>
       </section>
 
@@ -35,7 +39,7 @@ export default function AdminPage() {
           </h2>
         </div>
         <Suspense fallback={<AdministrationCustomerMetricsLoading />}>
-          <CustomerActivity overview={overview} />
+          <CustomerActivity overview={customerOverview} />
         </Suspense>
       </section>
 

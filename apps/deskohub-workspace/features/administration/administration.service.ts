@@ -381,6 +381,38 @@ export type AdministrationCustomerOverviewMetric = {
   readonly value: number;
 };
 
+export type AdministrationReservationOverview = {
+  readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
+  readonly today: AdministrationOverviewMetric;
+  readonly upcoming: AdministrationOverviewMetric;
+  readonly lastSevenDays: AdministrationOverviewMetric;
+};
+
+export type AdministrationOverview = AdministrationReservationOverview & {
+  readonly uniqueCustomers: AdministrationCustomerOverviewMetric;
+  readonly newCustomers: AdministrationCustomerOverviewMetric;
+};
+
+type AdministrationOverviewRow = Pick<
+  WorkspaceReservation,
+  "failureCode" | "fulfillmentState" | "paymentState" | "reservationState"
+> & {
+  readonly id: DotyposReservationId | null;
+  readonly customerId: DotyposCustomerId;
+};
+
+type AdministrationOverviewSource = {
+  readonly currentDate: Temporal.PlainDate;
+  readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
+  readonly reservations:
+    | {
+        readonly kind: "available";
+        readonly items: readonly DotyposReservation[];
+      }
+    | { readonly kind: "unavailable" };
+  readonly rows: readonly AdministrationOverviewRow[];
+};
+
 type SafeReservationRow = Pick<
   WorkspaceReservation,
   | "id"
@@ -1186,15 +1218,9 @@ const getOrderTimeline = (
 export class AdministrationService extends Context.Service<
   AdministrationService,
   {
-    readonly loadOverview: () => Effect.Effect<
-      {
-        readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
-        readonly today: AdministrationOverviewMetric;
-        readonly upcoming: AdministrationOverviewMetric;
-        readonly lastSevenDays: AdministrationOverviewMetric;
-        readonly uniqueCustomers: AdministrationCustomerOverviewMetric;
-        readonly newCustomers: AdministrationCustomerOverviewMetric;
-      },
+    readonly loadOverview: () => Effect.Effect<AdministrationOverview, unknown>;
+    readonly loadReservationOverview: () => Effect.Effect<
+      AdministrationReservationOverview,
       unknown
     >;
     readonly listReservations: (
@@ -2605,50 +2631,61 @@ export class AdministrationService extends Context.Service<
         } satisfies AdministrationCustomerActivity;
       });
 
+      const loadOverviewSource = Effect.fn(
+        "AdministrationService.loadOverviewSource"
+      )(function* () {
+        const currentDate = getCurrentWorkspaceDate();
+        const ranges = getAdministrationOverviewDateRanges(currentDate);
+        const overviewRange = {
+          from: ranges.lastSevenDays.from,
+          to: ranges.upcoming.to,
+        };
+        const [rows, reservations] = yield* Effect.all(
+          [
+            db
+              .select({
+                id: workspaceReservations.dotyposReservationId,
+                customerId: workspaceReservations.dotyposCustomerId,
+                failureCode: workspaceReservations.failureCode,
+                fulfillmentState: workspaceReservations.fulfillmentState,
+                paymentState: workspaceReservations.paymentState,
+                reservationState: workspaceReservations.reservationState,
+              })
+              .from(workspaceReservations),
+            dotypos
+              .listReservations({
+                ...getInclusiveDateRangeBounds(overviewRange),
+                order: "startDateAscending",
+              })
+              .pipe(
+                Effect.map((items) => ({
+                  kind: "available" as const,
+                  items,
+                })),
+                Effect.catch((cause) => {
+                  unstable_rethrow(cause);
+                  return Effect.logWarning("Reservation overview unavailable", {
+                    cause,
+                    ...overviewRange,
+                  }).pipe(Effect.as({ kind: "unavailable" as const }));
+                })
+              ),
+          ],
+          { concurrency: "inherit" }
+        );
+        return { currentDate, ranges, reservations, rows };
+      });
+
+      const loadReservationOverview = Effect.fn(
+        "AdministrationService.loadReservationOverview"
+      )(function* () {
+        return getReservationOverview(yield* loadOverviewSource());
+      });
+
       const loadOverview = Effect.fn("AdministrationService.loadOverview")(
         function* () {
-          const currentDate = getCurrentWorkspaceDate();
-          const ranges = getAdministrationOverviewDateRanges(currentDate);
-          const overviewRange = {
-            from: ranges.lastSevenDays.from,
-            to: ranges.upcoming.to,
-          };
-          const [rows, reservations] = yield* Effect.all(
-            [
-              db
-                .select({
-                  id: workspaceReservations.dotyposReservationId,
-                  customerId: workspaceReservations.dotyposCustomerId,
-                  failureCode: workspaceReservations.failureCode,
-                  fulfillmentState: workspaceReservations.fulfillmentState,
-                  paymentState: workspaceReservations.paymentState,
-                  reservationState: workspaceReservations.reservationState,
-                })
-                .from(workspaceReservations),
-              dotypos
-                .listReservations({
-                  ...getInclusiveDateRangeBounds(overviewRange),
-                  order: "startDateAscending",
-                })
-                .pipe(
-                  Effect.map((items) => ({
-                    kind: "available" as const,
-                    items,
-                  })),
-                  Effect.catch((cause) => {
-                    unstable_rethrow(cause);
-                    return Effect.logWarning(
-                      "Reservation overview unavailable",
-                      {
-                        cause,
-                        ...overviewRange,
-                      }
-                    ).pipe(Effect.as({ kind: "unavailable" as const }));
-                  })
-                ),
-            ],
-            { concurrency: "inherit" }
-          );
+          const { currentDate, ranges, reservations, rows } =
+            yield* loadOverviewSource();
           const linkedReservationIds = new Set(
             rows.flatMap(({ id }) => (id ? [id] : []))
           );
@@ -2733,14 +2770,6 @@ export class AdministrationService extends Context.Service<
                 ),
               ]
             : [];
-          const completedReservationIds = new Set(
-            rows.flatMap((row) =>
-              row.id &&
-              getAdministrationReservationStatus(row).group === "complete"
-                ? [row.id]
-                : []
-            )
-          );
           const customerActivityBounds = getDateRangeBounds(
             ranges.lastSevenDays.from,
             currentDate.add({ days: 1 }).toString()
@@ -2793,43 +2822,8 @@ export class AdministrationService extends Context.Service<
               reservations.kind === "available" ? uniqueCustomerIds.length : 0,
           });
           const newCustomers = toCustomerMetric(newCustomerIds);
-          if (reservations.kind === "unavailable") {
-            const unavailable = {
-              completed: 0,
-              unavailable: true,
-              value: 0,
-            } as const;
-            return {
-              ranges,
-              today: unavailable,
-              upcoming: unavailable,
-              lastSevenDays: unavailable,
-              uniqueCustomers,
-              newCustomers,
-            };
-          }
-          const getMetric = (range: AdministrationReservationDateRange) => ({
-            completed: countLinkedReservations({
-              linkedReservationIds: completedReservationIds,
-              range,
-              reservations: reservations.items,
-              status: "CONFIRMED",
-            }),
-            unavailable: false,
-            value: countLinkedReservations({
-              linkedReservationIds,
-              range,
-              reservations: reservations.items,
-            }),
-          });
-          const today = getMetric(ranges.today);
-          const upcoming = getMetric(ranges.upcoming);
-          const lastSevenDays = getMetric(ranges.lastSevenDays);
           return {
-            ranges,
-            today,
-            upcoming,
-            lastSevenDays,
+            ...getReservationOverview({ ranges, reservations, rows }),
             uniqueCustomers,
             newCustomers,
           };
@@ -2838,6 +2832,7 @@ export class AdministrationService extends Context.Service<
 
       return {
         loadOverview,
+        loadReservationOverview,
         listReservations,
         loadReservation,
         loadReservationBreadcrumbLabel,
@@ -2866,6 +2861,57 @@ export class AdministrationService extends Context.Service<
       )
     )
   );
+}
+
+function getReservationOverview({
+  ranges,
+  reservations,
+  rows,
+}: Pick<AdministrationOverviewSource, "ranges" | "reservations" | "rows">) {
+  if (reservations.kind === "unavailable") {
+    const unavailable = {
+      completed: 0,
+      unavailable: true,
+      value: 0,
+    } as const;
+    return {
+      ranges,
+      today: unavailable,
+      upcoming: unavailable,
+      lastSevenDays: unavailable,
+    } satisfies AdministrationReservationOverview;
+  }
+
+  const linkedReservationIds = new Set(
+    rows.flatMap(({ id }) => (id ? [id] : []))
+  );
+  const completedReservationIds = new Set(
+    rows.flatMap((row) =>
+      row.id && getAdministrationReservationStatus(row).group === "complete"
+        ? [row.id]
+        : []
+    )
+  );
+  const getMetric = (range: AdministrationReservationDateRange) => ({
+    completed: countLinkedReservations({
+      linkedReservationIds: completedReservationIds,
+      range,
+      reservations: reservations.items,
+      status: "CONFIRMED",
+    }),
+    unavailable: false,
+    value: countLinkedReservations({
+      linkedReservationIds,
+      range,
+      reservations: reservations.items,
+    }),
+  });
+  return {
+    ranges,
+    today: getMetric(ranges.today),
+    upcoming: getMetric(ranges.upcoming),
+    lastSevenDays: getMetric(ranges.lastSevenDays),
+  } satisfies AdministrationReservationOverview;
 }
 
 function getUniqueCustomerIds(input: {

@@ -1,13 +1,19 @@
 import { AdministrationLink as Link } from "./admin-link";
 import type { AdministrationOverviewMetric } from "./administration.service";
-import type { loadAdministrationOverview } from "./page-data.server";
+import type {
+  loadAdministrationOverview,
+  loadAdministrationReservationOverview,
+} from "./page-data.server";
 
 type OverviewData = Awaited<ReturnType<typeof loadAdministrationOverview>>;
+type ReservationOverviewData = Awaited<
+  ReturnType<typeof loadAdministrationReservationOverview>
+>;
 
 export async function ReservationActivity({
   overview,
 }: {
-  readonly overview: Promise<OverviewData>;
+  readonly overview: Promise<ReservationOverviewData>;
 }) {
   const data = await overview;
   const { ranges } = data;

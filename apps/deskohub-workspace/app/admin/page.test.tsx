@@ -52,9 +52,18 @@ const makeOverview = () => ({
 });
 
 let overview = makeOverview();
+let customerOverviewLoads = 0;
+let reservationOverviewLoads = 0;
 
 mock.module("@/features/administration/page-data.server", () => ({
-  loadAdministrationOverview: () => Promise.resolve(overview),
+  loadAdministrationOverview: () => {
+    customerOverviewLoads += 1;
+    return Promise.resolve(overview);
+  },
+  loadAdministrationReservationOverview: () => {
+    reservationOverviewLoads += 1;
+    return Promise.resolve(overview);
+  },
 }));
 
 mock.module("@/features/administration/reservation-lookup", () => ({
@@ -76,8 +85,19 @@ describe("AdminPage", () => {
     cleanup();
     Temporal.Now.instant = originalNow;
     overview = makeOverview();
+    customerOverviewLoads = 0;
+    reservationOverviewLoads = 0;
   });
   afterAll(() => unregisterWorkspaceComponentTestEnv());
+
+  test("starts reservation and customer activity independently", async () => {
+    const { default: AdminPage } = await import("./page");
+
+    AdminPage();
+
+    expect(reservationOverviewLoads).toBe(1);
+    expect(customerOverviewLoads).toBe(1);
+  });
 
   test("links reservation activity to its inclusive start-date range", async () => {
     const { ReservationActivity } = await import(
