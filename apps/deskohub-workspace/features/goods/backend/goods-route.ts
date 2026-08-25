@@ -17,7 +17,8 @@ export const resolveGoodsCustomerId = Effect.fn("goodsRoute.resolveCustomerId")(
 
 export const decodeGoodsRequest = <A>(
   request: Request,
-  schema: Schema.Decoder<A>
+  schema: Schema.Decoder<A>,
+  publicMessage = "Goods request is invalid."
 ) =>
   Effect.tryPromise({
     try: () => request.json(),
@@ -39,7 +40,7 @@ export const decodeGoodsRequest = <A>(
         ? cause
         : new WorkspaceRouteFailure({
             statusCode: 400,
-            publicMessage: "Cart request is invalid.",
+            publicMessage,
             cause,
           })
     )

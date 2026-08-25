@@ -204,6 +204,9 @@ export const calculateGoodsBasketDiscounts = Effect.fn(
       return {
         quote: {
           lines: quotes,
+          discountIds: applications.map(
+            ({ candidate }) => candidate.discount.id
+          ),
           discountableSubtotal,
           totalDiscount: workspaceMoneyWithValue(
             discountableValue - discountedValue,
