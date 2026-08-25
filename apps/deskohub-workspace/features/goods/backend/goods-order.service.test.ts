@@ -8,8 +8,13 @@ import {
 } from "../goods-order";
 import { GoodsOrderRepository } from "./goods-order.repository";
 import { GoodsOrderService } from "./goods-order.service";
+import { getGoodsOrderIssuanceFingerprint } from "./goods-order-issuance-fingerprint";
 
 const customerId = DotyposCustomerIdSchema.make("customer-1");
+const request = {
+  quoteToken: "sealed-token",
+  acknowledged: true as const,
+};
 const facts = Schema.decodeUnknownSync(goodsOrderIssuanceFactsSchema)({
   issuanceId: "018f1e36-7a31-7c07-90f4-8f2531cd1212",
   expectedCart: {
@@ -75,7 +80,7 @@ describe("GoodsOrderService", () => {
         Temporal.Instant.from("2026-08-16T20:00:00.000Z").epochMilliseconds
       );
       const orders = yield* GoodsOrderService;
-      return yield* orders.issue({ ...facts, customerId });
+      return yield* orders.issue({ ...facts, customerId, request });
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
     expect(result).toEqual(detail);
@@ -83,6 +88,7 @@ describe("GoodsOrderService", () => {
       {
         ...facts,
         customerId: "customer-1",
+        issuanceFingerprint: getGoodsOrderIssuanceFingerprint(request),
         issuedAt: Temporal.Instant.from("2026-08-16T20:00:00.000Z"),
       },
     ]);
