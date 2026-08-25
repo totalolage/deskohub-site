@@ -217,11 +217,21 @@ describe("goods basket discount calculator", () => {
     ]);
     const payload = getGoodsBasketDiscountCommitmentPayload(
       makeGoodsBasketDiscountCommitment({
+        quote: calculation.quote,
         applications: calculation.applications,
       })
     );
 
     expect(payload.applications).toHaveLength(1);
+    expect(payload.lines).toEqual(
+      calculation.quote.lines.map((line) => ({
+        product: line.product,
+        undiscountedSubtotal: line.discountableSubtotal,
+        payableSubtotal: line.discountedSubtotal,
+      }))
+    );
+    expect(payload.undiscountedTotal).toEqual(money(600));
+    expect(payload.payableTotal).toEqual(money(480));
     expect(payload.applications[0]?.claim?.kind).toBe("voucher");
     expect(
       payload.applications[0]?.lineApplications.map(({ product }) => product)

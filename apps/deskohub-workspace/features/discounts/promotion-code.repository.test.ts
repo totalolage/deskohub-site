@@ -59,7 +59,7 @@ describe("promotion availability queries", () => {
     }).toSQL();
 
     expect(sql).toContain(
-      'sum("discount_applications"."applied_amount_value")'
+      'sum(coalesce("voucher_redemptions"."applied_amount_value", "discount_applications"."applied_amount_value"))'
     );
     expect(sql).toContain('"voucher_redemptions"."state" in ($3, $4)');
     expect(sql).not.toContain("released");

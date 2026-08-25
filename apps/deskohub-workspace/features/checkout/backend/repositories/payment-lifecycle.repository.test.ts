@@ -191,7 +191,8 @@ describe("PaymentLifecycleRepository", () => {
     expect(reserveClaim).not.toContain('"already_redeemed"');
     expect(reserveClaim).toContain("validateVoucherClaim");
     expect(reserveClaim).toContain("coalesce(sum(");
-    expect(reserveClaim).toContain("discountApplications.appliedAmountValue");
+    expect(reserveClaim).toContain("voucherRedemptionAppliedAmountValue");
+    expect(reserveClaim).toContain(".leftJoin(");
     expect(reserveClaim.indexOf("validateVoucherClaim")).toBeLessThan(
       reserveClaim.indexOf(".insert(discountCodeRedemptions)")
     );

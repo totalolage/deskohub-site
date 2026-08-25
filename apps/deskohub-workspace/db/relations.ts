@@ -169,7 +169,6 @@ export const relations = defineRelations(schema, (r) => ({
     application: r.one.discountApplications({
       from: r.voucherRedemptions.applicationId,
       to: r.discountApplications.id,
-      optional: false,
     }),
     paymentAttempt: r.one.paymentAttempts({
       from: r.voucherRedemptions.paymentAttemptId,
@@ -189,7 +188,6 @@ export const relations = defineRelations(schema, (r) => ({
     application: r.one.discountApplications({
       from: r.discountCodeRedemptions.applicationId,
       to: r.discountApplications.id,
-      optional: false,
     }),
     paymentAttempt: r.one.paymentAttempts({
       from: r.discountCodeRedemptions.paymentAttemptId,

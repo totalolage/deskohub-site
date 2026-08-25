@@ -49,6 +49,7 @@ import {
   type StoredDiscount,
   type Voucher,
   type VoucherRedemption,
+  voucherRedemptionAppliedAmountValue,
   voucherRedemptions,
   vouchers,
 } from "@/db/schema";
@@ -1059,10 +1060,10 @@ export class DiscountAdministration extends Context.Service<
               const [usage] = yield* tx
                 .select({
                   claimCount: sql<number>`count(*)::integer`,
-                  value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}) filter (where ${voucherRedemptions.state} in ('reserved', 'redeemed')), 0)::integer`,
+                  value: sql<number>`coalesce(sum(${voucherRedemptionAppliedAmountValue}) filter (where ${voucherRedemptions.state} in ('reserved', 'redeemed')), 0)::integer`,
                 })
                 .from(voucherRedemptions)
-                .innerJoin(
+                .leftJoin(
                   discountApplications,
                   eq(discountApplications.id, voucherRedemptions.applicationId)
                 )
@@ -1747,7 +1748,7 @@ type AdminDiscountCodeRow = DiscountCode & {
       readonly appliedAmountValue: number;
       readonly appliedAmountExponent: number;
       readonly appliedAmountCurrency: string;
-    };
+    } | null;
   })[];
 };
 
@@ -1783,7 +1784,7 @@ type AdminVoucherRow = Voucher & {
       readonly appliedAmountValue: number;
       readonly appliedAmountExponent: number;
       readonly appliedAmountCurrency: string;
-    };
+    } | null;
   })[];
 };
 
@@ -1795,7 +1796,14 @@ const toAdminVoucher = (row: AdminVoucherRow): AdminVoucher => {
   };
   const usedValue = row.redemptions
     .filter(({ state }) => state === "reserved" || state === "redeemed")
-    .reduce((total, claim) => total + claim.application.appliedAmountValue, 0);
+    .reduce(
+      (total, claim) =>
+        total +
+        (claim.appliedAmountValue ??
+          claim.application?.appliedAmountValue ??
+          0),
+      0
+    );
   const usage = getAdminDiscountCodeUsage({
     maxUses: null,
     states: row.redemptions.map(({ state }) => state),
@@ -1912,13 +1920,13 @@ const toAdminDiscountCodeClaim = (
       readonly appliedAmountValue: number;
       readonly appliedAmountExponent: number;
       readonly appliedAmountCurrency: string;
-    };
+    } | null;
   }
 ): readonly AdminDiscountCodeClaim[] => {
   if (
     !row.paymentAttemptId ||
     !row.reservationExpiresAt ||
-    !row.application.workspaceReservationId
+    !row.application?.workspaceReservationId
   ) {
     return [];
   }
@@ -1952,13 +1960,13 @@ const toAdminVoucherClaim = (
       readonly appliedAmountValue: number;
       readonly appliedAmountExponent: number;
       readonly appliedAmountCurrency: string;
-    };
+    } | null;
   }
 ): readonly AdminVoucherClaim[] => {
   if (
     !row.paymentAttemptId ||
     !row.reservationExpiresAt ||
-    !row.application.workspaceReservationId
+    !row.application?.workspaceReservationId
   ) {
     return [];
   }

@@ -138,9 +138,9 @@ export const discountCodeRedemptions = pgTable(
       .$type<DiscountCodeId>()
       .references(() => discountCodes.id),
     applicationId: text("application_id")
-      .notNull()
       .$type<DiscountApplicationId>()
       .references(() => discountApplications.id),
+    appliedAmountValue: integer("applied_amount_value"),
     paymentAttemptId: text("payment_attempt_id")
       .$type<PaymentAttemptId>()
       .references(() => paymentAttempts.id),
@@ -199,6 +199,19 @@ export const discountCodeRedemptions = pgTable(
       )`
     ),
     check(
+      "discount_code_redemptions_application_check",
+      sql`${t.applicationId} is not null or (
+        ${t.orderId} is not null
+        and ${t.paymentAttemptId} is null
+        and ${t.appliedAmountValue} is not null
+        and ${t.appliedAmountValue} > 0
+      )`
+    ),
+    check(
+      "discount_code_redemptions_applied_amount_check",
+      sql`${t.appliedAmountValue} is null or ${t.appliedAmountValue} > 0`
+    ),
+    check(
       "discount_code_redemptions_lifecycle_check",
       sql`(
         ${t.state} = 'reserved'
@@ -231,9 +244,9 @@ export const voucherRedemptions = pgTable(
       .$type<VoucherId>()
       .references(() => vouchers.id),
     applicationId: text("application_id")
-      .notNull()
       .$type<DiscountApplicationId>()
       .references(() => discountApplications.id),
+    appliedAmountValue: integer("applied_amount_value"),
     paymentAttemptId: text("payment_attempt_id")
       .$type<PaymentAttemptId>()
       .references(() => paymentAttempts.id),
@@ -295,6 +308,19 @@ export const voucherRedemptions = pgTable(
       )`
     ),
     check(
+      "voucher_redemptions_application_check",
+      sql`${t.applicationId} is not null or (
+        ${t.orderId} is not null
+        and ${t.paymentAttemptId} is null
+        and ${t.appliedAmountValue} is not null
+        and ${t.appliedAmountValue} > 0
+      )`
+    ),
+    check(
+      "voucher_redemptions_applied_amount_check",
+      sql`${t.appliedAmountValue} is null or ${t.appliedAmountValue} > 0`
+    ),
+    check(
       "voucher_redemptions_lifecycle_check",
       sql`(
         ${t.state} = 'reserved'
@@ -326,3 +352,5 @@ export type NewDiscountCodeRedemption =
   typeof discountCodeRedemptions.$inferInsert;
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
 export type NewVoucherRedemption = typeof voucherRedemptions.$inferInsert;
+
+export const voucherRedemptionAppliedAmountValue = sql<number>`coalesce(${voucherRedemptions.appliedAmountValue}, ${discountApplications.appliedAmountValue})`;
