@@ -22,6 +22,9 @@ import {
   AdministrationNexiOperationQuery,
   AdministrationNexiOrderId,
   AdministrationNexiOrderQuery,
+  AdministrationOrderDetail,
+  AdministrationOrderId,
+  AdministrationOrderLineId,
   AdministrationPaymentAttempt,
   AdministrationPaymentAttemptId,
   AdministrationReservationAccessGrant,
@@ -160,6 +163,7 @@ describe("administration contract", () => {
         dotyposCustomerId: "customer-id",
         state: "redeemed",
         paymentAttemptId: "payment-attempt-id",
+        orderId: "reservation-id",
         workspaceReservationId: "reservation-id",
         reservationExpiresAt: "2026-08-10T11:00:00Z",
         reservedAt: "2026-08-10T10:00:00Z",
@@ -168,6 +172,26 @@ describe("administration contract", () => {
         releaseReason: null,
       }).appliedAmount
     ).toBeNull();
+
+    expect(
+      Schema.decodeUnknownSync(AdministrationDiscountCodeClaim)({
+        id: "goods-claim-id",
+        codeId: "01980000-0000-7000-8000-000000000001",
+        dotyposCustomerId: "customer-id",
+        state: "redeemed",
+        paymentAttemptId: null,
+        orderId: "goods-order-id",
+        workspaceReservationId: null,
+        reservationExpiresAt: null,
+        reservedAt: "2026-08-10T10:00:00Z",
+        redeemedAt: "2026-08-10T10:00:00Z",
+        releasedAt: null,
+        releaseReason: null,
+      })
+    ).toMatchObject({
+      orderId: "goods-order-id",
+      workspaceReservationId: null,
+    });
   });
 
   test("keeps discount codes and vouchers as separate read models", () => {
@@ -241,6 +265,8 @@ describe("administration contract", () => {
       AdministrationPaymentAttemptId,
       AdministrationNexiOrderId,
       AdministrationNexiOperationId,
+      AdministrationOrderId,
+      AdministrationOrderLineId,
       AdministrationDotyposCustomerId,
       AdministrationDotyposReservationId,
       AdministrationDotyposTableId,
@@ -268,6 +294,12 @@ describe("administration contract", () => {
       "GET"
     );
     expect(AdminCliAdministrationApi.endpoints.getBooking?.method).toBe("GET");
+    expect(AdminCliAdministrationApi.endpoints.listDomainOrders?.method).toBe(
+      "GET"
+    );
+    expect(AdminCliAdministrationApi.endpoints.getDomainOrder?.method).toBe(
+      "GET"
+    );
     expect(AdminCliAdministrationApi.endpoints.listNexiOrders?.method).toBe(
       "GET"
     );
@@ -370,6 +402,55 @@ describe("administration contract", () => {
     });
 
     expect(attempt).toMatchObject({ state: "paid", refundState: "required" });
+  });
+
+  test("keeps domain orders provider-agnostic and historical totals unavailable", () => {
+    const detail = Schema.decodeUnknownSync(AdministrationOrderDetail)({
+      order: {
+        id: "order-1",
+        kind: "reservation",
+        customerId: "customer-1",
+        paymentState: "paid",
+        fulfillmentState: "fulfilled",
+        total: null,
+        invoiceStatus: "not_issued",
+        reservationId: "order-1",
+        paidAt: "2026-08-16T12:00:00Z",
+        fulfilledAt: "2026-08-16T12:01:00Z",
+        fulfillmentFailedAt: null,
+        createdAt: "2026-08-16T11:55:00Z",
+        updatedAt: "2026-08-16T12:01:00Z",
+      },
+      lines: [],
+      paymentAttempts: [
+        {
+          id: "attempt-1",
+          provider: "nexi",
+          state: "paid",
+          refundState: "not_required",
+          amount: { value: 5000, exponent: 2, currency: "CZK" },
+          providerOrderCreatedAt: "2026-08-16T11:56:00Z",
+          createdAt: "2026-08-16T11:56:00Z",
+          updatedAt: "2026-08-16T12:00:00Z",
+        },
+      ],
+      invoice: { status: "not_issued", issuedAt: null },
+    });
+
+    expect(detail.order.total).toBeNull();
+    expect(detail.paymentAttempts[0]).not.toHaveProperty("providerOrderId");
+    expect(detail.order).not.toHaveProperty("correlationId");
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationOrderDetail)(
+        {
+          ...detail,
+          paymentAttempts: [
+            { ...detail.paymentAttempts[0], providerOrderId: "provider-1" },
+          ],
+        },
+        { onExcessProperty: "error" }
+      )
+    ).toThrow();
   });
 
   test("exposes access operations without exposing the PIN", () => {

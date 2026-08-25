@@ -56,6 +56,7 @@ import {
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import { type OrderId, orderIdSchema } from "@/features/order";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
@@ -151,10 +152,11 @@ export type AdminDiscountCodeClaim = {
   readonly codeId: DiscountCodeId;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly state: DiscountCodeClaimState;
-  readonly paymentAttemptId: PaymentAttemptId;
-  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly paymentAttemptId: PaymentAttemptId | null;
+  readonly orderId: OrderId;
+  readonly workspaceReservationId: WorkspaceReservationId | null;
   readonly appliedAmount: WorkspaceMoney;
-  readonly reservationExpiresAt: Temporal.Instant;
+  readonly reservationExpiresAt: Temporal.Instant | null;
   readonly reservedAt: Temporal.Instant;
   readonly redeemedAt: Temporal.Instant | null;
   readonly releasedAt: Temporal.Instant | null;
@@ -1913,9 +1915,10 @@ const toAdminDiscountGroup = (
   ];
 };
 
-const toAdminDiscountCodeClaim = (
+export const toAdminDiscountCodeClaim = (
   row: DiscountCodeRedemption & {
     readonly application: {
+      readonly orderId: OrderId | null;
       readonly workspaceReservationId: WorkspaceReservationId | null;
       readonly appliedAmountValue: number;
       readonly appliedAmountExponent: number;
@@ -1923,13 +1926,10 @@ const toAdminDiscountCodeClaim = (
     } | null;
   }
 ): readonly AdminDiscountCodeClaim[] => {
-  if (
-    !row.paymentAttemptId ||
-    !row.reservationExpiresAt ||
-    !row.application?.workspaceReservationId
-  ) {
-    return [];
-  }
+  if (!row.application) return [];
+  const orderId =
+    row.application.orderId ?? row.application.workspaceReservationId;
+  if (!orderId) return [];
 
   return [
     {
@@ -1938,6 +1938,7 @@ const toAdminDiscountCodeClaim = (
       dotyposCustomerId: row.dotyposCustomerId,
       state: row.state,
       paymentAttemptId: row.paymentAttemptId,
+      orderId: orderIdSchema.make(orderId),
       workspaceReservationId: row.application.workspaceReservationId,
       appliedAmount: {
         value: row.application.appliedAmountValue,
@@ -1953,9 +1954,10 @@ const toAdminDiscountCodeClaim = (
   ];
 };
 
-const toAdminVoucherClaim = (
+export const toAdminVoucherClaim = (
   row: VoucherRedemption & {
     readonly application: {
+      readonly orderId: OrderId | null;
       readonly workspaceReservationId: WorkspaceReservationId | null;
       readonly appliedAmountValue: number;
       readonly appliedAmountExponent: number;
@@ -1963,13 +1965,10 @@ const toAdminVoucherClaim = (
     } | null;
   }
 ): readonly AdminVoucherClaim[] => {
-  if (
-    !row.paymentAttemptId ||
-    !row.reservationExpiresAt ||
-    !row.application?.workspaceReservationId
-  ) {
-    return [];
-  }
+  if (!row.application) return [];
+  const orderId =
+    row.application.orderId ?? row.application.workspaceReservationId;
+  if (!orderId) return [];
 
   return [
     {
@@ -1978,6 +1977,7 @@ const toAdminVoucherClaim = (
       dotyposCustomerId: row.dotyposCustomerId,
       state: row.state,
       paymentAttemptId: row.paymentAttemptId,
+      orderId: orderIdSchema.make(orderId),
       workspaceReservationId: row.application.workspaceReservationId,
       appliedAmount: {
         value: row.application.appliedAmountValue,

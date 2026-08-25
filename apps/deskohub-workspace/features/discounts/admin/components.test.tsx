@@ -589,6 +589,7 @@ describe("discount administration pages", () => {
               dotyposCustomerId: "dotypos-customer",
               state: "redeemed",
               paymentAttemptId: "payment-id",
+              orderId: "reservation-id",
               workspaceReservationId: "reservation-id",
               appliedAmount: { value: 3500, exponent: 2, currency: "CZK" },
               reservationExpiresAt: Temporal.Instant.from(
@@ -615,6 +616,46 @@ describe("discount administration pages", () => {
     ).toBeDefined();
     expect(view.queryByRole("button", { name: /release/i })).toBeNull();
     expect(view.queryByRole("button", { name: /redeem/i })).toBeNull();
+    expect(
+      view.getByRole("link", { name: "Open reservation" }).getAttribute("href")
+    ).toBe("/admin/reservations/reservation-id");
+  });
+
+  test("links issued goods claims to their domain order", async () => {
+    const { CodeAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const code = dashboard.codes[0];
+    const view = render(
+      <CodeAdministrationDetailPage
+        detail={{
+          code,
+          discountLabel: "Summer discount",
+          customers: [],
+          claims: [
+            {
+              id: "claim-id",
+              codeId: code.id,
+              dotyposCustomerId: "dotypos-customer",
+              state: "redeemed",
+              paymentAttemptId: null,
+              orderId: "goods-order-id",
+              workspaceReservationId: null,
+              appliedAmount: { value: 3500, exponent: 2, currency: "CZK" },
+              reservationExpiresAt: null,
+              reservedAt: Temporal.Instant.from("2026-08-01T08:00:00Z"),
+              redeemedAt: Temporal.Instant.from("2026-08-01T08:10:00Z"),
+              releasedAt: null,
+              releaseReason: null,
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(
+      view.getByRole("link", { name: "Open order" }).getAttribute("href")
+    ).toBe("/admin/orders/goods-order-id");
   });
 
   test("manages voucher configuration, deletion, audience, and history", async () => {
@@ -659,6 +700,7 @@ describe("discount administration pages", () => {
               dotyposCustomerId: "dotypos-customer",
               state: "redeemed",
               paymentAttemptId: "payment-id",
+              orderId: "reservation-id",
               workspaceReservationId: "reservation-id",
               appliedAmount: { value: 3500, exponent: 2, currency: "CZK" },
               reservationExpiresAt: Temporal.Instant.from(
