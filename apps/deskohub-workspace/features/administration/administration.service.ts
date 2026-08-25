@@ -20,6 +20,10 @@ import {
   NexiWebhookEventIdSchema,
 } from "@deskohub/nexi";
 import {
+  AdministrationInvoiceId,
+  type AdministrationInvoiceIdType,
+} from "@deskohub/workspace-admin-api";
+import {
   and,
   asc,
   count,
@@ -41,6 +45,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
   discountApplications,
+  invoices,
   type LatePaymentRecoveryState,
   latePaymentRecoveries,
   legalEvidenceEvents,
@@ -178,6 +183,7 @@ export type AdministrationReservationSummary = {
   readonly date: string | null;
   readonly type: "cowork" | "meeting-room" | "office";
   readonly typeLabel: string;
+  readonly purpose: WorkspaceReservation["reservationPurpose"];
   readonly status: ReturnType<typeof getAdministrationReservationStatus>;
   readonly statusNote: string | null;
   readonly createdAt: string;
@@ -323,6 +329,10 @@ export type AdministrationReservationDetail = {
     readonly dotyposReservationId: DotyposReservationId | null;
     readonly customerId: DotyposCustomerId;
   };
+  readonly invoice: {
+    readonly id: AdministrationInvoiceIdType;
+    readonly invoiceNumber: string;
+  } | null;
 };
 
 export type AdministrationReservationAccessGrant = {
@@ -372,6 +382,7 @@ type SafeReservationRow = Pick<
   | "paymentState"
   | "fulfillmentState"
   | "reservationDetails"
+  | "reservationPurpose"
   | "reservationCreatedAt"
   | "reservationConfirmedAt"
   | "reservationCancelledAt"
@@ -392,6 +403,7 @@ const safeReservationSelection = {
   paymentState: workspaceReservations.paymentState,
   fulfillmentState: workspaceReservations.fulfillmentState,
   reservationDetails: workspaceReservations.reservationDetails,
+  reservationPurpose: workspaceReservations.reservationPurpose,
   reservationCreatedAt: workspaceReservations.reservationCreatedAt,
   reservationConfirmedAt: workspaceReservations.reservationConfirmedAt,
   reservationCancelledAt: workspaceReservations.reservationCancelledAt,
@@ -631,6 +643,7 @@ const toReservationSummary = ({
       : null,
     type: row.reservationDetails.kind,
     typeLabel: getReservationTypeLabel(row),
+    purpose: row.reservationPurpose,
     status: getAdministrationReservationStatus({
       dotyposStatus: live.reservation?.status,
       failureCode: row.failureCode,
@@ -1651,6 +1664,7 @@ export class AdministrationService extends Context.Service<
           applicationRows,
           attemptRows,
           history,
+          invoiceRows,
           latePaymentRows,
           recoveryRows,
           live,
@@ -1702,6 +1716,14 @@ export class AdministrationService extends Context.Service<
               .where(eq(paymentAttempts.workspaceReservationId, row.id))
               .orderBy(paymentAttempts.createdAt),
             history: reservationHistory.load(row.id),
+            invoiceRows: db
+              .select({
+                id: invoices.id,
+                invoiceNumber: invoices.invoiceNumber,
+              })
+              .from(invoices)
+              .where(eq(invoices.workspaceReservationId, row.id))
+              .limit(1),
             latePaymentRows: db
               .select(latePaymentSelection)
               .from(webhookEvents)
@@ -1865,6 +1887,12 @@ export class AdministrationService extends Context.Service<
             dotyposReservationId: row.dotyposReservationId,
             customerId: row.dotyposCustomerId,
           },
+          invoice: invoiceRows[0]
+            ? {
+                id: AdministrationInvoiceId.make(invoiceRows[0].id),
+                invoiceNumber: invoiceRows[0].invoiceNumber,
+              }
+            : null,
           canCancel: canCancelReservation(row),
           requiresProviderCredentialRemoval: Boolean(
             accessRows[0] &&

@@ -17,6 +17,7 @@ import {
   AdministrationDotyposReservationId,
   AdministrationDotyposTableId,
   AdministrationInvoiceCreateInput,
+  AdministrationInvoiceListItem,
   AdministrationNexiOperationId,
   AdministrationNexiOrderId,
   AdministrationOperationQuery,
@@ -26,6 +27,7 @@ import {
   AdministrationReservationAccessGrant,
   AdministrationReservationAccessMutation,
   AdministrationReservationCancellationInput,
+  AdministrationReservationDetail,
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
@@ -395,30 +397,96 @@ describe("administration contract", () => {
     ).toThrow();
   });
 
-  test("accepts office reservations throughout the read contract", () => {
+  test("exposes office reservation and invoice relationships", () => {
+    const reservationInput = {
+      id: "reservation-id",
+      customerId: "customer-id",
+      customer: null,
+      liveDetailsAvailable: false,
+      startsAt: "2026-08-10T00:00:00+02:00[Europe/Prague]",
+      endsAt: "2026-08-11T00:00:00+02:00[Europe/Prague]",
+      date: "2026-08-10",
+      type: "office",
+      typeLabel: "Office",
+      status: { group: "in_progress", label: "In progress" },
+      statusNote: null,
+      createdAt: "2026-08-01T12:00:00Z",
+      latestPayment: null,
+      updatedAt: "2026-08-01T12:00:00Z",
+    } as const;
+    const reservation = Schema.decodeUnknownSync(
+      AdministrationReservationSummary
+    )({ ...reservationInput, purpose: "business" });
     expect(
       Schema.decodeUnknownSync(AdministrationReservationQuery)({
         type: "office",
       })
     ).toEqual({ type: "office" });
-    expect(
-      Schema.decodeUnknownSync(AdministrationReservationSummary)({
-        id: "reservation-id",
+    const invoice = Schema.decodeUnknownSync(AdministrationInvoiceListItem)({
+      id: "01980000-0000-7000-8000-000000000009",
+      invoiceNumber: "WS-FV-2026-000001",
+      issuedAt: "2026-08-12T12:00:00Z",
+      customerId: "customer-id",
+      customerName: "Synthetic Business",
+      reservationId: "reservation-id",
+      total: "1000",
+      currency: "CZK",
+      paymentStatus: "paid",
+      source: "reservation-request",
+      actor: null,
+      delivery: { customer: "accepted", internal: "accepted" },
+      needsAttention: false,
+    });
+    const detail = Schema.decodeUnknownSync(AdministrationReservationDetail)({
+      reservation,
+      booking: null,
+      lifecycle: {
+        currentStage: "started",
+        label: "Started",
+        reachedStages: ["started"],
+        tone: "neutral",
+      },
+      timeline: [],
+      paymentAttempts: [],
+      orders: [],
+      discounts: [],
+      accessGrant: null,
+      otherCustomerReservations: [],
+      sameDateReservations: [],
+      references: {
+        workspaceReservationId: "reservation-id",
+        dotyposReservationId: null,
         customerId: "customer-id",
-        customer: null,
-        liveDetailsAvailable: false,
-        startsAt: "2026-08-10T00:00:00+02:00[Europe/Prague]",
-        endsAt: "2026-08-11T00:00:00+02:00[Europe/Prague]",
-        date: "2026-08-10",
-        type: "office",
-        typeLabel: "Office",
-        status: { group: "in_progress", label: "In progress" },
-        statusNote: null,
-        createdAt: "2026-08-01T12:00:00Z",
-        latestPayment: null,
-        updatedAt: "2026-08-01T12:00:00Z",
-      }).type
-    ).toBe("office");
+      },
+      invoice: {
+        id: "01980000-0000-7000-8000-000000000009",
+        invoiceNumber: "WS-FV-2026-000001",
+      },
+      canCancel: false,
+      requiresProviderCredentialRemoval: false,
+    });
+
+    expect(reservation).toMatchObject({ purpose: "business", type: "office" });
+    expect(invoice).toMatchObject({
+      customerId: "customer-id",
+      reservationId: "reservation-id",
+    });
+    expect(detail.invoice).toMatchObject({
+      invoiceNumber: "WS-FV-2026-000001",
+    });
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationSummary)(
+        reservationInput
+      ).purpose
+    ).toBeNull();
+    const {
+      customerId: _customerId,
+      reservationId: _reservationId,
+      ...rest
+    } = invoice;
+    expect(
+      Schema.decodeUnknownSync(AdministrationInvoiceListItem)(rest)
+    ).toMatchObject({ customerId: null, reservationId: null });
   });
 
   test("uses product targets instead of purchase identities", () => {

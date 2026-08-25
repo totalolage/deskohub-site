@@ -200,6 +200,7 @@ describe("AdministrationService", () => {
       reservationState: "confirmed",
       paymentState: "paid",
       fulfillmentState: "fulfilled",
+      reservationPurpose: "business",
       reservationDetails: { kind: "meeting-room" },
       reservationCreatedAt: instant,
       reservationConfirmedAt: instant,
@@ -261,6 +262,88 @@ describe("AdministrationService", () => {
     expect(selectCall).toBe(5);
     expect(result.dateSortUnavailable).toBe(true);
     expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.purpose).toBe("business");
+  });
+
+  test("loads the issued invoice reference for a reservation", async () => {
+    const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
+    const row = {
+      id: "workspace-reservation",
+      dotyposCustomerId: "dotypos-customer",
+      dotyposReservationId: null,
+      reservationPurpose: "personal",
+      reservationState: "confirmed",
+      paymentState: "paid",
+      fulfillmentState: "fulfilled",
+      failureCode: null,
+      reservationDetails: { kind: "meeting-room" },
+      reservationCreatedAt: instant,
+      reservationConfirmedAt: instant,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: null,
+      paidAt: instant,
+      fulfilledAt: instant,
+      fulfillmentFailedAt: null,
+      createdAt: instant,
+      updatedAt: instant,
+    } as const;
+    let reservationSelections = 0;
+    const database = {
+      select: (selection: {
+        readonly invoiceNumber?: unknown;
+        readonly reservationState?: unknown;
+      }) => {
+        if ("reservationState" in selection) {
+          return makeQuery(reservationSelections++ === 0 ? [row] : []);
+        }
+        if ("invoiceNumber" in selection) {
+          return makeQuery([
+            {
+              id: "01980000-0000-7000-8000-000000000009",
+              invoiceNumber: "WS-FV-2026-000001",
+            },
+          ]);
+        }
+        return makeQuery([]);
+      },
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservation("workspace-reservation");
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                getCustomer: () => Effect.succeed({ id: "dotypos-customer" }),
+                getTables: () => Effect.succeed([]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({
+                loadReservationOrders: () => Effect.succeed([]),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result?.invoice).toEqual({
+      id: "01980000-0000-7000-8000-000000000009",
+      invoiceNumber: "WS-FV-2026-000001",
+    });
   });
 
   test("flags queued late-payment recovery ahead of cleanup state", async () => {
@@ -273,6 +356,7 @@ describe("AdministrationService", () => {
       paymentState: "pending",
       fulfillmentState: "not_started",
       failureCode: "payment_outcome_unconfirmed_before_cleanup",
+      reservationPurpose: null,
       reservationDetails: { kind: "meeting-room" },
       reservationCreatedAt: instant,
       reservationConfirmedAt: null,
@@ -374,6 +458,7 @@ describe("AdministrationService", () => {
       reservationState: "confirmed",
       paymentState: "paid",
       fulfillmentState: "fulfilled",
+      reservationPurpose: null,
       reservationDetails: { kind: "meeting-room" as const },
       reservationCreatedAt: instant,
       reservationConfirmedAt: instant,

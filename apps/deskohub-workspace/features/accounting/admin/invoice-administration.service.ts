@@ -6,12 +6,18 @@ import {
   DotyposService,
 } from "@deskohub/dotypos";
 import type {
+  AdministrationDotyposCustomerIdType,
   AdministrationInvoiceCreateInputType,
   AdministrationInvoiceCustomerDetailsType,
   AdministrationInvoiceIdType,
   AdministrationInvoicePaymentStatusType,
+  AdministrationWorkspaceReservationIdType,
 } from "@deskohub/workspace-admin-api";
-import { AdministrationInvoiceId } from "@deskohub/workspace-admin-api";
+import {
+  AdministrationDotyposCustomerId,
+  AdministrationInvoiceId,
+  AdministrationWorkspaceReservationId,
+} from "@deskohub/workspace-admin-api";
 import {
   BigDecimal,
   Context,
@@ -99,7 +105,9 @@ export type InvoiceAdministrationListItem = {
   readonly id: AdministrationInvoiceIdType;
   readonly invoiceNumber: string;
   readonly issuedAt: string;
+  readonly customerId: AdministrationDotyposCustomerIdType;
   readonly customerName: string;
+  readonly reservationId: AdministrationWorkspaceReservationIdType | null;
   readonly total: string;
   readonly currency: string;
   readonly paymentStatus: AdministrationInvoicePaymentStatusType;
@@ -590,7 +598,13 @@ const toListItem = (
     id: AdministrationInvoiceId.make(invoice.id),
     invoiceNumber: invoice.invoiceNumber,
     issuedAt: invoice.issuedAt.toString(),
+    customerId: AdministrationDotyposCustomerId.make(invoice.dotyposCustomerId),
     customerName: document.buyer.legalName,
+    reservationId: invoice.workspaceReservationId
+      ? AdministrationWorkspaceReservationId.make(
+          invoice.workspaceReservationId
+        )
+      : null,
     ...money,
     paymentStatus: getInvoiceAdministrationPaymentStatus(document, today),
     source: manual
