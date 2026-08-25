@@ -332,6 +332,19 @@ export const loadAdministrationCustomerActivity = cache(
   }
 );
 
+export const loadAdministrationCustomerReservationActivity = cache(
+  async (customerId: string) => {
+    await authorizeAdministrationPage();
+    const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
+    return Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadCustomerReservationActivity(
+        decodedCustomerId
+      );
+    }).pipe(runAdministration("administration.customer-reservation-activity"));
+  }
+);
+
 const getAdministrationOrderRange = async (
   searchParams: AdministrationSearchParams
 ) => {

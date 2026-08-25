@@ -3,6 +3,7 @@ import { AdministrationLink as Link } from "@/features/administration/admin-link
 import type {
   AdministrationCustomerActivity,
   AdministrationCustomerMarketingConsent,
+  AdministrationCustomerReservationActivity,
   AdministrationCustomerTransaction,
   AdministrationMoney,
 } from "@/features/administration/administration.service";
@@ -12,6 +13,7 @@ import {
   AdministrationPage,
   AdministrationPageHeader,
   AdministrationStatusBadge,
+  CustomerReservationActivity,
   EmptyState,
   formatAdministrationDateTime,
   formatAdministrationMoney,
@@ -287,10 +289,12 @@ export function CustomerAdministrationDetailPage({
   activity,
   notice,
   profile,
+  reservationActivity,
 }: {
   readonly activity: AdministrationCustomerActivity;
   readonly notice?: Notice;
   readonly profile: AdminCustomerProfile;
+  readonly reservationActivity: AdministrationCustomerReservationActivity;
 }) {
   const currentGroup = profile.discountGroups.find(
     ({ id }) => id === profile.customer.discountGroupId
@@ -323,6 +327,8 @@ export function CustomerAdministrationDetailPage({
     <AdministrationPage>
       <AdministrationPageHeader title={profile.customer.displayName} />
       <AdministrationNoticeBanner notice={notice} />
+
+      <CustomerReservationActivity activity={reservationActivity} />
 
       <div className="mb-7 grid gap-5 lg:grid-cols-2">
         <CustomerStats

@@ -22,6 +22,7 @@ import {
 import { NexiOrderLink } from "./nexi-order-link";
 
 export { BookingStatusBadge, BookingTable } from "./booking-table";
+export { CustomerReservationActivity } from "./customer-reservation-activity";
 export { AdministrationCustomerTable } from "./customer-table";
 export {
   AdministrationDataTable,

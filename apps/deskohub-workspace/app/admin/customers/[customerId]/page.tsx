@@ -7,7 +7,10 @@ import {
   ReservationTable,
 } from "@/features/administration/components";
 import { AdministrationRouteLoading } from "@/features/administration/loading";
-import { loadAdministrationCustomerActivity } from "@/features/administration/page-data.server";
+import {
+  loadAdministrationCustomerActivity,
+  loadAdministrationCustomerReservationActivity,
+} from "@/features/administration/page-data.server";
 import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { CustomerAdministrationDetailPage } from "@/features/discounts/admin/customer-admin-components";
 import {
@@ -41,9 +44,10 @@ export async function DiscountCustomerAdminDetail({
 }) {
   const { customerId } = await params;
   const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
-  const [liveData, activity] = await Promise.all([
+  const [liveData, activity, reservationActivity] = await Promise.all([
     loadOptionalDiscountAdminCustomerPageData(decodedCustomerId, searchParams),
     loadAdministrationCustomerActivity(customerId),
+    loadAdministrationCustomerReservationActivity(customerId),
   ]);
   const { notice, profile } = liveData;
 
@@ -80,6 +84,7 @@ export async function DiscountCustomerAdminDetail({
       notice={notice}
       profile={profile}
       activity={activity}
+      reservationActivity={reservationActivity}
     />
   );
 }
