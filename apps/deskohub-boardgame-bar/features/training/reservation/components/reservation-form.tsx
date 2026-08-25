@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { m } from "@/features/i18n";
@@ -40,10 +41,10 @@ import {
   reservationSchema,
   workspaceConstants,
 } from "../schemas/reservation";
-import { useState } from "react";
 
 export function ReservationForm() {
   const router = useRouter();
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
   const form = useForm<ReservationFormData>({
     resolver: zodResolver(reservationSchema),
     defaultValues: workspaceConstants.defaultValues,
@@ -315,13 +316,15 @@ export function ReservationForm() {
                 control={form.control}
                 name="date"
                 render={({ field }) => {
-                  const [open, setOpen] = useState(false);
                   return (
                     <FormItem className="flex flex-col">
                       <FormLabel htmlFor="date-button">
                         {m["trainingReservation.form.date"]()}
                       </FormLabel>
-                      <Popover open={open} onOpenChange={setOpen}>
+                      <Popover
+                        open={datePopoverOpen}
+                        onOpenChange={setDatePopoverOpen}
+                      >
                         <PopoverTrigger asChild>
                           <FormControl>
                             <Button
@@ -335,7 +338,7 @@ export function ReservationForm() {
                               aria-describedby="date-error"
                               aria-required="true"
                               aria-haspopup="dialog"
-                              aria-expanded={false}
+                              aria-expanded={datePopoverOpen}
                             >
                               {field.value ? (
                                 format(field.value, "PPP")
@@ -354,7 +357,7 @@ export function ReservationForm() {
                             selected={field.value}
                             onSelect={(date) => {
                               field.onChange(date);
-                              setOpen(false);
+                              setDatePopoverOpen(false);
                             }}
                             disabled={(date) => {
                               const today = new Date();

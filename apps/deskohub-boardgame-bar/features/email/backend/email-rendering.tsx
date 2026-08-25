@@ -20,6 +20,7 @@ export const renderBoardgameEmailDocument = (children: ReactNode): string =>
 export const MultilineEmailText = ({ value }: { readonly value: string }) => (
   <>
     {value.split("\n").map((line, index) => (
+      // biome-ignore lint/suspicious/noArrayIndexKey: Email lines need positional keys because duplicate and blank lines are valid.
       <Fragment key={`${index}:${line}`}>
         {index > 0 ? <br /> : null}
         {line}

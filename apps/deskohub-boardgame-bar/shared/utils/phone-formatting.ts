@@ -63,7 +63,7 @@ export const normalizePhoneNumber = (
     // Parse the phone number
     const parsed = parsePhoneNumber(cleaned, countryCode);
 
-    if (!parsed || !parsed.isValid()) {
+    if (!parsed?.isValid()) {
       return null;
     }
 
