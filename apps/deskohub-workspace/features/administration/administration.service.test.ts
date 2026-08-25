@@ -604,6 +604,7 @@ describe("AdministrationService", () => {
     const customerCreatedAt = new Map([
       ["customer-new-a", atTime(currentDate, 8).toString()],
       ["customer-new-b", atTime(currentDate, 9).toString()],
+      ["customer-new-from-old-row", atTime(currentDate, 12).toString()],
       [
         "customer-new-c",
         atTime(currentDate.subtract({ days: 30 }), 10).toString(),
@@ -663,6 +664,18 @@ describe("AdministrationService", () => {
                             id: null,
                             customerId: "customer-new-d",
                             createdAt: atTime(currentDate, 10),
+                            failureCode: null,
+                            fulfillmentState: "not_started",
+                            paymentState: "not_started",
+                            reservationState: "draft",
+                          },
+                          {
+                            id: null,
+                            customerId: "customer-new-from-old-row",
+                            createdAt: atTime(
+                              currentDate.subtract({ days: 30 }),
+                              10
+                            ),
                             failureCode: null,
                             fulfillmentState: "not_started",
                             paymentState: "not_started",
@@ -810,6 +823,15 @@ describe("AdministrationService", () => {
       customers: [
         {
           customer: {
+            displayName: "new-from-old-row",
+            email: null,
+            id: "customer-new-from-old-row",
+            phone: null,
+          },
+          customerId: "customer-new-from-old-row",
+        },
+        {
+          customer: {
             displayName: "new-d",
             email: null,
             id: "customer-new-d",
@@ -826,18 +848,9 @@ describe("AdministrationService", () => {
           },
           customerId: "customer-new-b",
         },
-        {
-          customer: {
-            displayName: "new-a",
-            email: null,
-            id: "customer-new-a",
-            phone: null,
-          },
-          customerId: "customer-new-a",
-        },
       ],
       unavailable: false,
-      value: 3,
+      value: 4,
     });
 
     missingCustomerCreationTime = true;

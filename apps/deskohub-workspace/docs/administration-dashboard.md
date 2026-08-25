@@ -52,7 +52,7 @@ Provider-payment cleanup outcomes remain explicit. An empty Nexi order inside th
 Customer summaries and overview counts must say when current external facts are unavailable. They must not substitute a local measure that answers a different question.
 Overview activity counts show completed Workspace reservations first, followed by all linked live reservations in the period, including cancelled and new reservations.
 
-Overview customer activity covers the seven Prague calendar days ending today. Unique customers are distinct customers on live Dotypos bookings that start in the period and link to a Workspace reservation. New customers are customers referenced by Workspace whose Dotypos customer record was created in the period. Each metric shows up to three customer names; when the total exceeds three, it shows two names and the remaining count. If current booking dates or customer creation times are unavailable, the affected metric is unavailable rather than replaced with a local estimate.
+Overview customer activity covers the seven Prague calendar days ending today. Unique customers are distinct customers on live Dotypos bookings that start in the period and link to a Workspace reservation. New customers are customers referenced by Workspace whose Dotypos customer record was created in the period. Each metric shows up to three customer names. When the total exceeds three, it shows two names and the remaining count. If current booking dates or customer creation times are unavailable, the affected metric is unavailable rather than replaced with a local estimate.
 
 ## History limitations
 
