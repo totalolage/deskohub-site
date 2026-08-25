@@ -178,6 +178,7 @@ export type AdministrationReservationSummary = {
   readonly date: string | null;
   readonly type: "cowork" | "meeting-room" | "office";
   readonly typeLabel: string;
+  readonly purpose: WorkspaceReservation["reservationPurpose"];
   readonly status: ReturnType<typeof getAdministrationReservationStatus>;
   readonly statusNote: string | null;
   readonly createdAt: string;
@@ -372,6 +373,7 @@ type SafeReservationRow = Pick<
   | "paymentState"
   | "fulfillmentState"
   | "reservationDetails"
+  | "reservationPurpose"
   | "reservationCreatedAt"
   | "reservationConfirmedAt"
   | "reservationCancelledAt"
@@ -392,6 +394,7 @@ const safeReservationSelection = {
   paymentState: workspaceReservations.paymentState,
   fulfillmentState: workspaceReservations.fulfillmentState,
   reservationDetails: workspaceReservations.reservationDetails,
+  reservationPurpose: workspaceReservations.reservationPurpose,
   reservationCreatedAt: workspaceReservations.reservationCreatedAt,
   reservationConfirmedAt: workspaceReservations.reservationConfirmedAt,
   reservationCancelledAt: workspaceReservations.reservationCancelledAt,
@@ -631,6 +634,7 @@ const toReservationSummary = ({
       : null,
     type: row.reservationDetails.kind,
     typeLabel: getReservationTypeLabel(row),
+    purpose: row.reservationPurpose,
     status: getAdministrationReservationStatus({
       dotyposStatus: live.reservation?.status,
       failureCode: row.failureCode,

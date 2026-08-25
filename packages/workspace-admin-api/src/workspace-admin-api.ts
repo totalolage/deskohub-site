@@ -564,7 +564,13 @@ export const AdministrationInvoiceListItem = Schema.Struct({
   id: AdministrationInvoiceId,
   invoiceNumber: Schema.String,
   issuedAt: Schema.String,
+  customerId: Schema.NullOr(AdministrationDotyposCustomerId).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   customerName: Schema.String,
+  reservationId: Schema.NullOr(AdministrationWorkspaceReservationId).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   total: Schema.String,
   currency: Schema.String,
   paymentStatus: AdministrationInvoicePaymentStatus,
@@ -721,6 +727,9 @@ export const AdministrationReservationSummary = Schema.Struct({
   date: Schema.NullOr(Schema.String),
   type: Schema.Literals(["cowork", "meeting-room", "office"]),
   typeLabel: Schema.String,
+  purpose: Schema.NullOr(Schema.Literals(["personal", "business"])).pipe(
+    Schema.withDecodingDefaultTypeKey(Effect.succeed(null))
+  ),
   status: Schema.Struct({
     group: AdministrationReservationStatusGroup,
     label: Schema.String,

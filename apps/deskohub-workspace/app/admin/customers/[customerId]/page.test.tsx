@@ -27,6 +27,7 @@ const activity: AdministrationCustomerActivity = {
     date: null,
     type: "cowork" as const,
     typeLabel: "Cowork Basic",
+    purpose: null,
     status: { group: "in_progress" as const, label: "Awaiting payment" },
     statusNote: null,
     createdAt: "2026-08-10T08:00:00Z",

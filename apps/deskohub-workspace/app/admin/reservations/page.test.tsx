@@ -94,6 +94,7 @@ describe("ReservationsAdministrationPage", () => {
             date: null,
             type: "cowork",
             typeLabel: "Cowork Basic",
+            purpose: null,
             status: { group: "in_progress", label: "Awaiting payment" },
             statusNote: null,
             createdAt: "2026-08-10T08:00:00Z",

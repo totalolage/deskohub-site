@@ -200,6 +200,7 @@ describe("AdministrationService", () => {
       reservationState: "confirmed",
       paymentState: "paid",
       fulfillmentState: "fulfilled",
+      reservationPurpose: "business",
       reservationDetails: { kind: "meeting-room" },
       reservationCreatedAt: instant,
       reservationConfirmedAt: instant,
@@ -261,6 +262,7 @@ describe("AdministrationService", () => {
     expect(selectCall).toBe(5);
     expect(result.dateSortUnavailable).toBe(true);
     expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.purpose).toBe("business");
   });
 
   test("flags queued late-payment recovery ahead of cleanup state", async () => {
@@ -273,6 +275,7 @@ describe("AdministrationService", () => {
       paymentState: "pending",
       fulfillmentState: "not_started",
       failureCode: "payment_outcome_unconfirmed_before_cleanup",
+      reservationPurpose: null,
       reservationDetails: { kind: "meeting-room" },
       reservationCreatedAt: instant,
       reservationConfirmedAt: null,
@@ -374,6 +377,7 @@ describe("AdministrationService", () => {
       reservationState: "confirmed",
       paymentState: "paid",
       fulfillmentState: "fulfilled",
+      reservationPurpose: null,
       reservationDetails: { kind: "meeting-room" as const },
       reservationCreatedAt: instant,
       reservationConfirmedAt: instant,

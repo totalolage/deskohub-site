@@ -5,6 +5,7 @@ import {
   FindCustomerResult,
 } from "@deskohub/dotypos";
 import {
+  AdministrationDotyposCustomerId,
   AdministrationInvoiceCreateInput,
   type AdministrationInvoiceCreateInputType,
   AdministrationInvoiceId,
@@ -59,6 +60,64 @@ const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
 });
 
 describe("InvoiceAdministrationService", () => {
+  test("projects reservation and customer references", async () => {
+    const document = makeCoworkInvoiceDocument("en-US");
+    const invoice = {
+      id: "01980000-0000-7000-8000-000000000009",
+      workspaceReservationId: "workspace-reservation",
+      paymentAttemptId: "payment-attempt",
+      dotyposCustomerId: "dotypos-customer",
+      invoiceNumber: document.invoiceNumber,
+      issuedAt: Temporal.Instant.from(document.issuedAt),
+      document,
+    } satisfies Invoice;
+    const listed = {
+      invoice,
+      delivery: {
+        customer: "accepted" as const,
+        internal: "accepted" as const,
+      },
+      needsAttention: false,
+    };
+    const manualDocument = makeTestManualInvoiceDocument("en-US");
+    const manualInvoice = {
+      id: manualDocument.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: manualDocument.dotyposCustomerId,
+      invoiceNumber: manualDocument.invoiceNumber,
+      issuedAt: Temporal.Instant.from(manualDocument.issuedAt),
+      document: manualDocument,
+    } satisfies Invoice;
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, {}),
+          Layer.mock(InvoiceRepository, {
+            findById: () => Effect.succeed(invoice),
+            list: () =>
+              Effect.succeed([listed, { ...listed, invoice: manualInvoice }]),
+          }),
+          Layer.mock(InvoiceEmailDeliveryService, {}),
+          Layer.mock(ManualInvoiceCreationRequests, {})
+        )
+      )
+    );
+
+    const result = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return yield* Effect.all([service.list(), service.get(invoice.id)]);
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    for (const projected of [result[0].items[0], result[1]]) {
+      expect(projected).toMatchObject({
+        customerId: "dotypos-customer",
+        reservationId: "workspace-reservation",
+      });
+    }
+    expect(result[0].items[1]?.reservationId).toBeNull();
+  });
+
   test("renders a PDF preview without touching providers or persistence", async () => {
     const providerMutation = mock(() => Effect.die("provider mutation"));
     const repositoryMutation = mock(() => Effect.die("repository mutation"));
@@ -340,7 +399,9 @@ const item = (
   id: AdministrationInvoiceId.make(id),
   invoiceNumber: id,
   issuedAt: "2026-08-18T10:00:00.000Z",
+  customerId: AdministrationDotyposCustomerId.make(id),
   customerName: id,
+  reservationId: null,
   total: "0",
   currency: "CZK",
   paymentStatus: "paid",

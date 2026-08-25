@@ -81,7 +81,9 @@ describe("WorkspaceAdminApiClient", () => {
       id: invoiceId,
       invoiceNumber: "WS-FV-2026-000001",
       issuedAt: "2026-08-10T10:00:00.000Z",
+      customerId: "customer-1",
       customerName: "Synthetic Customer",
+      reservationId: "reservation-1",
       total: "1000",
       currency: "CZK",
       paymentStatus: "paid",
@@ -210,6 +212,10 @@ describe("WorkspaceAdminApiClient", () => {
       }).pipe(Effect.provide(clientLayer), Effect.runPromise);
 
       expect(results[0].items).toHaveLength(1);
+      expect(results[0].items[0]).toMatchObject({
+        customerId: "customer-1",
+        reservationId: "reservation-1",
+      });
       expect(results[1].id).toBe(invoiceId);
       expect([...results[2]]).toEqual([37, 80, 68, 70]);
       expect(results[3].invoiceId).toBe(invoiceId);
@@ -400,6 +406,7 @@ describe("WorkspaceAdminApiClient", () => {
       date: null,
       type: "meeting-room" as const,
       typeLabel: "Meeting room",
+      purpose: "business" as const,
       status: { group: "complete" as const, label: "Complete" },
       statusNote: null,
       createdAt: expiresAt,
@@ -827,10 +834,11 @@ describe("WorkspaceAdminApiClient", () => {
           page: 2,
           status: "complete",
         });
-        yield* client.getReservation(
+        const reservationDetail = yield* client.getReservation(
           Redacted.make(accessToken),
           reservation.id
         );
+        expect(reservationDetail.reservation.purpose).toBe("business");
         yield* client.mutateReservationAccess(
           Redacted.make(accessToken),
           mutationRequestId,

@@ -295,6 +295,7 @@ describe("Workspace Admin API", () => {
       date: null,
       type: "meeting-room" as const,
       typeLabel: "Meeting room",
+      purpose: "business" as const,
       status: { group: "complete" as const, label: "Complete" },
       statusNote: null,
       createdAt: timestamp,
