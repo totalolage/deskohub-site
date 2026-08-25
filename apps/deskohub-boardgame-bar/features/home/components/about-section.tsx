@@ -8,7 +8,7 @@ import { siteConstants } from "@/shared/utils/constants";
 
 /**
  * About section with venue images and pricing information
- * Used on the homepage to showcase the venue and entry fees
+ * Used on the homepage to showcase the venue and consumption credit
  */
 export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
   const imagesPromise = getCloudinaryImages({
@@ -36,22 +36,12 @@ export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
                   mapping={{
                     price: () => (
                       <Price
-                        amount={siteConstants.pricing.entryFee}
+                        amount={siteConstants.pricing.consumptionCredit}
                         className="text-green-600 font-bold"
                       />
                     ),
                   }}
                 />
-              </span>
-            </div>
-            <div className="bg-green-100 rounded-lg shadow-sm px-6 py-3">
-              <span className="text-green-800 font-medium">
-                {m["about.priceInfo.childrenFree"]()}
-              </span>
-            </div>
-            <div className="bg-green-100 rounded-lg shadow-sm px-6 py-3">
-              <span className="text-green-800 font-medium">
-                {m["about.priceInfo.mondayFree"]()}
               </span>
             </div>
           </div>

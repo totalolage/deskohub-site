@@ -26,7 +26,7 @@
     "title": "Deskoherní bar",
     "description": "Místo pro všechny, kdo milují deskové hry. Klidné zákoutí pro vaši oblíbenou společenskou hru i možnost naučit se nové hry.",
     "priceInfo": {
-      "forPlayers": "Vstup <price /> pro deskové hráče"
+      "forPlayers": "Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <price /> na osobu."
     }
   },
   "hours": {
@@ -39,9 +39,7 @@
   "about": {
     "description": "Místo pro všechny, kdo milují deskové hry, ať už strategické, kampaňové či párty hry. Ideální prostor pro setkání s přáteli i poznávání nových spřízněných duší.",
     "priceInfo": {
-      "forPlayers": "Vstup <price /> pro deskové hráče",
-      "childrenFree": "Děti do 15 let: Zdarma",
-      "mondayFree": "Pondělí: Bez vstupného"
+      "forPlayers": "Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <price /> na osobu."
     }
   },
   "features": {
@@ -256,7 +254,7 @@
     "specialRequestsLabel": "Speciální požadavky",
     "specialRequestsPlaceholder": "Jakékoli speciální požadavky nebo přání...",
     "gdprConsentLabel": "Souhlasím se zpracováním mých osobních údajů podle <gdprLink>Zásady zpracování osobních údajů</gdprLink> pro účely rezervace a účasti na akcích, včetně pořizování, zveřejňování a bez časového omezení používání fotografií a videozáznamů pro propagační účely. Rozumím, že souhlas mohu odvolat kdykoliv a že fotografie/video již jednou publikované budou odstraněny pokud je to technicky možné a pokud o to výslovně požádám.",
-    "pricingInfo": "Vstupné: {priceForPlayers} za deskového hráče",
+    "pricingInfo": "Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {priceForPlayers} na osobu.",
     "submit": "Rezervovat stůl",
     "submitting": "Odesílání...",
     "successTitle": "Rezervace úspěšná!",
@@ -837,7 +835,7 @@
       "drinks": "NÁPOJE",
       "other": "OSTATNÍ"
     },
-    "footerNote": "Vstupné pro hráče deskových her: {priceForPlayers}"
+    "footerNote": "Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {priceForPlayers} na osobu."
   },
   "boardGames": {
     "pageTitle": "Deskové hry - Deskohub",

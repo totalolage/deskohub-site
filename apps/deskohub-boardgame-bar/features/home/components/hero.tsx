@@ -25,7 +25,7 @@ export function HomeHero() {
               mapping={{
                 price: () => (
                   <Price
-                    amount={siteConstants.pricing.entryFee}
+                    amount={siteConstants.pricing.consumptionCredit}
                     className="text-green-400"
                   />
                 ),
