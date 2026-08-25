@@ -156,13 +156,20 @@ const normalizeMaximumRecords = (value?: number) =>
   Math.min(maximumRecords, Math.max(1, value ?? defaultMaxRecords));
 
 const toLocalOrderRows = (
-  rows: readonly (Omit<LocalOrderRow, "providerOrderId"> & {
+  rows: readonly (Omit<LocalOrderRow, "providerOrderId" | "reservationId"> & {
     readonly providerOrderId: NexiOrderId | null;
+    readonly reservationId: WorkspaceReservationId | null;
   })[]
 ): readonly LocalOrderRow[] =>
   rows.flatMap((row) =>
-    row.providerOrderId
-      ? [{ ...row, providerOrderId: row.providerOrderId }]
+    row.providerOrderId && row.reservationId
+      ? [
+          {
+            ...row,
+            providerOrderId: row.providerOrderId,
+            reservationId: row.reservationId,
+          },
+        ]
       : []
   );
 

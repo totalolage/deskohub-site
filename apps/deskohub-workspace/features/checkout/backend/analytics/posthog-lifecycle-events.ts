@@ -7,6 +7,7 @@ import type { WorkspaceReservation } from "@/db/schema";
 import type { PaymentAttempt } from "@/features/checkout/backend/repositories/payment-attempt.repository";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { toWorkspaceMoneyMajorAmount } from "@/features/checkout/workspace-money";
+import type { OrderId } from "@/features/order";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   type PostHogEventProperties,
@@ -24,22 +25,28 @@ const reservationProperties = (
 
 type PaymentLifecycleAttempt = Pick<
   PaymentAttempt,
-  "amount" | "id" | "provider" | "providerOrderId" | "workspaceReservationId"
+  | "amount"
+  | "id"
+  | "orderId"
+  | "provider"
+  | "providerOrderId"
+  | "workspaceReservationId"
 >;
 
 const paymentProperties = (
   attempt: PaymentLifecycleAttempt
 ): PostHogEventProperties => ({
   currency: attempt.amount.currency,
+  order_id: attempt.orderId,
   revenue: toWorkspaceMoneyMajorAmount(attempt.amount),
-  reservation_id: attempt.workspaceReservationId,
+  reservation_id: attempt.workspaceReservationId ?? undefined,
   payment_attempt_id: attempt.id,
   provider: attempt.provider,
   provider_order_id: attempt.providerOrderId ?? undefined,
 });
 
 const captureLifecycleEvent = (input: {
-  readonly distinctId: WorkspaceReservationId;
+  readonly distinctId: OrderId | WorkspaceReservationId;
   readonly event: string;
   readonly id: WorkspaceReservationId | PaymentAttemptId;
   readonly properties: PostHogEventProperties;
@@ -134,7 +141,7 @@ export const capturePaymentStarted = (input: {
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
-    distinctId: input.attempt.workspaceReservationId,
+    distinctId: input.attempt.orderId,
     event: "payment started",
     id: input.attempt.id,
     properties: paymentProperties(input.attempt),
@@ -146,7 +153,7 @@ export const capturePaymentCompleted = (input: {
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
-    distinctId: input.attempt.workspaceReservationId,
+    distinctId: input.attempt.orderId,
     event: "payment completed",
     id: input.attempt.id,
     properties: paymentProperties(input.attempt),
@@ -158,7 +165,7 @@ export const capturePaymentAbandoned = (input: {
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
-    distinctId: input.attempt.workspaceReservationId,
+    distinctId: input.attempt.orderId,
     event: "payment abandoned",
     id: input.attempt.id,
     properties: paymentProperties(input.attempt),
@@ -172,7 +179,7 @@ export const capturePaymentFailed = (input: {
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
-    distinctId: input.attempt.workspaceReservationId,
+    distinctId: input.attempt.orderId,
     event: "payment failed",
     id: input.attempt.id,
     properties: {

@@ -16,6 +16,71 @@ const sliceFrom = (source: string, startNeedle: string, endNeedle: string) => {
 };
 
 describe("WorkspaceReservationRepository", () => {
+  test("locks and repairs the reservation order before fulfillment state branches", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "const findByIdForFulfillment = Effect.fn(",
+      "      return {"
+    );
+
+    expect(section).toContain("db.transaction((tx)");
+    expect(section).toContain('.for("update")');
+    expect(section).toContain(
+      "yield* ensureReservationOrder({ tx, reservation: row })"
+    );
+    expect(section.indexOf('.for("update")')).toBeLessThan(
+      section.indexOf("ensureReservationOrder")
+    );
+  });
+
+  test("creates or repairs a generic order for every draft return path", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      'createDraft: Effect.fn("workspaceReservations.createDraft")',
+      "        findById,"
+    );
+
+    expect(section).toContain("db.transaction((tx)");
+    expect(section.match(/ensureReservationOrder\(\{/g)).toHaveLength(3);
+    expect(section.match(/\.for\("update"\)/g)).toHaveLength(2);
+    expect(section).toContain("reservation: inserted");
+    expect(section).toContain("reservation: existingAttempt");
+    expect(section).toContain("reservation: currentAttempt");
+  });
+
+  test("creates the replacement reservation and order in one transaction", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "completeSupersessionAndCreateDraft: Effect.fn(",
+      "markCancellationFailed: Effect.fn("
+    );
+
+    expect(section).toContain("db.transaction((tx)");
+    expect(section).toContain(".insert(workspaceReservations)");
+    expect(section).toContain(
+      "yield* ensureReservationOrder({ tx, reservation: replacement })"
+    );
+  });
+
+  test("mirrors every fulfillment transition inside its transaction", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "claimPaidFulfillment: Effect.fn(",
+      "markReservationConfirmed: Effect.fn("
+    );
+
+    expect(section.match(/db\.transaction\(\(tx\)/g)).toHaveLength(4);
+    expect(section.match(/ensureReservationOrder\(\{/g)).toHaveLength(4);
+    expect(section).toContain('fulfillmentState: "processing"');
+    expect(section).toContain('fulfillmentState: "fulfilled"');
+    expect(section).toContain('fulfillmentState: "failed"');
+    expect(section).toContain("fulfilledAt: null");
+  });
+
   test("selects expired holds in a deterministic starvation-safe limited order", async () => {
     const source = await readRepository();
     const section = sliceFrom(

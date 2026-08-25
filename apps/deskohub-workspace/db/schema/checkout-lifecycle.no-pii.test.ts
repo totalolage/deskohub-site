@@ -391,7 +391,10 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       "workspaceReservations.activePaymentAttemptId"
     );
     expect(paymentLifecycleRepository).toContain(
-      'eq(workspaceReservations.paymentState, "pending")'
+      "eq(orders.activePaymentAttemptId, input.id)"
+    );
+    expect(paymentLifecycleRepository).toContain(
+      'eq(orders.paymentState, "pending")'
     );
     expect(paymentLifecycleRepository).toContain(
       "inArray(paymentAttempts.state"
@@ -432,11 +435,12 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(repository).toContain("yield* redeemCodeClaim");
     expect(repository).toContain("yield* releaseCodeClaim");
     expect(repository).toContain(
-      "Only the active pending attempt on a held reservation can mark payment paid."
+      "Only the active pending attempt can mark an order paid."
     );
     expect(repository).toContain(
-      "Only the active pending attempt on a held reservation can mark payment terminal."
+      "Only the active pending attempt can mark an order terminal."
     );
+    expect(repository).toContain("requireHeld: true");
   });
 
   test("reservation submit acquires local hold claim before remote Dotypos hold", async () => {

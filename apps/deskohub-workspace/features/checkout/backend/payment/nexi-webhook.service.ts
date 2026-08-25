@@ -13,6 +13,7 @@ import {
 import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptState } from "@/db/schema";
+import { orderIdSchema } from "@/features/order";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import {
@@ -309,7 +310,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
             );
 
             const reservation = yield* reservations
-              .findById(attempt.workspaceReservationId)
+              .findById(attempt.workspaceReservationId!)
               .pipe(
                 Effect.mapError(
                   (cause) =>
@@ -519,7 +520,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
 
               const transition = yield* paymentLifecycle.markPaid({
                 id: attempt.id,
-                workspaceReservationId: reservation.id,
+                orderId: orderIdSchema.make(reservation.id),
                 webhookEventId: eventId,
                 providerOperationId,
                 providerStatus,
@@ -566,7 +567,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
 
               const transition = yield* paymentLifecycle.markTerminal({
                 id: attempt.id,
-                workspaceReservationId: reservation.id,
+                orderId: orderIdSchema.make(reservation.id),
                 state: terminalState,
                 failureCode: "nexi_payment_failed",
                 webhookEventId: eventId,

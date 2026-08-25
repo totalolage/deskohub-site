@@ -359,6 +359,7 @@ const makeAttempt = (input: {
   readonly providerRedirectUrl?: string | null;
 }) => ({
   id: input.id,
+  orderId: input.orderId,
   workspaceReservationId: input.orderId,
   provider: "nexi" as const,
   providerOrderId: input.id,
@@ -514,7 +515,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
   const paymentAttempts = {
     findById: findAttempt,
     findByProviderOrderId: mock(() => Effect.succeed(null)),
-    findDisplayableForReservation: mock(() => Effect.succeed(null)),
+    findDisplayableForOrder: mock(() => Effect.succeed(null)),
   } satisfies PaymentAttemptRepositoryType;
   const paymentLifecycle = {
     createPendingNexiAttempt,
@@ -993,7 +994,7 @@ describe("CheckoutService", () => {
         "/en-US/reservation/status/reservation-zero-total?outcome=success",
     });
     expect(harness.completeInternalPayment).toHaveBeenCalledWith({
-      workspaceReservationId: "reservation-zero-total",
+      orderId: "reservation-zero-total",
       amount: money(0),
       commitment: fullyDiscountedCommitment,
       locale: "en-US",
@@ -1712,7 +1713,7 @@ describe("CheckoutService", () => {
     expect(harness.markTerminalForReservation).toHaveBeenCalledTimes(1);
     expect(harness.markTerminalForReservation).toHaveBeenCalledWith({
       id: "attempt-reservation-hpp-create-fails",
-      workspaceReservationId: "reservation-hpp-create-fails",
+      orderId: "reservation-hpp-create-fails",
       state: "failed",
       failureCode: "nexi_hpp_create_failed",
       providerStatus: "hpp_create_failed",

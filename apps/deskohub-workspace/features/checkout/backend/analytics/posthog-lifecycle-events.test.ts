@@ -21,6 +21,7 @@ describe("PostHog lifecycle events", () => {
       capturePaymentCompleted({
         attempt: {
           id: attemptId,
+          orderId: reservationId,
           workspaceReservationId: reservationId,
           provider: "nexi",
           providerOrderId: "provider-order-id",
@@ -53,6 +54,7 @@ describe("PostHog lifecycle events", () => {
     expect(captures[0].properties).toMatchObject({
       currency: "CZK",
       payment_attempt_id: attemptId,
+      order_id: reservationId,
       provider: "nexi",
       provider_order_id: "provider-order-id",
       reservation_id: reservationId,
@@ -76,6 +78,7 @@ describe("PostHog lifecycle events", () => {
       capturePaymentCompleted({
         attempt: {
           id: attemptId,
+          orderId: reservationId,
           workspaceReservationId: reservationId,
           provider: "internal",
           providerOrderId: null,
@@ -100,6 +103,7 @@ describe("PostHog lifecycle events", () => {
 
     expect(captures[0]?.properties).toEqual({
       currency: "CZK",
+      order_id: reservationId,
       payment_attempt_id: attemptId,
       provider: "internal",
       reservation_id: reservationId,

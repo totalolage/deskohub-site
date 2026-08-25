@@ -8,6 +8,7 @@ import {
 import { Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import { orderIdSchema } from "@/features/order";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
@@ -259,7 +260,7 @@ function makeProviderPaymentFinalizationServiceLayer(
               const paidSuccess = yield* paymentLifecycle
                 .markPaid({
                   id: attempt.id,
-                  workspaceReservationId: reservation.id,
+                  orderId: orderIdSchema.make(reservation.id),
                   webhookEventId: input.webhookEventId,
                   providerOperationId,
                   providerStatus,
@@ -325,7 +326,7 @@ function makeProviderPaymentFinalizationServiceLayer(
               const terminalSuccess = yield* paymentLifecycle
                 .markTerminal({
                   id: attempt.id,
-                  workspaceReservationId: reservation.id,
+                  orderId: orderIdSchema.make(reservation.id),
                   state: terminalState,
                   failureCode: "nexi_payment_failed",
                   webhookEventId: input.webhookEventId,

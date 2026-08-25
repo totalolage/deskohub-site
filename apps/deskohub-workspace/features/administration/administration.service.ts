@@ -471,7 +471,6 @@ const indexCustomersById = (customers: readonly DotyposCustomer[]) =>
 
 type SafePaymentAttemptRow = {
   readonly id: PaymentAttemptId;
-  readonly workspaceReservationId: WorkspaceReservationId;
   readonly providerOrderId: NexiOrderId | null;
   readonly provider: "internal" | "nexi";
   readonly state: PaymentAttemptState;
@@ -487,7 +486,6 @@ type SafePaymentAttemptRow = {
 
 const safePaymentAttemptSelection = {
   id: paymentAttempts.id,
-  workspaceReservationId: paymentAttempts.workspaceReservationId,
   providerOrderId: paymentAttempts.providerOrderId,
   provider: paymentAttempts.provider,
   state: paymentAttempts.state,
@@ -963,7 +961,7 @@ const latePaymentRecoverySelection = {
 const latePaymentSelection = {
   eventId: webhookEvents.eventId,
   receivedAt: webhookEvents.receivedAt,
-  reservationId: paymentAttempts.workspaceReservationId,
+  reservationId: workspaceReservations.id,
 } as const;
 
 const latePaymentCondition = (
@@ -1385,11 +1383,21 @@ export class AdministrationService extends Context.Service<
             yield* Effect.all(
               {
                 attemptRows: db
-                  .select(safePaymentAttemptSelection)
+                  .select({
+                    attempt: safePaymentAttemptSelection,
+                    reservationId: workspaceReservations.id,
+                  })
                   .from(paymentAttempts)
+                  .innerJoin(
+                    workspaceReservations,
+                    eq(
+                      paymentAttempts.workspaceReservationId,
+                      workspaceReservations.id
+                    )
+                  )
                   .where(
                     inArray(
-                      paymentAttempts.workspaceReservationId,
+                      workspaceReservations.id,
                       rows.map(({ id }) => id)
                     )
                   )
@@ -1400,6 +1408,13 @@ export class AdministrationService extends Context.Service<
                   .innerJoin(
                     paymentAttempts,
                     eq(webhookEvents.paymentAttemptId, paymentAttempts.id)
+                  )
+                  .innerJoin(
+                    workspaceReservations,
+                    eq(
+                      paymentAttempts.workspaceReservationId,
+                      workspaceReservations.id
+                    )
                   )
                   .where(latePaymentCondition(rows.map(({ id }) => id))),
                 recoveryRows: db
@@ -1426,12 +1441,10 @@ export class AdministrationService extends Context.Service<
             string,
             AdministrationPaymentAttempt
           >();
-          for (const attempt of attemptRows) {
-            if (
-              !latestPaymentByReservation.has(attempt.workspaceReservationId)
-            ) {
+          for (const { attempt, reservationId } of attemptRows) {
+            if (!latestPaymentByReservation.has(reservationId)) {
               latestPaymentByReservation.set(
-                attempt.workspaceReservationId,
+                reservationId,
                 toAdministrationPaymentAttempt(attempt)
               );
             }
@@ -1708,6 +1721,13 @@ export class AdministrationService extends Context.Service<
               .innerJoin(
                 paymentAttempts,
                 eq(webhookEvents.paymentAttemptId, paymentAttempts.id)
+              )
+              .innerJoin(
+                workspaceReservations,
+                eq(
+                  paymentAttempts.workspaceReservationId,
+                  workspaceReservations.id
+                )
               )
               .where(latePaymentCondition([row.id]))
               .orderBy(webhookEvents.receivedAt),

@@ -332,7 +332,7 @@ describe("ReservationHoldCleanupService", () => {
 
     expect(markTerminalForReservation).toHaveBeenCalledWith({
       id: attemptId,
-      workspaceReservationId: orderId,
+      orderId,
       state: "expired",
       failureCode: "payment_abandoned_after_provider_cutoff",
     });
