@@ -1917,6 +1917,36 @@ describe("DotyposService reservation listing", () => {
     expect(requestedQueries[0]?.get("sort")).toBe("-startDate");
   });
 
+  test("filters reservations by a customer set", async () => {
+    const requestedQueries: URLSearchParams[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        requestedQueries.push(url.searchParams);
+        return Response.json({ data: [] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations({
+          customerIds: [
+            dotyposCustomerId("customer-1"),
+            dotyposCustomerId("customer-2"),
+          ],
+        });
+      }),
+      fetchMock
+    );
+
+    expect(requestedQueries[0]?.get("filter")).toBe(
+      "_customerId|in|customer-1,customer-2"
+    );
+  });
+
   test("rejects reservation filter delimiters", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);

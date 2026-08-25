@@ -55,6 +55,7 @@ type DotyposError = ValidationError | ExternalAPIError | NetworkError;
 export type ReservationListOptions = {
   readonly ids?: readonly DotyposReservationId[];
   readonly customerId?: DotyposCustomerId;
+  readonly customerIds?: readonly DotyposCustomerId[];
   readonly startsAtOrAfter?: string;
   readonly startsBefore?: string;
   readonly order?: "startDateAscending" | "startDateDescending";
@@ -1513,9 +1514,15 @@ const makeDotyposService = Effect.gen(function* () {
     options: ReservationListOptions = {}
   ) {
     const ids = [...new Set(options.ids ?? [])];
-    if (options.ids && ids.length === 0) return [];
+    const customerIds = [...new Set(options.customerIds ?? [])];
+    if (
+      (options.ids && ids.length === 0) ||
+      (options.customerIds && customerIds.length === 0)
+    )
+      return [];
     const filterValues = [
       options.customerId,
+      ...customerIds,
       options.startsAtOrAfter,
       options.startsBefore,
     ].filter((value): value is string => value !== undefined);
@@ -1532,6 +1539,7 @@ const makeDotyposService = Effect.gen(function* () {
     const filter = [
       ids.length > 0 && `id|in|${ids.join(",")}`,
       options.customerId && `_customerId|eq|${options.customerId}`,
+      customerIds.length > 0 && `_customerId|in|${customerIds.join(",")}`,
       options.startsAtOrAfter && `startDate|gteq|${options.startsAtOrAfter}`,
       options.startsBefore && `startDate|lt|${options.startsBefore}`,
     ]

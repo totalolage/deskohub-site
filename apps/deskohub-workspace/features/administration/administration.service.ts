@@ -2761,8 +2761,11 @@ export class AdministrationService extends Context.Service<
           const recentReservationLookups =
             recentCustomers.kind === "available"
               ? yield* Effect.all(
-                  recentCustomerIds.map((customerId) =>
-                    dotypos.listReservations({ customerId }).pipe(
+                  EffectArray.chunksOf(
+                    recentCustomerIds,
+                    providerIdBatchSize
+                  ).map((customerIds) =>
+                    dotypos.listReservations({ customerIds }).pipe(
                       Effect.map((items) => ({
                         items,
                         kind: "available" as const,
@@ -2771,7 +2774,7 @@ export class AdministrationService extends Context.Service<
                         unstable_rethrow(cause);
                         return Effect.logWarning(
                           "New customer bookings unavailable",
-                          { cause, customerId }
+                          { cause, customerCount: customerIds.length }
                         ).pipe(
                           Effect.as({
                             items: [] as const,

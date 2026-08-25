@@ -603,6 +603,7 @@ describe("AdministrationService", () => {
     ];
     const listInputs: {
       readonly customerId?: string;
+      readonly customerIds?: readonly string[];
       readonly ids?: readonly string[];
       readonly order?: string;
     }[] = [];
@@ -643,6 +644,11 @@ describe("AdministrationService", () => {
       ],
       ["customer-new-d", atTime(currentDate, 11).toString()],
     ]);
+    const providerOnlyRecentCustomers = Array.from(
+      { length: 75 },
+      (_, index) =>
+        [`provider-only-${index}`, atTime(currentDate, 6).toString()] as const
+    );
     const rowCustomerIds = {
       "last-week": "customer-returning",
       today: "customer-new-a",
@@ -751,7 +757,10 @@ describe("AdministrationService", () => {
                     Effect.sync(() => {
                       customerListInputs.push(options);
                       if ("createdAtOrAfter" in options) {
-                        return [...customerCreatedAt]
+                        return [
+                          ...customerCreatedAt,
+                          ...providerOnlyRecentCustomers,
+                        ]
                           .filter(([id]) => id !== "customer-new-c")
                           .map(([id, created]) => ({
                             created:
@@ -783,7 +792,7 @@ describe("AdministrationService", () => {
                     }
                     if (
                       historicalReservationsUnavailable &&
-                      (input.customerId === "customer-reassigned-old" ||
+                      (input.customerIds?.includes("customer-reassigned-old") ||
                         input.ids)
                     ) {
                       return Effect.fail(
@@ -820,6 +829,20 @@ describe("AdministrationService", () => {
                         )
                       );
                     }
+                    if (input.customerIds) {
+                      return Effect.succeed(
+                        [
+                          ...overviewReservations,
+                          providerReservation(
+                            "old-booking",
+                            "customer-reassigned-old",
+                            currentDate.subtract({ days: 60 })
+                          ),
+                        ].filter(({ _customerId }) =>
+                          input.customerIds?.includes(_customerId)
+                        )
+                      );
+                    }
                     return Effect.succeed(overviewReservations);
                   },
                 }),
@@ -840,7 +863,14 @@ describe("AdministrationService", () => {
     const result = await loadOverview();
 
     expect(listInputs[0]).toMatchObject({ order: "startDateAscending" });
-    expect(listInputs.filter(({ customerId }) => customerId)).toHaveLength(6);
+    expect(listInputs.filter(({ customerId }) => customerId)).toHaveLength(0);
+    const customerIdBatches = listInputs.flatMap(({ customerIds }) =>
+      customerIds ? [customerIds] : []
+    );
+    expect(customerIdBatches).toHaveLength(2);
+    expect(customerIdBatches.every((ids) => ids.length <= 50)).toBe(true);
+    expect(customerIdBatches.flat()).toHaveLength(81);
+    expect(listInputs.filter(({ ids }) => ids)).toHaveLength(0);
     expect(customerListInputs).toContainEqual({
       createdAtOrAfter: atTime(currentDate.subtract({ days: 6 }), 0).toString(),
       createdBefore: atTime(currentDate.add({ days: 1 }), 0).toString(),
