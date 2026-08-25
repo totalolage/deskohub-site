@@ -96,6 +96,30 @@ export function AdministrationMetricsLoading() {
   );
 }
 
+export function AdministrationCustomerMetricsLoading() {
+  return (
+    <LoadingRegion label="Loading customer activity">
+      <div className="grid gap-3 lg:grid-cols-2">
+        {["unique", "new"].map((key) => (
+          <div
+            className="rounded-xl border border-navy-blue/10 bg-white px-5 py-5 sm:px-6"
+            key={key}
+          >
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="mt-4 h-9 w-16" />
+            <Skeleton className="mt-3 h-3 w-20" />
+            <div className="mt-4 space-y-3 border-t border-navy-blue/10 pt-4">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-4 w-36" />
+              <Skeleton className="h-4 w-32" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </LoadingRegion>
+  );
+}
+
 export function AdministrationPanelLoading({
   label,
 }: {

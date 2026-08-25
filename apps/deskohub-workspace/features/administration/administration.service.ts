@@ -27,7 +27,6 @@ import {
   desc,
   eq,
   inArray,
-  isNotNull,
   max,
   notInArray,
   or,
@@ -71,6 +70,7 @@ import {
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import {
   getAdministrationExternalOrderPageIds,
   getAdministrationPagination,
@@ -364,6 +364,15 @@ export type AdministrationOverviewMetric = {
   readonly value: number;
 };
 
+export type AdministrationCustomerOverviewMetric = {
+  readonly customers: readonly Pick<
+    AdministrationCustomerSummary,
+    "customer" | "customerId"
+  >[];
+  readonly unavailable: boolean;
+  readonly value: number;
+};
+
 type SafeReservationRow = Pick<
   WorkspaceReservation,
   | "id"
@@ -436,6 +445,7 @@ const decodeNexiOrderId = Schema.decodeUnknownOption(NexiOrderIdSchema);
 const decodeNexiWebhookEventId = Schema.decodeUnknownOption(
   NexiWebhookEventIdSchema
 );
+const decodeInstantString = Schema.decodeUnknownOption(instantStringSchema);
 const decodePaymentAttemptId = Schema.decodeUnknownOption(
   paymentAttemptIdSchema
 );
@@ -581,6 +591,75 @@ const countLinkedReservations = (input: {
         : [];
     })
   ).size;
+
+const getUniqueCustomerIds = (input: {
+  readonly customerIdsByReservationId: ReadonlyMap<
+    DotyposReservationId,
+    DotyposCustomerId
+  >;
+  readonly range: AdministrationReservationDateRange;
+  readonly reservations: readonly DotyposReservation[];
+}) => {
+  const latestBookingByCustomerId = new Map<
+    DotyposCustomerId,
+    Temporal.Instant
+  >();
+  for (const reservation of input.reservations) {
+    const reservationId = Option.getOrUndefined(
+      decodeDotyposReservationId(reservation.id)
+    );
+    const fallbackCustomerId = reservationId
+      ? input.customerIdsByReservationId.get(reservationId)
+      : undefined;
+    if (!fallbackCustomerId || !isReservationInRange(reservation, input.range))
+      continue;
+
+    const customerId =
+      Option.getOrUndefined(decodeDotyposCustomerId(reservation._customerId)) ??
+      fallbackCustomerId;
+    const startsAt = Temporal.Instant.from(reservation.startDate);
+    const latestBooking = latestBookingByCustomerId.get(customerId);
+    if (!latestBooking || Temporal.Instant.compare(startsAt, latestBooking) > 0)
+      latestBookingByCustomerId.set(customerId, startsAt);
+  }
+  return [...latestBookingByCustomerId]
+    .toSorted(
+      ([leftId, left], [rightId, right]) =>
+        Temporal.Instant.compare(right, left) || leftId.localeCompare(rightId)
+    )
+    .map(([customerId]) => customerId);
+};
+
+const getNewCustomerIds = (input: {
+  readonly candidateIds: readonly DotyposCustomerId[];
+  readonly customersById: ReadonlyMap<DotyposCustomerId, DotyposCustomer>;
+  readonly endsBefore: Temporal.Instant;
+  readonly startsAt: Temporal.Instant;
+}) => {
+  const newCustomers: [DotyposCustomerId, Temporal.Instant][] = [];
+  for (const customerId of input.candidateIds) {
+    const created = input.customersById.get(customerId)?.created;
+    const createdAt = Option.getOrUndefined(
+      decodeInstantString(created).pipe(
+        Option.map((value) => Temporal.Instant.from(value))
+      )
+    );
+    if (!createdAt) return { ids: [], unavailable: true, value: 0 } as const;
+    if (
+      Temporal.Instant.compare(createdAt, input.startsAt) >= 0 &&
+      Temporal.Instant.compare(createdAt, input.endsBefore) < 0
+    ) {
+      newCustomers.push([customerId, createdAt]);
+    }
+  }
+  const ids = newCustomers
+    .toSorted(
+      ([leftId, left], [rightId, right]) =>
+        Temporal.Instant.compare(right, left) || leftId.localeCompare(rightId)
+    )
+    .map(([customerId]) => customerId);
+  return { ids, unavailable: false, value: ids.length } as const;
+};
 
 type LiveReservationDetails = {
   readonly reservation: DotyposReservation | null;
@@ -1174,6 +1253,8 @@ export class AdministrationService extends Context.Service<
         readonly today: AdministrationOverviewMetric;
         readonly upcoming: AdministrationOverviewMetric;
         readonly lastSevenDays: AdministrationOverviewMetric;
+        readonly uniqueCustomers: AdministrationCustomerOverviewMetric;
+        readonly newCustomers: AdministrationCustomerOverviewMetric;
       },
       unknown
     >;
@@ -2569,21 +2650,27 @@ export class AdministrationService extends Context.Service<
         function* () {
           const currentDate = getCurrentWorkspaceDate();
           const ranges = getAdministrationOverviewDateRanges(currentDate);
-          const linkedRows = yield* db
+          const rows = yield* db
             .select({
               id: workspaceReservations.dotyposReservationId,
+              customerId: workspaceReservations.dotyposCustomerId,
+              createdAt: workspaceReservations.createdAt,
               failureCode: workspaceReservations.failureCode,
               fulfillmentState: workspaceReservations.fulfillmentState,
               paymentState: workspaceReservations.paymentState,
               reservationState: workspaceReservations.reservationState,
             })
-            .from(workspaceReservations)
-            .where(isNotNull(workspaceReservations.dotyposReservationId));
+            .from(workspaceReservations);
           const linkedReservationIds = new Set(
-            linkedRows.flatMap(({ id }) => (id ? [id] : []))
+            rows.flatMap(({ id }) => (id ? [id] : []))
+          );
+          const customerIdsByReservationId = new Map(
+            rows.flatMap(({ customerId, id }) =>
+              id ? ([[id, customerId]] as const) : []
+            )
           );
           const completedReservationIds = new Set(
-            linkedRows.flatMap((row) =>
+            rows.flatMap((row) =>
               row.id &&
               getAdministrationReservationStatus(row).group === "complete"
                 ? [row.id]
@@ -2594,6 +2681,21 @@ export class AdministrationService extends Context.Service<
             from: ranges.lastSevenDays.from,
             to: ranges.upcoming.to,
           };
+          const customerActivityStartsAt = Temporal.PlainDate.from(
+            ranges.lastSevenDays.from
+          )
+            .toZonedDateTime({
+              plainTime: Temporal.PlainTime.from("00:00"),
+              timeZone: workspaceSiteConstants.location.timeZone,
+            })
+            .toInstant();
+          const customerActivityEndsBefore = currentDate
+            .add({ days: 1 })
+            .toZonedDateTime({
+              plainTime: Temporal.PlainTime.from("00:00"),
+              timeZone: workspaceSiteConstants.location.timeZone,
+            })
+            .toInstant();
           const reservations = yield* dotypos
             .listReservations({
               ...getInclusiveDateRangeBounds(overviewRange),
@@ -2609,6 +2711,60 @@ export class AdministrationService extends Context.Service<
                 }).pipe(Effect.as({ kind: "unavailable" as const }));
               })
             );
+          const uniqueCustomerIds =
+            reservations.kind === "available"
+              ? getUniqueCustomerIds({
+                  customerIdsByReservationId,
+                  range: ranges.lastSevenDays,
+                  reservations: reservations.items,
+                })
+              : [];
+          const newCustomerCandidateIds = [
+            ...new Set(
+              rows.flatMap(({ createdAt, customerId }) =>
+                Temporal.Instant.compare(createdAt, customerActivityStartsAt) >=
+                  0 &&
+                Temporal.Instant.compare(
+                  createdAt,
+                  customerActivityEndsBefore
+                ) < 0
+                  ? [customerId]
+                  : []
+              )
+            ),
+          ];
+          const customersById = yield* loadCustomers([
+            ...uniqueCustomerIds.slice(0, 3),
+            ...newCustomerCandidateIds,
+          ]);
+          const newCustomerIds = getNewCustomerIds({
+            candidateIds: newCustomerCandidateIds,
+            customersById,
+            endsBefore: customerActivityEndsBefore,
+            startsAt: customerActivityStartsAt,
+          });
+          const toCustomerMetric = (metric: {
+            readonly ids: readonly DotyposCustomerId[];
+            readonly unavailable: boolean;
+            readonly value: number;
+          }): AdministrationCustomerOverviewMetric => ({
+            customers: metric.ids.slice(0, 3).map((customerId) => {
+              const customer = customersById.get(customerId);
+              return {
+                customer: customer ? toCustomer(customer, customerId) : null,
+                customerId,
+              };
+            }),
+            unavailable: metric.unavailable,
+            value: metric.value,
+          });
+          const uniqueCustomers = toCustomerMetric({
+            ids: uniqueCustomerIds,
+            unavailable: reservations.kind === "unavailable",
+            value:
+              reservations.kind === "available" ? uniqueCustomerIds.length : 0,
+          });
+          const newCustomers = toCustomerMetric(newCustomerIds);
           if (reservations.kind === "unavailable") {
             const unavailable = {
               completed: 0,
@@ -2620,6 +2776,8 @@ export class AdministrationService extends Context.Service<
               today: unavailable,
               upcoming: unavailable,
               lastSevenDays: unavailable,
+              uniqueCustomers,
+              newCustomers,
             };
           }
           const getMetric = (range: AdministrationReservationDateRange) => ({
@@ -2639,7 +2797,14 @@ export class AdministrationService extends Context.Service<
           const today = getMetric(ranges.today);
           const upcoming = getMetric(ranges.upcoming);
           const lastSevenDays = getMetric(ranges.lastSevenDays);
-          return { ranges, today, upcoming, lastSevenDays };
+          return {
+            ranges,
+            today,
+            upcoming,
+            lastSevenDays,
+            uniqueCustomers,
+            newCustomers,
+          };
         }
       );
 
