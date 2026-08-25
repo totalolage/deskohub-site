@@ -26,7 +26,8 @@
     "title": "Deskoherní bar",
     "description": "Místo pro všechny, kdo milují deskové hry. Klidné zákoutí pro vaši oblíbenou společenskou hru i možnost naučit se nové hry.",
     "priceInfo": {
-      "forPlayers": "Do 31. srpna 2026: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
+      "forPlayers": "Bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu.",
+      "legacyForPlayers": "Do 31. srpna 2026: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
     }
   },
   "hours": {
@@ -39,7 +40,8 @@
   "about": {
     "description": "Místo pro všechny, kdo milují deskové hry, ať už strategické, kampaňové či párty hry. Ideální prostor pro setkání s přáteli i poznávání nových spřízněných duší.",
     "priceInfo": {
-      "forPlayers": "Do 31. srpna 2026: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
+      "forPlayers": "Bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu.",
+      "legacyForPlayers": "Do 31. srpna 2026: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
     }
   },
   "features": {
@@ -254,7 +256,7 @@
     "specialRequestsLabel": "Speciální požadavky",
     "specialRequestsPlaceholder": "Jakékoli speciální požadavky nebo přání...",
     "gdprConsentLabel": "Souhlasím se zpracováním mých osobních údajů podle <gdprLink>Zásady zpracování osobních údajů</gdprLink> pro účely rezervace a účasti na akcích, včetně pořizování, zveřejňování a bez časového omezení používání fotografií a videozáznamů pro propagační účely. Rozumím, že souhlas mohu odvolat kdykoliv a že fotografie/video již jednou publikované budou odstraněny pokud je to technicky možné a pokud o to výslovně požádám.",
-    "pricingInfo": "Do 31. srpna 2026: vstup {entryFee} pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {consumptionCredit} na osobu.",
+    "pricingInfo": "Bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {consumptionCredit} na osobu.",
     "submit": "Rezervovat stůl",
     "submitting": "Odesílání...",
     "successTitle": "Rezervace úspěšná!",
@@ -835,7 +837,8 @@
       "drinks": "NÁPOJE",
       "other": "OSTATNÍ"
     },
-    "footerNote": "Do 31. srpna 2026: vstup {entryFee} pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {consumptionCredit} na osobu."
+    "footerNote": "Bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {consumptionCredit} na osobu.",
+    "legacyFooterNote": "Do 31. srpna 2026: vstup {entryFee} pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {consumptionCredit} na osobu."
   },
   "boardGames": {
     "pageTitle": "Deskové hry - Deskohub",

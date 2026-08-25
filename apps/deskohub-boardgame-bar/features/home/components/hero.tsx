@@ -5,7 +5,11 @@ import { Hero } from "@/shared/components";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
 
-export function HomeHero() {
+export function HomeHero({
+  showLegacyPricing,
+}: {
+  showLegacyPricing: boolean;
+}) {
   return (
     <Hero tags="Domovská stránka" fullHeight>
       <div className="max-w-4xl text-white px-6 mx-auto">
@@ -21,7 +25,11 @@ export function HomeHero() {
         <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
           <span className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
             <Interpolate
-              string={m["hero.priceInfo.forPlayers"]()}
+              string={
+                showLegacyPricing
+                  ? m["hero.priceInfo.legacyForPlayers"]()
+                  : m["hero.priceInfo.forPlayers"]()
+              }
               mapping={{
                 entryFee: () => (
                   <Price

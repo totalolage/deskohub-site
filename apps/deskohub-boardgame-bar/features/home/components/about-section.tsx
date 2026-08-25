@@ -10,7 +10,13 @@ import { siteConstants } from "@/shared/utils/constants";
  * About section with venue images and pricing information
  * Used on the homepage to showcase the venue and consumption credit
  */
-export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
+export async function AboutSection({
+  showLegacyPricing,
+  tags,
+}: {
+  showLegacyPricing: boolean;
+  tags: CloudinaryTag;
+}) {
   const imagesPromise = getCloudinaryImages({
     tags: [["galerie", tags]],
   });
@@ -32,7 +38,11 @@ export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
             <div className="bg-white rounded-lg shadow-sm px-6 py-3">
               <span className="text-gray-700">
                 <Interpolate
-                  string={m["about.priceInfo.forPlayers"]()}
+                  string={
+                    showLegacyPricing
+                      ? m["about.priceInfo.legacyForPlayers"]()
+                      : m["about.priceInfo.forPlayers"]()
+                  }
                   mapping={{
                     entryFee: () => (
                       <Price

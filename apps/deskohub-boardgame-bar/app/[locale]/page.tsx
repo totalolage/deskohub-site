@@ -1,9 +1,11 @@
+import { connection } from "next/server";
 import { Contact } from "@/features/contact";
 import { GamesGallery } from "@/features/gallery";
 import { AboutSection, HomeHero, PartnersBanner, Stats } from "@/features/home";
 import { m, setLocale } from "@/features/i18n";
 import { Location } from "@/features/location";
 import { metadata } from "@/shared/utils/metadata";
+import { isLegacyPricingActive } from "@/shared/utils/pricing-policy";
 import type { RouteProps_locale } from "./route";
 
 export const generateMetadata = metadata({
@@ -15,11 +17,16 @@ export default async function LandingPage({ params }: RouteProps_locale) {
   // Locale needs to be set here to properly refresh component tree when locale changes
   const { locale } = await params;
   setLocale(locale, { reload: false });
+  await connection();
+  const showLegacyPricing = isLegacyPricingActive();
 
   return (
     <>
-      <HomeHero />
-      <AboutSection tags="Domovská stránka" />
+      <HomeHero showLegacyPricing={showLegacyPricing} />
+      <AboutSection
+        showLegacyPricing={showLegacyPricing}
+        tags="Domovská stránka"
+      />
       <Stats />
       <GamesGallery />
       <Location />
