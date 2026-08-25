@@ -34,7 +34,13 @@ export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
                 <Interpolate
                   string={m["about.priceInfo.forPlayers"]()}
                   mapping={{
-                    price: () => (
+                    entryFee: () => (
+                      <Price
+                        amount={siteConstants.pricing.entryFee}
+                        className="text-green-600 font-bold"
+                      />
+                    ),
+                    consumptionCredit: () => (
                       <Price
                         amount={siteConstants.pricing.consumptionCredit}
                         className="text-green-600 font-bold"

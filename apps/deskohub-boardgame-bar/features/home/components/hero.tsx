@@ -23,7 +23,13 @@ export function HomeHero() {
             <Interpolate
               string={m["hero.priceInfo.forPlayers"]()}
               mapping={{
-                price: () => (
+                entryFee: () => (
+                  <Price
+                    amount={siteConstants.pricing.entryFee}
+                    className="text-green-400"
+                  />
+                ),
+                consumptionCredit: () => (
                   <Price
                     amount={siteConstants.pricing.consumptionCredit}
                     className="text-green-400"
