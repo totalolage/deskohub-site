@@ -23,9 +23,9 @@ let overview = {
     upcoming: { from: "2026-08-12", to: "2026-09-10" },
     lastSevenDays: { from: "2026-08-05", to: "2026-08-11" },
   },
-  today: { unavailable: false, value: 1 },
-  upcoming: { unavailable: false, value: 2 },
-  lastSevenDays: { unavailable: false, value: 3 },
+  today: { completed: 1, unavailable: false, value: 2 },
+  upcoming: { completed: 2, unavailable: false, value: 3 },
+  lastSevenDays: { completed: 3, unavailable: false, value: 4 },
 };
 
 mock.module("@/features/administration/page-data.server", () => ({
@@ -56,9 +56,9 @@ describe("AdminPage", () => {
         upcoming: { from: "2026-08-12", to: "2026-09-10" },
         lastSevenDays: { from: "2026-08-05", to: "2026-08-11" },
       },
-      today: { unavailable: false, value: 1 },
-      upcoming: { unavailable: false, value: 2 },
-      lastSevenDays: { unavailable: false, value: 3 },
+      today: { completed: 1, unavailable: false, value: 2 },
+      upcoming: { completed: 2, unavailable: false, value: 3 },
+      lastSevenDays: { completed: 3, unavailable: false, value: 4 },
     };
   });
   afterAll(() => unregisterWorkspaceComponentTestEnv());
@@ -78,10 +78,20 @@ describe("AdminPage", () => {
     ).toBe("/admin/reservations?from=2026-08-05&to=2026-08-11");
   });
 
+  test("emphasizes completed reservations before the total", async () => {
+    const { ReservationActivity } = await import("./page");
+    const view = render(await ReservationActivity());
+    const today = view.getByText("1 completed out of 2 total reservations");
+
+    expect(today.className).toContain("sr-only");
+    expect(view.getByText("1").className).toContain("text-aquamarine-ink");
+    expect(view.getByText("/ 2").className).toContain("text-navy-blue/58");
+  });
+
   test("keeps an unavailable reservation activity range linked", async () => {
     overview = {
       ...overview,
-      upcoming: { unavailable: true, value: 0 },
+      upcoming: { completed: 0, unavailable: true, value: 0 },
     };
     const { ReservationActivity } = await import("./page");
     const view = render(await ReservationActivity());

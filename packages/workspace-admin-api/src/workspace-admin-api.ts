@@ -232,6 +232,7 @@ export class CliBearerAuthentication extends HttpApiMiddleware.Service<
 }) {}
 
 export const AdministrationOverviewMetric = Schema.Struct({
+  completed: Schema.Number,
   unavailable: Schema.Boolean,
   value: Schema.Number,
 });

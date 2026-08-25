@@ -570,7 +570,14 @@ describe("AdministrationService", () => {
     const currentDate = Temporal.Now.instant()
       .toZonedDateTimeISO("Europe/Prague")
       .toPlainDate();
-    const linkedIds = ["last-week", "today", "upcoming"];
+    const linkedIds = [
+      "last-week",
+      "today",
+      "upcoming",
+      "cancelled-today",
+      "new-today",
+      "failed-today",
+    ];
     const listInputs: unknown[] = [];
     const providerReservation = (id: string, date: Temporal.PlainDate) => ({
       _branchId: "branch",
@@ -599,7 +606,18 @@ describe("AdministrationService", () => {
                 WorkspaceDatabase,
                 WorkspaceDatabase.of({
                   db: {
-                    select: () => makeQuery(linkedIds.map((id) => ({ id }))),
+                    select: () =>
+                      makeQuery(
+                        linkedIds.map((id) => ({
+                          id,
+                          failureCode:
+                            id === "failed-today" ? "access_failed" : null,
+                          fulfillmentState:
+                            id === "failed-today" ? "failed" : "fulfilled",
+                          paymentState: "paid",
+                          reservationState: "confirmed",
+                        }))
+                      ),
                   } as never,
                 })
               ),
@@ -613,6 +631,15 @@ describe("AdministrationService", () => {
                         currentDate.subtract({ days: 6 })
                       ),
                       providerReservation("today", currentDate),
+                      {
+                        ...providerReservation("cancelled-today", currentDate),
+                        status: "CANCELLED" as const,
+                      },
+                      {
+                        ...providerReservation("new-today", currentDate),
+                        status: "NEW" as const,
+                      },
+                      providerReservation("failed-today", currentDate),
                       providerReservation(
                         "upcoming",
                         currentDate.add({ days: 1 })
@@ -637,9 +664,21 @@ describe("AdministrationService", () => {
 
     expect(listInputs).toHaveLength(1);
     expect(listInputs[0]).toMatchObject({ order: "startDateAscending" });
-    expect(result.today).toEqual({ unavailable: false, value: 1 });
-    expect(result.upcoming).toEqual({ unavailable: false, value: 1 });
-    expect(result.lastSevenDays).toEqual({ unavailable: false, value: 2 });
+    expect(result.today).toEqual({
+      completed: 1,
+      unavailable: false,
+      value: 4,
+    });
+    expect(result.upcoming).toEqual({
+      completed: 1,
+      unavailable: false,
+      value: 1,
+    });
+    expect(result.lastSevenDays).toEqual({
+      completed: 2,
+      unavailable: false,
+      value: 5,
+    });
   });
 
   test("returns no booking when Dotypos reports it missing", async () => {
