@@ -1,5 +1,6 @@
 import { BigDecimal, Match } from "effect";
 import {
+  getInvoiceOrderId,
   getManualInvoicePayment,
   type InvoiceDocument,
   isManualInvoiceDocument,
@@ -132,7 +133,7 @@ export const getInvoicePresentation = (
         { label: copy.invoiceNumber, value: document.invoiceNumber },
         {
           label: copy.reservationReference,
-          value: document.workspaceReservationId,
+          value: getInvoiceOrderId(document),
         },
       ],
       [
@@ -160,16 +161,10 @@ export const getInvoicePresentation = (
     lineAmountHeading: copy.amount,
     lines: [
       ...getItemLines(document, copy),
-      ...document.quote.payment.discounts.map(
-        ({ amount, discount }): InvoicePresentationLine => ({
-          kind: "discount",
-          description: `${copy.discount}: ${discount.label}`,
-          amount: `−${formatWorkspaceMoney(amount, locale)}`,
-        })
-      ),
+      ...getDiscountLines(document, copy),
     ],
     totalLabel: copy.totalPaid,
-    total: formatWorkspaceMoney(document.quote.payment.expectedPrice, locale),
+    total: formatWorkspaceMoney(getInvoiceTotal(document), locale),
     nonVatStatement: copy.nonVatPayer,
     footer: `${document.supplier.legalName} · ${document.supplier.contactEmail}`,
   };
@@ -319,8 +314,17 @@ const getSupplierPresentation = (
 const getItemLines = (
   document: Exclude<InvoiceDocument, ManualInvoiceDocument>,
   copy: InvoiceCopy
-): readonly InvoicePresentationLine[] =>
-  document.quote.items.map(
+): readonly InvoicePresentationLine[] => {
+  if ("orderId" in document) {
+    return document.lines.map(
+      ({ description, quantity, undiscountedTotal }) => ({
+        kind: "item",
+        description: `${description} × ${quantity}`,
+        amount: formatWorkspaceMoney(undiscountedTotal, document.locale),
+      })
+    );
+  }
+  return document.quote.items.map(
     (item): InvoicePresentationLine =>
       Match.value(item).pipe(
         Match.discriminatorsExhaustive("type")({
@@ -353,6 +357,29 @@ const getItemLines = (
         })
       )
   );
+};
+
+const getDiscountLines = (
+  document: Exclude<InvoiceDocument, ManualInvoiceDocument>,
+  copy: InvoiceCopy
+): readonly InvoicePresentationLine[] => {
+  const discounts =
+    "orderId" in document
+      ? document.lines.flatMap(({ discounts }) => discounts)
+      : document.quote.payment.discounts;
+  return discounts.map(({ amount, discount }) => ({
+    kind: "discount",
+    description: `${copy.discount}: ${discount.label}`,
+    amount: `−${formatWorkspaceMoney(amount, document.locale)}`,
+  }));
+};
+
+const getInvoiceTotal = (
+  document: Exclude<InvoiceDocument, ManualInvoiceDocument>
+) =>
+  "orderId" in document
+    ? document.totals.payable
+    : document.quote.payment.expectedPrice;
 
 const formatWorkspaceInstantDate = (value: string, locale: Locale) =>
   formatInstantDate({

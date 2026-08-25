@@ -13,7 +13,7 @@ import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type AccountingDocumentSnapshot,
-  makeAccountingDocumentSnapshot,
+  makeReservationAccountingDocumentSnapshot,
 } from "@/features/accounting/accounting-document-snapshot";
 import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
@@ -1075,13 +1075,14 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
             );
 
             yield* ensureReservationHasNotEnded(state.reservation);
-            const accountingSnapshot = makeAccountingDocumentSnapshot({
-              workspaceReservationId: reservation.id,
-              dotyposReservationId,
-              dotyposCustomerId,
-              locale,
-              prepared,
-            });
+            const accountingSnapshot =
+              makeReservationAccountingDocumentSnapshot({
+                workspaceReservationId: reservation.id,
+                dotyposReservationId,
+                dotyposCustomerId,
+                locale,
+                prepared,
+              });
             const expectedPrice = prepared.quote.payment.expectedPrice;
             const startPayment =
               expectedPrice.value === 0

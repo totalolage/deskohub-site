@@ -6,6 +6,7 @@ import { discountIdSchema } from "@/features/discounts/contracts";
 import type { InvoiceDocument } from "./invoice";
 import {
   makeCoworkInvoiceDocument,
+  makeGoodsInvoiceDocument,
   makeMeetingRoomInvoiceDocument,
   makeOfficeInvoiceDocument,
   makeTestManualInvoiceDocument,
@@ -36,65 +37,76 @@ describe("invoice presentation", () => {
   test.each([
     ["cs-CZ", "Faktura", "Basic Day Pass", "11. 8. 2026"],
     ["en-US", "Invoice", "Basic Day Pass", "Aug 11, 2026"],
-  ] as const)("projects a %s cowork invoice", (locale, title, itemDescription, serviceDate) => {
-    const presentation = getInvoicePresentation(
-      makeCoworkInvoiceDocument(locale)
-    );
+  ] as const)(
+    "projects a %s cowork invoice",
+    (locale, title, itemDescription, serviceDate) => {
+      const presentation = getInvoicePresentation(
+        makeCoworkInvoiceDocument(locale)
+      );
 
-    expect(presentation.title).toBe(title);
-    expect(presentation.status).toBe(locale === "cs-CZ" ? "Uhrazeno" : "Paid");
-    expect(presentation.factColumns.flat()).toContainEqual({
-      label: locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date",
-      value: serviceDate,
-    });
-    expect(presentation.lines.map(({ description }) => description)).toEqual([
-      itemDescription,
-      locale === "cs-CZ" ? "Káva" : "Coffee",
-    ]);
-    expect(normalize(presentation.total)).toBe(
-      locale === "cs-CZ" ? "400 Kč" : "CZK 400"
-    );
-  });
+      expect(presentation.title).toBe(title);
+      expect(presentation.status).toBe(
+        locale === "cs-CZ" ? "Uhrazeno" : "Paid"
+      );
+      expect(presentation.factColumns.flat()).toContainEqual({
+        label: locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date",
+        value: serviceDate,
+      });
+      expect(presentation.lines.map(({ description }) => description)).toEqual([
+        itemDescription,
+        locale === "cs-CZ" ? "Káva" : "Coffee",
+      ]);
+      expect(normalize(presentation.total)).toBe(
+        locale === "cs-CZ" ? "400 Kč" : "CZK 400"
+      );
+    }
+  );
 
   test.each([
     ["cs-CZ", "Zasedací místnost · 4 hodiny", "11. 8. 2026"],
     ["en-US", "Meeting room · 4 hours", "Aug 11, 2026"],
-  ] as const)("projects a %s meeting-room invoice", (locale, description, expectedServiceDate) => {
-    const presentation = getInvoicePresentation(
-      makeMeetingRoomInvoiceDocument(locale)
-    );
-    const serviceDate = presentation.factColumns
-      .flat()
-      .find(
-        (fact) =>
-          fact?.label ===
-          (locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date")
-      )?.value;
+  ] as const)(
+    "projects a %s meeting-room invoice",
+    (locale, description, expectedServiceDate) => {
+      const presentation = getInvoicePresentation(
+        makeMeetingRoomInvoiceDocument(locale)
+      );
+      const serviceDate = presentation.factColumns
+        .flat()
+        .find(
+          (fact) =>
+            fact?.label ===
+            (locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date")
+        )?.value;
 
-    expect(presentation.lines[0]?.description).toBe(description);
-    expect(serviceDate).toBe(expectedServiceDate);
-    expect(serviceDate).not.toContain(":");
-    expect(presentation.lines).toHaveLength(1);
-  });
+      expect(presentation.lines[0]?.description).toBe(description);
+      expect(serviceDate).toBe(expectedServiceDate);
+      expect(serviceDate).not.toContain(":");
+      expect(presentation.lines).toHaveLength(1);
+    }
+  );
 
   test.each([
     ["cs-CZ", "Soukromá kancelář · 2 dny · 3 místa", "11. 8. 2026"],
     ["en-US", "Private office · 2 days · 3 seats", "Aug 11, 2026"],
-  ] as const)("projects a %s office invoice", (locale, description, expectedServiceDate) => {
-    const presentation = getInvoicePresentation(
-      makeOfficeInvoiceDocument(locale)
-    );
-    const serviceDate = presentation.factColumns
-      .flat()
-      .find(
-        (fact) =>
-          fact?.label ===
-          (locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date")
-      )?.value;
+  ] as const)(
+    "projects a %s office invoice",
+    (locale, description, expectedServiceDate) => {
+      const presentation = getInvoicePresentation(
+        makeOfficeInvoiceDocument(locale)
+      );
+      const serviceDate = presentation.factColumns
+        .flat()
+        .find(
+          (fact) =>
+            fact?.label ===
+            (locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date")
+        )?.value;
 
-    expect(presentation.lines[0]?.description).toBe(description);
-    expect(serviceDate).toBe(expectedServiceDate);
-  });
+      expect(presentation.lines[0]?.description).toBe(description);
+      expect(serviceDate).toBe(expectedServiceDate);
+    }
+  );
 
   test("uses locale plural rules for invoice quantities", () => {
     const original = makeOfficeInvoiceDocument("cs-CZ");
@@ -186,6 +198,36 @@ describe("invoice presentation", () => {
     expect(normalize(presentation.total)).toBe("CZK 225");
   });
 
+  test("projects allocated goods discounts and the exact fulfilment date", () => {
+    const presentation = getInvoicePresentation(makeGoodsInvoiceDocument());
+
+    expect(presentation.factColumns).toEqual([
+      [
+        { label: "Invoice number", value: "WS-FV-2026-000004" },
+        { label: "Order number", value: "goods-order-1" },
+      ],
+      [
+        { label: "Issuance date", value: "Aug 12, 2026" },
+        { label: "Fulfilment date", value: "Aug 12, 2026" },
+        { label: "Payment date", value: "Aug 10, 2026" },
+      ],
+    ]);
+    expect(presentation.lines).toEqual([
+      {
+        kind: "item",
+        description: "Sparkling water × 2",
+        amount: "CZK 100",
+      },
+      { kind: "item", description: "Sandwich × 1", amount: "CZK 50" },
+      {
+        kind: "discount",
+        description: "Discount: Member price",
+        amount: "−CZK 25",
+      },
+    ]);
+    expect(normalize(presentation.total)).toBe("CZK 125");
+  });
+
   test("does not fabricate facts absent from a legacy issued invoice", () => {
     const current = makeCoworkInvoiceDocument("en-US");
     const {
@@ -211,23 +253,23 @@ describe("invoice presentation", () => {
     );
   });
 
-  test.each([
-    "0",
-    "-100",
-  ])("does not request payment for a %s total manual invoice", (price) => {
-    const presentation = getInvoicePresentation(
-      makeTestManualInvoiceDocument("en-US", price)
-    );
+  test.each(["0", "-100"])(
+    "does not request payment for a %s total manual invoice",
+    (price) => {
+      const presentation = getInvoicePresentation(
+        makeTestManualInvoiceDocument("en-US", price)
+      );
 
-    expect(presentation.status).toBe("Issued");
-    expect(presentation.totalLabel).toBe("Total");
-    expect(presentation.factColumns.flat()).not.toContainEqual(
-      expect.objectContaining({ label: "Due date" })
-    );
-    expect(presentation.factColumns.flat()).not.toContainEqual(
-      expect.objectContaining({ label: "Variable symbol" })
-    );
-  });
+      expect(presentation.status).toBe("Issued");
+      expect(presentation.totalLabel).toBe("Total");
+      expect(presentation.factColumns.flat()).not.toContainEqual(
+        expect.objectContaining({ label: "Due date" })
+      );
+      expect(presentation.factColumns.flat()).not.toContainEqual(
+        expect.objectContaining({ label: "Variable symbol" })
+      );
+    }
+  );
 
   test("presents an already-paid manual invoice as paid", () => {
     const document = makeTestManualInvoiceDocument("en-US", "450", {

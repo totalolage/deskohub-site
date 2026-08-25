@@ -1302,6 +1302,13 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
     )
   );
 
+  if ("orderId" in snapshot) {
+    return yield* new AccountingDocumentSnapshotStorageError({
+      operation: "validate",
+      paymentReference: input.paymentReference,
+      message: "Reservation payment requires a reservation snapshot.",
+    });
+  }
   if (
     snapshot.workspaceReservationId !== input.workspaceReservationId ||
     snapshot.locale !== input.locale ||
@@ -1319,7 +1326,7 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
 });
 
 const accountingSnapshotMoneyReconciles = (
-  snapshot: AccountingDocumentSnapshot
+  snapshot: Exclude<AccountingDocumentSnapshot, { readonly orderId: OrderId }>
 ): boolean => {
   const { items, payment } = snapshot.quote;
   const sameUnit = (amount: WorkspaceMoney) =>
@@ -1357,6 +1364,13 @@ const validateAccountingDocumentSnapshotProviderIdentity = Effect.fn(
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly dotyposReservationId: DotyposReservationId | null;
 }) {
+  if ("orderId" in input.snapshot) {
+    return yield* new AccountingDocumentSnapshotStorageError({
+      operation: "validate",
+      paymentReference: input.paymentReference,
+      message: "Reservation payment requires a reservation snapshot.",
+    });
+  }
   if (
     input.snapshot.dotyposCustomerId !== input.dotyposCustomerId ||
     input.snapshot.dotyposReservationId !== input.dotyposReservationId

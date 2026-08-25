@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import type { Locale } from "@/features/i18n";
+import { orderIdSchema } from "@/features/order";
 import { workspaceCurrencyCodeSchema } from "@/shared/money/currencies";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -12,6 +13,7 @@ import {
   type AccountingDocumentSnapshot,
   accountingDocumentIdentitySchema,
   coworkAccountingDocumentSnapshotSchema,
+  goodsAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
   officeAccountingDocumentSnapshotSchema,
   workspaceAccountingSupplier,
@@ -77,8 +79,9 @@ const invoiceGenerationProvenanceSchema = Schema.Struct({
   generatedAt: instantStringSchema,
 });
 
-const invoiceIdentitySchema = Schema.Struct({
-  ...accountingDocumentIdentitySchema.fields,
+const invoiceRecordSchema = Schema.Struct({
+  dotyposCustomerId: accountingDocumentIdentitySchema.fields.dotyposCustomerId,
+  locale: accountingDocumentIdentitySchema.fields.locale,
   buyer: storedInvoiceBuyerSchema,
   supplier: Schema.Struct({
     ...accountingDocumentIdentitySchema.fields.supplier.fields,
@@ -103,20 +106,25 @@ const invoiceIdentitySchema = Schema.Struct({
   ),
 });
 
+const reservationInvoiceIdentitySchema = Schema.Struct({
+  ...accountingDocumentIdentitySchema.fields,
+  ...invoiceRecordSchema.fields,
+});
+
 const coworkInvoiceDocumentSchema = Schema.Struct({
-  ...invoiceIdentitySchema.fields,
+  ...reservationInvoiceIdentitySchema.fields,
   reservation: coworkAccountingDocumentSnapshotSchema.fields.reservation,
   quote: coworkAccountingDocumentSnapshotSchema.fields.quote,
 });
 
 const meetingRoomInvoiceDocumentSchema = Schema.Struct({
-  ...invoiceIdentitySchema.fields,
+  ...reservationInvoiceIdentitySchema.fields,
   reservation: meetingRoomAccountingDocumentSnapshotSchema.fields.reservation,
   quote: meetingRoomAccountingDocumentSnapshotSchema.fields.quote,
 });
 
 const officeInvoiceDocumentSchema = Schema.Struct({
-  ...invoiceIdentitySchema.fields,
+  ...reservationInvoiceIdentitySchema.fields,
   reservation: officeAccountingDocumentSnapshotSchema.fields.reservation,
   quote: officeAccountingDocumentSnapshotSchema.fields.quote,
 });
@@ -126,7 +134,7 @@ const manualInvoiceDocumentIdentitySchema = Schema.Struct({
   invoiceId: invoiceIdSchema,
   dotyposCustomerId: accountingDocumentIdentitySchema.fields.dotyposCustomerId,
   locale: accountingDocumentIdentitySchema.fields.locale,
-  supplier: invoiceIdentitySchema.fields.supplier,
+  supplier: invoiceRecordSchema.fields.supplier,
   buyer: storedInvoiceBuyerSchema,
   delivery: Schema.Struct({ email: Schema.NonEmptyString }),
   invoiceNumber: invoiceNumberSchema,
@@ -157,11 +165,19 @@ export const manualInvoiceDocumentSchema = Schema.Union([
 ]);
 export type ManualInvoiceDocument = typeof manualInvoiceDocumentSchema.Type;
 
+const goodsInvoiceDocumentSchema = Schema.Struct({
+  ...invoiceRecordSchema.fields,
+  orderId: goodsAccountingDocumentSnapshotSchema.fields.orderId,
+  fulfilledAt: goodsAccountingDocumentSnapshotSchema.fields.fulfilledAt,
+  lines: goodsAccountingDocumentSnapshotSchema.fields.lines,
+  totals: goodsAccountingDocumentSnapshotSchema.fields.totals,
+});
 export const invoiceDocumentSchema = Schema.Union([
   coworkInvoiceDocumentSchema,
   meetingRoomInvoiceDocumentSchema,
   officeInvoiceDocumentSchema,
   manualInvoiceDocumentSchema,
+  goodsInvoiceDocumentSchema,
 ]).annotate({
   identifier: "InvoiceDocument",
   description:
@@ -180,6 +196,13 @@ export const getManualInvoicePayment = (
   "payment" in document
     ? document.payment
     : { status: "due", date: document.dueDate };
+
+export const getInvoiceOrderId = (
+  document: Exclude<InvoiceDocument, ManualInvoiceDocument>
+) =>
+  "orderId" in document
+    ? document.orderId
+    : orderIdSchema.make(document.workspaceReservationId);
 
 const decodeInvoiceNumber = Schema.decodeUnknownSync(invoiceNumberSchema);
 export const decodeInvoiceDocument = Schema.decodeUnknownEffect(
@@ -222,8 +245,7 @@ export const makeInvoiceDocument = (input: {
   const generatedAt = instantStringSchema.make(
     temporalInstantToIsoString(input.issuedAt)
   );
-  return invoiceDocumentSchema.make({
-    ...input.source,
+  const issuedFacts = {
     supplier: {
       ...input.source.supplier,
       commercialRegister: workspaceSiteConstants.company.commercialRegister,
@@ -232,15 +254,25 @@ export const makeInvoiceDocument = (input: {
     paymentAttemptId: input.paymentAttemptId,
     invoiceNumber: input.invoiceNumber,
     issuedAt: generatedAt,
-    fulfilledAt: instantStringSchema.make(
-      temporalInstantToIsoString(input.fulfilledAt)
-    ),
     paidAt: instantStringSchema.make(temporalInstantToIsoString(input.paidAt)),
-    provenance: {
-      ...getInvoiceGenerationProvenance(generatedAt),
-      ...(input.provenance ?? { source: "reservation-request" }),
-    },
-  });
+  };
+  return "orderId" in input.source
+    ? goodsInvoiceDocumentSchema.make({
+        ...input.source,
+        ...issuedFacts,
+        fulfilledAt: input.source.fulfilledAt,
+      })
+    : invoiceDocumentSchema.make({
+        ...input.source,
+        ...issuedFacts,
+        fulfilledAt: instantStringSchema.make(
+          temporalInstantToIsoString(input.fulfilledAt)
+        ),
+        provenance: {
+          ...getInvoiceGenerationProvenance(generatedAt),
+          ...(input.provenance ?? { source: "reservation-request" }),
+        },
+      });
 };
 
 export const getInvoiceVariableSymbol = (

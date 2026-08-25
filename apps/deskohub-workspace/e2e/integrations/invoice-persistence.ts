@@ -22,7 +22,7 @@ import {
 import {
   accountingSnapshotKeyIdSchema,
   companyRegistrationIdSchema,
-  makeAccountingDocumentSnapshot,
+  makeReservationAccountingDocumentSnapshot,
   vatRegistrationIdSchema,
 } from "@/features/accounting/accounting-document-snapshot";
 import { AccountingDocumentSnapshotRepository } from "@/features/accounting/backend/accounting-document-snapshot.repository";
@@ -52,11 +52,11 @@ import {
   checkoutSessionKeySchema,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
-import { orderIdSchema } from "@/features/order";
 import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { orderIdSchema } from "@/features/order";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { toWorkspaceE2EError } from "../errors";
@@ -562,13 +562,17 @@ const createPaidFixture = (
       temporalInstantToIsoString(Temporal.Now.instant())
     );
     const correlationId = NexiCorrelationIdSchema.make(randomUUID());
-    const source = makeAccountingDocumentSnapshot({
+    const source = makeReservationAccountingDocumentSnapshot({
       workspaceReservationId: reservationId,
       dotyposReservationId,
       dotyposCustomerId,
       locale: "en-US",
       prepared,
     });
+    let fulfillmentState: "fulfilled" | "not_started" | "processing" =
+      "not_started";
+    if (fulfilled) fulfillmentState = "fulfilled";
+    else if (paid) fulfillmentState = "processing";
 
     yield* db.transaction((tx) =>
       Effect.gen(function* () {
@@ -578,11 +582,7 @@ const createPaidFixture = (
           correlationId,
           dotyposCustomerId,
           paymentState: paid ? "paid" : "pending",
-          fulfillmentState: fulfilled
-            ? "fulfilled"
-            : paid
-              ? "processing"
-              : "not_started",
+          fulfillmentState,
           paidAt: paid ? now : null,
           fulfilledAt: fulfilled ? now : null,
         });
@@ -667,7 +667,7 @@ const createAdditionalFailedAttempt = (
 ) =>
   Effect.gen(function* () {
     const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
-    const source = makeAccountingDocumentSnapshot({
+    const source = makeReservationAccountingDocumentSnapshot({
       workspaceReservationId: fixture.reservationId,
       dotyposReservationId: fixture.dotyposReservationId,
       dotyposCustomerId: fixture.dotyposCustomerId,

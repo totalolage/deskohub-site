@@ -5,6 +5,7 @@ import { Effect } from "effect";
 import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   makeCoworkInvoiceDocument,
+  makeGoodsInvoiceDocument,
   makeMeetingRoomInvoiceDocument,
   makeOfficeInvoiceDocument,
   makeTestManualInvoiceDocument,
@@ -35,6 +36,7 @@ const cases = [
     makeTestManualInvoiceDocument("cs-CZ"),
     "Účet: 2303459272/2010",
   ],
+  ["goods en-US", makeGoodsInvoiceDocument(), "Sparkling water"],
 ] as const;
 
 describe("invoice PDF", () => {
@@ -52,20 +54,21 @@ describe("invoice PDF", () => {
     expect(factColumnStyle).not.toContain('width: "50%"');
   });
 
-  test.each(
-    cases
-  )("renders %s from the issued document", async (_, document, expectedText) => {
-    const buffer = await Effect.runPromise(renderInvoicePdf(document));
-    const parsed = await extractPdfText(buffer);
+  test.each(cases)(
+    "renders %s from the issued document",
+    async (_, document, expectedText) => {
+      const buffer = await Effect.runPromise(renderInvoicePdf(document));
+      const parsed = await extractPdfText(buffer);
 
-    expect(buffer.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(buffer.subarray(-32).toString()).toContain("%%EOF");
-    expect(buffer.byteLength).toBeGreaterThan(8_000);
-    expect(parsed.pageCount).toBe(1);
-    expect(parsed.text).toContain(expectedText);
-    expect(parsed.text).toContain(document.invoiceNumber);
-    expect(parsed.text).toContain("Desktechub s.r.o.");
-  });
+      expect(buffer.subarray(0, 5).toString()).toBe("%PDF-");
+      expect(buffer.subarray(-32).toString()).toContain("%%EOF");
+      expect(buffer.byteLength).toBeGreaterThan(8_000);
+      expect(parsed.pageCount).toBe(1);
+      expect(parsed.text).toContain(expectedText);
+      expect(parsed.text).toContain(document.invoiceNumber);
+      expect(parsed.text).toContain("Desktechub s.r.o.");
+    }
+  );
 
   test("preserves the same extracted presentation across repeat renders", async () => {
     const document = makeCoworkInvoiceDocument("cs-CZ", {
