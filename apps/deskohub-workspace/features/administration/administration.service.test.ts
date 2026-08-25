@@ -466,48 +466,67 @@ describe("AdministrationService", () => {
         },
       ],
     ] as const;
+    let batchFails = false;
     let selectCall = 0;
     const itemCalls: string[] = [];
 
-    const result = await Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return yield* administration.listCustomers({});
-    }).pipe(
-      Effect.provide(
-        AdministrationService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(
-                WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
-              ),
-              DotyposServiceMock({
-                getCustomer: (id) =>
-                  Effect.sync(() => {
-                    itemCalls.push(id);
-                    return { firstName: "Ada", id };
-                  }),
-                getCustomers: () => Effect.succeed([]),
-              }),
-              Layer.succeed(
-                PostHogReservationHistory,
-                PostHogReservationHistory.of({
-                  load: () => Effect.succeed({ kind: "unavailable" } as const),
-                })
-              ),
-              PaymentAdministrationServiceMock({})
+    const loadCustomers = () =>
+      Effect.gen(function* () {
+        const administration = yield* AdministrationService;
+        return yield* administration.listCustomers({});
+      }).pipe(
+        Effect.provide(
+          AdministrationService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.of({
+                    db: {
+                      select: () => makeQuery(rows[selectCall++] ?? []),
+                    } as never,
+                  })
+                ),
+                DotyposServiceMock({
+                  getCustomer: (id) =>
+                    Effect.sync(() => {
+                      itemCalls.push(id);
+                      return { firstName: "Ada", id };
+                    }),
+                  getCustomers: () =>
+                    batchFails
+                      ? Effect.fail(
+                          new ExternalAPIError({
+                            operation: "getCustomers",
+                            service: "Dotypos",
+                            statusCode: 503,
+                          })
+                        )
+                      : Effect.succeed([]),
+                }),
+                Layer.succeed(
+                  PostHogReservationHistory,
+                  PostHogReservationHistory.of({
+                    load: () =>
+                      Effect.succeed({ kind: "unavailable" } as const),
+                  })
+                ),
+                PaymentAdministrationServiceMock({})
+              )
             )
           )
-        )
-      ),
-      Effect.runPromise
-    );
+        ),
+        Effect.runPromise
+      );
 
+    const result = await loadCustomers();
     expect(result.items[0]?.customer?.displayName).toBe("Ada");
+    expect(itemCalls).toEqual([customerId]);
+
+    batchFails = true;
+    selectCall = 0;
+    itemCalls.length = 0;
+    expect((await loadCustomers()).items[0]?.customer?.displayName).toBe("Ada");
     expect(itemCalls).toEqual([customerId]);
   });
 

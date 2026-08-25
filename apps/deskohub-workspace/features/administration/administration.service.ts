@@ -1305,7 +1305,6 @@ export class AdministrationService extends Context.Service<
               (batchIds) =>
                 dotypos.getCustomers(batchIds).pipe(
                   Effect.map((customers) => ({
-                    available: true as const,
                     customers,
                     ids: batchIds,
                   })),
@@ -1316,7 +1315,6 @@ export class AdministrationService extends Context.Service<
                       { cause }
                     ).pipe(
                       Effect.as({
-                        available: false as const,
                         customers: [] as const,
                         ids: batchIds,
                       })
@@ -1331,9 +1329,7 @@ export class AdministrationService extends Context.Service<
           );
           const missingCustomers = yield* Effect.all(
             batches
-              .flatMap(({ available, ids: batchIds }) =>
-                available ? batchIds : []
-              )
+              .flatMap(({ ids: batchIds }) => batchIds)
               .filter((id) => !customersById.has(id))
               .map((id) =>
                 dotypos.getCustomer(id).pipe(
