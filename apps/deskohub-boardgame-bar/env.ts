@@ -4,7 +4,7 @@ import {
   DotyposCloudIdSchema,
   DotyposEmployeeIdSchema,
 } from "@deskohub/dotypos";
-import { GoogleCalendarIdSchema } from "@deskohub/google-calendar";
+import { GoogleCalendarIdSchema } from "@deskohub/google-calendar/types";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { createEnv } from "@t3-oss/env-nextjs";
 import { Schema } from "effect";
