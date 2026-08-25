@@ -27,7 +27,7 @@
     "description": "Místo pro všechny, kdo milují deskové hry. Klidné zákoutí pro vaši oblíbenou společenskou hru i možnost naučit se nové hry.",
     "priceInfo": {
       "forPlayers": "Bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu.",
-      "legacyForPlayers": "Do 31. srpna 2026: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
+      "legacyForPlayers": "Do {legacyEndDate}: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od {newPolicyStartDate} bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
     }
   },
   "hours": {
@@ -41,7 +41,7 @@
     "description": "Místo pro všechny, kdo milují deskové hry, ať už strategické, kampaňové či párty hry. Ideální prostor pro setkání s přáteli i poznávání nových spřízněných duší.",
     "priceInfo": {
       "forPlayers": "Bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu.",
-      "legacyForPlayers": "Do 31. srpna 2026: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
+      "legacyForPlayers": "Do {legacyEndDate}: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od {newPolicyStartDate} bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
     }
   },
   "features": {
@@ -838,7 +838,7 @@
       "other": "OSTATNÍ"
     },
     "footerNote": "Bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {consumptionCredit} na osobu.",
-    "legacyFooterNote": "Do 31. srpna 2026: vstup {entryFee} pro deskové hráče. Děti do 15 let a pondělí zdarma. Od 1. září 2026 bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {consumptionCredit} na osobu."
+    "legacyFooterNote": "Do {legacyEndDate}: vstup {entryFee} pro deskové hráče. Děti do 15 let a pondělí zdarma. Od {newPolicyStartDate} bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit {consumptionCredit} na osobu."
   },
   "boardGames": {
     "pageTitle": "Deskové hry - Deskohub",

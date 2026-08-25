@@ -1,6 +1,7 @@
 import { getLocale, m } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import { formatPrice } from "@/shared/utils/price-formatting";
+import { formatPricingPolicyDates } from "@/shared/utils/pricing-policy";
 
 export function MenuFooterNote({
   showLegacyPricing,
@@ -13,6 +14,7 @@ export function MenuFooterNote({
     <div className="text-center mt-16 p-6 bg-black/40 backdrop-blur-sm rounded-lg border border-green-400/20">
       <p className="text-gray-300">
         {m[showLegacyPricing ? "menu.legacyFooterNote" : "menu.footerNote"]({
+          ...formatPricingPolicyDates(locale),
           consumptionCredit: formatPrice(
             siteConstants.pricing.consumptionCredit,
             locale

@@ -1,9 +1,10 @@
 import Interpolate from "@doist/react-interpolate";
-import { m } from "@/features/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { OpeningHours } from "@/features/opening-hours";
 import { Hero } from "@/shared/components";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
+import { formatPricingPolicyDates } from "@/shared/utils/pricing-policy";
 
 export function HomeHero({
   showLegacyPricing,
@@ -27,7 +28,9 @@ export function HomeHero({
             <Interpolate
               string={
                 showLegacyPricing
-                  ? m["hero.priceInfo.legacyForPlayers"]()
+                  ? m["hero.priceInfo.legacyForPlayers"](
+                      formatPricingPolicyDates(getLocale())
+                    )
                   : m["hero.priceInfo.forPlayers"]()
               }
               mapping={{

@@ -27,7 +27,7 @@
     "description": "A place for everyone who loves board games. Quiet corners for your favorite social game and the opportunity to learn new games.",
     "priceInfo": {
       "forPlayers": "Without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week.",
-      "legacyForPlayers": "Until August 31, 2026: entry <entryFee /> for board game players. Children under 15 and Mondays are free. From September 1, 2026, without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week."
+      "legacyForPlayers": "Until {legacyEndDate}: entry <entryFee /> for board game players. Children under 15 and Mondays are free. From {newPolicyStartDate}, without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week."
     }
   },
   "hours": {
@@ -41,7 +41,7 @@
     "description": "A place for everyone who loves board games, whether strategic, campaign or party games. An ideal space for meeting friends and getting to know new kindred spirits.",
     "priceInfo": {
       "forPlayers": "Without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week.",
-      "legacyForPlayers": "Until August 31, 2026: entry <entryFee /> for board game players. Children under 15 and Mondays are free. From September 1, 2026, without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week."
+      "legacyForPlayers": "Until {legacyEndDate}: entry <entryFee /> for board game players. Children under 15 and Mondays are free. From {newPolicyStartDate}, without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week."
     }
   },
   "features": {
@@ -818,7 +818,7 @@
       "other": "OTHER"
     },
     "footerNote": "Without entrance fee: only a single consumption credit of {consumptionCredit} per person applies for any day of the week.",
-    "legacyFooterNote": "Until August 31, 2026: entry {entryFee} for board game players. Children under 15 and Mondays are free. From September 1, 2026, without entrance fee: only a single consumption credit of {consumptionCredit} per person applies for any day of the week."
+    "legacyFooterNote": "Until {legacyEndDate}: entry {entryFee} for board game players. Children under 15 and Mondays are free. From {newPolicyStartDate}, without entrance fee: only a single consumption credit of {consumptionCredit} per person applies for any day of the week."
   },
   "boardGames": {
     "pageTitle": "Board Games - Deskohub",

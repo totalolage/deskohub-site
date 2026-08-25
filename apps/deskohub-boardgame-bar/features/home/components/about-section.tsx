@@ -2,9 +2,10 @@ import Interpolate from "@doist/react-interpolate";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { Gallery } from "@/features/gallery/components/gallery";
 import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
-import { m } from "@/features/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
+import { formatPricingPolicyDates } from "@/shared/utils/pricing-policy";
 
 /**
  * About section with venue images and pricing information
@@ -40,7 +41,9 @@ export async function AboutSection({
                 <Interpolate
                   string={
                     showLegacyPricing
-                      ? m["about.priceInfo.legacyForPlayers"]()
+                      ? m["about.priceInfo.legacyForPlayers"](
+                          formatPricingPolicyDates(getLocale())
+                        )
                       : m["about.priceInfo.forPlayers"]()
                   }
                   mapping={{
