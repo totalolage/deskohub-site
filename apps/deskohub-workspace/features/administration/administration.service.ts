@@ -34,7 +34,14 @@ import {
   sql,
   sum,
 } from "drizzle-orm";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import {
+  Context,
+  Effect,
+  Array as EffectArray,
+  Layer,
+  Option,
+  Schema,
+} from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -104,6 +111,7 @@ import {
 const reservationPageSize = 24;
 const bookingPageSize = 24;
 const customerPageSize = 24;
+const customerProviderBatchSize = 50;
 const customerReservationPageSize = 10;
 const customerActivityReservationLimit = 24;
 const customerActivityTransactionLimit = 50;
@@ -1292,17 +1300,40 @@ export class AdministrationService extends Context.Service<
       const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
         function* (ids: readonly DotyposCustomerId[]) {
           const uniqueIds = [...new Set(ids)];
-          const customers = yield* dotypos.getCustomers(uniqueIds).pipe(
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Batch customer details unavailable", {
-                cause,
-              }).pipe(Effect.as([] as const));
-            })
+          const batches = yield* Effect.all(
+            EffectArray.chunksOf(uniqueIds, customerProviderBatchSize).map(
+              (batchIds) =>
+                dotypos.getCustomers(batchIds).pipe(
+                  Effect.map((customers) => ({
+                    available: true as const,
+                    customers,
+                    ids: batchIds,
+                  })),
+                  Effect.catch((cause) => {
+                    unstable_rethrow(cause);
+                    return Effect.logWarning(
+                      "Batch customer details unavailable",
+                      { cause }
+                    ).pipe(
+                      Effect.as({
+                        available: false as const,
+                        customers: [] as const,
+                        ids: batchIds,
+                      })
+                    );
+                  })
+                )
+            ),
+            { concurrency: 3 }
           );
-          const customersById = indexCustomersById(customers);
+          const customersById = indexCustomersById(
+            batches.flatMap(({ customers }) => customers)
+          );
           const missingCustomers = yield* Effect.all(
-            uniqueIds
+            batches
+              .flatMap(({ available, ids: batchIds }) =>
+                available ? batchIds : []
+              )
               .filter((id) => !customersById.has(id))
               .map((id) =>
                 dotypos.getCustomer(id).pipe(

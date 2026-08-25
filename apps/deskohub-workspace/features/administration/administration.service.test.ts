@@ -583,6 +583,7 @@ describe("AdministrationService", () => {
       "failed-today",
     ];
     const listInputs: unknown[] = [];
+    const customerBatchInputs: (readonly string[])[] = [];
     let missingCustomerCreationTime = false;
     const atTime = (date: Temporal.PlainDate, hour: number) =>
       date.toZonedDateTime("Europe/Prague").add({ hours: hour }).toInstant();
@@ -681,14 +682,27 @@ describe("AdministrationService", () => {
                             paymentState: "not_started",
                             reservationState: "draft",
                           },
+                          ...Array.from({ length: 101 }, (_, index) => ({
+                            id: null,
+                            customerId: `customer-historical-${index}`,
+                            createdAt: atTime(
+                              currentDate.subtract({ days: 30 }),
+                              10
+                            ),
+                            failureCode: null,
+                            fulfillmentState: "not_started",
+                            paymentState: "not_started",
+                            reservationState: "draft",
+                          })),
                         ]),
                     } as never,
                   })
                 ),
                 DotyposServiceMock({
                   getCustomers: (ids) =>
-                    Effect.succeed(
-                      ids.map((id) => ({
+                    Effect.sync(() => {
+                      customerBatchInputs.push(ids);
+                      return ids.map((id) => ({
                         created:
                           missingCustomerCreationTime && id === "customer-new-a"
                             ? null
@@ -699,8 +713,8 @@ describe("AdministrationService", () => {
                               ).toString()),
                         firstName: id.replace("customer-", ""),
                         id,
-                      }))
-                    ),
+                      }));
+                    }),
                   listReservations: (input) =>
                     Effect.sync(() => {
                       listInputs.push(input);
@@ -771,6 +785,8 @@ describe("AdministrationService", () => {
 
     expect(listInputs).toHaveLength(1);
     expect(listInputs[0]).toMatchObject({ order: "startDateAscending" });
+    expect(customerBatchInputs.length).toBeGreaterThan(1);
+    expect(customerBatchInputs.every((ids) => ids.length <= 50)).toBe(true);
     expect(result.today).toEqual({
       completed: 1,
       unavailable: false,
