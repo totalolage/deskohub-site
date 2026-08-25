@@ -27,8 +27,8 @@ import { ManualInvoiceConflictError } from "@/features/accounting/backend/invoic
 import { ManualInvoiceValidationError } from "@/features/accounting/manual-invoice";
 import { AdministrationService } from "@/features/administration/administration.service";
 import {
-  getAdministrationOperationFilters,
-  getAdministrationOrderDateTimeBounds,
+  getAdministrationNexiOperationFilters,
+  getAdministrationNexiOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "@/features/administration/payment-administration-filters";
 import {
@@ -118,6 +118,42 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       const discounts = yield* DiscountAdministration;
       const invoices = yield* InvoiceAdministrationService;
       const mutationIdempotency = yield* CliMutationIdempotency;
+      const listNexiOrders = (query: {
+        readonly from?: string;
+        readonly to?: string;
+      }) => {
+        const range = getAdministrationNexiOrderDateTimeBounds(
+          query.from,
+          query.to
+        );
+        return administration
+          .listNexiOrders({
+            fromTime: range.fromTime,
+            toTime: range.toTime,
+            maxRecords: 50,
+          })
+          .pipe(mapServiceFailure);
+      };
+      const listNexiOperations = (query: {
+        readonly channel?: string;
+        readonly from?: string;
+        readonly operationType?: string;
+        readonly to?: string;
+      }) => {
+        const range = getAdministrationPaymentDateTimeBounds(
+          query.from,
+          query.to
+        );
+        const filters = getAdministrationNexiOperationFilters(query);
+        return administration
+          .listNexiOperations({
+            fromTime: range.fromTime,
+            toTime: range.toTime,
+            maxRecords: 100,
+            ...filters,
+          })
+          .pipe(mapServiceFailure);
+      };
       return handlers
         .handle("getOverview", () =>
           administration.loadOverview().pipe(mapServiceFailure)
@@ -263,40 +299,26 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             )
           )
         )
-        .handle("listOrders", ({ query }) => {
-          const range = getAdministrationOrderDateTimeBounds(
-            query.from,
-            query.to
-          );
-          return administration
-            .listOrders({
-              fromTime: range.fromTime,
-              toTime: range.toTime,
-              maxRecords: 50,
-            })
-            .pipe(mapServiceFailure);
-        })
-        .handle("getOrder", ({ params }) =>
-          administration.loadOrder(params.orderId).pipe(mapServiceFailure)
+        .handle("listNexiOrders", ({ query }) => listNexiOrders(query))
+        .handle("getNexiOrder", ({ params }) =>
+          administration.loadNexiOrder(params.orderId).pipe(mapServiceFailure)
         )
-        .handle("listOperations", ({ query }) => {
-          const range = getAdministrationPaymentDateTimeBounds(
-            query.from,
-            query.to
-          );
-          const filters = getAdministrationOperationFilters(query);
-          return administration
-            .listOperations({
-              fromTime: range.fromTime,
-              toTime: range.toTime,
-              maxRecords: 100,
-              ...filters,
-            })
-            .pipe(mapServiceFailure);
-        })
-        .handle("getOperation", ({ params }) =>
+        .handle("listNexiOperations", ({ query }) => listNexiOperations(query))
+        .handle("getNexiOperation", ({ params }) =>
           administration
-            .loadOperation(params.operationId)
+            .loadNexiOperation(params.operationId)
+            .pipe(mapServiceFailure)
+        )
+        .handle("listLegacyNexiOrders", ({ query }) => listNexiOrders(query))
+        .handle("getLegacyNexiOrder", ({ params }) =>
+          administration.loadNexiOrder(params.orderId).pipe(mapServiceFailure)
+        )
+        .handle("listLegacyNexiOperations", ({ query }) =>
+          listNexiOperations(query)
+        )
+        .handle("getLegacyNexiOperation", ({ params }) =>
+          administration
+            .loadNexiOperation(params.operationId)
             .pipe(mapServiceFailure)
         )
         .handle("listCustomers", ({ query }) =>

@@ -843,7 +843,7 @@ export const AdministrationNexiOrder = Schema.Struct({
 });
 export type AdministrationNexiOrder = typeof AdministrationNexiOrder.Type;
 
-export const AdministrationOrderLink = Schema.Struct({
+export const AdministrationNexiOrderLink = Schema.Struct({
   paymentAttemptId: AdministrationPaymentAttemptId,
   reservationId: AdministrationWorkspaceReservationId,
   state: Schema.Literals([
@@ -860,9 +860,10 @@ export const AdministrationOrderLink = Schema.Struct({
   providerOrderCreatedAt: Schema.NullOr(Schema.String),
   providerOrderCreatedAtEstimated: Schema.Boolean,
 });
-export type AdministrationOrderLink = typeof AdministrationOrderLink.Type;
+export type AdministrationNexiOrderLink =
+  typeof AdministrationNexiOrderLink.Type;
 
-export const AdministrationOrder = Schema.Struct({
+export const AdministrationNexiOrderRecord = Schema.Struct({
   orderId: AdministrationNexiOrderId,
   provider: Schema.NullOr(AdministrationNexiOrder),
   providerAvailable: Schema.Boolean,
@@ -872,58 +873,62 @@ export const AdministrationOrder = Schema.Struct({
     "not_returned",
     "unavailable",
   ]),
-  link: Schema.NullOr(AdministrationOrderLink),
+  link: Schema.NullOr(AdministrationNexiOrderLink),
 });
-export type AdministrationOrder = typeof AdministrationOrder.Type;
+export type AdministrationNexiOrderRecord =
+  typeof AdministrationNexiOrderRecord.Type;
 
-export const AdministrationOrderList = Schema.Struct({
-  items: Schema.Array(AdministrationOrder),
+export const AdministrationNexiOrderList = Schema.Struct({
+  items: Schema.Array(AdministrationNexiOrderRecord),
   providerAvailable: Schema.Boolean,
   truncated: Schema.Boolean,
 });
-export type AdministrationOrderList = typeof AdministrationOrderList.Type;
+export type AdministrationNexiOrderList =
+  typeof AdministrationNexiOrderList.Type;
 
 const administrationDateRangeQuery = {
   from: Schema.optional(administrationCalendarDate),
   to: Schema.optional(administrationCalendarDate),
 };
 
-export const AdministrationOrderQuery = Schema.Struct(
+export const AdministrationNexiOrderQuery = Schema.Struct(
   administrationDateRangeQuery
 );
-export type AdministrationOrderQuery = typeof AdministrationOrderQuery.Type;
+export type AdministrationNexiOrderQuery =
+  typeof AdministrationNexiOrderQuery.Type;
 
-export const AdministrationOperation = Schema.Struct({
+export const AdministrationNexiOperationRecord = Schema.Struct({
   ...AdministrationNexiOperation.fields,
   linkedReservationId: Schema.NullOr(AdministrationWorkspaceReservationId),
 });
-export type AdministrationOperation = typeof AdministrationOperation.Type;
+export type AdministrationNexiOperationRecord =
+  typeof AdministrationNexiOperationRecord.Type;
 
-export const AdministrationOperationList = Schema.Struct({
-  items: Schema.Array(AdministrationOperation),
+export const AdministrationNexiOperationList = Schema.Struct({
+  items: Schema.Array(AdministrationNexiOperationRecord),
   providerAvailable: Schema.Boolean,
   truncated: Schema.Boolean,
 });
-export type AdministrationOperationList =
-  typeof AdministrationOperationList.Type;
+export type AdministrationNexiOperationList =
+  typeof AdministrationNexiOperationList.Type;
 
-export const AdministrationOperationQuery = Schema.Struct({
+export const AdministrationNexiOperationQuery = Schema.Struct({
   ...administrationDateRangeQuery,
   channel: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
   operationType: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
 });
-export type AdministrationOperationQuery =
-  typeof AdministrationOperationQuery.Type;
+export type AdministrationNexiOperationQuery =
+  typeof AdministrationNexiOperationQuery.Type;
 
-export const AdministrationOperationDetail = Schema.Struct({
+export const AdministrationNexiOperationDetail = Schema.Struct({
   operationId: AdministrationNexiOperationId,
   operation: Schema.NullOr(AdministrationNexiOperation),
   providerAvailable: Schema.Boolean,
   providerStatus: Schema.Literals(["available", "not_found", "unavailable"]),
   linkedReservationId: Schema.NullOr(AdministrationWorkspaceReservationId),
 });
-export type AdministrationOperationDetail =
-  typeof AdministrationOperationDetail.Type;
+export type AdministrationNexiOperationDetail =
+  typeof AdministrationNexiOperationDetail.Type;
 
 export const AdministrationReservationLifecycleStage = Schema.Literals([
   "started",
@@ -1009,7 +1014,7 @@ export const AdministrationReservationDetail = Schema.Struct({
   lifecycle: AdministrationReservationLifecycle,
   timeline: Schema.Array(AdministrationTimelineItem),
   paymentAttempts: Schema.Array(AdministrationPaymentAttempt),
-  orders: Schema.Array(AdministrationOrder),
+  orders: Schema.Array(AdministrationNexiOrderRecord),
   discounts: Schema.Array(AdministrationDiscountApplication),
   accessGrant: Schema.NullOr(AdministrationReservationAccessGrant),
   otherCustomerReservations: Schema.Array(AdministrationReservationSummary),
@@ -1816,27 +1821,51 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
     })
   )
   .add(
-    HttpApiEndpoint.get("listOrders", "/orders", {
-      query: AdministrationOrderQuery,
-      success: AdministrationOrderList,
+    HttpApiEndpoint.get("listNexiOrders", "/nexi/orders", {
+      query: AdministrationNexiOrderQuery,
+      success: AdministrationNexiOrderList,
     })
   )
   .add(
-    HttpApiEndpoint.get("getOrder", "/orders/:orderId", {
+    HttpApiEndpoint.get("getNexiOrder", "/nexi/orders/:orderId", {
       params: { orderId: AdministrationNexiOrderId },
-      success: AdministrationOrder,
+      success: AdministrationNexiOrderRecord,
     })
   )
   .add(
-    HttpApiEndpoint.get("listOperations", "/operations", {
-      query: AdministrationOperationQuery,
-      success: AdministrationOperationList,
+    HttpApiEndpoint.get("listNexiOperations", "/nexi/operations", {
+      query: AdministrationNexiOperationQuery,
+      success: AdministrationNexiOperationList,
     })
   )
   .add(
-    HttpApiEndpoint.get("getOperation", "/operations/:operationId", {
+    HttpApiEndpoint.get("getNexiOperation", "/nexi/operations/:operationId", {
       params: { operationId: AdministrationNexiOperationId },
-      success: AdministrationOperationDetail,
+      success: AdministrationNexiOperationDetail,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listLegacyNexiOrders", "/orders", {
+      query: AdministrationNexiOrderQuery,
+      success: AdministrationNexiOrderList,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getLegacyNexiOrder", "/orders/:orderId", {
+      params: { orderId: AdministrationNexiOrderId },
+      success: AdministrationNexiOrderRecord,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listLegacyNexiOperations", "/operations", {
+      query: AdministrationNexiOperationQuery,
+      success: AdministrationNexiOperationList,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getLegacyNexiOperation", "/operations/:operationId", {
+      params: { operationId: AdministrationNexiOperationId },
+      success: AdministrationNexiOperationDetail,
     })
   )
   .add(

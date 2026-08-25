@@ -17,9 +17,9 @@ import {
   AdministrationInvoiceId,
   AdministrationInvoiceQuery,
   AdministrationNexiOperationId,
+  type AdministrationNexiOperationQueryType,
   AdministrationNexiOrderId,
-  type AdministrationOperationQueryType,
-  type AdministrationOrderQueryType,
+  type AdministrationNexiOrderQueryType,
   type AdministrationOverviewMetricType,
   type AdministrationReservationAccessGrantType,
   type AdministrationReservationAccessMutationType,
@@ -461,17 +461,17 @@ const administrationDateRangeFlags = {
   ),
 };
 
-const ordersListCommand = Command.make(
+const nexiOrdersListCommand = Command.make(
   "list",
   administrationDateRangeFlags,
   ({ from, to }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const query: AdministrationOrderQueryType = {
+        const query: AdministrationNexiOrderQueryType = {
           ...(Option.isSome(from) && { from: from.value }),
           ...(Option.isSome(to) && { to: to.value }),
         };
-        const result = yield* api.listOrders(accessToken, query);
+        const result = yield* api.listNexiOrders(accessToken, query);
         if (json) {
           yield* Console.log(JSON.stringify(result));
           return;
@@ -491,9 +491,9 @@ const ordersListCommand = Command.make(
         }
       })
     )
-).pipe(Command.withDescription("List payment provider orders"));
+).pipe(Command.withDescription("List Nexi orders"));
 
-const ordersGetCommand = Command.make(
+const nexiOrdersGetCommand = Command.make(
   "get",
   { orderId: Argument.string("order-id") },
   ({ orderId }) =>
@@ -502,7 +502,7 @@ const ordersGetCommand = Command.make(
         const decodedOrderId = yield* Schema.decodeUnknownEffect(
           AdministrationNexiOrderId
         )(orderId);
-        const order = yield* api.getOrder(accessToken, decodedOrderId);
+        const order = yield* api.getNexiOrder(accessToken, decodedOrderId);
         if (json) {
           yield* Console.log(JSON.stringify(order));
           return;
@@ -522,11 +522,11 @@ const ordersGetCommand = Command.make(
         }
       })
     )
-).pipe(Command.withDescription("Show a payment provider order"));
+).pipe(Command.withDescription("Show a Nexi order"));
 
-const ordersCommand = Command.make("orders").pipe(
-  Command.withDescription("Inspect payment provider orders"),
-  Command.withSubcommands([ordersListCommand, ordersGetCommand])
+const nexiOrdersCommand = Command.make("orders").pipe(
+  Command.withDescription("Inspect Nexi orders"),
+  Command.withSubcommands([nexiOrdersListCommand, nexiOrdersGetCommand])
 );
 
 const invoicesListCommand = Command.make(
@@ -750,7 +750,7 @@ const invoicesCommand = Command.make("invoices").pipe(
   ])
 );
 
-const operationsListCommand = Command.make(
+const nexiOperationsListCommand = Command.make(
   "list",
   {
     ...administrationDateRangeFlags,
@@ -766,7 +766,7 @@ const operationsListCommand = Command.make(
   ({ channel, from, operationType, to }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const query: AdministrationOperationQueryType = {
+        const query: AdministrationNexiOperationQueryType = {
           ...(Option.isSome(from) && { from: from.value }),
           ...(Option.isSome(to) && { to: to.value }),
           ...(Option.isSome(channel) && { channel: channel.value }),
@@ -774,7 +774,7 @@ const operationsListCommand = Command.make(
             operationType: operationType.value,
           }),
         };
-        const result = yield* api.listOperations(accessToken, query);
+        const result = yield* api.listNexiOperations(accessToken, query);
         if (json) {
           yield* Console.log(JSON.stringify(result));
           return;
@@ -796,9 +796,9 @@ const operationsListCommand = Command.make(
         }
       })
     )
-).pipe(Command.withDescription("List payment provider operations"));
+).pipe(Command.withDescription("List Nexi operations"));
 
-const operationsGetCommand = Command.make(
+const nexiOperationsGetCommand = Command.make(
   "get",
   { operationId: Argument.string("operation-id") },
   ({ operationId }) =>
@@ -807,7 +807,10 @@ const operationsGetCommand = Command.make(
         const decodedOperationId = yield* Schema.decodeUnknownEffect(
           AdministrationNexiOperationId
         )(operationId);
-        const detail = yield* api.getOperation(accessToken, decodedOperationId);
+        const detail = yield* api.getNexiOperation(
+          accessToken,
+          decodedOperationId
+        );
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -824,11 +827,16 @@ const operationsGetCommand = Command.make(
         );
       })
     )
-).pipe(Command.withDescription("Show a payment provider operation"));
+).pipe(Command.withDescription("Show a Nexi operation"));
 
-const operationsCommand = Command.make("operations").pipe(
-  Command.withDescription("Inspect payment provider operations"),
-  Command.withSubcommands([operationsListCommand, operationsGetCommand])
+const nexiOperationsCommand = Command.make("operations").pipe(
+  Command.withDescription("Inspect Nexi operations"),
+  Command.withSubcommands([nexiOperationsListCommand, nexiOperationsGetCommand])
+);
+
+const nexiCommand = Command.make("nexi").pipe(
+  Command.withDescription("Inspect Nexi payment records"),
+  Command.withSubcommands([nexiOrdersCommand, nexiOperationsCommand])
 );
 
 const customersListCommand = Command.make(
@@ -2104,8 +2112,7 @@ export const dhwCommand = rootCommand.pipe(
     customersCommand,
     discountsCommand,
     invoicesCommand,
-    operationsCommand,
-    ordersCommand,
+    nexiCommand,
     overviewCommand,
     reservationsCommand,
     salesCommand,

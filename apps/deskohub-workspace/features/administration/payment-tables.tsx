@@ -6,30 +6,30 @@ import { AdministrationLink as Link } from "./admin-link";
 import { AdministrationDataTable } from "./data-table";
 import { EmptyState } from "./empty-state";
 import type {
-  AdministrationOperation,
-  AdministrationOrder,
+  AdministrationNexiOperationRecord,
+  AdministrationNexiOrderRecord,
 } from "./payment-administration.service";
 import {
-  formatOrderMoney,
+  formatNexiOrderMoney,
   formatProviderDateTime,
   formatProviderMoney,
   ProviderStatusBadge,
 } from "./payment-components";
 import { getProviderValueLabel } from "./payment-presentation";
 
-const getReconciliationLabel = (order: AdministrationOrder) => {
+const getReconciliationLabel = (order: AdministrationNexiOrderRecord) => {
   if (order.providerStatus === "available") return "Provider only";
   if (order.providerStatus === "not_found") return "Not found";
   if (order.providerStatus === "not_returned") return "Not returned";
   return "Provider unavailable";
 };
 
-export function OrderTable({
+export function NexiOrderTable({
   orders,
 }: {
-  readonly orders: readonly AdministrationOrder[];
+  readonly orders: readonly AdministrationNexiOrderRecord[];
 }) {
-  const columns = useMemo<ColumnDef<AdministrationOrder>[]>(
+  const columns = useMemo<ColumnDef<AdministrationNexiOrderRecord>[]>(
     () => [
       {
         accessorKey: "orderId",
@@ -38,7 +38,7 @@ export function OrderTable({
           <>
             <Link
               className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-              href={`/admin/orders/${encodeURIComponent(row.original.orderId)}`}
+              href={`/admin/nexi/orders/${encodeURIComponent(row.original.orderId)}`}
             >
               {row.original.orderId}
             </Link>
@@ -64,7 +64,7 @@ export function OrderTable({
             : order.link?.amount.value,
         id: "amount",
         header: "Amount",
-        cell: ({ row }) => formatOrderMoney(row.original),
+        cell: ({ row }) => formatNexiOrderMoney(row.original),
         meta: { cellClassName: "font-medium" },
       },
       {
@@ -126,12 +126,12 @@ export function OrderTable({
   );
 }
 
-export function OperationTable({
+export function NexiOperationTable({
   operations,
 }: {
-  readonly operations: readonly AdministrationOperation[];
+  readonly operations: readonly AdministrationNexiOperationRecord[];
 }) {
-  const columns = useMemo<ColumnDef<AdministrationOperation>[]>(
+  const columns = useMemo<ColumnDef<AdministrationNexiOperationRecord>[]>(
     () => [
       {
         accessorFn: (operation) => operation.operationId,
@@ -142,7 +142,7 @@ export function OperationTable({
             {row.original.operationId ? (
               <Link
                 className="font-mono text-xs font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                href={`/admin/operations/${encodeURIComponent(row.original.operationId)}`}
+                href={`/admin/nexi/operations/${encodeURIComponent(row.original.operationId)}`}
               >
                 {row.original.operationId}
               </Link>
@@ -164,7 +164,7 @@ export function OperationTable({
           row.original.orderId ? (
             <Link
               className="font-mono text-xs hover:underline"
-              href={`/admin/orders/${encodeURIComponent(row.original.orderId)}`}
+              href={`/admin/nexi/orders/${encodeURIComponent(row.original.orderId)}`}
             >
               {row.original.orderId}
             </Link>

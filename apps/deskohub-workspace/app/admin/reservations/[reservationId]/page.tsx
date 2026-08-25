@@ -19,7 +19,7 @@ import {
 } from "@/features/administration/components";
 import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationReservation } from "@/features/administration/page-data.server";
-import { ReservationOrderList } from "@/features/administration/payment-components";
+import { ReservationNexiOrderList } from "@/features/administration/payment-components";
 import { ReservationAccessAdministration } from "@/features/administration/reservation-access-administration";
 import { ReservationCancellation } from "@/features/administration/reservation-cancellation";
 import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
@@ -234,7 +234,7 @@ export async function ReservationAdministrationDetail({
                 <PaymentAttemptList attempts={detail.paymentAttempts} />
               </div>
             )}
-            <ReservationOrderList orders={detail.orders} />
+            <ReservationNexiOrderList orders={detail.orders} />
           </section>
 
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">

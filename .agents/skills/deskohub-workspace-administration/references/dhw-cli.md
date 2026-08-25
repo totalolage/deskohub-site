@@ -62,10 +62,10 @@ dhw reservations find <reservation-or-payment-id>
 dhw reservations cancel <reservation-id> --confirm-access-credential-removed --send-cancellation-email
 dhw bookings list --date 2026-08-10
 dhw bookings get <booking-id>
-dhw orders list --from 2026-08-01 --to 2026-08-10
-dhw orders get <order-id>
-dhw operations list --channel ECOMMERCE --operation-type CAPTURE
-dhw operations get <operation-id>
+dhw nexi orders list --from 2026-08-01 --to 2026-08-10
+dhw nexi orders get <order-id>
+dhw nexi operations list --channel ECOMMERCE --operation-type CAPTURE
+dhw nexi operations get <operation-id>
 dhw customers list
 dhw customers search "Ada"
 dhw customers get <customer-id>
@@ -92,6 +92,11 @@ do not yet accept `QUERY`, so bounded filters currently use schema-typed GET
 query parameters. The service operations and shared schemas remain transport
 independent so adopting `QUERY` does not require changing CLI commands or Admin
 UI application services.
+
+Nexi diagnostics use the canonical `/api/v1/cli/nexi/orders` and
+`/api/v1/cli/nexi/operations` API namespaces. Keep the legacy
+`/api/v1/cli/orders` and `/api/v1/cli/operations` GET routes as exact response
+aliases for already-installed CLI binaries.
 
 ## Administration mutations
 

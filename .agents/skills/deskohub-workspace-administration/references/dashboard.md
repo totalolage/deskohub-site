@@ -9,6 +9,7 @@ Invoice administration composes the encrypted accounting-document repository, de
 Claim an ad-hoc invoice's client UUID before any Dotypos mutation. Bind the complete normalized request and server-derived provenance with a keyed digest, persist no plaintext customer data in the claim, reject a different request for the same UUID, and allow the identical request to reclaim an incomplete claim after one minute.
 
 Project reservation invoices and manual invoices explicitly marked as paid as paid. A paid manual invoice records its payment date and omits payment instructions. Project positive-total unpaid manual invoices as issued, due, or overdue by comparing their due date with the current Prague calendar date. Keep zero-total and negative-total unpaid manual documents issued because they do not request payment. Keep payment and email delivery as separate statuses; fresh processing delivery is sending, not sent.
+Provider-only diagnostics live under `/admin/nexi/orders` and `/admin/nexi/operations`; `/admin/operations` redirects to the canonical Nexi route. Keep `/admin/orders` free for Deskohub domain orders and never use it for provider records.
 
 Discount definitions are managed through the code or Calendar sale that uses them instead of through a standalone definitions table. Code creation can create its discount atomically, and associated Calendar-sale rows expose their discount editor. `/admin/discounts` redirects to Codes for compatibility with existing links.
 

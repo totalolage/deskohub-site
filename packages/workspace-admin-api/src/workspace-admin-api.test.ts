@@ -19,9 +19,9 @@ import {
   AdministrationDotyposTableId,
   AdministrationInvoiceCreateInput,
   AdministrationNexiOperationId,
+  AdministrationNexiOperationQuery,
   AdministrationNexiOrderId,
-  AdministrationOperationQuery,
-  AdministrationOrderQuery,
+  AdministrationNexiOrderQuery,
   AdministrationPaymentAttempt,
   AdministrationPaymentAttemptId,
   AdministrationReservationAccessGrant,
@@ -268,14 +268,30 @@ describe("administration contract", () => {
       "GET"
     );
     expect(AdminCliAdministrationApi.endpoints.getBooking?.method).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.listOrders?.method).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.getOrder?.method).toBe("GET");
-    expect(AdminCliAdministrationApi.endpoints.listOperations?.method).toBe(
+    expect(AdminCliAdministrationApi.endpoints.listNexiOrders?.method).toBe(
       "GET"
     );
-    expect(AdminCliAdministrationApi.endpoints.getOperation?.method).toBe(
+    expect(AdminCliAdministrationApi.endpoints.getNexiOrder?.method).toBe(
       "GET"
     );
+    expect(AdminCliAdministrationApi.endpoints.listNexiOperations?.method).toBe(
+      "GET"
+    );
+    expect(AdminCliAdministrationApi.endpoints.getNexiOperation?.method).toBe(
+      "GET"
+    );
+    expect(
+      AdminCliAdministrationApi.endpoints.listLegacyNexiOrders?.method
+    ).toBe("GET");
+    expect(AdminCliAdministrationApi.endpoints.getLegacyNexiOrder?.method).toBe(
+      "GET"
+    );
+    expect(
+      AdminCliAdministrationApi.endpoints.listLegacyNexiOperations?.method
+    ).toBe("GET");
+    expect(
+      AdminCliAdministrationApi.endpoints.getLegacyNexiOperation?.method
+    ).toBe("GET");
     expect(AdminCliAdministrationApi.endpoints.listCustomers?.method).toBe(
       "GET"
     );
@@ -665,22 +681,24 @@ describe("administration contract", () => {
 
   test("validates payment date filters", () => {
     expect(
-      Schema.decodeUnknownSync(AdministrationOrderQuery)({
+      Schema.decodeUnknownSync(AdministrationNexiOrderQuery)({
         from: "2024-02-29",
         to: "2026-08-10",
       })
     ).toEqual({ from: "2024-02-29", to: "2026-08-10" });
     expect(
-      Schema.decodeUnknownSync(AdministrationOperationQuery)({
+      Schema.decodeUnknownSync(AdministrationNexiOperationQuery)({
         channel: "ECOMMERCE",
         operationType: "CAPTURE",
       })
     ).toEqual({ channel: "ECOMMERCE", operationType: "CAPTURE" });
     expect(() =>
-      Schema.decodeUnknownSync(AdministrationOrderQuery)({ from: "tomorrow" })
+      Schema.decodeUnknownSync(AdministrationNexiOrderQuery)({
+        from: "tomorrow",
+      })
     ).toThrow();
     expect(() =>
-      Schema.decodeUnknownSync(AdministrationOrderQuery)({
+      Schema.decodeUnknownSync(AdministrationNexiOrderQuery)({
         from: "2026-02-29",
       })
     ).toThrow();

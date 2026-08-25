@@ -5,7 +5,7 @@ import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { PaymentAdministrationService } from "./payment-administration.service";
+import { NexiAdministrationService } from "./payment-administration.service";
 
 const makeLocalOrder = (
   providerOrderId: string,
@@ -39,7 +39,7 @@ const makeQuery = <A>(rows: readonly A[]) => {
   });
 };
 
-describe("PaymentAdministrationService", () => {
+describe("NexiAdministrationService", () => {
   test("filters local orders by provider order creation time", async () => {
     let localOrderFilter: SQL | undefined;
     const database = {
@@ -54,14 +54,14 @@ describe("PaymentAdministrationService", () => {
     };
 
     await Effect.gen(function* () {
-      const administration = yield* PaymentAdministrationService;
-      return yield* administration.listOrders({
+      const administration = yield* NexiAdministrationService;
+      return yield* administration.listNexiOrders({
         fromTime: "2026-08-01T00:00:00Z",
         toTime: "2026-08-06T23:59:59.999999999Z",
       });
     }).pipe(
       Effect.provide(
-        PaymentAdministrationService.Default.pipe(
+        NexiAdministrationService.Default.pipe(
           Layer.provide(
             Layer.merge(
               Layer.succeed(
@@ -110,11 +110,11 @@ describe("PaymentAdministrationService", () => {
     };
 
     const result = await Effect.gen(function* () {
-      const administration = yield* PaymentAdministrationService;
-      return yield* administration.listOrders({ maxRecords: 1 });
+      const administration = yield* NexiAdministrationService;
+      return yield* administration.listNexiOrders({ maxRecords: 1 });
     }).pipe(
       Effect.provide(
-        PaymentAdministrationService.Default.pipe(
+        NexiAdministrationService.Default.pipe(
           Layer.provide(
             Layer.merge(
               Layer.succeed(
