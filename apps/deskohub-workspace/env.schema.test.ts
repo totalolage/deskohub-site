@@ -64,6 +64,25 @@ const validateMissingBrowserPostHogHost = () =>
     stdout: "pipe",
   });
 
+const validatePartialNeonAuthEnvironment = (
+  missing: "base-url" | "cookie-secret"
+) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      missing === "base-url"
+        ? 'delete process.env.NEON_AUTH_BASE_URL; process.env.NEON_AUTH_COOKIE_SECRET = "s".repeat(32); await import("./env.ts");'
+        : 'process.env.NEON_AUTH_BASE_URL = "https://auth.example.test/neondb/auth"; delete process.env.NEON_AUTH_COOKIE_SECRET; await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: { ...process.env },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
     const decodeTimeout = Schema.decodeUnknownSync(
@@ -168,6 +187,39 @@ describe("workspace environment schemas", () => {
     expect(decodeExecutablePath(undefined)).toBeUndefined();
     expect(decodeExecutablePath("/usr/bin/google-chrome")).toBe(
       "/usr/bin/google-chrome"
+    );
+  });
+
+  test("keeps Neon Auth optional but validates configured values", () => {
+    const decodeBaseUrl = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.NEON_AUTH_BASE_URL
+    );
+    const decodeCookieSecret = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.NEON_AUTH_COOKIE_SECRET
+    );
+
+    expect(decodeBaseUrl(undefined)).toBeUndefined();
+    expect(decodeCookieSecret(undefined)).toBeUndefined();
+    expect(decodeBaseUrl("https://auth.example.test/neondb/auth")).toBe(
+      "https://auth.example.test/neondb/auth"
+    );
+    expect(decodeCookieSecret("s".repeat(32))).toBe("s".repeat(32));
+    expect(() => decodeBaseUrl("not-a-url")).toThrow();
+    expect(() => decodeCookieSecret("too-short")).toThrow();
+  });
+
+  test("rejects a partial Neon Auth configuration through T3 Env", () => {
+    const missingBaseUrl = validatePartialNeonAuthEnvironment("base-url");
+    const missingCookieSecret =
+      validatePartialNeonAuthEnvironment("cookie-secret");
+
+    expect(missingBaseUrl.exitCode).toBe(1);
+    expect(missingCookieSecret.exitCode).toBe(1);
+    expect(missingBaseUrl.stderr.toString()).toContain(
+      "Invalid Neon Auth configuration."
+    );
+    expect(missingCookieSecret.stderr.toString()).toContain(
+      "Invalid Neon Auth configuration."
     );
   });
 

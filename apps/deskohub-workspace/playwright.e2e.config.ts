@@ -82,6 +82,13 @@ export default defineConfig({
       testMatch: "payment-lane-1.pw.ts",
     },
     {
+      dependencies: ["checkout-payment-1"],
+      name: "account",
+      testDir: "./e2e/playwright-account",
+      testMatch: "account.pw.ts",
+      timeout: workspaceE2ETimeouts.accountCase,
+    },
+    {
       dependencies: ["checkout-plan"],
       name: "checkout-payment-2",
       testMatch: "payment-lane-2.pw.ts",

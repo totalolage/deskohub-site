@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, X } from "lucide-react";
+import { Menu, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
@@ -14,6 +14,8 @@ import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
 type SiteHeaderProps = {
+  accountHref: string;
+  accountLabel: string;
   currentLocale: Locale;
   languageLabels: Record<Locale, string>;
   links: SiteHeaderMenuItem[];
@@ -27,6 +29,8 @@ type SiteHeaderProps = {
 };
 
 export function SiteHeader({
+  accountHref,
+  accountLabel,
   currentLocale,
   languageLabels,
   links,
@@ -72,6 +76,16 @@ export function SiteHeader({
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3 xl:gap-3">
+          <Link
+            href={accountHref}
+            className="inline-flex size-10 items-center justify-center rounded-full border border-white/12 bg-white/6 text-white/82 transition-colors hover:border-sunset-yellow/55 hover:text-sunset-yellow"
+            aria-label={accountLabel}
+            title={accountLabel}
+            onClick={closeMenu}
+          >
+            <UserRound aria-hidden className="size-4.5" />
+          </Link>
+
           <Link
             href={contactHref}
             className="rounded-full border border-white/12 bg-white px-3 py-2 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-navy-blue transition-colors hover:bg-sunset-yellow sm:px-4 sm:text-xs sm:tracking-[0.14em]"
@@ -134,6 +148,14 @@ export function SiteHeader({
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <nav aria-label={mobilePrimaryNavigationLabel} className="grid gap-2">
+            <Link
+              href={accountHref}
+              onClick={closeMenu}
+              className="flex items-center gap-2 rounded-2xl border border-sunset-yellow/28 bg-sunset-yellow/10 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
+            >
+              <UserRound aria-hidden className="size-4" />
+              {accountLabel}
+            </Link>
             {links.map((link) => (
               <Link
                 key={link.id}

@@ -51,6 +51,22 @@ const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
   );
 });
 
+const neonAuthEnvironmentCheck = Schema.makeFilter<{
+  readonly NEON_AUTH_BASE_URL?: string | undefined;
+  readonly NEON_AUTH_COOKIE_SECRET?: string | undefined;
+}>((environment) => {
+  const hasBaseUrl = environment.NEON_AUTH_BASE_URL !== undefined;
+  const hasCookieSecret = environment.NEON_AUTH_COOKIE_SECRET !== undefined;
+  if (hasBaseUrl === hasCookieSecret) return undefined;
+
+  return [
+    {
+      path: [hasBaseUrl ? "NEON_AUTH_COOKIE_SECRET" : "NEON_AUTH_BASE_URL"],
+      issue: "Invalid Neon Auth configuration.",
+    },
+  ];
+});
+
 export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
     Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/))
@@ -119,6 +135,10 @@ export const workspaceServerEnvSchema = Schema.Struct({
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: toEnvSchema(
     Schema.optional(Schema.Literal("EUR"))
   ),
+  NEON_AUTH_BASE_URL: optionalUrlEnvSchema,
+  NEON_AUTH_COOKIE_SECRET: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isMinLength(32)))
+  ),
   POSTHOG_SERVICE_NAME: toEnvSchema(
     Schema.NonEmptyString.pipe(
       Schema.withDecodingDefaultType(Effect.succeed("deskohub-workspace"))
@@ -145,7 +165,8 @@ export const workspaceServerEnvSchema = Schema.Struct({
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
 }).check(
   postHogFeatureFlagOverridesEnvironmentCheck,
-  igloohomeProductionEnvironmentCheck
+  igloohomeProductionEnvironmentCheck,
+  neonAuthEnvironmentCheck
 );
 
 export const workspaceClientEnvSchema = Schema.Struct({
@@ -176,7 +197,8 @@ export const createEnvironmentSchema = (
     isServer
       ? schema.check(
           postHogFeatureFlagOverridesEnvironmentCheck,
-          igloohomeProductionEnvironmentCheck
+          igloohomeProductionEnvironmentCheck,
+          neonAuthEnvironmentCheck
         )
       : schema
   );
