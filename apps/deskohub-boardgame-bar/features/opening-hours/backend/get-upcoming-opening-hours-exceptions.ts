@@ -1,4 +1,5 @@
 import "server-only";
+import "@/shared/polyfills/temporal";
 
 import { Effect } from "effect";
 import { siteConstants } from "@/shared/utils/constants";
