@@ -188,6 +188,8 @@ export {
   type AdministrationOrderProduct as AdministrationOrderProductType,
   AdministrationOrderSummary,
   type AdministrationOrderSummary as AdministrationOrderSummaryType,
+  AdministrationOrderWriteOffResult,
+  type AdministrationOrderWriteOffResult as AdministrationOrderWriteOffResultType,
   AdministrationOverview,
   type AdministrationOverview as AdministrationOverviewType,
   AdministrationOverviewMetric,

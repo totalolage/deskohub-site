@@ -520,9 +520,43 @@ const ordersGetCommand = Command.make(
     )
 ).pipe(Command.withDescription("Show a Deskohub order"));
 
+const ordersWriteOffCommand = Command.make(
+  "write-off",
+  {
+    orderId: Argument.string("order-id").pipe(
+      Argument.withSchema(AdministrationOrderId)
+    ),
+    yes: confirmationFlag,
+  },
+  ({ orderId, yes }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const confirmed = yield* confirmChange(
+          yes,
+          json,
+          "Write off this fulfilled unpaid goods order? This records a collection decision and does not cancel or mark the order paid."
+        );
+        if (!confirmed) {
+          yield* reportCancellation(json);
+          return;
+        }
+        const result = yield* api.writeOffOrder(accessToken, orderId);
+        yield* Console.log(
+          json
+            ? JSON.stringify(result)
+            : `Order ${result.orderId} written off at ${result.writtenOffAt}`
+        );
+      })
+    )
+).pipe(Command.withDescription("Write off an unpaid fulfilled goods order"));
+
 const ordersCommand = Command.make("orders").pipe(
   Command.withDescription("Inspect Deskohub orders"),
-  Command.withSubcommands([ordersListCommand, ordersGetCommand])
+  Command.withSubcommands([
+    ordersListCommand,
+    ordersGetCommand,
+    ordersWriteOffCommand,
+  ])
 );
 
 const nexiOrdersListCommand = Command.make(

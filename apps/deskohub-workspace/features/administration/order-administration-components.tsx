@@ -17,6 +17,7 @@ import {
   formatAdministrationDateTime,
   formatAdministrationMoney,
 } from "./formatters";
+import { GoodsOrderWriteOff } from "./goods-order-writeoff";
 import type {
   AdministrationOrderDetail,
   AdministrationOrderSummary,
@@ -181,6 +182,10 @@ export function OrderAdministrationDetail({
             value={optionalDate(order.fulfillmentFailedAt)}
           />
           <AdministrationFact
+            label="Written off"
+            value={optionalDate(order.writtenOffAt)}
+          />
+          <AdministrationFact
             label="Invoice issued"
             value={optionalDate(detail.invoice.issuedAt)}
           />
@@ -193,6 +198,13 @@ export function OrderAdministrationDetail({
             View linked reservation
           </Link>
         )}
+        {order.kind === "goods" &&
+          order.fulfillmentState === "fulfilled" &&
+          order.paymentState !== "paid" &&
+          !order.writtenOffAt &&
+          !detail.paymentAttempts.some(
+            ({ state }) => state === "created" || state === "pending"
+          ) && <GoodsOrderWriteOff orderId={order.id} />}
       </AdministrationDetailSection>
 
       <section>

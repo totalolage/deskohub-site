@@ -25,6 +25,7 @@ import {
   AdministrationOrderDetail,
   AdministrationOrderId,
   AdministrationOrderLineId,
+  AdministrationOrderWriteOffResult,
   AdministrationPaymentAttempt,
   AdministrationPaymentAttemptId,
   AdministrationReservationAccessGrant,
@@ -300,6 +301,9 @@ describe("administration contract", () => {
     expect(AdminCliAdministrationApi.endpoints.getDomainOrder?.method).toBe(
       "GET"
     );
+    expect(
+      AdminCliAdministrationApi.endpoints.writeOffDomainOrder?.method
+    ).toBe("POST");
     expect(AdminCliAdministrationApi.endpoints.listNexiOrders?.method).toBe(
       "GET"
     );
@@ -418,6 +422,7 @@ describe("administration contract", () => {
         paidAt: "2026-08-16T12:00:00Z",
         fulfilledAt: "2026-08-16T12:01:00Z",
         fulfillmentFailedAt: null,
+        writtenOffAt: null,
         createdAt: "2026-08-16T11:55:00Z",
         updatedAt: "2026-08-16T12:01:00Z",
       },
@@ -451,6 +456,18 @@ describe("administration contract", () => {
         { onExcessProperty: "error" }
       )
     ).toThrow();
+  });
+
+  test("exposes only the persisted write-off fact", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationOrderWriteOffResult)({
+        orderId: "order-1",
+        writtenOffAt: "2026-08-16T13:00:00Z",
+      })
+    ).toEqual({
+      orderId: AdministrationOrderId.make("order-1"),
+      writtenOffAt: "2026-08-16T13:00:00Z",
+    });
   });
 
   test("exposes access operations without exposing the PIN", () => {

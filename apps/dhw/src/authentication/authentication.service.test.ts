@@ -35,6 +35,7 @@ describe("AuthenticationService", () => {
       getBooking: () => Effect.die("not used"),
       listOrders: () => Effect.die("not used"),
       getOrder: () => Effect.die("not used"),
+      writeOffOrder: () => Effect.die("not used"),
       listNexiOrders: () => Effect.die("not used"),
       getNexiOrder: () => Effect.die("not used"),
       listNexiOperations: () => Effect.die("not used"),

@@ -10,6 +10,10 @@ const issuanceFingerprintMigrationUrl = new URL(
   "../migrations/20260821214457_goods-order-issuance-fingerprint/migration.sql",
   import.meta.url
 );
+const writeOffMigrationUrl = new URL(
+  "../migrations/20260821225605_melodic_ulik/migration.sql",
+  import.meta.url
+);
 
 describe("generic orders", () => {
   test("stores generic lifecycle and immutable line price facts", () => {
@@ -29,6 +33,7 @@ describe("generic orders", () => {
       "fulfilled_at",
       "fulfillment_failed_at",
       "fulfillment_failure_code",
+      "written_off_at",
       "created_at",
       "updated_at",
     ]);
@@ -68,6 +73,16 @@ describe("generic orders", () => {
     expect(migration).not.toContain("customer_email");
     expect(migration).not.toContain("customer_name");
     expect(migration).not.toContain("token");
+  });
+
+  test("adds write-off as a goods-only additive fact", async () => {
+    const migration = await Bun.file(writeOffMigrationUrl).text();
+
+    expect(migration).toContain('ADD COLUMN "written_off_at"');
+    expect(migration).toContain('"written_off_at" is null');
+    expect(migration).toContain("\"kind\" = 'goods'");
+    expect(migration).not.toContain("DROP COLUMN");
+    expect(migration).not.toContain('UPDATE "orders"');
   });
 
   test("keeps generic tables dormant until reservation writers migrate", async () => {

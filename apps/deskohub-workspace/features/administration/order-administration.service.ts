@@ -1,6 +1,6 @@
 import type { DotyposCustomerId } from "@deskohub/dotypos";
-import { desc, eq, inArray } from "drizzle-orm";
-import { Context, Effect, Layer, Schema } from "effect";
+import { and, desc, eq, inArray } from "drizzle-orm";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   invoices,
@@ -48,6 +48,7 @@ export type AdministrationOrderSummary = {
   readonly paidAt: string | null;
   readonly fulfilledAt: string | null;
   readonly fulfillmentFailedAt: string | null;
+  readonly writtenOffAt: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -100,6 +101,7 @@ type SafeOrderRow = {
   readonly paidAt: Temporal.Instant | null;
   readonly fulfilledAt: Temporal.Instant | null;
   readonly fulfillmentFailedAt: Temporal.Instant | null;
+  readonly writtenOffAt: Temporal.Instant | null;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;
 };
@@ -129,6 +131,7 @@ const safeOrderSelection = {
   paidAt: orders.paidAt,
   fulfilledAt: orders.fulfilledAt,
   fulfillmentFailedAt: orders.fulfillmentFailedAt,
+  writtenOffAt: orders.writtenOffAt,
   createdAt: orders.createdAt,
   updatedAt: orders.updatedAt,
 } as const;
@@ -199,6 +202,7 @@ const toSummary = (
   paidAt: row.paidAt?.toString() ?? null,
   fulfilledAt: row.fulfilledAt?.toString() ?? null,
   fulfillmentFailedAt: row.fulfillmentFailedAt?.toString() ?? null,
+  writtenOffAt: row.writtenOffAt?.toString() ?? null,
   createdAt: row.createdAt.toString(),
   updatedAt: row.updatedAt.toString(),
 });
@@ -237,7 +241,25 @@ export interface IOrderAdministrationService {
   readonly loadOrder: (
     id: OrderId
   ) => Effect.Effect<AdministrationOrderDetail | null, unknown>;
+  readonly writeOffOrder: (
+    id: OrderId
+  ) => Effect.Effect<AdministrationOrderWriteOffResult, unknown>;
 }
+
+export type AdministrationOrderWriteOffResult = {
+  readonly orderId: OrderId;
+  readonly writtenOffAt: string;
+};
+
+export class OrderWriteOffError extends Data.TaggedError("OrderWriteOffError")<{
+  readonly reason:
+    | "not_found"
+    | "not_goods"
+    | "not_fulfilled"
+    | "paid"
+    | "payment_in_progress";
+  readonly message: string;
+}> {}
 
 export class OrderAdministrationService extends Context.Service<
   OrderAdministrationService,
@@ -363,7 +385,90 @@ export class OrderAdministrationService extends Context.Service<
         }
       );
 
-      return { listOrders, loadOrder };
+      const writeOffOrder = Effect.fn(
+        "OrderAdministrationService.writeOffOrder"
+      )(function* (id: OrderId) {
+        return yield* db.transaction((tx) =>
+          Effect.gen(function* () {
+            const [order] = yield* tx
+              .select()
+              .from(orders)
+              .where(eq(orders.id, id))
+              .limit(1)
+              .for("update");
+            if (!order) {
+              return yield* new OrderWriteOffError({
+                reason: "not_found",
+                message: "The order was not found.",
+              });
+            }
+            if (order.kind !== "goods") {
+              return yield* new OrderWriteOffError({
+                reason: "not_goods",
+                message: "Only goods orders can be written off.",
+              });
+            }
+            if (order.writtenOffAt) {
+              return {
+                orderId: order.id,
+                writtenOffAt: order.writtenOffAt.toString(),
+              };
+            }
+            if (order.fulfillmentState !== "fulfilled") {
+              return yield* new OrderWriteOffError({
+                reason: "not_fulfilled",
+                message: "Only fulfilled goods orders can be written off.",
+              });
+            }
+            if (order.paymentState === "pending") {
+              return yield* new OrderWriteOffError({
+                reason: "payment_in_progress",
+                message:
+                  "An order with payment in progress cannot be written off.",
+              });
+            }
+            if (order.paymentState === "paid") {
+              return yield* new OrderWriteOffError({
+                reason: "paid",
+                message: "Paid goods orders cannot be written off.",
+              });
+            }
+            const [liveAttempt] = yield* tx
+              .select({ id: paymentAttempts.id })
+              .from(paymentAttempts)
+              .where(
+                and(
+                  eq(paymentAttempts.orderId, id),
+                  inArray(paymentAttempts.state, ["created", "pending"])
+                )
+              )
+              .limit(1)
+              .for("update");
+            if (liveAttempt) {
+              return yield* new OrderWriteOffError({
+                reason: "payment_in_progress",
+                message:
+                  "An order with a live payment attempt cannot be written off.",
+              });
+            }
+            const writtenOffAt = Temporal.Now.instant();
+            const [updated] = yield* tx
+              .update(orders)
+              .set({ writtenOffAt, updatedAt: writtenOffAt })
+              .where(eq(orders.id, id))
+              .returning({ id: orders.id });
+            if (!updated) {
+              return yield* Effect.die("Order write-off returned no row.");
+            }
+            return {
+              orderId: updated.id,
+              writtenOffAt: writtenOffAt.toString(),
+            };
+          })
+        );
+      });
+
+      return { listOrders, loadOrder, writeOffOrder };
     })
   );
 

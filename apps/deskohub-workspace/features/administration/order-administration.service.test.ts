@@ -16,6 +16,7 @@ const order = {
   paidAt: null,
   fulfilledAt: instant,
   fulfillmentFailedAt: null,
+  writtenOffAt: null,
   createdAt: instant,
   updatedAt: instant,
 };
@@ -33,8 +34,14 @@ const makeQuery = <A>(rows: readonly A[]) => {
 
 type TestSelection = {
   readonly customerId?: unknown;
+  readonly id?: unknown;
   readonly productIdentity?: unknown;
   readonly provider?: unknown;
+};
+
+type WriteOffUpdate = {
+  readonly updatedAt?: Temporal.Instant;
+  readonly writtenOffAt?: Temporal.Instant;
 };
 
 const makeLayer = (rows: {
@@ -145,4 +152,127 @@ describe("OrderAdministrationService", () => {
       issuedAt: "2026-08-16T12:00:00Z",
     });
   });
+
+  test("writes off an eligible goods order without changing lifecycle state", async () => {
+    const { layer, updates } = makeWriteOffLayer({
+      ...order,
+      paymentState: "not_started",
+    });
+    const result = await Effect.gen(function* () {
+      const administration = yield* OrderAdministrationService;
+      return yield* administration.writeOffOrder("order-1");
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(result.orderId).toBe("order-1");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toEqual({
+      writtenOffAt: expect.any(Temporal.Instant),
+      updatedAt: expect.any(Temporal.Instant),
+    });
+    expect(updates[0]).not.toHaveProperty("paymentState");
+    expect(updates[0]).not.toHaveProperty("fulfillmentState");
+  });
+
+  test("returns the original fact when a write-off is retried after late payment", async () => {
+    const writtenOffAt = Temporal.Instant.from("2026-08-16T12:30:00Z");
+    const { layer, updates } = makeWriteOffLayer({
+      ...order,
+      paymentState: "paid",
+      paidAt: instant,
+      writtenOffAt,
+    });
+    const result = await Effect.gen(function* () {
+      const administration = yield* OrderAdministrationService;
+      return yield* administration.writeOffOrder("order-1");
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(result.writtenOffAt).toBe(writtenOffAt.toString());
+    expect(updates).toEqual([]);
+  });
+
+  test("rejects reservations and orders with payment in progress", async () => {
+    const reservation = makeWriteOffLayer({
+      ...order,
+      kind: "reservation",
+    });
+    const livePayment = makeWriteOffLayer(
+      { ...order, paymentState: "not_started" },
+      [{ id: "attempt-1" }]
+    );
+    const pendingWithoutAttempt = makeWriteOffLayer(order);
+
+    const run = (layer: ReturnType<typeof makeWriteOffLayer>["layer"]) =>
+      Effect.gen(function* () {
+        const administration = yield* OrderAdministrationService;
+        return yield* administration.writeOffOrder("order-1");
+      }).pipe(Effect.provide(layer), Effect.flip, Effect.runPromise);
+
+    expect((await run(reservation.layer)).reason).toBe("not_goods");
+    expect((await run(livePayment.layer)).reason).toBe("payment_in_progress");
+    expect((await run(pendingWithoutAttempt.layer)).reason).toBe(
+      "payment_in_progress"
+    );
+    expect(pendingWithoutAttempt.liveAttemptLookups()).toBe(0);
+    expect(pendingWithoutAttempt.updates).toEqual([]);
+  });
 });
+
+const makeWriteOffLayer = (
+  selectedOrder: Omit<
+    typeof order,
+    "kind" | "paidAt" | "paymentState" | "writtenOffAt"
+  > & {
+    readonly kind: "goods" | "reservation";
+    readonly paidAt: Temporal.Instant | null;
+    readonly paymentState: "not_started" | "paid" | "pending";
+    readonly writtenOffAt: Temporal.Instant | null;
+  },
+  liveAttempts: readonly { readonly id: string }[] = []
+) => {
+  const updates: WriteOffUpdate[] = [];
+  let liveAttemptLookupCount = 0;
+  const query = <A>(rows: readonly A[]) => {
+    const result = Effect.succeed(rows);
+    return Object.assign(result, {
+      from: () => result,
+      where: () => result,
+      limit: () => result,
+      for: () => result,
+    });
+  };
+  const tx = {
+    select: (selection?: TestSelection) => {
+      if (!selection) return query([selectedOrder]);
+      liveAttemptLookupCount += 1;
+      return query(liveAttempts);
+    },
+    update: () => ({
+      set: (values: WriteOffUpdate) => {
+        updates.push(values);
+        return {
+          where: () => ({
+            returning: () => Effect.succeed([{ id: selectedOrder.id }]),
+          }),
+        };
+      },
+    }),
+  };
+  const layer = OrderAdministrationService.Default.pipe(
+    Layer.provide(
+      Layer.succeed(
+        WorkspaceDatabase,
+        WorkspaceDatabase.of({
+          db: {
+            transaction: (operation: (client: never) => unknown) =>
+              operation(tx as never),
+          } as never,
+        })
+      )
+    )
+  );
+  return {
+    layer,
+    liveAttemptLookups: () => liveAttemptLookupCount,
+    updates,
+  };
+};

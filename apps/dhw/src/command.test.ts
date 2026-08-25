@@ -611,8 +611,16 @@ describe("dhw mutation commands", () => {
     await runCommand(["--json", "orders", "get", "order-1"], layer).pipe(
       Effect.runPromise
     );
+    await runCommand(
+      ["--json", "orders", "write-off", "order-1", "--yes"],
+      layer
+    ).pipe(Effect.runPromise);
 
-    expect(orderRequests).toEqual([["list"], ["get", "order-1"]]);
+    expect(orderRequests).toEqual([
+      ["list"],
+      ["get", "order-1"],
+      ["write-off", "order-1"],
+    ]);
   });
 });
 
@@ -671,12 +679,21 @@ const makeCommandLayer = ({
             paidAt: null,
             fulfilledAt: "2026-08-16T12:00:00Z",
             fulfillmentFailedAt: null,
+            writtenOffAt: null,
             createdAt: "2026-08-16T12:00:00Z",
             updatedAt: "2026-08-16T12:00:00Z",
           },
           lines: [],
           paymentAttempts: [],
           invoice: { status: "not_issued" as const, issuedAt: null },
+        };
+      }),
+    writeOffOrder: (_accessToken, orderId) =>
+      Effect.sync(() => {
+        orderRequests.push(["write-off", orderId]);
+        return {
+          orderId,
+          writtenOffAt: "2026-08-16T13:00:00Z",
         };
       }),
     getNexiOperation: (_accessToken, operationId) =>
