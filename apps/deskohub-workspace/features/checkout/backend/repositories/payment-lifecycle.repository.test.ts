@@ -210,7 +210,7 @@ describe("PaymentLifecycleRepository", () => {
     const terminal = sliceFrom(
       source,
       'const markTerminal = Effect.fn("PaymentLifecycleRepository.markTerminal")',
-      "      return {\n        createPendingNexiAttempt,"
+      "      return {\n        admitPaymentSession,"
     );
 
     expect(paid).toContain("db.transaction");
@@ -263,7 +263,7 @@ describe("PaymentLifecycleRepository", () => {
     const terminal = sliceFrom(
       source,
       'const markTerminal = Effect.fn("PaymentLifecycleRepository.markTerminal")',
-      "      return {\n        createPendingNexiAttempt,"
+      "      return {\n        admitPaymentSession,"
     );
 
     expect(terminal).toContain("terminalAt: consistent.updatedAt");
