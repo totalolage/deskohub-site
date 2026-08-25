@@ -19,6 +19,7 @@ import {
   accountingDocumentSnapshotSchema,
   decodeStoredAccountingDocumentSnapshot,
   encodeStoredAccountingDocumentSnapshot,
+  getAccountingDocumentOrderId,
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import {
@@ -52,6 +53,10 @@ const makeSnapshot = () =>
     locale: "en-US",
     prepared,
   });
+
+test("derives the generic order id from unchanged reservation snapshots", () => {
+  expect(getAccountingDocumentOrderId(makeSnapshot())).toBe("reservation-id");
+});
 
 const officeReservation = normalizedOfficeReservationOrderSchema.make({
   kind: "office",

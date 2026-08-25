@@ -115,7 +115,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
                 : m.invoiceEmailBody(
                     {
                       invoiceNumber: input.invoice.invoiceNumber,
-                      orderId: input.invoice.workspaceReservationId ?? "",
+                      orderId: input.invoice.orderId ?? "",
                     },
                     { locale }
                   ),
@@ -137,7 +137,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
                 : m.invoiceEmailInternalBody(
                     {
                       invoiceNumber: input.invoice.invoiceNumber,
-                      orderId: input.invoice.workspaceReservationId ?? "",
+                      orderId: input.invoice.orderId ?? "",
                     },
                     { locale }
                   ),
@@ -218,6 +218,9 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           metadata: {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-invoice-delivery",
+            ...(input.invoice.orderId && {
+              orderId: input.invoice.orderId,
+            }),
             ...(input.invoice.workspaceReservationId && {
               workspaceReservationId: input.invoice.workspaceReservationId,
             }),

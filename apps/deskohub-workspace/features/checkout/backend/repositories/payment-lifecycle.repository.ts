@@ -292,6 +292,7 @@ export class PaymentLifecycleRepository extends Context.Service<
 
               yield* persistAccountingDocumentSnapshot({
                 tx,
+                orderId: input.orderId,
                 paymentAttemptId: attemptRow.id,
                 workspaceReservationId,
                 snapshot: accountingSnapshot,
@@ -562,6 +563,7 @@ export class PaymentLifecycleRepository extends Context.Service<
 
               yield* persistAccountingDocumentSnapshot({
                 tx,
+                orderId: input.orderId,
                 paymentAttemptId: attemptRow.id,
                 workspaceReservationId,
                 snapshot: accountingSnapshot,
@@ -1416,6 +1418,7 @@ const persistAccountingDocumentSnapshot = Effect.fn(
   "PaymentLifecycle.persistAccountingDocumentSnapshot"
 )(function* (input: {
   readonly tx: TransactionClient;
+  readonly orderId: OrderId;
   readonly paymentAttemptId: PaymentAttemptId;
   readonly workspaceReservationId: WorkspaceReservationId;
   readonly snapshot: AccountingDocumentSnapshot;
@@ -1429,6 +1432,7 @@ const persistAccountingDocumentSnapshot = Effect.fn(
     .insert(accountingDocumentSnapshots)
     .values({
       paymentAttemptId: input.paymentAttemptId,
+      orderId: input.orderId,
       workspaceReservationId: input.workspaceReservationId,
       keyId: input.key.id,
       encryptedSnapshot: encryptAccountingSnapshot(
