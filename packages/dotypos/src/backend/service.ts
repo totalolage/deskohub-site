@@ -177,29 +177,31 @@ const loadAllDotyposPages = <A, E, R>(input: {
   readonly loadPage: (page: number) => Effect.Effect<DotyposPage<A>, E, R>;
   readonly operation: string;
 }): Effect.Effect<readonly A[], E | ExternalAPIError, R> => {
-  const items: A[] = [];
-  let currentPage = 1;
-  let hasNextPage = true;
+  return Effect.suspend(() => {
+    const items: A[] = [];
+    let currentPage = 1;
+    let hasNextPage = true;
 
-  return Effect.whileLoop({
-    while: () => hasNextPage,
-    body: () =>
-      input.loadPage(currentPage).pipe(
-        Effect.bindTo("page"),
-        Effect.bind("nextPage", ({ page }) =>
-          getNextDotyposPageNumber({
-            currentPage,
-            nextPage: page.nextPage,
-            operation: input.operation,
-          })
-        )
-      ),
-    step: ({ nextPage, page }) => {
-      items.push(...(page.data ?? []));
-      hasNextPage = nextPage !== undefined;
-      if (nextPage !== undefined) currentPage = nextPage;
-    },
-  }).pipe(Effect.map(() => items));
+    return Effect.whileLoop({
+      while: () => hasNextPage,
+      body: () =>
+        input.loadPage(currentPage).pipe(
+          Effect.bindTo("page"),
+          Effect.bind("nextPage", ({ page }) =>
+            getNextDotyposPageNumber({
+              currentPage,
+              nextPage: page.nextPage,
+              operation: input.operation,
+            })
+          )
+        ),
+      step: ({ nextPage, page }) => {
+        items.push(...(page.data ?? []));
+        hasNextPage = nextPage !== undefined;
+        if (nextPage !== undefined) currentPage = nextPage;
+      },
+    }).pipe(Effect.map(() => items));
+  });
 };
 
 export type CustomerLookupField = "email" | "phone";
@@ -1536,22 +1538,26 @@ const makeDotyposService = Effect.gen(function* () {
     categoryId?: DotyposCategoryId;
     includeDeleted?: boolean;
   }) {
-    return yield* runDotyposRequest(
-      client
-        .getProducts(config.cloudId, {
-          params: {
-            limit: 100,
-            ...(options?.categoryId && {
-              filter: `_categoryId|eq|${options.categoryId}`,
-            }),
-          },
-        })
-        .pipe(Effect.map((page) => [...(page.data ?? [])])),
-      "getProducts"
-    ).pipe(
-      Effect.flatMap((products) =>
-        decodeProviderEntities(DotyposProductSchema, products, "getProducts")
-      ),
+    return yield* loadAllDotyposPages({
+      operation: "getProducts",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getProducts(config.cloudId, {
+            params: {
+              page,
+              limit: 100,
+              ...(options?.categoryId && {
+                filter: `_categoryId|eq|${options.categoryId}`,
+              }),
+            },
+          }),
+          "getProducts"
+        ).pipe(
+          Effect.flatMap((result) =>
+            decodeProviderPage(DotyposProductSchema, result, "getProducts")
+          )
+        ),
+    }).pipe(
       Effect.map((products: readonly DotyposProduct[]) =>
         options?.includeDeleted
           ? products
@@ -1563,16 +1569,22 @@ const makeDotyposService = Effect.gen(function* () {
   });
 
   const getCategories = Effect.fn("getCategories")(function* () {
-    const categories = yield* runDotyposRequest(
-      client
-        .getCategories(config.cloudId, { params: { limit: 100 } })
-        .pipe(Effect.map((page) => [...(page.data ?? [])])),
-      "getCategories"
-    ).pipe(Effect.retry(retryPolicy));
-    return yield* decodeProviderEntities(
-      DotyposCategorySchema,
-      categories,
-      "getCategories"
+    return yield* loadAllDotyposPages({
+      operation: "getCategories",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getCategories(config.cloudId, {
+            params: { page, limit: 100 },
+          }),
+          "getCategories"
+        ).pipe(
+          Effect.flatMap((result) =>
+            decodeProviderPage(DotyposCategorySchema, result, "getCategories")
+          )
+        ),
+    }).pipe(
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("getCategories")
     );
   });
 

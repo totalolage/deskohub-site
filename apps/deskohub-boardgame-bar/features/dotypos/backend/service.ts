@@ -12,7 +12,7 @@ export interface DotyposServiceShape {
   readonly getMenuItems: Effect.Effect<
     {
       readonly products: DotyposProduct[];
-      readonly categories: DotyposCategory[];
+      readonly categories: readonly DotyposCategory[];
     },
     unknown
   >;
