@@ -27,7 +27,6 @@ import {
   desc,
   eq,
   inArray,
-  isNotNull,
   max,
   notInArray,
   or,
@@ -35,7 +34,14 @@ import {
   sql,
   sum,
 } from "drizzle-orm";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import {
+  Context,
+  Effect,
+  Array as EffectArray,
+  Layer,
+  Option,
+  Schema,
+} from "effect";
 import { unstable_rethrow } from "next/navigation";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -71,6 +77,7 @@ import {
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import {
   getAdministrationExternalOrderPageIds,
   getAdministrationPagination,
@@ -104,6 +111,7 @@ import {
 const reservationPageSize = 24;
 const bookingPageSize = 24;
 const customerPageSize = 24;
+const providerIdBatchSize = 50;
 const customerReservationPageSize = 10;
 const customerActivityReservationLimit = 24;
 const customerActivityTransactionLimit = 50;
@@ -364,6 +372,47 @@ export type AdministrationOverviewMetric = {
   readonly value: number;
 };
 
+export type AdministrationCustomerOverviewMetric = {
+  readonly customers: readonly Pick<
+    AdministrationCustomerSummary,
+    "customer" | "customerId"
+  >[];
+  readonly unavailable: boolean;
+  readonly value: number;
+};
+
+export type AdministrationReservationOverview = {
+  readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
+  readonly today: AdministrationOverviewMetric;
+  readonly upcoming: AdministrationOverviewMetric;
+  readonly lastSevenDays: AdministrationOverviewMetric;
+};
+
+export type AdministrationOverview = AdministrationReservationOverview & {
+  readonly uniqueCustomers: AdministrationCustomerOverviewMetric;
+  readonly newCustomers: AdministrationCustomerOverviewMetric;
+};
+
+type AdministrationOverviewRow = Pick<
+  WorkspaceReservation,
+  "failureCode" | "fulfillmentState" | "paymentState" | "reservationState"
+> & {
+  readonly id: DotyposReservationId | null;
+  readonly customerId: DotyposCustomerId;
+};
+
+type AdministrationOverviewSource = {
+  readonly currentDate: Temporal.PlainDate;
+  readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
+  readonly reservations:
+    | {
+        readonly kind: "available";
+        readonly items: readonly DotyposReservation[];
+      }
+    | { readonly kind: "unavailable" };
+  readonly rows: readonly AdministrationOverviewRow[];
+};
+
 type SafeReservationRow = Pick<
   WorkspaceReservation,
   | "id"
@@ -436,6 +485,7 @@ const decodeNexiOrderId = Schema.decodeUnknownOption(NexiOrderIdSchema);
 const decodeNexiWebhookEventId = Schema.decodeUnknownOption(
   NexiWebhookEventIdSchema
 );
+const decodeInstantString = Schema.decodeUnknownOption(instantStringSchema);
 const decodePaymentAttemptId = Schema.decodeUnknownOption(
   paymentAttemptIdSchema
 );
@@ -1168,13 +1218,9 @@ const getOrderTimeline = (
 export class AdministrationService extends Context.Service<
   AdministrationService,
   {
-    readonly loadOverview: () => Effect.Effect<
-      {
-        readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
-        readonly today: AdministrationOverviewMetric;
-        readonly upcoming: AdministrationOverviewMetric;
-        readonly lastSevenDays: AdministrationOverviewMetric;
-      },
+    readonly loadOverview: () => Effect.Effect<AdministrationOverview, unknown>;
+    readonly loadReservationOverview: () => Effect.Effect<
+      AdministrationReservationOverview,
       unknown
     >;
     readonly listReservations: (
@@ -1280,17 +1326,36 @@ export class AdministrationService extends Context.Service<
       const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
         function* (ids: readonly DotyposCustomerId[]) {
           const uniqueIds = [...new Set(ids)];
-          const customers = yield* dotypos.getCustomers(uniqueIds).pipe(
-            Effect.catch((cause) => {
-              unstable_rethrow(cause);
-              return Effect.logWarning("Batch customer details unavailable", {
-                cause,
-              }).pipe(Effect.as([] as const));
-            })
+          const batches = yield* Effect.all(
+            EffectArray.chunksOf(uniqueIds, providerIdBatchSize).map(
+              (batchIds) =>
+                dotypos.getCustomers({ ids: batchIds }).pipe(
+                  Effect.map((customers) => ({
+                    customers,
+                    ids: batchIds,
+                  })),
+                  Effect.catch((cause) => {
+                    unstable_rethrow(cause);
+                    return Effect.logWarning(
+                      "Batch customer details unavailable",
+                      { cause }
+                    ).pipe(
+                      Effect.as({
+                        customers: [] as const,
+                        ids: batchIds,
+                      })
+                    );
+                  })
+                )
+            ),
+            { concurrency: 3 }
           );
-          const customersById = indexCustomersById(customers);
+          const customersById = indexCustomersById(
+            batches.flatMap(({ customers }) => customers)
+          );
           const missingCustomers = yield* Effect.all(
-            uniqueIds
+            batches
+              .flatMap(({ ids: batchIds }) => batchIds)
               .filter((id) => !customersById.has(id))
               .map((id) =>
                 dotypos.getCustomer(id).pipe(
@@ -1440,6 +1505,7 @@ export class AdministrationService extends Context.Service<
               );
             }
           }
+
           return liveRows.map(({ live, row }) =>
             toReservationSummary({
               latestPayment: latestPaymentByReservation.get(row.id) ?? null,
@@ -2565,86 +2631,336 @@ export class AdministrationService extends Context.Service<
         } satisfies AdministrationCustomerActivity;
       });
 
+      const loadOverviewSource = Effect.fn(
+        "AdministrationService.loadOverviewSource"
+      )(function* () {
+        const currentDate = getCurrentWorkspaceDate();
+        const ranges = getAdministrationOverviewDateRanges(currentDate);
+        const overviewRange = {
+          from: ranges.lastSevenDays.from,
+          to: ranges.upcoming.to,
+        };
+        const reservations = yield* dotypos
+          .listReservations({
+            ...getInclusiveDateRangeBounds(overviewRange),
+            order: "startDateAscending",
+          })
+          .pipe(
+            Effect.map((items) => ({
+              kind: "available" as const,
+              items,
+            })),
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning("Reservation overview unavailable", {
+                cause,
+                ...overviewRange,
+              }).pipe(Effect.as({ kind: "unavailable" as const }));
+            })
+          );
+        const reservationIds =
+          reservations.kind === "available"
+            ? reservations.items.flatMap((reservation) => {
+                const id = Option.getOrUndefined(
+                  decodeDotyposReservationId(reservation.id)
+                );
+                return id ? [id] : [];
+              })
+            : [];
+        const rows =
+          reservationIds.length === 0
+            ? []
+            : yield* db
+                .select({
+                  id: workspaceReservations.dotyposReservationId,
+                  customerId: workspaceReservations.dotyposCustomerId,
+                  failureCode: workspaceReservations.failureCode,
+                  fulfillmentState: workspaceReservations.fulfillmentState,
+                  paymentState: workspaceReservations.paymentState,
+                  reservationState: workspaceReservations.reservationState,
+                })
+                .from(workspaceReservations)
+                .where(
+                  inArray(
+                    workspaceReservations.dotyposReservationId,
+                    reservationIds
+                  )
+                );
+        return { currentDate, ranges, reservations, rows };
+      });
+
+      const loadReservationOverview = Effect.fn(
+        "AdministrationService.loadReservationOverview"
+      )(function* () {
+        return getReservationOverview(yield* loadOverviewSource());
+      });
+
       const loadOverview = Effect.fn("AdministrationService.loadOverview")(
         function* () {
-          const currentDate = getCurrentWorkspaceDate();
-          const ranges = getAdministrationOverviewDateRanges(currentDate);
-          const linkedRows = yield* db
-            .select({
-              id: workspaceReservations.dotyposReservationId,
-              failureCode: workspaceReservations.failureCode,
-              fulfillmentState: workspaceReservations.fulfillmentState,
-              paymentState: workspaceReservations.paymentState,
-              reservationState: workspaceReservations.reservationState,
-            })
-            .from(workspaceReservations)
-            .where(isNotNull(workspaceReservations.dotyposReservationId));
-          const linkedReservationIds = new Set(
-            linkedRows.flatMap(({ id }) => (id ? [id] : []))
-          );
-          const completedReservationIds = new Set(
-            linkedRows.flatMap((row) =>
-              row.id &&
-              getAdministrationReservationStatus(row).group === "complete"
-                ? [row.id]
-                : []
+          const { currentDate, ranges, reservations, rows } =
+            yield* loadOverviewSource();
+          const customerIdsByReservationId = new Map(
+            rows.flatMap(({ customerId, id }) =>
+              id ? ([[id, customerId]] as const) : []
             )
           );
-          const overviewRange = {
-            from: ranges.lastSevenDays.from,
-            to: ranges.upcoming.to,
-          };
-          const reservations = yield* dotypos
-            .listReservations({
-              ...getInclusiveDateRangeBounds(overviewRange),
-              order: "startDateAscending",
-            })
-            .pipe(
-              Effect.map((items) => ({ kind: "available" as const, items })),
-              Effect.catch((cause) => {
-                unstable_rethrow(cause);
-                return Effect.logWarning("Reservation overview unavailable", {
-                  cause,
-                  ...overviewRange,
-                }).pipe(Effect.as({ kind: "unavailable" as const }));
-              })
+          const customerActivityBounds = getDateRangeBounds(
+            ranges.lastSevenDays.from,
+            currentDate.add({ days: 1 }).toString()
+          );
+          const customerActivityStartsAt = Temporal.Instant.from(
+            customerActivityBounds.startsAtOrAfter
+          );
+          const customerActivityEndsBefore = Temporal.Instant.from(
+            customerActivityBounds.startsBefore
+          );
+          const uniqueCustomerIds =
+            reservations.kind === "available"
+              ? getUniqueCustomerIds({
+                  customerIdsByReservationId,
+                  range: ranges.lastSevenDays,
+                  reservations: reservations.items,
+                })
+              : [];
+          const [uniqueCustomersById, recentCustomers] = yield* Effect.all(
+            [
+              loadCustomers(uniqueCustomerIds.slice(0, 3)),
+              reservations.kind === "available"
+                ? dotypos
+                    .getCustomers({
+                      createdAtOrAfter: customerActivityBounds.startsAtOrAfter,
+                      createdBefore: customerActivityBounds.startsBefore,
+                    })
+                    .pipe(
+                      Effect.map((items) => ({
+                        items,
+                        kind: "available" as const,
+                      })),
+                      Effect.catch((cause) => {
+                        unstable_rethrow(cause);
+                        return Effect.logWarning(
+                          "New customer details unavailable",
+                          { cause }
+                        ).pipe(
+                          Effect.as({
+                            items: [] as const,
+                            kind: "unavailable" as const,
+                          })
+                        );
+                      })
+                    )
+                : Effect.succeed({
+                    items: [] as const,
+                    kind: "unavailable" as const,
+                  }),
+            ],
+            { concurrency: "inherit" }
+          );
+          const recentCustomersById = indexCustomersById(recentCustomers.items);
+          const recentCustomerIds = [...recentCustomersById.keys()];
+          const recentReservationLookups =
+            recentCustomers.kind === "available"
+              ? yield* Effect.all(
+                  EffectArray.chunksOf(
+                    recentCustomerIds,
+                    providerIdBatchSize
+                  ).map((customerIds) =>
+                    dotypos.listReservations({ customerIds }).pipe(
+                      Effect.map((items) => ({
+                        items,
+                        kind: "available" as const,
+                      })),
+                      Effect.catch((cause) => {
+                        unstable_rethrow(cause);
+                        return Effect.logWarning(
+                          "New customer bookings unavailable",
+                          { cause, customerCount: customerIds.length }
+                        ).pipe(
+                          Effect.as({
+                            items: [] as const,
+                            kind: "unavailable" as const,
+                          })
+                        );
+                      })
+                    )
+                  ),
+                  { concurrency: 5 }
+                )
+              : [];
+          const reservationsById = new Map<
+            DotyposReservationId,
+            DotyposReservation
+          >();
+          for (const reservation of [
+            ...(reservations.kind === "available" ? reservations.items : []),
+            ...recentReservationLookups.flatMap(({ items }) => items),
+          ]) {
+            const id = Option.getOrUndefined(
+              decodeDotyposReservationId(reservation.id)
             );
-          if (reservations.kind === "unavailable") {
-            const unavailable = {
-              completed: 0,
-              unavailable: true,
-              value: 0,
-            } as const;
-            return {
-              ranges,
-              today: unavailable,
-              upcoming: unavailable,
-              lastSevenDays: unavailable,
-            };
+            if (id) reservationsById.set(id, reservation);
           }
-          const getMetric = (range: AdministrationReservationDateRange) => ({
-            completed: countLinkedReservations({
-              linkedReservationIds: completedReservationIds,
-              range,
-              reservations: reservations.items,
-              status: "CONFIRMED",
+          const recentReservationIds = [
+            ...new Set(
+              recentReservationLookups.flatMap(({ items }) =>
+                items.flatMap((reservation) => {
+                  const id = Option.getOrUndefined(
+                    decodeDotyposReservationId(reservation.id)
+                  );
+                  return id ? [id] : [];
+                })
+              )
+            ),
+          ];
+          const recentBookingsAvailable = recentReservationLookups.every(
+            ({ kind }) => kind === "available"
+          );
+          const recentRows =
+            recentCustomerIds.length === 0 || !recentBookingsAvailable
+              ? []
+              : yield* db
+                  .select({
+                    id: workspaceReservations.dotyposReservationId,
+                    customerId: workspaceReservations.dotyposCustomerId,
+                  })
+                  .from(workspaceReservations)
+                  .where(
+                    recentReservationIds.length === 0
+                      ? inArray(
+                          workspaceReservations.dotyposCustomerId,
+                          recentCustomerIds
+                        )
+                      : or(
+                          inArray(
+                            workspaceReservations.dotyposCustomerId,
+                            recentCustomerIds
+                          ),
+                          inArray(
+                            workspaceReservations.dotyposReservationId,
+                            recentReservationIds
+                          )
+                        )
+                  );
+          const missingReservationBatches = yield* Effect.all(
+            EffectArray.chunksOf(
+              [
+                ...new Set(
+                  recentRows.flatMap(({ id }) =>
+                    id && !reservationsById.has(id) ? [id] : []
+                  )
+                ),
+              ],
+              providerIdBatchSize
+            ).map((ids) =>
+              dotypos.listReservations({ ids }).pipe(
+                Effect.map((items) => ({
+                  items,
+                  kind: "available" as const,
+                })),
+                Effect.catch((cause) => {
+                  unstable_rethrow(cause);
+                  return Effect.logWarning(
+                    "Current booking customers unavailable",
+                    { cause }
+                  ).pipe(
+                    Effect.as({
+                      items: [] as const,
+                      kind: "unavailable" as const,
+                    })
+                  );
+                })
+              )
+            ),
+            { concurrency: 3 }
+          );
+          for (const reservation of missingReservationBatches.flatMap(
+            ({ items }) => items
+          )) {
+            const id = Option.getOrUndefined(
+              decodeDotyposReservationId(reservation.id)
+            );
+            if (id) reservationsById.set(id, reservation);
+          }
+          const customerIdentitiesAvailable =
+            reservations.kind === "available" &&
+            recentCustomers.kind === "available" &&
+            recentCustomers.items.every((customer) =>
+              Option.isSome(decodeDotyposCustomerId(customer.id))
+            ) &&
+            recentBookingsAvailable &&
+            missingReservationBatches.every(({ kind }) => kind === "available");
+          const referencedCustomerIds = customerIdentitiesAvailable
+            ? [
+                ...new Set(
+                  recentRows.flatMap(({ customerId, id }) => {
+                    const currentCustomerId = id
+                      ? Option.getOrUndefined(
+                          decodeDotyposCustomerId(
+                            reservationsById.get(id)?._customerId
+                          )
+                        )
+                      : undefined;
+                    const referencedCustomerId =
+                      currentCustomerId ?? customerId;
+                    return recentCustomersById.has(referencedCustomerId)
+                      ? [referencedCustomerId]
+                      : [];
+                  })
+                ),
+              ]
+            : [];
+          const newCustomerIds = customerIdentitiesAvailable
+            ? getNewCustomerIds({
+                candidateIds: referencedCustomerIds,
+                customersById: recentCustomersById,
+                endsBefore: customerActivityEndsBefore,
+                startsAt: customerActivityStartsAt,
+              })
+            : { ids: [], unavailable: true, value: 0 };
+          const toCustomerMetric = (
+            metric: {
+              readonly ids: readonly DotyposCustomerId[];
+              readonly unavailable: boolean;
+              readonly value: number;
+            },
+            customersById: ReadonlyMap<DotyposCustomerId, DotyposCustomer>
+          ): AdministrationCustomerOverviewMetric => ({
+            customers: metric.ids.slice(0, 3).map((customerId) => {
+              const customer = customersById.get(customerId);
+              return {
+                customer: customer ? toCustomer(customer, customerId) : null,
+                customerId,
+              };
             }),
-            unavailable: false,
-            value: countLinkedReservations({
-              linkedReservationIds,
-              range,
-              reservations: reservations.items,
-            }),
+            unavailable: metric.unavailable,
+            value: metric.value,
           });
-          const today = getMetric(ranges.today);
-          const upcoming = getMetric(ranges.upcoming);
-          const lastSevenDays = getMetric(ranges.lastSevenDays);
-          return { ranges, today, upcoming, lastSevenDays };
+          const uniqueCustomers = toCustomerMetric(
+            {
+              ids: uniqueCustomerIds,
+              unavailable: reservations.kind === "unavailable",
+              value:
+                reservations.kind === "available"
+                  ? uniqueCustomerIds.length
+                  : 0,
+            },
+            uniqueCustomersById
+          );
+          const newCustomers = toCustomerMetric(
+            newCustomerIds,
+            recentCustomersById
+          );
+          return {
+            ...getReservationOverview({ ranges, reservations, rows }),
+            uniqueCustomers,
+            newCustomers,
+          };
         }
       );
 
       return {
         loadOverview,
+        loadReservationOverview,
         listReservations,
         loadReservation,
         loadReservationBreadcrumbLabel,
@@ -2673,4 +2989,124 @@ export class AdministrationService extends Context.Service<
       )
     )
   );
+}
+
+function getReservationOverview({
+  ranges,
+  reservations,
+  rows,
+}: Pick<AdministrationOverviewSource, "ranges" | "reservations" | "rows">) {
+  if (reservations.kind === "unavailable") {
+    const unavailable = {
+      completed: 0,
+      unavailable: true,
+      value: 0,
+    } as const;
+    return {
+      ranges,
+      today: unavailable,
+      upcoming: unavailable,
+      lastSevenDays: unavailable,
+    } satisfies AdministrationReservationOverview;
+  }
+
+  const linkedReservationIds = new Set(
+    rows.flatMap(({ id }) => (id ? [id] : []))
+  );
+  const completedReservationIds = new Set(
+    rows.flatMap((row) =>
+      row.id && getAdministrationReservationStatus(row).group === "complete"
+        ? [row.id]
+        : []
+    )
+  );
+  const getMetric = (range: AdministrationReservationDateRange) => ({
+    completed: countLinkedReservations({
+      linkedReservationIds: completedReservationIds,
+      range,
+      reservations: reservations.items,
+      status: "CONFIRMED",
+    }),
+    unavailable: false,
+    value: countLinkedReservations({
+      linkedReservationIds,
+      range,
+      reservations: reservations.items,
+    }),
+  });
+  return {
+    ranges,
+    today: getMetric(ranges.today),
+    upcoming: getMetric(ranges.upcoming),
+    lastSevenDays: getMetric(ranges.lastSevenDays),
+  } satisfies AdministrationReservationOverview;
+}
+
+function getUniqueCustomerIds(input: {
+  readonly customerIdsByReservationId: ReadonlyMap<
+    DotyposReservationId,
+    DotyposCustomerId
+  >;
+  readonly range: AdministrationReservationDateRange;
+  readonly reservations: readonly DotyposReservation[];
+}) {
+  const latestBookingByCustomerId = new Map<
+    DotyposCustomerId,
+    Temporal.Instant
+  >();
+  for (const reservation of input.reservations) {
+    const reservationId = Option.getOrUndefined(
+      decodeDotyposReservationId(reservation.id)
+    );
+    const fallbackCustomerId = reservationId
+      ? input.customerIdsByReservationId.get(reservationId)
+      : undefined;
+    if (!fallbackCustomerId || !isReservationInRange(reservation, input.range))
+      continue;
+
+    const customerId =
+      Option.getOrUndefined(decodeDotyposCustomerId(reservation._customerId)) ??
+      fallbackCustomerId;
+    const startsAt = Temporal.Instant.from(reservation.startDate);
+    const latestBooking = latestBookingByCustomerId.get(customerId);
+    if (!latestBooking || Temporal.Instant.compare(startsAt, latestBooking) > 0)
+      latestBookingByCustomerId.set(customerId, startsAt);
+  }
+  return [...latestBookingByCustomerId]
+    .toSorted(
+      ([leftId, left], [rightId, right]) =>
+        Temporal.Instant.compare(right, left) || leftId.localeCompare(rightId)
+    )
+    .map(([customerId]) => customerId);
+}
+
+function getNewCustomerIds(input: {
+  readonly candidateIds: readonly DotyposCustomerId[];
+  readonly customersById: ReadonlyMap<DotyposCustomerId, DotyposCustomer>;
+  readonly endsBefore: Temporal.Instant;
+  readonly startsAt: Temporal.Instant;
+}) {
+  const newCustomers: [DotyposCustomerId, Temporal.Instant][] = [];
+  for (const customerId of input.candidateIds) {
+    const created = input.customersById.get(customerId)?.created;
+    const createdAt = Option.getOrUndefined(
+      decodeInstantString(created).pipe(
+        Option.map((value) => Temporal.Instant.from(value))
+      )
+    );
+    if (!createdAt) return { ids: [], unavailable: true, value: 0 } as const;
+    if (
+      Temporal.Instant.compare(createdAt, input.startsAt) >= 0 &&
+      Temporal.Instant.compare(createdAt, input.endsBefore) < 0
+    ) {
+      newCustomers.push([customerId, createdAt]);
+    }
+  }
+  const ids = newCustomers
+    .toSorted(
+      ([leftId, left], [rightId, right]) =>
+        Temporal.Instant.compare(right, left) || leftId.localeCompare(rightId)
+    )
+    .map(([customerId]) => customerId);
+  return { ids, unavailable: false, value: ids.length } as const;
 }

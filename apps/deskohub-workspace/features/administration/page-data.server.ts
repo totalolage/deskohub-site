@@ -112,6 +112,14 @@ export const loadAdministrationOverview = async () => {
   }).pipe(runAdministration("administration.overview"));
 };
 
+export const loadAdministrationReservationOverview = async () => {
+  await authorizeAdministrationPage();
+  return Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.loadReservationOverview();
+  }).pipe(runAdministration("administration.reservation-overview"));
+};
+
 const getAdministrationReservationListInput = async (
   searchParams: AdministrationSearchParams
 ) => {

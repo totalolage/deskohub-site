@@ -411,7 +411,7 @@ describe("AdministrationService", () => {
                 })
               ),
               DotyposServiceMock({
-                getCustomers: (ids) =>
+                getCustomers: ({ ids = [] }) =>
                   Effect.sync(() => {
                     customerCalls.push([...ids]);
                     return ids.map((id) => ({ id }));
@@ -466,48 +466,67 @@ describe("AdministrationService", () => {
         },
       ],
     ] as const;
+    let batchFails = false;
     let selectCall = 0;
     const itemCalls: string[] = [];
 
-    const result = await Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return yield* administration.listCustomers({});
-    }).pipe(
-      Effect.provide(
-        AdministrationService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(
-                WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () => makeQuery(rows[selectCall++] ?? []),
-                  } as never,
-                })
-              ),
-              DotyposServiceMock({
-                getCustomer: (id) =>
-                  Effect.sync(() => {
-                    itemCalls.push(id);
-                    return { firstName: "Ada", id };
-                  }),
-                getCustomers: () => Effect.succeed([]),
-              }),
-              Layer.succeed(
-                PostHogReservationHistory,
-                PostHogReservationHistory.of({
-                  load: () => Effect.succeed({ kind: "unavailable" } as const),
-                })
-              ),
-              PaymentAdministrationServiceMock({})
+    const loadCustomers = () =>
+      Effect.gen(function* () {
+        const administration = yield* AdministrationService;
+        return yield* administration.listCustomers({});
+      }).pipe(
+        Effect.provide(
+          AdministrationService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.of({
+                    db: {
+                      select: () => makeQuery(rows[selectCall++] ?? []),
+                    } as never,
+                  })
+                ),
+                DotyposServiceMock({
+                  getCustomer: (id) =>
+                    Effect.sync(() => {
+                      itemCalls.push(id);
+                      return { firstName: "Ada", id };
+                    }),
+                  getCustomers: () =>
+                    batchFails
+                      ? Effect.fail(
+                          new ExternalAPIError({
+                            operation: "getCustomers",
+                            service: "Dotypos",
+                            statusCode: 503,
+                          })
+                        )
+                      : Effect.succeed([]),
+                }),
+                Layer.succeed(
+                  PostHogReservationHistory,
+                  PostHogReservationHistory.of({
+                    load: () =>
+                      Effect.succeed({ kind: "unavailable" } as const),
+                  })
+                ),
+                PaymentAdministrationServiceMock({})
+              )
             )
           )
-        )
-      ),
-      Effect.runPromise
-    );
+        ),
+        Effect.runPromise
+      );
 
+    const result = await loadCustomers();
     expect(result.items[0]?.customer?.displayName).toBe("Ada");
+    expect(itemCalls).toEqual([customerId]);
+
+    batchFails = true;
+    selectCall = 0;
+    itemCalls.length = 0;
+    expect((await loadCustomers()).items[0]?.customer?.displayName).toBe("Ada");
     expect(itemCalls).toEqual([customerId]);
   });
 
@@ -570,7 +589,7 @@ describe("AdministrationService", () => {
     expect(Cause.squash(exit.cause)).toBe(interruption);
   });
 
-  test("loads all overview buckets with one provider call", async () => {
+  test("loads reservation and customer overview activity", async () => {
     const currentDate = Temporal.Now.instant()
       .toZonedDateTimeISO("Europe/Prague")
       .toPlainDate();
@@ -582,92 +601,280 @@ describe("AdministrationService", () => {
       "new-today",
       "failed-today",
     ];
-    const listInputs: unknown[] = [];
-    const providerReservation = (id: string, date: Temporal.PlainDate) => ({
+    const listInputs: {
+      readonly customerId?: string;
+      readonly customerIds?: readonly string[];
+      readonly ids?: readonly string[];
+      readonly order?: string;
+    }[] = [];
+    const customerListInputs: {
+      readonly createdAtOrAfter?: string;
+      readonly createdBefore?: string;
+      readonly ids?: readonly string[];
+    }[] = [];
+    let historicalReservationsUnavailable = false;
+    let missingCustomerCreationTime = false;
+    let reservationsUnavailable = false;
+    const atTime = (date: Temporal.PlainDate, hour: number) =>
+      date.toZonedDateTime("Europe/Prague").add({ hours: hour }).toInstant();
+    const providerReservation = (
+      id: string,
+      customerId: string,
+      date: Temporal.PlainDate,
+      hour = 0
+    ) => ({
       _branchId: "branch",
       _cloudId: "cloud",
-      _customerId: "customer",
+      _customerId: customerId,
       id,
-      startDate: date.toZonedDateTime("Europe/Prague").toInstant().toString(),
-      endDate: date
-        .toZonedDateTime("Europe/Prague")
-        .add({ hours: 1 })
-        .toInstant()
-        .toString(),
+      startDate: atTime(date, hour).toString(),
+      endDate: atTime(date, hour + 1).toString(),
       seats: "1",
       status: "CONFIRMED" as const,
     });
+    const customerCreatedAt = new Map([
+      ["customer-new-a", atTime(currentDate, 8).toString()],
+      ["customer-new-b", atTime(currentDate, 9).toString()],
+      ["customer-reassigned-old", atTime(currentDate, 7).toString()],
+      ["customer-reassigned", atTime(currentDate, 10).toString()],
+      ["customer-new-from-old-row", atTime(currentDate, 12).toString()],
+      [
+        "customer-new-c",
+        atTime(currentDate.subtract({ days: 30 }), 10).toString(),
+      ],
+      ["customer-new-d", atTime(currentDate, 11).toString()],
+    ]);
+    const providerOnlyRecentCustomers = Array.from(
+      { length: 75 },
+      (_, index) =>
+        [`provider-only-${index}`, atTime(currentDate, 6).toString()] as const
+    );
+    const rowCustomerIds = {
+      "last-week": "customer-returning",
+      today: "customer-new-a",
+      upcoming: "customer-upcoming",
+      "cancelled-today": "customer-new-a",
+      "new-today": "customer-new-b",
+      "failed-today": "customer-new-c",
+      "old-booking": "customer-stale-old",
+    } as const;
+    const rangeRows = linkedIds.map((id) => ({
+      id,
+      customerId: rowCustomerIds[id as keyof typeof rowCustomerIds],
+      failureCode: id === "failed-today" ? "access_failed" : null,
+      fulfillmentState: id === "failed-today" ? "failed" : "fulfilled",
+      paymentState: "paid",
+      reservationState: "confirmed",
+    }));
+    const recentCustomerRows = [
+      ...rangeRows.filter(({ id }) =>
+        ["today", "cancelled-today", "new-today", "failed-today"].includes(id)
+      ),
+      {
+        id: "old-booking",
+        customerId: "customer-stale-old",
+        failureCode: null,
+        fulfillmentState: "fulfilled",
+        paymentState: "paid",
+        reservationState: "confirmed",
+      },
+      {
+        id: null,
+        customerId: "customer-new-d",
+        failureCode: null,
+        fulfillmentState: "not_started",
+        paymentState: "not_started",
+        reservationState: "draft",
+      },
+      {
+        id: null,
+        customerId: "customer-new-from-old-row",
+        failureCode: null,
+        fulfillmentState: "not_started",
+        paymentState: "not_started",
+        reservationState: "draft",
+      },
+    ];
+    const overviewReservations = [
+      providerReservation(
+        "last-week",
+        "customer-returning",
+        currentDate.subtract({ days: 6 })
+      ),
+      providerReservation("today", "customer-new-a", currentDate, 10),
+      {
+        ...providerReservation(
+          "cancelled-today",
+          "customer-new-a",
+          currentDate,
+          11
+        ),
+        status: "CANCELLED" as const,
+      },
+      {
+        ...providerReservation("new-today", "customer-new-b", currentDate, 12),
+        status: "NEW" as const,
+      },
+      providerReservation(
+        "failed-today",
+        "customer-reassigned",
+        currentDate,
+        13
+      ),
+      providerReservation(
+        "upcoming",
+        "customer-upcoming",
+        currentDate.add({ days: 1 })
+      ),
+      providerReservation("unlinked", "customer-unlinked", currentDate),
+    ];
+    let selectCall = 0;
 
-    const result = await Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return yield* administration.loadOverview();
-    }).pipe(
-      Effect.provide(
-        AdministrationService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(
-                WorkspaceDatabase,
-                WorkspaceDatabase.of({
-                  db: {
-                    select: () =>
-                      makeQuery(
-                        linkedIds.map((id) => ({
-                          id,
-                          failureCode:
-                            id === "failed-today" ? "access_failed" : null,
-                          fulfillmentState:
-                            id === "failed-today" ? "failed" : "fulfilled",
-                          paymentState: "paid",
-                          reservationState: "confirmed",
-                        }))
-                      ),
-                  } as never,
-                })
-              ),
-              DotyposServiceMock({
-                listReservations: (input) =>
-                  Effect.sync(() => {
+    const loadOverview = () =>
+      Effect.gen(function* () {
+        const administration = yield* AdministrationService;
+        return yield* administration.loadOverview();
+      }).pipe(
+        Effect.provide(
+          AdministrationService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(
+                  WorkspaceDatabase,
+                  WorkspaceDatabase.of({
+                    db: {
+                      select: () =>
+                        makeQuery(
+                          selectCall++ % 2 === 0
+                            ? rangeRows
+                            : recentCustomerRows
+                        ),
+                    } as never,
+                  })
+                ),
+                DotyposServiceMock({
+                  getCustomers: (options) =>
+                    Effect.sync(() => {
+                      customerListInputs.push(options);
+                      if ("createdAtOrAfter" in options) {
+                        return [
+                          ...customerCreatedAt,
+                          ...providerOnlyRecentCustomers,
+                        ]
+                          .filter(([id]) => id !== "customer-new-c")
+                          .map(([id, created]) => ({
+                            created:
+                              missingCustomerCreationTime &&
+                              id === "customer-new-a"
+                                ? null
+                                : created,
+                            firstName: id.replace("customer-", ""),
+                            id,
+                          }));
+                      }
+                      const ids = "ids" in options ? options.ids : [];
+                      return ids.map((id) => ({
+                        created: customerCreatedAt.get(id),
+                        firstName: id.replace("customer-", ""),
+                        id,
+                      }));
+                    }),
+                  listReservations: (input) => {
                     listInputs.push(input);
-                    return [
-                      providerReservation(
-                        "last-week",
-                        currentDate.subtract({ days: 6 })
-                      ),
-                      providerReservation("today", currentDate),
-                      {
-                        ...providerReservation("cancelled-today", currentDate),
-                        status: "CANCELLED" as const,
-                      },
-                      {
-                        ...providerReservation("new-today", currentDate),
-                        status: "NEW" as const,
-                      },
-                      providerReservation("failed-today", currentDate),
-                      providerReservation(
-                        "upcoming",
-                        currentDate.add({ days: 1 })
-                      ),
-                      providerReservation("unlinked", currentDate),
-                    ];
-                  }),
-              }),
-              Layer.succeed(
-                PostHogReservationHistory,
-                PostHogReservationHistory.of({
-                  load: () => Effect.succeed({ kind: "unavailable" } as const),
-                })
-              ),
-              PaymentAdministrationServiceMock({})
+                    if (reservationsUnavailable) {
+                      return Effect.fail(
+                        new ExternalAPIError({
+                          operation: "listReservations",
+                          service: "Dotypos",
+                          statusCode: 503,
+                        })
+                      );
+                    }
+                    if (
+                      historicalReservationsUnavailable &&
+                      (input.customerIds?.includes("customer-reassigned-old") ||
+                        input.ids)
+                    ) {
+                      return Effect.fail(
+                        new ExternalAPIError({
+                          operation: "listReservations",
+                          service: "Dotypos",
+                          statusCode: 503,
+                        })
+                      );
+                    }
+                    if (input.ids) {
+                      return Effect.succeed(
+                        [
+                          ...overviewReservations,
+                          providerReservation(
+                            "old-booking",
+                            "customer-reassigned-old",
+                            currentDate.subtract({ days: 60 })
+                          ),
+                        ].filter(({ id }) => input.ids?.includes(id))
+                      );
+                    }
+                    if (input.customerId) {
+                      return Effect.succeed(
+                        [
+                          ...overviewReservations,
+                          providerReservation(
+                            "old-booking",
+                            "customer-reassigned-old",
+                            currentDate.subtract({ days: 60 })
+                          ),
+                        ].filter(
+                          ({ _customerId }) => _customerId === input.customerId
+                        )
+                      );
+                    }
+                    if (input.customerIds) {
+                      return Effect.succeed(
+                        [
+                          ...overviewReservations,
+                          providerReservation(
+                            "old-booking",
+                            "customer-reassigned-old",
+                            currentDate.subtract({ days: 60 })
+                          ),
+                        ].filter(({ _customerId }) =>
+                          input.customerIds?.includes(_customerId)
+                        )
+                      );
+                    }
+                    return Effect.succeed(overviewReservations);
+                  },
+                }),
+                Layer.succeed(
+                  PostHogReservationHistory,
+                  PostHogReservationHistory.of({
+                    load: () =>
+                      Effect.succeed({ kind: "unavailable" } as const),
+                  })
+                ),
+                PaymentAdministrationServiceMock({})
+              )
             )
           )
-        )
-      ),
-      Effect.runPromise
-    );
+        ),
+        Effect.runPromise
+      );
+    const result = await loadOverview();
 
-    expect(listInputs).toHaveLength(1);
     expect(listInputs[0]).toMatchObject({ order: "startDateAscending" });
+    expect(listInputs.filter(({ customerId }) => customerId)).toHaveLength(0);
+    const customerIdBatches = listInputs.flatMap(({ customerIds }) =>
+      customerIds ? [customerIds] : []
+    );
+    expect(customerIdBatches).toHaveLength(2);
+    expect(customerIdBatches.every((ids) => ids.length <= 50)).toBe(true);
+    expect(customerIdBatches.flat()).toHaveLength(81);
+    expect(listInputs.filter(({ ids }) => ids)).toHaveLength(0);
+    expect(customerListInputs).toContainEqual({
+      createdAtOrAfter: atTime(currentDate.subtract({ days: 6 }), 0).toString(),
+      createdBefore: atTime(currentDate.add({ days: 1 }), 0).toString(),
+    });
     expect(result.today).toEqual({
       completed: 1,
       unavailable: false,
@@ -682,6 +889,97 @@ describe("AdministrationService", () => {
       completed: 2,
       unavailable: false,
       value: 5,
+    });
+    expect(result.uniqueCustomers).toEqual({
+      customers: [
+        {
+          customer: {
+            displayName: "reassigned",
+            email: null,
+            id: "customer-reassigned",
+            phone: null,
+          },
+          customerId: "customer-reassigned",
+        },
+        {
+          customer: {
+            displayName: "new-b",
+            email: null,
+            id: "customer-new-b",
+            phone: null,
+          },
+          customerId: "customer-new-b",
+        },
+        {
+          customer: {
+            displayName: "new-a",
+            email: null,
+            id: "customer-new-a",
+            phone: null,
+          },
+          customerId: "customer-new-a",
+        },
+      ],
+      unavailable: false,
+      value: 4,
+    });
+    expect(result.newCustomers).toEqual({
+      customers: [
+        {
+          customer: {
+            displayName: "new-from-old-row",
+            email: null,
+            id: "customer-new-from-old-row",
+            phone: null,
+          },
+          customerId: "customer-new-from-old-row",
+        },
+        {
+          customer: {
+            displayName: "new-d",
+            email: null,
+            id: "customer-new-d",
+            phone: null,
+          },
+          customerId: "customer-new-d",
+        },
+        {
+          customer: {
+            displayName: "reassigned",
+            email: null,
+            id: "customer-reassigned",
+            phone: null,
+          },
+          customerId: "customer-reassigned",
+        },
+      ],
+      unavailable: false,
+      value: 6,
+    });
+
+    missingCustomerCreationTime = true;
+    expect((await loadOverview()).newCustomers).toEqual({
+      customers: [],
+      unavailable: true,
+      value: 0,
+    });
+
+    missingCustomerCreationTime = false;
+    historicalReservationsUnavailable = true;
+    const missingHistoricalBookings = await loadOverview();
+    expect(missingHistoricalBookings.today.unavailable).toBe(false);
+    expect(missingHistoricalBookings.newCustomers).toEqual({
+      customers: [],
+      unavailable: true,
+      value: 0,
+    });
+
+    historicalReservationsUnavailable = false;
+    reservationsUnavailable = true;
+    expect((await loadOverview()).newCustomers).toEqual({
+      customers: [],
+      unavailable: true,
+      value: 0,
     });
   });
 

@@ -55,10 +55,18 @@ type DotyposError = ValidationError | ExternalAPIError | NetworkError;
 export type ReservationListOptions = {
   readonly ids?: readonly DotyposReservationId[];
   readonly customerId?: DotyposCustomerId;
+  readonly customerIds?: readonly DotyposCustomerId[];
   readonly startsAtOrAfter?: string;
   readonly startsBefore?: string;
   readonly order?: "startDateAscending" | "startDateDescending";
 };
+
+export type CustomerListOptions =
+  | { readonly ids: readonly DotyposCustomerId[] }
+  | {
+      readonly createdAtOrAfter: string;
+      readonly createdBefore: string;
+    };
 
 type DotyposPage<A> = {
   readonly data?: readonly A[];
@@ -777,22 +785,37 @@ const makeDotyposService = Effect.gen(function* () {
   );
 
   const getCustomers = Effect.fn("getCustomers")(function* (
-    ids: readonly DotyposCustomerId[]
+    options: CustomerListOptions
   ) {
-    const uniqueIds = [...new Set(ids)];
-    if (uniqueIds.length === 0) return [];
-    if (uniqueIds.some((id) => !id.trim() || /[|;,]/.test(id))) {
+    const uniqueIds = "ids" in options ? [...new Set(options.ids)] : [];
+    if ("ids" in options && uniqueIds.length === 0) return [];
+    const createdAtOrAfter =
+      "createdAtOrAfter" in options ? options.createdAtOrAfter : undefined;
+    const createdBefore =
+      "createdBefore" in options ? options.createdBefore : undefined;
+    const filterValues = [...uniqueIds, createdAtOrAfter, createdBefore].filter(
+      (value): value is string => value !== undefined
+    );
+    if (filterValues.some((value) => !value.trim() || /[|;,]/.test(value))) {
       return yield* new ValidationError({
-        message: "Customer IDs contain an invalid value",
+        message: "Customer filters contain an invalid value",
       });
     }
+    const filter = [
+      uniqueIds.length > 0 && `id|in|${uniqueIds.join(",")}`,
+      createdAtOrAfter && `created|gteq|${createdAtOrAfter}`,
+      createdBefore && `created|lt|${createdBefore}`,
+      "deleted|in|0,1",
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(";");
 
     return yield* loadAllDotyposPages({
       loadPage: (page) =>
         runDotyposRequest(
           client.getCustomers(config.cloudId, {
             params: {
-              filter: `id|in|${uniqueIds.join(",")};deleted|in|0,1`,
+              filter,
               limit: 100,
               page,
             },
@@ -1491,9 +1514,15 @@ const makeDotyposService = Effect.gen(function* () {
     options: ReservationListOptions = {}
   ) {
     const ids = [...new Set(options.ids ?? [])];
-    if (options.ids && ids.length === 0) return [];
+    const customerIds = [...new Set(options.customerIds ?? [])];
+    if (
+      (options.ids && ids.length === 0) ||
+      (options.customerIds && customerIds.length === 0)
+    )
+      return [];
     const filterValues = [
       options.customerId,
+      ...customerIds,
       options.startsAtOrAfter,
       options.startsBefore,
     ].filter((value): value is string => value !== undefined);
@@ -1510,6 +1539,7 @@ const makeDotyposService = Effect.gen(function* () {
     const filter = [
       ids.length > 0 && `id|in|${ids.join(",")}`,
       options.customerId && `_customerId|eq|${options.customerId}`,
+      customerIds.length > 0 && `_customerId|in|${customerIds.join(",")}`,
       options.startsAtOrAfter && `startDate|gteq|${options.startsAtOrAfter}`,
       options.startsBefore && `startDate|lt|${options.startsBefore}`,
     ]
