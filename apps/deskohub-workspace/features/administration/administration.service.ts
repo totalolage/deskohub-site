@@ -111,7 +111,7 @@ import {
 const reservationPageSize = 24;
 const bookingPageSize = 24;
 const customerPageSize = 24;
-const customerProviderBatchSize = 50;
+const providerIdBatchSize = 50;
 const customerReservationPageSize = 10;
 const customerActivityReservationLimit = 24;
 const customerActivityTransactionLimit = 50;
@@ -1301,7 +1301,7 @@ export class AdministrationService extends Context.Service<
         function* (ids: readonly DotyposCustomerId[]) {
           const uniqueIds = [...new Set(ids)];
           const batches = yield* Effect.all(
-            EffectArray.chunksOf(uniqueIds, customerProviderBatchSize).map(
+            EffectArray.chunksOf(uniqueIds, providerIdBatchSize).map(
               (batchIds) =>
                 dotypos.getCustomers(batchIds).pipe(
                   Effect.map((customers) => ({
@@ -2656,21 +2656,69 @@ export class AdministrationService extends Context.Service<
           const linkedReservationIds = new Set(
             rows.flatMap(({ id }) => (id ? [id] : []))
           );
-          const customerIdsByReservationId = new Map(
-            rows.flatMap(({ customerId, id }) =>
-              id ? ([[id, customerId]] as const) : []
-            )
-          );
+          const reservationsById = new Map<
+            DotyposReservationId,
+            DotyposReservation
+          >();
           if (reservations.kind === "available") {
             for (const reservation of reservations.items) {
               const reservationId = Option.getOrUndefined(
                 decodeDotyposReservationId(reservation.id)
               );
-              if (
-                !reservationId ||
-                !customerIdsByReservationId.has(reservationId)
-              )
-                continue;
+              if (reservationId)
+                reservationsById.set(reservationId, reservation);
+            }
+          }
+          const missingReservationBatches =
+            reservations.kind === "available"
+              ? yield* Effect.all(
+                  EffectArray.chunksOf(
+                    [...linkedReservationIds].filter(
+                      (id) => !reservationsById.has(id)
+                    ),
+                    providerIdBatchSize
+                  ).map((ids) =>
+                    dotypos.listReservations({ ids }).pipe(
+                      Effect.map((items) => ({
+                        items,
+                        kind: "available" as const,
+                      })),
+                      Effect.catch((cause) => {
+                        unstable_rethrow(cause);
+                        return Effect.logWarning(
+                          "Current booking customers unavailable",
+                          { cause }
+                        ).pipe(
+                          Effect.as({
+                            items: [] as const,
+                            kind: "unavailable" as const,
+                          })
+                        );
+                      })
+                    )
+                  ),
+                  { concurrency: 3 }
+                )
+              : [];
+          const customerIdentitiesAvailable =
+            reservations.kind === "available" &&
+            missingReservationBatches.every(({ kind }) => kind === "available");
+          for (const reservation of missingReservationBatches.flatMap(
+            ({ items }) => items
+          )) {
+            const reservationId = Option.getOrUndefined(
+              decodeDotyposReservationId(reservation.id)
+            );
+            if (reservationId) reservationsById.set(reservationId, reservation);
+          }
+          const customerIdsByReservationId = new Map(
+            rows.flatMap(({ customerId, id }) =>
+              id ? ([[id, customerId]] as const) : []
+            )
+          );
+          if (customerIdentitiesAvailable) {
+            for (const [reservationId, reservation] of reservationsById) {
+              if (!customerIdsByReservationId.has(reservationId)) continue;
               const customerId = Option.getOrUndefined(
                 decodeDotyposCustomerId(reservation._customerId)
               );
@@ -2678,18 +2726,17 @@ export class AdministrationService extends Context.Service<
                 customerIdsByReservationId.set(reservationId, customerId);
             }
           }
-          const referencedCustomerIds =
-            reservations.kind === "available"
-              ? [
-                  ...new Set(
-                    rows.map(({ customerId, id }) =>
-                      id
-                        ? (customerIdsByReservationId.get(id) ?? customerId)
-                        : customerId
-                    )
-                  ),
-                ]
-              : [];
+          const referencedCustomerIds = customerIdentitiesAvailable
+            ? [
+                ...new Set(
+                  rows.map(({ customerId, id }) =>
+                    id
+                      ? (customerIdsByReservationId.get(id) ?? customerId)
+                      : customerId
+                  )
+                ),
+              ]
+            : [];
           const completedReservationIds = new Set(
             rows.flatMap((row) =>
               row.id &&
@@ -2720,15 +2767,14 @@ export class AdministrationService extends Context.Service<
             ...uniqueCustomerIds.slice(0, 3),
             ...referencedCustomerIds,
           ]);
-          const newCustomerIds =
-            reservations.kind === "available"
-              ? getNewCustomerIds({
-                  candidateIds: referencedCustomerIds,
-                  customersById,
-                  endsBefore: customerActivityEndsBefore,
-                  startsAt: customerActivityStartsAt,
-                })
-              : { ids: [], unavailable: true, value: 0 };
+          const newCustomerIds = customerIdentitiesAvailable
+            ? getNewCustomerIds({
+                candidateIds: referencedCustomerIds,
+                customersById,
+                endsBefore: customerActivityEndsBefore,
+                startsAt: customerActivityStartsAt,
+              })
+            : { ids: [], unavailable: true, value: 0 };
           const toCustomerMetric = (metric: {
             readonly ids: readonly DotyposCustomerId[];
             readonly unavailable: boolean;

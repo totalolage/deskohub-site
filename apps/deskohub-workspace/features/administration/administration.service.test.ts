@@ -581,9 +581,11 @@ describe("AdministrationService", () => {
       "cancelled-today",
       "new-today",
       "failed-today",
+      "old-booking",
     ];
     const listInputs: unknown[] = [];
     const customerBatchInputs: (readonly string[])[] = [];
+    let historicalReservationsUnavailable = false;
     let missingCustomerCreationTime = false;
     let reservationsUnavailable = false;
     const atTime = (date: Temporal.PlainDate, hour: number) =>
@@ -606,6 +608,7 @@ describe("AdministrationService", () => {
     const customerCreatedAt = new Map([
       ["customer-new-a", atTime(currentDate, 8).toString()],
       ["customer-new-b", atTime(currentDate, 9).toString()],
+      ["customer-reassigned-old", atTime(currentDate, 7).toString()],
       ["customer-reassigned", atTime(currentDate, 10).toString()],
       ["customer-new-from-old-row", atTime(currentDate, 12).toString()],
       [
@@ -621,6 +624,7 @@ describe("AdministrationService", () => {
       "cancelled-today": "customer-new-a",
       "new-today": "customer-new-b",
       "failed-today": "customer-new-c",
+      "old-booking": "customer-stale-old",
     } as const;
     const recentLocalCustomers = new Set([
       "customer-new-a",
@@ -728,6 +732,24 @@ describe("AdministrationService", () => {
                         })
                       );
                     }
+                    if (input.ids) {
+                      if (historicalReservationsUnavailable) {
+                        return Effect.fail(
+                          new ExternalAPIError({
+                            operation: "listReservations",
+                            service: "Dotypos",
+                            statusCode: 503,
+                          })
+                        );
+                      }
+                      return Effect.succeed([
+                        providerReservation(
+                          "old-booking",
+                          "customer-reassigned-old",
+                          currentDate.subtract({ days: 60 })
+                        ),
+                      ]);
+                    }
                     return Effect.succeed([
                       providerReservation(
                         "last-week",
@@ -793,8 +815,9 @@ describe("AdministrationService", () => {
       );
     const result = await loadOverview();
 
-    expect(listInputs).toHaveLength(1);
+    expect(listInputs).toHaveLength(2);
     expect(listInputs[0]).toMatchObject({ order: "startDateAscending" });
+    expect(listInputs[1]).toMatchObject({ ids: ["old-booking"] });
     expect(customerBatchInputs.length).toBeGreaterThan(1);
     expect(customerBatchInputs.every((ids) => ids.length <= 50)).toBe(true);
     expect(result.today).toEqual({
@@ -876,7 +899,7 @@ describe("AdministrationService", () => {
         },
       ],
       unavailable: false,
-      value: 5,
+      value: 6,
     });
 
     missingCustomerCreationTime = true;
@@ -887,6 +910,16 @@ describe("AdministrationService", () => {
     });
 
     missingCustomerCreationTime = false;
+    historicalReservationsUnavailable = true;
+    const missingHistoricalBookings = await loadOverview();
+    expect(missingHistoricalBookings.today.unavailable).toBe(false);
+    expect(missingHistoricalBookings.newCustomers).toEqual({
+      customers: [],
+      unavailable: true,
+      value: 0,
+    });
+
+    historicalReservationsUnavailable = false;
     reservationsUnavailable = true;
     expect((await loadOverview()).newCustomers).toEqual({
       customers: [],
