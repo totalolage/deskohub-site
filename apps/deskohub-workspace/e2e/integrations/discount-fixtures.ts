@@ -13,8 +13,8 @@ import {
   discounts,
   promotionCodeCustomers,
   promotionCodes,
-  voucherRedemptions,
   voucherRedemptionAppliedAmountValue,
+  voucherRedemptions,
   vouchers,
 } from "@/db/schema";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
@@ -124,7 +124,7 @@ const definitions: readonly DiscountDefinitionFixture[] = [
       "cs-CZ": "E2E promo kód",
       "en-US": "E2E promo code",
     },
-    products: [{ kind: "cowork" }],
+    products: [{ kind: "cowork" }, { kind: "goods" }],
   },
   {
     basisPoints: 1000,

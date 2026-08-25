@@ -229,6 +229,11 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   variables in the `workspace-checkout-e2e` GitHub Actions environment, not
   secrets; management and trace-read API keys remain secrets.
 - Propagate Effect's `AbortSignal` through the Playwright runner and close the interrupted case's context so in-flight browser work is cancelled. Do not retry state-creating checkout submission as a whole; a retry can create duplicate orders and leak cleanup state. The reservation-preparation UI action may retry once after its recognized generic error only when it reuses the same `checkoutAttemptId` within the same `checkoutSessionId`; the backend attempt key is the immediate-retry idempotency boundary. Never extend that retry to provider payment creation.
+- Serialize protected-preview account projects that temporarily replace the
+  branch-wide Neon Auth webhook configuration. A dependent account project
+  must start only after its predecessor restores that configuration, and an
+  account-driven hosted-payment project must also wait for all three checkout
+  payment lanes so it cannot exceed the suite's provider-session ceiling.
 - Treat arrival at the Nexi hosted page as the provider-session creation
   barrier: production creates and links the attempt, awaits provider-session
   attachment, and only then returns the redirect URL. Database visibility can

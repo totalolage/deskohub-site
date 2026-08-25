@@ -306,6 +306,20 @@ test("lets Playwright schedule read-only navigation beside checkout cases", asyn
   );
 });
 
+test("settles the admitted goods payment before releasing provider capacity", async () => {
+  const goodsOrderProject = await Bun.file(
+    resolve(import.meta.dir, "../e2e/playwright-account/goods-orders.pw.ts")
+  ).text();
+  const admittedPayment = goodsOrderProject.indexOf(
+    "const admittedPayment = yield* startPayment"
+  );
+
+  expect(admittedPayment).toBeGreaterThan(-1);
+  expect(
+    goodsOrderProject.indexOf("completeNexiHostedPayment", admittedPayment)
+  ).toBeGreaterThan(admittedPayment);
+});
+
 test("lets Playwright write complete GitHub job summaries", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")

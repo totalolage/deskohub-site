@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-alpine
+        image: ghcr.io/fboulnois/pg_uuidv7@sha256:bc82ea4d74252366e41f5ec537bdf80b47eb3ec27027877438e8fd6a5a8a4433
         env:
           POSTGRES_DB: workspace_account_tests
           POSTGRES_PASSWORD: workspace_test_password
@@ -61,22 +61,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Apply account link migration
+      - name: Apply Workspace migrations
         working-directory: apps/deskohub-workspace
         env:
           DATABASE_URL: postgres://workspace_test:workspace_test_password@localhost:5432/workspace_account_tests
-        run: |
-          bun -e '
-            import { Client } from "pg";
-            const client = new Client({ connectionString: process.env.DATABASE_URL });
-            await client.connect();
-            try {
-              const migration = await Bun.file("db/migrations/20260821202645_customer_account_links/migration.sql").text();
-              await client.query(migration);
-            } finally {
-              await client.end();
-            }
-          '
+        run: bun run db:migrate
 
       - name: Test account repository concurrency
         working-directory: apps/deskohub-workspace
@@ -87,6 +76,17 @@ jobs:
           bun run i18n:compile
           bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 \
             features/account/backend/customer-account-link.repository.database.test.ts
+
+      - name: Test order database invariants
+        working-directory: apps/deskohub-workspace
+        env:
+          DATABASE_URL: postgres://workspace_test:workspace_test_password@localhost:5432/workspace_account_tests
+          WORKSPACE_ORDER_DATABASE_TESTS: "true"
+        run: |
+          bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 \
+            features/discounts/backend/order-discount-evidence.database.test.ts \
+            features/goods/backend/goods-order.repository.database.test.ts \
+            features/checkout/backend/repositories/payment-lifecycle.repository.database.test.ts
 
       - name: Validate Workspace E2E allocation bundle
         run: |

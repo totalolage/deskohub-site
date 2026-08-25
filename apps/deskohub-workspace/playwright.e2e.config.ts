@@ -89,6 +89,13 @@ export default defineConfig({
       timeout: workspaceE2ETimeouts.accountCase,
     },
     {
+      dependencies: ["account", "checkout-payment-2", "checkout-payment-3"],
+      name: "goods-orders",
+      testDir: "./e2e/playwright-account",
+      testMatch: "goods-orders.pw.ts",
+      timeout: workspaceE2ETimeouts.accountCase,
+    },
+    {
       dependencies: ["checkout-plan"],
       name: "checkout-payment-2",
       testMatch: "payment-lane-2.pw.ts",

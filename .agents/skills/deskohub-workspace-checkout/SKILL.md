@@ -86,3 +86,14 @@ the hosted-payment return/status resource.
 Exclude written-off goods orders from oldest-unpaid payment admission. A later
 provider success may still settle an already-written-off order normally; retain
 `writtenOffAt` as audit history rather than clearing or reclassifying it.
+
+On a goods Nexi return, establish authenticated order ownership before invoking
+the generic provider-payment finalizer. Refresh the same safe order detail after
+reconciliation so webhook and return settlement share one lifecycle without
+letting an unowned order trigger provider work.
+
+Do not restrict a recognized goods Nexi return to an aggregate `pending` state.
+An active goods attempt may have been marked `failed`, `cancelled`, or `expired`
+locally before the provider reports success; verify those terminal states and
+let the generic lifecycle settle or idempotently terminalize them. Keep the
+reservation return gate unchanged.
