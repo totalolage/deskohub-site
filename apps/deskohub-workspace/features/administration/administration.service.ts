@@ -2650,17 +2650,47 @@ export class AdministrationService extends Context.Service<
         function* () {
           const currentDate = getCurrentWorkspaceDate();
           const ranges = getAdministrationOverviewDateRanges(currentDate);
-          const rows = yield* db
-            .select({
-              id: workspaceReservations.dotyposReservationId,
-              customerId: workspaceReservations.dotyposCustomerId,
-              createdAt: workspaceReservations.createdAt,
-              failureCode: workspaceReservations.failureCode,
-              fulfillmentState: workspaceReservations.fulfillmentState,
-              paymentState: workspaceReservations.paymentState,
-              reservationState: workspaceReservations.reservationState,
-            })
-            .from(workspaceReservations);
+          const overviewRange = {
+            from: ranges.lastSevenDays.from,
+            to: ranges.upcoming.to,
+          };
+          const [rows, reservations] = yield* Effect.all(
+            [
+              db
+                .select({
+                  id: workspaceReservations.dotyposReservationId,
+                  customerId: workspaceReservations.dotyposCustomerId,
+                  createdAt: workspaceReservations.createdAt,
+                  failureCode: workspaceReservations.failureCode,
+                  fulfillmentState: workspaceReservations.fulfillmentState,
+                  paymentState: workspaceReservations.paymentState,
+                  reservationState: workspaceReservations.reservationState,
+                })
+                .from(workspaceReservations),
+              dotypos
+                .listReservations({
+                  ...getInclusiveDateRangeBounds(overviewRange),
+                  order: "startDateAscending",
+                })
+                .pipe(
+                  Effect.map((items) => ({
+                    kind: "available" as const,
+                    items,
+                  })),
+                  Effect.catch((cause) => {
+                    unstable_rethrow(cause);
+                    return Effect.logWarning(
+                      "Reservation overview unavailable",
+                      {
+                        cause,
+                        ...overviewRange,
+                      }
+                    ).pipe(Effect.as({ kind: "unavailable" as const }));
+                  })
+                ),
+            ],
+            { concurrency: "unbounded" }
+          );
           const linkedReservationIds = new Set(
             rows.flatMap(({ id }) => (id ? [id] : []))
           );
@@ -2677,10 +2707,6 @@ export class AdministrationService extends Context.Service<
                 : []
             )
           );
-          const overviewRange = {
-            from: ranges.lastSevenDays.from,
-            to: ranges.upcoming.to,
-          };
           const customerActivityStartsAt = Temporal.PlainDate.from(
             ranges.lastSevenDays.from
           )
@@ -2696,21 +2722,6 @@ export class AdministrationService extends Context.Service<
               timeZone: workspaceSiteConstants.location.timeZone,
             })
             .toInstant();
-          const reservations = yield* dotypos
-            .listReservations({
-              ...getInclusiveDateRangeBounds(overviewRange),
-              order: "startDateAscending",
-            })
-            .pipe(
-              Effect.map((items) => ({ kind: "available" as const, items })),
-              Effect.catch((cause) => {
-                unstable_rethrow(cause);
-                return Effect.logWarning("Reservation overview unavailable", {
-                  cause,
-                  ...overviewRange,
-                }).pipe(Effect.as({ kind: "unavailable" as const }));
-              })
-            );
           const uniqueCustomerIds =
             reservations.kind === "available"
               ? getUniqueCustomerIds({
