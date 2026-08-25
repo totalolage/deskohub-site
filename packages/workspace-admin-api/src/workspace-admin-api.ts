@@ -315,6 +315,28 @@ export const AdministrationDotyposCustomerId = Schema.NonEmptyString.pipe(
 export type AdministrationDotyposCustomerId =
   typeof AdministrationDotyposCustomerId.Type;
 
+export const AdministrationDotyposProductId = Schema.Trim.check(
+  Schema.isNonEmpty()
+)
+  .pipe(Schema.brand("DotyposProductId"))
+  .annotate({
+    identifier: "DotyposProductId",
+    description: "Opaque product identifier assigned by Dotypos.",
+  });
+export type AdministrationDotyposProductId =
+  typeof AdministrationDotyposProductId.Type;
+
+export const AdministrationDotyposCategoryId = Schema.Trim.check(
+  Schema.isNonEmpty()
+)
+  .pipe(Schema.brand("DotyposCategoryId"))
+  .annotate({
+    identifier: "DotyposCategoryId",
+    description: "Opaque product-category identifier assigned by Dotypos.",
+  });
+export type AdministrationDotyposCategoryId =
+  typeof AdministrationDotyposCategoryId.Type;
+
 export const AdministrationDotyposReservationId = Schema.NonEmptyString.pipe(
   Schema.brand("DotyposReservationId")
 ).annotate({
@@ -1241,6 +1263,21 @@ export const AdministrationWorkspaceProductTarget = Schema.Union([
   Schema.Struct({ kind: Schema.Literal("cowork") }),
   Schema.Struct({ kind: Schema.Literal("meeting-room") }),
   Schema.Struct({ kind: Schema.Literal("office") }),
+  Schema.Struct({
+    kind: Schema.Literal("goods"),
+    categoryId: Schema.optionalKey(Schema.Never),
+    productId: Schema.optionalKey(Schema.Never),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("goods"),
+    categoryId: AdministrationDotyposCategoryId,
+    productId: Schema.optionalKey(Schema.Never),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("goods"),
+    categoryId: Schema.optionalKey(Schema.Never),
+    productId: AdministrationDotyposProductId,
+  }),
 ]);
 export type AdministrationWorkspaceProductTarget =
   typeof AdministrationWorkspaceProductTarget.Type;
@@ -1300,9 +1337,19 @@ const administrationDiscountProducts = Schema.NonEmptyArray(
 ).check(
   Schema.makeFilter(
     (products) =>
-      new Set(products.map(({ kind }) => kind)).size === products.length
+      new Set(products.map(getAdministrationProductTargetKey)).size ===
+      products.length
   )
 );
+
+const getAdministrationProductTargetKey = (
+  target: AdministrationWorkspaceProductTarget
+): string => {
+  if (target.kind !== "goods") return target.kind;
+  if ("categoryId" in target) return `goods:category:${target.categoryId}`;
+  if ("productId" in target) return `goods:product:${target.productId}`;
+  return target.kind;
+};
 
 export const AdministrationDiscountDefinitionInput = Schema.Struct({
   labels: AdministrationDiscountLabels,

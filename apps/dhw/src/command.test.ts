@@ -378,6 +378,97 @@ describe("dhw mutation commands", () => {
     expect(mutations).toHaveLength(0);
   });
 
+  test("maps broad, category, and product goods targets", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    await runCommand(
+      [
+        "--json",
+        "discounts",
+        "create",
+        "percentage",
+        "--label-en",
+        "Goods sale",
+        "--label-cs",
+        "Sleva na zbozi",
+        "--percentage",
+        "10",
+        "--product",
+        "goods",
+        "--product",
+        "goods:category:category-1",
+        "--product",
+        "goods:product:product-1",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(mutations).toEqual([
+      {
+        kind: "create-discount",
+        discount: {
+          labels: { "cs-CZ": "Sleva na zbozi", "en-US": "Goods sale" },
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          products: [
+            { kind: "goods" },
+            { kind: "goods", categoryId: "category-1" },
+            { kind: "goods", productId: "product-1" },
+          ],
+        },
+      },
+    ]);
+  });
+
+  test("rejects malformed goods targets before making a request", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    const error = await runCommand(
+      [
+        "--json",
+        "discounts",
+        "create",
+        "percentage",
+        "--label-en",
+        "Goods sale",
+        "--label-cs",
+        "Sleva na zbozi",
+        "--percentage",
+        "10",
+        "--product",
+        "goods:category:",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toBeDefined();
+    expect(mutations).toHaveLength(0);
+  });
+
+  test("rejects whitespace-only goods target IDs before making a request", async () => {
+    const { layer, mutations } = makeCommandLayer();
+
+    const error = await runCommand(
+      [
+        "--json",
+        "discounts",
+        "create",
+        "percentage",
+        "--label-en",
+        "Goods sale",
+        "--label-cs",
+        "Sleva na zbozi",
+        "--percentage",
+        "10",
+        "--product",
+        "goods:product: ",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toBeDefined();
+    expect(mutations).toHaveLength(0);
+  });
+
   test("creates reusable voucher credit", async () => {
     const { layer, mutations } = makeCommandLayer();
 

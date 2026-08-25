@@ -33,6 +33,21 @@ describe("discount administration form input", () => {
     }
   });
 
+  test("reads precise goods category and product targets", () => {
+    const formData = new FormData();
+    formData.set("adjustmentKind", "percentage");
+    formData.set("percentage", "10");
+    formData.set("goodsCategoryIds", "category-1, category-2");
+    formData.set("goodsProductIds", "product-1\nproduct-2");
+
+    expect(readDiscountForm(formData).products).toEqual([
+      { kind: "goods", categoryId: "category-1" },
+      { kind: "goods", categoryId: "category-2" },
+      { kind: "goods", productId: "product-1" },
+      { kind: "goods", productId: "product-2" },
+    ]);
+  });
+
   test("converts local code times through the Workspace time zone", () => {
     const formData = new FormData();
     formData.set("code", "summer10");

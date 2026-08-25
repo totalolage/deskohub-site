@@ -95,6 +95,30 @@ describe("stored discount definitions", () => {
     expect(result.products).toEqual([{ kind: "meeting-room" }]);
   });
 
+  test("keeps distinct goods targets in one definition", async () => {
+    const result = await Effect.runPromise(
+      decode(
+        percentageRow({
+          productTargets: [
+            {
+              discountId,
+              productTarget: { kind: "goods", categoryId: "category-1" },
+            },
+            {
+              discountId,
+              productTarget: { kind: "goods", productId: "product-1" },
+            },
+          ],
+        })
+      )
+    );
+
+    expect(result.products).toEqual([
+      { kind: "goods", categoryId: "category-1" },
+      { kind: "goods", productId: "product-1" },
+    ]);
+  });
+
   test.each([
     [
       "missing locale label",
