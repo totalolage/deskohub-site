@@ -108,7 +108,7 @@ export function AdministrationCustomerMetricsLoading() {
             <Skeleton className="h-4 w-28" />
             <Skeleton className="mt-4 h-9 w-16" />
             <Skeleton className="mt-3 h-3 w-20" />
-            <div className="mt-4 space-y-2 border-t border-navy-blue/10 pt-3">
+            <div className="mt-4 space-y-1 border-t border-navy-blue/10 pt-3">
               <Skeleton className="h-3 w-40" />
               <Skeleton className="h-3 w-36" />
               <Skeleton className="h-3 w-32" />

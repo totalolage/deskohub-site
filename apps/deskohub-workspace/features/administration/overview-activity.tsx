@@ -100,15 +100,13 @@ function CustomerActivityMetric({
       {!metric.unavailable && (
         <dd className="mt-4 border-t border-navy-blue/10 pt-3 text-xs">
           {metric.value === 0 ? (
-            <p className="py-1 text-navy-blue/58">
-              No customers in this period
-            </p>
+            <p className="text-navy-blue/58">No customers in this period</p>
           ) : (
-            <ul className="space-y-1">
+            <ul>
               {displayedCustomers.map(({ customer, customerId }) => (
                 <li key={customerId}>
                   <Link
-                    className="block break-words py-1 font-semibold transition-colors hover:text-aquamarine-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-blue/40"
+                    className="block break-words font-semibold transition-colors hover:text-aquamarine-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-navy-blue/40"
                     href={`/admin/customers/${customerId}`}
                   >
                     {customer?.displayName ?? "Details unavailable"}
@@ -116,7 +114,7 @@ function CustomerActivityMetric({
                 </li>
               ))}
               {metric.value > 3 && (
-                <li className="py-1 text-navy-blue/58">
+                <li className="text-navy-blue/58">
                   … and {metric.value - 2} more
                 </li>
               )}
