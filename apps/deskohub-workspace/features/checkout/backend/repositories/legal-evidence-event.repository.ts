@@ -6,12 +6,20 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import { legalEvidenceSchema } from "@/features/checkout/legal-evidence";
+import { orderIdSchema } from "@/features/order";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
 const legalEvidenceEventInputSchema = Schema.Struct({
+  orderId: Schema.optional(orderIdSchema),
   workspaceReservationId: Schema.optional(workspaceReservationIdSchema),
   evidence: legalEvidenceSchema,
-});
+}).check(
+  Schema.makeFilter(
+    (input) =>
+      input.orderId !== undefined || input.workspaceReservationId !== undefined,
+    { message: "Legal evidence must be associated with an order." }
+  )
+);
 
 export class LegalEvidenceEventInputError extends Data.TaggedError(
   "LegalEvidenceEventInputError"
@@ -41,6 +49,7 @@ export interface ILegalEvidenceEventRepository {
 const getLegalEvidenceEventRecord = (
   parsed: typeof legalEvidenceEventInputSchema.Type
 ) => ({
+  orderId: parsed.orderId,
   workspaceReservationId: parsed.workspaceReservationId,
   documentKey: parsed.evidence.documentKey,
   documentPath: parsed.evidence.document.path,
@@ -93,6 +102,7 @@ export class LegalEvidenceEventRepository extends Context.Service<
         (effect, input) =>
           effect.pipe(
             Effect.annotateLogs({
+              orderId: input.orderId,
               workspaceReservationId: input.workspaceReservationId,
               documentKey: input.evidence.documentKey,
             })

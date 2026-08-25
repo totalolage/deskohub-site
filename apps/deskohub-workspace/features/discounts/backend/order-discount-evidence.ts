@@ -1,0 +1,1273 @@
+import "server-only";
+
+import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { and, count, eq, inArray, isNull, sql } from "drizzle-orm";
+import { Data, Effect, Match, Option, Schema } from "effect";
+import type { WorkspaceDatabaseClient } from "@/db/database.service";
+import {
+  discountApplications,
+  discountCodeRedemptions,
+  discountCodes,
+  discountProductTargets,
+  discounts,
+  orderLines,
+  orders,
+  promotionCodeCustomers,
+  promotionCodes,
+  voucherRedemptions,
+  vouchers,
+} from "@/db/schema";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import {
+  getWorkspaceProductKey,
+  workspaceProductIdentitySchema,
+} from "@/features/checkout/product-identity";
+import {
+  workspaceMoneyEquals,
+  workspaceMoneyWithValue,
+} from "@/features/checkout/workspace-money";
+import {
+  type DiscountCommitment,
+  type DiscountCommitmentPayload,
+  getDiscountCommitmentPayload,
+} from "@/features/discounts/commitment";
+import type {
+  AppliedDiscount,
+  DiscountAdjustment,
+} from "@/features/discounts/contracts";
+import { decodeDiscountDefinition } from "@/features/discounts/discount-definition";
+import { DiscountClaimError } from "@/features/discounts/errors";
+import { deriveOpaqueDiscountId } from "@/features/discounts/opaque-discount-id";
+import type { DiscountApplicationId } from "@/features/discounts/persistence-contracts";
+import { getWorkspaceProductTarget } from "@/features/discounts/product-target";
+import { getPromotionTiming } from "@/features/discounts/promotion-code";
+import type { DiscountClaimInstruction } from "@/features/discounts/provider";
+import { type Locale, m } from "@/features/i18n";
+import type { OrderId } from "@/features/order";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+
+export type DiscountEvidenceTransaction = Parameters<
+  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
+>[0];
+
+export type DiscountEvidenceOwner =
+  | {
+      readonly kind: "reservation_attempt";
+      readonly orderId: OrderId;
+      readonly paymentAttemptId: PaymentAttemptId;
+      readonly workspaceReservationId: WorkspaceReservationId;
+    }
+  | {
+      readonly kind: "issued_goods";
+      readonly orderId: OrderId;
+    };
+
+export type PersistedDiscountApplication = {
+  readonly id: DiscountApplicationId;
+  readonly sequence: number;
+};
+
+export type DiscountClaimOwnership =
+  | {
+      readonly kind: "reservation_attempt";
+      readonly paymentAttemptId: PaymentAttemptId;
+      readonly reservationExpiresAt: Temporal.Instant;
+    }
+  | {
+      readonly kind: "issued_goods";
+      readonly issuedAt: Temporal.Instant;
+    };
+
+export type ClaimedDiscountApplication = {
+  readonly index: number;
+  readonly application: AppliedDiscount;
+  readonly claim: DiscountClaimInstruction;
+};
+
+export const validateOrderDiscountCommitment = Effect.fn(
+  "OrderDiscountEvidence.validateCommitment"
+)(function* (commitment: DiscountCommitmentPayload) {
+  const claimedApplicationIndex = commitment.applications.findIndex(
+    ({ claim }) => claim !== undefined
+  );
+
+  if (
+    claimedApplicationIndex >= 0 &&
+    commitment.applications.some(
+      ({ claim }, index) =>
+        index > claimedApplicationIndex && claim !== undefined
+    )
+  ) {
+    return yield* new DiscountClaimError({
+      operation: "reserve",
+      reason: "claim_conflict",
+      message: "An order can consume at most one promotion claim.",
+    });
+  }
+
+  for (const { application, claim } of commitment.applications) {
+    const amountInSubtotalUnit = workspaceMoneyWithValue(
+      application.amount.value,
+      application.subtotalBefore
+    );
+    const expectedSubtotalAfter = workspaceMoneyWithValue(
+      application.subtotalBefore.value - application.amount.value,
+      application.subtotalBefore
+    );
+
+    if (
+      !workspaceMoneyEquals(amountInSubtotalUnit, application.amount) ||
+      !workspaceMoneyEquals(expectedSubtotalAfter, application.subtotalAfter)
+    ) {
+      return yield* new DiscountClaimError({
+        operation: "reserve",
+        reason: "money_mismatch",
+        message: "A committed discount application has inconsistent money.",
+        codeId: getPromotionClaimId(claim),
+      });
+    }
+
+    if (
+      claim?.kind === "discount_code" &&
+      getWorkspaceProductKey(claim.product) !==
+        getWorkspaceProductKey(commitment.product)
+    ) {
+      return yield* claimError(
+        "reserve",
+        "product_ineligible",
+        "The discount-code claim targets a different product.",
+        claim
+      );
+    }
+  }
+
+  if (claimedApplicationIndex < 0) return undefined;
+
+  const claimedApplication = commitment.applications[claimedApplicationIndex];
+  if (!claimedApplication?.claim) return undefined;
+
+  return {
+    index: claimedApplicationIndex,
+    application: claimedApplication.application,
+    claim: claimedApplication.claim,
+  } satisfies ClaimedDiscountApplication;
+});
+
+export const persistOrderDiscountApplications = Effect.fn(
+  "OrderDiscountEvidence.persistApplications"
+)(function* (input: {
+  readonly tx: DiscountEvidenceTransaction;
+  readonly commitment: DiscountCommitmentPayload;
+  readonly owner: DiscountEvidenceOwner;
+}) {
+  if (input.commitment.applications.length === 0) {
+    return [] satisfies PersistedDiscountApplication[];
+  }
+
+  return yield* input.tx
+    .insert(discountApplications)
+    .values(
+      input.commitment.applications.map(
+        ({ application, provenance }, sequence) => ({
+          orderId: input.owner.orderId,
+          paymentAttemptId:
+            input.owner.kind === "reservation_attempt"
+              ? input.owner.paymentAttemptId
+              : null,
+          workspaceReservationId:
+            input.owner.kind === "reservation_attempt"
+              ? input.owner.workspaceReservationId
+              : null,
+          sequence,
+          publicDiscountId: application.discount.id,
+          label: application.discount.label,
+          adjustment: application.discount.adjustment,
+          productIdentity: input.commitment.product,
+          subtotalBeforeValue: application.subtotalBefore.value,
+          subtotalBeforeExponent: application.subtotalBefore.exponent,
+          subtotalBeforeCurrency: application.subtotalBefore.currency,
+          appliedAmountValue: application.amount.value,
+          appliedAmountExponent: application.amount.exponent,
+          appliedAmountCurrency: application.amount.currency,
+          subtotalAfterValue: application.subtotalAfter.value,
+          subtotalAfterExponent: application.subtotalAfter.exponent,
+          subtotalAfterCurrency: application.subtotalAfter.currency,
+          expiresAt: application.discount.expiresAt
+            ? Temporal.Instant.from(application.discount.expiresAt)
+            : null,
+          countdownStartsAt: application.discount.countdownStartsAt
+            ? Temporal.Instant.from(application.discount.countdownStartsAt)
+            : null,
+          provenance,
+        })
+      )
+    )
+    .returning({
+      id: discountApplications.id,
+      sequence: discountApplications.sequence,
+    });
+});
+
+export class OrderDiscountEvidenceStateError extends Data.TaggedError(
+  "OrderDiscountEvidenceStateError"
+)<{
+  readonly orderId: OrderId;
+  readonly message: string;
+}> {}
+
+export const persistIssuedGoodsDiscountEvidence = Effect.fn(
+  "OrderDiscountEvidence.persistIssuedGoods"
+)(function* (input: {
+  readonly tx: DiscountEvidenceTransaction;
+  readonly orderId: OrderId;
+  readonly commitment: DiscountCommitment;
+  readonly locale: Locale;
+  readonly issuedAt: Temporal.Instant;
+}) {
+  const commitment = getDiscountCommitmentPayload(input.commitment);
+  const claimedApplication = yield* validateOrderDiscountCommitment(commitment);
+
+  const [order] = yield* input.tx
+    .select({
+      dotyposCustomerId: orders.dotyposCustomerId,
+      kind: orders.kind,
+    })
+    .from(orders)
+    .where(eq(orders.id, input.orderId))
+    .limit(1)
+    .for("update");
+  if (!order || order.kind !== "goods") {
+    return yield* new OrderDiscountEvidenceStateError({
+      orderId: input.orderId,
+      message: "Issued-goods discount evidence requires a goods order.",
+    });
+  }
+
+  const lines = yield* input.tx
+    .select({
+      productIdentity: orderLines.productIdentity,
+      undiscountedTotalValue: orderLines.undiscountedTotalValue,
+      payableTotalValue: orderLines.payableTotalValue,
+      amountExponent: orderLines.amountExponent,
+      currency: orderLines.currency,
+    })
+    .from(orderLines)
+    .where(eq(orderLines.orderId, input.orderId))
+    .for("update");
+  const committedProductKey = getWorkspaceProductKey(commitment.product);
+  const matchingLines = lines.filter(({ productIdentity }) => {
+    const product = Option.getOrUndefined(
+      Schema.decodeUnknownOption(workspaceProductIdentitySchema, {
+        onExcessProperty: "error",
+      })(productIdentity)
+    );
+    return product
+      ? getWorkspaceProductKey(product) === committedProductKey
+      : false;
+  });
+  if (matchingLines.length === 0) {
+    return yield* new DiscountClaimError({
+      operation: "redeem",
+      reason: "product_ineligible",
+      message: "The committed product is not present in the issued order.",
+      codeId: getPromotionClaimId(claimedApplication?.claim),
+    });
+  }
+
+  const firstSubtotal = commitment.applications[0]?.application.subtotalBefore;
+  const finalSubtotal =
+    commitment.applications.at(-1)?.application.subtotalAfter;
+  const lineUnit = matchingLines[0];
+  const undiscountedTotal = matchingLines.reduce(
+    (total, line) => total + line.undiscountedTotalValue,
+    0
+  );
+  const payableTotal = matchingLines.reduce(
+    (total, line) => total + line.payableTotalValue,
+    0
+  );
+  if (
+    (firstSubtotal &&
+      (!lineUnit ||
+        firstSubtotal.currency !== lineUnit.currency ||
+        firstSubtotal.exponent !== lineUnit.amountExponent ||
+        firstSubtotal.value !== undiscountedTotal ||
+        !finalSubtotal ||
+        finalSubtotal.currency !== lineUnit.currency ||
+        finalSubtotal.exponent !== lineUnit.amountExponent ||
+        finalSubtotal.value !== payableTotal ||
+        matchingLines.some(
+          (line) =>
+            line.currency !== lineUnit.currency ||
+            line.amountExponent !== lineUnit.amountExponent
+        ))) ||
+    commitment.applications.some(
+      ({ application }, index) =>
+        index > 0 &&
+        !workspaceMoneyEquals(
+          application.subtotalBefore,
+          commitment.applications[index - 1]?.application.subtotalAfter ??
+            application.subtotalBefore
+        )
+    )
+  ) {
+    return yield* new DiscountClaimError({
+      operation: "redeem",
+      reason: "money_mismatch",
+      message: "The discount commitment does not reconcile with the order.",
+      codeId: getPromotionClaimId(claimedApplication?.claim),
+    });
+  }
+
+  const storedApplicationRows = yield* input.tx
+    .select()
+    .from(discountApplications)
+    .where(
+      and(
+        eq(discountApplications.orderId, input.orderId),
+        isNull(discountApplications.paymentAttemptId)
+      )
+    )
+    .orderBy(discountApplications.sequence);
+
+  if (
+    storedApplicationRows.length > 0 &&
+    !storedApplicationsMatchCommitment(storedApplicationRows, commitment)
+  ) {
+    return yield* new OrderDiscountEvidenceStateError({
+      orderId: input.orderId,
+      message: "Issued discount evidence conflicts with the stored order.",
+    });
+  }
+
+  const persistedRows =
+    storedApplicationRows.length === 0
+      ? yield* persistOrderDiscountApplications({
+          tx: input.tx,
+          commitment,
+          owner: { kind: "issued_goods", orderId: input.orderId },
+        })
+      : storedApplicationRows.map(({ id, sequence }) => ({ id, sequence }));
+  if (!claimedApplication) return persistedRows;
+
+  const applicationId = persistedRows.find(
+    ({ sequence }) => sequence === claimedApplication.index
+  )?.id;
+  if (!applicationId) {
+    return yield* new OrderDiscountEvidenceStateError({
+      orderId: input.orderId,
+      message: "The claimed discount application was not persisted.",
+    });
+  }
+
+  const [existingDiscountClaims, existingVoucherClaims] = yield* Effect.all([
+    input.tx
+      .select({
+        applicationId: discountCodeRedemptions.applicationId,
+        codeId: discountCodeRedemptions.codeId,
+        dotyposCustomerId: discountCodeRedemptions.dotyposCustomerId,
+        state: discountCodeRedemptions.state,
+      })
+      .from(discountCodeRedemptions)
+      .where(
+        and(
+          eq(discountCodeRedemptions.orderId, input.orderId),
+          isNull(discountCodeRedemptions.paymentAttemptId)
+        )
+      )
+      .limit(1),
+    input.tx
+      .select({
+        applicationId: voucherRedemptions.applicationId,
+        voucherId: voucherRedemptions.voucherId,
+        dotyposCustomerId: voucherRedemptions.dotyposCustomerId,
+        state: voucherRedemptions.state,
+      })
+      .from(voucherRedemptions)
+      .where(
+        and(
+          eq(voucherRedemptions.orderId, input.orderId),
+          isNull(voucherRedemptions.paymentAttemptId)
+        )
+      )
+      .limit(1),
+  ]);
+  if (existingDiscountClaims[0] || existingVoucherClaims[0]) {
+    const existing =
+      claimedApplication.claim.kind === "discount_code"
+        ? existingDiscountClaims[0]
+        : existingVoucherClaims[0];
+    const expectedClaimId =
+      claimedApplication.claim.kind === "discount_code"
+        ? claimedApplication.claim.codeId
+        : claimedApplication.claim.voucherId;
+    let actualClaimId: typeof expectedClaimId | undefined;
+    if (existing) {
+      actualClaimId =
+        "codeId" in existing ? existing.codeId : existing.voucherId;
+    }
+    if (
+      !existing ||
+      existingDiscountClaims.length + existingVoucherClaims.length !== 1 ||
+      existing.applicationId !== applicationId ||
+      existing.dotyposCustomerId !== order.dotyposCustomerId ||
+      existing.state !== "redeemed" ||
+      actualClaimId !== expectedClaimId
+    ) {
+      return yield* new OrderDiscountEvidenceStateError({
+        orderId: input.orderId,
+        message: "Issued promotion claim conflicts with the stored order.",
+      });
+    }
+    return persistedRows;
+  }
+
+  yield* admitOrderDiscountClaim({
+    tx: input.tx,
+    claim: claimedApplication.claim,
+    application: claimedApplication.application,
+    applicationId,
+    orderId: input.orderId,
+    ownership: { kind: "issued_goods", issuedAt: input.issuedAt },
+    locale: input.locale,
+    orderCustomerId: order.dotyposCustomerId,
+  });
+  return persistedRows;
+});
+
+export const admitOrderDiscountClaim = Effect.fn(
+  "OrderDiscountEvidence.admitClaim"
+)(function* (input: {
+  readonly tx: DiscountEvidenceTransaction;
+  readonly claim: DiscountClaimInstruction;
+  readonly application: AppliedDiscount;
+  readonly applicationId: DiscountApplicationId;
+  readonly orderId: OrderId;
+  readonly ownership: DiscountClaimOwnership;
+  readonly locale: Locale;
+  readonly orderCustomerId: DotyposCustomerId;
+}) {
+  if (input.orderCustomerId !== input.claim.dotyposCustomerId) {
+    return yield* claimError(
+      "reserve",
+      "customer_ineligible",
+      "The discount-code claim customer does not match the order.",
+      input.claim
+    );
+  }
+
+  const stored = yield* Match.value(input.claim).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      discount_code: (claim) =>
+        Effect.gen(function* () {
+          const rows = yield* input.tx
+            .select({ promotion: promotionCodes, code: discountCodes })
+            .from(discountCodes)
+            .innerJoin(
+              promotionCodes,
+              eq(promotionCodes.id, discountCodes.promotionCodeId)
+            )
+            .where(eq(discountCodes.id, claim.codeId))
+            .limit(1)
+            .for("update");
+          return rows[0]
+            ? ({ kind: "discount_code", claim, ...rows[0] } as const)
+            : undefined;
+        }),
+      voucher: (claim) =>
+        Effect.gen(function* () {
+          const rows = yield* input.tx
+            .select({ promotion: promotionCodes, voucher: vouchers })
+            .from(vouchers)
+            .innerJoin(
+              promotionCodes,
+              eq(promotionCodes.id, vouchers.promotionCodeId)
+            )
+            .where(eq(vouchers.id, claim.voucherId))
+            .limit(1)
+            .for("update");
+          return rows[0]
+            ? ({ kind: "voucher", claim, ...rows[0] } as const)
+            : undefined;
+        }),
+    })
+  );
+
+  if (
+    !stored ||
+    (stored.kind === "discount_code" &&
+      stored.code.discountId !== stored.claim.storedDiscountId)
+  ) {
+    return yield* claimError(
+      "reserve",
+      "unknown_code",
+      "The accepted promotion no longer exists.",
+      input.claim
+    );
+  }
+  if (!stored.promotion.enabled) {
+    return yield* claimError(
+      "reserve",
+      "inactive",
+      "The accepted promotion is inactive.",
+      input.claim
+    );
+  }
+
+  const claimedAt =
+    input.ownership.kind === "issued_goods"
+      ? input.ownership.issuedAt
+      : Temporal.Now.instant();
+  if (
+    input.ownership.kind === "reservation_attempt" &&
+    Temporal.Instant.compare(input.ownership.reservationExpiresAt, claimedAt) <=
+      0
+  ) {
+    return yield* claimError(
+      "reserve",
+      "claim_conflict",
+      "Discount claims can only be reserved for a current held reservation.",
+      input.claim
+    );
+  }
+  if (
+    stored.promotion.validFrom &&
+    Temporal.Instant.compare(claimedAt, stored.promotion.validFrom) < 0
+  ) {
+    return yield* claimError(
+      "reserve",
+      "not_started",
+      "The accepted promotion is not valid yet.",
+      input.claim
+    );
+  }
+  if (
+    stored.promotion.validUntil &&
+    Temporal.Instant.compare(claimedAt, stored.promotion.validUntil) >= 0
+  ) {
+    return yield* claimError(
+      "reserve",
+      "expired",
+      "The accepted promotion has expired.",
+      input.claim
+    );
+  }
+
+  const [allowlist] = yield* input.tx
+    .select({ count: count() })
+    .from(promotionCodeCustomers)
+    .where(eq(promotionCodeCustomers.promotionCodeId, stored.promotion.id));
+  if ((allowlist?.count ?? 0) > 0) {
+    const [customer] = yield* input.tx
+      .select({ promotionCodeId: promotionCodeCustomers.promotionCodeId })
+      .from(promotionCodeCustomers)
+      .where(
+        and(
+          eq(promotionCodeCustomers.promotionCodeId, stored.promotion.id),
+          eq(
+            promotionCodeCustomers.dotyposCustomerId,
+            input.claim.dotyposCustomerId
+          )
+        )
+      )
+      .limit(1);
+    if (!customer) {
+      return yield* claimError(
+        "reserve",
+        "customer_ineligible",
+        "The customer is no longer eligible for the accepted promotion.",
+        input.claim
+      );
+    }
+  }
+
+  yield* Match.value(stored).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      discount_code: ({ claim, code, promotion }) =>
+        validateStoredDiscountClaim({
+          ...input,
+          claim,
+          code,
+          promotion,
+        }),
+      voucher: ({ claim, voucher, promotion }) =>
+        validateVoucherClaim({
+          ...input,
+          claim,
+          voucher,
+          promotion,
+        }),
+    })
+  );
+
+  if (stored.kind === "discount_code") {
+    const [customerUses] = yield* input.tx
+      .select({ count: count() })
+      .from(discountCodeRedemptions)
+      .where(
+        and(
+          eq(discountCodeRedemptions.codeId, stored.code.id),
+          eq(
+            discountCodeRedemptions.dotyposCustomerId,
+            input.claim.dotyposCustomerId
+          ),
+          inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+        )
+      );
+    if (
+      stored.code.maxUsesPerCustomer !== null &&
+      (customerUses?.count ?? 0) >= stored.code.maxUsesPerCustomer
+    ) {
+      return yield* claimError(
+        "reserve",
+        "usage_limit_reached",
+        "The customer has no remaining uses for this discount code.",
+        input.claim
+      );
+    }
+  } else {
+    const [customerUse] = yield* input.tx
+      .select({ state: voucherRedemptions.state })
+      .from(voucherRedemptions)
+      .where(
+        and(
+          eq(voucherRedemptions.voucherId, stored.voucher.id),
+          eq(
+            voucherRedemptions.dotyposCustomerId,
+            input.claim.dotyposCustomerId
+          ),
+          eq(voucherRedemptions.state, "reserved")
+        )
+      )
+      .limit(1);
+    if (customerUse) {
+      return yield* claimError(
+        "reserve",
+        "claim_conflict",
+        "The customer already has an active claim for this voucher.",
+        input.claim
+      );
+    }
+  }
+
+  if (stored.kind === "discount_code" && stored.code.maxUses !== null) {
+    const [uses] = yield* input.tx
+      .select({ count: count() })
+      .from(discountCodeRedemptions)
+      .where(
+        and(
+          eq(discountCodeRedemptions.codeId, stored.code.id),
+          inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+        )
+      );
+
+    if ((uses?.count ?? 0) >= stored.code.maxUses) {
+      return yield* claimError(
+        "reserve",
+        "usage_limit_reached",
+        "The accepted discount code has no remaining uses.",
+        input.claim
+      );
+    }
+  }
+
+  const claimValues = {
+    applicationId: input.applicationId,
+    orderId: input.orderId,
+    paymentAttemptId:
+      input.ownership.kind === "reservation_attempt"
+        ? input.ownership.paymentAttemptId
+        : null,
+    dotyposCustomerId: input.claim.dotyposCustomerId,
+    state:
+      input.ownership.kind === "reservation_attempt"
+        ? ("reserved" as const)
+        : ("redeemed" as const),
+    reservationExpiresAt:
+      input.ownership.kind === "reservation_attempt"
+        ? input.ownership.reservationExpiresAt
+        : null,
+    reservedAt: claimedAt,
+    redeemedAt: input.ownership.kind === "issued_goods" ? claimedAt : null,
+    updatedAt: claimedAt,
+  };
+  yield* Match.value(stored).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      discount_code: ({ code }) =>
+        input.tx
+          .insert(discountCodeRedemptions)
+          .values({
+            ...claimValues,
+            codeId: code.id,
+          })
+          .pipe(Effect.asVoid),
+      voucher: ({ voucher }) =>
+        input.tx
+          .insert(voucherRedemptions)
+          .values({
+            ...claimValues,
+            voucherId: voucher.id,
+          })
+          .pipe(Effect.asVoid),
+    })
+  );
+  return claimedAt;
+});
+
+const validateStoredDiscountClaim = Effect.fn(
+  "PaymentLifecycle.validateStoredDiscountClaim"
+)(function* (input: {
+  readonly tx: DiscountEvidenceTransaction;
+  readonly claim: Extract<
+    DiscountClaimInstruction,
+    { readonly kind: "discount_code" }
+  >;
+  readonly code: typeof discountCodes.$inferSelect;
+  readonly promotion: typeof promotionCodes.$inferSelect;
+  readonly application: AppliedDiscount;
+  readonly locale: Locale;
+}) {
+  const [definition] = yield* input.tx
+    .select()
+    .from(discounts)
+    .where(eq(discounts.id, input.claim.storedDiscountId))
+    .limit(1)
+    .for("update");
+  if (!definition) {
+    return yield* claimError(
+      "reserve",
+      "unknown_code",
+      "The accepted discount benefit no longer exists.",
+      input.claim
+    );
+  }
+
+  const [target] = yield* input.tx
+    .select({ discountId: discountProductTargets.discountId })
+    .from(discountProductTargets)
+    .where(
+      and(
+        eq(discountProductTargets.discountId, input.claim.storedDiscountId),
+        eq(
+          discountProductTargets.productTarget,
+          getWorkspaceProductTarget(input.claim.product)
+        )
+      )
+    )
+    .limit(1)
+    .for("update");
+  if (!target) {
+    return yield* claimError(
+      "reserve",
+      "product_ineligible",
+      "The accepted discount code no longer targets this product.",
+      input.claim
+    );
+  }
+
+  const currentDefinition = yield* decodeDiscountDefinition({
+    row: {
+      ...definition,
+      productTargets: [
+        {
+          discountId: target.discountId,
+          productTarget: getWorkspaceProductTarget(input.claim.product),
+        },
+      ],
+    },
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new DiscountClaimError({
+          operation: "reserve",
+          reason: "malformed_configuration",
+          message: "The accepted discount benefit is malformed.",
+          codeId: input.claim.codeId,
+          cause,
+        })
+    )
+  );
+  const timing = getPromotionTiming(input.promotion.validUntil);
+  if (
+    !discountAdjustmentsEqual(
+      currentDefinition.adjustment,
+      input.application.discount.adjustment
+    ) ||
+    currentDefinition.labels[input.locale] !==
+      input.application.discount.label ||
+    timing.expiresAt !== input.application.discount.expiresAt ||
+    timing.countdownStartsAt !== input.application.discount.countdownStartsAt
+  ) {
+    return yield* claimError(
+      "reserve",
+      "claim_conflict",
+      "The accepted discount benefit changed before claim admission.",
+      input.claim
+    );
+  }
+});
+
+const validateVoucherClaim = Effect.fn("PaymentLifecycle.validateVoucherClaim")(
+  function* (input: {
+    readonly tx: DiscountEvidenceTransaction;
+    readonly claim: Extract<
+      DiscountClaimInstruction,
+      { readonly kind: "voucher" }
+    >;
+    readonly voucher: typeof vouchers.$inferSelect;
+    readonly promotion: typeof promotionCodes.$inferSelect;
+    readonly application: AppliedDiscount;
+    readonly locale: Locale;
+  }) {
+    const [usage] = yield* input.tx
+      .select({
+        value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+      })
+      .from(voucherRedemptions)
+      .innerJoin(
+        discountApplications,
+        eq(discountApplications.id, voucherRedemptions.applicationId)
+      )
+      .where(
+        and(
+          eq(voucherRedemptions.voucherId, input.claim.voucherId),
+          inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+        )
+      );
+    const availableAmount = {
+      value: input.voucher.issuedAmountValue - (usage?.value ?? 0),
+      exponent: input.voucher.issuedAmountExponent,
+      currency: input.voucher.issuedAmountCurrency,
+    };
+    const adjustment = input.application.discount.adjustment;
+    const timing = getPromotionTiming(input.promotion.validUntil);
+    const discountId = deriveOpaqueDiscountId({
+      providerNamespace: "database-voucher",
+      providerReference: input.claim.voucherId,
+    });
+    if (
+      !workspaceMoneyEquals(availableAmount, input.claim.availableAmount) ||
+      adjustment.kind !== "fixed" ||
+      !workspaceMoneyEquals(adjustment.amount, availableAmount) ||
+      input.application.amount.value > availableAmount.value ||
+      input.application.discount.id !== discountId ||
+      input.application.discount.label !==
+        m.checkoutVoucherLabel({}, { locale: input.locale }) ||
+      timing.expiresAt !== input.application.discount.expiresAt ||
+      timing.countdownStartsAt !== input.application.discount.countdownStartsAt
+    ) {
+      return yield* claimError(
+        "reserve",
+        "claim_conflict",
+        "The accepted voucher credit changed before claim admission.",
+        input.claim
+      );
+    }
+  }
+);
+
+const repairAttemptEvidenceOrder = Effect.fn(
+  "OrderDiscountEvidence.repairAttemptOrder"
+)(function* (input: {
+  readonly tx: DiscountEvidenceTransaction;
+  readonly orderId: OrderId;
+  readonly paymentAttemptId: PaymentAttemptId;
+}) {
+  yield* Effect.all([
+    input.tx
+      .update(discountApplications)
+      .set({ orderId: input.orderId })
+      .where(
+        and(
+          eq(discountApplications.paymentAttemptId, input.paymentAttemptId),
+          isNull(discountApplications.orderId)
+        )
+      ),
+    input.tx
+      .update(discountCodeRedemptions)
+      .set({ orderId: input.orderId })
+      .where(
+        and(
+          eq(discountCodeRedemptions.paymentAttemptId, input.paymentAttemptId),
+          isNull(discountCodeRedemptions.orderId)
+        )
+      ),
+    input.tx
+      .update(voucherRedemptions)
+      .set({ orderId: input.orderId })
+      .where(
+        and(
+          eq(voucherRedemptions.paymentAttemptId, input.paymentAttemptId),
+          isNull(voucherRedemptions.orderId)
+        )
+      ),
+  ]).pipe(Effect.asVoid);
+});
+
+export const redeemAttemptDiscountClaim = Effect.fn(
+  "OrderDiscountEvidence.redeemAttemptClaim"
+)(function* (input: {
+  readonly tx: DiscountEvidenceTransaction;
+  readonly orderId: OrderId;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly redeemedAt: Temporal.Instant;
+  readonly allowReleased?: boolean;
+}) {
+  yield* repairAttemptEvidenceOrder(input);
+
+  const [discountClaims, voucherClaims] = yield* Effect.all([
+    input.tx
+      .select({
+        dotyposCustomerId: discountCodeRedemptions.dotyposCustomerId,
+        id: discountCodeRedemptions.codeId,
+        state: discountCodeRedemptions.state,
+      })
+      .from(discountCodeRedemptions)
+      .where(
+        eq(discountCodeRedemptions.paymentAttemptId, input.paymentAttemptId)
+      )
+      .limit(1)
+      .for("update"),
+    input.tx
+      .select({
+        applicationId: voucherRedemptions.applicationId,
+        id: voucherRedemptions.voucherId,
+        state: voucherRedemptions.state,
+      })
+      .from(voucherRedemptions)
+      .where(eq(voucherRedemptions.paymentAttemptId, input.paymentAttemptId))
+      .limit(1)
+      .for("update"),
+  ]);
+  const claim = selectStoredPromotionClaim(discountClaims[0], voucherClaims[0]);
+
+  if (!claim) return;
+  if (claim.state === "released" && !input.allowReleased) {
+    return yield* new DiscountClaimError({
+      operation: "redeem",
+      reason: "claim_conflict",
+      message: "A released promotion claim cannot be redeemed.",
+      codeId: claim.id,
+    });
+  }
+  if (claim.state === "redeemed") return;
+
+  if (claim.state === "released" && claim.kind === "discount") {
+    const [code] = yield* input.tx
+      .select({ maxUses: discountCodes.maxUses })
+      .from(discountCodes)
+      .where(eq(discountCodes.id, claim.id))
+      .limit(1)
+      .for("update");
+    if (!code) {
+      return yield* new DiscountClaimError({
+        operation: "redeem",
+        reason: "unknown_code",
+        message: "The accepted discount code no longer exists.",
+        codeId: claim.id,
+      });
+    }
+
+    const [customerUse] = yield* input.tx
+      .select({ state: discountCodeRedemptions.state })
+      .from(discountCodeRedemptions)
+      .where(
+        and(
+          eq(discountCodeRedemptions.codeId, claim.id),
+          eq(
+            discountCodeRedemptions.dotyposCustomerId,
+            claim.dotyposCustomerId
+          ),
+          inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+        )
+      )
+      .limit(1);
+    if (customerUse) {
+      return yield* new DiscountClaimError({
+        operation: "redeem",
+        reason:
+          customerUse.state === "redeemed"
+            ? "already_redeemed"
+            : "claim_conflict",
+        message: "The customer has another active claim for this code.",
+        codeId: claim.id,
+      });
+    }
+
+    if (code.maxUses !== null) {
+      const [uses] = yield* input.tx
+        .select({ count: count() })
+        .from(discountCodeRedemptions)
+        .where(
+          and(
+            eq(discountCodeRedemptions.codeId, claim.id),
+            inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+          )
+        );
+      if ((uses?.count ?? 0) >= code.maxUses) {
+        return yield* new DiscountClaimError({
+          operation: "redeem",
+          reason: "usage_limit_reached",
+          message: "The accepted discount code has no remaining uses.",
+          codeId: claim.id,
+        });
+      }
+    }
+  }
+
+  if (claim.state === "released" && claim.kind === "voucher") {
+    const [voucher] = yield* input.tx
+      .select()
+      .from(vouchers)
+      .where(eq(vouchers.id, claim.id))
+      .limit(1)
+      .for("update");
+    if (!voucher) {
+      return yield* new DiscountClaimError({
+        operation: "redeem",
+        reason: "unknown_code",
+        message: "The accepted voucher no longer exists.",
+        codeId: claim.id,
+      });
+    }
+
+    const [[application], [usage]] = yield* Effect.all([
+      input.tx
+        .select({
+          currency: discountApplications.appliedAmountCurrency,
+          exponent: discountApplications.appliedAmountExponent,
+          value: discountApplications.appliedAmountValue,
+        })
+        .from(discountApplications)
+        .where(eq(discountApplications.id, claim.applicationId))
+        .limit(1),
+      input.tx
+        .select({
+          value: sql<number>`coalesce(sum(${discountApplications.appliedAmountValue}), 0)::integer`,
+        })
+        .from(voucherRedemptions)
+        .innerJoin(
+          discountApplications,
+          eq(discountApplications.id, voucherRedemptions.applicationId)
+        )
+        .where(
+          and(
+            eq(voucherRedemptions.voucherId, claim.id),
+            inArray(voucherRedemptions.state, ["reserved", "redeemed"])
+          )
+        ),
+    ]);
+    if (
+      !application ||
+      application.currency !== voucher.issuedAmountCurrency ||
+      application.exponent !== voucher.issuedAmountExponent ||
+      application.value > voucher.issuedAmountValue - (usage?.value ?? 0)
+    ) {
+      return yield* new DiscountClaimError({
+        operation: "redeem",
+        reason: "claim_conflict",
+        message: "The voucher no longer has enough available credit.",
+        codeId: claim.id,
+      });
+    }
+  }
+
+  const values = {
+    state: "redeemed" as const,
+    redeemedAt: input.redeemedAt,
+    releasedAt: null,
+    releaseReason: null,
+    updatedAt: input.redeemedAt,
+  };
+  const claimableStates = input.allowReleased
+    ? (["reserved", "released"] as const)
+    : (["reserved"] as const);
+  yield* Match.value(claim).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      discount: () =>
+        input.tx
+          .update(discountCodeRedemptions)
+          .set(values)
+          .where(
+            and(
+              eq(
+                discountCodeRedemptions.paymentAttemptId,
+                input.paymentAttemptId
+              ),
+              inArray(discountCodeRedemptions.state, claimableStates)
+            )
+          )
+          .pipe(Effect.asVoid),
+      voucher: () =>
+        input.tx
+          .update(voucherRedemptions)
+          .set(values)
+          .where(
+            and(
+              eq(voucherRedemptions.paymentAttemptId, input.paymentAttemptId),
+              inArray(voucherRedemptions.state, claimableStates)
+            )
+          )
+          .pipe(Effect.asVoid),
+    })
+  );
+});
+
+export const releaseAttemptDiscountClaim = Effect.fn(
+  "OrderDiscountEvidence.releaseAttemptClaim"
+)(function* (input: {
+  readonly tx: DiscountEvidenceTransaction;
+  readonly orderId: OrderId;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly releasedAt: Temporal.Instant;
+  readonly releaseReason: string;
+}) {
+  yield* repairAttemptEvidenceOrder(input);
+
+  const [discountClaims, voucherClaims] = yield* Effect.all([
+    input.tx
+      .select({
+        id: discountCodeRedemptions.codeId,
+        state: discountCodeRedemptions.state,
+      })
+      .from(discountCodeRedemptions)
+      .where(
+        eq(discountCodeRedemptions.paymentAttemptId, input.paymentAttemptId)
+      )
+      .limit(1)
+      .for("update"),
+    input.tx
+      .select({
+        id: voucherRedemptions.voucherId,
+        state: voucherRedemptions.state,
+      })
+      .from(voucherRedemptions)
+      .where(eq(voucherRedemptions.paymentAttemptId, input.paymentAttemptId))
+      .limit(1)
+      .for("update"),
+  ]);
+  const claim = selectStoredPromotionClaim(discountClaims[0], voucherClaims[0]);
+
+  if (!claim) return;
+  if (claim.state === "redeemed") {
+    return yield* new DiscountClaimError({
+      operation: "release",
+      reason: "claim_conflict",
+      message: "A redeemed promotion claim cannot be released.",
+      codeId: claim.id,
+    });
+  }
+  if (claim.state === "released") return;
+
+  const values = {
+    state: "released" as const,
+    releasedAt: input.releasedAt,
+    releaseReason: input.releaseReason,
+    updatedAt: input.releasedAt,
+  };
+  yield* Match.value(claim).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      discount: () =>
+        input.tx
+          .update(discountCodeRedemptions)
+          .set(values)
+          .where(
+            and(
+              eq(
+                discountCodeRedemptions.paymentAttemptId,
+                input.paymentAttemptId
+              ),
+              eq(discountCodeRedemptions.state, "reserved")
+            )
+          )
+          .pipe(Effect.asVoid),
+      voucher: () =>
+        input.tx
+          .update(voucherRedemptions)
+          .set(values)
+          .where(
+            and(
+              eq(voucherRedemptions.paymentAttemptId, input.paymentAttemptId),
+              eq(voucherRedemptions.state, "reserved")
+            )
+          )
+          .pipe(Effect.asVoid),
+    })
+  );
+});
+
+const claimError = (
+  operation: "reserve" | "redeem" | "release",
+  reason: ConstructorParameters<typeof DiscountClaimError>[0]["reason"],
+  message: string,
+  claim?: DiscountClaimInstruction
+) =>
+  new DiscountClaimError({
+    operation,
+    reason,
+    message,
+    codeId: getPromotionClaimId(claim),
+  });
+
+const storedApplicationsMatchCommitment = (
+  rows: readonly (typeof discountApplications.$inferSelect)[],
+  commitment: DiscountCommitmentPayload
+): boolean =>
+  rows.length === commitment.applications.length &&
+  rows.every((row) => {
+    const committed = commitment.applications[row.sequence];
+    if (!committed) return false;
+    const { application, provenance } = committed;
+    return (
+      row.publicDiscountId === application.discount.id &&
+      row.label === application.discount.label &&
+      JSON.stringify(row.adjustment) ===
+        JSON.stringify(application.discount.adjustment) &&
+      JSON.stringify(row.productIdentity) ===
+        JSON.stringify(commitment.product) &&
+      row.subtotalBeforeValue === application.subtotalBefore.value &&
+      row.subtotalBeforeExponent === application.subtotalBefore.exponent &&
+      row.subtotalBeforeCurrency === application.subtotalBefore.currency &&
+      row.appliedAmountValue === application.amount.value &&
+      row.appliedAmountExponent === application.amount.exponent &&
+      row.appliedAmountCurrency === application.amount.currency &&
+      row.subtotalAfterValue === application.subtotalAfter.value &&
+      row.subtotalAfterExponent === application.subtotalAfter.exponent &&
+      row.subtotalAfterCurrency === application.subtotalAfter.currency &&
+      (row.expiresAt?.toString() ?? undefined) ===
+        application.discount.expiresAt &&
+      (row.countdownStartsAt?.toString() ?? undefined) ===
+        application.discount.countdownStartsAt &&
+      JSON.stringify(row.provenance) === JSON.stringify(provenance)
+    );
+  });
+
+const getPromotionClaimId = (claim: DiscountClaimInstruction | undefined) => {
+  if (!claim) return undefined;
+  return claim.kind === "discount_code" ? claim.codeId : claim.voucherId;
+};
+
+const discountAdjustmentsEqual = (
+  left: DiscountAdjustment,
+  right: DiscountAdjustment
+): boolean => {
+  if (left.kind === "percentage" && right.kind === "percentage") {
+    return left.basisPoints === right.basisPoints;
+  }
+  if (left.kind === "fixed" && right.kind === "fixed") {
+    return workspaceMoneyEquals(left.amount, right.amount);
+  }
+  return false;
+};
+
+const selectStoredPromotionClaim = <
+  DiscountClaim extends { readonly id: string; readonly state: string },
+  VoucherClaim extends { readonly id: string; readonly state: string },
+>(
+  discountClaim: DiscountClaim | undefined,
+  voucherClaim: VoucherClaim | undefined
+) => {
+  if (discountClaim) return { kind: "discount", ...discountClaim } as const;
+  if (voucherClaim) return { kind: "voucher", ...voucherClaim } as const;
+  return undefined;
+};
