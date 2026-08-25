@@ -585,6 +585,7 @@ describe("AdministrationService", () => {
     const listInputs: unknown[] = [];
     const customerBatchInputs: (readonly string[])[] = [];
     let missingCustomerCreationTime = false;
+    let reservationsUnavailable = false;
     const atTime = (date: Temporal.PlainDate, hour: number) =>
       date.toZonedDateTime("Europe/Prague").add({ hours: hour }).toInstant();
     const providerReservation = (
@@ -605,6 +606,7 @@ describe("AdministrationService", () => {
     const customerCreatedAt = new Map([
       ["customer-new-a", atTime(currentDate, 8).toString()],
       ["customer-new-b", atTime(currentDate, 9).toString()],
+      ["customer-reassigned", atTime(currentDate, 10).toString()],
       ["customer-new-from-old-row", atTime(currentDate, 12).toString()],
       [
         "customer-new-c",
@@ -715,57 +717,65 @@ describe("AdministrationService", () => {
                         id,
                       }));
                     }),
-                  listReservations: (input) =>
-                    Effect.sync(() => {
-                      listInputs.push(input);
-                      return [
-                        providerReservation(
-                          "last-week",
-                          "customer-returning",
-                          currentDate.subtract({ days: 6 })
-                        ),
-                        providerReservation(
-                          "today",
+                  listReservations: (input) => {
+                    listInputs.push(input);
+                    if (reservationsUnavailable) {
+                      return Effect.fail(
+                        new ExternalAPIError({
+                          operation: "listReservations",
+                          service: "Dotypos",
+                          statusCode: 503,
+                        })
+                      );
+                    }
+                    return Effect.succeed([
+                      providerReservation(
+                        "last-week",
+                        "customer-returning",
+                        currentDate.subtract({ days: 6 })
+                      ),
+                      providerReservation(
+                        "today",
+                        "customer-new-a",
+                        currentDate,
+                        10
+                      ),
+                      {
+                        ...providerReservation(
+                          "cancelled-today",
                           "customer-new-a",
                           currentDate,
-                          10
+                          11
                         ),
-                        {
-                          ...providerReservation(
-                            "cancelled-today",
-                            "customer-new-a",
-                            currentDate,
-                            11
-                          ),
-                          status: "CANCELLED" as const,
-                        },
-                        {
-                          ...providerReservation(
-                            "new-today",
-                            "customer-new-b",
-                            currentDate,
-                            12
-                          ),
-                          status: "NEW" as const,
-                        },
-                        providerReservation(
-                          "failed-today",
-                          "customer-new-c",
+                        status: "CANCELLED" as const,
+                      },
+                      {
+                        ...providerReservation(
+                          "new-today",
+                          "customer-new-b",
                           currentDate,
-                          13
+                          12
                         ),
-                        providerReservation(
-                          "upcoming",
-                          "customer-upcoming",
-                          currentDate.add({ days: 1 })
-                        ),
-                        providerReservation(
-                          "unlinked",
-                          "customer-unlinked",
-                          currentDate
-                        ),
-                      ];
-                    }),
+                        status: "NEW" as const,
+                      },
+                      providerReservation(
+                        "failed-today",
+                        "customer-reassigned",
+                        currentDate,
+                        13
+                      ),
+                      providerReservation(
+                        "upcoming",
+                        "customer-upcoming",
+                        currentDate.add({ days: 1 })
+                      ),
+                      providerReservation(
+                        "unlinked",
+                        "customer-unlinked",
+                        currentDate
+                      ),
+                    ]);
+                  },
                 }),
                 Layer.succeed(
                   PostHogReservationHistory,
@@ -806,12 +816,12 @@ describe("AdministrationService", () => {
       customers: [
         {
           customer: {
-            displayName: "new-c",
+            displayName: "reassigned",
             email: null,
-            id: "customer-new-c",
+            id: "customer-reassigned",
             phone: null,
           },
-          customerId: "customer-new-c",
+          customerId: "customer-reassigned",
         },
         {
           customer: {
@@ -857,19 +867,27 @@ describe("AdministrationService", () => {
         },
         {
           customer: {
-            displayName: "new-b",
+            displayName: "reassigned",
             email: null,
-            id: "customer-new-b",
+            id: "customer-reassigned",
             phone: null,
           },
-          customerId: "customer-new-b",
+          customerId: "customer-reassigned",
         },
       ],
       unavailable: false,
-      value: 4,
+      value: 5,
     });
 
     missingCustomerCreationTime = true;
+    expect((await loadOverview()).newCustomers).toEqual({
+      customers: [],
+      unavailable: true,
+      value: 0,
+    });
+
+    missingCustomerCreationTime = false;
+    reservationsUnavailable = true;
     expect((await loadOverview()).newCustomers).toEqual({
       customers: [],
       unavailable: true,

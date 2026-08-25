@@ -2661,9 +2661,35 @@ export class AdministrationService extends Context.Service<
               id ? ([[id, customerId]] as const) : []
             )
           );
-          const referencedCustomerIds = [
-            ...new Set(rows.map(({ customerId }) => customerId)),
-          ];
+          if (reservations.kind === "available") {
+            for (const reservation of reservations.items) {
+              const reservationId = Option.getOrUndefined(
+                decodeDotyposReservationId(reservation.id)
+              );
+              if (
+                !reservationId ||
+                !customerIdsByReservationId.has(reservationId)
+              )
+                continue;
+              const customerId = Option.getOrUndefined(
+                decodeDotyposCustomerId(reservation._customerId)
+              );
+              if (customerId)
+                customerIdsByReservationId.set(reservationId, customerId);
+            }
+          }
+          const referencedCustomerIds =
+            reservations.kind === "available"
+              ? [
+                  ...new Set(
+                    rows.map(({ customerId, id }) =>
+                      id
+                        ? (customerIdsByReservationId.get(id) ?? customerId)
+                        : customerId
+                    )
+                  ),
+                ]
+              : [];
           const completedReservationIds = new Set(
             rows.flatMap((row) =>
               row.id &&
@@ -2694,12 +2720,15 @@ export class AdministrationService extends Context.Service<
             ...uniqueCustomerIds.slice(0, 3),
             ...referencedCustomerIds,
           ]);
-          const newCustomerIds = getNewCustomerIds({
-            candidateIds: referencedCustomerIds,
-            customersById,
-            endsBefore: customerActivityEndsBefore,
-            startsAt: customerActivityStartsAt,
-          });
+          const newCustomerIds =
+            reservations.kind === "available"
+              ? getNewCustomerIds({
+                  candidateIds: referencedCustomerIds,
+                  customersById,
+                  endsBefore: customerActivityEndsBefore,
+                  startsAt: customerActivityStartsAt,
+                })
+              : { ids: [], unavailable: true, value: 0 };
           const toCustomerMetric = (metric: {
             readonly ids: readonly DotyposCustomerId[];
             readonly unavailable: boolean;
