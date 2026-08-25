@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.9.0...dhw-v1.9.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **dhw:** expose completed reservation counts ([7dd93e5](https://github.com/totalolage/deskohub-site/commit/7dd93e5cc1bc474eebf834a1370ad3761b6c471b))
+
 ## [1.9.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.8.2...dhw-v1.9.0) (2026-08-20)
 
 
