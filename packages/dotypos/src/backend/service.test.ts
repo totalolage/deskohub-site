@@ -404,12 +404,18 @@ describe("DotyposService customer lookup", () => {
     const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        const customers = yield* dotypos.getCustomers([
-          dotyposCustomerId("customer-1"),
-          dotyposCustomerId("customer-2"),
-          dotyposCustomerId("customer-1"),
-        ]);
-        yield* dotypos.getCustomers([]);
+        const customers = yield* dotypos.getCustomers({
+          ids: [
+            dotyposCustomerId("customer-1"),
+            dotyposCustomerId("customer-2"),
+            dotyposCustomerId("customer-1"),
+          ],
+        });
+        yield* dotypos.getCustomers({ ids: [] });
+        yield* dotypos.getCustomers({
+          createdAtOrAfter: "2026-08-19T00:00:00Z",
+          createdBefore: "2026-08-26T00:00:00Z",
+        });
         return customers;
       }),
       fetchMock
@@ -419,9 +425,12 @@ describe("DotyposService customer lookup", () => {
     const customerCalls = fetchMock.mock.calls
       .map((call) => new URL(getUrl(call as FetchCall)))
       .filter(({ pathname }) => pathname === "/clouds/cloud-id/customers");
-    expect(customerCalls).toHaveLength(1);
+    expect(customerCalls).toHaveLength(2);
     expect(customerCalls[0]?.searchParams.get("filter")).toBe(
       "id|in|customer-1,customer-2;deleted|in|0,1"
+    );
+    expect(customerCalls[1]?.searchParams.get("filter")).toBe(
+      "created|gteq|2026-08-19T00:00:00Z;created|lt|2026-08-26T00:00:00Z;deleted|in|0,1"
     );
   });
 

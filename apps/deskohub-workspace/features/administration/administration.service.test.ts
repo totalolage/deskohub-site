@@ -411,7 +411,7 @@ describe("AdministrationService", () => {
                 })
               ),
               DotyposServiceMock({
-                getCustomers: (ids) =>
+                getCustomers: ({ ids = [] }) =>
                   Effect.sync(() => {
                     customerCalls.push([...ids]);
                     return ids.map((id) => ({ id }));
@@ -600,10 +600,17 @@ describe("AdministrationService", () => {
       "cancelled-today",
       "new-today",
       "failed-today",
-      "old-booking",
     ];
-    const listInputs: unknown[] = [];
-    const customerBatchInputs: (readonly string[])[] = [];
+    const listInputs: {
+      readonly customerId?: string;
+      readonly ids?: readonly string[];
+      readonly order?: string;
+    }[] = [];
+    const customerListInputs: {
+      readonly createdAtOrAfter?: string;
+      readonly createdBefore?: string;
+      readonly ids?: readonly string[];
+    }[] = [];
     let historicalReservationsUnavailable = false;
     let missingCustomerCreationTime = false;
     let reservationsUnavailable = false;
@@ -645,11 +652,77 @@ describe("AdministrationService", () => {
       "failed-today": "customer-new-c",
       "old-booking": "customer-stale-old",
     } as const;
-    const recentLocalCustomers = new Set([
-      "customer-new-a",
-      "customer-new-b",
-      "customer-new-c",
-    ]);
+    const rangeRows = linkedIds.map((id) => ({
+      id,
+      customerId: rowCustomerIds[id as keyof typeof rowCustomerIds],
+      failureCode: id === "failed-today" ? "access_failed" : null,
+      fulfillmentState: id === "failed-today" ? "failed" : "fulfilled",
+      paymentState: "paid",
+      reservationState: "confirmed",
+    }));
+    const recentCustomerRows = [
+      ...rangeRows.filter(({ id }) =>
+        ["today", "cancelled-today", "new-today", "failed-today"].includes(id)
+      ),
+      {
+        id: "old-booking",
+        customerId: "customer-stale-old",
+        failureCode: null,
+        fulfillmentState: "fulfilled",
+        paymentState: "paid",
+        reservationState: "confirmed",
+      },
+      {
+        id: null,
+        customerId: "customer-new-d",
+        failureCode: null,
+        fulfillmentState: "not_started",
+        paymentState: "not_started",
+        reservationState: "draft",
+      },
+      {
+        id: null,
+        customerId: "customer-new-from-old-row",
+        failureCode: null,
+        fulfillmentState: "not_started",
+        paymentState: "not_started",
+        reservationState: "draft",
+      },
+    ];
+    const overviewReservations = [
+      providerReservation(
+        "last-week",
+        "customer-returning",
+        currentDate.subtract({ days: 6 })
+      ),
+      providerReservation("today", "customer-new-a", currentDate, 10),
+      {
+        ...providerReservation(
+          "cancelled-today",
+          "customer-new-a",
+          currentDate,
+          11
+        ),
+        status: "CANCELLED" as const,
+      },
+      {
+        ...providerReservation("new-today", "customer-new-b", currentDate, 12),
+        status: "NEW" as const,
+      },
+      providerReservation(
+        "failed-today",
+        "customer-reassigned",
+        currentDate,
+        13
+      ),
+      providerReservation(
+        "upcoming",
+        "customer-upcoming",
+        currentDate.add({ days: 1 })
+      ),
+      providerReservation("unlinked", "customer-unlinked", currentDate),
+    ];
+    let selectCall = 0;
 
     const loadOverview = () =>
       Effect.gen(function* () {
@@ -665,77 +738,34 @@ describe("AdministrationService", () => {
                   WorkspaceDatabase.of({
                     db: {
                       select: () =>
-                        makeQuery([
-                          ...linkedIds.map((id) => {
-                            const customerId =
-                              rowCustomerIds[id as keyof typeof rowCustomerIds];
-                            return {
-                              id,
-                              customerId,
-                              createdAt: atTime(
-                                recentLocalCustomers.has(customerId)
-                                  ? currentDate
-                                  : currentDate.subtract({ days: 30 }),
-                                7
-                              ),
-                              failureCode:
-                                id === "failed-today" ? "access_failed" : null,
-                              fulfillmentState:
-                                id === "failed-today" ? "failed" : "fulfilled",
-                              paymentState: "paid",
-                              reservationState: "confirmed",
-                            };
-                          }),
-                          {
-                            id: null,
-                            customerId: "customer-new-d",
-                            createdAt: atTime(currentDate, 10),
-                            failureCode: null,
-                            fulfillmentState: "not_started",
-                            paymentState: "not_started",
-                            reservationState: "draft",
-                          },
-                          {
-                            id: null,
-                            customerId: "customer-new-from-old-row",
-                            createdAt: atTime(
-                              currentDate.subtract({ days: 30 }),
-                              10
-                            ),
-                            failureCode: null,
-                            fulfillmentState: "not_started",
-                            paymentState: "not_started",
-                            reservationState: "draft",
-                          },
-                          ...Array.from({ length: 101 }, (_, index) => ({
-                            id: null,
-                            customerId: `customer-historical-${index}`,
-                            createdAt: atTime(
-                              currentDate.subtract({ days: 30 }),
-                              10
-                            ),
-                            failureCode: null,
-                            fulfillmentState: "not_started",
-                            paymentState: "not_started",
-                            reservationState: "draft",
-                          })),
-                        ]),
+                        makeQuery(
+                          selectCall++ % 2 === 0
+                            ? rangeRows
+                            : recentCustomerRows
+                        ),
                     } as never,
                   })
                 ),
                 DotyposServiceMock({
-                  getCustomers: (ids) =>
+                  getCustomers: (options) =>
                     Effect.sync(() => {
-                      customerBatchInputs.push(ids);
+                      customerListInputs.push(options);
+                      if ("createdAtOrAfter" in options) {
+                        return [...customerCreatedAt]
+                          .filter(([id]) => id !== "customer-new-c")
+                          .map(([id, created]) => ({
+                            created:
+                              missingCustomerCreationTime &&
+                              id === "customer-new-a"
+                                ? null
+                                : created,
+                            firstName: id.replace("customer-", ""),
+                            id,
+                          }));
+                      }
+                      const ids = "ids" in options ? options.ids : [];
                       return ids.map((id) => ({
-                        created:
-                          missingCustomerCreationTime && id === "customer-new-a"
-                            ? null
-                            : (customerCreatedAt.get(id) ??
-                              atTime(
-                                currentDate.subtract({ days: 30 }),
-                                8
-                              ).toString()),
+                        created: customerCreatedAt.get(id),
                         firstName: id.replace("customer-", ""),
                         id,
                       }));
@@ -751,71 +781,46 @@ describe("AdministrationService", () => {
                         })
                       );
                     }
-                    if (input.ids) {
-                      if (historicalReservationsUnavailable) {
-                        return Effect.fail(
-                          new ExternalAPIError({
-                            operation: "listReservations",
-                            service: "Dotypos",
-                            statusCode: 503,
-                          })
-                        );
-                      }
-                      return Effect.succeed([
-                        providerReservation(
-                          "old-booking",
-                          "customer-reassigned-old",
-                          currentDate.subtract({ days: 60 })
-                        ),
-                      ]);
+                    if (
+                      historicalReservationsUnavailable &&
+                      (input.customerId === "customer-reassigned-old" ||
+                        input.ids)
+                    ) {
+                      return Effect.fail(
+                        new ExternalAPIError({
+                          operation: "listReservations",
+                          service: "Dotypos",
+                          statusCode: 503,
+                        })
+                      );
                     }
-                    return Effect.succeed([
-                      providerReservation(
-                        "last-week",
-                        "customer-returning",
-                        currentDate.subtract({ days: 6 })
-                      ),
-                      providerReservation(
-                        "today",
-                        "customer-new-a",
-                        currentDate,
-                        10
-                      ),
-                      {
-                        ...providerReservation(
-                          "cancelled-today",
-                          "customer-new-a",
-                          currentDate,
-                          11
-                        ),
-                        status: "CANCELLED" as const,
-                      },
-                      {
-                        ...providerReservation(
-                          "new-today",
-                          "customer-new-b",
-                          currentDate,
-                          12
-                        ),
-                        status: "NEW" as const,
-                      },
-                      providerReservation(
-                        "failed-today",
-                        "customer-reassigned",
-                        currentDate,
-                        13
-                      ),
-                      providerReservation(
-                        "upcoming",
-                        "customer-upcoming",
-                        currentDate.add({ days: 1 })
-                      ),
-                      providerReservation(
-                        "unlinked",
-                        "customer-unlinked",
-                        currentDate
-                      ),
-                    ]);
+                    if (input.ids) {
+                      return Effect.succeed(
+                        [
+                          ...overviewReservations,
+                          providerReservation(
+                            "old-booking",
+                            "customer-reassigned-old",
+                            currentDate.subtract({ days: 60 })
+                          ),
+                        ].filter(({ id }) => input.ids?.includes(id))
+                      );
+                    }
+                    if (input.customerId) {
+                      return Effect.succeed(
+                        [
+                          ...overviewReservations,
+                          providerReservation(
+                            "old-booking",
+                            "customer-reassigned-old",
+                            currentDate.subtract({ days: 60 })
+                          ),
+                        ].filter(
+                          ({ _customerId }) => _customerId === input.customerId
+                        )
+                      );
+                    }
+                    return Effect.succeed(overviewReservations);
                   },
                 }),
                 Layer.succeed(
@@ -834,11 +839,12 @@ describe("AdministrationService", () => {
       );
     const result = await loadOverview();
 
-    expect(listInputs).toHaveLength(2);
     expect(listInputs[0]).toMatchObject({ order: "startDateAscending" });
-    expect(listInputs[1]).toMatchObject({ ids: ["old-booking"] });
-    expect(customerBatchInputs.length).toBeGreaterThan(1);
-    expect(customerBatchInputs.every((ids) => ids.length <= 50)).toBe(true);
+    expect(listInputs.filter(({ customerId }) => customerId)).toHaveLength(6);
+    expect(customerListInputs).toContainEqual({
+      createdAtOrAfter: atTime(currentDate.subtract({ days: 6 }), 0).toString(),
+      createdBefore: atTime(currentDate.add({ days: 1 }), 0).toString(),
+    });
     expect(result.today).toEqual({
       completed: 1,
       unavailable: false,
