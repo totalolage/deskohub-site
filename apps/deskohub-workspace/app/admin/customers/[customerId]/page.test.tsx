@@ -48,6 +48,12 @@ const activity: AdministrationCustomerActivity = {
 
 mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationCustomerActivity: () => Promise.resolve(activity),
+  loadAdministrationCustomerReservationActivity: () =>
+    Promise.resolve({
+      from: "2025-08-25",
+      to: "2026-08-24",
+      dates: [],
+    }),
 }));
 
 mock.module("@/features/discounts/admin/page-data.server", () => ({

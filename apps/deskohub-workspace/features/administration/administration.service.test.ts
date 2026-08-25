@@ -4,6 +4,7 @@ import { ExternalAPIError } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Cause, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { workspaceSiteConstants } from "@/shared/utils";
 import { AdministrationService } from "./administration.service";
 import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
 import { PostHogReservationHistory } from "./posthog-reservation-history";
@@ -1119,6 +1120,153 @@ describe("AdministrationService", () => {
       startsAt: "2026-08-10T10:00:00Z",
       tableName: "Meeting Room",
     });
+  });
+
+  test("summarizes linked past reservation dates in the Prague timezone", async () => {
+    const listInputs: unknown[] = [];
+    const database = {
+      select: () =>
+        makeQuery([
+          { id: "booking-one" },
+          { id: "booking-two" },
+          { id: "booking-in-progress" },
+        ]),
+    };
+    const booking = {
+      _branchId: "branch",
+      _cloudId: "cloud",
+      _customerId: "dotypos-customer",
+      endDate: "2026-08-10T23:00:00Z",
+      seats: "1",
+      status: "CONFIRMED" as const,
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadCustomerReservationActivity(
+        "dotypos-customer"
+      );
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                listReservations: (input) =>
+                  Effect.sync(() => {
+                    listInputs.push(input);
+                    return [
+                      {
+                        ...booking,
+                        id: "booking-one",
+                        startDate: "2026-08-09T22:30:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-two",
+                        startDate: "2026-08-10T18:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-not-linked",
+                        startDate: "2026-08-11T08:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-in-progress",
+                        startDate: "2026-08-12T08:00:00Z",
+                        endDate: "2999-08-12T09:00:00Z",
+                      },
+                    ];
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    const to = Temporal.Now.instant()
+      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+      .toPlainDate()
+      .subtract({ days: 1 });
+    expect(listInputs).toEqual([
+      {
+        customerId: "dotypos-customer",
+        startsAtOrAfter: to
+          .subtract({ days: 364 })
+          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+          .toInstant()
+          .toString(),
+        startsBefore: to
+          .add({ days: 1 })
+          .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+          .toInstant()
+          .toString(),
+        order: "startDateAscending",
+      },
+    ]);
+    expect(result).toEqual({
+      from: to.subtract({ days: 364 }).toString(),
+      to: to.toString(),
+      dates: [{ date: "2026-08-10", count: 2 }],
+    });
+  });
+
+  test("keeps unavailable reservation activity distinct from no activity", async () => {
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadCustomerReservationActivity(
+        "dotypos-customer"
+      );
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({
+                  db: { select: () => makeQuery([]) } as never,
+                })
+              ),
+              DotyposServiceMock({
+                listReservations: () =>
+                  Effect.fail(
+                    new ExternalAPIError({
+                      operation: "listReservations",
+                      service: "Dotypos",
+                      statusCode: 503,
+                    })
+                  ),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.dates).toBeNull();
   });
 
   test("loads customer marketing consent without a reservation", async () => {

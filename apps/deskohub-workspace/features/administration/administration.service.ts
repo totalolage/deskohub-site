@@ -290,6 +290,17 @@ export type AdministrationCustomerActivity = {
   readonly marketingConsent: AdministrationCustomerMarketingConsent | null;
 };
 
+export type AdministrationCustomerReservationActivity = {
+  readonly from: string;
+  readonly to: string;
+  readonly dates:
+    | readonly {
+        readonly date: string;
+        readonly count: number;
+      }[]
+    | null;
+};
+
 export type AdministrationDiscountApplication = {
   readonly id: DiscountApplicationId;
   readonly label: string;
@@ -1271,6 +1282,9 @@ export class AdministrationService extends Context.Service<
     readonly loadCustomerActivity: (
       customerId: DotyposCustomerId
     ) => Effect.Effect<AdministrationCustomerActivity, unknown>;
+    readonly loadCustomerReservationActivity: (
+      customerId: DotyposCustomerId
+    ) => Effect.Effect<AdministrationCustomerReservationActivity, unknown>;
     readonly listOrders: IPaymentAdministrationService["listOrders"];
     readonly loadOrder: IPaymentAdministrationService["loadOrder"];
     readonly listOperations: IPaymentAdministrationService["listOperations"];
@@ -2631,6 +2645,91 @@ export class AdministrationService extends Context.Service<
         } satisfies AdministrationCustomerActivity;
       });
 
+      const loadCustomerReservationActivity = Effect.fn(
+        "AdministrationService.loadCustomerReservationActivity"
+      )(function* (customerId: DotyposCustomerId) {
+        const now = Temporal.Now.instant();
+        const to = getCurrentWorkspaceDate(now).subtract({ days: 1 });
+        const from = to.subtract({ days: 364 });
+        const reservations = yield* dotypos
+          .listReservations({
+            customerId,
+            ...getInclusiveDateRangeBounds({
+              from: from.toString(),
+              to: to.toString(),
+            }),
+            order: "startDateAscending",
+          })
+          .pipe(
+            Effect.catch((cause) => {
+              unstable_rethrow(cause);
+              return Effect.logWarning(
+                "Customer reservation activity unavailable",
+                { cause, customerId }
+              ).pipe(Effect.as(null));
+            })
+          );
+
+        if (!reservations) {
+          return {
+            from: from.toString(),
+            to: to.toString(),
+            dates: null,
+          } satisfies AdministrationCustomerReservationActivity;
+        }
+
+        const reservationIds = reservations.flatMap((reservation) => {
+          const id = Option.getOrUndefined(
+            decodeDotyposReservationId(reservation.id)
+          );
+          return id ? [id] : [];
+        });
+        const linkedRows =
+          reservationIds.length === 0
+            ? []
+            : yield* db
+                .select({ id: workspaceReservations.dotyposReservationId })
+                .from(workspaceReservations)
+                .where(
+                  and(
+                    eq(workspaceReservations.dotyposCustomerId, customerId),
+                    inArray(
+                      workspaceReservations.dotyposReservationId,
+                      reservationIds
+                    )
+                  )
+                );
+        const linkedReservationIds = new Set(
+          linkedRows.flatMap(({ id }) => (id ? [id] : []))
+        );
+        const counts = new Map<string, number>();
+        for (const reservation of reservations) {
+          const id = Option.getOrUndefined(
+            decodeDotyposReservationId(reservation.id)
+          );
+          if (
+            !id ||
+            !linkedReservationIds.has(id) ||
+            Temporal.Instant.compare(
+              Temporal.Instant.from(reservation.endDate),
+              now
+            ) > 0
+          ) {
+            continue;
+          }
+          const date = getReservationDate(reservation.startDate);
+          counts.set(date, (counts.get(date) ?? 0) + 1);
+        }
+
+        return {
+          from: from.toString(),
+          to: to.toString(),
+          dates: [...counts]
+            .map(([date, count]) => ({ date, count }))
+            .toSorted((left, right) => left.date.localeCompare(right.date)),
+        } satisfies AdministrationCustomerReservationActivity;
+      });
+
       const loadOverviewSource = Effect.fn(
         "AdministrationService.loadOverviewSource"
       )(function* () {
@@ -2971,6 +3070,7 @@ export class AdministrationService extends Context.Service<
         listCustomers,
         loadCustomerReservations,
         loadCustomerActivity,
+        loadCustomerReservationActivity,
         listOrders: paymentAdministration.listOrders,
         loadOrder: paymentAdministration.loadOrder,
         listOperations: paymentAdministration.listOperations,

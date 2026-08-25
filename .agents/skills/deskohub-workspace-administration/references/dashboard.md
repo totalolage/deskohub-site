@@ -47,6 +47,8 @@ Project the provider cleanup reasons instead of collapsing them into generic pay
 
 Customer detail pages bound provider enrichment and visible reservation history to the 24 most recently updated reservations. The transaction table independently queries the customer's latest 50 payment attempts across their complete local reservation history. The page links to the filtered reservation index when more reservation history exists. Reservation count, paid revenue, discount savings, and favourite product remain database aggregates over the customer's complete local history.
 
+The customer reservation-activity chart is a separate bounded projection over the previous 365 complete Prague calendar dates. Dotypos supplies each booking's start and end, Workspace linkage decides which bookings belong in the chart, and only ended bookings contribute once on their start date. Show provider failure as unavailable instead of as an empty year.
+
 The Overview activity counts use live Dotypos booking start dates intersected with the reservations known to Workspace. If Dotypos is unavailable, the affected count is shown as unavailable rather than replaced with a locally derived value that answers a different question.
 
 The Overview customer activity uses the same seven-day Prague calendar range. Unique customers are distinct Dotypos customer IDs on the linked live bookings that start in that range. New customers are Workspace-referenced customers whose Dotypos `created` timestamp falls in the range. Resolve current booking customer IDs before falling back to the stored Workspace customer ID. If live bookings or required customer creation timestamps are unavailable, mark the affected metric unavailable instead of returning a partial count.

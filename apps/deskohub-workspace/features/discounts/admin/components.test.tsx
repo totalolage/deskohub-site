@@ -31,6 +31,11 @@ import type {
 const refresh = mock();
 const back = mock();
 const replace = mock();
+const emptyReservationActivity = {
+  from: "2025-08-25",
+  to: "2026-08-24",
+  dates: [],
+} as const;
 
 mock.module("next/navigation", () => ({
   useRouter: () => ({
@@ -805,6 +810,10 @@ describe("discount administration pages", () => {
           },
         }}
         profile={profile}
+        reservationActivity={{
+          ...emptyReservationActivity,
+          dates: [{ date: "2026-08-10", count: 2 }],
+        }}
       />
     );
     const table = view.getByRole("table", {
@@ -868,6 +877,30 @@ describe("discount administration pages", () => {
     expect(onlyMeLink.closest("tr")?.className).toContain("relative");
     expect(view.getByRole("heading", { name: "Stats" })).toBeDefined();
     expect(view.getByRole("heading", { name: "Consents" })).toBeDefined();
+    expect(
+      view.getByRole("region", {
+        name: "Reservation activity for the past 365 days",
+      })
+    ).toBeDefined();
+    expect(view.getByText("2 reservations on 10 Aug 2026")).toBeDefined();
+    expect(
+      view.container
+        .querySelector('time[datetime="2026-08-10"]')
+        ?.getAttribute("title")
+    ).toBe("2 reservations on 10 Aug 2026");
+    const reservationActivitySection = view
+      .getByRole("heading", { name: "Reservation activity" })
+      .closest("section");
+    expect(
+      reservationActivitySection?.nextElementSibling?.contains(
+        view.getByRole("heading", { name: "Stats" })
+      )
+    ).toBe(true);
+    expect(
+      reservationActivitySection?.nextElementSibling?.contains(
+        view.getByRole("heading", { name: "Consents" })
+      )
+    ).toBe(true);
     expect(view.getByText("Granted").className).toContain(
       "text-aquamarine-ink"
     );
@@ -949,6 +982,7 @@ describe("discount administration pages", () => {
           },
           marketingConsent: null,
         }}
+        reservationActivity={emptyReservationActivity}
         profile={{
           customer: {
             id: "dotypos-customer",
@@ -995,6 +1029,10 @@ describe("discount administration pages", () => {
             withdrawnAt: "2026-08-10T11:00:00Z",
           },
         }}
+        reservationActivity={{
+          ...emptyReservationActivity,
+          dates: null,
+        }}
         profile={{
           customer: {
             id: "dotypos-customer",
@@ -1016,6 +1054,9 @@ describe("discount administration pages", () => {
       "text-burned-orange-ink"
     );
     expect(view.getByText(/Granted 9 Aug 2026/)).toBeDefined();
+    expect(
+      view.getByText("Reservation activity is temporarily unavailable.")
+    ).toBeDefined();
     expect(view.queryByText("Declined")).toBeNull();
   });
 
