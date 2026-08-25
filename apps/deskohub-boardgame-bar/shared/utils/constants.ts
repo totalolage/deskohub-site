@@ -97,7 +97,9 @@ export const siteConstants = {
     youtube: "https://www.youtube.com/@Deskohub",
   },
   pricing: {
+    // TODO: Remove the legacy entrance fee, dated copy, and cutover code after September 1, 2026.
     entryFee: 50,
+    consumptionCredit: 250,
     training: {
       hourly: 900,
       daily: 5500,

@@ -1,11 +1,16 @@
 import Interpolate from "@doist/react-interpolate";
-import { m } from "@/features/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { OpeningHours } from "@/features/opening-hours";
 import { Hero } from "@/shared/components";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
+import { formatPricingPolicyDates } from "@/shared/utils/pricing-policy";
 
-export function HomeHero() {
+export function HomeHero({
+  showLegacyPricing,
+}: {
+  showLegacyPricing: boolean;
+}) {
   return (
     <Hero tags="Domovská stránka" fullHeight>
       <div className="max-w-4xl text-white px-6 mx-auto">
@@ -21,11 +26,23 @@ export function HomeHero() {
         <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
           <span className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
             <Interpolate
-              string={m["hero.priceInfo.forPlayers"]()}
+              string={
+                showLegacyPricing
+                  ? m["hero.priceInfo.legacyForPlayers"](
+                      formatPricingPolicyDates(getLocale())
+                    )
+                  : m["hero.priceInfo.forPlayers"]()
+              }
               mapping={{
-                price: () => (
+                entryFee: () => (
                   <Price
                     amount={siteConstants.pricing.entryFee}
+                    className="text-green-400"
+                  />
+                ),
+                consumptionCredit: () => (
+                  <Price
+                    amount={siteConstants.pricing.consumptionCredit}
                     className="text-green-400"
                   />
                 ),

@@ -26,7 +26,8 @@
     "title": "Board Game Bar",
     "description": "A place for everyone who loves board games. Quiet corners for your favorite social game and the opportunity to learn new games.",
     "priceInfo": {
-      "forPlayers": "Entry <price /> for board game players"
+      "forPlayers": "Without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week.",
+      "legacyForPlayers": "Until {legacyEndDate}: entry <entryFee /> for board game players. Children under 15 and Mondays are free. From {newPolicyStartDate}, without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week."
     }
   },
   "hours": {
@@ -39,9 +40,8 @@
   "about": {
     "description": "A place for everyone who loves board games, whether strategic, campaign or party games. An ideal space for meeting friends and getting to know new kindred spirits.",
     "priceInfo": {
-      "forPlayers": "Entry <price /> for board game players",
-      "childrenFree": "Children under 15: Free",
-      "mondayFree": "Monday: No entry fee"
+      "forPlayers": "Without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week.",
+      "legacyForPlayers": "Until {legacyEndDate}: entry <entryFee /> for board game players. Children under 15 and Mondays are free. From {newPolicyStartDate}, without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week."
     }
   },
   "features": {
@@ -252,7 +252,7 @@
     "specialRequestsLabel": "Special Requests",
     "specialRequestsPlaceholder": "Any special requirements or requests...",
     "gdprConsentLabel": "I consent to the processing of my personal data in accordance with the <gdprLink>Privacy Policy</gdprLink> for the purpose of reservation and event participation, including taking, publishing, and indefinite use of photographs and video recordings for promotional purposes. I understand that I may withdraw this consent at any time and that previously published media will be removed where technically feasible and upon explicit request.",
-    "pricingInfo": "Entry fee: {priceForPlayers} per board game player",
+    "pricingInfo": "Without entrance fee: only a single consumption credit of {consumptionCredit} per person applies for any day of the week.",
     "submit": "Book Table",
     "submitting": "Submitting...",
     "successTitle": "Booking Successful!",
@@ -817,7 +817,8 @@
       "drinks": "DRINKS",
       "other": "OTHER"
     },
-    "footerNote": "Entry fee for board game players: {priceForPlayers}"
+    "footerNote": "Without entrance fee: only a single consumption credit of {consumptionCredit} per person applies for any day of the week.",
+    "legacyFooterNote": "Until {legacyEndDate}: entry {entryFee} for board game players. Children under 15 and Mondays are free. From {newPolicyStartDate}, without entrance fee: only a single consumption credit of {consumptionCredit} per person applies for any day of the week."
   },
   "boardGames": {
     "pageTitle": "Board Games - Deskohub",

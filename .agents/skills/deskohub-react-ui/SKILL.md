@@ -15,5 +15,6 @@ description: React, TSX, JSX, component, and UI convention handling.
 - Treat screenshots as part of delivering UI work: every pull request that introduces a visible UI state must attach a screenshot of each newly introduced state from the exact committed implementation. Follow the screenshot upload workflow in the Deskohub PR review skill; never use Cloudinary for PR screenshots. Commit an image only when it is durable documentation or a test fixture. Use tests, not empty screenshots, for hidden preconditions or terminal states that deliberately render nothing.
 - Model recurring time-driven client state with the existing Effect Atom and Stream pattern instead of manual `useEffect` interval state.
 - Use `@doist/react-interpolate` when a localized sentence contains links or other React components. Keep the complete sentence in one translation so each locale controls word order and punctuation.
+- Pass dates into localized messages after locale-aware formatting. Do not hardcode localized calendar dates in message strings.
 
 Update this skill when developer feedback changes a durable React convention.

@@ -10,12 +10,14 @@ import { MenuSection } from "./menu-section";
 interface MenuClientProps {
   products: Product[];
   categories: Category[];
+  showLegacyPricing: boolean;
   showPdfDownload: boolean;
 }
 
 export function MenuClient({
   products,
   categories,
+  showLegacyPricing,
   showPdfDownload,
 }: MenuClientProps) {
   return (
@@ -37,7 +39,7 @@ export function MenuClient({
         />
       ))}
 
-      <MenuFooterNote />
+      <MenuFooterNote showLegacyPricing={showLegacyPricing} />
     </div>
   );
 }

@@ -2,15 +2,22 @@ import Interpolate from "@doist/react-interpolate";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { Gallery } from "@/features/gallery/components/gallery";
 import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
-import { m } from "@/features/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
+import { formatPricingPolicyDates } from "@/shared/utils/pricing-policy";
 
 /**
  * About section with venue images and pricing information
- * Used on the homepage to showcase the venue and entry fees
+ * Used on the homepage to showcase the venue and consumption credit
  */
-export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
+export async function AboutSection({
+  showLegacyPricing,
+  tags,
+}: {
+  showLegacyPricing: boolean;
+  tags: CloudinaryTag;
+}) {
   const imagesPromise = getCloudinaryImages({
     tags: [["galerie", tags]],
   });
@@ -32,26 +39,28 @@ export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
             <div className="bg-white rounded-lg shadow-sm px-6 py-3">
               <span className="text-gray-700">
                 <Interpolate
-                  string={m["about.priceInfo.forPlayers"]()}
+                  string={
+                    showLegacyPricing
+                      ? m["about.priceInfo.legacyForPlayers"](
+                          formatPricingPolicyDates(getLocale())
+                        )
+                      : m["about.priceInfo.forPlayers"]()
+                  }
                   mapping={{
-                    price: () => (
+                    entryFee: () => (
                       <Price
                         amount={siteConstants.pricing.entryFee}
                         className="text-green-600 font-bold"
                       />
                     ),
+                    consumptionCredit: () => (
+                      <Price
+                        amount={siteConstants.pricing.consumptionCredit}
+                        className="text-green-600 font-bold"
+                      />
+                    ),
                   }}
                 />
-              </span>
-            </div>
-            <div className="bg-green-100 rounded-lg shadow-sm px-6 py-3">
-              <span className="text-green-800 font-medium">
-                {m["about.priceInfo.childrenFree"]()}
-              </span>
-            </div>
-            <div className="bg-green-100 rounded-lg shadow-sm px-6 py-3">
-              <span className="text-green-800 font-medium">
-                {m["about.priceInfo.mondayFree"]()}
               </span>
             </div>
           </div>
