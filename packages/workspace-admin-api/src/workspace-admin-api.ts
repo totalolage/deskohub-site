@@ -1006,12 +1006,6 @@ export const AdministrationReservationDetail = Schema.Struct({
     dotyposReservationId: Schema.NullOr(AdministrationDotyposReservationId),
     customerId: AdministrationDotyposCustomerId,
   }),
-  invoice: Schema.NullOr(
-    Schema.Struct({
-      id: AdministrationInvoiceId,
-      invoiceNumber: Schema.String,
-    })
-  ).pipe(Schema.withDecodingDefaultTypeKey(Effect.succeed(null))),
   canCancel: Schema.Boolean,
   requiresProviderCredentialRemoval: Schema.Boolean,
 });

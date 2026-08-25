@@ -27,7 +27,6 @@ import {
   AdministrationReservationAccessGrant,
   AdministrationReservationAccessMutation,
   AdministrationReservationCancellationInput,
-  AdministrationReservationDetail,
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
@@ -437,42 +436,10 @@ describe("administration contract", () => {
       delivery: { customer: "accepted", internal: "accepted" },
       needsAttention: false,
     });
-    const detail = Schema.decodeUnknownSync(AdministrationReservationDetail)({
-      reservation,
-      booking: null,
-      lifecycle: {
-        currentStage: "started",
-        label: "Started",
-        reachedStages: ["started"],
-        tone: "neutral",
-      },
-      timeline: [],
-      paymentAttempts: [],
-      orders: [],
-      discounts: [],
-      accessGrant: null,
-      otherCustomerReservations: [],
-      sameDateReservations: [],
-      references: {
-        workspaceReservationId: "reservation-id",
-        dotyposReservationId: null,
-        customerId: "customer-id",
-      },
-      invoice: {
-        id: "01980000-0000-7000-8000-000000000009",
-        invoiceNumber: "WS-FV-2026-000001",
-      },
-      canCancel: false,
-      requiresProviderCredentialRemoval: false,
-    });
-
     expect(reservation).toMatchObject({ purpose: "business", type: "office" });
     expect(invoice).toMatchObject({
       customerId: "customer-id",
       reservationId: "reservation-id",
-    });
-    expect(detail.invoice).toMatchObject({
-      invoiceNumber: "WS-FV-2026-000001",
     });
     expect(
       Schema.decodeUnknownSync(AdministrationReservationSummary)(

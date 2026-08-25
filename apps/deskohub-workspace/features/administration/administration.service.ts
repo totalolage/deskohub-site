@@ -20,10 +20,6 @@ import {
   NexiWebhookEventIdSchema,
 } from "@deskohub/nexi";
 import {
-  AdministrationInvoiceId,
-  type AdministrationInvoiceIdType,
-} from "@deskohub/workspace-admin-api";
-import {
   and,
   asc,
   count,
@@ -45,7 +41,6 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
   discountApplications,
-  invoices,
   type LatePaymentRecoveryState,
   latePaymentRecoveries,
   legalEvidenceEvents,
@@ -329,10 +324,6 @@ export type AdministrationReservationDetail = {
     readonly dotyposReservationId: DotyposReservationId | null;
     readonly customerId: DotyposCustomerId;
   };
-  readonly invoice: {
-    readonly id: AdministrationInvoiceIdType;
-    readonly invoiceNumber: string;
-  } | null;
 };
 
 export type AdministrationReservationAccessGrant = {
@@ -1664,7 +1655,6 @@ export class AdministrationService extends Context.Service<
           applicationRows,
           attemptRows,
           history,
-          invoiceRows,
           latePaymentRows,
           recoveryRows,
           live,
@@ -1716,14 +1706,6 @@ export class AdministrationService extends Context.Service<
               .where(eq(paymentAttempts.workspaceReservationId, row.id))
               .orderBy(paymentAttempts.createdAt),
             history: reservationHistory.load(row.id),
-            invoiceRows: db
-              .select({
-                id: invoices.id,
-                invoiceNumber: invoices.invoiceNumber,
-              })
-              .from(invoices)
-              .where(eq(invoices.workspaceReservationId, row.id))
-              .limit(1),
             latePaymentRows: db
               .select(latePaymentSelection)
               .from(webhookEvents)
@@ -1887,12 +1869,6 @@ export class AdministrationService extends Context.Service<
             dotyposReservationId: row.dotyposReservationId,
             customerId: row.dotyposCustomerId,
           },
-          invoice: invoiceRows[0]
-            ? {
-                id: AdministrationInvoiceId.make(invoiceRows[0].id),
-                invoiceNumber: invoiceRows[0].invoiceNumber,
-              }
-            : null,
           canCancel: canCancelReservation(row),
           requiresProviderCredentialRemoval: Boolean(
             accessRows[0] &&

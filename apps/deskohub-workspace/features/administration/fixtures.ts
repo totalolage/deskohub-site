@@ -323,7 +323,6 @@ export const loadFixtureReservation = (
     .toString();
   return {
     reservation,
-    invoice: null,
     operatorNotice: null,
     canCancel: true,
     requiresProviderCredentialRemoval: false,

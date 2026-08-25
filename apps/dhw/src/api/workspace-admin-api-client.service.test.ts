@@ -520,10 +520,6 @@ describe("WorkspaceAdminApiClient", () => {
               dotyposReservationId: booking.id,
               customerId: reservation.customerId,
             },
-            invoice: {
-              id: "01980000-0000-7000-8000-000000000009",
-              invoiceNumber: "WS-FV-2026-000001",
-            },
           });
         }
         if (url.pathname.endsWith("/reservations/find")) {
@@ -843,9 +839,6 @@ describe("WorkspaceAdminApiClient", () => {
           reservation.id
         );
         expect(reservationDetail.reservation.purpose).toBe("business");
-        expect(reservationDetail.invoice?.invoiceNumber).toBe(
-          "WS-FV-2026-000001"
-        );
         yield* client.mutateReservationAccess(
           Redacted.make(accessToken),
           mutationRequestId,

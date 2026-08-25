@@ -413,7 +413,6 @@ describe("Workspace Admin API", () => {
                   dotyposReservationId: booking.id,
                   customerId: reservation.customerId,
                 },
-                invoice: null,
               }
             : null
         ),
