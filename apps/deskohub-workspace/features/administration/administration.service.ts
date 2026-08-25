@@ -2651,7 +2651,7 @@ export class AdministrationService extends Context.Service<
                   })
                 ),
             ],
-            { concurrency: "unbounded" }
+            { concurrency: "inherit" }
           );
           const linkedReservationIds = new Set(
             rows.flatMap(({ id }) => (id ? [id] : []))
