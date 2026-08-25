@@ -5,7 +5,7 @@ import {
   NexiService,
   type NexiWebhookEventId,
 } from "@deskohub/nexi";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Match, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { type OrderId, orderIdSchema } from "@/features/order";
@@ -111,7 +111,20 @@ function makeProviderPaymentFinalizationServiceLayer(
               yield* Effect.logInfo("Payment finalization returned not_found");
               return "not_found";
             }
-            if (order.paymentState !== "pending") {
+            const reconcileGoodsAttempt = Match.value(order.kind).pipe(
+              Match.when("reservation", () => false),
+              Match.when(
+                "goods",
+                () =>
+                  ["failed", "cancelled", "expired"].includes(
+                    order.paymentState
+                  ) ||
+                  (order.paymentState === "paid" &&
+                    paymentAttemptId !== order.activePaymentAttemptId)
+              ),
+              Match.exhaustive
+            );
+            if (order.paymentState !== "pending" && !reconcileGoodsAttempt) {
               if (
                 order.paymentState === "paid" &&
                 (order.fulfillmentState === "not_started" ||
@@ -291,27 +304,33 @@ function makeProviderPaymentFinalizationServiceLayer(
                 "Payment finalization mark paid completed"
               );
 
-              yield* Effect.logInfo("Payment finalization completion invoked");
-              yield* completion
-                .complete({
-                  orderId: order.id,
-                  kind: order.kind,
-                  paymentAttemptId: attempt.id,
-                })
-                .pipe(
-                  Effect.tapError((cause) =>
-                    Effect.logFatal(
-                      "Paid order completion failed during finalization",
-                      {
-                        orderId: order.id,
-                        paymentAttemptId: attempt.id,
-                        cause,
-                      }
-                    )
-                  ),
-                  Effect.ignore
+              if (paidSuccess.attempt.refundState !== "required") {
+                yield* Effect.logInfo(
+                  "Payment finalization completion invoked"
                 );
-              yield* Effect.logInfo("Payment finalization completion finished");
+                yield* completion
+                  .complete({
+                    orderId: order.id,
+                    kind: order.kind,
+                    paymentAttemptId: attempt.id,
+                  })
+                  .pipe(
+                    Effect.tapError((cause) =>
+                      Effect.logFatal(
+                        "Paid order completion failed during finalization",
+                        {
+                          orderId: order.id,
+                          paymentAttemptId: attempt.id,
+                          cause,
+                        }
+                      )
+                    ),
+                    Effect.ignore
+                  );
+                yield* Effect.logInfo(
+                  "Payment finalization completion finished"
+                );
+              }
               return "paid";
             }
 

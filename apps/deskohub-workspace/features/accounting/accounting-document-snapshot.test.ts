@@ -166,6 +166,7 @@ describe("accounting document snapshot", () => {
       )
     ).rejects.toMatchObject({
       _tag: "GoodsAccountingDocumentSnapshotInputError",
+      reason: "evidence_conflict",
     });
     await expect(
       Effect.runPromise(
@@ -181,6 +182,7 @@ describe("accounting document snapshot", () => {
       )
     ).rejects.toMatchObject({
       _tag: "GoodsAccountingDocumentSnapshotInputError",
+      reason: "billing_details_required",
     });
   });
 

@@ -1,6 +1,7 @@
 import { Effect, Layer, Schema } from "effect";
 import { NextResponse } from "next/server";
 import { CustomerAccountResolver } from "@/features/account";
+import { ProviderPaymentFinalizationService } from "@/features/checkout/backend/payment/provider-payment-finalization.service";
 import { GoodsOrderService } from "@/features/goods/backend";
 import { resolveGoodsCustomerId } from "@/features/goods/backend/goods-route";
 import { orderIdSchema } from "@/features/order";
@@ -10,7 +11,9 @@ import {
 } from "@/shared/backend/workspace-route";
 
 type GoodsOrderRouteLayer = Layer.Layer<
-  CustomerAccountResolver | GoodsOrderService,
+  | CustomerAccountResolver
+  | GoodsOrderService
+  | ProviderPaymentFinalizationService,
   unknown,
   never
 >;
@@ -25,7 +28,7 @@ export const makeGoodsOrderRoute = (layer: GoodsOrderRouteLayer) =>
       operation: "goods.orders.get",
       cancellation: "interrupt-on-disconnect",
     },
-    (_request: Request, context: GoodsOrderRouteContext) =>
+    (request: Request, context: GoodsOrderRouteContext) =>
       Effect.gen(function* () {
         const { orderId: rawOrderId } = yield* Effect.promise(
           () => context.params
@@ -44,7 +47,20 @@ export const makeGoodsOrderRoute = (layer: GoodsOrderRouteLayer) =>
         );
         const customerId = yield* resolveGoodsCustomerId();
         const orders = yield* GoodsOrderService;
-        const result = yield* orders.get(customerId, orderId);
+        let result = yield* orders.get(customerId, orderId);
+        const paymentOutcome = new URL(request.url).searchParams.get(
+          "paymentOutcome"
+        );
+        if (
+          ["pending", "failed", "cancelled", "expired"].includes(
+            result.paymentState
+          ) &&
+          (paymentOutcome === "completed" || paymentOutcome === "cancelled")
+        ) {
+          const finalization = yield* ProviderPaymentFinalizationService;
+          yield* finalization.finalizePendingProviderPayment({ orderId });
+          result = yield* orders.get(customerId, orderId);
+        }
         return NextResponse.json(result, {
           headers: { "Cache-Control": "private, no-store" },
         });
@@ -69,9 +85,10 @@ export const makeGoodsOrderRoute = (layer: GoodsOrderRouteLayer) =>
       )
   );
 
-const goodsOrderRouteLayer = Layer.merge(
+const goodsOrderRouteLayer = Layer.mergeAll(
   CustomerAccountResolver.Live,
-  GoodsOrderService.Live
+  GoodsOrderService.Live,
+  ProviderPaymentFinalizationService.Live
 );
 
 export const GET = makeGoodsOrderRoute(goodsOrderRouteLayer);

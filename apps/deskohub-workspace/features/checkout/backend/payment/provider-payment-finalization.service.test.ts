@@ -358,6 +358,191 @@ describe("ProviderPaymentFinalizationService", () => {
     });
   }
 
+  for (const paymentState of ["failed", "cancelled", "expired"] as const) {
+    test(`settles an active goods attempt after local ${paymentState}`, async () => {
+      const { ProviderPaymentFinalizationService } = await import(
+        "./provider-payment-finalization.service"
+      );
+      const { PaymentAttemptRepository } = await import(
+        "../repositories/payment-attempt.repository"
+      );
+      const { PaidOrderCompletionService } = await import(
+        "../fulfillment/paid-order-completion.service"
+      );
+      const { OrderRepository } = await import(
+        "@/features/order/backend/order.repository"
+      );
+      const { PostHogEventService } = await import(
+        "@/shared/backend/analytics/posthog-event.service"
+      );
+      const { NexiService } = await import("@deskohub/nexi");
+      const terminalAttempt = {
+        ...pendingAttempt,
+        orderId: "goods-order-id",
+        workspaceReservationId: null,
+        state: paymentState,
+        failureCode: "nexi_payment_failed",
+      };
+      const markPaid = mock(() =>
+        Effect.succeed({
+          attempt: {
+            ...terminalAttempt,
+            state: "paid" as const,
+            refundState: "not_required" as const,
+            failureCode: null,
+          },
+          changed: true,
+          timestamp: Temporal.Now.instant(),
+        })
+      );
+      const complete = mock(() => Effect.void);
+
+      const result = await Effect.gen(function* () {
+        const service = yield* ProviderPaymentFinalizationService;
+        return yield* service.finalizePendingProviderPayment({
+          orderId: "goods-order-id",
+          paymentAttemptId: "attempt-id",
+        });
+      }).pipe(
+        Effect.provide(
+          ProviderPaymentFinalizationService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.mock(OrderRepository, {
+                  findById: mock(() =>
+                    Effect.succeed({
+                      ...pendingReservation,
+                      id: "goods-order-id",
+                      kind: "goods" as const,
+                      paymentState,
+                      fulfillmentState: "fulfilled" as const,
+                    })
+                  ),
+                }),
+                Layer.mock(PaidOrderCompletionService, { complete }),
+                Layer.mock(PaymentAttemptRepository, {
+                  findById: mock(() => Effect.succeed(terminalAttempt)),
+                }),
+                paymentLifecycleLayer({ markPaid }),
+                Layer.mock(PostHogEventService, {
+                  capture: mock(() => Effect.void),
+                }),
+                Layer.mock(NexiService, {
+                  verifyPaymentOutcome: mock(() =>
+                    Effect.succeed(buildVerification("success"))
+                  ),
+                })
+              )
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+      expect(result).toBe("paid");
+      expect(markPaid).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "attempt-id",
+          orderId: "goods-order-id",
+        })
+      );
+      expect(complete).toHaveBeenCalledWith({
+        orderId: "goods-order-id",
+        kind: "goods",
+        paymentAttemptId: "attempt-id",
+      });
+    });
+  }
+
+  test("reconciles a second paid goods attempt without repeating completion", async () => {
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { PaidOrderCompletionService } = await import(
+      "../fulfillment/paid-order-completion.service"
+    );
+    const { OrderRepository } = await import(
+      "@/features/order/backend/order.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { NexiService } = await import("@deskohub/nexi");
+    const replacementAttempt = {
+      ...pendingAttempt,
+      orderId: "goods-order-id",
+      workspaceReservationId: null,
+      state: "expired" as const,
+      failureCode: "superseded_by_paid_attempt",
+    };
+    const markPaid = mock(() =>
+      Effect.succeed({
+        attempt: {
+          ...replacementAttempt,
+          state: "paid" as const,
+          refundState: "required" as const,
+        },
+        changed: false,
+        timestamp: Temporal.Now.instant(),
+      })
+    );
+    const complete = mock(() => Effect.void);
+
+    const result = await Effect.gen(function* () {
+      const service = yield* ProviderPaymentFinalizationService;
+      return yield* service.finalizePendingProviderPayment({
+        orderId: "goods-order-id",
+        paymentAttemptId: "attempt-id",
+      });
+    }).pipe(
+      Effect.provide(
+        ProviderPaymentFinalizationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(OrderRepository, {
+                findById: mock(() =>
+                  Effect.succeed({
+                    ...paidNotStartedReservation,
+                    id: "goods-order-id",
+                    kind: "goods" as const,
+                    fulfillmentState: "fulfilled",
+                    activePaymentAttemptId: "first-attempt-id",
+                  })
+                ),
+              }),
+              Layer.mock(PaidOrderCompletionService, { complete }),
+              Layer.mock(PaymentAttemptRepository, {
+                findById: mock(() => Effect.succeed(replacementAttempt)),
+              }),
+              paymentLifecycleLayer({ markPaid }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(NexiService, {
+                verifyPaymentOutcome: mock(() =>
+                  Effect.succeed(buildVerification("success"))
+                ),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result).toBe("paid");
+    expect(markPaid).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "attempt-id",
+        orderId: "goods-order-id",
+      })
+    );
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   test("returns not_verifiable for pending attempts missing local verification data", async () => {
     const { ProviderPaymentFinalizationService } = await import(
       "./provider-payment-finalization.service"

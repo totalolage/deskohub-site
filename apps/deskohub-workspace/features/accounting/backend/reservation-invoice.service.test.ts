@@ -6,8 +6,13 @@ import { Effect, Layer, Schema } from "effect";
 import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
+  makeGoodsAccountingDocumentSnapshot,
 } from "@/features/accounting/accounting-document-snapshot";
-import { makeCoworkInvoiceDocument } from "@/features/accounting/invoice.test-utils";
+import {
+  makeCoworkInvoiceDocument,
+  makeGoodsAccountingDocumentSnapshotForTest,
+  makeGoodsAccountingDocumentSnapshotInputForTest,
+} from "@/features/accounting/invoice.test-utils";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -31,6 +36,33 @@ const personalAddress = {
 };
 
 describe("reservation invoice processing", () => {
+  test("issues and delivers a requested goods invoice from frozen details", async () => {
+    const harness = makeHarness(makeGoodsAccountingDocumentSnapshotForTest());
+
+    await runProcessing(harness);
+
+    expect(harness.updateBilling).not.toHaveBeenCalled();
+    expect(harness.issue).toHaveBeenCalledWith({ paymentAttemptId });
+    expect(harness.deliver).toHaveBeenCalledWith({ paymentAttemptId });
+  });
+
+  test("does nothing for goods without an invoice request", async () => {
+    const input = makeGoodsAccountingDocumentSnapshotInputForTest();
+    const source = Effect.runSync(
+      makeGoodsAccountingDocumentSnapshot({
+        ...input,
+        billing: { purpose: "personal", invoice: "none" },
+      })
+    );
+    const harness = makeHarness(source);
+
+    await runProcessing(harness);
+
+    expect(harness.updateBilling).not.toHaveBeenCalled();
+    expect(harness.issue).not.toHaveBeenCalled();
+    expect(harness.deliver).not.toHaveBeenCalled();
+  });
+
   test("does nothing for personal reservations without an invoice request", async () => {
     const harness = makeHarness(
       makeSource({ purpose: "personal", invoice: "none" })
