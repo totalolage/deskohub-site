@@ -40,6 +40,7 @@ export const orders = pgTable(
     dotyposCustomerId: text("dotypos_customer_id")
       .notNull()
       .$type<DotyposCustomerId>(),
+    issuanceFingerprint: text("issuance_fingerprint"),
     paymentState: text("payment_state").notNull().$type<OrderPaymentState>(),
     fulfillmentState: text("fulfillment_state")
       .notNull()
@@ -70,6 +71,11 @@ export const orders = pgTable(
     check(
       "orders_dotypos_customer_id_check",
       sql`btrim(${t.dotyposCustomerId}) <> ''`
+    ),
+    check(
+      "orders_issuance_fingerprint_check",
+      sql`(${t.kind} = 'goods' and ${t.issuanceFingerprint} ~ '^[a-f0-9]{64}$')
+        or (${t.kind} <> 'goods' and ${t.issuanceFingerprint} is null)`
     ),
     check(
       "orders_paid_at_check",

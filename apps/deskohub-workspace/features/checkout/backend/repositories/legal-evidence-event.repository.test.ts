@@ -11,6 +11,8 @@ describe("LegalEvidenceEventRepository", () => {
       "input.orderId !== undefined || input.workspaceReservationId !== undefined"
     );
     expect(source).toContain("orderId: parsed.orderId");
+    expect(source).toContain("export const persistLegalEvidenceEvents");
+    expect(source).toContain("readonly tx: LegalEvidenceTransaction");
     expect(source).not.toMatch(/customer(?:Email|Name|AccessCode)|rawPayload/);
   });
 });

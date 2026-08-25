@@ -2,7 +2,11 @@ import "server-only";
 
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
-import { WorkspaceDatabase } from "@/db/database.service";
+import type { SqlError } from "effect/unstable/sql/SqlError";
+import {
+  WorkspaceDatabase,
+  type WorkspaceDatabaseClient,
+} from "@/db/database.service";
 import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import { legalEvidenceSchema } from "@/features/checkout/legal-evidence";
@@ -36,15 +40,19 @@ export interface ILegalEvidenceEventRepository {
     input: LegalEvidenceEventInput
   ) => Effect.Effect<
     LegalEvidenceEvent,
-    EffectDrizzleQueryError | LegalEvidenceEventInputError
+    EffectDrizzleQueryError | SqlError | LegalEvidenceEventInputError
   >;
   readonly recordMany: (
     input: readonly LegalEvidenceEventInput[]
   ) => Effect.Effect<
     readonly LegalEvidenceEvent[],
-    EffectDrizzleQueryError | LegalEvidenceEventInputError
+    EffectDrizzleQueryError | SqlError | LegalEvidenceEventInputError
   >;
 }
+
+export type LegalEvidenceTransaction = Parameters<
+  Parameters<WorkspaceDatabaseClient["transaction"]>[0]
+>[0];
 
 const getLegalEvidenceEventRecord = (
   parsed: typeof legalEvidenceEventInputSchema.Type
@@ -61,6 +69,34 @@ const getLegalEvidenceEventRecord = (
   source: parsed.evidence.source,
 });
 
+export const persistLegalEvidenceEvents = Effect.fn(
+  "legalEvidenceEvents.persist"
+)(function* (input: {
+  readonly tx: LegalEvidenceTransaction;
+  readonly events: readonly LegalEvidenceEventInput[];
+}) {
+  const records = yield* Effect.forEach(input.events, (event) =>
+    Schema.decodeUnknownEffect(legalEvidenceEventInputSchema, {
+      onExcessProperty: "error",
+    })(event).pipe(
+      Effect.map(getLegalEvidenceEventRecord),
+      Effect.mapError(
+        (cause) =>
+          new LegalEvidenceEventInputError({
+            message: "Legal evidence event input is invalid.",
+            cause,
+          })
+      )
+    )
+  );
+  if (records.length === 0) return [];
+
+  return yield* input.tx
+    .insert(legalEvidenceEvents)
+    .values(records.map((event) => ({ id: postgresUuidV7, ...event })))
+    .returning();
+});
+
 export class LegalEvidenceEventRepository extends Context.Service<
   LegalEvidenceEventRepository,
   ILegalEvidenceEventRepository
@@ -72,24 +108,9 @@ export class LegalEvidenceEventRepository extends Context.Service<
 
       const record = Effect.fn("legalEvidenceEvents.record")(
         function* (input: LegalEvidenceEventInput) {
-          const parsed = yield* Schema.decodeUnknownEffect(
-            legalEvidenceEventInputSchema,
-            { onExcessProperty: "error" }
-          )(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new LegalEvidenceEventInputError({
-                  message: "Legal evidence event input is invalid.",
-                  cause,
-                })
-            )
+          const [inserted] = yield* db.transaction((tx) =>
+            persistLegalEvidenceEvents({ tx, events: [input] })
           );
-          const event = getLegalEvidenceEventRecord(parsed);
-
-          const [inserted] = yield* db
-            .insert(legalEvidenceEvents)
-            .values({ id: postgresUuidV7, ...event })
-            .returning();
 
           if (!inserted) {
             return yield* Effect.die(
@@ -113,9 +134,9 @@ export class LegalEvidenceEventRepository extends Context.Service<
         record,
         recordMany: Effect.fn("legalEvidenceEvents.recordMany")(
           function* (input) {
-            const inserted: LegalEvidenceEvent[] = [];
-            for (const event of input) inserted.push(yield* record(event));
-            return inserted;
+            return yield* db.transaction((tx) =>
+              persistLegalEvidenceEvents({ tx, events: input })
+            );
           }
         ),
       });

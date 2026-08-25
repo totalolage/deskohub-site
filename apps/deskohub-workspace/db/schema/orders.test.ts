@@ -6,6 +6,10 @@ const migrationUrl = new URL(
   "../migrations/20260821204948_order_architecture_foundation/migration.sql",
   import.meta.url
 );
+const issuanceFingerprintMigrationUrl = new URL(
+  "../migrations/20260821214457_goods-order-issuance-fingerprint/migration.sql",
+  import.meta.url
+);
 
 describe("generic orders", () => {
   test("stores generic lifecycle and immutable line price facts", () => {
@@ -17,6 +21,7 @@ describe("generic orders", () => {
       "kind",
       "correlation_id",
       "dotypos_customer_id",
+      "issuance_fingerprint",
       "payment_state",
       "fulfillment_state",
       "active_payment_attempt_id",
@@ -51,6 +56,18 @@ describe("generic orders", () => {
         "order_lines_currency_check",
       ])
     );
+  });
+
+  test("stores only a server-computed goods issuance fingerprint", async () => {
+    const migration = await Bun.file(issuanceFingerprintMigrationUrl).text();
+
+    expect(migration).toContain('ADD COLUMN "issuance_fingerprint" text');
+    expect(migration).toContain("orders_issuance_fingerprint_check");
+    expect(migration).toContain("'^[a-f0-9]{64}$'");
+    expect(migration).not.toContain("acknowledgements");
+    expect(migration).not.toContain("customer_email");
+    expect(migration).not.toContain("customer_name");
+    expect(migration).not.toContain("token");
   });
 
   test("keeps generic tables dormant until reservation writers migrate", async () => {
