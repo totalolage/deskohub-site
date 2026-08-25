@@ -87,7 +87,7 @@ export const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
       setIsFocused(false);
 
       // Format the number on blur if it's valid
-      if (formatOnBlur && displayValue && displayValue.trim()) {
+      if (formatOnBlur && displayValue?.trim()) {
         const normalized = normalizePhoneNumber(displayValue, countryCode);
         if (normalized) {
           const formatted = formatPhoneNumber(normalized, locale);

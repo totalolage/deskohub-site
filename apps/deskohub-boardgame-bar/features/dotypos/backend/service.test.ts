@@ -16,7 +16,7 @@ const category = (overrides: Partial<Category>): DotyposCategory => {
   if ("id" in overrides) {
     identifier = id === undefined ? {} : { id };
   }
-  return Schema.decodeUnknownSync(DotyposCategorySchema)({
+  return Schema.decodeSync(DotyposCategorySchema)({
     ...identifier,
     name: "Category",
     display: true,
@@ -31,7 +31,7 @@ const product = (overrides: Partial<Product>): DotyposProduct => {
   if ("id" in overrides) {
     identifier = id === undefined ? {} : { id };
   }
-  return Schema.decodeUnknownSync(DotyposProductSchema)({
+  return Schema.decodeSync(DotyposProductSchema)({
     ...identifier,
     _categoryId: "category-id",
     name: "Product",

@@ -1,10 +1,16 @@
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { env } from "@/env";
 import { verifyOpeningHoursCalendarWebhookToken } from "@/features/opening-hours/backend/opening-hours-calendar-webhook-auth";
 import { openingHoursTags } from "@/shared/utils/cache-tags";
 
 const acceptedResourceStates = new Set(["exists", "not_exists"]);
+
+class OpeningHoursCacheInvalidationError extends Data.TaggedError(
+  "OpeningHoursCacheInvalidationError"
+)<{
+  readonly cause: unknown;
+}> {}
 
 export async function POST(request: Request): Promise<Response> {
   if (!env.CRON_SECRET) {
@@ -40,7 +46,7 @@ export async function POST(request: Request): Promise<Response> {
         revalidateTag(openingHoursTags.exceptions(), { expire: 0 });
         return new Response(null, { status: 204 });
       },
-      catch: (cause) => cause,
+      catch: (cause) => new OpeningHoursCacheInvalidationError({ cause }),
     }).pipe(
       Effect.tapError((cause) =>
         Effect.logError("Google Calendar cache invalidation failed", { cause })

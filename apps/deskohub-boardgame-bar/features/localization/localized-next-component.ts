@@ -7,10 +7,14 @@ import {
 } from "@/features/localization/effect-locale";
 import { runAppWithLocale } from "../i18n/utils/setup-server";
 
+type RenderedReactNode = Exclude<ReactNode, Promise<unknown>>;
+
 export const LocalizedNextComponent = {
   build:
     <Props>(
-      component: (props: Props) => Effect.Effect<ReactNode, never, LocaleValue>
+      component: (
+        props: Props
+      ) => Effect.Effect<RenderedReactNode, never, LocaleValue>
     ) =>
     (props: Props) => {
       const next = component(props);
@@ -35,4 +39,4 @@ export const LocalizedNextComponent = {
 
 export type LocalizedNextComponent<Props = void> = (
   props: Props
-) => Effect.Effect<ReactNode, never, LocaleValue>;
+) => Effect.Effect<RenderedReactNode, never, LocaleValue>;
