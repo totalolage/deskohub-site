@@ -213,6 +213,11 @@ describe("PaymentLifecycleRepository", () => {
     );
 
     expect(paid).toContain("db.transaction");
+    expect(paid).toContain("const payableAttemptStates");
+    expect(paid).toContain('"goods",');
+    expect(paid).toContain('"failed",');
+    expect(paid).toContain('"cancelled",');
+    expect(paid).toContain('"expired",');
     expect(paid).toContain("yield* mirrorPaidReservation");
     expect(paid).toContain("yield* redeemAttemptDiscountClaim({");
     expect(terminal).toContain("db.transaction");

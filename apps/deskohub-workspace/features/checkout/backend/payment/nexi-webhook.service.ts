@@ -10,18 +10,20 @@ import {
   type NexiWebhookEventId,
   type PaymentVerificationResult,
 } from "@deskohub/nexi";
-import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import type { PaymentAttemptState } from "@/db/schema";
 import { orderIdSchema } from "@/features/order";
+import { OrderRepository } from "@/features/order/backend/order.repository";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import {
   capturePaymentAbandoned,
   capturePaymentCompleted,
   capturePaymentFailed,
 } from "../analytics/posthog-lifecycle-events";
-import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
+import { PaidOrderCompletionService } from "../fulfillment/paid-order-completion.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
 import {
   isNexiPaymentAttempt,
@@ -83,9 +85,10 @@ export class NexiWebhookService extends Context.Service<
     Layer.provide(LatePaymentRecoveryRepository.Default),
     Layer.provide(LatePaymentRecoveryQueueService.Default),
     Layer.provide(PostHogEventService.Live),
+    Layer.provide(OrderRepository.Default),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(WorkspacePaidFulfillmentService.Live)
+    Layer.provide(PaidOrderCompletionService.Live)
   );
 }
 
@@ -147,9 +150,10 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
       const webhookEvents = yield* WebhookEventRepository;
       const paymentAttempts = yield* PaymentAttemptRepository;
       const paymentLifecycle = yield* PaymentLifecycleRepository;
+      const orders = yield* OrderRepository;
       const reservations = yield* WorkspaceReservationRepository;
       const nexi = yield* NexiService;
-      const fulfillment = yield* WorkspacePaidFulfillmentService;
+      const completion = yield* PaidOrderCompletionService;
       const posthogEvents = yield* PostHogEventService;
       const latePaymentRecoveries = yield* LatePaymentRecoveryRepository;
       const latePaymentRecoveryQueue = yield* LatePaymentRecoveryQueueService;
@@ -309,30 +313,23 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
               "Nexi webhook payment attempt link completed"
             );
 
-            const reservation = yield* reservations
-              .findById(attempt.workspaceReservationId!)
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new NexiWebhookProcessingError({
-                      errorCode: "nexi_webhook_unknown_order",
-                      eventId,
-                      orderId: providerOrderId,
-                      message:
-                        "Workspace reservation could not be loaded for Nexi webhook.",
-                      cause,
-                    })
-                )
-              );
-            yield* Effect.annotateLogsScoped({ reservation });
-            yield* Effect.logDebug(
-              "Nexi webhook workspace reservation lookup completed"
+            const order = yield* orders.findById(attempt.orderId).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new NexiWebhookProcessingError({
+                    errorCode: "nexi_webhook_unknown_order",
+                    eventId,
+                    orderId: providerOrderId,
+                    message: "Order could not be loaded for Nexi webhook.",
+                    cause,
+                  })
+              )
             );
+            yield* Effect.annotateLogsScoped({ order });
+            yield* Effect.logDebug("Nexi webhook order lookup completed");
 
-            if (!reservation) {
-              yield* Effect.logWarning(
-                "Nexi webhook referenced unknown workspace reservation"
-              );
+            if (!order) {
+              yield* Effect.logWarning("Nexi webhook referenced unknown order");
 
               return yield* failAfterMarkingEvent(
                 webhookEvents,
@@ -341,14 +338,11 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
                   errorCode: "nexi_webhook_unknown_order",
                   eventId,
                   orderId: providerOrderId,
-                  message:
-                    "Nexi webhook referenced an unknown workspace reservation.",
+                  message: "Nexi webhook referenced an unknown order.",
                 })
               );
             }
-            yield* Effect.logInfo(
-              "Nexi webhook workspace reservation resolved"
-            );
+            yield* Effect.logInfo("Nexi webhook order resolved");
 
             const tokenCheck = checkNexiWebhookSecurityToken({
               notificationSecurityToken: envelope.securityToken,
@@ -416,7 +410,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
 
             const verificationInput = {
               orderId: attempt.providerOrderId,
-              correlationId: reservation.correlationId,
+              correlationId: order.correlationId,
               amount: String(attempt.amount.value),
               currency: getNexiCurrencyOverride() ?? currency,
               securityToken: attempt.securityToken,
@@ -462,103 +456,140 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
             yield* Effect.annotateLogsScoped({ providerMetadata });
             yield* Effect.logDebug("Nexi webhook provider metadata resolved");
 
-            if (
-              verification.status === "success" &&
-              isTerminalPaymentAttemptState(attempt.state)
-            ) {
-              yield* Effect.logWarning(
-                "Nexi payment settled after the local payment attempt became terminal",
-                {
-                  eventId,
-                  paymentAttemptId: attempt.id,
-                  paymentAttemptState: attempt.state,
-                  providerOrderId,
-                  reservationId: reservation.id,
-                }
+            if (verification.status === "success") {
+              const terminalAttempt = isTerminalPaymentAttemptState(
+                attempt.state
               );
-              yield* latePaymentRecoveries
-                .start({
-                  paymentAttemptId: attempt.id,
-                  workspaceReservationId: reservation.id,
+              const recoverReservation = Match.value(order.kind).pipe(
+                Match.when("reservation", () => terminalAttempt),
+                Match.when("goods", () => false),
+                Match.exhaustive
+              );
+              if (recoverReservation) {
+                const reservation = yield* reservations
+                  .findById(workspaceReservationIdSchema.make(order.id))
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new NexiWebhookProcessingError({
+                          errorCode: "nexi_webhook_unknown_order",
+                          eventId,
+                          orderId: providerOrderId,
+                          message:
+                            "Workspace reservation could not be loaded for Nexi webhook.",
+                          cause,
+                        })
+                    )
+                  );
+                if (!reservation) {
+                  return yield* failAfterMarkingEvent(
+                    webhookEvents,
+                    { type: "eventId", eventId },
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_unknown_order",
+                      eventId,
+                      orderId: providerOrderId,
+                      message:
+                        "Nexi webhook referenced an unknown workspace reservation.",
+                    })
+                  );
+                }
+
+                yield* Effect.logWarning(
+                  "Nexi payment settled after the local reservation payment attempt became terminal",
+                  {
+                    eventId,
+                    paymentAttemptId: attempt.id,
+                    paymentAttemptState: attempt.state,
+                    providerOrderId,
+                    reservationId: reservation.id,
+                  }
+                );
+                yield* latePaymentRecoveries
+                  .start({
+                    paymentAttemptId: attempt.id,
+                    workspaceReservationId: reservation.id,
+                    webhookEventId: eventId,
+                    providerOperationId,
+                    providerStatus,
+                    verifiedPaidAt: Temporal.Now.instant(),
+                  })
+                  .pipe(
+                    Effect.andThen(
+                      latePaymentRecoveryQueue.enqueue({
+                        paymentAttemptId: attempt.id,
+                      })
+                    ),
+                    Effect.mapError(
+                      (cause) =>
+                        new NexiWebhookProcessingError({
+                          errorCode:
+                            "nexi_webhook_late_payment_recovery_failed",
+                          eventId,
+                          orderId: providerOrderId,
+                          message:
+                            "Nexi late-payment recovery could not be started.",
+                          cause,
+                        })
+                    ),
+                    Effect.catch((error) =>
+                      failAfterMarkingEvent(
+                        webhookEvents,
+                        { type: "eventId", eventId },
+                        error
+                      )
+                    )
+                  );
+              } else {
+                yield* Effect.logInfo("Nexi webhook paid transition started");
+
+                const transition = yield* paymentLifecycle.markPaid({
+                  id: attempt.id,
+                  orderId: orderIdSchema.make(order.id),
                   webhookEventId: eventId,
                   providerOperationId,
                   providerStatus,
-                  verifiedPaidAt: Temporal.Now.instant(),
-                })
-                .pipe(
-                  Effect.andThen(
-                    latePaymentRecoveryQueue.enqueue({
-                      paymentAttemptId: attempt.id,
-                    })
-                  ),
-                  Effect.mapError(
-                    (cause) =>
-                      new NexiWebhookProcessingError({
-                        errorCode: "nexi_webhook_late_payment_recovery_failed",
-                        eventId,
-                        orderId: providerOrderId,
-                        message:
-                          "Nexi late-payment recovery could not be started.",
-                        cause,
-                      })
-                  ),
-                  Effect.catch((error) =>
-                    failAfterMarkingEvent(
-                      webhookEvents,
-                      { type: "eventId", eventId },
-                      error
+                  paidAt: Temporal.Now.instant(),
+                });
+                if (transition.changed) {
+                  yield* capturePaymentCompleted({
+                    attempt: transition.attempt,
+                    timestamp: transition.timestamp,
+                  }).pipe(
+                    Effect.provideService(PostHogEventService, posthogEvents)
+                  );
+                }
+                yield* Effect.logInfo(
+                  "Nexi webhook payment attempt marked paid"
+                );
+
+                yield* completion
+                  .complete({
+                    orderId: order.id,
+                    kind: order.kind,
+                    paymentAttemptId: attempt.id,
+                  })
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new NexiWebhookProcessingError({
+                          errorCode: "nexi_webhook_fulfillment_failed",
+                          eventId,
+                          orderId: providerOrderId,
+                          message: "Paid order completion failed.",
+                          cause,
+                        })
+                    ),
+                    Effect.catch((error) =>
+                      failAfterMarkingEvent(
+                        webhookEvents,
+                        { type: "eventId", eventId },
+                        error
+                      )
                     )
-                  )
-                );
-            }
-
-            if (
-              verification.status === "success" &&
-              !isTerminalPaymentAttemptState(attempt.state)
-            ) {
-              yield* Effect.logInfo("Nexi webhook paid transition started");
-
-              const transition = yield* paymentLifecycle.markPaid({
-                id: attempt.id,
-                orderId: orderIdSchema.make(reservation.id),
-                webhookEventId: eventId,
-                providerOperationId,
-                providerStatus,
-                paidAt: Temporal.Now.instant(),
-              });
-              if (transition.changed) {
-                yield* capturePaymentCompleted({
-                  attempt: transition.attempt,
-                  timestamp: transition.timestamp,
-                }).pipe(
-                  Effect.provideService(PostHogEventService, posthogEvents)
-                );
+                  );
+                yield* Effect.logInfo("Nexi webhook paid order completed");
               }
-              yield* Effect.logInfo("Nexi webhook payment attempt marked paid");
-
-              yield* fulfillment
-                .fulfillPaidOrder({ orderId: reservation.id })
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new NexiWebhookProcessingError({
-                        errorCode: "nexi_webhook_fulfillment_failed",
-                        eventId,
-                        orderId: providerOrderId,
-                        message:
-                          "Paid workspace reservation fulfillment failed.",
-                        cause,
-                      })
-                  ),
-                  Effect.catch((error) =>
-                    failAfterMarkingEvent(
-                      webhookEvents,
-                      { type: "eventId", eventId },
-                      error
-                    )
-                  )
-                );
-              yield* Effect.logInfo("Nexi webhook paid order fulfilled");
             } else if (verification.status === "failure") {
               const failureKind = classifyNexiFailureStatus(providerStatus);
               const terminalState = failureKind;
@@ -567,7 +598,7 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
 
               const transition = yield* paymentLifecycle.markTerminal({
                 id: attempt.id,
-                orderId: orderIdSchema.make(reservation.id),
+                orderId: orderIdSchema.make(order.id),
                 state: terminalState,
                 failureCode: "nexi_payment_failed",
                 webhookEventId: eventId,
