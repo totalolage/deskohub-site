@@ -900,9 +900,9 @@ describe("discount administration pages", () => {
         ?.getAttribute("title")
     ).toBe("No reservations on 11 Aug 2026");
     for (const [date, className] of [
-      ["2026-08-10", "bg-aquamarine-ink"],
-      ["2026-08-12", "bg-navy-blue"],
-      ["2026-08-13", "bg-burned-orange"],
+      ["2026-08-10", "bg-aquamarine-ink/70"],
+      ["2026-08-12", "bg-navy-blue/55"],
+      ["2026-08-13", "bg-burned-orange/60"],
       ["2026-08-14", "bg-aquamarine-green/25"],
       ["2026-08-15", "bg-aquamarine-green/70"],
     ] as const) {
