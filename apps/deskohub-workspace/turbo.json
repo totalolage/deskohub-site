@@ -47,6 +47,11 @@
       "env": ["POSTHOG_API_HOST", "POSTHOG_API_KEY", "POSTHOG_PROJECT_ID"],
       "outputs": ["features/feature-flags/generated/contract.ts"]
     },
+    "db:generate": {
+      "cache": false,
+      "dependsOn": ["i18n:compile"],
+      "env": ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]
+    },
     "db:migrate": {
       "cache": false,
       "env": ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]

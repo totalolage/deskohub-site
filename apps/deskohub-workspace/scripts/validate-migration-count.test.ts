@@ -34,3 +34,33 @@ describe("assertValidMigrationCount", () => {
     );
   });
 });
+
+test("regenerates Workspace migrations in CI before accepting them", async () => {
+  const [workflow, turbo] = await Promise.all([
+    Bun.file(
+      new URL("../../../.github/workflows/workspace-tests.yml", import.meta.url)
+    ).text(),
+    Bun.file(new URL("../turbo.json", import.meta.url)).json() as Promise<{
+      readonly tasks: {
+        readonly "db:generate": {
+          readonly dependsOn: readonly string[];
+          readonly env: readonly string[];
+        };
+      };
+    }>,
+  ]);
+
+  expect(turbo.tasks["db:generate"].dependsOn).toContain("i18n:compile");
+  expect(turbo.tasks["db:generate"].env).toEqual(
+    expect.arrayContaining(["DATABASE_URL", "DATABASE_URL_UNPOOLED"])
+  );
+  expect(workflow).toContain(
+    "bun turbo db:generate --filter=deskohub-workspace"
+  );
+  expect(workflow).toContain(
+    "git add --intent-to-add -- apps/deskohub-workspace/db/migrations"
+  );
+  expect(workflow).toContain(
+    "git diff --exit-code -- apps/deskohub-workspace/db/migrations"
+  );
+});

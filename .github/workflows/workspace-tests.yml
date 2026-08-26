@@ -48,6 +48,14 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Validate Workspace schema migration
+        env:
+          DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace
+        run: |
+          bun turbo db:generate --filter=deskohub-workspace
+          git add --intent-to-add -- apps/deskohub-workspace/db/migrations
+          git diff --exit-code -- apps/deskohub-workspace/db/migrations
+
       - name: Validate Workspace E2E allocation bundle
         run: |
           bun --cwd apps/deskohub-workspace e2e:coordination:build-action
