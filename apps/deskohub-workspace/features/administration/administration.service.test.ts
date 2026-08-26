@@ -1,5 +1,5 @@
 import "@/shared/testing/workspace-test-env";
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { ExternalAPIError } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Cause, Effect, Layer } from "effect";
@@ -28,6 +28,8 @@ const makeQuery = <A>(rows: readonly A[]) => {
   query.where = () => query;
   return query;
 };
+
+afterEach(() => setSystemTime());
 
 describe("AdministrationService", () => {
   test("sorts bookings before selecting a page", async () => {
@@ -1122,14 +1124,53 @@ describe("AdministrationService", () => {
     });
   });
 
-  test("summarizes linked past reservation dates in the Prague timezone", async () => {
+  test("summarizes linked reservation dates through today in the Prague timezone", async () => {
+    setSystemTime(new Date("2026-08-26T12:00:00Z"));
     const listInputs: unknown[] = [];
     const database = {
       select: () =>
         makeQuery([
-          { id: "booking-one" },
-          { id: "booking-two" },
-          { id: "booking-in-progress" },
+          {
+            id: "booking-one",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "basic",
+              coffee: false,
+            },
+          },
+          {
+            id: "booking-two",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "plus",
+              coffee: true,
+            },
+          },
+          {
+            id: "booking-profi",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "profi",
+              coffee: true,
+              monitorOption: "2x27-qhd",
+            },
+          },
+          {
+            id: "booking-meeting-room",
+            reservationDetails: { kind: "meeting-room" },
+          },
+          {
+            id: "booking-office",
+            reservationDetails: { kind: "office" },
+          },
+          {
+            id: "booking-today",
+            reservationDetails: {
+              kind: "cowork",
+              entryTier: "plus",
+              coffee: true,
+            },
+          },
         ]),
     };
     const booking = {
@@ -1172,14 +1213,29 @@ describe("AdministrationService", () => {
                       },
                       {
                         ...booking,
-                        id: "booking-not-linked",
+                        id: "booking-profi",
                         startDate: "2026-08-11T08:00:00Z",
                       },
                       {
                         ...booking,
-                        id: "booking-in-progress",
+                        id: "booking-meeting-room",
+                        startDate: "2026-08-10T12:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-office",
                         startDate: "2026-08-12T08:00:00Z",
-                        endDate: "2999-08-12T09:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-not-linked",
+                        startDate: "2026-08-13T08:00:00Z",
+                      },
+                      {
+                        ...booking,
+                        id: "booking-today",
+                        startDate: "2026-08-26T14:00:00Z",
+                        endDate: "2026-08-26T15:00:00Z",
                       },
                     ];
                   }),
@@ -1200,8 +1256,7 @@ describe("AdministrationService", () => {
 
     const to = Temporal.Now.instant()
       .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-      .toPlainDate()
-      .subtract({ days: 1 });
+      .toPlainDate();
     expect(listInputs).toEqual([
       {
         customerId: "dotypos-customer",
@@ -1221,7 +1276,12 @@ describe("AdministrationService", () => {
     expect(result).toEqual({
       from: to.subtract({ days: 364 }).toString(),
       to: to.toString(),
-      dates: [{ date: "2026-08-10", count: 2 }],
+      dates: [
+        { category: "meeting-room", count: 3, date: "2026-08-10" },
+        { category: "cowork-profi", count: 1, date: "2026-08-11" },
+        { category: "office", count: 1, date: "2026-08-12" },
+        { category: "cowork-plus", count: 1, date: "2026-08-26" },
+      ],
     });
   });
 

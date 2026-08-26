@@ -1,7 +1,36 @@
 import type { CSSProperties } from "react";
 import { cn } from "@/shared/utils";
-import type { AdministrationCustomerReservationActivity } from "./administration.service";
+import type {
+  AdministrationCustomerReservationActivity,
+  AdministrationCustomerReservationActivityCategory,
+} from "./administration.service";
 import { formatAdministrationPlainDate } from "./formatters";
+
+const reservationActivityCategoryStyles = {
+  "cowork-basic": {
+    className: "bg-aquamarine-green/25",
+    label: "Basic",
+  },
+  "cowork-plus": {
+    className: "bg-aquamarine-green/70",
+    label: "Plus",
+  },
+  "cowork-profi": {
+    className: "bg-[#10b981]",
+    label: "Profi",
+  },
+  "meeting-room": {
+    className: "bg-[#60a5fa]",
+    label: "Meeting room",
+  },
+  office: {
+    className: "bg-[#fb923c]",
+    label: "Office",
+  },
+} satisfies Record<
+  AdministrationCustomerReservationActivityCategory,
+  { readonly className: string; readonly label: string }
+>;
 
 export function CustomerReservationActivity({
   activity,
@@ -41,7 +70,9 @@ function ReservationActivityGrid({
   dates,
 }: {
   readonly activity: AdministrationCustomerReservationActivity;
-  readonly dates: readonly { readonly date: string; readonly count: number }[];
+  readonly dates: NonNullable<
+    AdministrationCustomerReservationActivity["dates"]
+  >;
 }) {
   const from = Temporal.PlainDate.from(activity.from);
   const to = Temporal.PlainDate.from(activity.to);
@@ -62,7 +93,7 @@ function ReservationActivityGrid({
   const gridStyle = {
     gridTemplateColumns: `repeat(${weekCount}, minmax(0, 1fr))`,
   } satisfies CSSProperties;
-  const countsByDate = new Map(dates.map(({ count, date }) => [date, count]));
+  const activityByDate = new Map(dates.map((date) => [date.date, date]));
   const monthLabels = new Map<number, string>();
   for (const [index, date] of days.entries()) {
     if (date.day === 1) {
@@ -115,27 +146,15 @@ function ReservationActivityGrid({
               ))}
               {days.map((date) => {
                 const dateString = date.toString();
-                const count = countsByDate.get(dateString) ?? 0;
+                const activity = activityByDate.get(dateString);
+                const count = activity?.count ?? 0;
                 const className = cn(
                   "block aspect-square w-full rounded-[3px] border border-navy-blue/8",
-                  [
-                    "bg-navy-blue/[0.035]",
-                    "bg-aquamarine-green/25",
-                    "bg-aquamarine-green/45",
-                    "bg-aquamarine-green/70",
-                    "bg-aquamarine-ink",
-                  ][Math.min(count, 4)]
+                  activity
+                    ? reservationActivityCategoryStyles[activity.category]
+                        .className
+                    : "bg-navy-blue/[0.035]"
                 );
-                if (count === 0) {
-                  return (
-                    <time
-                      aria-hidden="true"
-                      className={className}
-                      dateTime={dateString}
-                      key={dateString}
-                    />
-                  );
-                }
                 return (
                   <time
                     aria-hidden="true"
@@ -155,29 +174,27 @@ function ReservationActivityGrid({
           ))}
         </ul>
       </section>
-      <div className="mt-3 flex items-center justify-end gap-1.5 text-xs text-navy-blue/55">
-        <span>Less</span>
-        {[
-          "bg-navy-blue/[0.035]",
-          "bg-aquamarine-green/25",
-          "bg-aquamarine-green/45",
-          "bg-aquamarine-green/70",
-          "bg-aquamarine-ink",
-        ].map((className) => (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "size-3 rounded-[3px] border border-navy-blue/8",
-              className
-            )}
-            key={className}
-          />
-        ))}
-        <span>More</span>
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-x-3 gap-y-2 text-xs text-navy-blue/55">
+        {Object.values(reservationActivityCategoryStyles).map(
+          ({ className, label }) => (
+            <span className="inline-flex items-center gap-1.5" key={label}>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "size-3 rounded-[3px] border border-navy-blue/8",
+                  className
+                )}
+              />
+              {label}
+            </span>
+          )
+        )}
       </div>
     </>
   );
 }
 
 const formatReservationActivityLabel = (date: string, count: number) =>
-  `${count} ${count === 1 ? "reservation" : "reservations"} on ${formatAdministrationPlainDate(date)}`;
+  count === 0
+    ? `No reservations on ${formatAdministrationPlainDate(date)}`
+    : `${count} ${count === 1 ? "reservation" : "reservations"} on ${formatAdministrationPlainDate(date)}`;
