@@ -16,15 +16,15 @@ const reservationActivityCategoryStyles = {
     label: "Plus",
   },
   "cowork-profi": {
-    className: "bg-aquamarine-ink/70",
+    className: "bg-[#10b981]",
     label: "Profi",
   },
   "meeting-room": {
-    className: "bg-navy-blue/55",
+    className: "bg-[#60a5fa]",
     label: "Meeting room",
   },
   office: {
-    className: "bg-burned-orange/60",
+    className: "bg-[#fb923c]",
     label: "Office",
   },
 } satisfies Record<
