@@ -812,7 +812,13 @@ describe("discount administration pages", () => {
         profile={profile}
         reservationActivity={{
           ...emptyReservationActivity,
-          dates: [{ date: "2026-08-10", count: 2 }],
+          dates: [
+            { category: "cowork-profi", count: 2, date: "2026-08-10" },
+            { category: "meeting-room", count: 1, date: "2026-08-12" },
+            { category: "office", count: 1, date: "2026-08-13" },
+            { category: "cowork-basic", count: 1, date: "2026-08-14" },
+            { category: "cowork-plus", count: 1, date: "2026-08-15" },
+          ],
         }}
       />
     );
@@ -888,9 +894,34 @@ describe("discount administration pages", () => {
         .querySelector('time[datetime="2026-08-10"]')
         ?.getAttribute("title")
     ).toBe("2 reservations on 10 Aug 2026");
+    expect(
+      view.container
+        .querySelector('time[datetime="2026-08-11"]')
+        ?.getAttribute("title")
+    ).toBe("No reservations on 11 Aug 2026");
+    for (const [date, className] of [
+      ["2026-08-10", "bg-aquamarine-ink"],
+      ["2026-08-12", "bg-navy-blue"],
+      ["2026-08-13", "bg-burned-orange"],
+      ["2026-08-14", "bg-aquamarine-green/25"],
+      ["2026-08-15", "bg-aquamarine-green/70"],
+    ] as const) {
+      expect(
+        view.container.querySelector(`time[datetime="${date}"]`)?.className
+      ).toContain(className);
+    }
     const reservationActivitySection = view
       .getByRole("heading", { name: "Reservation activity" })
       .closest("section");
+    if (!reservationActivitySection) {
+      throw new Error("Reservation activity section is missing");
+    }
+    const reservationActivity = within(reservationActivitySection);
+    for (const label of ["Basic", "Plus", "Profi", "Meeting room", "Office"]) {
+      expect(reservationActivity.getByText(label)).toBeDefined();
+    }
+    expect(reservationActivity.queryByText("Less")).toBeNull();
+    expect(reservationActivity.queryByText("More")).toBeNull();
     expect(
       reservationActivitySection?.nextElementSibling?.contains(
         view.getByRole("heading", { name: "Stats" })

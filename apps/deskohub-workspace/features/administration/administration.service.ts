@@ -66,6 +66,7 @@ import {
   storedWebhookEventIdSchema,
 } from "@/features/checkout/checkout-identifiers";
 import { legalEvidenceEventIdSchema } from "@/features/checkout/legal-evidence";
+import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import {
   type DiscountApplicationId,
   discountApplicationIdSchema,
@@ -75,6 +76,7 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import type { WorkspaceReservationKind } from "@/features/reservation/reservation-kind";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { instantStringSchema } from "@/shared/utils/temporal";
@@ -295,11 +297,24 @@ export type AdministrationCustomerReservationActivity = {
   readonly to: string;
   readonly dates:
     | readonly {
+        readonly category: AdministrationCustomerReservationActivityCategory;
         readonly date: string;
         readonly count: number;
       }[]
     | null;
 };
+
+export type AdministrationCustomerReservationActivityCategory =
+  | `cowork-${WorkspaceCoworkProductTier}`
+  | Exclude<WorkspaceReservationKind, "cowork">;
+
+const customerReservationActivityCategoryPriority = {
+  "cowork-basic": 0,
+  "cowork-plus": 1,
+  "cowork-profi": 2,
+  "meeting-room": 3,
+  office: 4,
+} satisfies Record<AdministrationCustomerReservationActivityCategory, number>;
 
 export type AdministrationDiscountApplication = {
   readonly id: DiscountApplicationId;
@@ -2649,7 +2664,7 @@ export class AdministrationService extends Context.Service<
         "AdministrationService.loadCustomerReservationActivity"
       )(function* (customerId: DotyposCustomerId) {
         const now = Temporal.Now.instant();
-        const to = getCurrentWorkspaceDate(now).subtract({ days: 1 });
+        const to = getCurrentWorkspaceDate(now);
         const from = to.subtract({ days: 364 });
         const reservations = yield* dotypos
           .listReservations({
@@ -2688,7 +2703,10 @@ export class AdministrationService extends Context.Service<
           reservationIds.length === 0
             ? []
             : yield* db
-                .select({ id: workspaceReservations.dotyposReservationId })
+                .select({
+                  id: workspaceReservations.dotyposReservationId,
+                  reservationDetails: workspaceReservations.reservationDetails,
+                })
                 .from(workspaceReservations)
                 .where(
                   and(
@@ -2699,33 +2717,50 @@ export class AdministrationService extends Context.Service<
                     )
                   )
                 );
-        const linkedReservationIds = new Set(
-          linkedRows.flatMap(({ id }) => (id ? [id] : []))
+        const linkedReservations = new Map(
+          linkedRows.flatMap(({ id, reservationDetails }) =>
+            id ? ([[id, reservationDetails]] as const) : []
+          )
         );
-        const counts = new Map<string, number>();
+        const activityByDate = new Map<
+          string,
+          {
+            readonly category: AdministrationCustomerReservationActivityCategory;
+            readonly count: number;
+          }
+        >();
         for (const reservation of reservations) {
           const id = Option.getOrUndefined(
             decodeDotyposReservationId(reservation.id)
           );
-          if (
-            !id ||
-            !linkedReservationIds.has(id) ||
-            Temporal.Instant.compare(
-              Temporal.Instant.from(reservation.endDate),
-              now
-            ) > 0
-          ) {
+          const reservationDetails = id
+            ? linkedReservations.get(id)
+            : undefined;
+          if (!reservationDetails) {
             continue;
           }
           const date = getReservationDate(reservation.startDate);
-          counts.set(date, (counts.get(date) ?? 0) + 1);
+          const category =
+            reservationDetails.kind === "cowork"
+              ? (`cowork-${reservationDetails.entryTier}` as const)
+              : reservationDetails.kind;
+          const current = activityByDate.get(date);
+          activityByDate.set(date, {
+            count: (current?.count ?? 0) + 1,
+            category:
+              !current ||
+              customerReservationActivityCategoryPriority[category] >
+                customerReservationActivityCategoryPriority[current.category]
+                ? category
+                : current.category,
+          });
         }
 
         return {
           from: from.toString(),
           to: to.toString(),
-          dates: [...counts]
-            .map(([date, count]) => ({ date, count }))
+          dates: [...activityByDate]
+            .map(([date, activity]) => ({ date, ...activity }))
             .toSorted((left, right) => left.date.localeCompare(right.date)),
         } satisfies AdministrationCustomerReservationActivity;
       });
