@@ -250,6 +250,11 @@ const reservationsCancelCommand = Command.make(
   "cancel",
   {
     reservationId: Argument.string("reservation-id"),
+    force: Flag.boolean("force").pipe(
+      Flag.withDescription(
+        "Cancel a pending payment locally before cancelling the reservation"
+      )
+    ),
     providerCredentialRemoved: Flag.boolean(
       "confirm-access-credential-removed"
     ).pipe(
@@ -262,7 +267,13 @@ const reservationsCancelCommand = Command.make(
     ),
     yes: confirmationFlag,
   },
-  ({ providerCredentialRemoved, reservationId, sendCancellationEmail, yes }) =>
+  ({
+    force,
+    providerCredentialRemoved,
+    reservationId,
+    sendCancellationEmail,
+    yes,
+  }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
         const decodedReservationId = yield* Schema.decodeUnknownEffect(
@@ -271,7 +282,9 @@ const reservationsCancelCommand = Command.make(
         const confirmed = yield* confirmChange(
           yes,
           json,
-          "Cancel this reservation? Paid online payments will be marked as needing a refund; no refund is issued automatically."
+          force
+            ? "Force-cancel this reservation? A pending payment will be cancelled locally; a later provider settlement will require recovery or a refund."
+            : "Cancel this reservation? Paid online payments will be marked as needing a refund; no refund is issued automatically."
         );
         if (!confirmed) {
           yield* reportCancellation(json);
@@ -286,6 +299,7 @@ const reservationsCancelCommand = Command.make(
           decodedReservationId,
           {
             accessGrantUpdatedAt,
+            force,
             providerCredentialRemoved,
             sendCancellationEmail,
           }

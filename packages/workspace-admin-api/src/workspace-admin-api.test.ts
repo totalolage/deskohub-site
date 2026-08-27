@@ -329,11 +329,13 @@ describe("administration contract", () => {
     expect(
       Schema.decodeUnknownSync(AdministrationReservationCancellationInput)({
         accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+        force: true,
         providerCredentialRemoved: true,
         sendCancellationEmail: true,
       })
     ).toEqual({
       accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+      force: true,
       providerCredentialRemoved: true,
       sendCancellationEmail: true,
     });

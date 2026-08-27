@@ -16,11 +16,12 @@ export const canCancelReservation = (
     | "reservationState"
     | "updatedAt"
   >,
-  now = Temporal.Now.instant()
+  now = Temporal.Now.instant(),
+  allowPendingPayment = false
 ) =>
   Boolean(reservation.dotyposReservationId?.trim()) &&
   reservation.fulfillmentState !== "processing" &&
-  reservation.paymentState !== "pending" &&
+  (allowPendingPayment || reservation.paymentState !== "pending") &&
   (["held", "hold_expired", "confirmed", "cancellation_failed"].includes(
     reservation.reservationState
   ) ||
