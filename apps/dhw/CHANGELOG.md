@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.10.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.9.1...dhw-v1.10.0) (2026-08-27)
+
+
+### Features
+
+* **dhw:** expose reservation purpose and invoice links ([611533d](https://github.com/totalolage/deskohub-site/commit/611533d7dde70f654e691d96758724d16b032af2))
+* **dhw:** force-cancel pending reservations ([f4fc74a](https://github.com/totalolage/deskohub-site/commit/f4fc74af4826e55db0e705dec28a6d5321e59bfe))
+* **dhw:** force-cancel pending reservations ([b034dfc](https://github.com/totalolage/deskohub-site/commit/b034dfc9241f83d33ba88c39eeeafd893b7659f8))
+
+
+### Bug Fixes
+
+* **workspace:** avoid unused invoice lookup ([8da8a70](https://github.com/totalolage/deskohub-site/commit/8da8a70fab6384b296cb233d574bb1d9bc502ea0))
+
 ## [1.9.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.9.0...dhw-v1.9.1) (2026-08-25)
 
 
