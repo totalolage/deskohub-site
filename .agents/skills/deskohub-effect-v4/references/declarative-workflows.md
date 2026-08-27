@@ -11,9 +11,11 @@ Continue this structure through abstraction layers until reaching simple leaf op
 
 Define a function implemented with an Effect generator as `Effect.fn("descriptor")(function* (...) { ... })`. Do not wrap `Effect.gen(function* (...) { ... })` in an arrow function.
 The root `lint/prefer-effect-fn.grit` custom rule enforces this convention for
-the migrated boundary. Keep custom syntax rules under `lint/` and register them
-as Biome plugins in `biome.json`; do not add them ad hoc to an application's
-ESLint configuration.
+the migrated boundary. `lint/prefer-effect-when.grit` rejects ternaries whose
+fallback is `Effect.void`; use `Effect.when`, `Option`, or `Match` according to
+the domain. Keep custom syntax rules under `lint/` and register them as Biome
+plugins in `biome.json`; do not add them ad hoc to an application's ESLint
+configuration.
 
 Do not add a pass-through `Effect.fn` whose only behavior is renaming or reshaping arguments for an existing named Effect operation. Call the existing operation directly unless the wrapper adds real domain policy, composition, or behavior.
 

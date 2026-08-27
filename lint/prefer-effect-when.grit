@@ -1,0 +1,15 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:features/checkout/backend/analytics|shared/backend/analytics)/.*\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    `$condition ? $effect : Effect.void` as $conditional where {
+      register_diagnostic(
+        span = $conditional,
+        message = "Use Effect.when, Option, or Match instead of a ternary whose fallback is Effect.void.",
+        severity = "error"
+      )
+    }
+  }
+}

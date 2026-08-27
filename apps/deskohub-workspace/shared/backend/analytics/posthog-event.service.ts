@@ -75,12 +75,13 @@ const createPostHogCaptureClient = ({
 
 const collectSpanMetadata = Effect.gen(function* () {
   const currentSpan = yield* Effect.currentSpan.pipe(Effect.option);
-  return Option.isSome(currentSpan)
-    ? {
-        "effect.span_id": currentSpan.value.spanId,
-        "effect.trace_id": currentSpan.value.traceId,
-      }
-    : {};
+  return currentSpan.pipe(
+    Option.map((span) => ({
+      "effect.span_id": span.spanId,
+      "effect.trace_id": span.traceId,
+    })),
+    Option.getOrElse(() => ({}))
+  );
 });
 
 const compactProperties = (properties: PostHogEventProperties | undefined) =>
@@ -100,15 +101,18 @@ export const makePostHogEventService = ({
 }: PostHogEventServiceOptions): IPostHogEventService => {
   return {
     alias: (input) =>
-      client
-        ? Effect.tryPromise(() => client.aliasImmediate(input)).pipe(
+      Option.fromNullishOr(client).pipe(
+        Option.map((captureClient) =>
+          Effect.tryPromise(() => captureClient.aliasImmediate(input)).pipe(
             Effect.catch((cause) =>
               Effect.logWarning("PostHog identity alias capture failed", {
                 cause,
               })
             )
           )
-        : Effect.void,
+        ),
+        Option.getOrElse(() => Effect.void)
+      ),
     capture: (input) =>
       Effect.gen(function* () {
         if (!client) return;

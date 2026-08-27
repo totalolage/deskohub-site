@@ -117,6 +117,12 @@ describe("PostHogEventService", () => {
     const service = makePostHogEventService({ config });
 
     await Effect.runPromise(
+      service.alias({
+        distinctId: PostHogDistinctId.make("synthetic-browser-id"),
+        alias: reservationDistinctId,
+      })
+    );
+    await Effect.runPromise(
       service.capture({
         distinctId: reservationDistinctId,
         event: "reservation started",

@@ -106,9 +106,10 @@ export function getPostHogRequestContextFromRequestHeadersWithDiagnostics(
 export function logUnexpectedConsentCookieReasons(
   reasons: readonly UnexpectedConsentCookieReason[]
 ) {
-  return reasons.length
-    ? Effect.logWarning("Unexpected cookie consent value", { reasons })
-    : Effect.void;
+  return Effect.logWarning("Unexpected cookie consent value", { reasons }).pipe(
+    Effect.when(Effect.succeed(reasons.length > 0)),
+    Effect.asVoid
+  );
 }
 
 function getPostHogRequestContextFromCookies(cookies: CookieStore) {
