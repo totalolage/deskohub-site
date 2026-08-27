@@ -75,6 +75,17 @@ describe("CheckoutStatusPage", () => {
     expect(view.getByText("Saturday, June 20, 2026")).toBeDefined();
     expect(view.getByText("2x 27 QHD")).toBeDefined();
     expect(view.getByText("CZK 550")).toBeDefined();
+    const repeatLink = view.getByRole("link", { name: "Book again" });
+    const repeatUrl = new URL(
+      repeatLink.getAttribute("href") ?? "",
+      "https://deskohub.local"
+    );
+    expect(repeatUrl.pathname).toBe("/en-US/reservation/cowork");
+    expect(Object.fromEntries(repeatUrl.searchParams)).toEqual({
+      entryTier: "profi",
+      coffee: "true",
+      monitorOption: "2x27-qhd",
+    });
     expect(
       view.queryByText("We will send the reservation details by email.")
     ).toBeNull();
@@ -106,7 +117,7 @@ describe("CheckoutStatusPage", () => {
     ).toBeNull();
   });
 
-  test("renders meeting-room timing and links to its current entry point", () => {
+  test("keeps the generic meeting-room start when exact duration is unavailable", () => {
     const view = render(
       <CheckoutStatusPage
         locale="en-US"
@@ -181,7 +192,131 @@ describe("CheckoutStatusPage", () => {
     expect(view.getByText("Seats").parentElement?.textContent).toBe("Seats3");
     expect(view.getByText("CZK 4,425")).toBeDefined();
     expect(
-      view
+      view.getByRole("link", { name: "Book again" }).getAttribute("href")
+    ).toBe("/en-US/reservation/office?dayCount=3&seats=3");
+  });
+
+  test("propagates only allowlisted booking shape", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={
+          {
+            ...baseStatus,
+            orderId: "operational-order-id",
+            supportContactPrefill: {
+              name: "Sensitive Customer",
+              email: "sensitive@example.com",
+              phone: "+420777777777",
+            },
+            providerOrderId: "provider-order-id",
+            paymentAttemptId: "payment-attempt-id",
+            discountCode: "SECRET-DISCOUNT",
+            accessCode: "123456",
+            billing: {
+              companyName: "Sensitive Invoice Company",
+              taxId: "CZ12345678",
+            },
+            summary: {
+              kind: "cowork",
+              entryTier: "basic",
+              coffee: false,
+              reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00Z"),
+              reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00Z"),
+              price: { value: 35_000, exponent: 2, currency: "CZK" },
+            },
+          } as CheckoutStatusViewModel
+        }
+      />
+    );
+
+    const href = view
+      .getByRole("link", { name: "Book again" })
+      .getAttribute("href");
+    const url = new URL(href ?? "", "https://deskohub.local");
+    expect([...url.searchParams.keys()]).toEqual(["entryTier", "coffee"]);
+    expect(href).not.toContain("operational-order-id");
+    expect(href).not.toContain("Sensitive");
+    expect(href).not.toContain("sensitive%40example.com");
+    expect(href).not.toContain("provider-order-id");
+    expect(href).not.toContain("payment-attempt-id");
+    expect(href).not.toContain("SECRET-DISCOUNT");
+    expect(href).not.toContain("123456");
+    expect(href).not.toContain("Invoice");
+    expect(href).not.toContain("CZ12345678");
+    expect(href).not.toContain("35000");
+    expect(href).not.toContain("2026-06");
+  });
+
+  test("keeps generic starts for non-fulfilled or unusable booking shapes", () => {
+    const nonFulfilled = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          status: "payment_failed",
+          paymentStatus: "failed",
+          fulfillmentStatus: "not_started",
+          summary: {
+            kind: "cowork",
+            entryTier: "profi",
+            coffee: true,
+            monitorOption: "2x27-qhd",
+            reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00Z"),
+            price: { value: 55_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+    expect(
+      nonFulfilled
+        .getByRole("link", { name: "Start a new reservation" })
+        .getAttribute("href")
+    ).toBe("/en-US/reservation/cowork");
+    cleanup();
+
+    const unusableOffice = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "office",
+          summary: {
+            kind: "office",
+            reservedFrom: Temporal.Instant.from("2026-06-12T08:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-14T08:00:00Z"),
+            seats: 3,
+            price: { value: 442_500, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+    expect(
+      unusableOffice
+        .getByRole("link", { name: "Start a new reservation" })
+        .getAttribute("href")
+    ).toBe("/en-US/reservation/office");
+    cleanup();
+
+    const fractionalMidnightOffice = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "office",
+          summary: {
+            kind: "office",
+            reservedFrom: Temporal.Instant.from("2026-06-11T22:00:00.001Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-14T22:00:00.001Z"),
+            seats: 3,
+            price: { value: 442_500, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+    expect(
+      fractionalMidnightOffice
         .getByRole("link", { name: "Start a new reservation" })
         .getAttribute("href")
     ).toBe("/en-US/reservation/office");

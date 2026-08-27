@@ -11,6 +11,14 @@ import {
 } from "@/features/reservation/cowork-reservation";
 import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import {
+  getOfficeReservationMaximumDayCount,
+  getOfficeReservationMaximumEndsOn,
+  type OfficeReservationInput,
+  officeReservationDayCountSchema,
+  officeReservationDefaultValues,
+  officeSeatsSchema,
+} from "@/features/reservation/office-reservation";
+import {
   reservationCustomerEmailSchema,
   reservationCustomerMessageSchema,
   reservationCustomerNameSchema,
@@ -55,6 +63,12 @@ const queryTierSchema = Schema.toStandardSchemaV1(
 );
 const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
   Schema.Literals(workspaceProductMonitorOptions)
+);
+const queryOfficeDayCountSchema = Schema.toStandardSchemaV1(
+  Schema.FiniteFromString.pipe(Schema.decodeTo(officeReservationDayCountSchema))
+);
+const queryOfficeSeatsSchema = Schema.toStandardSchemaV1(
+  Schema.FiniteFromString.pipe(Schema.decodeTo(officeSeatsSchema))
 );
 const queryNameSchema = Schema.toStandardSchemaV1(
   reservationCustomerNameSchema
@@ -166,6 +180,37 @@ export const getReservationDefaultValuesFromPayState = (
   ...(reservation.message !== undefined && { message: reservation.message }),
   marketingConsent: false,
 });
+
+export const getOfficeReservationDefaultValuesFromSearchParams = (
+  searchParams: SupportedSearchParams,
+  options: {
+    readonly seatCapacity: number;
+    readonly startsOn: string;
+  }
+): OfficeReservationInput => {
+  const dayCount = decodeStandardSchema(
+    queryOfficeDayCountSchema,
+    getTrimmedSearchParam(searchParams, "dayCount")
+  );
+  const seats = decodeStandardSchema(
+    queryOfficeSeatsSchema,
+    getTrimmedSearchParam(searchParams, "seats")
+  );
+  const maximumDayCount = getOfficeReservationMaximumDayCount({
+    startsOn: options.startsOn,
+    maximumEndsOn: getOfficeReservationMaximumEndsOn(
+      Temporal.PlainDate.from(options.startsOn)
+    ),
+    unavailableDates: [],
+  });
+
+  return {
+    ...officeReservationDefaultValues,
+    startsOn: options.startsOn,
+    ...(dayCount !== undefined && dayCount <= maximumDayCount && { dayCount }),
+    ...(seats !== undefined && seats <= options.seatCapacity && { seats }),
+  };
+};
 
 export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
   searchParams: SupportedSearchParams
