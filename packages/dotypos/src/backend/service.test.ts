@@ -412,10 +412,6 @@ describe("DotyposService customer lookup", () => {
           ],
         });
         yield* dotypos.getCustomers({ ids: [] });
-        yield* dotypos.getCustomers({
-          createdAtOrAfter: "2026-08-19T00:00:00Z",
-          createdBefore: "2026-08-26T00:00:00Z",
-        });
         return customers;
       }),
       fetchMock
@@ -425,12 +421,9 @@ describe("DotyposService customer lookup", () => {
     const customerCalls = fetchMock.mock.calls
       .map((call) => new URL(getUrl(call as FetchCall)))
       .filter(({ pathname }) => pathname === "/clouds/cloud-id/customers");
-    expect(customerCalls).toHaveLength(2);
+    expect(customerCalls).toHaveLength(1);
     expect(customerCalls[0]?.searchParams.get("filter")).toBe(
       "id|in|customer-1,customer-2;deleted|in|0,1"
-    );
-    expect(customerCalls[1]?.searchParams.get("filter")).toBe(
-      "created|gteq|2026-08-19T00:00:00Z;created|lt|2026-08-26T00:00:00Z;deleted|in|0,1"
     );
   });
 
@@ -1915,36 +1908,6 @@ describe("DotyposService reservation listing", () => {
       "id|in|reservation-1,reservation-2;_customerId|eq|customer-id;startDate|gteq|2026-08-04T00:00:00+02:00;startDate|lt|2026-08-05T00:00:00+02:00"
     );
     expect(requestedQueries[0]?.get("sort")).toBe("-startDate");
-  });
-
-  test("filters reservations by a customer set", async () => {
-    const requestedQueries: URLSearchParams[] = [];
-    const fetchMock = mockDotyposFetch((request) => {
-      const url = new URL(request.url);
-      if (url.pathname === "/signin/token") return tokenResponse();
-      if (url.pathname === "/clouds/cloud-id/reservations") {
-        requestedQueries.push(url.searchParams);
-        return Response.json({ data: [] });
-      }
-      return new Response("Not found", { status: 404 });
-    });
-
-    await runWithService(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.listReservations({
-          customerIds: [
-            dotyposCustomerId("customer-1"),
-            dotyposCustomerId("customer-2"),
-          ],
-        });
-      }),
-      fetchMock
-    );
-
-    expect(requestedQueries[0]?.get("filter")).toBe(
-      "_customerId|in|customer-1,customer-2"
-    );
   });
 
   test("rejects reservation filter delimiters", async () => {

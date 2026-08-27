@@ -2856,201 +2856,16 @@ export class AdministrationService extends Context.Service<
                   reservations: reservations.items,
                 })
               : [];
-          const [uniqueCustomersById, recentCustomers] = yield* Effect.all(
-            [
-              loadCustomers(uniqueCustomerIds.slice(0, 3)),
-              reservations.kind === "available"
-                ? dotypos
-                    .getCustomers({
-                      createdAtOrAfter: customerActivityBounds.startsAtOrAfter,
-                      createdBefore: customerActivityBounds.startsBefore,
-                    })
-                    .pipe(
-                      Effect.map((items) => ({
-                        items,
-                        kind: "available" as const,
-                      })),
-                      Effect.catch((cause) => {
-                        unstable_rethrow(cause);
-                        return Effect.logWarning(
-                          "New customer details unavailable",
-                          { cause }
-                        ).pipe(
-                          Effect.as({
-                            items: [] as const,
-                            kind: "unavailable" as const,
-                          })
-                        );
-                      })
-                    )
-                : Effect.succeed({
-                    items: [] as const,
-                    kind: "unavailable" as const,
-                  }),
-            ],
-            { concurrency: "inherit" }
-          );
-          const recentCustomersById = indexCustomersById(recentCustomers.items);
-          const recentCustomerIds = [...recentCustomersById.keys()];
-          const recentReservationLookups =
-            recentCustomers.kind === "available"
-              ? yield* Effect.all(
-                  EffectArray.chunksOf(
-                    recentCustomerIds,
-                    providerIdBatchSize
-                  ).map((customerIds) =>
-                    dotypos.listReservations({ customerIds }).pipe(
-                      Effect.map((items) => ({
-                        items,
-                        kind: "available" as const,
-                      })),
-                      Effect.catch((cause) => {
-                        unstable_rethrow(cause);
-                        return Effect.logWarning(
-                          "New customer bookings unavailable",
-                          { cause, customerCount: customerIds.length }
-                        ).pipe(
-                          Effect.as({
-                            items: [] as const,
-                            kind: "unavailable" as const,
-                          })
-                        );
-                      })
-                    )
-                  ),
-                  { concurrency: 5 }
-                )
-              : [];
-          const reservationsById = new Map<
-            DotyposReservationId,
-            DotyposReservation
-          >();
-          for (const reservation of [
-            ...(reservations.kind === "available" ? reservations.items : []),
-            ...recentReservationLookups.flatMap(({ items }) => items),
-          ]) {
-            const id = Option.getOrUndefined(
-              decodeDotyposReservationId(reservation.id)
-            );
-            if (id) reservationsById.set(id, reservation);
-          }
-          const recentReservationIds = [
-            ...new Set(
-              recentReservationLookups.flatMap(({ items }) =>
-                items.flatMap((reservation) => {
-                  const id = Option.getOrUndefined(
-                    decodeDotyposReservationId(reservation.id)
-                  );
-                  return id ? [id] : [];
+          const customersById = yield* loadCustomers(uniqueCustomerIds);
+          const newCustomerIds =
+            reservations.kind === "available"
+              ? getNewCustomerIds({
+                  candidateIds: uniqueCustomerIds,
+                  customersById,
+                  endsBefore: customerActivityEndsBefore,
+                  startsAt: customerActivityStartsAt,
                 })
-              )
-            ),
-          ];
-          const recentBookingsAvailable = recentReservationLookups.every(
-            ({ kind }) => kind === "available"
-          );
-          const recentRows =
-            recentCustomerIds.length === 0 || !recentBookingsAvailable
-              ? []
-              : yield* db
-                  .select({
-                    id: workspaceReservations.dotyposReservationId,
-                    customerId: workspaceReservations.dotyposCustomerId,
-                  })
-                  .from(workspaceReservations)
-                  .where(
-                    recentReservationIds.length === 0
-                      ? inArray(
-                          workspaceReservations.dotyposCustomerId,
-                          recentCustomerIds
-                        )
-                      : or(
-                          inArray(
-                            workspaceReservations.dotyposCustomerId,
-                            recentCustomerIds
-                          ),
-                          inArray(
-                            workspaceReservations.dotyposReservationId,
-                            recentReservationIds
-                          )
-                        )
-                  );
-          const missingReservationBatches = yield* Effect.all(
-            EffectArray.chunksOf(
-              [
-                ...new Set(
-                  recentRows.flatMap(({ id }) =>
-                    id && !reservationsById.has(id) ? [id] : []
-                  )
-                ),
-              ],
-              providerIdBatchSize
-            ).map((ids) =>
-              dotypos.listReservations({ ids }).pipe(
-                Effect.map((items) => ({
-                  items,
-                  kind: "available" as const,
-                })),
-                Effect.catch((cause) => {
-                  unstable_rethrow(cause);
-                  return Effect.logWarning(
-                    "Current booking customers unavailable",
-                    { cause }
-                  ).pipe(
-                    Effect.as({
-                      items: [] as const,
-                      kind: "unavailable" as const,
-                    })
-                  );
-                })
-              )
-            ),
-            { concurrency: 3 }
-          );
-          for (const reservation of missingReservationBatches.flatMap(
-            ({ items }) => items
-          )) {
-            const id = Option.getOrUndefined(
-              decodeDotyposReservationId(reservation.id)
-            );
-            if (id) reservationsById.set(id, reservation);
-          }
-          const customerIdentitiesAvailable =
-            reservations.kind === "available" &&
-            recentCustomers.kind === "available" &&
-            recentCustomers.items.every((customer) =>
-              Option.isSome(decodeDotyposCustomerId(customer.id))
-            ) &&
-            recentBookingsAvailable &&
-            missingReservationBatches.every(({ kind }) => kind === "available");
-          const referencedCustomerIds = customerIdentitiesAvailable
-            ? [
-                ...new Set(
-                  recentRows.flatMap(({ customerId, id }) => {
-                    const currentCustomerId = id
-                      ? Option.getOrUndefined(
-                          decodeDotyposCustomerId(
-                            reservationsById.get(id)?._customerId
-                          )
-                        )
-                      : undefined;
-                    const referencedCustomerId =
-                      currentCustomerId ?? customerId;
-                    return recentCustomersById.has(referencedCustomerId)
-                      ? [referencedCustomerId]
-                      : [];
-                  })
-                ),
-              ]
-            : [];
-          const newCustomerIds = customerIdentitiesAvailable
-            ? getNewCustomerIds({
-                candidateIds: referencedCustomerIds,
-                customersById: recentCustomersById,
-                endsBefore: customerActivityEndsBefore,
-                startsAt: customerActivityStartsAt,
-              })
-            : { ids: [], unavailable: true, value: 0 };
+              : { ids: [], unavailable: true, value: 0 };
           const toCustomerMetric = (
             metric: {
               readonly ids: readonly DotyposCustomerId[];
@@ -3078,12 +2893,9 @@ export class AdministrationService extends Context.Service<
                   ? uniqueCustomerIds.length
                   : 0,
             },
-            uniqueCustomersById
+            customersById
           );
-          const newCustomers = toCustomerMetric(
-            newCustomerIds,
-            recentCustomersById
-          );
+          const newCustomers = toCustomerMetric(newCustomerIds, customersById);
           return {
             ...getReservationOverview({ ranges, reservations, rows }),
             uniqueCustomers,
