@@ -23,20 +23,17 @@ describe("sanitizeVercelAnalyticsEvent", () => {
       "https://deskohub.test/admin/orders/synthetic-order-id",
       "https://deskohub.test/admin/orders/[id]",
     ],
-  ] as const)(
-    "normalizes %s operational URLs",
-    (type, url, expectedUrl) => {
-      expect(
-        sanitizeVercelAnalyticsEvent({
-          type,
-          url,
-        })
-      ).toEqual({
+  ] as const)("normalizes %s operational URLs", (type, url, expectedUrl) => {
+    expect(
+      sanitizeVercelAnalyticsEvent({
         type,
-        url: expectedUrl,
-      });
-    }
-  );
+        url,
+      })
+    ).toEqual({
+      type,
+      url: expectedUrl,
+    });
+  });
 
   test("leaves ordinary marketing URLs unchanged", () => {
     const event = {
