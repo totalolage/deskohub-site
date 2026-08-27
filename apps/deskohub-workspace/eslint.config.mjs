@@ -13,18 +13,4 @@ export default [
       },
     },
   },
-  {
-    files: ["features/checkout/backend/analytics/**/*.{ts,tsx}"],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector:
-            "ArrowFunctionExpression[body.type='CallExpression'][body.callee.type='MemberExpression'][body.callee.object.name='Effect'][body.callee.property.name='gen']",
-          message:
-            "Define Effect generator functions with Effect.fn instead of wrapping Effect.gen in an arrow function.",
-        },
-      ],
-    },
-  },
 ];

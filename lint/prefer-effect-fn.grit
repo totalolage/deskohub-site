@@ -1,0 +1,15 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/features/checkout/backend/analytics/.*\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    `$parameters => Effect.gen(function* ($generator_parameters) { $statements })` as $wrapper where {
+      register_diagnostic(
+        span = $wrapper,
+        message = "Define Effect generator functions with Effect.fn instead of wrapping Effect.gen in an arrow function.",
+        severity = "error"
+      )
+    }
+  }
+}

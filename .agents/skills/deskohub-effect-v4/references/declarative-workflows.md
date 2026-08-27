@@ -10,6 +10,10 @@ Make every non-trivial Effect workflow declarative, including service, provider,
 Continue this structure through abstraction layers until reaching simple leaf operations where direct code is clearer. Do not force a trivial leaf calculation into `Effect.Do`; extract it into a named declarative pipeline when it becomes conditional or multi-stage.
 
 Define a function implemented with an Effect generator as `Effect.fn("descriptor")(function* (...) { ... })`. Do not wrap `Effect.gen(function* (...) { ... })` in an arrow function.
+The root `lint/prefer-effect-fn.grit` custom rule enforces this convention for
+the migrated boundary. Keep custom syntax rules under `lint/` and register them
+as Biome plugins in `biome.json`; do not add them ad hoc to an application's
+ESLint configuration.
 
 Do not add a pass-through `Effect.fn` whose only behavior is renaming or reshaping arguments for an existing named Effect operation. Call the existing operation directly unless the wrapper adds real domain policy, composition, or behavior.
 

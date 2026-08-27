@@ -37,7 +37,8 @@
     "./lint/no-unknown-parameters.grit",
     "./lint/no-unknown-type-aliases.grit",
     "./lint/no-unsafe-dictionary-type.grit",
-    "./lint/no-widen-then-assert.grit"
+    "./lint/no-widen-then-assert.grit",
+    "./lint/prefer-effect-fn.grit"
   ],
   "linter": {
     "rules": {
