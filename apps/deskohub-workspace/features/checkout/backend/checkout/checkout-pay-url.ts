@@ -12,9 +12,11 @@ import {
 } from "./pay-state";
 
 export const discountCodeErrorQueryParam = "discountCodeError" as const;
+export const discountCodeErrorIdQueryParam = "discountCodeErrorId" as const;
 
 type CheckoutPayPathOptions = {
   readonly discountCodeError?: "unavailable";
+  readonly discountCodeErrorId?: string;
   readonly orderId?: WorkspaceReservationId;
 };
 
@@ -31,6 +33,12 @@ export const buildCheckoutPayPathFromToken = (
   }
   if (options.discountCodeError) {
     searchParams.set(discountCodeErrorQueryParam, options.discountCodeError);
+  }
+  if (options.discountCodeErrorId) {
+    searchParams.set(
+      discountCodeErrorIdQueryParam,
+      options.discountCodeErrorId
+    );
   }
 
   return `/${locale}/checkout/pay?${searchParams}`;

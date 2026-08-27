@@ -1,5 +1,6 @@
 const SENSITIVE_QUERY_PARAMS = new Set([
   "checkouttoken",
+  "discountcodeerrorid",
   "accesstoken",
   "invoiceid",
   "orderid",

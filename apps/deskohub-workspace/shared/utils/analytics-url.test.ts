@@ -40,4 +40,14 @@ describe("sanitizeAnalyticsUrl", () => {
 
     expect(sanitizeAnalyticsUrl(url)).toBe(url);
   });
+
+  test("strips the synthetic discount rejection identifier", () => {
+    expect(
+      sanitizeAnalyticsUrl(
+        "https://deskohub.test/en-US/checkout/pay?discountCodeError=unavailable&discountCodeErrorId=synthetic-rejection-id"
+      )
+    ).toBe(
+      "https://deskohub.test/en-US/checkout/pay?discountCodeError=unavailable"
+    );
+  });
 });

@@ -157,6 +157,35 @@ describe("CheckoutDiscountCodeForm", () => {
     await waitFor(() => expect(capture).not.toHaveBeenCalled());
   });
 
+  test("captures each rejected discount submission", async () => {
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError
+        locale="en-US"
+        payStateToken="signed-state"
+        rejectionId="synthetic-rejection-one"
+      />
+    );
+
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+
+    view.rerender(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError
+        locale="en-US"
+        payStateToken="signed-state"
+        rejectionId="synthetic-rejection-two"
+      />
+    );
+
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
+  });
+
   test("celebrates the applied adjustment without showing the code", async () => {
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"

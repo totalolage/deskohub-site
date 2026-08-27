@@ -14,6 +14,7 @@ type CheckoutDiscountCodeFormProps = {
   readonly fieldError: boolean;
   readonly locale: Locale;
   readonly payStateToken: string;
+  readonly rejectionId?: string;
 };
 
 export function CheckoutDiscountCodeForm({
@@ -22,6 +23,7 @@ export function CheckoutDiscountCodeForm({
   fieldError,
   locale,
   payStateToken,
+  rejectionId,
 }: CheckoutDiscountCodeFormProps) {
   if (appliedAdjustment) {
     return (
@@ -67,7 +69,7 @@ export function CheckoutDiscountCodeForm({
       </div>
       {fieldError && (
         <>
-          <DiscountRejectionAnalytics />
+          <DiscountRejectionAnalytics key={rejectionId} />
           <p
             className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
             id="checkout-discount-code-error"

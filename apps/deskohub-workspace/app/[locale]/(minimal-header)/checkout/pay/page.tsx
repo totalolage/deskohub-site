@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import {
   buildCheckoutPayContinuationPath,
+  discountCodeErrorIdQueryParam,
   discountCodeErrorQueryParam,
   getPayStateRestartKind,
   getSignedPayStateCheckoutSummary,
@@ -118,6 +119,10 @@ async function CheckoutPayContent({
   const discountCodeError =
     getSearchParam(resolvedSearchParams, discountCodeErrorQueryParam) ===
     "unavailable";
+  const discountCodeErrorId = getSearchParam(
+    resolvedSearchParams,
+    discountCodeErrorIdQueryParam
+  );
 
   if (!payStateToken) {
     return runWithRequestLocale(() => (
@@ -250,6 +255,7 @@ async function CheckoutPayContent({
             fieldError={discountCodeError}
             locale={locale}
             payStateToken={payStateToken}
+            rejectionId={discountCodeErrorId}
           />
         }
         freshPayUrl={freshPayUrl}
