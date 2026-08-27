@@ -107,6 +107,9 @@ export type PaymentLifecycleRepositoryError =
   | PaymentLifecycleStateError
   | SqlError;
 
+export const administrationForcedPaymentCancellationFailureCode =
+  "admin_forced_payment_cancellation";
+
 export interface IPaymentLifecycleRepository {
   readonly createPendingNexiAttempt: (input: {
     readonly workspaceReservationId: WorkspaceReservationId;

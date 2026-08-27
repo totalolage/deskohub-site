@@ -331,6 +331,7 @@ Allowed payment transitions:
 - `paid` is terminal for payment state.
 - The current Nexi card HPP contract has no documented provider expiry. Queued hold cleanup applies a local abandonment cutoff 30 minutes after `provider_order_created_at`. Before the cutoff, an operation-free order is deferred through the existing queue retry window. At or after the cutoff, only a freshly verified order with no operations and no authorized or captured amount may transition to local `expired`; any operation or non-zero amount remains pending.
 - A verified successful webhook for an already-failed, cancelled, or expired local attempt starts a durable late-payment recovery instead of directly fulfilling the released reservation. Recovery may reuse a provider-verified intact original hold or recreate the immutable accepted reservation after checking that the interval has not ended, no newer checkout reservation exists, and current availability passes. A recovered reservation transitions atomically to paid, re-redeems its released discount-code claim, and continues normal fulfillment. Unavailable or superseded recovery requires refund; ambiguous provider state requires operator review.
+- An explicit operator force-cancellation marks the active pending attempt cancelled and releases its claim before cancelling the reservation. Its stable failure reason prevents late-payment recovery from recreating the booking; a later verified settlement requires a refund.
 
 ### Fulfillment State
 

@@ -170,6 +170,7 @@ describe("dhw mutation commands", () => {
         "cancel",
         reservationId,
         "--confirm-access-credential-removed",
+        "--force",
         "--send-cancellation-email",
         "--yes",
       ],
@@ -181,6 +182,7 @@ describe("dhw mutation commands", () => {
         id: reservationId,
         input: {
           accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+          force: true,
           providerCredentialRemoved: true,
           sendCancellationEmail: true,
         },

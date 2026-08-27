@@ -172,6 +172,7 @@ export interface IWorkspaceReservationRepository {
     readonly id: WorkspaceReservationId;
     readonly cancelledAt: Temporal.Instant;
     readonly claimedAt: Temporal.Instant;
+    readonly failureCode: string | null;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
@@ -713,7 +714,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                 .set({
                   reservationState: "cancelled",
                   reservationCancelledAt: input.cancelledAt,
-                  failureCode: null,
+                  failureCode: input.failureCode,
                   updatedAt,
                 })
                 .where(

@@ -5,6 +5,10 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/fulfillment/network-details.service";
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
 import {
+  administrationForcedPaymentCancellationFailureCode,
+  PaymentLifecycleRepository,
+} from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
+import {
   SeatingMapFeatureFlagService,
   WorkspaceFeatureFlagService,
 } from "@/features/feature-flags/backend";
@@ -34,6 +38,7 @@ export class ReservationAdministrationError extends Data.TaggedError(
 interface IReservationAdministrationService {
   readonly cancel: (input: {
     readonly accessGrantUpdatedAt: string | null;
+    readonly force?: boolean;
     readonly providerCredentialRemoved: boolean;
     readonly reservationId: WorkspaceReservationId;
     readonly sendCancellationEmail: boolean;
@@ -52,6 +57,7 @@ export class ReservationAdministrationService extends Context.Service<
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
       const emails = yield* WorkspaceReservationEmailService;
+      const paymentLifecycle = yield* PaymentLifecycleRepository;
       const reservations = yield* WorkspaceReservationRepository;
       const reservationDetails = yield* WorkspaceReservationService;
 
@@ -80,7 +86,15 @@ export class ReservationAdministrationService extends Context.Service<
                 email: "not_requested",
               };
             }
-            if (!canCancelReservation(current)) {
+            const forcedPendingPayment =
+              current.paymentState === "pending" && input.force === true;
+            if (
+              !canCancelReservation(
+                current,
+                Temporal.Now.instant(),
+                forcedPendingPayment
+              )
+            ) {
               return yield* new ReservationAdministrationError({
                 code: "not_cancellable",
                 message:
@@ -111,6 +125,38 @@ export class ReservationAdministrationService extends Context.Service<
                 message:
                   "Dotypos already reports this reservation as cancelled. Use the recovery workflow instead.",
               });
+            }
+            if (current.paymentState === "pending") {
+              if (!forcedPendingPayment || !current.activePaymentAttemptId) {
+                return yield* new ReservationAdministrationError({
+                  code: "not_cancellable",
+                  message:
+                    "The reservation has a pending payment. Retry with force only after reviewing the provider payment.",
+                });
+              }
+              yield* paymentLifecycle
+                .markTerminal({
+                  id: current.activePaymentAttemptId,
+                  workspaceReservationId: current.id,
+                  state: "cancelled",
+                  failureCode:
+                    administrationForcedPaymentCancellationFailureCode,
+                })
+                .pipe(
+                  Effect.mapError((cause) =>
+                    cause._tag === "PaymentLifecycleStateError"
+                      ? new ReservationAdministrationError({
+                          code: "not_cancellable",
+                          message:
+                            "The payment changed while cancellation was starting. Refresh and review it before retrying.",
+                          cause,
+                        })
+                      : cancellationFailed(
+                          "The pending payment could not be cancelled safely.",
+                          cause
+                        )
+                  )
+                );
             }
             const claimed = yield* reservations
               .claimAdministrationCancellation({
@@ -177,6 +223,10 @@ export class ReservationAdministrationService extends Context.Service<
                 id: claimed.id,
                 cancelledAt: Temporal.Now.instant(),
                 claimedAt: claimed.updatedAt,
+                failureCode:
+                  forcedPendingPayment
+                    ? administrationForcedPaymentCancellationFailureCode
+                    : null,
               })
               .pipe(
                 Effect.tapError(() =>
@@ -221,6 +271,7 @@ export class ReservationAdministrationService extends Context.Service<
       )
     ),
     Layer.provide(WorkspaceReservationService.Default),
+    Layer.provide(PaymentLifecycleRepository.Default),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),

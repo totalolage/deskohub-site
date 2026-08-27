@@ -647,6 +647,7 @@ describe("Workspace Admin API", () => {
     expect(reservationCancellations).toEqual([
       {
         accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
+        force: false,
         providerCredentialRemoved: true,
         reservationId: reservation.id,
         sendCancellationEmail: true,

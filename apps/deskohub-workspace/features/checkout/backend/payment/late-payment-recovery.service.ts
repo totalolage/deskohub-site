@@ -25,6 +25,7 @@ import {
 } from "@/shared/utils/temporal";
 import { WorkspacePaidFulfillmentService } from "../fulfillment/paid-fulfillment.service";
 import { LatePaymentRecoveryRepository } from "../repositories/late-payment-recovery.repository";
+import { administrationForcedPaymentCancellationFailureCode } from "../repositories/payment-lifecycle.repository";
 import { createWorkspaceDotyposReservation } from "../reservation/dotypos-reservation.adapter";
 import {
   getWorkspaceReservationInterval,
@@ -250,6 +251,17 @@ export class LatePaymentRecoveryService extends Context.Service<
               paymentAttemptId: claimed.paymentAttemptId,
               workspaceReservationId: reservation.id,
               failureCode: "late_payment_superseded_attempt",
+            });
+            return "refund_required" as const;
+          }
+          if (
+            reservation.failureCode ===
+            administrationForcedPaymentCancellationFailureCode
+          ) {
+            yield* settleRefund({
+              paymentAttemptId: claimed.paymentAttemptId,
+              workspaceReservationId: reservation.id,
+              failureCode: "late_payment_after_administration_cancellation",
             });
             return "refund_required" as const;
           }
