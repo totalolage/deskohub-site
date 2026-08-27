@@ -53,6 +53,8 @@ Nexi does not publish an expiry guarantee for the current card payment page. Onc
 
 Meeting-room checkout remains eligible after its start time while its exclusive end has not passed. A customer may not begin a new payment after the reserved period has ended.
 
+After fulfillment, "Book again" may carry only the reusable product shape into a fresh reservation. It never carries the old date or time, customer or invoice details, accepted price, discount, payment state, provider identifiers, or access data. If Workspace cannot recover a trustworthy product shape, the action starts a generic new reservation for that family.
+
 ## Payment and fulfillment
 
 A positive payable amount uses the external payment flow. A total of exactly zero completes internally without contacting the payment provider. Both paths preserve the same accepted-price, discount-evidence, reservation, and fulfillment guarantees.

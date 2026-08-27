@@ -1,5 +1,7 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
+import type { ReactElement } from "react";
+import type { CoworkReservationForm } from "./cowork-reservation-form";
 
 mock.module("next/root-params", () => ({
   locale: () => Promise.resolve("en-US"),
@@ -56,13 +58,24 @@ test("preloads only the default selected cowork quote", async () => {
 });
 
 test("preloads the selection resolved from reservation query values", async () => {
-  await renderCoworkReservationContent({
+  const form = (await renderCoworkReservationContent({
     locale: "cs-CZ",
     searchParams: {
-      entryTier: "plus",
-      coffee: "false",
+      entryTier: "profi",
+      coffee: "true",
       date: "2099-08-01",
+      monitorOption: "2x27-qhd",
     },
+  })) as ReactElement<Parameters<typeof CoworkReservationForm>[0]>;
+
+  expect(form.props.initialValues).toMatchObject({
+    entryTier: "profi",
+    coffee: true,
+    date: "2099-08-01",
+    monitorOption: "2x27-qhd",
+    name: "",
+    email: "",
+    phone: "",
   });
 
   expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toEqual([
@@ -72,7 +85,7 @@ test("preloads the selection resolved from reservation query values", async () =
         kind: "cowork",
         details: {
           kind: "cowork",
-          entryTier: "plus",
+          entryTier: "profi",
           coffee: true,
           date: "2099-08-01",
         },

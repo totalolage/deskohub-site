@@ -562,6 +562,7 @@
   "checkoutStatusFulfillmentFailedContactButton": "Zaslat žádost o podporu",
   "checkoutStatusFulfillmentFailedContactMessage": "Dobrý den,\n\nmoje platba byla přijata, ale potvrzovací email k rezervaci nedorazil.\n\nČíslo objednávky: {orderId}\nRezervace: {reservation}, {date}\n\nProsím pomozte mi získat bezpečný přístupový odkaz.",
   "checkoutStatusReserveAgain": "Spustit novou rezervaci",
+  "checkoutStatusBookAgain": "Rezervovat znovu",
   "checkoutStatusBackHome": "Zpět domů",
   "reservationEmailTierLabel": "Vstup",
   "reservationEmailReservationLabel": "Rezervace",

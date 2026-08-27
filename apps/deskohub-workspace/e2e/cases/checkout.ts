@@ -24,6 +24,7 @@ import {
 import {
   assertFulfilledStatusScript,
   getAssertFulfillmentFailedSupportScript,
+  getAssertRepeatReservationScript,
 } from "../browser-scripts";
 import {
   completeNexiHostedPayment,
@@ -310,6 +311,13 @@ const restartReservationAfterFulfillment = ({
         return Date.now() - readyAt >= 1000;
       })()`,
       { timeoutMs: config.timeouts.uiTransition }
+    );
+    yield* evalBrowserScript(
+      "assert repeat reservation defaults",
+      run,
+      session,
+      getAssertRepeatReservationScript(data),
+      { logOutput: false, timeoutMs: config.timeouts.browserAction }
     );
   });
 
