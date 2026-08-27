@@ -8,7 +8,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote as buildCoworkPriceQuote,
@@ -28,12 +28,18 @@ const buildCoworkReservationQuote = (
 });
 
 const applyDiscountCodeForm = mock();
+const capture = mock();
+let analyticsAccepted = true;
 
 mock.module("@/features/checkout/actions/apply-discount-code", () => ({
   applyDiscountCodeForm,
 }));
 mock.module("@/features/reservation/actions/submit-reservation", () => ({
   submitReservation: mock(),
+}));
+mock.module("posthog-js", () => ({ default: { capture } }));
+mock.module("@/features/cookie-consent", () => ({
+  useCookieConsent: () => ({ isAccepted: () => analyticsAccepted }),
 }));
 
 describe("CheckoutDiscountCodeForm", () => {
@@ -42,6 +48,8 @@ describe("CheckoutDiscountCodeForm", () => {
   });
 
   beforeEach(() => {
+    analyticsAccepted = true;
+    capture.mockClear();
     workspaceUseAction.mockReturnValue({
       execute: mock(),
       isExecuting: false,
@@ -113,6 +121,69 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(error.className).toContain("bg-burned-orange/8");
     expect(error.className).toContain("text-burned-orange-ink");
     expect(view.getByRole("textbox").getAttribute("aria-invalid")).toBe("true");
+    await waitFor(() => {
+      expect(capture).toHaveBeenCalledWith("pre-payment outcome", {
+        outcome: "discount_rejected",
+      });
+    });
+  });
+
+  test("does not capture a rejection that occurred before analytics consent", async () => {
+    analyticsAccepted = false;
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    await waitFor(() => expect(capture).not.toHaveBeenCalled());
+
+    analyticsAccepted = true;
+    view.rerender(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    await waitFor(() => expect(capture).not.toHaveBeenCalled());
+  });
+
+  test("captures each rejected discount submission", async () => {
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError
+        locale="en-US"
+        payStateToken="signed-state"
+        rejectionId="synthetic-rejection-one"
+      />
+    );
+
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+
+    view.rerender(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError
+        locale="en-US"
+        payStateToken="signed-state"
+        rejectionId="synthetic-rejection-two"
+      />
+    );
+
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
   });
 
   test("celebrates the applied adjustment without showing the code", async () => {

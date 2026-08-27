@@ -2,7 +2,7 @@ import {
   PostHogDistinctId,
   PostHogSessionId,
 } from "@deskohub/posthog/identifiers";
-import { Effect, Option, Schema } from "effect";
+import { Context, Effect, Option, Schema } from "effect";
 import { type CookieStore, cookieStoreFromHeader } from "posthog-node";
 import {
   getAcceptedConsentCategoriesFromCookieValue,
@@ -21,6 +21,11 @@ export interface PostHogRequestContext {
   readonly distinctId?: PostHogDistinctId;
   readonly sessionId?: PostHogSessionId;
 }
+
+export const CurrentPostHogRequestContext = Context.Reference(
+  "@deskohub-workspace/analytics/CurrentPostHogRequestContext",
+  { defaultValue: (): PostHogRequestContext => ({}) }
+);
 
 interface PostHogCookieValues {
   readonly distinctId?: unknown;
@@ -101,9 +106,10 @@ export function getPostHogRequestContextFromRequestHeadersWithDiagnostics(
 export function logUnexpectedConsentCookieReasons(
   reasons: readonly UnexpectedConsentCookieReason[]
 ) {
-  return reasons.length
-    ? Effect.logWarning("Unexpected cookie consent value", { reasons })
-    : Effect.void;
+  return Effect.logWarning("Unexpected cookie consent value", { reasons }).pipe(
+    Effect.when(Effect.succeed(reasons.length > 0)),
+    Effect.asVoid
+  );
 }
 
 function getPostHogRequestContextFromCookies(cookies: CookieStore) {

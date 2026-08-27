@@ -2,7 +2,8 @@
 
 import { track } from "@vercel/analytics/react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import posthog from "posthog-js";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   type CheckoutSessionId,
   createCheckoutAttemptId,
@@ -11,7 +12,10 @@ import {
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
-import { getReservationAnalyticsProperties } from "@/features/reservation/reservation-analytics";
+import {
+  getReservationAnalyticsProperties,
+  type ReservationPrePaymentOutcome,
+} from "@/features/reservation/reservation-analytics";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
@@ -46,6 +50,13 @@ export function useReservationCheckout({
     () => getReservationAnalyticsProperties(searchParams),
     [searchParams]
   );
+  const capturePrePaymentOutcome = useCallback(
+    (outcome: ReservationPrePaymentOutcome) => {
+      if (!isAccepted("analytics")) return;
+      posthog.capture("pre-payment outcome", { outcome });
+    },
+    [isAccepted]
+  );
   const {
     execute: prepareCheckout,
     isExecuting,
@@ -77,6 +88,7 @@ export function useReservationCheckout({
       );
     },
     onTransportError: () => {
+      capturePrePaymentOutcome("transport_error");
       setSubmissionError(m.reservationErrorMessage({}, { locale }));
     },
   });
@@ -112,6 +124,7 @@ export function useReservationCheckout({
   };
 
   return {
+    capturePrePaymentOutcome,
     clearSubmissionError: () => setSubmissionError(undefined),
     hasPreparedPayRedirect,
     isPreparingCheckout: isExecuting || hasPreparedPayRedirect,

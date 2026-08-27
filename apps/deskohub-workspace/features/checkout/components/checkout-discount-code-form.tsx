@@ -6,6 +6,7 @@ import { type Locale, m } from "@/features/i18n";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { CheckoutDiscountCodeSubmitButton } from "./checkout-discount-code-submit-button";
+import { DiscountRejectionAnalytics } from "./discount-rejection-analytics";
 
 type CheckoutDiscountCodeFormProps = {
   readonly appliedAdjustment?: DiscountAdjustment;
@@ -13,6 +14,7 @@ type CheckoutDiscountCodeFormProps = {
   readonly fieldError: boolean;
   readonly locale: Locale;
   readonly payStateToken: string;
+  readonly rejectionId?: string;
 };
 
 export function CheckoutDiscountCodeForm({
@@ -21,6 +23,7 @@ export function CheckoutDiscountCodeForm({
   fieldError,
   locale,
   payStateToken,
+  rejectionId,
 }: CheckoutDiscountCodeFormProps) {
   if (appliedAdjustment) {
     return (
@@ -65,19 +68,22 @@ export function CheckoutDiscountCodeForm({
         <CheckoutDiscountCodeSubmitButton locale={locale} />
       </div>
       {fieldError && (
-        <p
-          className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
-          id="checkout-discount-code-error"
-          role="alert"
-        >
-          <AlertTriangle
-            aria-hidden="true"
-            className="mt-0.5 size-4 shrink-0 text-burned-orange"
-          />
-          <span className="min-w-0">
-            {m.checkoutDiscountCodeUnavailable({}, { locale })}
-          </span>
-        </p>
+        <>
+          <DiscountRejectionAnalytics key={rejectionId} />
+          <p
+            className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
+            id="checkout-discount-code-error"
+            role="alert"
+          >
+            <AlertTriangle
+              aria-hidden="true"
+              className="mt-0.5 size-4 shrink-0 text-burned-orange"
+            />
+            <span className="min-w-0">
+              {m.checkoutDiscountCodeUnavailable({}, { locale })}
+            </span>
+          </p>
+        </>
       )}
     </form>
   );

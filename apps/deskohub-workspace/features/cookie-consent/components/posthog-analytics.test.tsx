@@ -135,6 +135,10 @@ describe("PostHogAnalytics feature flag overrides", () => {
     });
 
     expect(init).toHaveBeenCalledTimes(1);
+    expect(init).toHaveBeenCalledWith(
+      "phc_test",
+      expect.objectContaining({ capture_pageview: "history_change" })
+    );
     expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
       flags: { discount_codes: true },
     });

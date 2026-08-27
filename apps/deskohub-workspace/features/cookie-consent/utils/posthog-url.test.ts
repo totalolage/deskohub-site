@@ -15,7 +15,7 @@ describe("createPostHogPageUrl", () => {
       createPostHogPageUrl(
         "https://deskohub.test/reservation/status/order-id?x-vercel-protection-bypass=secret&step=done"
       )
-    ).toBe("https://deskohub.test/reservation/status/order-id?step=done");
+    ).toBe("https://deskohub.test/reservation/status/[id]?step=done");
   });
 
   test("strips reservation access capability tokens", () => {
@@ -23,12 +23,12 @@ describe("createPostHogPageUrl", () => {
       createPostHogPageUrl(
         "https://deskohub.test/reservation/access/order-id?accessToken=signed-capability&step=access"
       )
-    ).toBe("https://deskohub.test/reservation/access/order-id?step=access");
+    ).toBe("https://deskohub.test/reservation/access/[id]?step=access");
     expect(
       createPostHogPageUrl(
         "https://deskohub.test/reservation/invoice/order-id?accessToken=signed-capability&step=invoice"
       )
-    ).toBe("https://deskohub.test/reservation/invoice/order-id?step=invoice");
+    ).toBe("https://deskohub.test/reservation/invoice/[id]?step=invoice");
   });
 
   test("continues to strip the retired reservation status token name", () => {
@@ -36,7 +36,7 @@ describe("createPostHogPageUrl", () => {
       createPostHogPageUrl(
         "https://deskohub.test/reservation/status/order-id?statusToken=retired-capability&outcome=success"
       )
-    ).toBe("https://deskohub.test/reservation/status/order-id?outcome=success");
+    ).toBe("https://deskohub.test/reservation/status/[id]?outcome=success");
   });
 
   test("preserves sale-banner attribution on PostHog pageviews", () => {
@@ -67,9 +67,8 @@ describe("createPostHogPageUrl", () => {
     ).toEqual({
       $current_url: "https://deskohub.test/checkout/pay?step=pay",
       $referrer:
-        "https://deskohub.test/checkout/pay/return/order-id?outcome=success",
-      $initial_current_url:
-        "https://deskohub.test/checkout/pay/return/order-id",
+        "https://deskohub.test/checkout/pay/return/[id]?outcome=success",
+      $initial_current_url: "https://deskohub.test/checkout/pay/return/[id]",
       $initial_referrer:
         "https://deskohub.test/reservation/cowork?step=details",
       "deployment.environment.name": "preview",

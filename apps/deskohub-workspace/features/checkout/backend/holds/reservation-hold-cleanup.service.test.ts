@@ -5,6 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
+import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
 
 describe("ReservationHoldCleanupService", () => {
@@ -289,6 +290,7 @@ describe("ReservationHoldCleanupService", () => {
         timestamp: Temporal.Now.instant(),
       })
     );
+    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({ orderId, checkedAt });
@@ -318,7 +320,7 @@ describe("ReservationHoldCleanupService", () => {
                 markCancelled,
               }),
               Layer.mock(PostHogEventService, {
-                capture: () => Effect.void,
+                capture,
               }),
               Layer.mock(DotyposService, {
                 cancelReservation,
@@ -344,6 +346,12 @@ describe("ReservationHoldCleanupService", () => {
       cancelledAt: expect.any(Temporal.Instant),
       holdExpiredAt: checkedAt,
     });
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        distinctId: orderId,
+        event: "reservation abandoned",
+      })
+    );
   });
 
   test("does not expire or cancel a payment that cannot be verified", async () => {

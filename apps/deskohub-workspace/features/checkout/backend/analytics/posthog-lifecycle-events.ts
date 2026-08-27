@@ -5,13 +5,21 @@ import {
 import { Effect } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import type { PaymentAttempt } from "@/features/checkout/backend/repositories/payment-attempt.repository";
-import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type {
+  CheckoutAttemptId,
+  PaymentAttemptId,
+} from "@/features/checkout/checkout-identifiers";
 import { toWorkspaceMoneyMajorAmount } from "@/features/checkout/workspace-money";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import type {
+  ReservationAvailabilityResult,
+  ReservationPrePaymentOutcome,
+} from "@/features/reservation/reservation-analytics";
 import {
   type PostHogEventProperties,
   PostHogEventService,
 } from "@/shared/backend/analytics/posthog-event.service";
+import { CurrentPostHogRequestContext } from "@/shared/backend/analytics/posthog-request-context";
 
 type LifecycleEventTimestamp = WorkspaceReservation["createdAt"];
 
@@ -38,14 +46,14 @@ const paymentProperties = (
   provider_order_id: attempt.providerOrderId ?? undefined,
 });
 
-const captureLifecycleEvent = (input: {
-  readonly distinctId: WorkspaceReservationId;
-  readonly event: string;
-  readonly id: WorkspaceReservationId | PaymentAttemptId;
-  readonly properties: PostHogEventProperties;
-  readonly timestamp: LifecycleEventTimestamp;
-}) =>
-  Effect.gen(function* () {
+const captureLifecycleEvent = Effect.fn("posthog.captureLifecycleEvent")(
+  function* (input: {
+    readonly distinctId: WorkspaceReservationId;
+    readonly event: string;
+    readonly id: WorkspaceReservationId | PaymentAttemptId;
+    readonly properties: PostHogEventProperties;
+    readonly timestamp: LifecycleEventTimestamp;
+  }) {
     const posthog = yield* PostHogEventService;
     yield* posthog.capture({
       distinctId: PostHogDistinctId.make(input.distinctId),
@@ -54,16 +62,28 @@ const captureLifecycleEvent = (input: {
       timestamp: input.timestamp,
       uuid: PostHogEventId.make(`${input.id}:${input.event}`),
     });
-  });
+  }
+);
 
-export const captureReservationStarted = (input: {
+export const captureReservationStarted = Effect.fn(
+  "posthog.captureReservationStarted"
+)(function* (input: {
   readonly reservation: Pick<
     WorkspaceReservation,
     "id" | "dotyposReservationId"
   >;
   readonly timestamp: LifecycleEventTimestamp;
-}) =>
-  captureLifecycleEvent({
+}) {
+  const posthog = yield* PostHogEventService;
+  const requestContext = yield* CurrentPostHogRequestContext;
+  if (requestContext.distinctId) {
+    yield* posthog.alias({
+      distinctId: requestContext.distinctId,
+      alias: PostHogDistinctId.make(input.reservation.id),
+    });
+  }
+
+  yield* captureLifecycleEvent({
     distinctId: input.reservation.id,
     event: "reservation started",
     id: input.reservation.id,
@@ -72,6 +92,55 @@ export const captureReservationStarted = (input: {
       dotypos_reservation_id:
         input.reservation.dotyposReservationId ?? undefined,
     },
+    timestamp: input.timestamp,
+  });
+});
+
+const captureRequestEvent = Effect.fn("posthog.captureRequestEvent")(
+  function* (input: {
+    readonly event: string;
+    readonly id: CheckoutAttemptId;
+    readonly result: string;
+    readonly properties: PostHogEventProperties;
+    readonly timestamp: LifecycleEventTimestamp;
+  }) {
+    const { distinctId } = yield* CurrentPostHogRequestContext;
+    if (!distinctId) return;
+
+    const posthog = yield* PostHogEventService;
+    yield* posthog.capture({
+      distinctId,
+      event: input.event,
+      properties: input.properties,
+      timestamp: input.timestamp,
+      uuid: PostHogEventId.make(`${input.id}:${input.event}:${input.result}`),
+    });
+  }
+);
+
+export const captureAvailabilityResult = (input: {
+  readonly checkoutAttemptId: CheckoutAttemptId;
+  readonly result: ReservationAvailabilityResult;
+  readonly timestamp: LifecycleEventTimestamp;
+}) =>
+  captureRequestEvent({
+    event: "availability result",
+    id: input.checkoutAttemptId,
+    properties: { result: input.result },
+    result: input.result,
+    timestamp: input.timestamp,
+  });
+
+export const capturePrePaymentOutcome = (input: {
+  readonly checkoutAttemptId: CheckoutAttemptId;
+  readonly outcome: ReservationPrePaymentOutcome;
+  readonly timestamp: LifecycleEventTimestamp;
+}) =>
+  captureRequestEvent({
+    event: "pre-payment outcome",
+    id: input.checkoutAttemptId,
+    properties: { outcome: input.outcome },
+    result: input.outcome,
     timestamp: input.timestamp,
   });
 
@@ -167,8 +236,7 @@ export const capturePaymentAbandoned = (input: {
 
 export const capturePaymentFailed = (input: {
   readonly attempt: PaymentLifecycleAttempt;
-  readonly failureCode: string;
-  readonly failureReason: string;
+  readonly failureReason: "nexi_hpp_create_failed" | "nexi_payment_failed";
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   captureLifecycleEvent({
@@ -177,7 +245,6 @@ export const capturePaymentFailed = (input: {
     id: input.attempt.id,
     properties: {
       ...paymentProperties(input.attempt),
-      failure_code: input.failureCode,
       failure_reason: input.failureReason,
     },
     timestamp: input.timestamp,

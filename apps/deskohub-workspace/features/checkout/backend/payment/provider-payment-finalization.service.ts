@@ -351,10 +351,6 @@ function makeProviderPaymentFinalizationServiceLayer(
                 if (terminalState === "failed") {
                   yield* capturePaymentFailed({
                     attempt: terminalSuccess.attempt,
-                    failureCode:
-                      terminalSuccess.attempt.lastProviderStatus ??
-                      terminalSuccess.attempt.failureCode ??
-                      "nexi_payment_failed",
                     failureReason: "nexi_payment_failed",
                     timestamp: terminalSuccess.timestamp,
                   }).pipe(

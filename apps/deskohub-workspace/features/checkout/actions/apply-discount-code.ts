@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { Effect, Layer, Predicate } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import {
@@ -54,6 +55,7 @@ export async function applyDiscountCodeForm(
   redirect(
     buildCheckoutPayPathFromToken(locale, payStateToken, {
       discountCodeError: "unavailable",
+      discountCodeErrorId: randomUUID(),
     }),
     RedirectType.replace
   );

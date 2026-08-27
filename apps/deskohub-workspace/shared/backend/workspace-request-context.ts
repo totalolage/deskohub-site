@@ -1,21 +1,28 @@
 import { Effect } from "effect";
 import {
-  getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics,
+  CurrentPostHogRequestContext,
+  getPostHogRequestContextFromRequestHeadersWithDiagnostics,
   logUnexpectedConsentCookieReasons,
-} from "./logging/posthog-log-annotations";
+} from "./analytics/posthog-request-context";
+import { getPostHogLogAnnotationsFromCookieValues } from "./logging/posthog-log-annotations";
 
 export const withWorkspaceRequestContext = (headers: Headers) =>
   function provideWorkspaceRequestContext<A, E, R>(
     effect: Effect.Effect<A, E, R>
   ) {
     return Effect.sync(() =>
-      getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics(headers)
+      getPostHogRequestContextFromRequestHeadersWithDiagnostics(headers)
     ).pipe(
-      Effect.flatMap(({ annotations, unexpectedConsentCookieReasons }) =>
+      Effect.flatMap(({ context, unexpectedConsentCookieReasons }) =>
         Effect.andThen(
           logUnexpectedConsentCookieReasons(unexpectedConsentCookieReasons),
           effect
-        ).pipe(Effect.annotateLogs(annotations))
+        ).pipe(
+          Effect.annotateLogs(
+            getPostHogLogAnnotationsFromCookieValues(context)
+          ),
+          Effect.provideService(CurrentPostHogRequestContext, context)
+        )
       )
     );
   };
