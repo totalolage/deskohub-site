@@ -46,14 +46,14 @@ const paymentProperties = (
   provider_order_id: attempt.providerOrderId ?? undefined,
 });
 
-const captureLifecycleEvent = (input: {
-  readonly distinctId: WorkspaceReservationId;
-  readonly event: string;
-  readonly id: WorkspaceReservationId | PaymentAttemptId;
-  readonly properties: PostHogEventProperties;
-  readonly timestamp: LifecycleEventTimestamp;
-}) =>
-  Effect.gen(function* () {
+const captureLifecycleEvent = Effect.fn("posthog.captureLifecycleEvent")(
+  function* (input: {
+    readonly distinctId: WorkspaceReservationId;
+    readonly event: string;
+    readonly id: WorkspaceReservationId | PaymentAttemptId;
+    readonly properties: PostHogEventProperties;
+    readonly timestamp: LifecycleEventTimestamp;
+  }) {
     const posthog = yield* PostHogEventService;
     yield* posthog.capture({
       distinctId: PostHogDistinctId.make(input.distinctId),
@@ -62,46 +62,48 @@ const captureLifecycleEvent = (input: {
       timestamp: input.timestamp,
       uuid: PostHogEventId.make(`${input.id}:${input.event}`),
     });
-  });
+  }
+);
 
-export const captureReservationStarted = (input: {
+export const captureReservationStarted = Effect.fn(
+  "posthog.captureReservationStarted"
+)(function* (input: {
   readonly reservation: Pick<
     WorkspaceReservation,
     "id" | "dotyposReservationId"
   >;
   readonly timestamp: LifecycleEventTimestamp;
-}) =>
-  Effect.gen(function* () {
-    const posthog = yield* PostHogEventService;
-    const requestContext = yield* CurrentPostHogRequestContext;
-    if (requestContext.distinctId) {
-      yield* posthog.alias({
-        distinctId: requestContext.distinctId,
-        alias: PostHogDistinctId.make(input.reservation.id),
-      });
-    }
-
-    yield* captureLifecycleEvent({
-      distinctId: input.reservation.id,
-      event: "reservation started",
-      id: input.reservation.id,
-      properties: {
-        ...reservationProperties(input.reservation),
-        dotypos_reservation_id:
-          input.reservation.dotyposReservationId ?? undefined,
-      },
-      timestamp: input.timestamp,
+}) {
+  const posthog = yield* PostHogEventService;
+  const requestContext = yield* CurrentPostHogRequestContext;
+  if (requestContext.distinctId) {
+    yield* posthog.alias({
+      distinctId: requestContext.distinctId,
+      alias: PostHogDistinctId.make(input.reservation.id),
     });
-  });
+  }
 
-const captureRequestEvent = (input: {
-  readonly event: string;
-  readonly id: CheckoutAttemptId;
-  readonly result: string;
-  readonly properties: PostHogEventProperties;
-  readonly timestamp: LifecycleEventTimestamp;
-}) =>
-  Effect.gen(function* () {
+  yield* captureLifecycleEvent({
+    distinctId: input.reservation.id,
+    event: "reservation started",
+    id: input.reservation.id,
+    properties: {
+      ...reservationProperties(input.reservation),
+      dotypos_reservation_id:
+        input.reservation.dotyposReservationId ?? undefined,
+    },
+    timestamp: input.timestamp,
+  });
+});
+
+const captureRequestEvent = Effect.fn("posthog.captureRequestEvent")(
+  function* (input: {
+    readonly event: string;
+    readonly id: CheckoutAttemptId;
+    readonly result: string;
+    readonly properties: PostHogEventProperties;
+    readonly timestamp: LifecycleEventTimestamp;
+  }) {
     const { distinctId } = yield* CurrentPostHogRequestContext;
     if (!distinctId) return;
 
@@ -113,7 +115,8 @@ const captureRequestEvent = (input: {
       timestamp: input.timestamp,
       uuid: PostHogEventId.make(`${input.id}:${input.event}:${input.result}`),
     });
-  });
+  }
+);
 
 export const captureAvailabilityResult = (input: {
   readonly checkoutAttemptId: CheckoutAttemptId;
