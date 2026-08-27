@@ -51,7 +51,7 @@ The customer reservation-activity chart is a separate bounded projection over th
 
 The Overview activity counts use live Dotypos booking start dates intersected with the reservations known to Workspace. If Dotypos is unavailable, the affected count is shown as unavailable rather than replaced with a locally derived value that answers a different question.
 
-The Overview customer activity uses the same seven-day Prague calendar range. Unique customers are distinct Dotypos customer IDs on the linked live bookings that start in that range. New customers are Workspace-referenced customers whose Dotypos `created` timestamp falls in the range. Resolve current booking customer IDs before falling back to the stored Workspace customer ID. If live bookings or required customer creation timestamps are unavailable, mark the affected metric unavailable instead of returning a partial count.
+The Overview customer activity uses the same seven-day Prague calendar range. Unique customers are distinct Dotypos customer IDs on the linked live bookings that start in that range. New customers are the subset of those unique customers whose Dotypos `created` timestamp falls in the range. Resolve current booking customer IDs before falling back to the stored Workspace customer ID. If live bookings or required customer creation timestamps are unavailable, mark the affected metric unavailable instead of returning a partial count.
 
 ## PostHog history configuration
 

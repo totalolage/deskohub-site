@@ -605,17 +605,11 @@ describe("AdministrationService", () => {
       "failed-today",
     ];
     const listInputs: {
-      readonly customerId?: string;
-      readonly customerIds?: readonly string[];
-      readonly ids?: readonly string[];
       readonly order?: string;
     }[] = [];
     const customerListInputs: {
-      readonly createdAtOrAfter?: string;
-      readonly createdBefore?: string;
-      readonly ids?: readonly string[];
+      readonly ids: readonly string[];
     }[] = [];
-    let historicalReservationsUnavailable = false;
     let missingCustomerCreationTime = false;
     let reservationsUnavailable = false;
     const atTime = (date: Temporal.PlainDate, hour: number) =>
@@ -636,22 +630,18 @@ describe("AdministrationService", () => {
       status: "CONFIRMED" as const,
     });
     const customerCreatedAt = new Map([
+      [
+        "customer-returning",
+        atTime(currentDate.subtract({ days: 30 }), 8).toString(),
+      ],
       ["customer-new-a", atTime(currentDate, 8).toString()],
       ["customer-new-b", atTime(currentDate, 9).toString()],
-      ["customer-reassigned-old", atTime(currentDate, 7).toString()],
       ["customer-reassigned", atTime(currentDate, 10).toString()],
-      ["customer-new-from-old-row", atTime(currentDate, 12).toString()],
       [
         "customer-new-c",
         atTime(currentDate.subtract({ days: 30 }), 10).toString(),
       ],
-      ["customer-new-d", atTime(currentDate, 11).toString()],
     ]);
-    const providerOnlyRecentCustomers = Array.from(
-      { length: 75 },
-      (_, index) =>
-        [`provider-only-${index}`, atTime(currentDate, 6).toString()] as const
-    );
     const rowCustomerIds = {
       "last-week": "customer-returning",
       today: "customer-new-a",
@@ -659,7 +649,6 @@ describe("AdministrationService", () => {
       "cancelled-today": "customer-new-a",
       "new-today": "customer-new-b",
       "failed-today": "customer-new-c",
-      "old-booking": "customer-stale-old",
     } as const;
     const rangeRows = linkedIds.map((id) => ({
       id,
@@ -669,35 +658,6 @@ describe("AdministrationService", () => {
       paymentState: "paid",
       reservationState: "confirmed",
     }));
-    const recentCustomerRows = [
-      ...rangeRows.filter(({ id }) =>
-        ["today", "cancelled-today", "new-today", "failed-today"].includes(id)
-      ),
-      {
-        id: "old-booking",
-        customerId: "customer-stale-old",
-        failureCode: null,
-        fulfillmentState: "fulfilled",
-        paymentState: "paid",
-        reservationState: "confirmed",
-      },
-      {
-        id: null,
-        customerId: "customer-new-d",
-        failureCode: null,
-        fulfillmentState: "not_started",
-        paymentState: "not_started",
-        reservationState: "draft",
-      },
-      {
-        id: null,
-        customerId: "customer-new-from-old-row",
-        failureCode: null,
-        fulfillmentState: "not_started",
-        paymentState: "not_started",
-        reservationState: "draft",
-      },
-    ];
     const overviewReservations = [
       providerReservation(
         "last-week",
@@ -731,8 +691,6 @@ describe("AdministrationService", () => {
       ),
       providerReservation("unlinked", "customer-unlinked", currentDate),
     ];
-    let selectCall = 0;
-
     const loadOverview = () =>
       Effect.gen(function* () {
         const administration = yield* AdministrationService;
@@ -746,12 +704,7 @@ describe("AdministrationService", () => {
                   WorkspaceDatabase,
                   WorkspaceDatabase.of({
                     db: {
-                      select: () =>
-                        makeQuery(
-                          selectCall++ % 2 === 0
-                            ? rangeRows
-                            : recentCustomerRows
-                        ),
+                      select: () => makeQuery(rangeRows),
                     } as never,
                   })
                 ),
@@ -759,25 +712,11 @@ describe("AdministrationService", () => {
                   getCustomers: (options) =>
                     Effect.sync(() => {
                       customerListInputs.push(options);
-                      if ("createdAtOrAfter" in options) {
-                        return [
-                          ...customerCreatedAt,
-                          ...providerOnlyRecentCustomers,
-                        ]
-                          .filter(([id]) => id !== "customer-new-c")
-                          .map(([id, created]) => ({
-                            created:
-                              missingCustomerCreationTime &&
-                              id === "customer-new-a"
-                                ? null
-                                : created,
-                            firstName: id.replace("customer-", ""),
-                            id,
-                          }));
-                      }
-                      const ids = "ids" in options ? options.ids : [];
-                      return ids.map((id) => ({
-                        created: customerCreatedAt.get(id),
+                      return options.ids.map((id) => ({
+                        created:
+                          missingCustomerCreationTime && id === "customer-new-a"
+                            ? null
+                            : customerCreatedAt.get(id),
                         firstName: id.replace("customer-", ""),
                         id,
                       }));
@@ -791,59 +730,6 @@ describe("AdministrationService", () => {
                           service: "Dotypos",
                           statusCode: 503,
                         })
-                      );
-                    }
-                    if (
-                      historicalReservationsUnavailable &&
-                      (input.customerIds?.includes("customer-reassigned-old") ||
-                        input.ids)
-                    ) {
-                      return Effect.fail(
-                        new ExternalAPIError({
-                          operation: "listReservations",
-                          service: "Dotypos",
-                          statusCode: 503,
-                        })
-                      );
-                    }
-                    if (input.ids) {
-                      return Effect.succeed(
-                        [
-                          ...overviewReservations,
-                          providerReservation(
-                            "old-booking",
-                            "customer-reassigned-old",
-                            currentDate.subtract({ days: 60 })
-                          ),
-                        ].filter(({ id }) => input.ids?.includes(id))
-                      );
-                    }
-                    if (input.customerId) {
-                      return Effect.succeed(
-                        [
-                          ...overviewReservations,
-                          providerReservation(
-                            "old-booking",
-                            "customer-reassigned-old",
-                            currentDate.subtract({ days: 60 })
-                          ),
-                        ].filter(
-                          ({ _customerId }) => _customerId === input.customerId
-                        )
-                      );
-                    }
-                    if (input.customerIds) {
-                      return Effect.succeed(
-                        [
-                          ...overviewReservations,
-                          providerReservation(
-                            "old-booking",
-                            "customer-reassigned-old",
-                            currentDate.subtract({ days: 60 })
-                          ),
-                        ].filter(({ _customerId }) =>
-                          input.customerIds?.includes(_customerId)
-                        )
                       );
                     }
                     return Effect.succeed(overviewReservations);
@@ -865,19 +751,18 @@ describe("AdministrationService", () => {
       );
     const result = await loadOverview();
 
+    expect(listInputs).toHaveLength(1);
     expect(listInputs[0]).toMatchObject({ order: "startDateAscending" });
-    expect(listInputs.filter(({ customerId }) => customerId)).toHaveLength(0);
-    const customerIdBatches = listInputs.flatMap(({ customerIds }) =>
-      customerIds ? [customerIds] : []
-    );
-    expect(customerIdBatches).toHaveLength(2);
-    expect(customerIdBatches.every((ids) => ids.length <= 50)).toBe(true);
-    expect(customerIdBatches.flat()).toHaveLength(81);
-    expect(listInputs.filter(({ ids }) => ids)).toHaveLength(0);
-    expect(customerListInputs).toContainEqual({
-      createdAtOrAfter: atTime(currentDate.subtract({ days: 6 }), 0).toString(),
-      createdBefore: atTime(currentDate.add({ days: 1 }), 0).toString(),
-    });
+    expect(customerListInputs).toEqual([
+      {
+        ids: [
+          "customer-reassigned",
+          "customer-new-b",
+          "customer-new-a",
+          "customer-returning",
+        ],
+      },
+    ]);
     expect(result.today).toEqual({
       completed: 1,
       unavailable: false,
@@ -926,26 +811,11 @@ describe("AdministrationService", () => {
       unavailable: false,
       value: 4,
     });
+    expect(result.newCustomers.value).toBeLessThanOrEqual(
+      result.uniqueCustomers.value
+    );
     expect(result.newCustomers).toEqual({
       customers: [
-        {
-          customer: {
-            displayName: "new-from-old-row",
-            email: null,
-            id: "customer-new-from-old-row",
-            phone: null,
-          },
-          customerId: "customer-new-from-old-row",
-        },
-        {
-          customer: {
-            displayName: "new-d",
-            email: null,
-            id: "customer-new-d",
-            phone: null,
-          },
-          customerId: "customer-new-d",
-        },
         {
           customer: {
             displayName: "reassigned",
@@ -955,9 +825,27 @@ describe("AdministrationService", () => {
           },
           customerId: "customer-reassigned",
         },
+        {
+          customer: {
+            displayName: "new-b",
+            email: null,
+            id: "customer-new-b",
+            phone: null,
+          },
+          customerId: "customer-new-b",
+        },
+        {
+          customer: {
+            displayName: "new-a",
+            email: null,
+            id: "customer-new-a",
+            phone: null,
+          },
+          customerId: "customer-new-a",
+        },
       ],
       unavailable: false,
-      value: 6,
+      value: 3,
     });
 
     missingCustomerCreationTime = true;
@@ -968,16 +856,6 @@ describe("AdministrationService", () => {
     });
 
     missingCustomerCreationTime = false;
-    historicalReservationsUnavailable = true;
-    const missingHistoricalBookings = await loadOverview();
-    expect(missingHistoricalBookings.today.unavailable).toBe(false);
-    expect(missingHistoricalBookings.newCustomers).toEqual({
-      customers: [],
-      unavailable: true,
-      value: 0,
-    });
-
-    historicalReservationsUnavailable = false;
     reservationsUnavailable = true;
     expect((await loadOverview()).newCustomers).toEqual({
       customers: [],
