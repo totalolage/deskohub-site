@@ -1,6 +1,13 @@
 import "@/shared/polyfills/temporal";
 
-import { describe, expect, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  setSystemTime,
+  test,
+} from "bun:test";
 import { Schema } from "effect";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import {
@@ -10,6 +17,9 @@ import {
 } from "./early-performance";
 
 const contractAt = Temporal.Instant.from("2026-08-12T12:00:00Z");
+
+beforeEach(() => setSystemTime(new Date("2026-08-12T12:00:00Z")));
+afterEach(() => setSystemTime());
 
 const coworkReservation = (date: string) =>
   Schema.decodeUnknownSync(reservationOrderSchema)({
