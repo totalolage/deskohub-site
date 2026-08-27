@@ -29,6 +29,7 @@ const buildCoworkReservationQuote = (
 
 const applyDiscountCodeForm = mock();
 const capture = mock();
+let analyticsAccepted = true;
 
 mock.module("@/features/checkout/actions/apply-discount-code", () => ({
   applyDiscountCodeForm,
@@ -38,7 +39,7 @@ mock.module("@/features/reservation/actions/submit-reservation", () => ({
 }));
 mock.module("posthog-js", () => ({ default: { capture } }));
 mock.module("@/features/cookie-consent", () => ({
-  useCookieConsent: () => ({ isAccepted: () => true }),
+  useCookieConsent: () => ({ isAccepted: () => analyticsAccepted }),
 }));
 
 describe("CheckoutDiscountCodeForm", () => {
@@ -47,6 +48,7 @@ describe("CheckoutDiscountCodeForm", () => {
   });
 
   beforeEach(() => {
+    analyticsAccepted = true;
     capture.mockClear();
     workspaceUseAction.mockReturnValue({
       execute: mock(),
@@ -124,6 +126,35 @@ describe("CheckoutDiscountCodeForm", () => {
         outcome: "discount_rejected",
       });
     });
+  });
+
+  test("does not capture a rejection that occurred before analytics consent", async () => {
+    analyticsAccepted = false;
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    await waitFor(() => expect(capture).not.toHaveBeenCalled());
+
+    analyticsAccepted = true;
+    view.rerender(
+      <CheckoutDiscountCodeForm
+        enabled
+        fieldError
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    await waitFor(() => expect(capture).not.toHaveBeenCalled());
   });
 
   test("celebrates the applied adjustment without showing the code", async () => {

@@ -6,11 +6,12 @@ import { useCookieConsent } from "@/features/cookie-consent";
 
 export function DiscountRejectionAnalytics() {
   const { isAccepted } = useCookieConsent();
-  const captured = useRef(false);
+  const handled = useRef(false);
 
   useEffect(() => {
-    if (captured.current || !isAccepted("analytics")) return;
-    captured.current = true;
+    if (handled.current) return;
+    handled.current = true;
+    if (!isAccepted("analytics")) return;
     posthog.capture("pre-payment outcome", { outcome: "discount_rejected" });
   }, [isAccepted]);
 
