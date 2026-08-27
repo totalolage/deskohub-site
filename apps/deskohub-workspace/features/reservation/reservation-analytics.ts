@@ -8,6 +8,26 @@ const reservationAnalyticsUtmKeys = [
 
 type ReservationAnalyticsUtmKey = (typeof reservationAnalyticsUtmKeys)[number];
 
+export const reservationAvailabilityResults = [
+  "available",
+  "unavailable",
+] as const;
+export type ReservationAvailabilityResult =
+  (typeof reservationAvailabilityResults)[number];
+
+export const reservationPrePaymentOutcomes = [
+  "validation",
+  "availability_changed",
+  "pricing_changed",
+  "discount_rejected",
+  "reservation_conflict",
+  "server_error",
+  "transport_error",
+  "prepared",
+] as const;
+export type ReservationPrePaymentOutcome =
+  (typeof reservationPrePaymentOutcomes)[number];
+
 export type ReservationAnalyticsProperties = Partial<
   Record<ReservationAnalyticsUtmKey, string>
 >;

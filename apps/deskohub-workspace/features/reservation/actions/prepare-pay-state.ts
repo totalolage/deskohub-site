@@ -16,7 +16,11 @@ import {
   Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { captureReservationStarted } from "@/features/checkout/backend/analytics";
+import {
+  captureAvailabilityResult,
+  capturePrePaymentOutcome,
+  captureReservationStarted,
+} from "@/features/checkout/backend/analytics";
 import {
   buildCheckoutPayPath,
   buildSignedPayState,
@@ -72,6 +76,7 @@ import {
   getStoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
+import type { ReservationPrePaymentOutcome } from "@/features/reservation/reservation-analytics";
 import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
@@ -764,7 +769,27 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         locale: input.locale,
         reservationHoldExpiresAt: holdExpiresAt,
       },
-    });
+    }).pipe(
+      Effect.tap(() =>
+        captureAvailabilityResult({
+          checkoutAttemptId: input.checkoutAttemptId,
+          result: "available",
+          timestamp: Temporal.Now.instant(),
+        })
+      ),
+      Effect.tapError((error) =>
+        Match.value(error).pipe(
+          Match.tag("WorkspaceTableUnavailableError", () =>
+            captureAvailabilityResult({
+              checkoutAttemptId: input.checkoutAttemptId,
+              result: "unavailable",
+              timestamp: Temporal.Now.instant(),
+            })
+          ),
+          Match.orElse(() => Effect.void)
+        )
+      )
+    );
     const { checkoutSessionId, reservationDraft } = preparedDraft;
     yield* Effect.annotateLogsScoped({ reservationDraft });
     yield* Effect.logInfo("Workspace reservation draft ready");
@@ -777,6 +802,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         id: reservationDraft.id,
         reservationDetails: getStoredWorkspaceReservationDetails(reservation),
         locale: input.locale,
+      });
+      yield* captureReservationStarted({
+        reservation: reservationDraft,
+        timestamp: reservationDraft.createdAt,
       });
       yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
@@ -818,6 +847,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           id: claimConflictReservation.id,
           reservationDetails: getStoredWorkspaceReservationDetails(reservation),
           locale: input.locale,
+        });
+        yield* captureReservationStarted({
+          reservation: claimConflictReservation,
+          timestamp: claimConflictReservation.createdAt,
         });
         yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
@@ -1001,9 +1034,40 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       changedKeys: prepared.changedKeys,
     });
   },
-  (effect, input) =>
-    effect.pipe(
+  (effect, input) => {
+    const captureOutcome = (outcome: ReservationPrePaymentOutcome) =>
+      capturePrePaymentOutcome({
+        checkoutAttemptId: input.checkoutAttemptId,
+        outcome,
+        timestamp: Temporal.Now.instant(),
+      });
+
+    return effect.pipe(
       Effect.scoped,
+      Effect.tap((result) =>
+        Match.value(result).pipe(
+          Match.discriminatorsExhaustive("status")({
+            error: () => captureOutcome("reservation_conflict"),
+            pricing_changed: () => captureOutcome("pricing_changed"),
+            ready: () => captureOutcome("prepared"),
+          })
+        )
+      ),
+      Effect.tapError((error) =>
+        Match.value(error).pipe(
+          Match.tag("WorkspaceTableUnavailableError", () =>
+            captureOutcome("availability_changed")
+          ),
+          Match.tag("AdvertisedPriceMismatchError", () =>
+            captureOutcome("validation")
+          ),
+          Match.tag("CheckoutAttemptUnavailableError", () =>
+            captureOutcome("reservation_conflict")
+          ),
+          Match.tag("BotDetectedError", () => Effect.void),
+          Match.orElse(() => captureOutcome("server_error"))
+        )
+      ),
       Effect.annotateLogs({
         locale: input.locale,
         reservationKind: input.reservation.kind,
@@ -1022,7 +1086,8 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             cause: error,
           })
       )
-    )
+    );
+  }
 );
 
 const PreparePayStateLive = Layer.mergeAll(

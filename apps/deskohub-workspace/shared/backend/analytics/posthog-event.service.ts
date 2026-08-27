@@ -4,16 +4,19 @@ import type {
   PostHogDistinctId,
   PostHogEventId,
 } from "@deskohub/posthog/identifiers";
-import { Context, Effect, Layer, Option, References } from "effect";
+import { Context, Effect, Layer, Option, Predicate } from "effect";
 import { type EventMessage, PostHog } from "posthog-node";
 import {
   PostHogRuntimeConfig,
   type PostHogRuntimeConfigObj,
 } from "@/shared/backend/config/posthog.config";
-import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 
-export type PostHogEventProperties = NonNullable<EventMessage["properties"]>;
+type PostHogEventProperty = string | number | boolean | null;
+
+export type PostHogEventProperties = Readonly<
+  Record<string, PostHogEventProperty | undefined>
+>;
 
 export interface CapturePostHogEventInput {
   readonly distinctId: PostHogDistinctId;
@@ -24,10 +27,18 @@ export interface CapturePostHogEventInput {
 }
 
 export interface IPostHogEventService {
+  readonly alias: (input: {
+    readonly alias: PostHogDistinctId;
+    readonly distinctId: PostHogDistinctId;
+  }) => Effect.Effect<void>;
   readonly capture: (input: CapturePostHogEventInput) => Effect.Effect<void>;
 }
 
 interface PostHogCaptureClient {
+  readonly aliasImmediate: (message: {
+    readonly alias: string;
+    readonly distinctId: string;
+  }) => Promise<void>;
   readonly captureImmediate: (message: EventMessage) => Promise<void>;
 }
 
@@ -62,77 +73,72 @@ const createPostHogCaptureClient = ({
   return new PostHog(projectToken, { host: ingestHost });
 };
 
-const collectContextProperties = Effect.gen(function* () {
-  const logAnnotations = yield* References.CurrentLogAnnotations;
-  const spanAnnotations = yield* Effect.spanAnnotations;
-
+const collectSpanMetadata = Effect.gen(function* () {
   const currentSpan = yield* Effect.currentSpan.pipe(Effect.option);
-  const spanMetadata = Option.isSome(currentSpan)
+  return Option.isSome(currentSpan)
     ? {
         "effect.span_id": currentSpan.value.spanId,
-        "effect.span_name": currentSpan.value.name,
         "effect.trace_id": currentSpan.value.traceId,
       }
     : {};
-
-  return {
-    properties: {
-      ...logAnnotations,
-      effect: {
-        spanAnnotations,
-        spanAttributes: Option.isSome(currentSpan)
-          ? Object.fromEntries(currentSpan.value.attributes)
-          : undefined,
-      },
-    },
-    spanMetadata,
-  };
 });
 
-const compactProperties = (properties: PostHogEventProperties) =>
+const compactProperties = (properties: PostHogEventProperties | undefined) =>
   Object.fromEntries(
-    Object.entries(properties).filter(([, value]) => value !== undefined)
+    Object.entries(properties ?? {}).filter(
+      ([, value]) =>
+        value === null ||
+        Predicate.isString(value) ||
+        Predicate.isNumber(value) ||
+        Predicate.isBoolean(value)
+    )
   ) as PostHogEventProperties;
 
 export const makePostHogEventService = ({
   client,
   config,
-}: PostHogEventServiceOptions): IPostHogEventService => ({
-  capture: (input) =>
-    Effect.gen(function* () {
-      if (!client) return;
+}: PostHogEventServiceOptions): IPostHogEventService => {
+  return {
+    alias: (input) =>
+      client
+        ? Effect.tryPromise(() => client.aliasImmediate(input)).pipe(
+            Effect.catch((cause) =>
+              Effect.logWarning("PostHog identity alias capture failed", {
+                cause,
+              })
+            )
+          )
+        : Effect.void,
+    capture: (input) =>
+      Effect.gen(function* () {
+        if (!client) return;
 
-      const contextProperties = yield* collectContextProperties;
-      const censoredProperties = compactProperties(
-        censorLogValue({
-          ...contextProperties.properties,
+        const spanMetadata = yield* collectSpanMetadata;
+        const properties = compactProperties({
           ...input.properties,
-        }) as PostHogEventProperties
-      );
-      const properties = compactProperties({
-        ...censoredProperties,
-        ...contextProperties.spanMetadata,
-        "deployment.environment.name": config.environment,
-        "service.name": config.serviceName,
-        "service.namespace": config.serviceNamespace,
-      });
+          ...spanMetadata,
+          "deployment.environment.name": config.environment,
+          "service.name": config.serviceName,
+          "service.namespace": config.serviceNamespace,
+        });
 
-      yield* Effect.tryPromise(() =>
-        client.captureImmediate({
-          distinctId: input.distinctId,
-          event: input.event,
-          properties,
-          timestamp: temporalInstantToDate(input.timestamp),
-          uuid: input.uuid,
-        })
-      ).pipe(
-        Effect.catch((cause) =>
-          Effect.logWarning("PostHog lifecycle event capture failed", {
+        yield* Effect.tryPromise(() =>
+          client.captureImmediate({
+            distinctId: input.distinctId,
             event: input.event,
+            properties,
+            timestamp: temporalInstantToDate(input.timestamp),
             uuid: input.uuid,
-            cause,
           })
-        )
-      );
-    }),
-});
+        ).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("PostHog lifecycle event capture failed", {
+              event: input.event,
+              uuid: input.uuid,
+              cause,
+            })
+          )
+        );
+      }),
+  };
+};

@@ -7,6 +7,7 @@ import type {
 } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
 import type { IWorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { CapturePostHogEventInput } from "@/shared/backend/analytics/posthog-event.service";
 import {
   WorkspacePaidFulfillmentError,
   type WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType,
@@ -92,6 +93,9 @@ type NexiWebhookTestServices = {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly nexi: NexiServiceType;
   readonly fulfillment: WorkspacePaidFulfillmentServiceType;
+  readonly posthog?: {
+    readonly capture: (input: CapturePostHogEventInput) => Effect.Effect<void>;
+  };
   readonly latePaymentRecoveries?: object;
   readonly latePaymentRecoveryQueue?: object;
 };
@@ -164,6 +168,7 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
             }),
             Layer.mock(PostHogEventService, {
               capture: mock(() => Effect.void),
+              ...services.posthog,
             })
           )
         )
@@ -186,6 +191,7 @@ describe("NexiWebhookService", () => {
     );
     const verifyPaymentOutcome = mock(() => Effect.succeed(verification));
     const fulfillPaidOrder = mock(() => Effect.void);
+    const capture = mock((_input: CapturePostHogEventInput) => Effect.void);
 
     const result = await Effect.runPromise(
       await buildWebhookEffect({
@@ -216,6 +222,7 @@ describe("NexiWebhookService", () => {
         fulfillment: {
           fulfillPaidOrder,
         } satisfies WorkspacePaidFulfillmentServiceType,
+        posthog: { capture },
       })
     );
 
@@ -250,6 +257,12 @@ describe("NexiWebhookService", () => {
       expect.objectContaining({ type: "eventId", eventId: "event-id" })
     );
     expect(markFailed).not.toHaveBeenCalled();
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        distinctId: "reservation-id",
+        event: "payment completed",
+      })
+    );
   });
 
   test("queues recovery for a late successful payment without fulfilling", async () => {

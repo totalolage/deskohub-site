@@ -4,6 +4,7 @@ import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flag
 import { Analytics } from "@vercel/analytics/react";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
 import { useCookieConsent } from "../hooks/use-cookie-consent";
+import { sanitizeVercelAnalyticsEvent } from "../utils/vercel-analytics";
 import { PostHogAnalytics } from "./posthog-analytics";
 
 type ConsentAwareAnalyticsProps = {
@@ -24,7 +25,9 @@ export function ConsentAwareAnalytics({
       featureFlagOverrides={featureFlagOverrides}
       posthogEnvironment={posthogEnvironment}
     >
-      {analyticsAccepted && <Analytics />}
+      {analyticsAccepted && (
+        <Analytics beforeSend={sanitizeVercelAnalyticsEvent} />
+      )}
     </PostHogAnalytics>
   );
 }

@@ -8,7 +8,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote as buildCoworkPriceQuote,
@@ -28,12 +28,17 @@ const buildCoworkReservationQuote = (
 });
 
 const applyDiscountCodeForm = mock();
+const capture = mock();
 
 mock.module("@/features/checkout/actions/apply-discount-code", () => ({
   applyDiscountCodeForm,
 }));
 mock.module("@/features/reservation/actions/submit-reservation", () => ({
   submitReservation: mock(),
+}));
+mock.module("posthog-js", () => ({ default: { capture } }));
+mock.module("@/features/cookie-consent", () => ({
+  useCookieConsent: () => ({ isAccepted: () => true }),
 }));
 
 describe("CheckoutDiscountCodeForm", () => {
@@ -42,6 +47,7 @@ describe("CheckoutDiscountCodeForm", () => {
   });
 
   beforeEach(() => {
+    capture.mockClear();
     workspaceUseAction.mockReturnValue({
       execute: mock(),
       isExecuting: false,
@@ -113,6 +119,11 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(error.className).toContain("bg-burned-orange/8");
     expect(error.className).toContain("text-burned-orange-ink");
     expect(view.getByRole("textbox").getAttribute("aria-invalid")).toBe("true");
+    await waitFor(() => {
+      expect(capture).toHaveBeenCalledWith("pre-payment outcome", {
+        outcome: "discount_rejected",
+      });
+    });
   });
 
   test("celebrates the applied adjustment without showing the code", async () => {

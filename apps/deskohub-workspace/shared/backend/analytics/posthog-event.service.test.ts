@@ -7,7 +7,6 @@ import {
 } from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
 import type { EventMessage } from "posthog-node";
-import { CENSORED_LOG_VALUE } from "@/shared/backend/logging/censorship";
 
 const config = {
   environment: "development",
@@ -21,11 +20,12 @@ const reservationDistinctId = PostHogDistinctId.make("reservation-id");
 const eventId = PostHogEventId.make("019edbcf-5026-7ecc-821b-eda46998eaaa");
 
 describe("PostHogEventService", () => {
-  test("captures lifecycle events with censored Effect context", async () => {
+  test("captures only explicit scalar properties and approved metadata", async () => {
     const { makePostHogEventService } = await import("./posthog-event.service");
     const messages: EventMessage[] = [];
     const service = makePostHogEventService({
       client: {
+        aliasImmediate: () => Promise.resolve(),
         captureImmediate: (message) => {
           messages.push(message);
           return Promise.resolve();
@@ -40,17 +40,22 @@ describe("PostHogEventService", () => {
           distinctId: reservationDistinctId,
           event: "reservation started",
           properties: {
+            providerPayload: { raw: "provider-data" },
             reservation_id: "reservation-id",
-            token: "explicit-secret",
-          },
+          } as never,
           timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
           uuid: eventId,
         })
         .pipe(
           Effect.annotateLogs({
             correlationId: "correlation-id",
+            customerInput: { email: "synthetic@example.test" },
+            error: new Error("provider payload"),
+            result: { internal: "serialized-result" },
             sessionId: "session-id",
-            token: "annotation-secret",
+          }),
+          Effect.annotateSpans({
+            providerPayload: "provider-payload",
           }),
           Effect.withSpan("reservation.attachHold", {
             attributes: {
@@ -68,22 +73,43 @@ describe("PostHogEventService", () => {
       timestamp: new Date("2026-06-17T10:00:00.000Z"),
       uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
     });
-    expect(messages[0].properties).toMatchObject({
+    expect(messages[0].properties).toEqual({
       "deployment.environment.name": "development",
-      "effect.span_name": "reservation.attachHold",
+      "effect.span_id": expect.any(String),
+      "effect.trace_id": expect.any(String),
       "service.name": "workspace-test",
       "service.namespace": "deskohub-test",
-      correlationId: "correlation-id",
       reservation_id: "reservation-id",
-      sessionId: "session-id",
-      token: CENSORED_LOG_VALUE,
     });
-    expect(messages[0].properties?.effect).toMatchObject({
-      spanAttributes: {
-        paymentAttemptId: "payment-attempt-id",
-        secret: CENSORED_LOG_VALUE,
+  });
+
+  test("aliases a browser identity to a server identity", async () => {
+    const { makePostHogEventService } = await import("./posthog-event.service");
+    const aliases: { alias: string; distinctId: string }[] = [];
+    const service = makePostHogEventService({
+      client: {
+        aliasImmediate: (message) => {
+          aliases.push(message);
+          return Promise.resolve();
+        },
+        captureImmediate: () => Promise.resolve(),
       },
+      config,
     });
+
+    await Effect.runPromise(
+      service.alias({
+        distinctId: PostHogDistinctId.make("synthetic-browser-id"),
+        alias: reservationDistinctId,
+      })
+    );
+
+    expect(aliases).toEqual([
+      {
+        alias: "reservation-id",
+        distinctId: "synthetic-browser-id",
+      },
+    ]);
   });
 
   test("does nothing without a configured client", async () => {

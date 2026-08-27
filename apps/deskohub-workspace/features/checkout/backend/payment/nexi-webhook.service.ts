@@ -577,10 +577,6 @@ function makeNexiWebhookServiceLayer(service: typeof NexiWebhookService) {
                 if (terminalState === "failed") {
                   yield* capturePaymentFailed({
                     attempt: transition.attempt,
-                    failureCode:
-                      transition.attempt.lastProviderStatus ??
-                      transition.attempt.failureCode ??
-                      "nexi_payment_failed",
                     failureReason: "nexi_payment_failed",
                     timestamp: transition.timestamp,
                   }).pipe(

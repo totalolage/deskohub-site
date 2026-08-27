@@ -63,6 +63,7 @@ export function ReservationCheckoutForm<
   messagePlaceholder,
 }: ReservationCheckoutFormProps<Input, Data>) {
   const {
+    capturePrePaymentOutcome,
     clearSubmissionError,
     hasPreparedPayRedirect,
     isPreparingCheckout,
@@ -76,25 +77,30 @@ export function ReservationCheckoutForm<
   });
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    void form.handleSubmit((data) => {
-      if (hasPreparedPayRedirect) return;
+    void form.handleSubmit(
+      (data) => {
+        if (hasPreparedPayRedirect) return;
 
-      clearSubmissionError();
-      if (availability.unavailableMessage) {
-        setSubmissionError(availability.unavailableMessage);
-        return;
-      }
-      if (!advertisedPrice.token) {
-        setSubmissionError(m.reservationErrorMessage({}, { locale }));
-        return;
-      }
+        clearSubmissionError();
+        if (availability.unavailableMessage) {
+          capturePrePaymentOutcome("availability_changed");
+          setSubmissionError(availability.unavailableMessage);
+          return;
+        }
+        if (!advertisedPrice.token) {
+          capturePrePaymentOutcome("transport_error");
+          setSubmissionError(m.reservationErrorMessage({}, { locale }));
+          return;
+        }
 
-      startCheckout({
-        advertisedPriceToken: advertisedPrice.token,
-        marketingConsent: data.marketingConsent,
-        reservation: getReservation(data),
-      });
-    })(event);
+        startCheckout({
+          advertisedPriceToken: advertisedPrice.token,
+          marketingConsent: data.marketingConsent,
+          reservation: getReservation(data),
+        });
+      },
+      () => capturePrePaymentOutcome("validation")
+    )(event);
   };
 
   if (isPreparingCheckout) {

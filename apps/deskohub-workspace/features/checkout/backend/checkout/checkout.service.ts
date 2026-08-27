@@ -503,10 +503,6 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 if (transition.changed) {
                   yield* capturePaymentFailed({
                     attempt: transition.attempt,
-                    failureCode:
-                      transition.attempt.lastProviderStatus ??
-                      transition.attempt.failureCode ??
-                      "nexi_hpp_create_failed",
                     failureReason: "nexi_hpp_create_failed",
                     timestamp: transition.timestamp,
                   }).pipe(

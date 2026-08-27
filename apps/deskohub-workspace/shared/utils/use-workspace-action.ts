@@ -7,7 +7,6 @@ import {
   type UseActionHookReturn,
   useAction,
 } from "next-safe-action/hooks";
-import posthog from "posthog-js";
 
 type WorkspaceActionTransportErrorInput<
   Schema extends StandardSchemaV1 | undefined,
@@ -28,40 +27,6 @@ type UseWorkspaceActionOptions<
   }) => void;
 };
 
-const getTransportErrorDetails = (cause: unknown) => {
-  const error = cause;
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-    };
-  }
-
-  return {
-    name: Object.prototype.toString.call(error),
-    message: String(error),
-  };
-};
-
-const captureTransportError = ({
-  actionName,
-  error,
-}: {
-  readonly actionName: string;
-  readonly error: unknown;
-}) => {
-  const details = getTransportErrorDetails(error);
-
-  try {
-    posthog.capture("workspace_safe_action_transport_error", {
-      actionName,
-      errorName: details.name,
-      errorMessage: details.message,
-      path: globalThis.location?.pathname,
-    });
-  } catch {}
-};
-
 export function useWorkspaceAction<
   ServerError,
   Schema extends StandardSchemaV1 | undefined,
@@ -71,14 +36,13 @@ export function useWorkspaceAction<
   safeActionFn: SingleInputActionFn<ServerError, Schema, ShapedErrors, Data>,
   opts: UseWorkspaceActionOptions<ServerError, Schema, ShapedErrors, Data>
 ): UseActionHookReturn<ServerError, Schema, ShapedErrors, Data> {
-  const { actionName, onTransportError, ...hookOptions } = opts;
+  const { actionName: _actionName, onTransportError, ...hookOptions } = opts;
   const action = useAction(safeActionFn, hookOptions);
 
   const handleTransportError = (
     cause: unknown,
     input: WorkspaceActionTransportErrorInput<Schema>
   ) => {
-    captureTransportError({ actionName, error: cause });
     try {
       onTransportError?.({ error: cause, input });
     } catch {}

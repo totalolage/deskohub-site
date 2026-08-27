@@ -2,7 +2,7 @@ import {
   PostHogDistinctId,
   PostHogSessionId,
 } from "@deskohub/posthog/identifiers";
-import { Effect, Option, Schema } from "effect";
+import { Context, Effect, Option, Schema } from "effect";
 import { type CookieStore, cookieStoreFromHeader } from "posthog-node";
 import {
   getAcceptedConsentCategoriesFromCookieValue,
@@ -21,6 +21,11 @@ export interface PostHogRequestContext {
   readonly distinctId?: PostHogDistinctId;
   readonly sessionId?: PostHogSessionId;
 }
+
+export const CurrentPostHogRequestContext = Context.Reference(
+  "@deskohub-workspace/analytics/CurrentPostHogRequestContext",
+  { defaultValue: (): PostHogRequestContext => ({}) }
+);
 
 interface PostHogCookieValues {
   readonly distinctId?: unknown;
