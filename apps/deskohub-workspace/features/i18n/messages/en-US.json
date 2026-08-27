@@ -556,6 +556,7 @@
   "checkoutStatusFulfillmentFailedContactButton": "Send support request",
   "checkoutStatusFulfillmentFailedContactMessage": "Hi Deskohub Workspace,\n\nMy payment was received, but the reservation confirmation email did not arrive.\n\nOrder reference: {orderId}\nReservation: {reservation} on {date}\n\nPlease help me get my secure access link.",
   "checkoutStatusReserveAgain": "Start a new reservation",
+  "checkoutStatusBookAgain": "Book again",
   "checkoutStatusBackHome": "Back home",
   "reservationEmailTierLabel": "Entry tier",
   "reservationEmailReservationLabel": "Reservation",

@@ -18,6 +18,7 @@ import { getCoworkCheckoutStatusSummary } from "@/features/cowork/components/cow
 import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomCheckoutStatusSummary } from "@/features/meeting-room/components/meeting-room-checkout-status-summary";
 import { getOfficeCheckoutStatusSummary } from "@/features/office/components/office-checkout-status-summary";
+import { getOfficeReservationDayCount } from "@/features/reservation/office-reservation";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   getCoworkReservationPath,
@@ -25,6 +26,7 @@ import {
 } from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
 import { WorkspaceTableMapView } from "./workspace-table-map-view";
 
@@ -160,12 +162,58 @@ const getFulfillmentFailedContactMessage = (
   );
 };
 
+const getRepeatReservationSearchParams = (
+  status: CheckoutStatusViewModel
+): URLSearchParams | undefined => {
+  if (status.status !== "fulfilled" || !status.summary) return undefined;
+
+  return Match.value(status.summary).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: ({ coffee, entryTier, monitorOption }) =>
+        new URLSearchParams({
+          entryTier,
+          coffee: String(coffee),
+          ...(monitorOption && { monitorOption }),
+        }),
+      "meeting-room": () => undefined,
+      office: ({ reservedFrom, reservedUntil, seats }) => {
+        const startsAt = reservedFrom.toZonedDateTimeISO(
+          workspaceSiteConstants.location.timeZone
+        );
+        const endsAt = reservedUntil.toZonedDateTimeISO(
+          workspaceSiteConstants.location.timeZone
+        );
+        if (
+          !startsAt.equals(startsAt.startOfDay()) ||
+          !endsAt.equals(endsAt.startOfDay())
+        ) {
+          return undefined;
+        }
+
+        const dayCount = getOfficeReservationDayCount({
+          startsOn: startsAt.toPlainDate().toString(),
+          endsOn: endsAt.toPlainDate().subtract({ days: 1 }).toString(),
+        });
+        if (dayCount < 1 || !Number.isInteger(seats) || seats < 1) {
+          return undefined;
+        }
+
+        return new URLSearchParams({
+          dayCount: String(dayCount),
+          seats: String(seats),
+        });
+      },
+    })
+  );
+};
+
 const getReserveAgainPath = (
   status: CheckoutStatusViewModel,
-  locale: Locale
+  locale: Locale,
+  searchParams: URLSearchParams | undefined
 ) => {
   if (status.status === "not_found") return getCoworkReservationPath(locale);
-  return getReservationStartPath(locale, status.kind);
+  return getReservationStartPath(locale, status.kind, searchParams);
 };
 
 const getFulfillmentFailedContactHref = (
@@ -200,6 +248,13 @@ export function CheckoutStatusPage({
     status,
     locale,
     summaryPresentation
+  );
+  const repeatReservationSearchParams =
+    getRepeatReservationSearchParams(status);
+  const reserveAgainPath = getReserveAgainPath(
+    status,
+    locale,
+    repeatReservationSearchParams
   );
   const showSupportButton = !!supportContactHref;
   const Icon = copy.Icon;
@@ -314,11 +369,10 @@ export function CheckoutStatusPage({
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
-            <a
-              href={getReserveAgainPath(status, locale)}
-              id="checkout-status-reserve-again"
-            >
-              {m.checkoutStatusReserveAgain({}, { locale })}
+            <a href={reserveAgainPath} id="checkout-status-reserve-again">
+              {repeatReservationSearchParams
+                ? m.checkoutStatusBookAgain({}, { locale })
+                : m.checkoutStatusReserveAgain({}, { locale })}
             </a>
           </Button>
           <Button asChild variant="secondary" className="h-12 px-6">

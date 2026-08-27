@@ -26,10 +26,13 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import { releaseCodeClaim } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import type {
   CheckoutAttemptKey,
   CheckoutSessionKey,
+  PaymentAttemptId,
 } from "@/features/checkout/checkout-identifiers";
+import type { DiscountClaimError } from "@/features/discounts/errors";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -152,13 +155,19 @@ export interface IWorkspaceReservationRepository {
   readonly claimAdministrationCancellation: (input: {
     readonly accessGrantUpdatedAt: string | null;
     readonly id: WorkspaceReservationId;
+    readonly pendingPaymentCancellation?: {
+      readonly paymentAttemptId: PaymentAttemptId;
+      readonly failureCode: string;
+    };
     readonly providerCredentialRemoved: boolean;
     readonly staleCancellingBefore: Temporal.Instant;
   }) => Effect.Effect<
     WorkspaceReservation | null,
+    | DiscountClaimError
     | EffectDrizzleQueryError
     | SqlError.SqlError
     | WorkspaceReservationDetailsMalformedError
+    | WorkspaceReservationStateError
   >;
   readonly markCancelled: (input: {
     readonly id: WorkspaceReservationId;
@@ -172,6 +181,7 @@ export interface IWorkspaceReservationRepository {
     readonly id: WorkspaceReservationId;
     readonly cancelledAt: Temporal.Instant;
     readonly claimedAt: Temporal.Instant;
+    readonly failureCode: string | null;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | SqlError.SqlError | WorkspaceReservationStateError
@@ -627,6 +637,10 @@ export class WorkspaceReservationRepository extends Context.Service<
                 .update(workspaceReservations)
                 .set({
                   reservationState: "cancelling",
+                  ...(input.pendingPaymentCancellation && {
+                    paymentState: "cancelled" as const,
+                    failureCode: input.pendingPaymentCancellation.failureCode,
+                  }),
                   updatedAt: now,
                 })
                 .where(
@@ -650,12 +664,60 @@ export class WorkspaceReservationRepository extends Context.Service<
                         )
                       )
                     ),
-                    sql`${workspaceReservations.paymentState} <> 'pending'`,
+                    input.pendingPaymentCancellation
+                      ? and(
+                          eq(workspaceReservations.paymentState, "pending"),
+                          eq(
+                            workspaceReservations.activePaymentAttemptId,
+                            input.pendingPaymentCancellation.paymentAttemptId
+                          )
+                        )
+                      : sql`${workspaceReservations.paymentState} <> 'pending'`,
                     sql`${workspaceReservations.fulfillmentState} <> 'processing'`
                   )
                 )
                 .returning();
               if (!claimed) return null;
+
+              if (input.pendingPaymentCancellation) {
+                const [attempt] = yield* tx
+                  .update(paymentAttempts)
+                  .set({
+                    state: "cancelled",
+                    failureCode: input.pendingPaymentCancellation.failureCode,
+                    updatedAt: now,
+                  })
+                  .where(
+                    and(
+                      eq(
+                        paymentAttempts.id,
+                        input.pendingPaymentCancellation.paymentAttemptId
+                      ),
+                      eq(paymentAttempts.workspaceReservationId, input.id),
+                      inArray(paymentAttempts.state, [
+                        "created",
+                        "pending",
+                        "cancelled",
+                      ])
+                    )
+                  )
+                  .returning({ id: paymentAttempts.id });
+                if (!attempt) {
+                  return yield* new WorkspaceReservationStateError({
+                    operation:
+                      "workspaceReservations.claimAdministrationCancellation",
+                    reservationId: input.id,
+                    message:
+                      "The active payment attempt could not be cancelled.",
+                  });
+                }
+                yield* releaseCodeClaim(
+                  tx,
+                  input.pendingPaymentCancellation.paymentAttemptId,
+                  now,
+                  input.pendingPaymentCancellation.failureCode
+                );
+              }
 
               if (
                 grant &&
@@ -713,7 +775,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                 .set({
                   reservationState: "cancelled",
                   reservationCancelledAt: input.cancelledAt,
-                  failureCode: null,
+                  failureCode: input.failureCode,
                   updatedAt,
                 })
                 .where(

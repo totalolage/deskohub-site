@@ -4,6 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
+import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
 test("operator cancellation cancels Dotypos, records the result, and optionally emails", async () => {
@@ -78,6 +79,7 @@ test("operator cancellation cancels Dotypos, records the result, and optionally 
     id,
     cancelledAt: expect.any(Temporal.Instant),
     claimedAt: current.updatedAt,
+    failureCode: null,
   });
   expect(claimAdministrationCancellation).toHaveBeenCalledWith({
     accessGrantUpdatedAt: "2026-08-10T10:00:00.000Z",
@@ -86,6 +88,91 @@ test("operator cancellation cancels Dotypos, records the result, and optionally 
     staleCancellingBefore: expect.any(Temporal.Instant),
   });
   expect(sendCancellationEmail).toHaveBeenCalledWith({ reservation: details });
+});
+
+test("forced operator cancellation terminalizes a pending payment before cancelling", async () => {
+  const { WorkspaceReservationEmailService } = await import(
+    "@/features/checkout/backend/fulfillment/workspace-reservation-email.service"
+  );
+  const { WorkspaceReservationRepository } = await import(
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const { WorkspaceReservationService } = await import(
+    "@/features/reservation/backend/workspace-reservation.service"
+  );
+  const { ReservationAdministrationService } = await import(
+    "./reservation-administration.service"
+  );
+  const id = workspaceReservationIdSchema.make("reservation-pending");
+  const activePaymentAttemptId = paymentAttemptIdSchema.make("payment-pending");
+  const current = {
+    id,
+    activePaymentAttemptId,
+    dotyposReservationId: "dotypos-pending",
+    fulfillmentState: "not_started",
+    paymentState: "pending",
+    reservationState: "held",
+    updatedAt: Temporal.Now.instant(),
+  } as never;
+  const details = {
+    id,
+    dotyposReservationId: "dotypos-pending",
+    providerStatus: "NEW",
+  } as never;
+  const cancelReservation = mock(() => Effect.void);
+  const markAdministrationCancelled = mock(() => Effect.void);
+  const claimAdministrationCancellation = mock(() => Effect.succeed(current));
+
+  const result = await Effect.gen(function* () {
+    const service = yield* ReservationAdministrationService;
+    return yield* service.cancel({
+      accessGrantUpdatedAt: null,
+      force: true,
+      providerCredentialRemoved: false,
+      reservationId: id,
+      sendCancellationEmail: false,
+    });
+  }).pipe(
+    Effect.provide(
+      ReservationAdministrationService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(DotyposService, { cancelReservation }),
+            Layer.mock(WorkspaceReservationEmailService, {}),
+            Layer.mock(WorkspaceReservationRepository, {
+              claimAdministrationCancellation,
+              findById: () => Effect.succeed(current),
+              markAdministrationCancellationFailed: () => Effect.void,
+              markAdministrationCancelled,
+            }),
+            Layer.mock(WorkspaceReservationService, {
+              getReservation: () => Effect.succeed(details),
+            })
+          )
+        )
+      )
+    ),
+    Effect.runPromise
+  );
+
+  expect(result).toEqual({ outcome: "cancelled", email: "not_requested" });
+  expect(claimAdministrationCancellation).toHaveBeenCalledWith({
+    accessGrantUpdatedAt: null,
+    id,
+    pendingPaymentCancellation: {
+      paymentAttemptId: activePaymentAttemptId,
+      failureCode: "admin_forced_payment_cancellation",
+    },
+    providerCredentialRemoved: false,
+    staleCancellingBefore: expect.any(Temporal.Instant),
+  });
+  expect(cancelReservation).toHaveBeenCalledWith("dotypos-pending");
+  expect(markAdministrationCancelled).toHaveBeenCalledWith({
+    id,
+    cancelledAt: expect.any(Temporal.Instant),
+    claimedAt: current.updatedAt,
+    failureCode: "admin_forced_payment_cancellation",
+  });
 });
 
 test("retrying an already-cancelled reservation does not email again", async () => {
@@ -286,6 +373,7 @@ test("resumes a stale cancellation after an interrupted request", async () => {
     id,
     cancelledAt: expect.any(Temporal.Instant),
     claimedAt: current.updatedAt,
+    failureCode: null,
   });
 });
 

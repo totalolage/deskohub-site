@@ -1014,6 +1014,7 @@ export type AdministrationReservationDetail =
 
 export const AdministrationReservationCancellationInput = Schema.Struct({
   accessGrantUpdatedAt: Schema.NullOr(Schema.String),
+  force: Schema.optionalKey(Schema.Boolean),
   providerCredentialRemoved: Schema.Boolean,
   sendCancellationEmail: Schema.Boolean,
 }).annotate({

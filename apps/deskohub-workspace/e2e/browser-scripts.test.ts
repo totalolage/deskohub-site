@@ -5,6 +5,7 @@ import { getMeetingRoomReservationInterval } from "@/features/reservation/meetin
 import {
   assertFulfilledStatusScript,
   getAssertPrefilledReservationScript,
+  getAssertRepeatReservationScript,
   getPrepareCoworkAdvertisedPriceScript,
   getPrepareMeetingRoomAdvertisedPriceScript,
   getPrepareOfficeAdvertisedPriceScript,
@@ -37,6 +38,94 @@ const officeSlot = {
   startsAt: "2099-08-31T22:00:00Z",
   endsAt: "2099-09-02T22:00:00Z",
 } as const;
+
+test("asserts safe repeat-reservation defaults for every family", async () => {
+  const meetingRoomInterval = getTestMeetingRoomInterval(
+    "2099-09-01T10:00",
+    fourHourMeetingRoomDuration
+  );
+  expect(meetingRoomInterval).toBeDefined();
+
+  const scenarios = [
+    {
+      data: makeCoworkCheckoutData(
+        "https://workspace.example.test",
+        "2099-09-01",
+        "cowork-repeat",
+        { coffee: true, entryTier: "profi", monitorOption: "2x27-qhd" }
+      ),
+      html: `
+        <input name="date" value="2099-08-27" />
+        <input checked name="entryTier" type="radio" value="profi" />
+        <button aria-checked="true" role="switch"></button>
+        <input checked name="monitorOption" type="radio" value="2x27-qhd" />
+      `,
+      url: "https://workspace.example.test/en-US/reservation/cowork?entryTier=profi&coffee=true&monitorOption=2x27-qhd",
+    },
+    {
+      data: makeMeetingRoomCheckoutData(
+        "https://workspace.example.test",
+        {
+          date: "2099-09-01",
+          duration: fourHourMeetingRoomDuration,
+          startDateTime: "2099-09-01T10:00",
+          ...meetingRoomInterval!,
+        },
+        "meeting-room-repeat"
+      ),
+      html: '<input name="startDateTime" value="2099-08-27" />',
+      url: "https://workspace.example.test/en-US/reservation/meeting-room",
+    },
+    {
+      data: makeOfficeCheckoutData(
+        "https://workspace.example.test",
+        officeSlot
+      ),
+      html: `
+        <input name="startsOn" value="2099-08-27" />
+        <input name="dayCount" value="2" />
+        <input checked name="seats" type="radio" value="2" />
+      `,
+      url: "https://workspace.example.test/en-US/reservation/office?dayCount=2&seats=2",
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    GlobalRegistrator.register({ url: scenario.url });
+    try {
+      document.body.innerHTML = `${scenario.html}
+        <input name="email" value="" />
+        <input name="phone" value="" />
+        <input name="name" value="" />
+        <textarea name="message"></textarea>
+        <button id="reservation-marketing-consent" aria-checked="false"></button>
+      `;
+      const run = new Function(
+        "document",
+        "HTMLButtonElement",
+        "HTMLInputElement",
+        "HTMLTextAreaElement",
+        "location",
+        "URLSearchParams",
+        `return (${getAssertRepeatReservationScript(scenario.data)})`
+      );
+
+      expect(
+        run(
+          document,
+          HTMLButtonElement,
+          HTMLInputElement,
+          HTMLTextAreaElement,
+          location,
+          URLSearchParams
+        )
+      ).toBe(true);
+    } finally {
+      await GlobalRegistrator.unregister();
+      globalThis.Temporal = workspaceTemporal;
+    }
+  }
+});
 
 test("rejects reservation access UI on the checkout status page", () => {
   const run = new Function(

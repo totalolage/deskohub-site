@@ -4,6 +4,7 @@ import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/fulfillment/network-details.service";
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
+import { administrationForcedPaymentCancellationFailureCode } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import {
   SeatingMapFeatureFlagService,
   WorkspaceFeatureFlagService,
@@ -34,6 +35,7 @@ export class ReservationAdministrationError extends Data.TaggedError(
 interface IReservationAdministrationService {
   readonly cancel: (input: {
     readonly accessGrantUpdatedAt: string | null;
+    readonly force?: boolean;
     readonly providerCredentialRemoved: boolean;
     readonly reservationId: WorkspaceReservationId;
     readonly sendCancellationEmail: boolean;
@@ -80,7 +82,19 @@ export class ReservationAdministrationService extends Context.Service<
                 email: "not_requested",
               };
             }
-            if (!canCancelReservation(current)) {
+            const forcedPendingPayment =
+              current.paymentState === "pending" && input.force === true;
+            const administrationForceCancellation =
+              forcedPendingPayment ||
+              current.failureCode ===
+                administrationForcedPaymentCancellationFailureCode;
+            if (
+              !canCancelReservation(
+                current,
+                Temporal.Now.instant(),
+                forcedPendingPayment
+              )
+            ) {
               return yield* new ReservationAdministrationError({
                 code: "not_cancellable",
                 message:
@@ -112,10 +126,30 @@ export class ReservationAdministrationService extends Context.Service<
                   "Dotypos already reports this reservation as cancelled. Use the recovery workflow instead.",
               });
             }
+            if (current.paymentState === "pending") {
+              if (!forcedPendingPayment || !current.activePaymentAttemptId) {
+                return yield* new ReservationAdministrationError({
+                  code: "not_cancellable",
+                  message:
+                    "The reservation has a pending payment. Retry with force only after reviewing the provider payment.",
+                });
+              }
+            }
+            const pendingPaymentCancellation =
+              forcedPendingPayment && current.activePaymentAttemptId
+                ? {
+                    paymentAttemptId: current.activePaymentAttemptId,
+                    failureCode:
+                      administrationForcedPaymentCancellationFailureCode,
+                  }
+                : undefined;
             const claimed = yield* reservations
               .claimAdministrationCancellation({
                 accessGrantUpdatedAt: input.accessGrantUpdatedAt,
                 id: current.id,
+                ...(pendingPaymentCancellation && {
+                  pendingPaymentCancellation,
+                }),
                 providerCredentialRemoved: input.providerCredentialRemoved,
                 staleCancellingBefore: Temporal.Now.instant().subtract({
                   milliseconds: ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
@@ -157,7 +191,9 @@ export class ReservationAdministrationService extends Context.Service<
                         .markAdministrationCancellationFailed({
                           id: claimed.id,
                           claimedAt: claimed.updatedAt,
-                          failureCode: "admin_dotypos_cancel_failed",
+                          failureCode: administrationForceCancellation
+                            ? administrationForcedPaymentCancellationFailureCode
+                            : "admin_dotypos_cancel_failed",
                         })
                         .pipe(Effect.ignore);
                       return yield* Effect.fail(cause);
@@ -177,6 +213,9 @@ export class ReservationAdministrationService extends Context.Service<
                 id: claimed.id,
                 cancelledAt: Temporal.Now.instant(),
                 claimedAt: claimed.updatedAt,
+                failureCode: administrationForceCancellation
+                  ? administrationForcedPaymentCancellationFailureCode
+                  : null,
               })
               .pipe(
                 Effect.tapError(() =>
@@ -184,7 +223,9 @@ export class ReservationAdministrationService extends Context.Service<
                     .markAdministrationCancellationFailed({
                       id: claimed.id,
                       claimedAt: claimed.updatedAt,
-                      failureCode: "admin_local_cancel_failed",
+                      failureCode: administrationForceCancellation
+                        ? administrationForcedPaymentCancellationFailureCode
+                        : "admin_local_cancel_failed",
                     })
                     .pipe(Effect.ignore)
                 ),

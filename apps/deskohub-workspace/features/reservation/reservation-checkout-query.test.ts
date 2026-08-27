@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import { normalizedCoworkReservationOrderSchema } from "./cowork-reservation";
 import {
+  getOfficeReservationDefaultValuesFromSearchParams,
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
@@ -95,6 +96,55 @@ describe("getReservationDefaultValuesFromSearchParams", () => {
     expect(
       getReservationDefaultValuesFromSearchParams({ email: "invalid@" }).email
     ).toBe("");
+  });
+});
+
+describe("getOfficeReservationDefaultValuesFromSearchParams", () => {
+  test("prefills safe office shape on a fresh date", () => {
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(
+        {
+          dayCount: "3",
+          seats: "4",
+          startsOn: "2000-01-01",
+          name: "Sensitive Customer",
+          email: "sensitive@example.com",
+          discountCode: "SECRET-DISCOUNT",
+          price: "442500",
+          providerOrderId: "provider-order-id",
+        },
+        { seatCapacity: 6, startsOn: "2099-06-12" }
+      )
+    ).toEqual({
+      startsOn: "2099-06-12",
+      dayCount: 3,
+      seats: 4,
+      name: "",
+      email: "",
+      phone: "",
+      message: "",
+      billing: { purpose: "personal", invoice: "none" },
+      marketingConsent: false,
+    });
+  });
+
+  test("falls back for malformed or stale office shape", () => {
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(
+        { dayCount: "999", seats: "7" },
+        { seatCapacity: 3, startsOn: "2099-10-01" }
+      )
+    ).toMatchObject({
+      startsOn: "2099-10-01",
+      dayCount: 1,
+      seats: 1,
+    });
+    expect(
+      getOfficeReservationDefaultValuesFromSearchParams(
+        { dayCount: "Infinity", seats: "0" },
+        { seatCapacity: 3, startsOn: "2099-10-01" }
+      )
+    ).toMatchObject({ dayCount: 1, seats: 1 });
   });
 });
 

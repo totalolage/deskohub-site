@@ -175,6 +175,51 @@ describe("LatePaymentRecoveryService", () => {
     expect(fulfillPaidOrder).not.toHaveBeenCalled();
   });
 
+  test("requires a refund instead of recreating an operator force-cancelled reservation", async () => {
+    const requireRefund = mock(() => Effect.void);
+    const layer = LatePaymentRecoveryService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(LatePaymentRecoveryRepository, {
+            findByPaymentAttemptId: mock(() =>
+              Effect.succeed(recovery as never)
+            ),
+            claim: mock(() =>
+              Effect.succeed({ ...recovery, state: "processing" } as never)
+            ),
+            requireRefund,
+          }),
+          Layer.mock(WorkspaceReservationRepository, {
+            findById: mock(() =>
+              Effect.succeed({
+                ...heldReservation,
+                failureCode: "admin_forced_payment_cancellation",
+                reservationState: "cancelled",
+              } as never)
+            ),
+          }),
+          Layer.mock(AccountingDocumentSnapshotRepository, {}),
+          Layer.mock(WorkspaceAvailabilityService, {}),
+          Layer.mock(DotyposService, {}),
+          Layer.mock(WorkspaceTableAssignmentService, {}),
+          Layer.mock(WorkspacePaidFulfillmentService, {})
+        )
+      )
+    );
+
+    const outcome = await Effect.gen(function* () {
+      const service = yield* LatePaymentRecoveryService;
+      return yield* service.recover({ paymentAttemptId: "attempt-id" });
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(outcome).toBe("refund_required");
+    expect(requireRefund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        failureCode: "late_payment_after_administration_cancellation",
+      })
+    );
+  });
+
   test("requires a refund when a newer checkout reservation exists", async () => {
     const requireRefund = mock(() => Effect.void);
     const layer = LatePaymentRecoveryService.Default.pipe(

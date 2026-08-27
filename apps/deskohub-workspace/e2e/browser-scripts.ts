@@ -11,6 +11,89 @@ const getOfficeDayCount = (office: NonNullable<CheckoutData["office"]>) =>
     { largestUnit: "day" }
   ).days + 1;
 
+export const getAssertRepeatReservationScript = (data: CheckoutData) => {
+  const expected = (() => {
+    if (data.expectedReservationDetails.kind === "cowork") {
+      const { coffee, entryTier, monitorOption } =
+        data.expectedReservationDetails;
+      return {
+        coffee,
+        entryTier,
+        kind: "cowork",
+        monitorOption: monitorOption ?? null,
+        oldDate: data.date,
+        query: [
+          ["entryTier", entryTier],
+          ["coffee", String(coffee)],
+          ...(monitorOption ? [["monitorOption", monitorOption]] : []),
+        ],
+      } as const;
+    }
+    if (data.expectedReservationDetails.kind === "office") {
+      if (!data.office) {
+        throw new Error("Office repeat assertions require range data");
+      }
+      return {
+        dayCount: getOfficeDayCount(data.office),
+        kind: "office",
+        oldDate: data.office.startsOn,
+        query: [
+          ["dayCount", String(getOfficeDayCount(data.office))],
+          ["seats", String(data.office.seats)],
+        ],
+        seats: data.office.seats,
+      } as const;
+    }
+    return {
+      kind: "meeting-room",
+      oldDate: data.date,
+      query: [],
+    } as const;
+  })();
+
+  return `
+(() => {
+  const expected = ${JSON.stringify(expected)};
+  const fail = (field) => {
+    throw new Error('repeat reservation ' + field + ' did not match');
+  };
+  const value = (selector, field) => {
+    const element = document.querySelector(selector);
+    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) fail(field);
+    return element.value;
+  };
+
+  const query = [...new URLSearchParams(location.search).entries()];
+  if (JSON.stringify(query) !== JSON.stringify(expected.query)) fail('query allowlist');
+  if (value('input[name="email"]', 'email') !== '') fail('email reset');
+  if (value('input[name="phone"]', 'phone') !== '') fail('phone reset');
+  if (value('input[name="name"]', 'name') !== '') fail('name reset');
+  if (value('textarea[name="message"]', 'message') !== '') fail('message reset');
+
+  if (expected.kind === 'cowork') {
+    if (value('input[name="date"]', 'date') === expected.oldDate) fail('fresh date');
+    const tier = document.querySelector('input[name="entryTier"]:checked');
+    if (!(tier instanceof HTMLInputElement) || tier.value !== expected.entryTier) fail('entry tier');
+    const coffee = document.querySelector('[role="switch"]');
+    if (!(coffee instanceof HTMLButtonElement) || coffee.getAttribute('aria-checked') !== String(expected.coffee)) fail('coffee');
+    const monitor = document.querySelector('input[name="monitorOption"]:checked');
+    if (expected.monitorOption === null ? monitor !== null : !(monitor instanceof HTMLInputElement) || monitor.value !== expected.monitorOption) fail('monitor option');
+  } else if (expected.kind === 'office') {
+    if (value('input[name="startsOn"]', 'start date') === expected.oldDate) fail('fresh start date');
+    if (value('input[name="dayCount"]', 'day count') !== String(expected.dayCount)) fail('day count');
+    const seats = document.querySelector('input[name="seats"]:checked');
+    if (!(seats instanceof HTMLInputElement) || seats.value !== String(expected.seats)) fail('seats');
+  } else if (value('input[name="startDateTime"]', 'start date') === expected.oldDate) {
+    fail('fresh meeting-room date');
+  }
+
+  const marketingConsent = document.querySelector('#reservation-marketing-consent');
+  if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
+  return true;
+})()
+`;
+};
+
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   if (data.expectedReservationDetails.kind === "meeting-room") {
     return getAssertPrefilledMeetingRoomReservationScript(data);
