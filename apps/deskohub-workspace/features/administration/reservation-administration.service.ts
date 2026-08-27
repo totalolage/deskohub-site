@@ -4,10 +4,7 @@ import { Context, Data, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/fulfillment/network-details.service";
 import { WorkspaceReservationEmailService } from "@/features/checkout/backend/fulfillment/workspace-reservation-email.service";
-import {
-  administrationForcedPaymentCancellationFailureCode,
-  PaymentLifecycleRepository,
-} from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
+import { administrationForcedPaymentCancellationFailureCode } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import {
   SeatingMapFeatureFlagService,
   WorkspaceFeatureFlagService,
@@ -57,7 +54,6 @@ export class ReservationAdministrationService extends Context.Service<
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
       const emails = yield* WorkspaceReservationEmailService;
-      const paymentLifecycle = yield* PaymentLifecycleRepository;
       const reservations = yield* WorkspaceReservationRepository;
       const reservationDetails = yield* WorkspaceReservationService;
 
@@ -88,6 +84,10 @@ export class ReservationAdministrationService extends Context.Service<
             }
             const forcedPendingPayment =
               current.paymentState === "pending" && input.force === true;
+            const administrationForceCancellation =
+              forcedPendingPayment ||
+              current.failureCode ===
+                administrationForcedPaymentCancellationFailureCode;
             if (
               !canCancelReservation(
                 current,
@@ -134,34 +134,22 @@ export class ReservationAdministrationService extends Context.Service<
                     "The reservation has a pending payment. Retry with force only after reviewing the provider payment.",
                 });
               }
-              yield* paymentLifecycle
-                .markTerminal({
-                  id: current.activePaymentAttemptId,
-                  workspaceReservationId: current.id,
-                  state: "cancelled",
-                  failureCode:
-                    administrationForcedPaymentCancellationFailureCode,
-                })
-                .pipe(
-                  Effect.mapError((cause) =>
-                    cause._tag === "PaymentLifecycleStateError"
-                      ? new ReservationAdministrationError({
-                          code: "not_cancellable",
-                          message:
-                            "The payment changed while cancellation was starting. Refresh and review it before retrying.",
-                          cause,
-                        })
-                      : cancellationFailed(
-                          "The pending payment could not be cancelled safely.",
-                          cause
-                        )
-                  )
-                );
             }
+            const pendingPaymentCancellation =
+              forcedPendingPayment && current.activePaymentAttemptId
+                ? {
+                    paymentAttemptId: current.activePaymentAttemptId,
+                    failureCode:
+                      administrationForcedPaymentCancellationFailureCode,
+                  }
+                : undefined;
             const claimed = yield* reservations
               .claimAdministrationCancellation({
                 accessGrantUpdatedAt: input.accessGrantUpdatedAt,
                 id: current.id,
+                ...(pendingPaymentCancellation && {
+                  pendingPaymentCancellation,
+                }),
                 providerCredentialRemoved: input.providerCredentialRemoved,
                 staleCancellingBefore: Temporal.Now.instant().subtract({
                   milliseconds: ADMINISTRATION_CANCELLATION_RETRY_AFTER_MS,
@@ -203,7 +191,9 @@ export class ReservationAdministrationService extends Context.Service<
                         .markAdministrationCancellationFailed({
                           id: claimed.id,
                           claimedAt: claimed.updatedAt,
-                          failureCode: "admin_dotypos_cancel_failed",
+                          failureCode: administrationForceCancellation
+                            ? administrationForcedPaymentCancellationFailureCode
+                            : "admin_dotypos_cancel_failed",
                         })
                         .pipe(Effect.ignore);
                       return yield* Effect.fail(cause);
@@ -223,10 +213,9 @@ export class ReservationAdministrationService extends Context.Service<
                 id: claimed.id,
                 cancelledAt: Temporal.Now.instant(),
                 claimedAt: claimed.updatedAt,
-                failureCode:
-                  forcedPendingPayment
-                    ? administrationForcedPaymentCancellationFailureCode
-                    : null,
+                failureCode: administrationForceCancellation
+                  ? administrationForcedPaymentCancellationFailureCode
+                  : null,
               })
               .pipe(
                 Effect.tapError(() =>
@@ -234,7 +223,9 @@ export class ReservationAdministrationService extends Context.Service<
                     .markAdministrationCancellationFailed({
                       id: claimed.id,
                       claimedAt: claimed.updatedAt,
-                      failureCode: "admin_local_cancel_failed",
+                      failureCode: administrationForceCancellation
+                        ? administrationForcedPaymentCancellationFailureCode
+                        : "admin_local_cancel_failed",
                     })
                     .pipe(Effect.ignore)
                 ),
@@ -271,7 +262,6 @@ export class ReservationAdministrationService extends Context.Service<
       )
     ),
     Layer.provide(WorkspaceReservationService.Default),
-    Layer.provide(PaymentLifecycleRepository.Default),
     Layer.provide(WorkspaceReservationRepository.Default),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),

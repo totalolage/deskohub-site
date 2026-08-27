@@ -4,7 +4,6 @@ import "@/shared/testing/workspace-test-env";
 import { expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
-import { PaymentLifecycleRepository } from "@/features/checkout/backend/repositories/payment-lifecycle.repository";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
@@ -55,7 +54,6 @@ test("operator cancellation cancels Dotypos, records the result, and optionally 
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, { cancelReservation }),
-            Layer.mock(PaymentLifecycleRepository, {}),
             Layer.mock(WorkspaceReservationEmailService, {
               sendCancellationEmail,
             }),
@@ -121,15 +119,9 @@ test("forced operator cancellation terminalizes a pending payment before cancell
     dotyposReservationId: "dotypos-pending",
     providerStatus: "NEW",
   } as never;
-  const markTerminal = mock(() =>
-    Effect.succeed({
-      attempt: {} as never,
-      changed: true,
-      timestamp: Temporal.Now.instant(),
-    })
-  );
   const cancelReservation = mock(() => Effect.void);
   const markAdministrationCancelled = mock(() => Effect.void);
+  const claimAdministrationCancellation = mock(() => Effect.succeed(current));
 
   const result = await Effect.gen(function* () {
     const service = yield* ReservationAdministrationService;
@@ -146,10 +138,9 @@ test("forced operator cancellation terminalizes a pending payment before cancell
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, { cancelReservation }),
-            Layer.mock(PaymentLifecycleRepository, { markTerminal }),
             Layer.mock(WorkspaceReservationEmailService, {}),
             Layer.mock(WorkspaceReservationRepository, {
-              claimAdministrationCancellation: () => Effect.succeed(current),
+              claimAdministrationCancellation,
               findById: () => Effect.succeed(current),
               markAdministrationCancellationFailed: () => Effect.void,
               markAdministrationCancelled,
@@ -165,11 +156,15 @@ test("forced operator cancellation terminalizes a pending payment before cancell
   );
 
   expect(result).toEqual({ outcome: "cancelled", email: "not_requested" });
-  expect(markTerminal).toHaveBeenCalledWith({
-    id: activePaymentAttemptId,
-    workspaceReservationId: id,
-    state: "cancelled",
-    failureCode: "admin_forced_payment_cancellation",
+  expect(claimAdministrationCancellation).toHaveBeenCalledWith({
+    accessGrantUpdatedAt: null,
+    id,
+    pendingPaymentCancellation: {
+      paymentAttemptId: activePaymentAttemptId,
+      failureCode: "admin_forced_payment_cancellation",
+    },
+    providerCredentialRemoved: false,
+    staleCancellingBefore: expect.any(Temporal.Instant),
   });
   expect(cancelReservation).toHaveBeenCalledWith("dotypos-pending");
   expect(markAdministrationCancelled).toHaveBeenCalledWith({
@@ -212,7 +207,6 @@ test("retrying an already-cancelled reservation does not email again", async () 
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, {}),
-            Layer.mock(PaymentLifecycleRepository, {}),
             Layer.mock(WorkspaceReservationEmailService, {
               sendCancellationEmail,
             }),
@@ -270,7 +264,6 @@ test("does not adopt a pre-existing provider cancellation", async () => {
         Layer.provide(
           Layer.mergeAll(
             Layer.mock(DotyposService, {}),
-            Layer.mock(PaymentLifecycleRepository, {}),
             Layer.mock(WorkspaceReservationEmailService, {}),
             Layer.mock(WorkspaceReservationRepository, {
               claimAdministrationCancellation,
@@ -352,7 +345,6 @@ test("resumes a stale cancellation after an interrupted request", async () => {
             Layer.mock(DotyposService, {
               cancelReservation: () => Effect.die("already cancelled"),
             }),
-            Layer.mock(PaymentLifecycleRepository, {}),
             Layer.mock(WorkspaceReservationEmailService, {}),
             Layer.mock(WorkspaceReservationRepository, {
               claimAdministrationCancellation,
@@ -440,7 +432,6 @@ test("reconciles a duplicate provider failure after another worker cancelled", a
               cancelReservation: () =>
                 Effect.fail("already cancelled" as never),
             }),
-            Layer.mock(PaymentLifecycleRepository, {}),
             Layer.mock(WorkspaceReservationEmailService, {}),
             Layer.mock(WorkspaceReservationRepository, {
               claimAdministrationCancellation: () => Effect.succeed(current),

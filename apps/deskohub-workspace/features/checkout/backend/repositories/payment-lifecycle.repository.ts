@@ -1870,7 +1870,7 @@ export const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
   }
 );
 
-const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
+export const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
   function* (
     tx: TransactionClient,
     paymentAttemptId: PaymentAttemptId,

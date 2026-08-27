@@ -150,6 +150,19 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain("<> 'pending'");
   });
 
+  test("claims a forced payment cancellation in the reservation transaction", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "claimAdministrationCancellation: Effect.fn(",
+      'markCancelled: Effect.fn("workspaceReservations.markCancelled")'
+    );
+
+    expect(section).toContain("input.pendingPaymentCancellation");
+    expect(section).toContain(".update(paymentAttempts)");
+    expect(section).toContain("releaseCodeClaim(");
+  });
+
   test("does not cancel while a live access credential remains", async () => {
     const source = await readRepository();
     const section = sliceFrom(
