@@ -13,9 +13,9 @@ Use the existing authenticated `posthog-cli`, `gh`, and `/home/dev/.local/bin/t3
 
 ## Reconcile recorded workers
 
-Find open PostHog issues that have a recorded worker thread but no linked open pull request. Leave a thread alone while it has an active turn, a pending T3 interaction, or a latest human-needed question without a consumed response.
+Find open PostHog issues that have a recorded worker thread but no linked open pull request. Leave a thread alone when its latest human-needed question has no consumed response or `/home/dev/.local/bin/t3 pending --thread-id <thread-id>` reports an interaction.
 
-For every other issue, inspect the recorded thread with `/home/dev/.local/bin/t3 thread`. If it exists and is idle, send it the worker instruction again with an idempotency key containing the issue number and current five-minute UTC bucket. If it no longer exists, create a replacement worker and record its thread ID. This prevents a stopped worker from orphaning the issue.
+For every other issue, run `/home/dev/.local/bin/t3 watch <thread-id> --base-dir /home/dev/.t3 --timeout 1s --format json >/dev/null`. Exit 23 means the turn is still running, and exit 26 means it needs an interaction; leave either alone. Exit 0 or 25 means the thread is idle; send it the worker instruction again with an idempotency key containing the issue number and current five-minute UTC bucket. Exit 24 means the thread no longer exists; create a replacement worker and record its thread ID. This prevents a stopped worker from orphaning the issue without reading a growing thread snapshot.
 
 ## Read production candidates
 
