@@ -14,7 +14,11 @@ afterEach(async () => {
   );
 });
 
-async function runAgentLoop(replayed: boolean, watchRace = false) {
+async function runAgentLoop(
+  replayed: boolean,
+  watchStatus = 0,
+  watchRace = false
+) {
   const directory = await mkdtemp(join(tmpdir(), "posthog-agent-loop-"));
   temporaryDirectories.push(directory);
 
@@ -33,6 +37,12 @@ case "$1" in
     printf '{"threadId":"thread-1","commandId":"send-1","sequence":2,"replayed":false,"idempotencyKey":"tick"}\\n'
     ;;
   watch)
+    if [[ ! -e "$T3_FAKE_STATUS_MARKER" ]]; then
+      touch "$T3_FAKE_STATUS_MARKER"
+      if [[ "$T3_FAKE_WATCH_STATUS" != 0 ]]; then
+        exit "$T3_FAKE_WATCH_STATUS"
+      fi
+    fi
     if [[ "$T3_FAKE_WATCH_RACE" == "true" && ! -e "$T3_FAKE_WATCH_MARKER" ]]; then
       touch "$T3_FAKE_WATCH_MARKER"
       exit 25
@@ -54,8 +64,10 @@ esac
       T3_BIN: fakeT3,
       T3_FAKE_CALLS: calls,
       T3_FAKE_REPLAYED: String(replayed),
+      T3_FAKE_STATUS_MARKER: join(directory, "watch-status-used"),
       T3_FAKE_WATCH_MARKER: join(directory, "watch-raced"),
       T3_FAKE_WATCH_RACE: String(watchRace),
+      T3_FAKE_WATCH_STATUS: String(watchStatus),
       T3_PROJECT_ID: "project-1",
     },
     stderr: "pipe",
@@ -73,7 +85,7 @@ esac
 
 describe("posthog-agent-loop", () => {
   test("uses the create turn as the first dispatcher pass", async () => {
-    const calls = await runAgentLoop(false, true);
+    const calls = await runAgentLoop(false, 0, true);
 
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
@@ -87,12 +99,24 @@ describe("posthog-agent-loop", () => {
 
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
+      "watch",
       "send",
       "watch",
     ]);
-    expect(calls[1]).toContain(
+    expect(calls[1]).toContain("--timeout 1s");
+    expect(calls[2]).toContain(
       "--idempotency-key deskohub-posthog-dispatcher:2026-08-28T22:00Z"
     );
-    expect(calls[1]).toContain("thread-1");
+    expect(calls[2]).toContain("thread-1");
+  });
+
+  test("reattaches without sending when the dispatcher is running", async () => {
+    const calls = await runAgentLoop(true, 23);
+
+    expect(calls.map((call) => call.split(" ")[0])).toEqual([
+      "create",
+      "watch",
+      "watch",
+    ]);
   });
 });

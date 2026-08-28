@@ -27,11 +27,21 @@ thread_id="$(jq -er '.threadId' <<<"$create_result")"
 replayed="$(jq -r 'if (.replayed | type) == "boolean" then .replayed else error("missing replayed boolean") end' <<<"$create_result")"
 
 if [[ "$replayed" == "true" ]]; then
-  "$t3_bin" send "$thread_id" "$dispatcher_message" \
+  existing_status=0
+  "$t3_bin" watch "$thread_id" \
     --base-dir "$t3_base_dir" \
-    --yes \
-    --idempotency-key "deskohub-posthog-dispatcher:$tick_id" \
-    >/dev/null
+    --timeout 1s \
+    --format json \
+    >/dev/null || existing_status=$?
+
+  if [[ "$existing_status" != 23 ]]; then
+    [[ "$existing_status" == 0 || "$existing_status" == 25 ]] || exit "$existing_status"
+    "$t3_bin" send "$thread_id" "$dispatcher_message" \
+      --base-dir "$t3_base_dir" \
+      --yes \
+      --idempotency-key "deskohub-posthog-dispatcher:$tick_id" \
+      >/dev/null
+  fi
 fi
 
 for _ in {1..30}; do
