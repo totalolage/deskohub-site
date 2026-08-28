@@ -7,9 +7,15 @@ Use the existing authenticated `posthog-cli`, `gh`, and `/home/dev/.local/bin/t3
 ## Resume answered questions
 
 1. Find open issues containing both `<!-- posthog-agent:human-needed -->` and `<!-- t3-worker-thread:`.
-2. For each issue, find the first newer comment from the exact GitHub login `totalolage` that has no matching `<!-- posthog-agent:consumed-comment:<comment-id> -->` marker. The response needs no codeword.
+2. Anchor the search to the latest comment containing `<!-- posthog-agent:human-needed -->`. Find the first later comment from the exact GitHub login `totalolage` that contains none of the automation markers `<!-- posthog-agent:` or `<!-- t3-worker-thread:` and has no matching `<!-- posthog-agent:consumed-comment:<comment-id> -->` marker. The response needs no codeword.
 3. Send that comment to the recorded worker thread with `/home/dev/.local/bin/t3 send`, `--base-dir /home/dev/.t3`, `--yes`, and idempotency key `github-comment-<comment-id>`.
 4. Comment `<!-- posthog-agent:consumed-comment:<comment-id> -->` on the issue only after T3 accepts the send.
+
+## Reconcile recorded workers
+
+Find open PostHog issues that have a recorded worker thread but no linked open pull request. Leave a thread alone while it has an active turn, a pending T3 interaction, or a latest human-needed question without a consumed response.
+
+For every other issue, inspect the recorded thread with `/home/dev/.local/bin/t3 thread`. If it exists and is idle, send it the worker instruction again with an idempotency key containing the issue number and current five-minute UTC bucket. If it no longer exists, create a replacement worker and record its thread ID. This prevents a stopped worker from orphaning the issue.
 
 ## Read production candidates
 
