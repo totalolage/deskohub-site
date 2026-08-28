@@ -15,3 +15,7 @@
 ## Verify integration identity first
 
 When an exact Cloudinary public ID returns 404, verify the full Cloudinary account tuple before changing image-rendering code. Credentials in sibling app environment files can target another product environment.
+
+## Reuse bounded database read retries
+
+For Workspace database read instability, reuse `retryDatabaseRead` from `apps/deskohub-workspace/db/retry-database-read.ts` at the repository query boundary. It retries only Drizzle failures whose nested Effect SQL error is marked retryable. Apply it to idempotent reads; state-changing operations need their own idempotency boundary before retrying.
