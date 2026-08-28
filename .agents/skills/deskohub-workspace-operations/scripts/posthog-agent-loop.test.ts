@@ -14,7 +14,7 @@ afterEach(async () => {
   );
 });
 
-async function runAgentLoop(replayed: boolean) {
+async function runAgentLoop(replayed: boolean, watchRace = false) {
   const directory = await mkdtemp(join(tmpdir(), "posthog-agent-loop-"));
   temporaryDirectories.push(directory);
 
@@ -33,6 +33,10 @@ case "$1" in
     printf '{"threadId":"thread-1","commandId":"send-1","sequence":2,"replayed":false,"idempotencyKey":"tick"}\\n'
     ;;
   watch)
+    if [[ "$T3_FAKE_WATCH_RACE" == "true" && ! -e "$T3_FAKE_WATCH_MARKER" ]]; then
+      touch "$T3_FAKE_WATCH_MARKER"
+      exit 25
+    fi
     ;;
   *)
     exit 64
@@ -50,6 +54,8 @@ esac
       T3_BIN: fakeT3,
       T3_FAKE_CALLS: calls,
       T3_FAKE_REPLAYED: String(replayed),
+      T3_FAKE_WATCH_MARKER: join(directory, "watch-raced"),
+      T3_FAKE_WATCH_RACE: String(watchRace),
       T3_PROJECT_ID: "project-1",
     },
     stderr: "pipe",
@@ -67,10 +73,11 @@ esac
 
 describe("posthog-agent-loop", () => {
   test("uses the create turn as the first dispatcher pass", async () => {
-    const calls = await runAgentLoop(false);
+    const calls = await runAgentLoop(false, true);
 
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
+      "watch",
       "watch",
     ]);
   });

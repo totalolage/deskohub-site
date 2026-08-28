@@ -34,8 +34,15 @@ if [[ "$replayed" == "true" ]]; then
     >/dev/null
 fi
 
-"$t3_bin" watch "$thread_id" \
-  --base-dir "$t3_base_dir" \
-  --timeout 4h \
-  --format json \
-  >/dev/null
+for _ in {1..30}; do
+  watch_status=0
+  "$t3_bin" watch "$thread_id" \
+    --base-dir "$t3_base_dir" \
+    --timeout 4h \
+    --format json \
+    >/dev/null || watch_status=$?
+  [[ "$watch_status" == 25 ]] || exit "$watch_status"
+  sleep 1
+done
+
+exit 25
