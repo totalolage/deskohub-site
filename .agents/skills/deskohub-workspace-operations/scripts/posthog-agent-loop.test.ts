@@ -95,7 +95,7 @@ describe("posthog-agent-loop", () => {
   });
 
   test("sends one idempotent pass to an existing dispatcher", async () => {
-    const calls = await runAgentLoop(true);
+    const calls = await runAgentLoop(true, 20);
 
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",

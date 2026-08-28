@@ -28,7 +28,7 @@ Commit and push `posthog/issue-<number>`. Open or update one pull request agains
 
 ## Auto-merge policy
 
-You may enable squash auto-merge only when every condition below holds:
+You may enable merge auto-merge only when every condition below holds:
 
 - at most 100 changed non-generated lines across at most five source and test files;
 - a focused regression test or equivalent executable proof covers the failure;

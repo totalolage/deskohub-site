@@ -35,7 +35,7 @@ if [[ "$replayed" == "true" ]]; then
     >/dev/null || existing_status=$?
 
   if [[ "$existing_status" != 23 ]]; then
-    [[ "$existing_status" == 0 || "$existing_status" == 25 ]] || exit "$existing_status"
+    [[ "$existing_status" == 0 || "$existing_status" == 20 || "$existing_status" == 21 || "$existing_status" == 22 || "$existing_status" == 25 ]] || exit "$existing_status"
     "$t3_bin" send "$thread_id" "$dispatcher_message" \
       --base-dir "$t3_base_dir" \
       --yes \
