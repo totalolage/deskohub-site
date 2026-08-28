@@ -35,7 +35,7 @@ You may enable squash auto-merge only when every condition below holds:
 - the change does not touch migrations, data schemas, authentication, authorization, access codes, checkout, pricing, payments, accounting, external API contracts, dependencies, build or deployment configuration, CI workflows, or feature-flag policy;
 - every required check passes on the current head, no review is unresolved, and the change needs no product judgment.
 
-Use `gh pr merge --auto --squash`. Otherwise leave the pull request ready for human merge and explain which condition prevented auto-merge.
+Use `gh pr merge --auto --merge`. Otherwise leave the pull request ready for human merge and explain which condition prevented auto-merge.
 
 After every required check and review is resolved on the exact current head, comment this marker on the issue whether you enabled auto-merge or left the pull request ready for human merge:
 
