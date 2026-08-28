@@ -18,6 +18,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { retryDatabaseRead } from "@/db/retry-database-read";
 import {
   latePaymentRecoveries,
   paymentAttempts,
@@ -1132,7 +1133,8 @@ export class WorkspaceReservationRepository extends Context.Service<
                 asc(workspaceReservations.reservationHoldExpiresAt),
                 asc(workspaceReservations.id)
               )
-              .limit(input.limit);
+              .limit(input.limit)
+              .pipe(retryDatabaseRead);
             return yield* Effect.forEach(
               reservations,
               decodeWorkspaceReservation,

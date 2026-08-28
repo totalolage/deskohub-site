@@ -1,6 +1,7 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { retryDatabaseRead } from "@/db/retry-database-read";
 import {
   type DiscountDefinition,
   type DiscountDefinitionMalformedError,
@@ -34,10 +35,12 @@ export class DiscountDefinitionRepository extends Context.Service<
 
       const loadById = Effect.fn("DiscountDefinitionRepository.loadById")(
         function* (input: LoadDiscountDefinitionInput) {
-          const row = yield* db.query.discounts.findFirst({
-            where: { id: { eq: input.discountId } },
-            with: { productTargets: {} },
-          });
+          const row = yield* db.query.discounts
+            .findFirst({
+              where: { id: { eq: input.discountId } },
+              with: { productTargets: {} },
+            })
+            .pipe(retryDatabaseRead);
 
           if (!row) {
             return yield* new DiscountDefinitionNotFoundError({
