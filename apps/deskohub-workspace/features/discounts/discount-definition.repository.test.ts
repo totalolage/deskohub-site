@@ -16,4 +16,15 @@ describe("DiscountDefinitionRepository", () => {
     expect(source).not.toContain(".query.discounts");
     expect(source).not.toContain("with: { productTargets: {} }");
   });
+
+  test("preserves retryable query failures when normalizing transaction errors", async () => {
+    const source = await Bun.file(
+      new URL("./discount-definition.repository.ts", import.meta.url)
+    ).text();
+
+    expect(source).toContain(
+      "cause instanceof EffectDrizzleQueryError\n                    ? cause"
+    );
+    expect(source).not.toContain("cause: Cause.fail(cause)");
+  });
 });
