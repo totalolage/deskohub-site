@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
-import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer } from "effect";
+import { eq, sql } from "drizzle-orm";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { Cause, Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { discountProductTargets, discounts } from "@/db/schema";
 import { retryDatabaseRead } from "@/db/retry-database-read";
@@ -38,23 +38,41 @@ export class DiscountDefinitionRepository extends Context.Service<
 
       const loadById = Effect.fn("DiscountDefinitionRepository.loadById")(
         function* (input: LoadDiscountDefinitionInput) {
-          const [discountRow, productTargets] = yield* Effect.all(
-            [
-              db
-                .select()
-                .from(discounts)
-                .where(eq(discounts.id, input.discountId))
-                .limit(1),
-              db
-                .select({
-                  discountId: discountProductTargets.discountId,
-                  productTarget: discountProductTargets.productTarget,
-                })
-                .from(discountProductTargets)
-                .where(eq(discountProductTargets.discountId, input.discountId)),
-            ],
-            { concurrency: "inherit" }
-          ).pipe(retryDatabaseRead);
+          const [discountRow, productTargets] = yield* db
+            .transaction((tx) =>
+              Effect.gen(function* () {
+                yield* tx.execute(
+                  sql`set transaction isolation level repeatable read`
+                );
+
+                const discountRow = yield* tx
+                  .select()
+                  .from(discounts)
+                  .where(eq(discounts.id, input.discountId))
+                  .limit(1);
+                const productTargets = yield* tx
+                  .select({
+                    discountId: discountProductTargets.discountId,
+                    productTarget: discountProductTargets.productTarget,
+                  })
+                  .from(discountProductTargets)
+                  .where(eq(discountProductTargets.discountId, input.discountId));
+
+                return [discountRow, productTargets] as const;
+              })
+            )
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new EffectDrizzleQueryError({
+                    query:
+                      "load discount definition in repeatable read transaction",
+                    params: [input.discountId],
+                    cause: Cause.fail(cause),
+                  })
+              )
+            )
+            .pipe(retryDatabaseRead);
 
           const row = discountRow[0]
             ? ({

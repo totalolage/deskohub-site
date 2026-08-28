@@ -6,7 +6,11 @@ describe("DiscountDefinitionRepository", () => {
       new URL("./discount-definition.repository.ts", import.meta.url)
     ).text();
 
-    expect(source).toContain("db\n                .select()");
+    expect(source).toContain("db\n            .transaction((tx) =>");
+    expect(source).toContain(
+      "sql`set transaction isolation level repeatable read`"
+    );
+    expect(source).toContain("tx\n                  .select()");
     expect(source).toContain(".from(discounts)");
     expect(source).toContain(".from(discountProductTargets)");
     expect(source).not.toContain(".query.discounts");
