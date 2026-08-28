@@ -1,5 +1,7 @@
 # GitHub Issues as the incident-agent control plane
 
+> **Status: superseded by the MVP map.** The selected MVP uses one timer, one persistent T3 dispatcher agent, existing CLI credentials, GitHub issues as the queue, and prompts as the safety boundary. Do not implement the controller identity split or deterministic state machinery below unless the MVP proves that it needs them. See [the Wayfinder map](https://github.com/totalolage/deskohub-site/issues/288).
+
 Research date: 2026-08-28. Repository: `totalolage/deskohub-site`.
 
 ## Recommendation

@@ -1,5 +1,7 @@
 # Custom PostHog intake for the devbox agent loop
 
+> **Status: superseded by the MVP map.** The selected MVP queries only Error Tracking spike events through PostHog's official CLI. It uses the spike ID and GitHub issue search for deduplication. Do not implement the broader direct-API collector below unless the MVP expands beyond spikes. See [the Wayfinder map](https://github.com/totalolage/deskohub-site/issues/288).
+
 Research date: 2026-08-28. This note covers project 204184 on PostHog EU. It deliberately excludes PostHog Self-driving Signals, reports, and agents. No production payloads or credentials were read.
 
 ## Decision

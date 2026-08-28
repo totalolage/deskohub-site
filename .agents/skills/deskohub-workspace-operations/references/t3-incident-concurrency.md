@@ -1,5 +1,7 @@
 # T3 incident-agent concurrency on the devbox
 
+> **Status: deferred by the MVP map.** The MVP accepts existing T3 lifecycle behavior, uncapped agent starts, and manual cleanup. Do not make headless cleanup or resource admission a rollout prerequisite unless the prototype exposes a real failure. See [the Wayfinder map](https://github.com/totalolage/deskohub-site/issues/288).
+
 Research date: 2026-08-28
 
 ## Conclusion

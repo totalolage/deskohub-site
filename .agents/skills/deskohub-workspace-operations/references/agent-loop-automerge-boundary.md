@@ -1,5 +1,7 @@
 # Autonomous PR auto-merge boundary
 
+> **Status: risk research, not an MVP blocker.** The MVP uses the existing GitHub identity and checks, and the worker prompt decides whether a small stable PR may use GitHub auto-merge. The stronger independent enforcement below is deferred until the MVP demonstrates that it is useful. See [the Wayfinder map](https://github.com/totalolage/deskohub-site/issues/288).
+
 Research date: 2026-08-28. Repository: `totalolage/deskohub-site`. The live settings below can change, so rerun the audit before using this note to change merge policy.
 
 ## Decision

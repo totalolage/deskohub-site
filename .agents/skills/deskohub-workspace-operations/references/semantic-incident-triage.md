@@ -1,5 +1,7 @@
 # Semantic incident triage before implementation
 
+> **Status: superseded by the MVP map.** One worker prompt now owns triage, research, implementation, human questions, and PR completion in the same T3 thread. The MVP does not add the separate machine-validated triage gate below. See [the Wayfinder map](https://github.com/totalolage/deskohub-site/issues/288).
+
 Research date: 2026-08-28. This note assumes PostHog project 204184, the public `totalolage/deskohub-site` repository, and the supported F8Y T3 Code orchestration CLI on this devbox. It does not authorize production changes.
 
 ## Decision
