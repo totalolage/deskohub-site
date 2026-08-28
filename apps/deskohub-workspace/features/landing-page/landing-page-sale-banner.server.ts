@@ -16,7 +16,17 @@ export const getActiveLandingPageSaleBanner = Effect.fn(
       getActivePublicSales({ locale })
     ),
     Effect.tap(logAmbiguousActiveSales),
-    Effect.flatMap(getEligibleLandingPageSaleBanner)
+    Effect.flatMap(getEligibleLandingPageSaleBanner),
+    Effect.tapError((cause) =>
+      Effect.logWarning("Landing sale banner lookup failed").pipe(
+        Effect.annotateLogs({
+          cause,
+          landingPageBoundary: "sale_banner",
+          landingPageErrorReason: "sale_lookup_failed",
+        })
+      )
+    ),
+    Effect.orElseSucceed(() => undefined)
   )
 );
 
