@@ -36,3 +36,11 @@ You may enable squash auto-merge only when every condition below holds:
 - every required check passes on the current head, no review is unresolved, and the change needs no product judgment.
 
 Use `gh pr merge --auto --squash`. Otherwise leave the pull request ready for human merge and explain which condition prevented auto-merge.
+
+After every required check and review is resolved on the exact current head, comment this marker on the issue whether you enabled auto-merge or left the pull request ready for human merge:
+
+```text
+<!-- posthog-agent:worker-complete:<head-sha> -->
+```
+
+Never write the marker while a required check, review, or merge disposition is pending.

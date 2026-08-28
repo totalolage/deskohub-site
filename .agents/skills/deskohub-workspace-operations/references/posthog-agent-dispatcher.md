@@ -13,9 +13,9 @@ Use the existing authenticated `posthog-cli`, `gh`, and `/home/dev/.local/bin/t3
 
 ## Reconcile recorded workers
 
-Find open PostHog issues that have a recorded worker thread but no linked open pull request. Leave a thread alone when its latest human-needed question has no consumed response or `/home/dev/.local/bin/t3 pending --thread-id <thread-id>` reports an interaction.
+Find every open PostHog issue that has a recorded worker thread. Leave it alone when its latest human-needed question has no consumed response or `/home/dev/.local/bin/t3 pending --thread-id <thread-id>` reports an interaction. When it has a linked open pull request, also leave it alone if auto-merge is enabled or the issue has a `<!-- posthog-agent:worker-complete:<current-head-sha> -->` marker for the pull request's exact current head.
 
-For every other issue, run `/home/dev/.local/bin/t3 watch <thread-id> --base-dir /home/dev/.t3 --timeout 1s --format json >/dev/null`. Exit 23 means the turn is still running, and exit 26 means it needs an interaction; leave either alone. Exit 0 or 25 means the thread is idle; send it the worker instruction again with an idempotency key containing the issue number and current five-minute UTC bucket. Exit 24 means the thread no longer exists; create a replacement worker and record its thread ID. This prevents a stopped worker from orphaning the issue without reading a growing thread snapshot.
+For every other issue, run `/home/dev/.local/bin/t3 watch <thread-id> --base-dir /home/dev/.t3 --timeout 1s --format json >/dev/null`. Exit 23 means the turn is still running, and exit 26 means it needs an interaction; leave either alone. Exit 0 or 25 means the thread is idle; send it the worker instruction again with an idempotency key containing the issue number and current five-minute UTC bucket. Tell a pull-request-owning worker to continue through checks, review, and merge disposition. Exit 24 means the thread no longer exists; create a replacement worker and record its thread ID. This prevents a stopped worker from orphaning the issue without reading a growing thread snapshot.
 
 ## Read production candidates
 
