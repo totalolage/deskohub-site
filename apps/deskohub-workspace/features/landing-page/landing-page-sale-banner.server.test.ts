@@ -19,7 +19,12 @@ type LogAnnotations = Context.Service.Shape<
 mock.module("server-only", () => ({}));
 
 let activePublicSales: readonly ActiveSale[] = [];
-const getActivePublicSales = mock(() => Effect.succeed(activePublicSales));
+let activePublicSalesFailure: Error | undefined;
+const getActivePublicSales = mock(() =>
+  activePublicSalesFailure
+    ? Effect.fail(activePublicSalesFailure)
+    : Effect.succeed(activePublicSales)
+);
 mock.module("@/features/discounts/active-public-sales.server", () => ({
   getActivePublicSales,
 }));
@@ -57,9 +62,11 @@ const sale = (
 const getBannerEffect = (
   activeSales: readonly ActiveSale[],
   locale: "en-US" | "cs-CZ" = "en-US",
-  officePageEnabled = true
+  officePageEnabled = true,
+  failure?: Error
 ) => {
   activePublicSales = activeSales;
+  activePublicSalesFailure = failure;
   getActivePublicSales.mockClear();
 
   return Effect.gen(function* () {
@@ -170,5 +177,37 @@ describe("getActiveLandingPageSaleBanner", () => {
       }),
     });
     expect(JSON.stringify(logRecords)).not.toContain("Summer focus");
+  });
+
+  test("fails closed and logs when active sale lookup fails", async () => {
+    const logRecords: {
+      readonly annotations: LogAnnotations;
+      readonly level: string;
+      readonly message: string;
+    }[] = [];
+    const logger = Logger.make((options) => {
+      logRecords.push({
+        annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+        level: options.logLevel,
+        message: options.message.join(""),
+      });
+    });
+
+    const { banner } = await getBannerEffect(
+      [],
+      "en-US",
+      true,
+      new Error("calendar offline")
+    ).pipe(Effect.provide(Logger.layer([logger])), Effect.runPromise);
+
+    expect(banner).toBeUndefined();
+    expect(logRecords).toContainEqual({
+      level: "Warn",
+      message: "Landing sale banner lookup failed",
+      annotations: expect.objectContaining({
+        landingPageBoundary: "sale_banner",
+        landingPageErrorReason: "sale_lookup_failed",
+      }),
+    });
   });
 });
