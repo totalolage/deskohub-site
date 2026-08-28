@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer } from "effect";
+import { Cause, Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { discountProductTargets, discounts } from "@/db/schema";
 import { retryDatabaseRead } from "@/db/retry-database-read";
@@ -70,7 +70,7 @@ export class DiscountDefinitionRepository extends Context.Service<
                         query:
                           "load discount definition in repeatable read transaction",
                         params: [input.discountId],
-                        cause,
+                        cause: Cause.fail(cause),
                       })
               )
             )

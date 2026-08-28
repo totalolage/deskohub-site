@@ -25,6 +25,6 @@ describe("DiscountDefinitionRepository", () => {
     expect(source).toContain(
       "cause instanceof EffectDrizzleQueryError\n                    ? cause"
     );
-    expect(source).not.toContain("cause: Cause.fail(cause)");
+    expect(source).toContain("cause: Cause.fail(cause)");
   });
 });
