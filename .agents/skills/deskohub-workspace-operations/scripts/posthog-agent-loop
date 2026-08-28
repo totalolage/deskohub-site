@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+t3_bin="${T3_BIN:-/home/dev/.local/bin/t3}"
+t3_base_dir="${T3_BASE_DIR:-/home/dev/.t3}"
+project_id="${T3_PROJECT_ID:-4c8453d8-1a32-400b-a540-9f10afd75170}"
+instructions="${POSTHOG_AGENT_INSTRUCTIONS:-/home/dev/.local/share/deskohub-posthog-agent-loop}"
+tick_id="${POSTHOG_AGENT_TICK_ID:-$(( $(date -u +%s) / 300 ))}"
+
+test -x "$t3_bin"
+test -r "$instructions/posthog-agent-dispatcher.md"
+
+dispatcher_message="Read and follow $instructions/posthog-agent-dispatcher.md. Run one complete dispatcher pass now."
+create_result="$($t3_bin create "$project_id" "$dispatcher_message" \
+  --base-dir "$t3_base_dir" \
+  --yes \
+  --confirm-create \
+  --start-from-origin \
+  --runtime-mode full-access \
+  --interaction-mode default \
+  --title "PostHog incident dispatcher" \
+  --branch "posthog/dispatcher" \
+  --base-branch main \
+  --idempotency-key "deskohub-posthog-dispatcher:v1")"
+
+thread_id="$(jq -er '.threadId' <<<"$create_result")"
+replayed="$(jq -r 'if (.replayed | type) == "boolean" then .replayed else error("missing replayed boolean") end' <<<"$create_result")"
+
+if [[ "$replayed" == "true" ]]; then
+  "$t3_bin" send "$thread_id" "$dispatcher_message" \
+    --base-dir "$t3_base_dir" \
+    --yes \
+    --idempotency-key "deskohub-posthog-dispatcher:$tick_id" \
+    >/dev/null
+fi
+
+"$t3_bin" watch "$thread_id" \
+  --base-dir "$t3_base_dir" \
+  --timeout 4h \
+  --format json \
+  >/dev/null

@@ -1,0 +1,15 @@
+[Unit]
+Description=Run the Deskohub PostHog incident agent
+After=network-online.target t3code.service
+Wants=network-online.target
+Requires=t3code.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/dev/Projects/deskohub
+Environment=HOME=/home/dev
+Environment=PATH=/home/dev/.local/bin:/home/dev/.npm-global/bin:/usr/local/bin:/usr/bin:/bin
+Environment=T3CODE_HOME=/home/dev/.t3
+ExecStart=/home/dev/.local/libexec/deskohub-posthog-agent-loop
+TimeoutStartSec=4h10m
+UMask=0077
