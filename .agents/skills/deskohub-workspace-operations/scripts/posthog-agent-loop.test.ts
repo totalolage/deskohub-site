@@ -4,6 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const runner = join(import.meta.dir, "posthog-agent-loop");
+const dispatcherConfigurer = join(
+  import.meta.dir,
+  "posthog-configure-dispatcher"
+);
 const workerCreator = join(import.meta.dir, "posthog-create-worker");
 const temporaryDirectories: string[] = [];
 
@@ -24,7 +28,9 @@ async function runAgentLoop(
   temporaryDirectories.push(directory);
 
   const calls = join(directory, "calls");
+  const configuredThread = join(directory, "configured-thread");
   const fakeT3 = join(directory, "t3");
+  const fakeConfigurer = join(directory, "configure-dispatcher");
   await Bun.write(
     fakeT3,
     `#!/usr/bin/env bash
@@ -55,13 +61,22 @@ case "$1" in
 esac
 `
   );
-  await chmod(fakeT3, 0o755);
+  await Bun.write(
+    fakeConfigurer,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s' "$1" > "$POSTHOG_FAKE_CONFIGURED_THREAD"
+`
+  );
+  await Promise.all([chmod(fakeT3, 0o755), chmod(fakeConfigurer, 0o755)]);
 
   const process = Bun.spawn([runner], {
     env: {
       ...Bun.env,
+      POSTHOG_CONFIGURE_DISPATCHER: fakeConfigurer,
       POSTHOG_AGENT_INSTRUCTIONS: join(import.meta.dir, "../references"),
       POSTHOG_AGENT_TICK_ID: "2026-08-28T22:00Z",
+      POSTHOG_FAKE_CONFIGURED_THREAD: configuredThread,
       T3_BIN: fakeT3,
       T3_FAKE_CALLS: calls,
       T3_FAKE_REPLAYED: String(replayed),
@@ -81,13 +96,85 @@ esac
 
   expect(stderr).toBe("");
   expect(exitCode).toBe(0);
-  return (await Bun.file(calls).text()).trim().split("\n");
+  return {
+    calls: (await Bun.file(calls).text()).trim().split("\n"),
+    configuredThread: await Bun.file(configuredThread).text(),
+  };
+}
+
+async function runApiScript(script: string, args: string[]) {
+  const directory = await mkdtemp(join(tmpdir(), "posthog-api-script-"));
+  temporaryDirectories.push(directory);
+  const curlArguments = join(directory, "curl-arguments");
+  const payloadPath = join(directory, "payload");
+  const fakeT3 = join(directory, "t3");
+  const fakeCurl = join(directory, "curl");
+
+  await Bun.write(
+    fakeT3,
+    `#!/usr/bin/env bash
+set -euo pipefail
+case "$1" in
+  session) printf '{"target":{"httpBaseUrl":"http://127.0.0.1:3773"}}\n' ;;
+  auth) printf 'fake-token\n' ;;
+  *) exit 64 ;;
+esac
+`
+  );
+  await Bun.write(
+    fakeCurl,
+    `#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" > "$CURL_FAKE_ARGUMENTS"
+while (($#)); do
+  if [[ "$1" == "--data-binary" ]]; then
+    printf '%s' "$2" > "$CURL_FAKE_PAYLOAD"
+    shift 2
+  else
+    shift
+  fi
+done
+cat >/dev/null
+printf '{"sequence":42}\n'
+`
+  );
+  await Promise.all([chmod(fakeT3, 0o755), chmod(fakeCurl, 0o755)]);
+
+  const process = Bun.spawn([script, ...args], {
+    env: {
+      ...Bun.env,
+      CURL_BIN: fakeCurl,
+      CURL_FAKE_ARGUMENTS: curlArguments,
+      CURL_FAKE_PAYLOAD: payloadPath,
+      T3_BASE_DIR: directory,
+      T3_BIN: fakeT3,
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    process.exited,
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+  ]);
+
+  return {
+    curlArguments: await Bun.file(curlArguments).text(),
+    exitCode,
+    payload: await Bun.file(payloadPath).json(),
+    stderr,
+    stdout,
+  };
 }
 
 describe("posthog-agent-loop", () => {
   test("uses the create turn as the first dispatcher pass", async () => {
-    const calls = await runAgentLoop(false, 0, true);
+    const { calls, configuredThread } = await runAgentLoop(false, 0, true);
 
+    expect(configuredThread).toBe("thread-1");
+    expect(calls[0]).toContain(
+      "Wait for the next dispatcher turn. Do not query or write anything."
+    );
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
       "watch",
@@ -96,7 +183,7 @@ describe("posthog-agent-loop", () => {
   });
 
   test("sends one idempotent pass to an existing dispatcher", async () => {
-    const calls = await runAgentLoop(true, 20);
+    const { calls } = await runAgentLoop(true, 20);
 
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
@@ -112,7 +199,7 @@ describe("posthog-agent-loop", () => {
   });
 
   test("reattaches without sending when the dispatcher is running", async () => {
-    const calls = await runAgentLoop(true, 23);
+    const { calls } = await runAgentLoop(true, 23);
 
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
@@ -121,62 +208,28 @@ describe("posthog-agent-loop", () => {
     ]);
   });
 
-  test("creates issue workers with GPT-5.6-Sol and high reasoning", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "posthog-worker-"));
-    temporaryDirectories.push(directory);
-    const curlArguments = join(directory, "curl-arguments");
-    const payloadPath = join(directory, "payload");
-    const fakeT3 = join(directory, "t3");
-    const fakeCurl = join(directory, "curl");
+  test("configures the dispatcher with GPT-5.6-Luna and xhigh reasoning", async () => {
+    const { curlArguments, exitCode, payload, stderr, stdout } =
+      await runApiScript(dispatcherConfigurer, ["thread-1"]);
 
-    await Bun.write(
-      fakeT3,
-      `#!/usr/bin/env bash
-set -euo pipefail
-case "$1" in
-  session) printf '{"target":{"httpBaseUrl":"http://127.0.0.1:3773"}}\n' ;;
-  auth) printf 'fake-token\n' ;;
-  *) exit 64 ;;
-esac
-`
-    );
-    await Bun.write(
-      fakeCurl,
-      `#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" > "$CURL_FAKE_ARGUMENTS"
-while (($#)); do
-  if [[ "$1" == "--data-binary" ]]; then
-    printf '%s' "$2" > "$CURL_FAKE_PAYLOAD"
-    shift 2
-  else
-    shift
-  fi
-done
-cat >/dev/null
-printf '{"sequence":42}\n'
-`
-    );
-    await Promise.all([chmod(fakeT3, 0o755), chmod(fakeCurl, 0o755)]);
-
-    const process = Bun.spawn([workerCreator, "303"], {
-      env: {
-        ...Bun.env,
-        CURL_BIN: fakeCurl,
-        CURL_FAKE_ARGUMENTS: curlArguments,
-        CURL_FAKE_PAYLOAD: payloadPath,
-        T3_BASE_DIR: directory,
-        T3_BIN: fakeT3,
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toBe("");
+    expect(payload).toMatchObject({
+      modelSelection: {
+        instanceId: "codex",
+        model: "gpt-5.6-luna",
+        options: [{ id: "reasoningEffort", value: "xhigh" }],
       },
-      stderr: "pipe",
-      stdout: "pipe",
+      threadId: "thread-1",
+      type: "thread.meta.update",
     });
-    const [exitCode, stdout, stderr] = await Promise.all([
-      process.exited,
-      new Response(process.stdout).text(),
-      new Response(process.stderr).text(),
-    ]);
-    const payload = await Bun.file(payloadPath).json();
+    expect(curlArguments).not.toContain("fake-token");
+  });
+
+  test("creates issue workers with GPT-5.6-Sol and high reasoning", async () => {
+    const { curlArguments, exitCode, payload, stderr, stdout } =
+      await runApiScript(workerCreator, ["303"]);
 
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
@@ -193,6 +246,6 @@ printf '{"sequence":42}\n'
     expect(payload.bootstrap.createThread.modelSelection).toEqual(
       payload.modelSelection
     );
-    expect(await Bun.file(curlArguments).text()).not.toContain("fake-token");
+    expect(curlArguments).not.toContain("fake-token");
   });
 });

@@ -5,13 +5,15 @@ t3_bin="${T3_BIN:-/home/dev/.local/bin/t3}"
 t3_base_dir="${T3_BASE_DIR:-/home/dev/.t3}"
 project_id="${T3_PROJECT_ID:-4c8453d8-1a32-400b-a540-9f10afd75170}"
 instructions="${POSTHOG_AGENT_INSTRUCTIONS:-/home/dev/.local/share/deskohub-posthog-agent-loop}"
+configure_dispatcher="${POSTHOG_CONFIGURE_DISPATCHER:-/home/dev/.local/libexec/deskohub-posthog-configure-dispatcher}"
 tick_id="${POSTHOG_AGENT_TICK_ID:-$(( $(date -u +%s) / 300 ))}"
 
 test -x "$t3_bin"
 test -r "$instructions/posthog-agent-dispatcher.md"
 
 dispatcher_message="Read and follow $instructions/posthog-agent-dispatcher.md. Run one complete dispatcher pass now."
-create_result="$($t3_bin create "$project_id" "$dispatcher_message" \
+bootstrap_message="Wait for the next dispatcher turn. Do not query or write anything."
+create_result="$($t3_bin create "$project_id" "$bootstrap_message" \
   --base-dir "$t3_base_dir" \
   --yes \
   --confirm-create \
@@ -25,6 +27,7 @@ create_result="$($t3_bin create "$project_id" "$dispatcher_message" \
 
 thread_id="$(jq -er '.threadId' <<<"$create_result")"
 replayed="$(jq -r 'if (.replayed | type) == "boolean" then .replayed else error("missing replayed boolean") end' <<<"$create_result")"
+"$configure_dispatcher" "$thread_id"
 
 if [[ "$replayed" == "true" ]]; then
   existing_status=0
