@@ -55,6 +55,9 @@ case "$1" in
       exit 25
     fi
     ;;
+  compact)
+    printf '{"threadId":"thread-1","commandId":"compact-1","sequence":3,"replayed":false,"idempotencyKey":"compact"}\n'
+    ;;
   *)
     exit 64
     ;;
@@ -179,6 +182,7 @@ describe("posthog-agent-loop", () => {
       "create",
       "watch",
       "watch",
+      "compact",
     ]);
   });
 
@@ -190,12 +194,16 @@ describe("posthog-agent-loop", () => {
       "watch",
       "send",
       "watch",
+      "compact",
     ]);
     expect(calls[1]).toContain("--timeout 1s");
     expect(calls[2]).toContain(
       "--idempotency-key deskohub-posthog-dispatcher:2026-08-28T22:00Z"
     );
     expect(calls[2]).toContain("thread-1");
+    expect(calls[4]).toContain(
+      "--idempotency-key deskohub-posthog-dispatcher-compact:2026-08-28T22:00Z"
+    );
   });
 
   test("reattaches without sending when the dispatcher is running", async () => {
@@ -205,6 +213,7 @@ describe("posthog-agent-loop", () => {
       "create",
       "watch",
       "watch",
+      "compact",
     ]);
   });
 

@@ -54,6 +54,14 @@ for _ in {1..30}; do
     --timeout 4h \
     --format json \
     >/dev/null || watch_status=$?
+  if [[ "$watch_status" == 0 ]]; then
+    "$t3_bin" compact "$thread_id" \
+      --base-dir "$t3_base_dir" \
+      --yes \
+      --idempotency-key "deskohub-posthog-dispatcher-compact:$tick_id" \
+      >/dev/null
+    exit 0
+  fi
   [[ "$watch_status" == 25 ]] || exit "$watch_status"
   sleep 1
 done
