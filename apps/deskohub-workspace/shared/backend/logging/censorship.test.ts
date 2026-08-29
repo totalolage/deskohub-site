@@ -401,7 +401,11 @@ describe("censorLogValue", () => {
     const error = new Error("boom");
     error.cause = new Error("nested private value");
     const aggregate = new AggregateError(
-      [new Error("aggregate member private value")],
+      [
+        new Error("aggregate member private value"),
+        "aggregate scalar private value",
+        { payload: "aggregate object private value" },
+      ],
       "aggregate private value",
       { cause: new Error("aggregate cause private value") }
     );
@@ -433,6 +437,8 @@ describe("censorLogValue", () => {
           errorType: "Error",
           message: CENSORED_LOG_VALUE,
         },
+        CENSORED_LOG_VALUE,
+        CENSORED_LOG_VALUE,
       ],
     });
     expect(censored.date).toBe(date);
@@ -445,6 +451,38 @@ describe("censorLogValue", () => {
     expect(JSON.stringify(censored)).not.toContain(
       "aggregate member private value"
     );
+    expect(JSON.stringify(censored)).not.toContain(
+      "aggregate scalar private value"
+    );
+    expect(JSON.stringify(censored)).not.toContain(
+      "aggregate object private value"
+    );
+  });
+
+  test("retains only safe error classification fields", () => {
+    const privateValue = "private@example.com";
+    const error = Object.assign(new Error(privateValue), {
+      _tag: "CalendarSaleConfigurationError",
+      reason: "invalid_event",
+      operation: "normalize",
+      code: "INVALID_EVENT",
+      eventReference: privateValue,
+      issue: { actual: privateValue },
+    });
+
+    const censored = censorLogValue({ cause: error });
+
+    expect(censored).toEqual({
+      cause: {
+        errorType: "Error",
+        message: CENSORED_LOG_VALUE,
+        _tag: "CalendarSaleConfigurationError",
+        reason: "invalid_event",
+        operation: "normalize",
+        code: "INVALID_EVENT",
+      },
+    });
+    expect(JSON.stringify(censored)).not.toContain(privateValue);
   });
 
   test("projects native errors from another realm", () => {

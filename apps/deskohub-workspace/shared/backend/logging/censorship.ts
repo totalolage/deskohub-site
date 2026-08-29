@@ -71,19 +71,15 @@ const sensitiveLogExactKeys = new Set([
   "city",
   "country",
   "description",
-  "detail",
   "db.namespace",
   "discountcode",
   "exception.stacktrace",
-  "hint",
-  "internalquery",
   "recipient",
   "server.address",
   "stack",
   "stacktrace",
   "submittedcode",
   "subject",
-  "where",
   "zip",
   "x-vercel-sc-headers",
 ]);
@@ -308,6 +304,9 @@ const censorLogRecordValue = <T>(
   databaseQuery?: string
 ): unknown => {
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
+  if (key.toLowerCase() === "cause") {
+    return censorErrorCauseInternal(value, seen);
+  }
   if (key.toLowerCase() === "params") {
     return censorQueryParamsInternal(databaseQuery, value, seen);
   }
@@ -405,7 +404,7 @@ const censorLogValueInternal = <T>(
     };
     seen.set(value, result);
     result.params = censorQueryParamsInternal(value.query, value.params, seen);
-    result.cause = censorLogValueInternal(value.cause, seen);
+    result.cause = censorErrorCauseInternal(value.cause, seen);
     return result;
   }
 
@@ -419,18 +418,32 @@ const censorLogValueInternal = <T>(
     };
     seen.set(value, result);
 
-    for (const [key, nestedValue] of Object.entries(value)) {
-      if (key === "name" || key === "message" || key === "stack") continue;
-      result[key] = censorLogRecordValue(key, nestedValue, seen);
+    for (const key of [
+      "_tag",
+      "reason",
+      "operation",
+      "code",
+      "status",
+      "statusCode",
+      "constraint",
+    ] as const) {
+      const property = Object.getOwnPropertyDescriptor(value, key);
+      if (property && "value" in property) {
+        result[key] = censorLogRecordValue(key, property.value, seen);
+      }
     }
 
-    if ("cause" in value && !("cause" in result)) {
-      result.cause = censorLogValueInternal(value.cause, seen);
+    if ("cause" in value) {
+      result.cause = censorErrorCauseInternal(value.cause, seen);
     }
 
     const errors = Object.getOwnPropertyDescriptor(value, "errors");
-    if (errors && "value" in errors) {
-      result.errors = censorLogValueInternal(errors.value, seen);
+    if (errors && "value" in errors && Array.isArray(errors.value)) {
+      result.errors = errors.value.map((error) =>
+        isStructuredErrorCause(error)
+          ? censorLogValueInternal(error, seen)
+          : CENSORED_LOG_VALUE
+      );
     }
 
     return result;
@@ -459,6 +472,20 @@ export const censorTelemetryValue = <T>(value: T): unknown =>
 
 export const censorLogValue = censorTelemetryValue;
 
+function censorErrorCauseInternal(
+  cause: unknown,
+  seen: WeakMap<object, unknown>
+): unknown {
+  return isStructuredErrorCause(cause) || isPlainObject(cause)
+    ? censorLogValueInternal(cause, seen)
+    : CENSORED_LOG_VALUE;
+}
+
+const isStructuredErrorCause = (cause: unknown): boolean =>
+  Cause.isCause(cause) ||
+  isEffectDrizzleQueryError(cause) ||
+  isNativeError(cause);
+
 const censorCauseInternal = (
   cause: Cause.Cause<unknown>,
   seen: WeakMap<object, unknown>
@@ -469,10 +496,14 @@ const censorCauseInternal = (
   const result = Cause.fromReasons(
     cause.reasons.map((reason) => {
       if (Cause.isFailReason(reason)) {
-        return Cause.makeFailReason(censorLogValueInternal(reason.error, seen));
+        return Cause.makeFailReason(
+          censorErrorCauseInternal(reason.error, seen)
+        );
       }
       if (Cause.isDieReason(reason)) {
-        return Cause.makeDieReason(censorLogValueInternal(reason.defect, seen));
+        return Cause.makeDieReason(
+          censorErrorCauseInternal(reason.defect, seen)
+        );
       }
       return reason;
     })

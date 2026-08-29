@@ -58,6 +58,33 @@ test("retries uncoded connection acquisition failures", async () => {
   expect(attempts).toBe(2);
 });
 
+test("does not retry coded unknown connection acquisition failures", async () => {
+  let attempts = 0;
+  const failure = new EffectDrizzleQueryError({
+    query: "select 1",
+    params: [],
+    cause: Cause.fail(
+      new SqlError.SqlError({
+        reason: new SqlError.UnknownError({
+          cause: Object.assign(new Error("database does not exist"), {
+            code: "3D000",
+          }),
+          message: "Failed to acquire connection",
+          operation: "acquireConnection",
+        }),
+      })
+    ),
+  });
+
+  const result = await Effect.suspend(() => {
+    attempts += 1;
+    return Effect.fail(failure);
+  }).pipe(retryDatabaseRead, Effect.flip, Effect.runPromise);
+
+  expect(result).toBe(failure);
+  expect(attempts).toBe(1);
+});
+
 test("does not retry a permanent database read failure", async () => {
   let attempts = 0;
   const failure = new EffectDrizzleQueryError({
