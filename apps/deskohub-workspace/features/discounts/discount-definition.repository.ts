@@ -57,9 +57,9 @@ export class DiscountDefinitionRepository extends Context.Service<
           const row = rows[0]
             ? ({
                 ...rows[0].discount,
-                productTargets: rows.flatMap(({ productTarget }) =>
-                  productTarget ? [productTarget] : []
-                ),
+                productTargets: rows
+                  .map(({ productTarget }) => productTarget)
+                  .filter(Boolean),
               } satisfies DiscountDefinitionRow)
             : null;
 
