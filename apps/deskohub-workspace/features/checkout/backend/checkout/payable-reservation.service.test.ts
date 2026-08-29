@@ -75,19 +75,19 @@ describe("PayableReservationService", () => {
     expect(getReservationStatus).toHaveBeenCalledWith("dotypos-reservation-id");
   });
 
-  test.each([
-    "CANCELLED",
-    "CONFIRMED",
-  ] as const)("rejects a live Dotypos %s reservation", async (dotyposStatus) => {
-    const { result } = runRequireCurrent({ dotyposStatus });
+  test.each(["CANCELLED", "CONFIRMED"] as const)(
+    "rejects a live Dotypos %s reservation",
+    async (dotyposStatus) => {
+      const { result } = runRequireCurrent({ dotyposStatus });
 
-    await expect(result).rejects.toEqual(
-      new PayableReservationUnavailableError({
-        orderId: "reservation-id",
-        reason: "dotypos_not_pending",
-      })
-    );
-  });
+      await expect(result).rejects.toEqual(
+        new PayableReservationUnavailableError({
+          orderId: "reservation-id",
+          reason: "dotypos_not_pending",
+        })
+      );
+    }
+  );
 
   test("rejects a superseded local reservation without calling Dotypos", async () => {
     const { getReservationStatus, result } = runRequireCurrent({

@@ -8,13 +8,14 @@ import {
 } from "./meeting-room-reservation-duration";
 
 describe("meetingRoomReservationDurationSchema", () => {
-  it.each(
-    meetingRoomReservationDurations
-  )("accepts $unit:$amount", (duration) => {
-    expect(Schema.is(meetingRoomReservationDurationSchema)(duration)).toBe(
-      true
-    );
-  });
+  it.each(meetingRoomReservationDurations)(
+    "accepts $unit:$amount",
+    (duration) => {
+      expect(Schema.is(meetingRoomReservationDurationSchema)(duration)).toBe(
+        true
+      );
+    }
+  );
 
   it.each([
     { unit: "hour", amount: 24 },

@@ -94,12 +94,15 @@ describe("administration reservation status", () => {
     ["held", "not_started", "not_started", "Awaiting payment", "in_progress"],
     ["draft", "not_started", "not_started", "Starting", "in_progress"],
     ["creating_hold", "not_started", "not_started", "Starting", "in_progress"],
-  ] as const)("%s / %s / %s becomes %s", (reservationState, paymentState, fulfillmentState, label, group) => {
-    expect(status(reservationState, paymentState, fulfillmentState)).toEqual({
-      group,
-      label,
-    });
-  });
+  ] as const)(
+    "%s / %s / %s becomes %s",
+    (reservationState, paymentState, fulfillmentState, label, group) => {
+      expect(status(reservationState, paymentState, fulfillmentState)).toEqual({
+        group,
+        label,
+      });
+    }
+  );
 
   test("keeps cancellation states ahead of fulfillment states", () => {
     expect(status("cancelled", "cancelled", "failed")).toEqual({
@@ -139,16 +142,19 @@ describe("administration reservation status", () => {
     ["pending", "Recovering payment"],
     ["processing", "Recovering payment"],
     ["review_required", "Recovery review"],
-  ] as const)("flags %s late-payment recovery", (latePaymentRecovery, label) => {
-    expect(
-      getAdministrationReservationStatus({
-        fulfillmentState: "not_started",
-        latePaymentRecovery,
-        paymentState: "expired",
-        reservationState: "cancelled",
-      })
-    ).toEqual({ group: "attention", label });
-  });
+  ] as const)(
+    "flags %s late-payment recovery",
+    (latePaymentRecovery, label) => {
+      expect(
+        getAdministrationReservationStatus({
+          fulfillmentState: "not_started",
+          latePaymentRecovery,
+          paymentState: "expired",
+          reservationState: "cancelled",
+        })
+      ).toEqual({ group: "attention", label });
+    }
+  );
 });
 
 describe("administration reservation lifecycle", () => {
@@ -206,15 +212,18 @@ describe("administration reservation lifecycle", () => {
       "attention",
     ],
     ["hold_expired", "expired", "not_started", "hold_expired", "attention"],
-  ] as const)("%s / %s / %s places the journey at %s", (reservationState, paymentState, fulfillmentState, currentStage, tone) => {
-    expect(
-      getAdministrationReservationLifecycle({
-        fulfillmentState,
-        paymentState,
-        reservationState,
-      })
-    ).toMatchObject({ currentStage, tone });
-  });
+  ] as const)(
+    "%s / %s / %s places the journey at %s",
+    (reservationState, paymentState, fulfillmentState, currentStage, tone) => {
+      expect(
+        getAdministrationReservationLifecycle({
+          fulfillmentState,
+          paymentState,
+          reservationState,
+        })
+      ).toMatchObject({ currentStage, tone });
+    }
+  );
 
   test("does not claim an expired payment cancelled a live hold", () => {
     expect(
@@ -312,13 +321,16 @@ describe("administration reservation lifecycle", () => {
     ["hold_expired", "hold_expired"],
     ["cancelling", "cancelling"],
     ["cancellation_failed", "cancellation_failed"],
-  ] as const)("does not mark %s as cancelled", (reservationState, currentStage) => {
-    const lifecycle = getAdministrationReservationLifecycle({
-      fulfillmentState: "not_started",
-      paymentState: "expired",
-      reservationState,
-    });
-    expect(lifecycle.currentStage).toBe(currentStage);
-    expect(lifecycle.reachedStages).not.toContain("cancelled");
-  });
+  ] as const)(
+    "does not mark %s as cancelled",
+    (reservationState, currentStage) => {
+      const lifecycle = getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        paymentState: "expired",
+        reservationState,
+      });
+      expect(lifecycle.currentStage).toBe(currentStage);
+      expect(lifecycle.reachedStages).not.toContain("cancelled");
+    }
+  );
 });

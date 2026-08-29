@@ -61,21 +61,20 @@ const percentageApplication = (
 });
 
 describe("cowork reservation quotes", () => {
-  test.each([
-    "basic",
-    "plus",
-    "profi",
-  ] as const)("uses the canonical full product identity for the %s summary key", (entryTier) => {
-    const quote = buildCoworkReservationQuote({
-      entryTier,
-      coffee: false,
-      ...(entryTier === "profi" && { monitorOption: "2x27-qhd" as const }),
-    });
+  test.each(["basic", "plus", "profi"] as const)(
+    "uses the canonical full product identity for the %s summary key",
+    (entryTier) => {
+      const quote = buildCoworkReservationQuote({
+        entryTier,
+        coffee: false,
+        ...(entryTier === "profi" && { monitorOption: "2x27-qhd" as const }),
+      });
 
-    expect(quote.summary.sections[0]?.items[0]?.key).toBe(
-      `product:${getWorkspaceProductKey({ kind: "cowork", tier: entryTier })}`
-    );
-  });
+      expect(quote.summary.sections[0]?.items[0]?.key).toBe(
+        `product:${getWorkspaceProductKey({ kind: "cowork", tier: entryTier })}`
+      );
+    }
+  );
 
   test("builds an access-only quote without a discount section", () => {
     const quote = buildCoworkReservationQuote({

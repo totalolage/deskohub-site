@@ -57,32 +57,30 @@ const findCurrent = async (input: {
 };
 
 describe("ReservationSupersessionService", () => {
-  test.each([
-    "not_started",
-    "failed",
-    "cancelled",
-    "expired",
-  ] as const)("accepts a current unpaid hold in %s payment state", async (paymentState) => {
-    const { result } = await findCurrent({
-      current: reservation({ paymentState }),
-    });
+  test.each(["not_started", "failed", "cancelled", "expired"] as const)(
+    "accepts a current unpaid hold in %s payment state",
+    async (paymentState) => {
+      const { result } = await findCurrent({
+        current: reservation({ paymentState }),
+      });
 
-    expect(result).toMatchObject({
-      id: "reservation-id",
-      dotyposReservationId: "dotypos-reservation-id",
-    });
-  });
+      expect(result).toMatchObject({
+        id: "reservation-id",
+        dotyposReservationId: "dotypos-reservation-id",
+      });
+    }
+  );
 
-  test.each([
-    "pending",
-    "paid",
-  ] as const)("does not expose a current hold in %s payment state", async (paymentState) => {
-    const { result } = await findCurrent({
-      current: reservation({ paymentState }),
-    });
+  test.each(["pending", "paid"] as const)(
+    "does not expose a current hold in %s payment state",
+    async (paymentState) => {
+      const { result } = await findCurrent({
+        current: reservation({ paymentState }),
+      });
 
-    expect(result).toBeUndefined();
-  });
+      expect(result).toBeUndefined();
+    }
+  );
 
   test("turns an unavailable or stale current hold into no exclusion", async () => {
     const { result } = await findCurrent({ unavailable: true });

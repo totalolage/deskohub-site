@@ -14,12 +14,12 @@ import { Layer } from "effect";
 import { env } from "@/env";
 
 export {
+  type CloudinaryAsset,
   CloudinaryAssetSchema,
   CloudinarySearchError,
   CloudinarySearchResponseSchema,
-  SearchOptionsSchema,
-  type CloudinaryAsset,
   type SearchOptions,
+  SearchOptionsSchema,
 };
 
 const WorkspaceCloudinaryRuntimeConfigLayer = makeCloudinaryRuntimeConfigLayer({

@@ -56,41 +56,39 @@ describe("CustomerDiscountProvider", () => {
     ["12.340", 1234],
     ["0.07", 7],
     ["100.000", 10_000],
-  ] as const)("converts an exact percentage %p to %i basis points", async (discountPercent, basisPoints) => {
-    const result = await runWithProvider(
-      resolve(),
-      mock(() => Effect.succeed(group(discountPercent)))
-    );
+  ] as const)(
+    "converts an exact percentage %p to %i basis points",
+    async (discountPercent, basisPoints) => {
+      const result = await runWithProvider(
+        resolve(),
+        mock(() => Effect.succeed(group(discountPercent)))
+      );
 
-    expect(result[0]?.discount.adjustment).toEqual({
-      kind: "percentage",
-      basisPoints,
-    });
-  });
+      expect(result[0]?.discount.adjustment).toEqual({
+        kind: "percentage",
+        basisPoints,
+      });
+    }
+  );
 
-  test.each([
-    "0",
-    "-1",
-    "101",
-    "1e2",
-    "not-a-percentage",
-    null,
-    "12.345",
-  ])("fails closed for malformed percentage %p", async (discountPercent) => {
-    const error = await runWithProvider(
-      resolve().pipe(Effect.flip),
-      mock(() => Effect.succeed(group(discountPercent)))
-    );
+  test.each(["0", "-1", "101", "1e2", "not-a-percentage", null, "12.345"])(
+    "fails closed for malformed percentage %p",
+    async (discountPercent) => {
+      const error = await runWithProvider(
+        resolve().pipe(Effect.flip),
+        mock(() => Effect.succeed(group(discountPercent)))
+      );
 
-    expect(error).toMatchObject({
-      reason: "malformed_configuration",
-      cause: {
-        _tag: "CustomerDiscountConfigurationError",
-        discountGroupId: "group-id",
-        discountPercent,
-      },
-    });
-  });
+      expect(error).toMatchObject({
+        reason: "malformed_configuration",
+        cause: {
+          _tag: "CustomerDiscountConfigurationError",
+          discountGroupId: "group-id",
+          discountPercent,
+        },
+      });
+    }
+  );
 
   test("preserves Dotypos failures as provider failures", async () => {
     const cause = new ExternalAPIError({
