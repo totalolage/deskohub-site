@@ -133,6 +133,20 @@ void value;
   );
 });
 
+test("repeated computed conditional operand rule preserves falsey semantics", () => {
+  const result = lint(`
+declare const values: readonly (number | undefined)[];
+const value = values[0] ? values[0] : null;
+void value;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain(
+    "[anti-slop/no-repeated-computed-conditional-operand]"
+  );
+  expect(output).not.toContain("logical AND");
+});
+
 test("chained assertion rule retains Workspace e2e coverage", () => {
   const result = lint(
     "declare const value: unknown; value as unknown as string;",

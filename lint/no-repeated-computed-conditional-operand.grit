@@ -9,7 +9,7 @@ file($name, $body) where {
       $consequent <: contains $value,
       register_diagnostic(
         span = $conditional,
-        message = "[anti-slop/no-repeated-computed-conditional-operand] Name the computed value once and use logical AND instead of repeating it in a nullable ternary.",
+        message = "[anti-slop/no-repeated-computed-conditional-operand] Name the computed value once before branching instead of repeating the lookup.",
         severity = "error"
       )
     }
