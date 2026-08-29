@@ -1886,6 +1886,7 @@ export class AdministrationService extends Context.Service<
                 Option.getOrUndefined(decodeDotyposTableId(id)) === liveTableId
             ) ?? null)
           : null;
+        const accessGrant = accessRows[0] ?? null;
 
         return {
           reservation: toReservationSummary({
@@ -1942,21 +1943,19 @@ export class AdministrationService extends Context.Service<
               currency: application.appliedAmountCurrency,
             },
           })),
-          accessGrant: accessRows[0]
-            ? {
-                ...accessRows[0],
-                accessName: `Deskohub ${row.id}`.slice(0, 60),
-                scheduledStartsAt: accessRows[0].scheduledStartsAt.toString(),
-                startsAt: accessRows[0].startsAt.toString(),
-                endsAt: accessRows[0].endsAt.toString(),
-                provisioningStartedAt:
-                  accessRows[0].provisioningStartedAt?.toString() ?? null,
-                issuedAt: accessRows[0].issuedAt?.toString() ?? null,
-                failedAt: accessRows[0].failedAt?.toString() ?? null,
-                createdAt: accessRows[0].createdAt.toString(),
-                updatedAt: accessRows[0].updatedAt.toString(),
-              }
-            : null,
+          accessGrant: accessGrant && {
+            ...accessGrant,
+            accessName: `Deskohub ${row.id}`.slice(0, 60),
+            scheduledStartsAt: accessGrant.scheduledStartsAt.toString(),
+            startsAt: accessGrant.startsAt.toString(),
+            endsAt: accessGrant.endsAt.toString(),
+            provisioningStartedAt:
+              accessGrant.provisioningStartedAt?.toString() ?? null,
+            issuedAt: accessGrant.issuedAt?.toString() ?? null,
+            failedAt: accessGrant.failedAt?.toString() ?? null,
+            createdAt: accessGrant.createdAt.toString(),
+            updatedAt: accessGrant.updatedAt.toString(),
+          },
           otherCustomerReservations,
           sameDateReservations,
           references: {
@@ -1966,12 +1965,12 @@ export class AdministrationService extends Context.Service<
           },
           canCancel: canCancelReservation(row),
           requiresProviderCredentialRemoval: Boolean(
-            accessRows[0] &&
+            accessGrant &&
               ["issued", "uncertain", "provisioning"].includes(
-                accessRows[0].state
+                accessGrant.state
               ) &&
               Temporal.Instant.compare(
-                accessRows[0].endsAt,
+                accessGrant.endsAt,
                 Temporal.Now.instant()
               ) > 0
           ),

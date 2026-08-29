@@ -1,0 +1,17 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    `$value ? $consequent : null` as $conditional where {
+      $value <: JsComputedMemberExpression(),
+      $consequent <: contains $value,
+      register_diagnostic(
+        span = $conditional,
+        message = "[anti-slop/no-repeated-computed-conditional-operand] Name the computed value once and use logical AND instead of repeating it in a nullable ternary.",
+        severity = "error"
+      )
+    }
+  }
+}

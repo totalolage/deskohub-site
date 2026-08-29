@@ -31,6 +31,7 @@
     "./lint/no-direct-process-env.grit",
     "./lint/no-known-value-widening.grit",
     "./lint/no-object-parameters.grit",
+    "./lint/no-repeated-computed-conditional-operand.grit",
     "./lint/no-runtime-typeof.grit",
     "./lint/no-shape-in-symbol-names.grit",
     "./lint/no-throw-in-workspace-effect-modules.grit",

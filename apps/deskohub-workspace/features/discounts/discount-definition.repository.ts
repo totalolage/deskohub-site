@@ -54,14 +54,15 @@ export class DiscountDefinitionRepository extends Context.Service<
             .where(eq(discounts.id, input.discountId))
             .pipe(retryDatabaseRead);
 
-          const row = rows[0]
-            ? ({
-                ...rows[0].discount,
-                productTargets: rows
-                  .map(({ productTarget }) => productTarget)
-                  .filter(Boolean),
-              } satisfies DiscountDefinitionRow)
-            : null;
+          const firstRow = rows[0];
+          const row =
+            firstRow &&
+            ({
+              ...firstRow.discount,
+              productTargets: rows
+                .map(({ productTarget }) => productTarget)
+                .filter(Boolean),
+            } satisfies DiscountDefinitionRow);
 
           if (!row) {
             return yield* new DiscountDefinitionNotFoundError({
