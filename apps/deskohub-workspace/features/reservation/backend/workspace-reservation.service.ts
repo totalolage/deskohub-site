@@ -196,8 +196,7 @@ export class WorkspaceReservationService extends Context.Service<
           function* (id) {
             const reservation = yield* loadReservation(id);
             if (
-              !reservation ||
-              reservation.paymentState !== "paid" ||
+              reservation?.paymentState !== "paid" ||
               reservation.reservationState !== "confirmed"
             ) {
               return yield* accessUnavailable(id);

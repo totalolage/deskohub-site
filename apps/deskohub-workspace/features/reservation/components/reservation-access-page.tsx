@@ -55,6 +55,7 @@ export function ReservationAccessPage({
                   <span
                     aria-hidden="true"
                     className="grid h-[clamp(3.75rem,16vw,5.75rem)] w-[clamp(1.5rem,7.5vw,4rem)] place-items-center rounded-xl bg-navy-blue/5 font-mono text-[clamp(1.35rem,6vw,2.6rem)] font-medium tabular-nums text-navy-blue"
+                    // biome-ignore lint/suspicious/noArrayIndexKey: Access-code characters are positional and may repeat.
                     key={`${index}-${character}`}
                   >
                     {character}

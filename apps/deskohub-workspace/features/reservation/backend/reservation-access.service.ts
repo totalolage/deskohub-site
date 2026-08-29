@@ -69,10 +69,7 @@ const implementation = Effect.gen(function* () {
           ),
           Effect.orElseSucceed(() => undefined)
         );
-      if (
-        !providerReservation ||
-        providerReservation.reservation.status !== "CONFIRMED"
-      ) {
+      if (providerReservation?.reservation.status !== "CONFIRMED") {
         return unavailableAccess;
       }
 

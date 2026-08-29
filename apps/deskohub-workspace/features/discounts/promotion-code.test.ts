@@ -69,24 +69,20 @@ describe("promotion code normalization", () => {
     expect(Option.isNone(result)).toBe(true);
   });
 
-  test.each([
-    "AB",
-    "A".repeat(65),
-    ".ABC",
-    "A B",
-    "ſUMMER",
-    "ß50",
-  ])("rejects invalid submitted code %s", async (submittedCode) => {
-    const result = await Effect.runPromise(
-      normalizeSubmittedPromotionCode({ submittedCode }).pipe(Effect.result)
-    );
+  test.each(["AB", "A".repeat(65), ".ABC", "A B", "ſUMMER", "ß50"])(
+    "rejects invalid submitted code %s",
+    async (submittedCode) => {
+      const result = await Effect.runPromise(
+        normalizeSubmittedPromotionCode({ submittedCode }).pipe(Effect.result)
+      );
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { reason: "invalid_syntax" },
-    });
-    expect(JSON.stringify(result)).not.toContain(submittedCode);
-  });
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { reason: "invalid_syntax" },
+      });
+      expect(JSON.stringify(result)).not.toContain(submittedCode);
+    }
+  );
 });
 
 test("generated promotion codes use the canonical readable alphabet", () => {

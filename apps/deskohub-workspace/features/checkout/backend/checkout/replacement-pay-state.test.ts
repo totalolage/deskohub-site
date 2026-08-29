@@ -17,41 +17,40 @@ const runWithWarnings = async <A, E>(effect: Effect.Effect<A, E>) => {
 };
 
 describe("replacement Pay state", () => {
-  test.each([
-    "missing-secret",
-    "invalid-secret",
-  ] as const)("falls back when Pay state configuration has %s", async (code) => {
-    const { result, warnings } = await runWithWarnings(
-      recoverReplacementPayState(
-        Effect.fail(
-          new PayStateTokenError({
-            code,
-            message: "Pay state configuration is unavailable",
-          })
+  test.each(["missing-secret", "invalid-secret"] as const)(
+    "falls back when Pay state configuration has %s",
+    async (code) => {
+      const { result, warnings } = await runWithWarnings(
+        recoverReplacementPayState(
+          Effect.fail(
+            new PayStateTokenError({
+              code,
+              message: "Pay state configuration is unavailable",
+            })
+          )
         )
-      )
-    );
+      );
 
-    expect(result).toBeUndefined();
-    expect(warnings).toEqual([
-      "Replacement Pay state configuration unavailable; loading ordinary availability",
-    ]);
-  });
+      expect(result).toBeUndefined();
+      expect(warnings).toEqual([
+        "Replacement Pay state configuration unavailable; loading ordinary availability",
+      ]);
+    }
+  );
 
-  test.each([
-    "invalid-token",
-    "unknown-kid",
-    "expired",
-  ] as const)("ignores an unusable customer token with %s", async (code) => {
-    const { result, warnings } = await runWithWarnings(
-      recoverReplacementPayState(
-        Effect.fail(new PayStateTokenError({ code, message: "Unusable" }))
-      )
-    );
+  test.each(["invalid-token", "unknown-kid", "expired"] as const)(
+    "ignores an unusable customer token with %s",
+    async (code) => {
+      const { result, warnings } = await runWithWarnings(
+        recoverReplacementPayState(
+          Effect.fail(new PayStateTokenError({ code, message: "Unusable" }))
+        )
+      );
 
-    expect(result).toBeUndefined();
-    expect(warnings).toEqual([]);
-  });
+      expect(result).toBeUndefined();
+      expect(warnings).toEqual([]);
+    }
+  );
 
   test("does not hide Pay state defects", async () => {
     const result = await Effect.runPromiseExit(

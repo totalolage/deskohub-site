@@ -484,20 +484,23 @@ describe("PromotionCodeProvider", () => {
   test.each([
     ["currency_mismatch", { value: 10_000, exponent: 2, currency: "EUR" }],
     ["exponent_mismatch", { value: 10_000, exponent: 0, currency: "CZK" }],
-  ] as const)("fails malformed configuration for fixed %s", async (reason, amount) => {
-    const result = await runWithProvider(resolve().pipe(Effect.result), {
-      loadDefinition: () =>
-        Effect.succeed(definition({ adjustment: { kind: "fixed", amount } })),
-    });
+  ] as const)(
+    "fails malformed configuration for fixed %s",
+    async (reason, amount) => {
+      const result = await runWithProvider(resolve().pipe(Effect.result), {
+        loadDefinition: () =>
+          Effect.succeed(definition({ adjustment: { kind: "fixed", amount } })),
+      });
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        reason: "malformed_configuration",
-        cause: { _tag: "DiscountCalculationError", reason },
-      },
-    });
-  });
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          reason: "malformed_configuration",
+          cause: { _tag: "DiscountCalculationError", reason },
+        },
+      });
+    }
+  );
 
   test("retains unknown-code, repository, and definition failure causes", async () => {
     const unknown = await runWithProvider(resolve().pipe(Effect.result), {
