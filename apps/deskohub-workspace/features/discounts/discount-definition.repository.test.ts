@@ -22,8 +22,8 @@ describe("DiscountDefinitionRepository", () => {
       new URL("./discount-definition.repository.ts", import.meta.url)
     ).text();
 
-    expect(source).toContain(
-      "cause instanceof EffectDrizzleQueryError\n                    ? cause"
+    expect(source).toMatch(
+      /cause instanceof EffectDrizzleQueryError\s*\? cause/
     );
     expect(source).toContain("cause: Cause.fail(cause)");
   });
