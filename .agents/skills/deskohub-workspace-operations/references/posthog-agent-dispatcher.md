@@ -52,7 +52,7 @@ The Workspace logging pipeline censors production annotations. Keep credentials,
 
 ## Start unattended workers
 
-Find every open issue with a `posthog-` source marker that has no `<!-- t3-worker-thread:` marker and no linked open pull request. Start one worker per issue. The helper pins the thread to GPT-5.6-Sol with high reasoning:
+Find every open issue containing `<!-- posthog-log-uuid:`, `<!-- posthog-error-issue:`, `<!-- posthog-error-event:`, or `<!-- posthog-manual-issue:` that has no `<!-- t3-worker-thread:` marker and no linked open pull request. Start one worker per issue. The helper pins the thread to GPT-5.6-Sol with high reasoning:
 
 ```bash
 /home/dev/.local/libexec/deskohub-posthog-create-worker <number>
