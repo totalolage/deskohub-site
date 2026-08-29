@@ -4,6 +4,7 @@
 
 - Use `Effect.log*` inside the censored Workspace logging pipeline. Do not use `console.*` for Workspace diagnostics.
 - Preserve useful log annotations. Workspace and Dotypos application logging is globally censored and redacted, so do not strip annotations locally for privacy unless a new uncensored sink is introduced.
+- Attach handled failures to their error logs. The shared censorship layer preserves recursive cause types and safe classification fields while redacting messages, stacks, sensitive database diagnostics, and marked query parameters.
 - Keep access-code-like keys globally censored. Workspace customer access codes have appeared in PostHog annotations before; never quote an observed value back to the user.
 
 ## Bound sensitive or oversized inspection

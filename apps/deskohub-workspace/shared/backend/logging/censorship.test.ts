@@ -14,6 +14,7 @@ import {
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Cause, type Context, Effect, Layer, Logger, References } from "effect";
+import * as SqlError from "effect/unstable/sql/SqlError";
 import { createTracingLive } from "../observability/otel-tracing";
 
 type LogAnnotations = Context.Service.Shape<
@@ -323,7 +324,7 @@ describe("censorLogValue", () => {
     ]);
   });
 
-  test("projects Drizzle query errors without exposing their dynamic message", () => {
+  test("projects Drizzle query errors with a censored cause", () => {
     const error = new EffectDrizzleQueryError({
       query:
         "select * from customers where id = $1 and email = /* deskohub:sensitive */ $2",
@@ -343,21 +344,73 @@ describe("censorLogValue", () => {
         query:
           "select * from customers where id = $1 and email = /* deskohub:sensitive */ $2",
         params: ["visible", CENSORED_LOG_VALUE],
+        cause: {
+          errorType: "Error",
+          message: CENSORED_LOG_VALUE,
+        },
       },
     });
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
   });
 
-  test("projects errors without retaining messages or nested causes", () => {
+  test("retains recursively censored Effect SQL causes", () => {
+    const privateValue = "private@example.com";
+    const driverCause = Object.assign(
+      new Error(`driver echoed ${privateValue}`, {
+        cause: Object.assign(new Error(`socket echoed ${privateValue}`), {
+          code: "ETIMEDOUT",
+        }),
+      }),
+      {
+        detail: privateValue,
+        hint: privateValue,
+        internalQuery: privateValue,
+        where: privateValue,
+      }
+    );
+    const error = new EffectDrizzleQueryError({
+      query: "select /* deskohub:sensitive */ $1",
+      params: [privateValue],
+      cause: Cause.fail(
+        new SqlError.SqlError({
+          reason: new SqlError.UnknownError({
+            cause: driverCause,
+            message: `acquisition echoed ${privateValue}`,
+            operation: "acquireConnection",
+          }),
+        })
+      ),
+    });
+
+    const serialized = JSON.stringify(censorLogValue({ cause: error }));
+
+    expect(serialized).toContain("EffectDrizzleQueryError");
+    expect(serialized).toContain("SqlError");
+    expect(serialized).toContain("UnknownError");
+    expect(serialized).toContain("acquireConnection");
+    expect(serialized).toContain("ETIMEDOUT");
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(privateValue);
+    expect(serialized).not.toContain("driver echoed");
+    expect(serialized).not.toContain("socket echoed");
+    expect(serialized).not.toContain("acquisition echoed");
+  });
+
+  test("projects errors with recursively censored causes", () => {
     const error = new Error("boom");
     error.cause = new Error("nested private value");
+    const aggregate = new AggregateError(
+      [new Error("aggregate member private value")],
+      "aggregate private value",
+      { cause: new Error("aggregate cause private value") }
+    );
     const date = new Date("2026-05-30T00:00:00.000Z");
     const set = new Set(["secret"]);
     const custom = new CustomValue("secret");
     const promise = Promise.resolve("secret");
 
-    const input = { thrown: error, date, set, custom, promise };
+    const input = { thrown: error, aggregate, date, set, custom, promise };
     const censored = censorLogValue(input) as typeof input;
 
     expect(censored.thrown).toEqual({
@@ -368,12 +421,30 @@ describe("censorLogValue", () => {
         message: CENSORED_LOG_VALUE,
       },
     });
+    expect(censored.aggregate).toEqual({
+      errorType: "AggregateError",
+      message: CENSORED_LOG_VALUE,
+      cause: {
+        errorType: "Error",
+        message: CENSORED_LOG_VALUE,
+      },
+      errors: [
+        {
+          errorType: "Error",
+          message: CENSORED_LOG_VALUE,
+        },
+      ],
+    });
     expect(censored.date).toBe(date);
     expect(censored.set).toBe(set);
     expect(censored.custom).toBe(custom);
     expect(censored.promise).toBe(promise);
     expect(JSON.stringify(censored)).not.toContain("boom");
     expect(JSON.stringify(censored)).not.toContain("nested private value");
+    expect(JSON.stringify(censored)).not.toContain("aggregate private value");
+    expect(JSON.stringify(censored)).not.toContain(
+      "aggregate member private value"
+    );
   });
 
   test("projects native errors from another realm", () => {

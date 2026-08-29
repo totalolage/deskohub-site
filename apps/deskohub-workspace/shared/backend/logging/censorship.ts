@@ -71,13 +71,19 @@ const sensitiveLogExactKeys = new Set([
   "city",
   "country",
   "description",
+  "detail",
   "db.namespace",
   "discountcode",
   "exception.stacktrace",
+  "hint",
+  "internalquery",
   "recipient",
   "server.address",
+  "stack",
+  "stacktrace",
   "submittedcode",
   "subject",
+  "where",
   "zip",
   "x-vercel-sc-headers",
 ]);
@@ -387,6 +393,8 @@ const censorLogValueInternal = <T>(
 
   if (Predicate.isString(value)) return censorUrlString(value);
 
+  if (Cause.isCause(value)) return censorCauseInternal(value, seen);
+
   if (isEffectDrizzleQueryError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
@@ -397,6 +405,7 @@ const censorLogValueInternal = <T>(
     };
     seen.set(value, result);
     result.params = censorQueryParamsInternal(value.query, value.params, seen);
+    result.cause = censorLogValueInternal(value.cause, seen);
     return result;
   }
 
@@ -417,6 +426,11 @@ const censorLogValueInternal = <T>(
 
     if ("cause" in value && !("cause" in result)) {
       result.cause = censorLogValueInternal(value.cause, seen);
+    }
+
+    const errors = Object.getOwnPropertyDescriptor(value, "errors");
+    if (errors && "value" in errors) {
+      result.errors = censorLogValueInternal(errors.value, seen);
     }
 
     return result;
@@ -445,18 +459,30 @@ export const censorTelemetryValue = <T>(value: T): unknown =>
 
 export const censorLogValue = censorTelemetryValue;
 
-const censorCause = (cause: Cause.Cause<unknown>): Cause.Cause<unknown> =>
-  Cause.fromReasons(
+const censorCauseInternal = (
+  cause: Cause.Cause<unknown>,
+  seen: WeakMap<object, unknown>
+): Cause.Cause<unknown> => {
+  const existing = seen.get(cause);
+  if (Cause.isCause(existing)) return existing;
+
+  const result = Cause.fromReasons(
     cause.reasons.map((reason) => {
       if (Cause.isFailReason(reason)) {
-        return Cause.makeFailReason(censorLogValue(reason.error));
+        return Cause.makeFailReason(censorLogValueInternal(reason.error, seen));
       }
       if (Cause.isDieReason(reason)) {
-        return Cause.makeDieReason(censorLogValue(reason.defect));
+        return Cause.makeDieReason(censorLogValueInternal(reason.defect, seen));
       }
       return reason;
     })
   );
+  seen.set(cause, result);
+  return result;
+};
+
+const censorCause = (cause: Cause.Cause<unknown>): Cause.Cause<unknown> =>
+  censorCauseInternal(cause, new WeakMap());
 
 export const censorLoggerOptions = (
   options: Logger.Options<unknown>
