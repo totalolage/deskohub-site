@@ -11,6 +11,9 @@ install -Dm755 \
 install -Dm755 \
   .agents/skills/deskohub-workspace-operations/scripts/posthog-agent-loop \
   /home/dev/.local/libexec/deskohub-posthog-agent-loop
+install -Dm755 \
+  .agents/skills/deskohub-workspace-operations/scripts/posthog-create-worker \
+  /home/dev/.local/libexec/deskohub-posthog-create-worker
 install -Dm644 \
   .agents/skills/deskohub-workspace-operations/references/posthog-agent-dispatcher.md \
   /home/dev/.local/share/deskohub-posthog-agent-loop/posthog-agent-dispatcher.md

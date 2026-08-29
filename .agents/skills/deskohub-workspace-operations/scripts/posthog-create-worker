@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+issue_number="${1:?Usage: posthog-create-worker <issue-number>}"
+[[ "$issue_number" =~ ^[1-9][0-9]*$ ]]
+
+t3_bin="${T3_BIN:-/home/dev/.local/bin/t3}"
+t3_base_dir="${T3_BASE_DIR:-/home/dev/.t3}"
+curl_bin="${CURL_BIN:-curl}"
+project_id="4c8453d8-1a32-400b-a540-9f10afd75170"
+thread_id="posthog-worker-issue-$issue_number"
+command_id="posthog-worker-create-issue-$issue_number-v1"
+title="PostHog issue #$issue_number"
+branch="posthog/issue-$issue_number"
+now="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
+message="Read and follow /home/dev/.local/share/deskohub-posthog-agent-loop/posthog-agent-worker.md. Own https://github.com/totalolage/deskohub-site/issues/$issue_number through triage, research, implementation, tests, pull request, and eligible auto-merge."
+
+origin="$($t3_bin session --base-dir "$t3_base_dir" | jq -er '.target.httpBaseUrl')"
+token="$($t3_bin auth session issue \
+  --base-dir "$t3_base_dir" \
+  --ttl 10m \
+  --label "PostHog worker bootstrap" \
+  --subject posthog-cron \
+  --token-only)"
+
+payload="$(jq -cn \
+  --arg thread "$thread_id" \
+  --arg command "$command_id" \
+  --arg message "$message" \
+  --arg title "$title" \
+  --arg branch "$branch" \
+  --arg now "$now" \
+  --arg project "$project_id" \
+  '{
+    type: "thread.turn.start",
+    commandId: $command,
+    threadId: $thread,
+    message: { messageId: $command, role: "user", text: $message, attachments: [] },
+    modelSelection: { instanceId: "codex", model: "gpt-5.6-sol", options: [{ id: "reasoningEffort", value: "high" }] },
+    titleSeed: $title,
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    bootstrap: {
+      createThread: {
+        projectId: $project,
+        title: $title,
+        modelSelection: { instanceId: "codex", model: "gpt-5.6-sol", options: [{ id: "reasoningEffort", value: "high" }] },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt: $now
+      },
+      prepareWorktree: {
+        projectCwd: "/home/dev/Projects/deskohub",
+        baseBranch: "main",
+        branch: $branch,
+        startFromOrigin: true
+      },
+      runSetupScript: true
+    },
+    createdAt: $now
+  }')"
+
+response="$("$curl_bin" \
+  --fail-with-body \
+  --silent \
+  --show-error \
+  --config - \
+  --header "Content-Type: application/json" \
+  --data-binary "$payload" \
+  "$origin/api/orchestration/dispatch" <<EOF
+header = "Authorization: Bearer $token"
+EOF
+)"
+unset token
+
+sequence="$(jq -er '.sequence | numbers' <<<"$response")"
+jq -cn --arg threadId "$thread_id" --arg commandId "$command_id" --argjson sequence "$sequence" '{ $threadId, $commandId, $sequence }'

@@ -2,6 +2,14 @@
 
 Own the supplied GitHub issue in one T3 thread. Continue through semantic triage, research, the smallest root-cause fix, tests, pull request follow-up, and merge disposition.
 
+## Sign GitHub comments
+
+End the human-readable text of every GitHub issue comment you author with this exact line. Put hidden automation markers after it.
+
+```text
+Posted by: PostHog issue worker agent (posthog-agent-worker.md)
+```
+
 ## Triage before editing
 
 Read the issue and inspect its PostHog evidence with the existing CLI when needed. Search open and closed issues, branches, and pull requests. Inspect current `origin/main` and the deployed code path.
