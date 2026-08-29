@@ -466,6 +466,9 @@ describe("censorLogValue", () => {
       reason: "invalid_event",
       operation: "normalize",
       code: "INVALID_EVENT",
+      outcome: "uncertain",
+      failureCode: "fulfillment_access_failed",
+      errorCode: "nexi_webhook_verification_failed",
       eventReference: privateValue,
       issue: { actual: privateValue },
     });
@@ -480,6 +483,9 @@ describe("censorLogValue", () => {
         reason: "invalid_event",
         operation: "normalize",
         code: "INVALID_EVENT",
+        outcome: "uncertain",
+        failureCode: "fulfillment_access_failed",
+        errorCode: "nexi_webhook_verification_failed",
       },
     });
     expect(JSON.stringify(censored)).not.toContain(privateValue);
