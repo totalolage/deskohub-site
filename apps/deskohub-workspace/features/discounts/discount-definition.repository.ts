@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
-import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Cause, Context, Data, Effect, Layer } from "effect";
+import { eq, getTableColumns } from "drizzle-orm";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { retryDatabaseRead } from "@/db/retry-database-read";
 import { discountProductTargets, discounts } from "@/db/schema";
@@ -38,49 +38,28 @@ export class DiscountDefinitionRepository extends Context.Service<
 
       const loadById = Effect.fn("DiscountDefinitionRepository.loadById")(
         function* (input: LoadDiscountDefinitionInput) {
-          const [discountRow, productTargets] = yield* db
-            .transaction((tx) =>
-              Effect.gen(function* () {
-                yield* tx.execute(
-                  sql`set transaction isolation level repeatable read`
-                );
-
-                const discountRow = yield* tx
-                  .select()
-                  .from(discounts)
-                  .where(eq(discounts.id, input.discountId))
-                  .limit(1);
-                const productTargets = yield* tx
-                  .select({
-                    discountId: discountProductTargets.discountId,
-                    productTarget: discountProductTargets.productTarget,
-                  })
-                  .from(discountProductTargets)
-                  .where(
-                    eq(discountProductTargets.discountId, input.discountId)
-                  );
-
-                return [discountRow, productTargets] as const;
-              })
+          const rows = yield* db
+            .select({
+              discount: getTableColumns(discounts),
+              productTarget: {
+                discountId: discountProductTargets.discountId,
+                productTarget: discountProductTargets.productTarget,
+              },
+            })
+            .from(discounts)
+            .leftJoin(
+              discountProductTargets,
+              eq(discountProductTargets.discountId, discounts.id)
             )
-            .pipe(
-              Effect.mapError((cause) =>
-                cause instanceof EffectDrizzleQueryError
-                  ? cause
-                  : new EffectDrizzleQueryError({
-                      query:
-                        "load discount definition in repeatable read transaction",
-                      params: [input.discountId],
-                      cause: Cause.fail(cause),
-                    })
-              )
-            )
+            .where(eq(discounts.id, input.discountId))
             .pipe(retryDatabaseRead);
 
-          const row = discountRow[0]
+          const row = rows[0]
             ? ({
-                ...discountRow[0],
-                productTargets,
+                ...rows[0].discount,
+                productTargets: rows.flatMap(({ productTarget }) =>
+                  productTarget ? [productTarget] : []
+                ),
               } satisfies DiscountDefinitionRow)
             : null;
 
