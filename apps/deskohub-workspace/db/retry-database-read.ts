@@ -9,7 +9,9 @@ const isRetryableDatabaseReadError = <E>(error: E) =>
     (reason) =>
       Cause.isFailReason(reason) &&
       SqlError.isSqlError(reason.error) &&
-      reason.error.isRetryable
+      (reason.error.isRetryable ||
+        (reason.error.reason._tag === "UnknownError" &&
+          reason.error.reason.operation === "acquireConnection"))
   );
 
 export const retryDatabaseRead = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
