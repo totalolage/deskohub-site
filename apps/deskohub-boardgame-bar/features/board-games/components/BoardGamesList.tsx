@@ -26,6 +26,7 @@ interface BoardGamesListProps {
     Pick<
       Game,
       | "id"
+      | "bggId"
       | "name"
       | "imageUrl"
       | "description"
@@ -149,9 +150,12 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filteredGames.map((game) => (
-              <article
+              <a
                 className="flex flex-col gap-2.5 rounded-2xl border border-[#3c3a36] bg-[#242422] p-4 transition hover:border-[#4fbba3]"
+                href={`https://boardgamegeek.com/boardgame/${game.bggId}`}
                 key={game.id}
+                rel="noopener noreferrer"
+                target="_blank"
               >
                 <ImageWithFallback
                   alt={game.name}
@@ -197,7 +201,7 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
                     {game.description}
                   </p>
                 )}
-              </article>
+              </a>
             ))}
           </div>
         )}
