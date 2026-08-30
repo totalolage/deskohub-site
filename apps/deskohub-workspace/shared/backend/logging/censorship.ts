@@ -239,12 +239,19 @@ const censorUrlString = (value: string) => {
 };
 
 const censorStackFrameSource = (source: string): string => {
+  const location = source.replace(/[?#].*$/, "");
   try {
-    const url = new URL(source);
-    redactUrlSearchParams(url);
+    const url = new URL(location);
+    url.username = "";
+    url.password = "";
     return url.toString();
   } catch {
-    return censorUrlString(source);
+    if (!location.startsWith("//")) return location;
+
+    const url = new URL(location, "https://deskohub.local");
+    url.username = "";
+    url.password = "";
+    return `//${url.host}${url.pathname}`;
   }
 };
 

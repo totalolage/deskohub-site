@@ -480,11 +480,11 @@ describe("censorLogValue", () => {
     expect(
       censorLogValue({
         "exception.message": multilineMessage,
-        "exception.stacktrace": `Error: ${multilineMessage}\n    at tracedFailure (https://example.com/app.js?token=${privateValue}:6:7)\n    at fileFailure (file:///app/file.js?token=${privateValue}:10:11)\n    at mappedFailure (turbopack:///[project]/app/page.ts?token=${privateValue}:12:13)`,
+        "exception.stacktrace": `Error: ${multilineMessage}\n    at tracedFailure (https://${privateValue}:${privateValue}@example.com/app.js?code=${privateValue}#${privateValue}:6:7)\n    at relativeFailure (/admin/cli/authenticate?code=${privateValue}#${privateValue}:8:9)\n    at fileFailure (file:///app/file.js?token=${privateValue}:10:11)\n    at mappedFailure (turbopack:///[project]/app/page.ts?token=${privateValue}:12:13)`,
       })
     ).toEqual({
       "exception.message": CENSORED_LOG_VALUE,
-      "exception.stacktrace": `${CENSORED_LOG_VALUE}\n    at https://example.com/app.js?token=%5BREDACTED%5D:6:7\n    at file:///app/file.js?token=%5BREDACTED%5D:10:11\n    at turbopack:///[project]/app/page.ts?token=%5BREDACTED%5D:12:13`,
+      "exception.stacktrace": `${CENSORED_LOG_VALUE}\n    at https://example.com/app.js:6:7\n    at /admin/cli/authenticate:8:9\n    at file:///app/file.js:10:11\n    at turbopack:///[project]/app/page.ts:12:13`,
     });
   });
 
