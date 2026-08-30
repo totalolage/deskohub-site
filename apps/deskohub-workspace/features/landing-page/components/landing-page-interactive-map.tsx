@@ -8,8 +8,6 @@ import { workspaceSiteConstants } from "@/shared/utils";
 
 const workspaceCoordinates = workspaceSiteConstants.location.coordinates;
 
-const desktopFramingQuery = "(min-width: 64rem)";
-
 function getMarkerViewportOffset(size: L.Point, desktopFraming: boolean) {
   return desktopFraming
     ? L.point(size.x / 4, 0)
@@ -20,7 +18,7 @@ function MapFramingController() {
   const map = useMap();
 
   useEffect(() => {
-    const desktopFraming = window.matchMedia(desktopFramingQuery);
+    const desktopFraming = window.matchMedia("(min-width: 64rem)");
 
     const frameMarker = () => {
       const zoom = map.getZoom();
