@@ -312,6 +312,21 @@ const isEffectDrizzleQueryError = <T>(
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
+const censorErrorClassificationValue = <T>(value: T): T | string => {
+  if (Predicate.isBoolean(value)) return value;
+  if (Predicate.isNumber(value)) {
+    return Number.isFinite(value) ? value : CENSORED_LOG_VALUE;
+  }
+  if (
+    Predicate.isString(value) &&
+    value.length <= 64 &&
+    /^(?:[A-Za-z][A-Za-z0-9]*(?:[._:/-][A-Za-z0-9]+)*|[0-9A-Z]{5})$/.test(value)
+  ) {
+    return value;
+  }
+  return CENSORED_LOG_VALUE;
+};
+
 const censorQueryParameter = <T>(
   value: T,
   seen: WeakMap<object, unknown>
@@ -505,7 +520,7 @@ const censorLogValueInternal = <T>(
     ] as const) {
       const property = Object.getOwnPropertyDescriptor(value, key);
       if (property && "value" in property) {
-        result[key] = censorLogRecordValue(key, property.value, seen);
+        result[key] = censorErrorClassificationValue(property.value);
       }
     }
 

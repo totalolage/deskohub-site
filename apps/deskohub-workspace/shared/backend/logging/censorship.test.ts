@@ -541,6 +541,29 @@ describe("censorLogValue", () => {
       },
     });
     expect(JSON.stringify(censored)).not.toContain(privateValue);
+
+    const dynamicClassifications = Object.assign(new Error(privateValue), {
+      _tag: privateValue,
+      reason: `invalid ${privateValue}`,
+      operation: `load ${privateValue}`,
+      code: privateValue,
+      outcome: { email: privateValue },
+      failureCode: `failed ${privateValue}`,
+      errorCode: `error ${privateValue}`,
+      status: `status ${privateValue}`,
+      statusCode: privateValue,
+      constraint: `constraint ${privateValue}`,
+    });
+    const dynamicCensored = censorLogValue(dynamicClassifications);
+    expect(dynamicCensored).toMatchObject(
+      Object.fromEntries(
+        Object.keys(dynamicClassifications).map((key) => [
+          key,
+          CENSORED_LOG_VALUE,
+        ])
+      )
+    );
+    expect(JSON.stringify(dynamicCensored)).not.toContain(privateValue);
   });
 
   test("projects native errors from another realm", () => {
