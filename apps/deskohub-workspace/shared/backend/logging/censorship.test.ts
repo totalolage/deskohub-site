@@ -14,7 +14,7 @@ import {
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Cause, type Context, Effect, Layer, Logger, References } from "effect";
-import * as SqlError from "effect/unstable/sql/SqlError";
+import { SqlError } from "effect/unstable/sql";
 import { createTracingLive } from "../observability/otel-tracing";
 
 type LogAnnotations = Context.Service.Shape<
