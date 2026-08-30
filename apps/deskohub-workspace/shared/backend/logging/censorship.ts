@@ -257,14 +257,20 @@ const censorStackFrameSource = (source: string): string => {
 
 const censorStackTrace = (stack: string, message: string): string => {
   const messageMarker = stack.indexOf(": ");
+  const firstLineEnd = stack.indexOf("\n");
   let framesStart = -1;
   if (message === "") {
-    framesStart = stack.indexOf("\n");
+    framesStart = firstLineEnd;
   } else if (
     messageMarker >= 0 &&
     stack.startsWith(message, messageMarker + 2)
   ) {
     framesStart = messageMarker + 2 + message.length;
+  } else if (
+    firstLineEnd >= 0 &&
+    /^[\t ]*at[\t ]/.test(stack.slice(firstLineEnd + 1))
+  ) {
+    framesStart = firstLineEnd;
   }
   if (framesStart < 0 || stack[framesStart] !== "\n") {
     return CENSORED_LOG_VALUE;

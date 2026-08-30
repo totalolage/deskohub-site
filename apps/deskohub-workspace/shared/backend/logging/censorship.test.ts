@@ -486,6 +486,17 @@ describe("censorLogValue", () => {
       "exception.message": CENSORED_LOG_VALUE,
       "exception.stacktrace": `${CENSORED_LOG_VALUE}\n    at https://example.com/app.js:6:7\n    at /admin/cli/authenticate:8:9\n    at file:///app/file.js:10:11\n    at turbopack:///[project]/app/page.ts:12:13`,
     });
+
+    const sqlError = new SqlError.SqlError({
+      reason: new SqlError.UnknownError({
+        cause: new Error(privateValue),
+        message: privateValue,
+        operation: "acquireConnection",
+      }),
+    });
+    expect(
+      (censorLogValue(sqlError) as { readonly stack: string }).stack
+    ).toContain("censorship.test.ts");
   });
 
   test("retains only safe error classification fields", () => {
