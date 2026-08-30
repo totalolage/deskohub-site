@@ -73,11 +73,8 @@ const sensitiveLogExactKeys = new Set([
   "description",
   "db.namespace",
   "discountcode",
-  "exception.stacktrace",
   "recipient",
   "server.address",
-  "stack",
-  "stacktrace",
   "submittedcode",
   "subject",
   "zip",
@@ -303,6 +300,17 @@ const censorLogRecordValue = <T>(
   seen: WeakMap<object, unknown>,
   databaseQuery?: string
 ): unknown => {
+  if (
+    ["exception.stacktrace", "stack", "stacktrace"].includes(key.toLowerCase())
+  ) {
+    if (!Predicate.isString(value)) return CENSORED_LOG_VALUE;
+    const frames = value
+      .split("\n")
+      .filter((line) => /^\s*at(?:\s|$)/.test(line));
+    return frames.length === 0
+      ? CENSORED_LOG_VALUE
+      : `${CENSORED_LOG_VALUE}\n${frames.join("\n")}`;
+  }
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
   if (key.toLowerCase() === "cause") {
     return censorErrorCauseInternal(value, seen);
@@ -434,6 +442,11 @@ const censorLogValueInternal = <T>(
       if (property && "value" in property) {
         result[key] = censorLogRecordValue(key, property.value, seen);
       }
+    }
+
+    const stack = Object.getOwnPropertyDescriptor(value, "stack");
+    if (stack && "value" in stack) {
+      result.stack = censorLogRecordValue("stack", stack.value, seen);
     }
 
     if ("cause" in value) {
