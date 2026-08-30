@@ -1,0 +1,56 @@
+import type { Game } from "@deskohub/games";
+
+export type DurationFilter = "upTo30" | "upTo60" | "upTo120" | "over120";
+
+type FilterableGame = Pick<
+  Game,
+  "name" | "minPlayers" | "maxPlayers" | "playingTimeMinutes"
+>;
+
+interface BoardGameFilters {
+  playerCount: number | null;
+  durations: ReadonlySet<DurationFilter>;
+  search: string;
+}
+
+export function filterBoardGames<T extends FilterableGame>(
+  games: ReadonlyArray<T>,
+  filters: BoardGameFilters
+): ReadonlyArray<T> {
+  const query = filters.search.trim().toLocaleLowerCase();
+
+  return games.filter((game) => {
+    if (filters.playerCount !== null) {
+      const matchesPlayers =
+        filters.playerCount === 7
+          ? game.maxPlayers >= 7
+          : game.minPlayers <= filters.playerCount &&
+            game.maxPlayers >= filters.playerCount;
+      if (!matchesPlayers) return false;
+    }
+
+    if (
+      filters.durations.size > 0 &&
+      ![...filters.durations].some((duration) =>
+        matchesDuration(game.playingTimeMinutes, duration)
+      )
+    ) {
+      return false;
+    }
+
+    return !query || game.name.toLocaleLowerCase().includes(query);
+  });
+}
+
+function matchesDuration(minutes: number, duration: DurationFilter): boolean {
+  switch (duration) {
+    case "upTo30":
+      return minutes <= 30;
+    case "upTo60":
+      return minutes > 30 && minutes <= 60;
+    case "upTo120":
+      return minutes > 60 && minutes <= 120;
+    case "over120":
+      return minutes > 120;
+  }
+}
