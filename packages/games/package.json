@@ -1,0 +1,23 @@
+{
+  "name": "@deskohub/games",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./generated": "./src/generated/effect.gen.ts"
+  },
+  "scripts": {
+    "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/games-api.yaml --name GamesClient --output ./src/generated/effect.gen.ts",
+    "lint": "cd ../.. && biome check packages/games/src --config-path biome.json --vcs-root .",
+    "test": "bun test",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.85",
+    "entities": "^4.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}

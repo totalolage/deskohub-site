@@ -3,7 +3,11 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"],
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/games#generate",
+        "i18n:compile"
+      ],
       "env": [
         "NODE_ENV",
         "DOTYPOS_CLIENT_ID",
@@ -33,10 +37,18 @@
       "passThroughEnv": ["DOTYPOS_WEBHOOK_SECRET", "FORM_DATA_ENC_SECRET"]
     },
     "dev": {
-      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/games#generate",
+        "i18n:compile"
+      ]
     },
     "typecheck": {
-      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/games#generate",
+        "i18n:compile"
+      ]
     }
   }
 }

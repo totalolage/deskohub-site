@@ -24,6 +24,7 @@
         "@deskohub/cloudinary-image": "workspace:*",
         "@deskohub/dotypos": "workspace:*",
         "@deskohub/email": "workspace:*",
+        "@deskohub/games": "workspace:*",
         "@deskohub/google-calendar": "workspace:*",
         "@deskohub/i18n": "workspace:*",
         "@deskohub/next-effect": "workspace:*",
@@ -292,6 +293,17 @@
         "resend": "^6.0.1",
       },
     },
+    "packages/games": {
+      "name": "@deskohub/games",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "4.0.0-beta.85",
+        "entities": "^4.5.0",
+      },
+      "devDependencies": {
+        "typescript": "^5",
+      },
+    },
     "packages/google-calendar": {
       "name": "@deskohub/google-calendar",
       "version": "0.1.0",
@@ -531,6 +543,8 @@
     "@deskohub/dotypos": ["@deskohub/dotypos@workspace:packages/dotypos"],
 
     "@deskohub/email": ["@deskohub/email@workspace:packages/email"],
+
+    "@deskohub/games": ["@deskohub/games@workspace:packages/games"],
 
     "@deskohub/google-calendar": ["@deskohub/google-calendar@workspace:packages/google-calendar"],
 
@@ -2845,6 +2859,8 @@
     "@cloudinary-util/url-loader/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@deskohub/dotypos/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@deskohub/games/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@deskohub/google-calendar/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

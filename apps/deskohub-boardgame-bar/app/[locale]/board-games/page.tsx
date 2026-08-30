@@ -1,9 +1,10 @@
-import { ExternalLink } from "lucide-react";
-import Link from "next/link";
+import { GamesService } from "@deskohub/games";
+import { Effect } from "effect";
+import { cacheLife } from "next/cache";
+import { connection } from "next/server";
 import { BoardGamesHero, BoardGamesList } from "@/features/board-games";
 import { m, setLocale } from "@/features/i18n";
-import { Button } from "@/shared/components/ui/button";
-import { siteConstants } from "@/shared/utils/constants";
+import { applyCacheTags, gamesTags } from "@/shared/utils/cache-tags";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 
@@ -14,39 +15,46 @@ export const generateMetadata = metadata({
 
 export default async function BoardGamesPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
+  await connection();
+
+  const games = await loadGames().catch(() => null);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <BoardGamesHero />
-      {siteConstants.featureFlags.boardGamesList ? (
-        <BoardGamesList />
+      {games ? (
+        <BoardGamesList games={games} />
       ) : (
-        <div className="container mx-auto px-4 py-16">
-          <h2 className="text-2xl font-bold mb-6 text-center">
-            {m["boardGames.title"]()}
+        <section
+          className="mx-auto max-w-3xl px-4 py-16 text-center"
+          role="alert"
+        >
+          <h2 className="font-bold text-2xl">
+            {m["boardGames.unavailable.title"]()}
           </h2>
-          <div className="mb-8 rounded-lg overflow-hidden shadow-2xl">
-            <iframe
-              src="https://docs.google.com/spreadsheets/d/e/2PACX-1vT7HtaX6X32lgWEYqcaf1qvAvdX1bbwKYe4lHLQjBvY3gUnhohb_bPsnaVQcWTygJdzxTayCJcjLSL0/pubhtml?gid=0&amp;single=true&amp;widget=true&amp;headers=false"
-              className="w-full h-[600px] bg-white"
-              title="Board Games List"
-            />
-          </div>
-
-          <div className="text-center">
-            <Button asChild size="lg">
-              <Link
-                href="https://docs.google.com/spreadsheets/d/1COMEk06pF2a1gqVaFvrH0PspCA0W5kyfbMGqD3vVCS8/edit?usp=sharing"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {m["boardGames.viewSpreadsheet"]()}
-                <ExternalLink className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
-        </div>
+          <p className="mt-3 text-gray-300">
+            {m["boardGames.unavailable.hint"]()}
+          </p>
+        </section>
       )}
     </div>
+  );
+}
+
+async function loadGames() {
+  "use cache";
+
+  cacheLife("minutes");
+  applyCacheTags(gamesTags.catalog());
+
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const gamesService = yield* GamesService;
+      return yield* gamesService.listGames;
+    }).pipe(
+      Effect.tapError(Effect.logError),
+      Effect.annotateLogs({ page: "BoardGamesPage" }),
+      Effect.provide(GamesService.Live)
+    )
   );
 }

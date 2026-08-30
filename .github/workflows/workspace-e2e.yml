@@ -2,7 +2,7 @@ name: Workspace E2E
 
 on:
   repository_dispatch:
-    types: [vercel.deployment.success]
+    types: [vercel.deployment.skipped, vercel.deployment.success]
   workflow_dispatch:
     inputs:
       cleanup_stale_e2e_reservations:
@@ -28,7 +28,7 @@ permissions:
 
 concurrency:
   group: workspace-e2e-${{ github.event_name == 'workflow_dispatch' && 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' || github.event.client_payload.project.id }}-pr-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'repository_dispatch' || github.event.client_payload.state.type != 'skipped' }}
 
 jobs:
   resolve-target:
@@ -42,6 +42,9 @@ jobs:
       head_ref: ${{ steps.target.outputs.head_ref }}
       pr_number: ${{ steps.target.outputs.pr_number }}
       sha: ${{ steps.target.outputs.sha }}
+      skipped: ${{ steps.target.outputs.skipped }}
+      skipped_status_description: ${{ steps.target.outputs.skipped_status_description }}
+      skipped_status_state: ${{ steps.target.outputs.skipped_status_state }}
       url: ${{ steps.target.outputs.url }}
     steps:
       - name: Resolve eligible PR and immutable preview
@@ -50,6 +53,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
           TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.event.client_payload.git.sha }}
+          TARGET_SKIPPED: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.state.type == 'skipped' }}
           TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
         run: |
           set -euo pipefail
@@ -103,17 +107,27 @@ jobs:
               "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses")"
             if jq -e \
               --arg target "$normalized_url" \
+              --argjson skipped "$TARGET_SKIPPED" \
               'any(.[];
-                .state == "success" and
+                (if $skipped then
+                  .state == "inactive" and
+                  .description == "Skipped - Not affected"
+                else
+                  .state == "success"
+                end) and
                 (((.environment_url? // "") | rtrimstr("/")) == $target)
               )' \
               <<<"$deployment_statuses" >/dev/null; then
               deployment_matches_target=true
               break
             fi
-          done < <(jq -r '.[].id' <<<"$deployments")
+          done < <(jq -r '.[] | select(.creator.login == "vercel[bot]") | .id' <<<"$deployments")
           if [[ "$deployment_matches_target" != "true" ]]; then
-            echo "No successful exact-SHA Workspace deployment matches the target URL" >&2
+            if [[ "$TARGET_SKIPPED" == "true" ]]; then
+              echo "No skipped exact-SHA Workspace deployment matches the target URL" >&2
+            else
+              echo "No successful exact-SHA Workspace deployment matches the target URL" >&2
+            fi
             exit 1
           fi
 
@@ -146,17 +160,61 @@ jobs:
           fi
 
           pr_number="$(jq -r '.[0].number' <<<"$eligible_pulls")"
+
+          if [[ "$TARGET_SKIPPED" == "true" ]]; then
+            previous_state=""
+            mapfile -t commit_shas < <(gh api --paginate \
+              "repos/$GITHUB_REPOSITORY/pulls/$pr_number/commits?per_page=100" \
+              --jq '.[].sha')
+            target_seen=false
+            for ((index=${#commit_shas[@]} - 1; index >= 0; index--)); do
+              commit_sha="${commit_shas[$index]}"
+              if [[ "$commit_sha" == "$TARGET_SHA" ]]; then
+                target_seen=true
+                continue
+              fi
+              if [[ "$target_seen" != "true" ]]; then
+                continue
+              fi
+              previous_state="$(gh api --paginate --slurp \
+                "repos/$GITHUB_REPOSITORY/commits/$commit_sha/statuses?per_page=100" | \
+                jq -r 'add | first(.[] | select(
+                  .context == "Workspace E2E" and
+                  .creator.login == "github-actions[bot]"
+                )) | .state // empty')"
+              if [[ -n "$previous_state" ]]; then
+                break
+              fi
+            done
+            if [[ "$target_seen" != "true" ]]; then
+              echo "Target SHA is missing from the matching PR history" >&2
+              exit 1
+            fi
+
+            skipped_status_state=success
+            skipped_status_description='Workspace unchanged; E2E skipped'
+            if [[ -n "$previous_state" && "$previous_state" != "success" ]]; then
+              skipped_status_state=failure
+              skipped_status_description='Workspace unchanged; prior E2E did not pass'
+            fi
+            {
+              echo "skipped_status_state=$skipped_status_state"
+              echo "skipped_status_description=$skipped_status_description"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
           {
             echo "eligible=true"
             echo "head_ref=$TARGET_REF"
             echo "pr_number=$pr_number"
             echo "sha=$TARGET_SHA"
+            echo "skipped=$TARGET_SKIPPED"
             echo "url=$normalized_url"
           } >> "$GITHUB_OUTPUT"
 
   migrate-preview:
     needs: resolve-target
-    if: needs.resolve-target.outputs.eligible == 'true'
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: workspace-checkout-e2e
@@ -250,7 +308,7 @@ jobs:
 
   test-e2e:
     needs: [resolve-target, migrate-preview]
-    if: needs.resolve-target.outputs.eligible == 'true'
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e
@@ -495,7 +553,7 @@ jobs:
 
   publish-final-status:
     needs: [resolve-target, test-e2e]
-    if: always() && needs.resolve-target.outputs.eligible == 'true'
+    if: always() && needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -531,5 +589,31 @@ jobs:
             -f state="$STATUS_STATE" \
             -f context='Workspace E2E allocation' \
             -f description="$ALLOCATION_DESCRIPTION" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            >/dev/null
+
+  publish-skipped-status:
+    needs: resolve-target
+    if: needs.resolve-target.outputs.eligible == 'true' && needs.resolve-target.outputs.skipped == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - name: Publish status for unchanged Workspace
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS_DESCRIPTION: ${{ needs.resolve-target.outputs.skipped_status_description }}
+          STATUS_STATE: ${{ needs.resolve-target.outputs.skipped_status_state }}
+          TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+        run: |
+          set -euo pipefail
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" \
+            -f state="$STATUS_STATE" \
+            -f context='Workspace E2E' \
+            -f description="$STATUS_DESCRIPTION" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null

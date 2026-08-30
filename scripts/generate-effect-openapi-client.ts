@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 const getArgument = (name: string) => {
   const index = Bun.argv.indexOf(name);
   const value = Bun.argv[index + 1];
@@ -12,6 +16,10 @@ const getArgument = (name: string) => {
 const spec = getArgument("--spec");
 const name = getArgument("--name");
 const output = getArgument("--output");
+const generatedDirectory = await mkdtemp(
+  join(tmpdir(), "deskohub-openapi-client-")
+);
+const generatedPath = join(generatedDirectory, "client.ts");
 
 const generator = Bun.spawn(
   [
@@ -26,15 +34,17 @@ const generator = Bun.spawn(
   ],
   {
     stderr: "inherit",
-    stdout: "pipe",
+    stdout: Bun.file(generatedPath),
   }
 );
-const generatedSource = await new Response(generator.stdout).text();
 const exitCode = await generator.exited;
 
 if (exitCode !== 0) {
+  await rm(generatedDirectory, { recursive: true });
   process.exit(exitCode);
 }
+const generatedSource = await Bun.file(generatedPath).text();
+await rm(generatedDirectory, { recursive: true });
 
 const diagnosticHeader =
   "// @effect-diagnostics schemaNumber:off unnecessaryTypeofType:off\n";

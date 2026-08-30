@@ -8,6 +8,7 @@ const nextConfig = {
     "@deskohub/cloudinary-image",
     "@deskohub/dotypos",
     "@deskohub/email",
+    "@deskohub/games",
     "@deskohub/reservation",
   ],
   experimental: {
@@ -19,8 +20,12 @@ const nextConfig = {
   images: {
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: 'res.cloudinary.com',
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+      },
+      {
+        protocol: "https",
+        hostname: "cf.geekdo-images.com",
       },
     ],
   },

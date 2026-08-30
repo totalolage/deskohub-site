@@ -823,17 +823,22 @@
   "boardGames": {
     "pageTitle": "Board Games - Deskohub",
     "pageDescription": "Explore our extensive collection of board games for all ages and skill levels at Deskohub board game bar.",
-    "title": "Board Games Collection",
-    "viewSpreadsheet": "View Board Games List",
     "hero": {
       "title": "Board Games",
       "subtitle": "Discover our extensive collection of board games for all ages and skill levels"
     },
     "filters": {
+      "label": "Game filters",
+      "playersQuestion": "How many players?",
+      "sevenOrMorePlayers": "Seven or more players",
+      "timeQuestion": "How much time do you have?",
+      "upTo30": "Up to 30 minutes",
+      "upTo60": "30–60 minutes",
+      "upTo120": "1–2 hours",
+      "over120": "Over 2 hours",
       "search": "Search",
-      "searchPlaceholder": "Search games...",
-      "category": "Category",
-      "difficulty": "Difficulty",
+      "searchPlaceholder": "Game name…",
+      "reset": "Clear filters",
       "foundGames": [
         {
           "declarations": ["input count", "local countPlural = count: plural"],
@@ -844,41 +849,29 @@
             "countPlural=other": "Found {count} games"
           }
         }
-      ],
-      "categories": {
-        "all": "All",
-        "strategic": "Strategic",
-        "family": "Family",
-        "dungeonCrawler": "Dungeon Crawler",
-        "party": "Party"
-      },
-      "difficulties": {
-        "all": "All",
-        "easy": "Easy",
-        "medium": "Medium",
-        "hard": "Hard"
-      },
-      "sortBy": "Sort by",
-      "sort": {
-        "nameAsc": "Name (A-Z)",
-        "nameDesc": "Name (Z-A)",
-        "ratingAsc": "Rating (Low to High)",
-        "ratingDesc": "Rating (High to Low)",
-        "playersAsc": "Players (Few to Many)",
-        "playersDesc": "Players (Many to Few)",
-        "durationAsc": "Duration (Short to Long)",
-        "durationDesc": "Duration (Long to Short)"
+      ]
+    },
+    "empty": {
+      "title": "No game matches those filters",
+      "hint": "Try another player count, a longer duration, or a different name."
+    },
+    "unavailable": {
+      "title": "The game catalog is temporarily unavailable",
+      "hint": "Please try again in a few minutes."
+    },
+    "playerCount": [
+      {
+        "declarations": ["input count", "local countPlural = count: plural"],
+        "selectors": ["countPlural"],
+        "match": {
+          "countPlural=one": "{count} player",
+          "countPlural=other": "{count} players"
+        }
       }
-    },
-    "table": {
-      "game": "Game",
-      "players": "Players",
-      "duration": "Game Duration",
-      "difficulty": "Difficulty",
-      "category": "Category",
-      "rating": "Rating"
-    },
-    "noGamesFound": "No games match your criteria."
+    ],
+    "playerRange": "{min}–{max} players",
+    "minutes": "{count} min",
+    "rating": "Rating"
   },
   "gallery": {
     "pageTitle": "Gallery - Deskohub",

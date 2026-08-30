@@ -1,0 +1,125 @@
+openapi: 3.1.0
+info:
+  title: Deskohub Games API
+  version: 1.0.0
+  description: Checked-in contract for the public board-game catalog used by Deskohub.
+servers:
+  - url: https://deskohub-games.vercel.app
+paths:
+  /api/games:
+    get:
+      operationId: listGames
+      summary: List board games
+      responses:
+        "200":
+          description: Board games returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GamesResponse"
+        "500":
+          description: Unexpected error response.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+components:
+  schemas:
+    GamesResponse:
+      type: object
+      required:
+        - games
+      properties:
+        games:
+          type: array
+          items:
+            $ref: "#/components/schemas/Game"
+    Game:
+      type: object
+      required:
+        - id
+        - bggId
+        - name
+        - yearPublished
+        - imageUrl
+        - thumbnailUrl
+        - description
+        - minPlayers
+        - maxPlayers
+        - playingTimeMinutes
+        - minAge
+        - weight
+        - rating
+        - categories
+        - mechanics
+        - inStock
+        - note
+        - language
+        - addedAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+        bggId:
+          type: integer
+        name:
+          type: string
+        yearPublished:
+          type: integer
+        imageUrl:
+          type: string
+          format: uri
+        thumbnailUrl:
+          type: string
+          format: uri
+        description:
+          type:
+            - string
+            - "null"
+        minPlayers:
+          type: integer
+        maxPlayers:
+          type: integer
+        playingTimeMinutes:
+          type: integer
+        minAge:
+          type:
+            - integer
+            - "null"
+        weight:
+          type:
+            - number
+            - "null"
+        rating:
+          type:
+            - number
+            - "null"
+        categories:
+          anyOf:
+            - type: array
+              items:
+                type: string
+            - type: "null"
+        mechanics:
+          anyOf:
+            - type: array
+              items:
+                type: string
+            - type: "null"
+        inStock:
+          type: boolean
+        note:
+          type:
+            - string
+            - "null"
+        language:
+          type:
+            - string
+            - "null"
+        addedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
