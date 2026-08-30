@@ -166,9 +166,14 @@ jobs:
             mapfile -t commit_shas < <(gh api --paginate \
               "repos/$GITHUB_REPOSITORY/pulls/$pr_number/commits?per_page=100" \
               --jq '.[].sha')
+            target_seen=false
             for ((index=${#commit_shas[@]} - 1; index >= 0; index--)); do
               commit_sha="${commit_shas[$index]}"
               if [[ "$commit_sha" == "$TARGET_SHA" ]]; then
+                target_seen=true
+                continue
+              fi
+              if [[ "$target_seen" != "true" ]]; then
                 continue
               fi
               previous_state="$(gh api --paginate --slurp \
@@ -181,6 +186,10 @@ jobs:
                 break
               fi
             done
+            if [[ "$target_seen" != "true" ]]; then
+              echo "Target SHA is missing from the matching PR history" >&2
+              exit 1
+            fi
 
             skipped_status_state=success
             skipped_status_description='Workspace unchanged; E2E skipped'
