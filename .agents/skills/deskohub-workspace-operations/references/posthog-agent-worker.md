@@ -30,7 +30,7 @@ Then end the T3 turn. Use GitHub for the question, not a T3 input or approval re
 
 ## Implement and prove the fix
 
-Load the repository skills for the affected area. Reproduce the failure or leave the smallest executable regression check. Fix the shared root cause, run focused checks regularly, then run the relevant package test, typecheck, lint, and build boundaries. Follow the OpenCode `orchestrator` agent's review process and resolve valid findings.
+Load the repository skills for the affected area. Reproduce the failure or leave the smallest executable regression check. Fix the shared root cause, run focused checks regularly, then run the relevant package test, typecheck, lint, and build boundaries.
 
 Commit and push `posthog/issue-<number>`. Open or update one pull request against `main` with `Fixes #<number>`. Follow CI and review feedback until the exact head is green and the pull request is merge-ready.
 
