@@ -21,6 +21,12 @@ function MapFramingController() {
     const desktopFraming = window.matchMedia("(min-width: 64rem)");
 
     const frameMarker = () => {
+      if (desktopFraming.matches) {
+        map.dragging.enable();
+      } else {
+        map.dragging.disable();
+      }
+
       const zoom = map.getZoom();
       const markerPoint = map.project(
         [workspaceCoordinates.lat, workspaceCoordinates.lng],
@@ -65,6 +71,7 @@ export function LandingPageInteractiveMap() {
     <MapContainer
       center={[workspaceCoordinates.lat, workspaceCoordinates.lng]}
       className="h-full w-full"
+      dragging={false}
       scrollWheelZoom={false}
       zoom={17}
     >
