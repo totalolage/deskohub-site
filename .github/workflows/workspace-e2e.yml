@@ -171,9 +171,9 @@ jobs:
               if [[ "$commit_sha" == "$TARGET_SHA" ]]; then
                 continue
               fi
-              previous_state="$(gh api \
-                "repos/$GITHUB_REPOSITORY/commits/$commit_sha/statuses?per_page=100" \
-                --jq 'first(.[] | select(
+              previous_state="$(gh api --paginate --slurp \
+                "repos/$GITHUB_REPOSITORY/commits/$commit_sha/statuses?per_page=100" | \
+                jq -r 'add | first(.[] | select(
                   .context == "Workspace E2E" and
                   .creator.login == "github-actions[bot]"
                 )) | .state // empty')"

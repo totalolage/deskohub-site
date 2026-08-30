@@ -109,6 +109,7 @@ test("waives exact-SHA E2E only when Vercel marks Workspace unaffected", async (
   expect(workflow).toContain('.state == "inactive"');
   expect(workflow).toContain('.description == "Skipped - Not affected"');
   expect(workflow).toContain('context == "Workspace E2E"');
+  expect(workflow).toContain("gh api --paginate --slurp");
   expect(workflow).toContain("Workspace unchanged; prior E2E did not pass");
   expect(workflow).toContain("needs.resolve-target.outputs.skipped != 'true'");
   expect(skippedStatusJob).toContain("statuses: write");
