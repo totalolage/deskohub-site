@@ -73,7 +73,6 @@ const sensitiveLogExactKeys = new Set([
   "description",
   "db.namespace",
   "discountcode",
-  "exception.stacktrace",
   "recipient",
   "server.address",
   "submittedcode",
@@ -239,12 +238,94 @@ const censorUrlString = (value: string) => {
   }
 };
 
+const censorStackFrameSource = (source: string): string | undefined => {
+  const location = source.replace(/[?#].*$/, "");
+  if (/^(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(location)) return location;
+
+  try {
+    const isProtocolRelative = location.startsWith("//");
+    const url = isProtocolRelative
+      ? new URL(location, "https://deskohub.local")
+      : new URL(location);
+    url.username = "";
+    url.password = "";
+    return isProtocolRelative ? `//${url.host}${url.pathname}` : url.toString();
+  } catch {
+    return undefined;
+  }
+};
+
+const censorStackTrace = (stack: string, message: string): string => {
+  const messageMarker = stack.indexOf(": ");
+  const firstLineEnd = stack.indexOf("\n");
+  let framesStart = -1;
+  if (message === "" && messageMarker < 0) {
+    framesStart = firstLineEnd;
+  } else if (
+    messageMarker >= 0 &&
+    stack.startsWith(message, messageMarker + 2)
+  ) {
+    framesStart = messageMarker + 2 + message.length;
+  } else if (
+    messageMarker < 0 &&
+    firstLineEnd >= 0 &&
+    /^[\t ]*at[\t ]/.test(stack.slice(firstLineEnd + 1))
+  ) {
+    framesStart = firstLineEnd;
+  }
+  if (framesStart < 0 || stack[framesStart] !== "\n") {
+    return CENSORED_LOG_VALUE;
+  }
+
+  const frames = stack
+    .slice(framesStart + 1)
+    .split("\n")
+    .flatMap((line) => {
+      const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
+      if (!frame) return [];
+      const source = frame[1]?.trim();
+      const lineNumber = frame[2];
+      const columnNumber = frame[3];
+      if (!(source && lineNumber && columnNumber)) return [];
+      if (
+        !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack|turbopack):)/.test(
+          source
+        )
+      ) {
+        return [];
+      }
+      const censoredSource = censorStackFrameSource(source);
+      return censoredSource
+        ? [`    at ${censoredSource}:${lineNumber}:${columnNumber}`]
+        : [];
+    });
+
+  return frames.length === 0
+    ? CENSORED_LOG_VALUE
+    : `${CENSORED_LOG_VALUE}\n${frames.join("\n")}`;
+};
+
 const isEffectDrizzleQueryError = <T>(
   value: T
 ): value is T & EffectDrizzleQueryError =>
   Predicate.isObject(value) &&
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
+
+const censorErrorClassificationValue = <T>(value: T): T | string => {
+  if (Predicate.isBoolean(value)) return value;
+  if (Predicate.isNumber(value)) {
+    return Number.isFinite(value) ? value : CENSORED_LOG_VALUE;
+  }
+  if (
+    Predicate.isString(value) &&
+    value.length <= 64 &&
+    /^(?:[A-Za-z][A-Za-z0-9]*(?:[._:/-][A-Za-z0-9]+)*|[0-9A-Z]{5})$/.test(value)
+  ) {
+    return value;
+  }
+  return CENSORED_LOG_VALUE;
+};
 
 const censorQueryParameter = <T>(
   value: T,
@@ -299,9 +380,21 @@ const censorLogRecordValue = <T>(
   key: string,
   value: T,
   seen: WeakMap<object, unknown>,
-  databaseQuery?: string
+  databaseQuery?: string,
+  stackMessage?: string
 ): unknown => {
+  if (
+    ["exception.stacktrace", "stack", "stacktrace"].includes(key.toLowerCase())
+  ) {
+    if (!(Predicate.isString(value) && stackMessage !== undefined)) {
+      return CENSORED_LOG_VALUE;
+    }
+    return censorStackTrace(value, stackMessage);
+  }
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
+  if (key.toLowerCase() === "cause") {
+    return censorErrorCauseInternal(value, seen);
+  }
   if (key.toLowerCase() === "params") {
     return censorQueryParamsInternal(databaseQuery, value, seen);
   }
@@ -387,6 +480,8 @@ const censorLogValueInternal = <T>(
 
   if (Predicate.isString(value)) return censorUrlString(value);
 
+  if (Cause.isCause(value)) return censorCauseInternal(value, seen);
+
   if (isEffectDrizzleQueryError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
@@ -397,6 +492,7 @@ const censorLogValueInternal = <T>(
     };
     seen.set(value, result);
     result.params = censorQueryParamsInternal(value.query, value.params, seen);
+    result.cause = censorErrorCauseInternal(value.cause, seen);
     return result;
   }
 
@@ -410,13 +506,40 @@ const censorLogValueInternal = <T>(
     };
     seen.set(value, result);
 
-    for (const [key, nestedValue] of Object.entries(value)) {
-      if (key === "name" || key === "message" || key === "stack") continue;
-      result[key] = censorLogRecordValue(key, nestedValue, seen);
+    for (const key of [
+      "_tag",
+      "reason",
+      "operation",
+      "code",
+      "outcome",
+      "failureCode",
+      "errorCode",
+      "status",
+      "statusCode",
+      "constraint",
+    ] as const) {
+      const property = Object.getOwnPropertyDescriptor(value, key);
+      if (property && "value" in property) {
+        result[key] = censorErrorClassificationValue(property.value);
+      }
     }
 
-    if ("cause" in value && !("cause" in result)) {
-      result.cause = censorLogValueInternal(value.cause, seen);
+    const stack = Object.getOwnPropertyDescriptor(value, "stack");
+    if (stack && "value" in stack && Predicate.isString(stack.value)) {
+      result.stack = censorStackTrace(stack.value, value.message);
+    }
+
+    if ("cause" in value) {
+      result.cause = censorErrorCauseInternal(value.cause, seen);
+    }
+
+    const errors = Object.getOwnPropertyDescriptor(value, "errors");
+    if (errors && "value" in errors && Array.isArray(errors.value)) {
+      result.errors = errors.value.map((error) =>
+        isStructuredErrorCause(error)
+          ? censorLogValueInternal(error, seen)
+          : CENSORED_LOG_VALUE
+      );
     }
 
     return result;
@@ -432,9 +555,21 @@ const censorLogValueInternal = <T>(
   const databaseQuery = Predicate.isString(value.query)
     ? value.query
     : undefined;
+  let stackMessage: string | undefined;
+  if (Predicate.isString(value["exception.message"])) {
+    stackMessage = value["exception.message"];
+  } else if (Predicate.isString(value.message)) {
+    stackMessage = value.message;
+  }
 
   for (const [key, nestedValue] of Object.entries(value)) {
-    result[key] = censorLogRecordValue(key, nestedValue, seen, databaseQuery);
+    result[key] = censorLogRecordValue(
+      key,
+      nestedValue,
+      seen,
+      databaseQuery,
+      stackMessage
+    );
   }
 
   return result;
@@ -445,18 +580,48 @@ export const censorTelemetryValue = <T>(value: T): unknown =>
 
 export const censorLogValue = censorTelemetryValue;
 
-const censorCause = (cause: Cause.Cause<unknown>): Cause.Cause<unknown> =>
-  Cause.fromReasons(
+function censorErrorCauseInternal(
+  cause: unknown,
+  seen: WeakMap<object, unknown>
+): unknown {
+  return isStructuredErrorCause(cause) || isPlainObject(cause)
+    ? censorLogValueInternal(cause, seen)
+    : CENSORED_LOG_VALUE;
+}
+
+const isStructuredErrorCause = (cause: unknown): boolean =>
+  Cause.isCause(cause) ||
+  isEffectDrizzleQueryError(cause) ||
+  isNativeError(cause);
+
+const censorCauseInternal = (
+  cause: Cause.Cause<unknown>,
+  seen: WeakMap<object, unknown>
+): Cause.Cause<unknown> => {
+  const existing = seen.get(cause);
+  if (Cause.isCause(existing)) return existing;
+
+  const result = Cause.fromReasons(
     cause.reasons.map((reason) => {
       if (Cause.isFailReason(reason)) {
-        return Cause.makeFailReason(censorLogValue(reason.error));
+        return Cause.makeFailReason(
+          censorErrorCauseInternal(reason.error, seen)
+        );
       }
       if (Cause.isDieReason(reason)) {
-        return Cause.makeDieReason(censorLogValue(reason.defect));
+        return Cause.makeDieReason(
+          censorErrorCauseInternal(reason.defect, seen)
+        );
       }
       return reason;
     })
   );
+  seen.set(cause, result);
+  return result;
+};
+
+const censorCause = (cause: Cause.Cause<unknown>): Cause.Cause<unknown> =>
+  censorCauseInternal(cause, new WeakMap());
 
 export const censorLoggerOptions = (
   options: Logger.Options<unknown>

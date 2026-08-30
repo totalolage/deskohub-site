@@ -4,6 +4,7 @@
 
 - Use `Effect.log*` inside the censored Workspace logging pipeline. Do not use `console.*` for Workspace diagnostics.
 - Preserve useful log annotations. Workspace and Dotypos application logging is globally censored and redacted, so do not strip annotations locally for privacy unless a new uncensored sink is introduced.
+- Attach handled failures to their error logs. The shared censorship layer preserves recursive cause types, safe classification fields, and stack frames for source-map attribution while redacting dynamic stack message lines, sensitive database diagnostics, and marked query parameters.
 - Keep access-code-like keys globally censored. Workspace customer access codes have appeared in PostHog annotations before; never quote an observed value back to the user.
 
 ## Bound sensitive or oversized inspection
@@ -18,4 +19,4 @@ When an exact Cloudinary public ID returns 404, verify the full Cloudinary accou
 
 ## Reuse bounded database read retries
 
-For Workspace database read instability, reuse `retryDatabaseRead` from `apps/deskohub-workspace/db/retry-database-read.ts` at the repository query boundary. It retries only Drizzle failures whose nested Effect SQL error is marked retryable. Apply it to idempotent reads; state-changing operations need their own idempotency boundary before retrying.
+For Workspace database read instability, reuse `retryDatabaseRead` from `apps/deskohub-workspace/db/retry-database-read.ts` at the repository query boundary. It retries Drizzle failures whose nested Effect SQL error is marked retryable, plus uncoded `acquireConnection` failures that `pg` reports as unknown. Apply it to idempotent reads; state-changing operations need their own idempotency boundary before retrying.

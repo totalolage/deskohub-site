@@ -29,7 +29,9 @@ export const logDiscountResolutionFailure = (input: {
   readonly operation: DiscountResolutionOperation;
   readonly provider: DiscountResolutionProvider;
 }) =>
-  Effect.logError("Discount provider resolution failed").pipe(
+  Effect.logError("Discount provider resolution failed", {
+    cause: input.cause,
+  }).pipe(
     Effect.annotateLogs({
       discountBoundary: "resolution",
       discountProvider: input.provider,
