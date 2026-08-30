@@ -4,6 +4,7 @@ import {
   HttpClient,
   HttpClientRequest,
 } from "effect/unstable/http";
+import { decodeHTML } from "entities";
 import { GamesRequestError } from "../errors";
 import { type Game, make } from "../generated/effect.gen";
 
@@ -49,7 +50,7 @@ function makeGamesService() {
 
       return response.games.map((game) => ({
         ...game,
-        name: game.name.replaceAll("&#039;", "'"),
+        name: decodeHTML(game.name),
       }));
     });
 
