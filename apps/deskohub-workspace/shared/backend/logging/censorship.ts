@@ -238,6 +238,16 @@ const censorUrlString = (value: string) => {
   }
 };
 
+const censorStackFrameSource = (source: string): string => {
+  try {
+    const url = new URL(source);
+    redactUrlSearchParams(url);
+    return url.toString();
+  } catch {
+    return censorUrlString(source);
+  }
+};
+
 const isEffectDrizzleQueryError = <T>(
   value: T
 ): value is T & EffectDrizzleQueryError =>
@@ -307,13 +317,18 @@ const censorLogRecordValue = <T>(
     const frames = value.split("\n").flatMap((line) => {
       const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
       if (!frame) return [];
-      const source = frame[1].trim();
+      const source = frame[1]?.trim();
+      const lineNumber = frame[2];
+      const columnNumber = frame[3];
+      if (!(source && lineNumber && columnNumber)) return [];
       if (
         !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack):)/.test(source)
       ) {
         return [];
       }
-      return [`    at ${censorUrlString(source)}:${frame[2]}:${frame[3]}`];
+      return [
+        `    at ${censorStackFrameSource(source)}:${lineNumber}:${columnNumber}`,
+      ];
     });
     return frames.length === 0
       ? CENSORED_LOG_VALUE
