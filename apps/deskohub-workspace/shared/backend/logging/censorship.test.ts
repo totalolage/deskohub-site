@@ -480,7 +480,7 @@ describe("censorLogValue", () => {
     expect(
       censorLogValue({
         "exception.message": multilineMessage,
-        "exception.stacktrace": `Error: ${multilineMessage}\n    at tracedFailure (https://${privateValue}:${privateValue}@example.com/app.js?code=${privateValue}#${privateValue}:6:7)\n    at relativeFailure (/admin/cli/authenticate?code=${privateValue}#${privateValue}:8:9)\n    at fileFailure (file:///app/file.js?token=${privateValue}:10:11)\n    at mappedFailure (turbopack:///[project]/app/page.ts?token=${privateValue}:12:13)`,
+        "exception.stacktrace": `Error: ${multilineMessage}\n    at tracedFailure (https://${privateValue}:${privateValue}@example.com/app.js?code=${privateValue}#${privateValue}:6:7)\n    at relativeFailure (/admin/cli/authenticate?code=${privateValue}#${privateValue}:8:9)\n    at fileFailure (file:///app/file.js?token=${privateValue}:10:11)\n    at mappedFailure (turbopack:///[project]/app/page.ts?token=${privateValue}:12:13)\n    at malformedUrl (https://user:${privateValue}@exa mple.com/app.js:14:15)\n    at malformedRelativeUrl (//user:${privateValue}@exa mple.com/app.js:16:17)`,
       })
     ).toEqual({
       "exception.message": CENSORED_LOG_VALUE,

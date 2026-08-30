@@ -238,20 +238,20 @@ const censorUrlString = (value: string) => {
   }
 };
 
-const censorStackFrameSource = (source: string): string => {
+const censorStackFrameSource = (source: string): string | undefined => {
   const location = source.replace(/[?#].*$/, "");
-  try {
-    const url = new URL(location);
-    url.username = "";
-    url.password = "";
-    return url.toString();
-  } catch {
-    if (!location.startsWith("//")) return location;
+  if (/^(?:\/(?!\/)|[A-Za-z]:[\\/])/.test(location)) return location;
 
-    const url = new URL(location, "https://deskohub.local");
+  try {
+    const isProtocolRelative = location.startsWith("//");
+    const url = isProtocolRelative
+      ? new URL(location, "https://deskohub.local")
+      : new URL(location);
     url.username = "";
     url.password = "";
-    return `//${url.host}${url.pathname}`;
+    return isProtocolRelative ? `//${url.host}${url.pathname}` : url.toString();
+  } catch {
+    return undefined;
   }
 };
 
@@ -293,9 +293,10 @@ const censorStackTrace = (stack: string, message: string): string => {
       ) {
         return [];
       }
-      return [
-        `    at ${censorStackFrameSource(source)}:${lineNumber}:${columnNumber}`,
-      ];
+      const censoredSource = censorStackFrameSource(source);
+      return censoredSource
+        ? [`    at ${censoredSource}:${lineNumber}:${columnNumber}`]
+        : [];
     });
 
   return frames.length === 0
