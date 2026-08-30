@@ -66,23 +66,35 @@ components:
         name:
           type: string
         yearPublished:
-          type: integer
+          type:
+            - integer
+            - "null"
         imageUrl:
-          type: string
-          format: uri
+          anyOf:
+            - type: string
+              format: uri
+            - type: "null"
         thumbnailUrl:
-          type: string
-          format: uri
+          anyOf:
+            - type: string
+              format: uri
+            - type: "null"
         description:
           type:
             - string
             - "null"
         minPlayers:
-          type: integer
+          type:
+            - integer
+            - "null"
         maxPlayers:
-          type: integer
+          type:
+            - integer
+            - "null"
         playingTimeMinutes:
-          type: integer
+          type:
+            - integer
+            - "null"
         minAge:
           type:
             - integer

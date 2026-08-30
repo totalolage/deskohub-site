@@ -23,6 +23,8 @@ export function filterBoardGames<T extends FilterableGame>(
     if (!game.inStock) return false;
 
     if (filters.playerCount !== null) {
+      if (game.minPlayers === null || game.maxPlayers === null) return false;
+
       const matchesPlayers =
         filters.playerCount === 7
           ? game.maxPlayers >= 7
@@ -31,13 +33,16 @@ export function filterBoardGames<T extends FilterableGame>(
       if (!matchesPlayers) return false;
     }
 
-    if (
-      filters.durations.length > 0 &&
-      !filters.durations.some((duration) =>
-        matchesDuration(game.playingTimeMinutes, duration)
-      )
-    ) {
-      return false;
+    if (filters.durations.length > 0) {
+      const minutes = game.playingTimeMinutes;
+      if (
+        minutes === null ||
+        !filters.durations.some((duration) =>
+          matchesDuration(minutes, duration)
+        )
+      ) {
+        return false;
+      }
     }
 
     return !query || game.name.toLocaleLowerCase().includes(query);
