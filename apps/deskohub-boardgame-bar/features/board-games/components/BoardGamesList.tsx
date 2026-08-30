@@ -2,6 +2,7 @@
 
 import type { Game } from "@deskohub/games";
 import { useMemo, useState } from "react";
+import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
 import { m } from "@/features/i18n";
 import { ImageWithFallback } from "@/shared/components/ui/image-with-fallback";
 import {
@@ -160,10 +161,10 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
                 <ImageWithFallback
                   alt={game.name}
                   className="mb-0.5 h-[150px] w-full rounded-[10px] bg-[#141311] object-contain"
-                  fallbackSrc="/assets/images/placeholder/placeholder.svg"
+                  fallbackSrc={placeholderImage.src}
                   height={300}
                   sizes="(min-width: 1024px) 352px, (min-width: 640px) 50vw, 100vw"
-                  src={game.imageUrl}
+                  src={game.imageUrl ?? placeholderImage.src}
                   width={600}
                 />
                 <div className="flex items-start justify-between gap-3">
@@ -179,23 +180,30 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-3.5 text-[#b9c2d1] text-xs">
-                  <span className="font-semibold text-[#4fbba3]">
-                    {game.minPlayers === game.maxPlayers
-                      ? m["boardGames.playerCount"]({
-                          count: game.minPlayers,
-                        })
-                      : m["boardGames.playerRange"]({
-                          min: game.minPlayers,
-                          max: game.maxPlayers,
+                {((game.minPlayers !== null && game.maxPlayers !== null) ||
+                  game.playingTimeMinutes !== null) && (
+                  <div className="flex flex-wrap items-center gap-3.5 text-[#b9c2d1] text-xs">
+                    {game.minPlayers !== null && game.maxPlayers !== null && (
+                      <span className="font-semibold text-[#4fbba3]">
+                        {game.minPlayers === game.maxPlayers
+                          ? m["boardGames.playerCount"]({
+                              count: game.minPlayers,
+                            })
+                          : m["boardGames.playerRange"]({
+                              min: game.minPlayers,
+                              max: game.maxPlayers,
+                            })}
+                      </span>
+                    )}
+                    {game.playingTimeMinutes !== null && (
+                      <span>
+                        {m["boardGames.minutes"]({
+                          count: game.playingTimeMinutes,
                         })}
-                  </span>
-                  <span>
-                    {m["boardGames.minutes"]({
-                      count: game.playingTimeMinutes,
-                    })}
-                  </span>
-                </div>
+                      </span>
+                    )}
+                  </div>
+                )}
                 {game.description && (
                   <p className="line-clamp-3 text-[#b9c2d1] text-[13px] leading-normal">
                     {game.description}

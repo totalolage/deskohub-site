@@ -23,6 +23,13 @@ const games = [
     playingTimeMinutes: 150,
     inStock: false,
   },
+  {
+    name: "Game with incomplete metadata",
+    minPlayers: null,
+    maxPlayers: null,
+    playingTimeMinutes: null,
+    inStock: true,
+  },
 ];
 
 describe("filterBoardGames", () => {
@@ -34,5 +41,31 @@ describe("filterBoardGames", () => {
         search: " LONG ",
       })
     ).toEqual([games[1]!]);
+  });
+
+  test("keeps games with incomplete metadata until a matching filter is active", () => {
+    expect(
+      filterBoardGames(games, {
+        playerCount: null,
+        durations: [],
+        search: "",
+      })
+    ).toEqual([games[0]!, games[1]!, games[3]!]);
+
+    expect(
+      filterBoardGames(games, {
+        playerCount: 2,
+        durations: [],
+        search: "",
+      })
+    ).toEqual([games[0]!]);
+
+    expect(
+      filterBoardGames(games, {
+        playerCount: null,
+        durations: ["upTo30"],
+        search: "",
+      })
+    ).toEqual([games[0]!]);
   });
 });
