@@ -497,6 +497,14 @@ describe("censorLogValue", () => {
     expect(
       (censorLogValue(sqlError) as { readonly stack: string }).stack
     ).toContain("censorship.test.ts");
+
+    const staleMessageError = new Error(multilineMessage);
+    const staleStack = staleMessageError.stack;
+    staleMessageError.message = "replacement";
+    staleMessageError.stack = staleStack;
+    expect(censorLogValue(staleMessageError)).toMatchObject({
+      stack: CENSORED_LOG_VALUE,
+    });
   });
 
   test("retains only safe error classification fields", () => {

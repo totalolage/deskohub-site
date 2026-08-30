@@ -267,6 +267,7 @@ const censorStackTrace = (stack: string, message: string): string => {
   ) {
     framesStart = messageMarker + 2 + message.length;
   } else if (
+    messageMarker < 0 &&
     firstLineEnd >= 0 &&
     /^[\t ]*at[\t ]/.test(stack.slice(firstLineEnd + 1))
   ) {
