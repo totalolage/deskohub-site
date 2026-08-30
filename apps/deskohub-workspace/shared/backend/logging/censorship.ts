@@ -322,7 +322,9 @@ const censorLogRecordValue = <T>(
       const columnNumber = frame[3];
       if (!(source && lineNumber && columnNumber)) return [];
       if (
-        !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack):)/.test(source)
+        !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack|turbopack):)/.test(
+          source
+        )
       ) {
         return [];
       }
