@@ -5,6 +5,7 @@ import type { WorkspaceE2EConfig } from "./config";
 import {
   assertPreviewEndpointReady,
   assertPreviewEndpointsReady,
+  assertPreviewHomepageTilesReady,
   assertPreviewJpegReady,
   isPreviewPageAvailable,
 } from "./preview-readiness";
@@ -67,6 +68,53 @@ test("checks that the generated map endpoint returns a JPEG payload", async () =
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
+test("requires a tile-compatible referrer policy on the localized homepage", async () => {
+  const requests: Array<{ headers: Headers; url: string }> = [];
+  const fetchMock = mock(
+    async (input: URL | RequestInfo, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push({
+        headers: request.headers,
+        url: request.url,
+      });
+      return new Response(null, {
+        status: 200,
+        headers: { "referrer-policy": "strict-origin-when-cross-origin" },
+      });
+    }
+  );
+
+  await Effect.runPromise(
+    assertPreviewHomepageTilesReady(makeConfig()).pipe(
+      Effect.provide(makeFetchHttpClientLayer(fetchMock))
+    )
+  );
+
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.url).toBe(
+    "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US"
+  );
+});
+
+test("rejects a global no-referrer policy that blocks OpenStreetMap browser tiles", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response(null, {
+        status: 200,
+        headers: { "referrer-policy": "no-referrer" },
+      })
+  );
+
+  await expect(
+    Effect.runPromise(
+      assertPreviewHomepageTilesReady(makeConfig()).pipe(
+        Effect.provide(makeFetchHttpClientLayer(fetchMock))
+      )
+    )
+  ).rejects.toThrow("strict-origin-when-cross-origin");
+});
+
 test("starts all preview readiness requests before any request completes", async () => {
   let startedRequestCount = 0;
   let releaseRequests: () => void = () => undefined;
@@ -75,15 +123,19 @@ test("starts all preview readiness requests before any request completes", async
   });
   const fetchMock = mock(async (input: URL | RequestInfo) => {
     startedRequestCount += 1;
-    if (startedRequestCount === 3) releaseRequests();
+    if (startedRequestCount === 4) releaseRequests();
     await allRequestsStarted;
 
-    return String(input).endsWith(".jpeg")
-      ? new Response(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), {
-          headers: { "content-type": "image/jpeg" },
-          status: 200,
-        })
-      : new Response(null, { status: 200 });
+    if (String(input).endsWith(".jpeg")) {
+      return new Response(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), {
+        headers: { "content-type": "image/jpeg" },
+        status: 200,
+      });
+    }
+    return new Response(null, {
+      status: 200,
+      headers: { "referrer-policy": "strict-origin-when-cross-origin" },
+    });
   });
 
   await Effect.runPromise(
@@ -92,7 +144,7 @@ test("starts all preview readiness requests before any request completes", async
     )
   );
 
-  expect(startedRequestCount).toBe(3);
+  expect(startedRequestCount).toBe(4);
 });
 
 test("recognizes a rendered feature-gated preview page", async () => {

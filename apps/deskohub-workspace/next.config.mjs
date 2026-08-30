@@ -88,7 +88,12 @@ const nextConfig = {
     return [
       {
         source: "/:path*",
-        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+        headers: [
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+        ],
       },
     ];
   },
