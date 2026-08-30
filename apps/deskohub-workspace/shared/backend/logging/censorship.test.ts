@@ -469,19 +469,19 @@ describe("censorLogValue", () => {
     expect(censorLogValue(error)).toEqual({
       errorType: "Error",
       message: CENSORED_LOG_VALUE,
-      stack: `${CENSORED_LOG_VALUE}\n    at outerFailure (/app/outer.ts:4:5)`,
+      stack: `${CENSORED_LOG_VALUE}\n    at /app/outer.ts:4:5`,
       cause: {
         errorType: "Error",
         message: CENSORED_LOG_VALUE,
-        stack: `${CENSORED_LOG_VALUE}\n    at nestedFailure (/app/nested.ts:2:3)`,
+        stack: `${CENSORED_LOG_VALUE}\n    at /app/nested.ts:2:3`,
       },
     });
     expect(
       censorLogValue({
-        "exception.stacktrace": `Error: ${privateValue}\n    at tracedFailure (/app/traced.ts:6:7)`,
+        "exception.stacktrace": `Error: ${privateValue}\n    at ${privateValue}:8:9\n    at tracedFailure (https://example.com/app.js?token=${privateValue}:6:7)`,
       })
     ).toEqual({
-      "exception.stacktrace": `${CENSORED_LOG_VALUE}\n    at tracedFailure (/app/traced.ts:6:7)`,
+      "exception.stacktrace": `${CENSORED_LOG_VALUE}\n    at https://example.com/app.js?token=%5BREDACTED%5D:6:7`,
     });
   });
 

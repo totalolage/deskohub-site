@@ -304,9 +304,17 @@ const censorLogRecordValue = <T>(
     ["exception.stacktrace", "stack", "stacktrace"].includes(key.toLowerCase())
   ) {
     if (!Predicate.isString(value)) return CENSORED_LOG_VALUE;
-    const frames = value
-      .split("\n")
-      .filter((line) => /^\s*at(?:\s|$)/.test(line));
+    const frames = value.split("\n").flatMap((line) => {
+      const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
+      if (!frame) return [];
+      const source = frame[1].trim();
+      if (
+        !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack):)/.test(source)
+      ) {
+        return [];
+      }
+      return [`    at ${censorUrlString(source)}:${frame[2]}:${frame[3]}`];
+    });
     return frames.length === 0
       ? CENSORED_LOG_VALUE
       : `${CENSORED_LOG_VALUE}\n${frames.join("\n")}`;
