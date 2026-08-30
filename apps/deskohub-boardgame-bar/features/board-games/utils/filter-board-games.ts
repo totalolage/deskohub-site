@@ -4,7 +4,7 @@ export type DurationFilter = "upTo30" | "upTo60" | "upTo120" | "over120";
 
 type FilterableGame = Pick<
   Game,
-  "name" | "minPlayers" | "maxPlayers" | "playingTimeMinutes"
+  "name" | "minPlayers" | "maxPlayers" | "playingTimeMinutes" | "inStock"
 >;
 
 interface BoardGameFilters {
@@ -20,6 +20,8 @@ export function filterBoardGames<T extends FilterableGame>(
   const query = filters.search.trim().toLocaleLowerCase();
 
   return games.filter((game) => {
+    if (!game.inStock) return false;
+
     if (filters.playerCount !== null) {
       const matchesPlayers =
         filters.playerCount === 7

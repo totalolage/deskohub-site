@@ -33,6 +33,7 @@ interface BoardGamesListProps {
       | "maxPlayers"
       | "playingTimeMinutes"
       | "rating"
+      | "inStock"
     >
   >;
 }
