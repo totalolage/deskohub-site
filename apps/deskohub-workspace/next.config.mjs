@@ -91,6 +91,15 @@ const nextConfig = {
         headers: [
           {
             key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+        ],
+      },
+      {
+        source: `/:locale(${localeRedirectPattern})`,
+        headers: [
+          {
+            key: "Referrer-Policy",
             value: "strict-origin-when-cross-origin",
           },
         ],
