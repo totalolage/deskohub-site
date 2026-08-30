@@ -248,6 +248,48 @@ const censorStackFrameSource = (source: string): string => {
   }
 };
 
+const censorStackTrace = (stack: string, message: string): string => {
+  const messageMarker = stack.indexOf(": ");
+  let framesStart = -1;
+  if (message === "") {
+    framesStart = stack.indexOf("\n");
+  } else if (
+    messageMarker >= 0 &&
+    stack.startsWith(message, messageMarker + 2)
+  ) {
+    framesStart = messageMarker + 2 + message.length;
+  }
+  if (framesStart < 0 || stack[framesStart] !== "\n") {
+    return CENSORED_LOG_VALUE;
+  }
+
+  const frames = stack
+    .slice(framesStart + 1)
+    .split("\n")
+    .flatMap((line) => {
+      const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
+      if (!frame) return [];
+      const source = frame[1]?.trim();
+      const lineNumber = frame[2];
+      const columnNumber = frame[3];
+      if (!(source && lineNumber && columnNumber)) return [];
+      if (
+        !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack|turbopack):)/.test(
+          source
+        )
+      ) {
+        return [];
+      }
+      return [
+        `    at ${censorStackFrameSource(source)}:${lineNumber}:${columnNumber}`,
+      ];
+    });
+
+  return frames.length === 0
+    ? CENSORED_LOG_VALUE
+    : `${CENSORED_LOG_VALUE}\n${frames.join("\n")}`;
+};
+
 const isEffectDrizzleQueryError = <T>(
   value: T
 ): value is T & EffectDrizzleQueryError =>
@@ -308,33 +350,16 @@ const censorLogRecordValue = <T>(
   key: string,
   value: T,
   seen: WeakMap<object, unknown>,
-  databaseQuery?: string
+  databaseQuery?: string,
+  stackMessage?: string
 ): unknown => {
   if (
     ["exception.stacktrace", "stack", "stacktrace"].includes(key.toLowerCase())
   ) {
-    if (!Predicate.isString(value)) return CENSORED_LOG_VALUE;
-    const frames = value.split("\n").flatMap((line) => {
-      const frame = /^\s*at(?:\s+.*\s+\()?(.+):(\d+):(\d+)\)?$/.exec(line);
-      if (!frame) return [];
-      const source = frame[1]?.trim();
-      const lineNumber = frame[2];
-      const columnNumber = frame[3];
-      if (!(source && lineNumber && columnNumber)) return [];
-      if (
-        !/^(?:\/|[A-Za-z]:[\\/]|(?:https?|file|node|bun|webpack|turbopack):)/.test(
-          source
-        )
-      ) {
-        return [];
-      }
-      return [
-        `    at ${censorStackFrameSource(source)}:${lineNumber}:${columnNumber}`,
-      ];
-    });
-    return frames.length === 0
-      ? CENSORED_LOG_VALUE
-      : `${CENSORED_LOG_VALUE}\n${frames.join("\n")}`;
+    if (!(Predicate.isString(value) && stackMessage !== undefined)) {
+      return CENSORED_LOG_VALUE;
+    }
+    return censorStackTrace(value, stackMessage);
   }
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
   if (key.toLowerCase() === "cause") {
@@ -470,8 +495,8 @@ const censorLogValueInternal = <T>(
     }
 
     const stack = Object.getOwnPropertyDescriptor(value, "stack");
-    if (stack && "value" in stack) {
-      result.stack = censorLogRecordValue("stack", stack.value, seen);
+    if (stack && "value" in stack && Predicate.isString(stack.value)) {
+      result.stack = censorStackTrace(stack.value, value.message);
     }
 
     if ("cause" in value) {
@@ -500,9 +525,21 @@ const censorLogValueInternal = <T>(
   const databaseQuery = Predicate.isString(value.query)
     ? value.query
     : undefined;
+  let stackMessage: string | undefined;
+  if (Predicate.isString(value["exception.message"])) {
+    stackMessage = value["exception.message"];
+  } else if (Predicate.isString(value.message)) {
+    stackMessage = value.message;
+  }
 
   for (const [key, nestedValue] of Object.entries(value)) {
-    result[key] = censorLogRecordValue(key, nestedValue, seen, databaseQuery);
+    result[key] = censorLogRecordValue(
+      key,
+      nestedValue,
+      seen,
+      databaseQuery,
+      stackMessage
+    );
   }
 
   return result;
