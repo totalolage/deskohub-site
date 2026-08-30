@@ -39,9 +39,9 @@ if (exitCode !== 0) {
 const diagnosticHeader =
   "// @effect-diagnostics schemaNumber:off unnecessaryTypeofType:off\n";
 
-const generatedErrorDecoder =
-  "HttpClientResponse.schemaBodyJson(schema)(response)";
-const statusPreservingErrorDecoder = `${generatedErrorDecoder}.pipe(
+const generatedErrorDecoderPattern =
+  /HttpClientResponse\.schemaBodyJson\(schema\)\(\s*response\s*,?\s*\)/;
+const statusPreservingErrorDecoder = `HttpClientResponse.schemaBodyJson(schema)(response).pipe(
           Effect.mapError(
             () =>
               new HttpClientError.HttpClientError({
@@ -54,11 +54,14 @@ const statusPreservingErrorDecoder = `${generatedErrorDecoder}.pipe(
           ),
         )`;
 const decodeErrorStart = generatedSource.indexOf("  const decodeError =");
-const decoderStart = generatedSource.indexOf(
-  generatedErrorDecoder,
-  decodeErrorStart
-);
 const operationsStart = generatedSource.indexOf("  return {", decodeErrorStart);
+const decoderMatch = generatedSource
+  .slice(decodeErrorStart, operationsStart)
+  .match(generatedErrorDecoderPattern);
+const decoderStart =
+  decoderMatch?.index === undefined
+    ? -1
+    : decodeErrorStart + decoderMatch.index;
 
 if (
   decodeErrorStart === -1 ||
@@ -69,6 +72,6 @@ if (
   throw new Error("Could not find the generated error response decoder.");
 }
 
-const hardenedSource = `${generatedSource.slice(0, decoderStart)}${statusPreservingErrorDecoder}${generatedSource.slice(decoderStart + generatedErrorDecoder.length)}`;
+const hardenedSource = `${generatedSource.slice(0, decoderStart)}${statusPreservingErrorDecoder}${generatedSource.slice(decoderStart + decoderMatch![0].length)}`;
 
 await Bun.write(output, `${diagnosticHeader}${hardenedSource}`);
