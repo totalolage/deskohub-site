@@ -505,6 +505,10 @@ describe("censorLogValue", () => {
     expect(censorLogValue(staleMessageError)).toMatchObject({
       stack: CENSORED_LOG_VALUE,
     });
+    staleMessageError.message = "";
+    expect(censorLogValue(staleMessageError)).toMatchObject({
+      stack: CENSORED_LOG_VALUE,
+    });
   });
 
   test("retains only safe error classification fields", () => {

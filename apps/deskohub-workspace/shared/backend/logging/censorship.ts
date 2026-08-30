@@ -259,7 +259,7 @@ const censorStackTrace = (stack: string, message: string): string => {
   const messageMarker = stack.indexOf(": ");
   const firstLineEnd = stack.indexOf("\n");
   let framesStart = -1;
-  if (message === "") {
+  if (message === "" && messageMarker < 0) {
     framesStart = firstLineEnd;
   } else if (
     messageMarker >= 0 &&
