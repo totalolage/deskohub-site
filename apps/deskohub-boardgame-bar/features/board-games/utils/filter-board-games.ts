@@ -9,7 +9,7 @@ type FilterableGame = Pick<
 
 interface BoardGameFilters {
   playerCount: number | null;
-  durations: ReadonlySet<DurationFilter>;
+  durations: ReadonlyArray<DurationFilter>;
   search: string;
 }
 
@@ -30,8 +30,8 @@ export function filterBoardGames<T extends FilterableGame>(
     }
 
     if (
-      filters.durations.size > 0 &&
-      ![...filters.durations].some((duration) =>
+      filters.durations.length > 0 &&
+      !filters.durations.some((duration) =>
         matchesDuration(game.playingTimeMinutes, duration)
       )
     ) {

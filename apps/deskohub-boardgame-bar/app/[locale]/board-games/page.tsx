@@ -50,29 +50,7 @@ async function loadGames() {
   return Effect.runPromise(
     Effect.gen(function* () {
       const gamesService = yield* GamesService;
-      const games = yield* gamesService.listGames;
-
-      return games.map(
-        ({
-          id,
-          name,
-          imageUrl,
-          description,
-          minPlayers,
-          maxPlayers,
-          playingTimeMinutes,
-          rating,
-        }) => ({
-          id,
-          name,
-          imageUrl,
-          description,
-          minPlayers,
-          maxPlayers,
-          playingTimeMinutes,
-          rating,
-        })
-      );
+      return yield* gamesService.listGames;
     }).pipe(
       Effect.tapError(Effect.logError),
       Effect.annotateLogs({ page: "BoardGamesPage" }),

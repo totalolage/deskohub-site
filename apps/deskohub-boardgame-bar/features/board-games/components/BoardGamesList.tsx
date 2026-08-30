@@ -39,9 +39,7 @@ interface BoardGamesListProps {
 
 export function BoardGamesList({ games }: BoardGamesListProps) {
   const [playerCount, setPlayerCount] = useState<number | null>(null);
-  const [durations, setDurations] = useState<ReadonlySet<DurationFilter>>(
-    new Set<DurationFilter>()
-  );
+  const [durations, setDurations] = useState<ReadonlyArray<DurationFilter>>([]);
   const [search, setSearch] = useState("");
 
   const filteredGames = useMemo(
@@ -51,17 +49,16 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
 
   const reset = () => {
     setPlayerCount(null);
-    setDurations(new Set<DurationFilter>());
+    setDurations([]);
     setSearch("");
   };
 
   const toggleDuration = (duration: DurationFilter) => {
-    setDurations((selected) => {
-      const next = new Set(selected);
-      if (next.has(duration)) next.delete(duration);
-      else next.add(duration);
-      return next;
-    });
+    setDurations((selected) =>
+      selected.includes(duration)
+        ? selected.filter((value) => value !== duration)
+        : [...selected, duration]
+    );
   };
 
   return (
@@ -102,7 +99,7 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
             <div className="flex flex-wrap gap-2">
               {durationOptions.map((duration) => (
                 <button
-                  aria-pressed={durations.has(duration.id)}
+                  aria-pressed={durations.includes(duration.id)}
                   className="rounded-full border border-[#3c3a36] px-4 py-2 font-semibold text-[#b9c2d1] text-[13px] transition hover:border-[#4fbba3] hover:text-white aria-pressed:border-[#2e8e7a] aria-pressed:bg-[#2e8e7a] aria-pressed:text-white"
                   key={duration.id}
                   onClick={() => toggleDuration(duration.id)}

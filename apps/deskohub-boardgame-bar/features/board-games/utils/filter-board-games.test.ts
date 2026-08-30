@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type DurationFilter, filterBoardGames } from "./filter-board-games";
+import { filterBoardGames } from "./filter-board-games";
 
 const games = [
   { name: "Quick game", minPlayers: 2, maxPlayers: 4, playingTimeMinutes: 30 },
@@ -11,7 +11,7 @@ describe("filterBoardGames", () => {
     expect(
       filterBoardGames(games, {
         playerCount: 7,
-        durations: new Set<DurationFilter>(["over120"]),
+        durations: ["over120"],
         search: " LONG ",
       })
     ).toEqual([games[1]!]);
