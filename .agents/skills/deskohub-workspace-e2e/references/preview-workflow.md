@@ -28,6 +28,12 @@ PR commit
   -> every browser, callback, status, and replay request uses that preview URL
 ```
 
+When Vercel emits `vercel.deployment.skipped`, Workspace E2E validates the
+exact-SHA inactive deployment and carries the nearest prior Workspace E2E result
+forward. No prior result or a prior success becomes a skipped success; any other
+prior result remains a failure. It must not infer this from repository paths or
+reuse an older preview.
+
 ## What can be tested
 
 Full E2E validates committed and pushed code through the immutable preview
