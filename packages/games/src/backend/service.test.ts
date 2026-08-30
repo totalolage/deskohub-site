@@ -18,13 +18,13 @@ describe("GamesService", () => {
               id: 3,
               bggId: 173346,
               name: "Darwin&#039;s &amp; &quot;Journey&quot; &#x1F3B2;",
-              yearPublished: 2015,
-              imageUrl: "https://images.example.test/game.jpg",
-              thumbnailUrl: "https://images.example.test/game-small.jpg",
+              yearPublished: null,
+              imageUrl: null,
+              thumbnailUrl: null,
               description: null,
-              minPlayers: 2,
-              maxPlayers: 2,
-              playingTimeMinutes: 30,
+              minPlayers: null,
+              maxPlayers: null,
+              playingTimeMinutes: null,
               minAge: null,
               weight: null,
               rating: null,
@@ -54,6 +54,12 @@ describe("GamesService", () => {
 
     expect(games).toHaveLength(1);
     expect(games[0]?.name).toBe('Darwin\'s & "Journey" 🎲');
+    expect(games[0]?.yearPublished).toBeNull();
+    expect(games[0]?.imageUrl).toBeNull();
+    expect(games[0]?.thumbnailUrl).toBeNull();
+    expect(games[0]?.minPlayers).toBeNull();
+    expect(games[0]?.maxPlayers).toBeNull();
+    expect(games[0]?.playingTimeMinutes).toBeNull();
     expect(games[0]?.categories).toBeNull();
     expect(requests.map((request) => request.url)).toEqual([
       "https://deskohub-games.vercel.app/api/games",
