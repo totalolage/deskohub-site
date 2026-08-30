@@ -9,7 +9,7 @@ t3_base_dir="${T3_BASE_DIR:-/home/dev/.t3}"
 curl_bin="${CURL_BIN:-curl}"
 project_id="4c8453d8-1a32-400b-a540-9f10afd75170"
 thread_id="posthog-worker-issue-$issue_number"
-command_id="posthog-worker-create-issue-$issue_number-v1"
+command_id="posthog-worker-create-issue-$issue_number-v2"
 title="PostHog issue #$issue_number"
 branch="posthog/issue-$issue_number"
 now="$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)"
@@ -36,7 +36,7 @@ payload="$(jq -cn \
     commandId: $command,
     threadId: $thread,
     message: { messageId: $command, role: "user", text: $message, attachments: [] },
-    modelSelection: { instanceId: "codex", model: "gpt-5.6-sol", options: [{ id: "reasoningEffort", value: "high" }] },
+    modelSelection: { instanceId: "opencode", model: "openai/gpt-5.6-sol", options: [{ id: "variant", value: "high" }, { id: "agent", value: "orchestrator" }] },
     titleSeed: $title,
     runtimeMode: "full-access",
     interactionMode: "default",
@@ -44,7 +44,7 @@ payload="$(jq -cn \
       createThread: {
         projectId: $project,
         title: $title,
-        modelSelection: { instanceId: "codex", model: "gpt-5.6-sol", options: [{ id: "reasoningEffort", value: "high" }] },
+        modelSelection: { instanceId: "opencode", model: "openai/gpt-5.6-sol", options: [{ id: "variant", value: "high" }, { id: "agent", value: "orchestrator" }] },
         runtimeMode: "full-access",
         interactionMode: "default",
         branch: null,

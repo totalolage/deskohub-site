@@ -236,21 +236,24 @@ describe("posthog-agent-loop", () => {
     expect(curlArguments).not.toContain("fake-token");
   });
 
-  test("creates issue workers with GPT-5.6-Sol and high reasoning", async () => {
+  test("creates issue workers with the OpenCode orchestrator", async () => {
     const { curlArguments, exitCode, payload, stderr, stdout } =
       await runApiScript(workerCreator, ["303"]);
 
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(JSON.parse(stdout)).toEqual({
-      commandId: "posthog-worker-create-issue-303-v1",
+      commandId: "posthog-worker-create-issue-303-v2",
       sequence: 42,
       threadId: "posthog-worker-issue-303",
     });
     expect(payload.modelSelection).toEqual({
-      instanceId: "codex",
-      model: "gpt-5.6-sol",
-      options: [{ id: "reasoningEffort", value: "high" }],
+      instanceId: "opencode",
+      model: "openai/gpt-5.6-sol",
+      options: [
+        { id: "variant", value: "high" },
+        { id: "agent", value: "orchestrator" },
+      ],
     });
     expect(payload.bootstrap.createThread.modelSelection).toEqual(
       payload.modelSelection

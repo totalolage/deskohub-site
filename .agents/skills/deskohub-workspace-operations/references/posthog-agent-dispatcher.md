@@ -54,7 +54,7 @@ The Workspace logging pipeline censors production annotations. Keep credentials,
 
 ## Start unattended workers
 
-List every open issue with its full body; title-and-label-only listings do not expose hidden source markers. Find every issue containing `<!-- posthog-log-uuid:`, `<!-- posthog-error-issue:`, `<!-- posthog-error-event:`, or `<!-- posthog-manual-issue:` that has no `<!-- t3-worker-thread:` marker and no linked open pull request. Start one worker per issue. The helper pins the thread to GPT-5.6-Sol with high reasoning:
+List every open issue with its full body; title-and-label-only listings do not expose hidden source markers. Find every issue containing `<!-- posthog-log-uuid:`, `<!-- posthog-error-issue:`, `<!-- posthog-error-event:`, or `<!-- posthog-manual-issue:` that has no `<!-- t3-worker-thread:` marker and no linked open pull request. Start one worker per issue. The helper selects the OpenCode `orchestrator` agent:
 
 ```bash
 /home/dev/.local/libexec/deskohub-posthog-create-worker <number>
