@@ -18,9 +18,10 @@ const {
   PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
   WorkspacePaidFulfillmentService,
 } = await import("./paid-fulfillment.service");
-const { WorkspaceReservationEmailService } = await import(
-  "./workspace-reservation-email.service"
-);
+const {
+  createCustomerEmailRecoveryIdempotencyKey,
+  WorkspaceReservationEmailService,
+} = await import("./workspace-reservation-email.service");
 const { WorkspaceReservationRepository } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
@@ -249,6 +250,213 @@ describe("WorkspacePaidFulfillmentService", () => {
     );
     expect(processInvoice).toHaveBeenCalledWith({
       paymentAttemptId: "payment-attempt-id",
+    });
+  });
+
+  test("reuses one recovery idempotency key when a retry send itself fails", async () => {
+    const priorDeliveryId = EmailDeliveryIdSchema.make(
+      "bounced-customer-email-delivery"
+    );
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "failed",
+      activeCustomerEmailDeliveryId: priorDeliveryId,
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    const sendFailure = new Error("synthetic email provider failure");
+    const sendInputs: unknown[] = [];
+    let sendAttempts = 0;
+    const sendPaidReservationEmails = mock(
+      (
+        input: Parameters<
+          IWorkspaceReservationEmailService["sendPaidReservationEmails"]
+        >[0]
+      ) => {
+        sendInputs.push(input);
+        sendAttempts += 1;
+        return sendAttempts === 1
+          ? Effect.fail(sendFailure)
+          : Effect.succeed(EmailDeliveryIdSchema.make("recovered-delivery"));
+      }
+    );
+    const markFulfillmentFailed = mock(() => Effect.void);
+    const markFulfilled = mock(() => Effect.void);
+
+    const runs = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          const first = yield* service
+            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .pipe(Effect.result);
+          const second = yield* service
+            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .pipe(Effect.result);
+          return { first, second };
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markFulfilled,
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() => Effect.void),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    expect(runs.first).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "WorkspacePaidFulfillmentError",
+        failureCode: "fulfillment_email_failed",
+      },
+    });
+    expect(markFulfillmentFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "reservation-id",
+        failureCode: "fulfillment_email_failed",
+      })
+    );
+    expect(sendInputs).toHaveLength(2);
+    expect(sendInputs[0]).toEqual({
+      reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        createCustomerEmailRecoveryIdempotencyKey(priorDeliveryId),
+    });
+    expect(sendInputs[1]).toEqual(sendInputs[0]);
+    expect(sendInputs[0]).not.toEqual({
+      reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        "workspace-paid-reservation-access-reservation-id",
+    });
+    expect(runs.second._tag).toBe("Success");
+    expect(markFulfilled).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "reservation-id" })
+    );
+  });
+
+  test("retries a failed order without a prior delivery under the default reservation key", async () => {
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "failed",
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    const sendPaidReservationEmails = mock(() =>
+      Effect.succeed(EmailDeliveryIdSchema.make("accepted-customer-email"))
+    );
+
+    await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markFulfilled: mock(() => Effect.void),
+                markFulfillmentFailed: mock(() => Effect.void),
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() => Effect.void),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    expect(sendPaidReservationEmails).toHaveBeenCalledWith({
+      reservation: emailReservation,
     });
   });
 

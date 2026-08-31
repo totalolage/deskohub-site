@@ -132,7 +132,7 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | `payment_state` | text enum | yes | Aggregate payment state across attempts. |
 | `fulfillment_state` | text enum | yes | Local post-payment/legal-delivery workflow state. |
 | `active_payment_attempt_id` | text | no | Current Nexi or internal payment attempt. |
-| `active_customer_email_delivery_id` | text | no | Active non-PII provider delivery ID awaiting the customer email delivery webhook. |
+| `active_customer_email_delivery_id` | text | no | Active non-PII provider delivery ID for the customer email: the accepted send awaiting its webhook, or, while a delivery-failure recovery reclaims fulfillment into `processing`, the prior failed send's ID as the recovery generation marker. |
 | `reservation_hold_expires_at` | timestamptz | no | Local hold deadline used for cleanup scheduling. Mirrors Deskohub hold policy, not Dotypos facts. |
 | `reservation_hold_expired_at` | timestamptz | no | When local cleanup observed the hold as expired. |
 | `reservation_created_at` | timestamptz | no | When Dotypos reservation creation succeeded. |
@@ -162,7 +162,7 @@ Indexes and constraints:
 - `fulfilled_at` must be non-null when `fulfillment_state = 'fulfilled'`.
 - `fulfillment_failed_at` and `fulfillment_failure_code` must be non-null when `fulfillment_state = 'failed'`.
 - `active_customer_email_delivery_id` must be non-null when `fulfillment_state = 'awaiting_delivery'`.
-- `active_customer_email_delivery_id` is non-null only for `awaiting_delivery`, `failed`, and `fulfilled` fulfillment states.
+- `active_customer_email_delivery_id` is non-null only for `processing`, `awaiting_delivery`, `failed`, and `fulfilled` fulfillment states. A non-null ID while `processing` is the prior failed send retained as the recovery generation, not an awaited send.
 
 ### `payment_attempts`
 
@@ -370,8 +370,17 @@ recorded active delivery ID. A matching delivered event completes
 fulfillment reaches `fulfilled` when the configured email provider accepts the
 required customer send; the internal notification remains best effort.
 Protected Preview deployments cannot receive provider callbacks reliably.
-Recovery sends use deterministic reservation-and-category idempotency keys and
-record a new active delivery ID.
+
+Retrying a delivery failure preserves the stored delivery ID while fulfillment
+is reclaimed into `processing`; the ID is the recovery generation marker, not
+an awaited send. A recovery send derives an explicit customer idempotency key
+from that stored prior provider ID, so the provider cannot replay the bounced
+send under the original reservation-and-category key. The key stays stable
+when the recovery send itself fails and is retried, because the prior delivery
+ID is still stored, and each newly accepted send atomically replaces the
+stored ID, starting a new generation whose own later failure derives another
+distinct key. Initial sends with no prior provider ID keep the deterministic
+reservation-and-category idempotency key.
 
 The customer confirmation contains a protected reservation-access link and
 never contains the door PIN. The dedicated access page resolves the current PIN

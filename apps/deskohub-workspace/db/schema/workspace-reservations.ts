@@ -176,6 +176,7 @@ export const workspaceReservations = pgTable(
       "workspace_reservations_active_email_delivery_state_check",
       sql`${t.activeCustomerEmailDeliveryId} is null or ${t.fulfillmentState} in (${quotedSqlList(
         [
+          "processing",
           "awaiting_delivery",
           "failed",
           "fulfilled",

@@ -28,9 +28,10 @@ const { WorkspaceCheckoutAccessCodeService } = await import(
 const { WorkspacePaidFulfillmentService } = await import(
   "./paid-fulfillment.service"
 );
-const { WorkspaceReservationEmailService } = await import(
-  "./workspace-reservation-email.service"
-);
+const {
+  createCustomerEmailRecoveryIdempotencyKey,
+  WorkspaceReservationEmailService,
+} = await import("./workspace-reservation-email.service");
 const { WorkspaceReservationRepository } = await import(
   "@/features/reservation/backend/workspace-reservation.repository"
 );
@@ -142,5 +143,109 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     });
     expect(markFulfilled).not.toHaveBeenCalled();
     expect(processInvoice).not.toHaveBeenCalled();
+  });
+
+  test("retries a bounced delivery with a fresh idempotency key and attaches the new send", async () => {
+    const priorDeliveryId = EmailDeliveryIdSchema.make(
+      "bounced-customer-email-delivery"
+    );
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "failed",
+      activeCustomerEmailDeliveryId: priorDeliveryId,
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    const recoveredDeliveryId = EmailDeliveryIdSchema.make(
+      "recovered-customer-email-delivery"
+    );
+    const sendPaidReservationEmails = mock(() =>
+      Effect.succeed(recoveredDeliveryId)
+    );
+    const markAwaitingCustomerEmailDelivery = mock(() => Effect.void);
+    const markFulfilled = mock(() =>
+      Effect.die("production recovery must stay awaiting delivery")
+    );
+
+    const result = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          return yield* service
+            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .pipe(Effect.result);
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markAwaitingCustomerEmailDelivery,
+                markFulfilled,
+                markFulfillmentFailed: mock(() =>
+                  Effect.die("production recovery must not fail fulfillment")
+                ),
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("production acceptance must not process invoices")
+                ),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    expect(result._tag).toBe("Success");
+    expect(sendPaidReservationEmails).toHaveBeenCalledWith({
+      reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        createCustomerEmailRecoveryIdempotencyKey(priorDeliveryId),
+    });
+    expect(markAwaitingCustomerEmailDelivery).toHaveBeenCalledWith({
+      id: "reservation-id",
+      customerEmailDeliveryId: recoveredDeliveryId,
+    });
+    expect(markFulfilled).not.toHaveBeenCalled();
   });
 });

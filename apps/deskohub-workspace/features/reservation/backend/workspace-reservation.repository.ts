@@ -999,7 +999,6 @@ export class WorkspaceReservationRepository extends Context.Service<
             .update(workspaceReservations)
             .set({
               fulfillmentState: "processing",
-              activeCustomerEmailDeliveryId: null,
               updatedAt: Temporal.Now.instant(),
             })
             .where(

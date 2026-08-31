@@ -59,6 +59,44 @@ const sentResult = (id: string): EmailSendResult => ({
   timestamp: new Date(),
 });
 
+describe("createCustomerEmailRecoveryIdempotencyKey", () => {
+  test("derives distinct stable keys for long prior delivery ids beyond the provider key limit", async () => {
+    const { createCustomerEmailRecoveryIdempotencyKey } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const sharedLongPrefix = "resend-email-id".padEnd(213, "0");
+    const firstPriorDeliveryId = EmailDeliveryIdSchema.make(
+      `${sharedLongPrefix}first`
+    );
+    const secondPriorDeliveryId = EmailDeliveryIdSchema.make(
+      `${sharedLongPrefix}second`
+    );
+
+    const firstKey =
+      createCustomerEmailRecoveryIdempotencyKey(firstPriorDeliveryId);
+    const secondKey = createCustomerEmailRecoveryIdempotencyKey(
+      secondPriorDeliveryId
+    );
+
+    const legacyTruncationLength =
+      `workspace-paid-reservation-access-recovery-${firstPriorDeliveryId}`
+        .length;
+    expect(legacyTruncationLength).toBeGreaterThan(256);
+    expect(firstKey).toMatch(
+      /^workspace-paid-reservation-access-recovery-[0-9a-f]{64}$/
+    );
+    expect(firstKey.length).toBeLessThanOrEqual(256);
+    expect(secondKey.length).toBeLessThanOrEqual(256);
+    expect(firstKey).not.toBe(secondKey);
+    expect(firstKey).toBe(
+      createCustomerEmailRecoveryIdempotencyKey(firstPriorDeliveryId)
+    );
+    expect(secondKey).toBe(
+      createCustomerEmailRecoveryIdempotencyKey(secondPriorDeliveryId)
+    );
+  });
+});
+
 describe("workspace reservation email details", () => {
   test("renders Basic cowork details without meeting-room-only rows", async () => {
     const { createReservationRows } = await import(

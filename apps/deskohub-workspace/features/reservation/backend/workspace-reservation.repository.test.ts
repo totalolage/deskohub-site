@@ -77,6 +77,29 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain('ne(latePaymentRecoveries.state, "recovered")');
   });
 
+  test("keeps the prior customer delivery across a claim and replaces it on acceptance", async () => {
+    const source = await readRepository();
+    const claim = sliceFrom(
+      source,
+      "claimPaidFulfillment: Effect.fn(",
+      "findByActiveCustomerEmailDeliveryId: Effect.fn("
+    );
+    const awaiting = sliceFrom(
+      source,
+      "markAwaitingCustomerEmailDelivery: Effect.fn(",
+      "markCustomerEmailDeliveryFulfilled: Effect.fn("
+    );
+
+    expect(claim).toContain('fulfillmentState: "processing"');
+    expect(claim).not.toContain("activeCustomerEmailDeliveryId");
+    expect(awaiting).toContain(
+      "activeCustomerEmailDeliveryId: input.customerEmailDeliveryId"
+    );
+    expect(awaiting).toContain(
+      'eq(workspaceReservations.fulfillmentState, "processing")'
+    );
+  });
+
   test("selects expired local Dotypos holds for availability filtering", async () => {
     const source = await readRepository();
     const section = sliceFrom(

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EmailDeliveryId } from "@deskohub/email";
 import type { NetworkError } from "@deskohub/email/backend/network-error";
@@ -58,16 +59,26 @@ import { createWorkspaceMeetingRoomEmailDetailRows } from "./workspace-meeting-r
 export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
+    readonly customerEmailIdempotencyKey?: string;
   }) => Effect.Effect<EmailDeliveryId, EmailServiceError | NetworkError>;
   readonly sendCancellationEmail: (input: {
     readonly reservation: WorkspaceReservationDetails;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
 
+const customerAccessCategory = "workspace-paid-reservation-access";
+const customerAccessRecoveryKeyPrefix = `${customerAccessCategory}-recovery-`;
 const workspaceLocationMapContentId = "workspace-location-map";
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const internalTestingSubjectPrefix = "[TESTING]";
 const internalNotificationLocale: Locale = "cs-CZ";
+
+export const createCustomerEmailRecoveryIdempotencyKey = (
+  priorCustomerEmailDeliveryId: EmailDeliveryId
+) =>
+  `${customerAccessRecoveryKeyPrefix}${createHash("sha256")
+    .update(priorCustomerEmailDeliveryId)
+    .digest("hex")}`;
 
 const customerAccessHeadingDateFormatOptions = {
   weekday: "long",
@@ -537,7 +548,8 @@ export class WorkspaceReservationEmailService extends Context.Service<
         }),
         sendPaidReservationEmails: Effect.fn(
           "WorkspaceReservationEmailService.sendPaidReservationEmails"
-        )(function* ({ reservation }) {
+        )(function* (input) {
+          const { reservation } = input;
           const locale = getReservationLocale(reservation.locale);
           const customer = reservation.customer;
           const customerName = getCustomerName(customer);
@@ -630,7 +642,10 @@ export class WorkspaceReservationEmailService extends Context.Service<
             attachments: [locationMapAttachment, networkQrAttachment].filter(
               (attachment): attachment is EmailAttachment => Boolean(attachment)
             ),
-            tags: ["workspace-paid-reservation-access"],
+            tags: [customerAccessCategory],
+            ...(input.customerEmailIdempotencyKey && {
+              idempotencyKey: input.customerEmailIdempotencyKey,
+            }),
             metadata,
           };
 

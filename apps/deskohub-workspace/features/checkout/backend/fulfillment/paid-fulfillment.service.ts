@@ -21,7 +21,10 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { captureReservationCompleted } from "../analytics/posthog-lifecycle-events";
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
-import { WorkspaceReservationEmailService } from "./workspace-reservation-email.service";
+import {
+  createCustomerEmailRecoveryIdempotencyKey,
+  WorkspaceReservationEmailService,
+} from "./workspace-reservation-email.service";
 
 export type WorkspacePaidFulfillmentFailureCode =
   | "dotypos_reservation_failed"
@@ -386,6 +389,12 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
             const customerEmailDeliveryId = yield* reservationEmails
               .sendPaidReservationEmails({
                 reservation: reservationForDelivery,
+                ...(claimed.activeCustomerEmailDeliveryId && {
+                  customerEmailIdempotencyKey:
+                    createCustomerEmailRecoveryIdempotencyKey(
+                      claimed.activeCustomerEmailDeliveryId
+                    ),
+                }),
               })
               .pipe(
                 Effect.catch((cause) =>
