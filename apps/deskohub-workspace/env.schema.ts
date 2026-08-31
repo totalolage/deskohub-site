@@ -51,6 +51,24 @@ const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
   );
 });
 
+const resendWebhookProductionEnvironmentCheck = Schema.makeFilter<{
+  readonly VERCEL_ENV: "production" | "preview" | "development";
+  readonly RESEND_WEBHOOK_SECRET?: string | undefined;
+}>((environment) => {
+  if (environment.VERCEL_ENV !== "production") return undefined;
+
+  return environment.RESEND_WEBHOOK_SECRET === undefined ||
+    environment.RESEND_WEBHOOK_SECRET === ""
+    ? [
+        {
+          path: ["RESEND_WEBHOOK_SECRET"],
+          issue:
+            "RESEND_WEBHOOK_SECRET is required and must be non-empty in production.",
+        },
+      ]
+    : [];
+});
+
 export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
     Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/))
@@ -145,7 +163,8 @@ export const workspaceServerEnvSchema = Schema.Struct({
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
 }).check(
   postHogFeatureFlagOverridesEnvironmentCheck,
-  igloohomeProductionEnvironmentCheck
+  igloohomeProductionEnvironmentCheck,
+  resendWebhookProductionEnvironmentCheck
 );
 
 export const workspaceClientEnvSchema = Schema.Struct({
@@ -176,7 +195,8 @@ export const createEnvironmentSchema = (
     isServer
       ? schema.check(
           postHogFeatureFlagOverridesEnvironmentCheck,
-          igloohomeProductionEnvironmentCheck
+          igloohomeProductionEnvironmentCheck,
+          resendWebhookProductionEnvironmentCheck
         )
       : schema
   );

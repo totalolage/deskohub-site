@@ -46,6 +46,36 @@ const validateMissingIgloohomeEnvironment = (
     stdout: "pipe",
   });
 
+const validateResendWebhookEnvironment = (
+  secret: "missing" | "empty" | "synthetic",
+  vercelEnvironment: "production" | "preview"
+) => {
+  const childEnvironment = {
+    ...process.env,
+    VERCEL_ENV: vercelEnvironment,
+  };
+  if (secret !== "missing") {
+    childEnvironment.RESEND_WEBHOOK_SECRET =
+      secret === "empty" ? "" : "whsec_synthetic_test_value";
+  }
+
+  return Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      secret === "missing"
+        ? 'delete process.env.RESEND_WEBHOOK_SECRET; await import("./env.ts");'
+        : 'await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: childEnvironment,
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+};
+
 const validateMissingBrowserPostHogHost = () =>
   Bun.spawnSync({
     cmd: [
@@ -113,6 +143,38 @@ describe("workspace environment schemas", () => {
     expect(previewTarget.stderr.toString()).toContain(
       "IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID"
     );
+  });
+
+  test("requires a non-empty Resend webhook secret only in production", () => {
+    const previewMissing = validateResendWebhookEnvironment(
+      "missing",
+      "preview"
+    );
+    const productionMissing = validateResendWebhookEnvironment(
+      "missing",
+      "production"
+    );
+    const productionEmpty = validateResendWebhookEnvironment(
+      "empty",
+      "production"
+    );
+    const productionSynthetic = validateResendWebhookEnvironment(
+      "synthetic",
+      "production"
+    );
+    const productionError = productionMissing.stderr.toString();
+
+    expect(previewMissing.exitCode).toBe(0);
+    expect(productionMissing.exitCode).toBe(1);
+    expect(productionError).toContain(
+      "RESEND_WEBHOOK_SECRET is required and must be non-empty in production."
+    );
+    expect(productionEmpty.exitCode).toBe(1);
+    expect(productionEmpty.stderr.toString()).toContain(
+      "RESEND_WEBHOOK_SECRET is required and must be non-empty in production."
+    );
+    expect(productionSynthetic.exitCode).toBe(0);
+    expect(productionError).not.toContain("whsec_");
   });
 
   test("validates URLs without changing their string representation", () => {

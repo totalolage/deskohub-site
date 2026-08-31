@@ -292,7 +292,7 @@ Forbidden reservation transitions:
 - Any transition from `cancelled`, or from `confirmed` outside the explicit guarded operator cancellation workflow.
 - Any creation of a second Dotypos reservation for the same `checkout_attempt_key`.
 - Any creation of a replacement Dotypos reservation in the same checkout session before the prior local and Dotypos reservations are cancelled.
-- Any cleanup cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed. Operator cancellation has separate claim and finalization guards, refuses while fulfillment is processing, and requires explicit provider-removal confirmation before atomically retiring a live or ambiguous AlgoPIN.
+- Any cleanup cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed. Operator cancellation has separate claim and finalization guards, refuses while fulfillment is `processing` or `awaiting_delivery`, and requires explicit provider-removal confirmation before atomically retiring a live or ambiguous AlgoPIN.
 
 ### Payment State
 
