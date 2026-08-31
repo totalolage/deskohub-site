@@ -163,6 +163,96 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain("releaseCodeClaim(");
   });
 
+  test("recovers an email delivery failure only for a verified earlier provider delivery", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "recoverEmailDeliveryFailure: Effect.fn(",
+      "markReservationConfirmed: Effect.fn("
+    );
+
+    expect(source).toContain("readonly recoverEmailDeliveryFailure: (input: {");
+    expect(source).toContain("readonly deliveredAt: Temporal.Instant");
+    expect(section).toContain('eq(workspaceReservations.paymentState, "paid")');
+    expect(section).toContain(
+      'eq(workspaceReservations.fulfillmentState, "failed")'
+    );
+    expect(section).toContain("workspaceReservations.fulfillmentFailureCode");
+    expect(section).toContain('"fulfillment_email_failed"');
+    expect(section).toContain(
+      "workspaceReservations.fulfillmentFailedAt} is not null"
+    );
+    expect(section).toContain(
+      "lt(workspaceReservations.fulfillmentFailedAt, input.deliveredAt)"
+    );
+    expect(section).not.toContain("lte(workspaceReservations");
+    expect(section).toContain('fulfillmentState: "fulfilled"');
+    expect(section).toContain("fulfilledAt: input.deliveredAt");
+    expect(section).toContain("fulfillmentFailedAt: null");
+    expect(section).toContain("fulfillmentFailureCode: null");
+    expect(section).toContain("updatedAt: Temporal.Now.instant()");
+    expect(section).toContain(".returning()");
+    expect(section).toContain("decodeOptionalWorkspaceReservation");
+    expect(section).not.toContain("ensureUpdated");
+  });
+
+  test("applies email delivery failures atomically in provider event order", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "markFulfillmentDeliveryFailed: Effect.fn(",
+      "recoverEmailDeliveryFailure: Effect.fn("
+    );
+    const signature = sliceFrom(
+      source,
+      "readonly markFulfillmentDeliveryFailed: (input: {",
+      "readonly recoverEmailDeliveryFailure: (input: {"
+    );
+
+    expect(signature).toContain("WorkspaceReservation | null");
+    expect(section).toContain('eq(workspaceReservations.paymentState, "paid")');
+    expect(section).toContain('fulfillmentState: "failed"');
+    expect(section).toContain("fulfilledAt: null");
+    expect(section).toContain("fulfillmentFailedAt: input.failedAt");
+    expect(section).toContain("fulfillmentFailureCode: input.failureCode");
+    expect(section).toContain(
+      'eq(workspaceReservations.fulfillmentState, "processing")'
+    );
+    expect(section).toContain(
+      'eq(workspaceReservations.fulfillmentState, "fulfilled")'
+    );
+    expect(section).toContain(
+      "lt(workspaceReservations.fulfilledAt, input.failedAt)"
+    );
+    expect(section).toContain(
+      'eq(workspaceReservations.fulfillmentState, "failed")'
+    );
+    expect(section).toContain("workspaceReservations.fulfillmentFailureCode");
+    expect(section).toContain("input.failureCode");
+    expect(section).toContain(
+      "lt(workspaceReservations.fulfillmentFailedAt, input.failedAt)"
+    );
+    expect(section).not.toContain("lte(workspaceReservations");
+    expect(section).toContain(".returning()");
+    expect(section).toContain("decodeOptionalWorkspaceReservation");
+    expect(section).not.toContain("ensureUpdated");
+  });
+
+  test("keeps markFulfilled restricted to processing fulfillment", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      'markFulfilled: Effect.fn("workspaceReservations.markFulfilled")',
+      "markFulfillmentFailed: Effect.fn("
+    );
+
+    expect(section).toContain(
+      'eq(workspaceReservations.fulfillmentState, "processing")'
+    );
+    expect(section).not.toContain('"failed"');
+    expect(section).not.toContain("fulfillmentFailureCode");
+  });
+
   test("does not cancel while a live access credential remains", async () => {
     const source = await readRepository();
     const section = sliceFrom(

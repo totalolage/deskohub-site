@@ -84,9 +84,11 @@ const renderEmailHtml = (html: string) => {
 };
 
 const customerWebhookPayload = (
-  type: "email.delivered" | "email.failed" | "email.bounced"
+  type: "email.delivered" | "email.failed" | "email.bounced",
+  created_at = "2026-01-01T12:05:00.000Z"
 ) => ({
   type,
+  created_at,
   data: {
     email_id: "resend-email-id",
     tags: [
@@ -106,6 +108,7 @@ const customerBouncedPayload = customerWebhookPayload("email.bounced");
 
 const internalFailurePayload = {
   type: "email.bounced",
+  created_at: "2026-01-01T12:05:00.000Z",
   data: {
     email_id: "resend-email-id",
     tags: [
@@ -139,6 +142,7 @@ const processWebhook = async (input: {
   readonly reservations: Partial<WorkspaceReservationRepositoryType>;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
+  readonly capture?: (event: { readonly event: string }) => Effect.Effect<void>;
 }) => {
   const effect = await processWebhookEffect(input);
   return Effect.runPromise(
@@ -157,6 +161,7 @@ const processWebhookError = async (input: {
   readonly reservations: Partial<WorkspaceReservationRepositoryType>;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
+  readonly capture?: (event: { readonly event: string }) => Effect.Effect<void>;
 }) => {
   const effect = await processWebhookEffect(input);
   return Effect.runPromise(
@@ -177,6 +182,7 @@ const processWebhookEffect = async (input: {
   readonly reservations: Partial<WorkspaceReservationRepositoryType>;
   readonly config?: ResendWebhookRuntimeConfigObj;
   readonly request?: RawWebhookRequest;
+  readonly capture?: (event: { readonly event: string }) => Effect.Effect<void>;
 }) => {
   const { ResendWebhookService } = await import("./resend-webhook.service");
   const { ResendWebhookRuntimeConfig } = await import(
@@ -207,7 +213,7 @@ const processWebhookEffect = async (input: {
           Layer.mergeAll(
             Layer.mock(WorkspaceReservationRepository, input.reservations),
             Layer.mock(PostHogEventService, {
-              capture: () => Effect.void,
+              capture: input.capture ?? (() => Effect.void),
             }),
             Layer.succeed(ResendWebhookRuntimeConfig, config)
           )
@@ -229,11 +235,12 @@ describe("ResendWebhookService", () => {
 
   test("marks delivered customer reservation access emails fulfilled", async () => {
     verifiedPayload = customerDeliveredPayload;
+    const capture = mock(() => Effect.void);
+    const processInvoice = mock(() => Effect.void);
     const markFulfilled = mock(() => Effect.void);
     const markFulfillmentDeliveryFailed = mock(() =>
       Effect.die("should not fail fulfillment")
     );
-    const processInvoice = mock(() => Effect.void);
     const reservations = {
       findById: mock(() =>
         Effect.succeed({
@@ -247,7 +254,7 @@ describe("ResendWebhookService", () => {
       markFulfillmentDeliveryFailed,
     };
 
-    const effect = await processWebhookEffect({ reservations });
+    const effect = await processWebhookEffect({ reservations, capture });
     const result = await Effect.runPromise(
       effect.pipe(
         Effect.provideService(
@@ -266,10 +273,210 @@ describe("ResendWebhookService", () => {
 
     const [updateInput] = markFulfilled.mock.calls[0] ?? [];
     expect(updateInput).toMatchObject({ id: "reservation-id" });
-    expect(updateInput.fulfilledAt).toBeInstanceOf(Temporal.Instant);
+    expect(updateInput?.fulfilledAt).toBeInstanceOf(Temporal.Instant);
+    expect(
+      Temporal.Instant.compare(
+        updateInput?.fulfilledAt as Temporal.Instant,
+        Temporal.Instant.from(customerDeliveredPayload.created_at)
+      )
+    ).toBe(0);
+    const [capturedEvent] = capture.mock.calls[0] ?? [];
+    expect(capturedEvent).toMatchObject({ event: "reservation fulfilled" });
+    expect(
+      Temporal.Instant.compare(
+        capturedEvent?.timestamp as Temporal.Instant,
+        Temporal.Instant.from(customerDeliveredPayload.created_at)
+      )
+    ).toBe(0);
     expect(processInvoice).toHaveBeenCalledWith({
       paymentAttemptId: "payment-attempt-id",
     });
+  });
+
+  test("recovers a failed email delivery when the access email arrives late", async () => {
+    verifiedPayload = customerDeliveredPayload;
+    const deliveredAt = Temporal.Instant.from("2026-01-01T12:05:00.000Z");
+    const capture = mock(() => Effect.void);
+    const recoverEmailDeliveryFailure = mock(() =>
+      Effect.succeed({
+        id: "reservation-id",
+        activePaymentAttemptId: "recovered-payment-attempt-id",
+        paymentState: "paid",
+        fulfillmentState: "fulfilled",
+      } as never)
+    );
+    const markFulfilled = mock(() => Effect.die("should not mark fulfilled"));
+    const markFulfillmentDeliveryFailed = mock(() =>
+      Effect.die("should not fail fulfillment")
+    );
+    const processInvoice = mock(() => Effect.void);
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed({
+          id: "reservation-id",
+          activePaymentAttemptId: "stale-payment-attempt-id",
+          paymentState: "paid",
+          fulfillmentState: "failed",
+          fulfillmentFailureCode: "fulfillment_email_failed",
+        } as never)
+      ),
+      recoverEmailDeliveryFailure,
+      markFulfilled,
+      markFulfillmentDeliveryFailed,
+    };
+
+    const effect = await processWebhookEffect({ reservations, capture });
+    const result = await Effect.runPromise(
+      effect.pipe(
+        Effect.provideService(
+          ReservationInvoiceService,
+          ReservationInvoiceService.of({
+            processByPaymentAttemptId: processInvoice,
+          })
+        )
+      )
+    );
+
+    expect(result).toEqual({ status: "processed" });
+    const [recoveryInput] = recoverEmailDeliveryFailure.mock.calls[0] ?? [];
+    expect(recoveryInput).toMatchObject({ id: "reservation-id" });
+    expect(
+      Temporal.Instant.compare(
+        recoveryInput?.deliveredAt as Temporal.Instant,
+        deliveredAt
+      )
+    ).toBe(0);
+    expect(markFulfilled).not.toHaveBeenCalled();
+    expect(markFulfillmentDeliveryFailed).not.toHaveBeenCalled();
+    const [capturedEvent] = capture.mock.calls[0] ?? [];
+    expect(capturedEvent).toMatchObject({ event: "reservation fulfilled" });
+    expect(
+      Temporal.Instant.compare(
+        capturedEvent?.timestamp as Temporal.Instant,
+        deliveredAt
+      )
+    ).toBe(0);
+    expect(processInvoice).toHaveBeenCalledWith({
+      paymentAttemptId: "recovered-payment-attempt-id",
+    });
+  });
+
+  test("keeps a reservation failed for delivery recovery when its failure has another code", async () => {
+    verifiedPayload = customerDeliveredPayload;
+    const capture = mock(() => Effect.void);
+    const recoverEmailDeliveryFailure = mock(() =>
+      Effect.die("should not recover")
+    );
+    const processInvoice = mock(() => Effect.void);
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed({
+          id: "reservation-id",
+          activePaymentAttemptId: "payment-attempt-id",
+          paymentState: "paid",
+          fulfillmentState: "failed",
+          fulfillmentFailureCode: "fulfillment_pin_provisioning_failed",
+        } as never)
+      ),
+      recoverEmailDeliveryFailure,
+    };
+
+    const effect = await processWebhookEffect({ reservations, capture });
+    const result = await Effect.runPromise(
+      effect.pipe(
+        Effect.provideService(
+          ReservationInvoiceService,
+          ReservationInvoiceService.of({
+            processByPaymentAttemptId: processInvoice,
+          })
+        )
+      )
+    );
+
+    expect(result).toEqual({
+      status: "ignored",
+      reason: "reservation_already_failed",
+    });
+    expect(recoverEmailDeliveryFailure).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+    expect(processInvoice).not.toHaveBeenCalled();
+  });
+
+  test("ignores a lost delivery recovery race without analytics or invoice", async () => {
+    verifiedPayload = customerDeliveredPayload;
+    const capture = mock(() => Effect.void);
+    const processInvoice = mock(() => Effect.void);
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed({
+          id: "reservation-id",
+          activePaymentAttemptId: "payment-attempt-id",
+          paymentState: "paid",
+          fulfillmentState: "failed",
+          fulfillmentFailureCode: "fulfillment_email_failed",
+        } as never)
+      ),
+      recoverEmailDeliveryFailure: mock(() => Effect.succeed(null)),
+    };
+
+    const effect = await processWebhookEffect({ reservations, capture });
+    const result = await Effect.runPromise(
+      effect.pipe(
+        Effect.provideService(
+          ReservationInvoiceService,
+          ReservationInvoiceService.of({
+            processByPaymentAttemptId: processInvoice,
+          })
+        )
+      )
+    );
+
+    expect(result).toEqual({
+      status: "ignored",
+      reason: "recovery_not_applied",
+    });
+    expect(capture).not.toHaveBeenCalled();
+    expect(processInvoice).not.toHaveBeenCalled();
+  });
+
+  test("rejects a verified delivery payload without created_at", async () => {
+    verifiedPayload = {
+      type: "email.delivered",
+      data: customerDeliveredPayload.data,
+    };
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    };
+
+    const error = await processWebhookError({ reservations });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_payload_invalid",
+      eventId: "webhook-event-id",
+    });
+    expect(verifyWebhook).toHaveBeenCalled();
+    expect(reservations.findById).not.toHaveBeenCalled();
+  });
+
+  test("rejects a verified delivery payload with an invalid created_at", async () => {
+    verifiedPayload = {
+      ...customerDeliveredPayload,
+      created_at: "yesterday afternoon",
+    };
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    };
+
+    const error = await processWebhookError({ reservations });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_payload_invalid",
+      eventId: "webhook-event-id",
+    });
+    expect(verifyWebhook).toHaveBeenCalled();
+    expect(reservations.findById).not.toHaveBeenCalled();
   });
 
   test("retries invoice processing for an already fulfilled reservation", async () => {
@@ -420,7 +627,14 @@ describe("ResendWebhookService", () => {
 
   test("marks customer reservation access delivery failures failed", async () => {
     verifiedPayload = customerFailurePayload;
-    const markFulfillmentDeliveryFailed = mock(() => Effect.void);
+    const markFulfillmentDeliveryFailed = mock(() =>
+      Effect.succeed({
+        id: "reservation-id",
+        paymentState: "paid",
+        fulfillmentState: "failed",
+        fulfillmentFailureCode: "fulfillment_email_failed",
+      } as never)
+    );
     const reservations = {
       findById: mock(() =>
         Effect.succeed({
@@ -448,17 +662,29 @@ describe("ResendWebhookService", () => {
     });
     expect(reservations.findById).toHaveBeenCalledWith("reservation-id");
 
-    const [updateInput] = markFulfillmentDeliveryFailed.mock.calls[0] ?? [];
-    expect(updateInput).toMatchObject({
+    const [failedInput] = markFulfillmentDeliveryFailed.mock.calls[0] ?? [];
+    expect(failedInput).toMatchObject({
       id: "reservation-id",
       failureCode: "fulfillment_email_failed",
     });
-    expect(updateInput.failedAt).toBeInstanceOf(Temporal.Instant);
+    expect(
+      Temporal.Instant.compare(
+        failedInput?.failedAt as Temporal.Instant,
+        Temporal.Instant.from("2026-01-01T12:05:00.000Z")
+      )
+    ).toBe(0);
   });
 
   test("marks bounced customer reservation access emails failed", async () => {
     verifiedPayload = customerBouncedPayload;
-    const markFulfillmentDeliveryFailed = mock(() => Effect.void);
+    const markFulfillmentDeliveryFailed = mock(() =>
+      Effect.succeed({
+        id: "reservation-id",
+        paymentState: "paid",
+        fulfillmentState: "failed",
+        fulfillmentFailureCode: "fulfillment_email_failed",
+      } as never)
+    );
     const reservations = {
       findById: mock(() =>
         Effect.succeed({
@@ -475,12 +701,183 @@ describe("ResendWebhookService", () => {
     });
 
     expect(result).toEqual({ status: "processed" });
-    expect(markFulfillmentDeliveryFailed).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "reservation-id",
-        failureCode: "fulfillment_email_failed",
-      })
+    const [bouncedInput] = markFulfillmentDeliveryFailed.mock.calls[0] ?? [];
+    expect(bouncedInput).toMatchObject({
+      id: "reservation-id",
+      failureCode: "fulfillment_email_failed",
+    });
+    expect(
+      Temporal.Instant.compare(
+        bouncedInput?.failedAt as Temporal.Instant,
+        Temporal.Instant.from("2026-01-01T12:05:00.000Z")
+      )
+    ).toBe(0);
+  });
+
+  test("advances an existing email failure marker when a newer bounce arrives", async () => {
+    verifiedPayload = customerWebhookPayload(
+      "email.bounced",
+      "2026-01-01T12:10:00.000Z"
     );
+    const markFulfillmentDeliveryFailed = mock(() =>
+      Effect.succeed({
+        id: "reservation-id",
+        paymentState: "paid",
+        fulfillmentState: "failed",
+        fulfillmentFailureCode: "fulfillment_email_failed",
+      } as never)
+    );
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed({
+          id: "reservation-id",
+          paymentState: "paid",
+          fulfillmentState: "failed",
+          fulfillmentFailureCode: "fulfillment_email_failed",
+        } as never)
+      ),
+      markFulfillmentDeliveryFailed,
+    };
+
+    const result = await processWebhook({ reservations });
+
+    expect(result).toEqual({ status: "processed" });
+    const [newerBounceInput] =
+      markFulfillmentDeliveryFailed.mock.calls[0] ?? [];
+    expect(newerBounceInput).toMatchObject({
+      id: "reservation-id",
+      failureCode: "fulfillment_email_failed",
+    });
+    expect(
+      Temporal.Instant.compare(
+        newerBounceInput?.failedAt as Temporal.Instant,
+        Temporal.Instant.from("2026-01-01T12:10:00.000Z")
+      )
+    ).toBe(0);
+  });
+
+  test("keeps a later bounce failed when an older delivery arrives out of order", async () => {
+    const bounceAt = "2026-01-01T12:10:00.000Z";
+    const olderDeliveryAt = "2026-01-01T12:05:00.000Z";
+    const capture = mock(() => Effect.void);
+    const processInvoice = mock(() => Effect.void);
+    const markFulfillmentDeliveryFailed = mock(() =>
+      Effect.succeed({
+        id: "reservation-id",
+        activePaymentAttemptId: "payment-attempt-id",
+        paymentState: "paid",
+        fulfillmentState: "failed",
+        fulfillmentFailureCode: "fulfillment_email_failed",
+      } as never)
+    );
+    const recoverEmailDeliveryFailure = mock(() => Effect.succeed(null));
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed({
+          id: "reservation-id",
+          activePaymentAttemptId: "payment-attempt-id",
+          paymentState: "paid",
+          fulfillmentState: "failed",
+          fulfillmentFailureCode: "fulfillment_email_failed",
+        } as never)
+      ),
+      markFulfillmentDeliveryFailed,
+      recoverEmailDeliveryFailure,
+    };
+    const runWebhook = async (
+      payload: ReturnType<typeof customerWebhookPayload>
+    ) => {
+      verifiedPayload = payload;
+      const effect = await processWebhookEffect({ reservations, capture });
+      return Effect.runPromise(
+        effect.pipe(
+          Effect.provideService(
+            ReservationInvoiceService,
+            ReservationInvoiceService.of({
+              processByPaymentAttemptId: processInvoice,
+            })
+          )
+        )
+      );
+    };
+
+    const bounceResult = await runWebhook(
+      customerWebhookPayload("email.bounced", bounceAt)
+    );
+
+    expect(bounceResult).toEqual({ status: "processed" });
+    const [bounceFailureInput] =
+      markFulfillmentDeliveryFailed.mock.calls[0] ?? [];
+    expect(bounceFailureInput).toMatchObject({
+      id: "reservation-id",
+      failureCode: "fulfillment_email_failed",
+    });
+    expect(
+      Temporal.Instant.compare(
+        bounceFailureInput?.failedAt as Temporal.Instant,
+        Temporal.Instant.from(bounceAt)
+      )
+    ).toBe(0);
+
+    const deliveryResult = await runWebhook(
+      customerWebhookPayload("email.delivered", olderDeliveryAt)
+    );
+
+    expect(deliveryResult).toEqual({
+      status: "ignored",
+      reason: "recovery_not_applied",
+    });
+    const [staleRecoveryInput] =
+      recoverEmailDeliveryFailure.mock.calls[0] ?? [];
+    expect(staleRecoveryInput).toMatchObject({ id: "reservation-id" });
+    expect(
+      Temporal.Instant.compare(
+        staleRecoveryInput?.deliveredAt as Temporal.Instant,
+        Temporal.Instant.from(olderDeliveryAt)
+      )
+    ).toBe(0);
+    expect(markFulfillmentDeliveryFailed).toHaveBeenCalledTimes(1);
+    expect(capture).not.toHaveBeenCalled();
+    expect(processInvoice).not.toHaveBeenCalled();
+  });
+
+  test("keeps a newer fulfilled delivery when a stale failure arrives", async () => {
+    verifiedPayload = customerWebhookPayload(
+      "email.failed",
+      "2026-01-01T12:05:00.000Z"
+    );
+    const capture = mock(() => Effect.void);
+    const processInvoice = mock(() => Effect.void);
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed({
+          id: "reservation-id",
+          activePaymentAttemptId: "payment-attempt-id",
+          paymentState: "paid",
+          fulfillmentState: "fulfilled",
+        } as never)
+      ),
+      markFulfillmentDeliveryFailed: mock(() => Effect.succeed(null)),
+    };
+
+    const effect = await processWebhookEffect({ reservations, capture });
+    const result = await Effect.runPromise(
+      effect.pipe(
+        Effect.provideService(
+          ReservationInvoiceService,
+          ReservationInvoiceService.of({
+            processByPaymentAttemptId: processInvoice,
+          })
+        )
+      )
+    );
+
+    expect(result).toEqual({
+      status: "ignored",
+      reason: "delivery_failure_not_applied",
+    });
+    expect(capture).not.toHaveBeenCalled();
+    expect(processInvoice).not.toHaveBeenCalled();
   });
 
   test("ignores internal notification delivery failures", async () => {
