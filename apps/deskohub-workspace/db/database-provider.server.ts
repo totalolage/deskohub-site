@@ -5,12 +5,11 @@ import { Effect, Layer } from "effect";
 import { env } from "@/env";
 import { WorkspaceDatabase } from "./database.service";
 import { makeDatabaseClient, makeDatabasePool } from "./database-client";
+import { databasePoolTimeouts } from "./database-pool-timeouts";
 
 const pool = makeDatabasePool({
   connectionString: env.DATABASE_URL,
-  connectionTimeoutMillis: 5_000,
-  query_timeout: 10_000,
-  statement_timeout: 10_000,
+  ...databasePoolTimeouts,
 });
 attachDatabasePool(pool);
 
