@@ -1094,6 +1094,18 @@ export class WorkspaceReservationRepository extends Context.Service<
         markCustomerEmailDeliveryFulfilled: Effect.fn(
           "workspaceReservations.markCustomerEmailDeliveryFulfilled"
         )(function* (input) {
+          const fulfillmentStillApplies = or(
+            eq(workspaceReservations.fulfillmentState, "awaiting_delivery"),
+            and(
+              eq(workspaceReservations.fulfillmentState, "failed"),
+              eq(
+                workspaceReservations.fulfillmentFailureCode,
+                fulfillmentEmailFailureCode
+              ),
+              sql`${workspaceReservations.fulfillmentFailedAt} is not null`,
+              lt(workspaceReservations.fulfillmentFailedAt, input.fulfilledAt)
+            )
+          );
           const [updated] = yield* db
             .update(workspaceReservations)
             .set({
@@ -1110,19 +1122,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                   input.customerEmailDeliveryId
                 ),
                 eq(workspaceReservations.paymentState, "paid"),
-                or(
-                  eq(
-                    workspaceReservations.fulfillmentState,
-                    "awaiting_delivery"
-                  ),
-                  and(
-                    eq(workspaceReservations.fulfillmentState, "failed"),
-                    eq(
-                      workspaceReservations.fulfillmentFailureCode,
-                      fulfillmentEmailFailureCode
-                    )
-                  )
-                )
+                fulfillmentStillApplies
               )
             )
             .returning();
@@ -1131,10 +1131,28 @@ export class WorkspaceReservationRepository extends Context.Service<
         markCustomerEmailDeliveryFailed: Effect.fn(
           "workspaceReservations.markCustomerEmailDeliveryFailed"
         )(function* (input) {
+          const failureStillApplies = or(
+            eq(workspaceReservations.fulfillmentState, "awaiting_delivery"),
+            and(
+              eq(workspaceReservations.fulfillmentState, "fulfilled"),
+              sql`${workspaceReservations.fulfilledAt} is not null`,
+              lt(workspaceReservations.fulfilledAt, input.failedAt)
+            ),
+            and(
+              eq(workspaceReservations.fulfillmentState, "failed"),
+              eq(
+                workspaceReservations.fulfillmentFailureCode,
+                input.failureCode
+              ),
+              sql`${workspaceReservations.fulfillmentFailedAt} is not null`,
+              lt(workspaceReservations.fulfillmentFailedAt, input.failedAt)
+            )
+          );
           const [updated] = yield* db
             .update(workspaceReservations)
             .set({
               fulfillmentState: "failed",
+              fulfilledAt: null,
               fulfillmentFailedAt: input.failedAt,
               fulfillmentFailureCode: input.failureCode,
               updatedAt: Temporal.Now.instant(),
@@ -1146,7 +1164,7 @@ export class WorkspaceReservationRepository extends Context.Service<
                   input.customerEmailDeliveryId
                 ),
                 eq(workspaceReservations.paymentState, "paid"),
-                eq(workspaceReservations.fulfillmentState, "awaiting_delivery")
+                failureStillApplies
               )
             )
             .returning();

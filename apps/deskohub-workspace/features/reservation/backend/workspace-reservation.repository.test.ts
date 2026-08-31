@@ -1,6 +1,16 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { EmailDeliveryIdSchema } from "@deskohub/email";
+import type { SQL } from "drizzle-orm";
+import { PgDialect, type PgUpdateSetSource } from "drizzle-orm/pg-core";
+import { Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import type { workspaceReservations } from "@/db/schema";
+import {
+  type IWorkspaceReservationRepository,
+  WorkspaceReservationRepository,
+} from "./workspace-reservation.repository";
 
 const readRepository = () =>
   Bun.file(
@@ -14,6 +24,56 @@ const sliceFrom = (source: string, startNeedle: string, endNeedle: string) => {
   expect(end).toBeGreaterThan(start);
   return source.slice(start, end);
 };
+
+type ReservationUpdateSet = PgUpdateSetSource<typeof workspaceReservations>;
+
+interface CapturedUpdate {
+  readonly values: ReservationUpdateSet;
+  readonly where: SQL;
+}
+
+const captureDeliveryTransition = async (
+  invoke: (
+    reservations: IWorkspaceReservationRepository
+  ) => Effect.Effect<unknown, unknown>
+): Promise<CapturedUpdate> => {
+  let values: ReservationUpdateSet | undefined;
+  let where: SQL | undefined;
+  const db = {
+    update: () => ({
+      set: (updateSet: ReservationUpdateSet) => {
+        values = updateSet;
+        return {
+          where: (condition: SQL) => {
+            where = condition;
+            return { returning: () => Effect.succeed([]) };
+          },
+        };
+      },
+    }),
+  };
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const reservations = yield* WorkspaceReservationRepository;
+      return yield* invoke(reservations);
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationRepository.Default.pipe(
+          Layer.provide(Layer.succeed(WorkspaceDatabase, { db } as never))
+        )
+      )
+    )
+  );
+
+  if (!where || !values) {
+    throw new Error("The repository update never applied a guard.");
+  }
+  return { values, where };
+};
+
+const compiledGuardParams = (where: SQL) =>
+  new PgDialect().sqlToQuery(where).params.map((param) => String(param));
 
 describe("WorkspaceReservationRepository", () => {
   test("selects expired holds in a deterministic starvation-safe limited order", async () => {
@@ -259,6 +319,131 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain(".returning()");
     expect(section).toContain("decodeOptionalWorkspaceReservation");
     expect(section).not.toContain("ensureUpdated");
+  });
+
+  test("fulfills or repairs customer deliveries only when the failure predates the success event", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "markCustomerEmailDeliveryFulfilled: Effect.fn(",
+      "markCustomerEmailDeliveryFailed: Effect.fn("
+    );
+
+    expect(section).toContain(
+      "workspaceReservations.activeCustomerEmailDeliveryId"
+    );
+    expect(section).toContain('eq(workspaceReservations.paymentState, "paid")');
+    expect(section).toContain('"awaiting_delivery"');
+    expect(section).toContain(
+      'eq(workspaceReservations.fulfillmentState, "failed")'
+    );
+    expect(section).toContain("fulfillmentEmailFailureCode");
+    expect(section).toContain(
+      "workspaceReservations.fulfillmentFailedAt} is not null"
+    );
+    expect(section).toContain("lt(");
+    expect(section).toContain("input.fulfilledAt");
+    expect(section).not.toContain("lte(");
+    expect(section).toContain('fulfillmentState: "fulfilled"');
+    expect(section).toContain("fulfilledAt: input.fulfilledAt");
+    expect(section).toContain("fulfillmentFailedAt: null");
+    expect(section).toContain("fulfillmentFailureCode: null");
+  });
+
+  test("applies customer delivery failures only over older recorded outcomes", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "markCustomerEmailDeliveryFailed: Effect.fn(",
+      "markFulfilled: Effect.fn("
+    );
+
+    expect(section).toContain(
+      "workspaceReservations.activeCustomerEmailDeliveryId"
+    );
+    expect(section).toContain('eq(workspaceReservations.paymentState, "paid")');
+    expect(section).toContain('"awaiting_delivery"');
+    expect(section).toContain(
+      'eq(workspaceReservations.fulfillmentState, "fulfilled")'
+    );
+    expect(section).toContain("workspaceReservations.fulfilledAt} is not null");
+    expect(section).toContain("lt(workspaceReservations.fulfilledAt,");
+    expect(section).toContain(
+      'eq(workspaceReservations.fulfillmentState, "failed")'
+    );
+    expect(section).toContain("input.failureCode");
+    expect(section).toContain(
+      "workspaceReservations.fulfillmentFailedAt} is not null"
+    );
+    expect(section).toContain("lt(workspaceReservations.fulfillmentFailedAt,");
+    expect(section).not.toContain("lte(");
+    expect(section).toContain('fulfillmentState: "failed"');
+    expect(section).toContain("fulfilledAt: null");
+    expect(section).toContain("fulfillmentFailedAt: input.failedAt");
+    expect(section).toContain("fulfillmentFailureCode: input.failureCode");
+  });
+
+  test("guards a delayed fulfillment success by the recorded delivery failure time", async () => {
+    const customerEmailDeliveryId =
+      EmailDeliveryIdSchema.make("resend-email-id");
+    const { values, where } = await captureDeliveryTransition((reservations) =>
+      reservations.markCustomerEmailDeliveryFulfilled({
+        customerEmailDeliveryId,
+        fulfilledAt: Temporal.Instant.from("2026-01-01T12:05:00.000Z"),
+      })
+    );
+    const sql = new PgDialect().sqlToQuery(where).sql;
+
+    expect(sql).toContain('"active_customer_email_delivery_id" = ');
+    expect(sql).toContain('"fulfillment_state" = ');
+    expect(sql).toContain('"fulfillment_failure_code" = ');
+    expect(sql).toContain('"fulfillment_failed_at" is not null');
+    expect(sql).toContain('"fulfillment_failed_at" < ');
+    expect(sql).not.toContain("<=");
+    expect(sql).not.toContain(">");
+    expect(compiledGuardParams(where)).toContain("resend-email-id");
+    expect(
+      compiledGuardParams(where).some((param) =>
+        param.startsWith("2026-01-01T12:05:00")
+      )
+    ).toBe(true);
+
+    expect(values.fulfillmentState).toBe("fulfilled");
+    expect(values.fulfillmentFailedAt).toBeNull();
+    expect(values.fulfillmentFailureCode).toBeNull();
+  });
+
+  test("guards a delivery failure against the recorded fulfillment and failure times", async () => {
+    const customerEmailDeliveryId =
+      EmailDeliveryIdSchema.make("resend-email-id");
+    const { values, where } = await captureDeliveryTransition((reservations) =>
+      reservations.markCustomerEmailDeliveryFailed({
+        customerEmailDeliveryId,
+        failureCode: "fulfillment_email_failed",
+        failedAt: Temporal.Instant.from("2026-01-01T12:10:00.000Z"),
+      })
+    );
+    const sql = new PgDialect().sqlToQuery(where).sql;
+
+    expect(sql).toContain('"active_customer_email_delivery_id" = ');
+    expect(sql).toContain('"fulfilled_at" is not null');
+    expect(sql).toContain('"fulfilled_at" < ');
+    expect(sql).toContain('"fulfillment_failure_code" = ');
+    expect(sql).toContain('"fulfillment_failed_at" is not null');
+    expect(sql).toContain('"fulfillment_failed_at" < ');
+    expect(sql).not.toContain("<=");
+    expect(sql).not.toContain(">");
+    expect(compiledGuardParams(where)).toContain("resend-email-id");
+    expect(compiledGuardParams(where)).toContain("fulfillment_email_failed");
+    expect(
+      compiledGuardParams(where).some((param) =>
+        param.startsWith("2026-01-01T12:10:00")
+      )
+    ).toBe(true);
+
+    expect(values.fulfillmentState).toBe("failed");
+    expect(values.fulfilledAt).toBeNull();
+    expect(values.fulfillmentFailureCode).toBe("fulfillment_email_failed");
   });
 
   test("keeps markFulfilled restricted to processing fulfillment", async () => {

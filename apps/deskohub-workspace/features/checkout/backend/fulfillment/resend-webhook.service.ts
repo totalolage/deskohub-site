@@ -412,7 +412,7 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
 
             if (!fulfilledReservation) {
               yield* Effect.logInfo(
-                "Resend delivery success ignored: reservation delivery state changed concurrently",
+                "Resend delivery success ignored: reservation delivery state is newer or changed concurrently",
                 {
                   eventId: input.eventId,
                   workspaceReservationId,
@@ -437,14 +437,6 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
             } satisfies ResendWebhookProcessingResult;
           }
 
-          if (reservation.fulfillmentState === "fulfilled") {
-            return ignored("reservation_already_fulfilled");
-          }
-
-          if (reservation.fulfillmentState === "failed") {
-            return ignored("reservation_already_failed");
-          }
-
           const failedReservation = yield* reservations
             .markCustomerEmailDeliveryFailed({
               customerEmailDeliveryId: resendEmailId,
@@ -467,7 +459,7 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
 
           if (!failedReservation) {
             yield* Effect.logInfo(
-              "Resend delivery failure ignored: reservation delivery state changed concurrently",
+              "Resend delivery failure ignored: reservation delivery state is newer or changed concurrently",
               {
                 eventId: input.eventId,
                 workspaceReservationId,
