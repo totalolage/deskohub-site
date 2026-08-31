@@ -18,10 +18,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import {
-  workspaceLocationMapImageOptions,
-  workspaceSiteConstants,
-} from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils";
 import type { ResendWebhookRuntimeConfigObj } from "./resend-webhook.config";
 
 let verifiedPayload: unknown;
@@ -1276,22 +1273,18 @@ describe("ResendWebhookService", () => {
       );
       expect(emailView.getByText("dotypos-reservation-id")).toBeTruthy();
       expect(emailView.getByText("reservation-id")).toBeTruthy();
-      expect(mapImage.getAttribute("src")).toBe("cid:workspace-location-map");
+      expect(mapImage.getAttribute("src")).toBe(
+        "https://workspace.deskohub.cz/workspace-location-map.jpeg"
+      );
       expect(addressLink.getAttribute("href")).toBe(expectedMapUrl);
       expect(mapLink.getAttribute("href")).toBe(expectedMapUrl);
-      expect(customerEmail.attachments).toHaveLength(2);
+      expect(customerEmail.attachments).toHaveLength(1);
       expect(customerEmail.attachments?.[0]).toMatchObject({
-        contentId: "workspace-location-map",
-        contentType: "image/jpeg",
-        filename: "workspace-location-map.jpeg",
-      });
-      expect(customerEmail.attachments?.[0]?.content).toEqual(locationMapImage);
-      expect(customerEmail.attachments?.[1]).toMatchObject({
         contentId: "workspace-wifi-qr",
         contentType: "image/png",
         filename: "workspace-wifi-qr.png",
       });
-      const qrAttachmentContent = customerEmail.attachments?.[1]?.content;
+      const qrAttachmentContent = customerEmail.attachments?.[0]?.content;
       if (!Buffer.isBuffer(qrAttachmentContent)) {
         throw new Error("Wi-Fi QR attachment content was not a PNG buffer.");
       }
@@ -1301,9 +1294,7 @@ describe("ResendWebhookService", () => {
           workspaceCheckoutPlaceholderNetworkDetails
         )
       ).toBe("WIFI:T:WPA;S:Deskohub Workspace;P:Workspace42;;");
-      expect(generateStaticMapImage).toHaveBeenCalledWith(
-        workspaceLocationMapImageOptions
-      );
+      expect(generateStaticMapImage).not.toHaveBeenCalled();
     } finally {
       unregisterWorkspaceComponentTestEnv();
     }

@@ -14,10 +14,20 @@ import { Effect, Layer } from "effect";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 
 mock.module("server-only", () => ({}));
+
+// The paid-fulfillment send path must never fetch the location map: fresh
+// attachment bytes per attempt would break same-key idempotent retries. Track
+// every hypothetical call and return different bytes each time so a regression
+// cannot slip past the retry-stability assertions.
+const staticMapImageCalls: Buffer[] = [];
 mock.module("osm", () => ({
-  generateStaticMapImage: mock(() =>
-    Effect.succeed(Buffer.from("workspace-location-map"))
-  ),
+  generateStaticMapImage: mock(() => {
+    const image = Buffer.from(
+      `workspace-location-map-attempt-${staticMapImageCalls.length}`
+    );
+    staticMapImageCalls.push(image);
+    return Effect.succeed(image);
+  }),
 }));
 
 const customer: Customer = {
@@ -427,5 +437,108 @@ describe("sendPaidReservationEmails idempotency", () => {
       "workspace-paid-reservation-access-reservation-id"
     );
     expect(internalMessage?.idempotencyKey).toBeUndefined();
+  });
+});
+
+describe("sendPaidReservationEmails idempotent retry stability", () => {
+  test("sends byte-identical complete customer requests under one idempotency key while the clock advances", async () => {
+    const {
+      createCustomerEmailInitialIdempotencyKey,
+      WorkspaceReservationEmailService,
+    } = await import("./workspace-reservation-email.service");
+    const { EmailConfigTag, EmailServiceTag } = await import(
+      "@deskohub/email/backend/service"
+    );
+    const { WorkspaceCheckoutNetworkDetailsService } = await import(
+      "./network-details.service"
+    );
+    const reservation = makeReservation({});
+    const idempotencyKey = createCustomerEmailInitialIdempotencyKey(
+      reservation.id
+    );
+    const sentMessages: EmailMessage[] = [];
+    const emailService: EmailService = {
+      send: mock((message: EmailMessage) => {
+        sentMessages.push(message);
+        return Effect.succeed(sentResult(`email-${sentMessages.length}`));
+      }),
+      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
+      verify: Effect.succeed(true),
+    };
+    const emailConfig: EmailProviderConfig = {
+      provider: "console",
+      defaultFrom: {
+        email: "reservations@workspace.deskohub.cz",
+        name: "Deskohub Workspace",
+      },
+    };
+
+    const { env } = await import("@/env");
+    const previousPreviewBypassSecret = env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    const originalDateNow = Date.now;
+    Object.assign(env, {
+      VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
+    });
+    try {
+      const sendOnce = () =>
+        Effect.gen(function* () {
+          const service = yield* WorkspaceReservationEmailService;
+          yield* service.sendPaidReservationEmails({
+            reservation,
+            customerEmailIdempotencyKey: idempotencyKey,
+          });
+        }).pipe(
+          Effect.provide(
+            WorkspaceReservationEmailService.Default.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  Layer.succeed(EmailServiceTag, emailService),
+                  Layer.succeed(EmailConfigTag, emailConfig),
+                  WorkspaceCheckoutNetworkDetailsService.Default
+                )
+              )
+            )
+          ),
+          Effect.runPromise
+        );
+
+      Date.now = () =>
+        Temporal.Instant.from("2026-06-20T08:00:00Z").epochMilliseconds;
+      await sendOnce();
+      Date.now = () =>
+        Temporal.Instant.from("2026-06-20T09:37:12Z").epochMilliseconds;
+      await sendOnce();
+    } finally {
+      Date.now = originalDateNow;
+      Object.assign(env, {
+        VERCEL_AUTOMATION_BYPASS_SECRET: previousPreviewBypassSecret,
+      });
+    }
+
+    expect(sentMessages).toHaveLength(4);
+    const [firstCustomer, firstInternal, secondCustomer, secondInternal] =
+      sentMessages;
+    expect(firstCustomer?.idempotencyKey).toBe(idempotencyKey);
+    expect(secondCustomer?.idempotencyKey).toBe(idempotencyKey);
+    expect(firstCustomer?.html).toContain("accessToken=");
+    expect(firstCustomer?.text).toContain("accessToken=");
+    expect(secondCustomer).toEqual(firstCustomer);
+    expect(secondInternal).toEqual(firstInternal);
+    const firstQr = firstCustomer?.attachments?.find(
+      (attachment) => attachment.filename === "workspace-wifi-qr.png"
+    );
+    const secondQr = secondCustomer?.attachments?.find(
+      (attachment) => attachment.filename === "workspace-wifi-qr.png"
+    );
+    expect(
+      Buffer.compare(firstQr?.content as Buffer, secondQr?.content as Buffer)
+    ).toBe(0);
+    expect(
+      firstCustomer?.attachments?.map((attachment) => attachment.filename)
+    ).toEqual(["workspace-wifi-qr.png"]);
+    expect(firstCustomer?.html).toContain(
+      "https://workspace.deskohub.cz/workspace-location-map.jpeg"
+    );
+    expect(staticMapImageCalls).toHaveLength(0);
   });
 });

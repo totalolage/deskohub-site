@@ -354,7 +354,8 @@ Allowed fulfillment transitions:
 - `processing -> awaiting_delivery -> fulfilled`
 - `processing -> failed`
 - `awaiting_delivery -> failed`
-- `failed -> fulfilled` only when the failure code is `fulfillment_email_failed` and a matching delivered webhook arrives.
+- `fulfilled -> failed` only when a matching failure or bounce webhook is strictly newer than `fulfilled_at`.
+- `failed -> fulfilled` only when the failure code is `fulfillment_email_failed` and a matching delivered webhook is strictly newer than `fulfillment_failed_at`.
 
 Fulfillment is allowed only when `payment_state = 'paid'`.
 
@@ -363,10 +364,13 @@ fulfillment worker records its active non-PII provider delivery ID and moves
 `processing -> awaiting_delivery`. Stale `processing` recovery may reclaim an
 abandoned claim after one minute but never reclaims `awaiting_delivery`. A
 delivery webhook may change state only when its provider email ID matches the
-recorded active delivery ID. A matching delivered event completes
-`awaiting_delivery` or repairs only `failed` with failure code
-`fulfillment_email_failed`; a failure or bounce event fails only
-`awaiting_delivery` and never downgrades `fulfilled`. Outside production,
+recorded active delivery ID and its provider event time is strictly newer than
+the timestamp guarding the current outcome: `fulfilled_at` when `fulfilled`,
+`fulfillment_failed_at` when `failed`; equal or older events are no-ops. A
+matching delivered event completes `awaiting_delivery` or repairs only `failed`
+with failure code `fulfillment_email_failed`; a strictly newer failure or
+bounce event fails `awaiting_delivery` and may also downgrade `fulfilled ->
+failed` so an undelivered confirmation surfaces for recovery. Outside production,
 fulfillment reaches `fulfilled` when the configured email provider accepts the
 required customer send; the internal notification remains best effort.
 Protected Preview deployments cannot receive provider callbacks reliably.

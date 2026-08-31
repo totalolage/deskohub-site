@@ -41,8 +41,8 @@ import {
   internalWorkspaceEmailRecipient,
   workspaceEmailRecipient,
 } from "@/shared/backend/email/workspace-email-recipients";
-import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
+  getWorkspaceCanonicalUrl,
   workspaceFormattedAddress,
   workspaceGoogleDirectionsUrl,
   workspaceLocationMapImagePath,
@@ -69,8 +69,12 @@ export interface IWorkspaceReservationEmailService {
 
 const customerAccessCategory = "workspace-paid-reservation-access";
 const customerAccessRecoveryKeyPrefix = `${customerAccessCategory}-recovery-`;
-const workspaceLocationMapContentId = "workspace-location-map";
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
+// The hosted map route serves the same image with long-lived caching, so every
+// generation references stable bytes instead of embedding a fresh OSM fetch.
+const workspaceLocationMapUrl = getWorkspaceCanonicalUrl(
+  workspaceLocationMapImagePath
+);
 const internalTestingSubjectPrefix = "[TESTING]";
 const internalNotificationLocale: Locale = "cs-CZ";
 
@@ -136,26 +140,6 @@ const createInternalReservationSubject = (
 
   return `${internalTestingSubjectPrefix} ${subject}`;
 };
-
-const createWorkspaceLocationMapAttachment = (): Effect.Effect<
-  EmailAttachment,
-  EmailServiceError
-> =>
-  generateWorkspaceLocationMapImage().pipe(
-    Effect.map((content) => ({
-      content,
-      contentId: workspaceLocationMapContentId,
-      contentType: "image/jpeg",
-      filename: workspaceLocationMapImagePath.slice(1),
-    })),
-    Effect.mapError(
-      (cause) =>
-        new EmailServiceError(
-          "Workspace reservation location map could not be generated.",
-          cause
-        )
-    )
-  );
 
 const createWorkspaceNetworkQrAttachment = (
   networkDetails: WorkspaceCheckoutNetworkDetails
@@ -433,7 +417,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
             invoiceUrl: input.invoiceUrl,
             networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
             networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
-            locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
+            locationMapImageSrc: workspaceLocationMapUrl,
           })
         )
       ),
@@ -487,10 +471,15 @@ export class WorkspaceReservationEmailService extends Context.Service<
       const createCustomerAccessUrls = Effect.fn(
         "WorkspaceReservationEmailService.createCustomerAccessUrls"
       )(function* (reservation: WorkspaceReservationDetails, locale: Locale) {
-        const accessToken = yield* createReservationAccessToken({
-          orderId: reservation.id,
-          locale,
-        });
+        // Idempotent provider retries resend the same key, so the token must be a
+        // pure function of the reservation; anchor issuance at its immutable start.
+        const accessToken = yield* createReservationAccessToken(
+          {
+            orderId: reservation.id,
+            locale,
+          },
+          { now: () => reservation.reservedFrom.epochMilliseconds }
+        );
         const origin = yield* getWorkspaceRuntimeCallbackOrigin;
 
         const pathInput = {
@@ -597,18 +586,6 @@ export class WorkspaceReservationEmailService extends Context.Service<
             );
           }
 
-          const locationMapAttachment =
-            yield* createWorkspaceLocationMapAttachment().pipe(
-              Effect.catch((cause) =>
-                Effect.logError(
-                  "Workspace reservation location map attachment skipped",
-                  {
-                    cause,
-                    workspaceReservationId: reservation.id,
-                  }
-                ).pipe(Effect.as(undefined))
-              )
-            );
           const networkQrAttachment = yield* createWorkspaceNetworkQrAttachment(
             networkDetails
           ).pipe(
@@ -632,9 +609,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
               networkQrImageSrc: networkQrAttachment
                 ? `cid:${networkQrAttachment.contentId}`
                 : undefined,
-              locationMapImageSrc: locationMapAttachment
-                ? `cid:${locationMapAttachment.contentId}`
-                : undefined,
+              locationMapImageSrc: workspaceLocationMapUrl,
             })
           );
           const customerMessage: EmailMessage = {
@@ -644,7 +619,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
             html: renderedCustomerEmail.html,
             text: renderedCustomerEmail.text,
-            attachments: [locationMapAttachment, networkQrAttachment].filter(
+            attachments: [networkQrAttachment].filter(
               (attachment): attachment is EmailAttachment => Boolean(attachment)
             ),
             tags: [customerAccessCategory],
