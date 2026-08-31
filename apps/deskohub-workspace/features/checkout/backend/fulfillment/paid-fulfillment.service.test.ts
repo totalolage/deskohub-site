@@ -140,6 +140,8 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(markReservationConfirmed).not.toHaveBeenCalled();
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        "workspace-paid-reservation-access-reservation-id",
     });
     expect(resolveCustomerAccessCode).toHaveBeenCalledWith({
       reservationId: emailReservation.id,
@@ -244,6 +246,8 @@ describe("WorkspacePaidFulfillmentService", () => {
     );
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        "workspace-paid-reservation-access-reservation-id",
     });
     expect(markFulfilled).toHaveBeenCalledWith(
       expect.objectContaining({ id: "reservation-id" })
@@ -382,7 +386,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     );
   });
 
-  test("retries a failed order without a prior delivery under the default reservation key", async () => {
+  test("retries a failed order without a prior delivery under the initial reservation key", async () => {
     const order = {
       id: "reservation-id",
       activePaymentAttemptId: "payment-attempt-id",
@@ -457,6 +461,8 @@ describe("WorkspacePaidFulfillmentService", () => {
 
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        "workspace-paid-reservation-access-reservation-id",
     });
   });
 

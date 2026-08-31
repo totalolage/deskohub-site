@@ -30,6 +30,7 @@ import {
 } from "@/features/reservation/backend/reservation-access-url";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   formatReservationDisplayDate,
   formatReservationDisplayDateRange,
@@ -72,6 +73,10 @@ const workspaceLocationMapContentId = "workspace-location-map";
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const internalTestingSubjectPrefix = "[TESTING]";
 const internalNotificationLocale: Locale = "cs-CZ";
+
+export const createCustomerEmailInitialIdempotencyKey = (
+  reservationId: WorkspaceReservationId
+) => `${customerAccessCategory}-${reservationId}`;
 
 export const createCustomerEmailRecoveryIdempotencyKey = (
   priorCustomerEmailDeliveryId: EmailDeliveryId

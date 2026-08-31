@@ -1451,6 +1451,8 @@ describe("ResendWebhookService", () => {
     expect(getReservation).toHaveBeenCalledWith("reservation-id");
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        "workspace-paid-reservation-access-reservation-id",
     });
     expect(resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
     expect(markFulfilled).toHaveBeenCalledWith(

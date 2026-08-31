@@ -59,6 +59,30 @@ const sentResult = (id: string): EmailSendResult => ({
   timestamp: new Date(),
 });
 
+describe("createCustomerEmailInitialIdempotencyKey", () => {
+  test("derives the stable provider reservation-and-category key", async () => {
+    const {
+      createCustomerEmailInitialIdempotencyKey,
+      createCustomerEmailRecoveryIdempotencyKey,
+    } = await import("./workspace-reservation-email.service");
+    const { workspaceReservationIdSchema } = await import(
+      "@/features/reservation/persistence-contracts"
+    );
+    const reservationId = workspaceReservationIdSchema.make("reservation-id");
+
+    const key = createCustomerEmailInitialIdempotencyKey(reservationId);
+
+    expect(key).toBe("workspace-paid-reservation-access-reservation-id");
+    expect(key.length).toBeLessThanOrEqual(256);
+    expect(key).toBe(createCustomerEmailInitialIdempotencyKey(reservationId));
+    expect(key).not.toBe(
+      createCustomerEmailRecoveryIdempotencyKey(
+        EmailDeliveryIdSchema.make("accepted-customer-email-delivery")
+      )
+    );
+  });
+});
+
 describe("createCustomerEmailRecoveryIdempotencyKey", () => {
   test("derives distinct stable keys for long prior delivery ids beyond the provider key limit", async () => {
     const { createCustomerEmailRecoveryIdempotencyKey } = await import(
@@ -324,5 +348,84 @@ describe("workspace reservation email details", () => {
     expect(cancellationMessage?.html).toContain("Sunday, March 28, 2027");
     expect(cancellationMessage?.html).not.toContain("accessToken=");
     expect(cancellationMessage?.text).not.toContain("1234");
+  });
+});
+
+describe("sendPaidReservationEmails idempotency", () => {
+  test("passes the explicit initial customer key to the provider message only", async () => {
+    const {
+      createCustomerEmailInitialIdempotencyKey,
+      WorkspaceReservationEmailService,
+    } = await import("./workspace-reservation-email.service");
+    const { EmailConfigTag, EmailServiceTag } = await import(
+      "@deskohub/email/backend/service"
+    );
+    const { WorkspaceCheckoutNetworkDetailsService } = await import(
+      "./network-details.service"
+    );
+    const reservation = makeReservation({});
+    const sentMessages: EmailMessage[] = [];
+    const emailService: EmailService = {
+      send: mock((message: EmailMessage) => {
+        sentMessages.push(message);
+        return Effect.succeed(sentResult(`email-${sentMessages.length}`));
+      }),
+      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
+      verify: Effect.succeed(true),
+    };
+    const emailConfig: EmailProviderConfig = {
+      provider: "console",
+      defaultFrom: {
+        email: "reservations@workspace.deskohub.cz",
+        name: "Deskohub Workspace",
+      },
+    };
+
+    const { env } = await import("@/env");
+    const previousPreviewBypassSecret = env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    Object.assign(env, {
+      VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
+    });
+    try {
+      await Effect.gen(function* () {
+        const service = yield* WorkspaceReservationEmailService;
+        yield* service.sendPaidReservationEmails({
+          reservation,
+          customerEmailIdempotencyKey: createCustomerEmailInitialIdempotencyKey(
+            reservation.id
+          ),
+        });
+      }).pipe(
+        Effect.provide(
+          WorkspaceReservationEmailService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(EmailServiceTag, emailService),
+                Layer.succeed(EmailConfigTag, emailConfig),
+                WorkspaceCheckoutNetworkDetailsService.Default
+              )
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+    } finally {
+      Object.assign(env, {
+        VERCEL_AUTOMATION_BYPASS_SECRET: previousPreviewBypassSecret,
+      });
+    }
+
+    expect(sentMessages).toHaveLength(2);
+    const [customerMessage, internalMessage] = sentMessages;
+    expect(customerMessage?.tags).toEqual([
+      "workspace-paid-reservation-access",
+    ]);
+    expect(customerMessage?.metadata?.workspaceReservationId).toBe(
+      reservation.id
+    );
+    expect(customerMessage?.idempotencyKey).toBe(
+      "workspace-paid-reservation-access-reservation-id"
+    );
+    expect(internalMessage?.idempotencyKey).toBeUndefined();
   });
 });

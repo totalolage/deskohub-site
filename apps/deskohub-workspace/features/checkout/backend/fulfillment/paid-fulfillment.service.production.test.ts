@@ -136,6 +136,8 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
     expect(result._tag).toBe("Success");
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        "workspace-paid-reservation-access-reservation-id",
     });
     expect(markAwaitingCustomerEmailDelivery).toHaveBeenCalledWith({
       id: "reservation-id",
@@ -247,5 +249,143 @@ describe("WorkspacePaidFulfillmentService production email acceptance", () => {
       customerEmailDeliveryId: recoveredDeliveryId,
     });
     expect(markFulfilled).not.toHaveBeenCalled();
+  });
+
+  test("retries the accepted initial send under the same key when delivery attachment fails before commit", async () => {
+    const acceptedDeliveryId = EmailDeliveryIdSchema.make(
+      "accepted-production-email-delivery"
+    );
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "not_started",
+    };
+    const claimed = {
+      ...order,
+      reservationState: "confirmed",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    };
+    const emailReservation = {
+      ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
+      customer: { email: "customer@example.com" },
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
+      tableName: "12",
+    };
+    const attachmentFailure = new Error(
+      "synthetic delivery attachment failure before commit"
+    );
+    const sendInputs: unknown[] = [];
+    const sendPaidReservationEmails = mock(
+      (
+        input: Parameters<
+          IWorkspaceReservationEmailService["sendPaidReservationEmails"]
+        >[0]
+      ) => {
+        sendInputs.push(input);
+        return Effect.succeed(acceptedDeliveryId);
+      }
+    );
+    let attachmentAttempts = 0;
+    const markAwaitingCustomerEmailDelivery = mock(() => {
+      attachmentAttempts += 1;
+      return attachmentAttempts === 1
+        ? Effect.fail(attachmentFailure)
+        : Effect.void;
+    });
+    const markFulfillmentFailed = mock(() => Effect.void);
+
+    const runs = await Effect.runPromise(
+      Effect.provide(
+        Effect.gen(function* () {
+          const service = yield* WorkspacePaidFulfillmentService;
+          const first = yield* service
+            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .pipe(Effect.result);
+          const second = yield* service
+            .fulfillPaidOrder({ orderId: "reservation-id" })
+            .pipe(Effect.result);
+          return { first, second };
+        }),
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markAwaitingCustomerEmailDelivery,
+                markFulfilled: mock(() =>
+                  Effect.die(
+                    "production fulfillment must stay awaiting delivery"
+                  )
+                ),
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.succeed(emailReservation as never)
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.succeed("access-code")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("production acceptance must not process invoices")
+                ),
+              })
+            )
+          )
+        )
+      )
+    );
+
+    const initialSendInput = {
+      reservation: emailReservation,
+      customerEmailIdempotencyKey:
+        "workspace-paid-reservation-access-reservation-id",
+    };
+    expect(runs.first).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "WorkspacePaidFulfillmentError",
+        failureCode: "fulfillment_completion_failed",
+        cause: attachmentFailure,
+      },
+    });
+    expect(markFulfillmentFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "reservation-id",
+        failureCode: "fulfillment_completion_failed",
+      })
+    );
+    expect(sendInputs).toEqual([initialSendInput, initialSendInput]);
+    expect(initialSendInput.customerEmailIdempotencyKey).not.toBe(
+      createCustomerEmailRecoveryIdempotencyKey(acceptedDeliveryId)
+    );
+    expect(runs.second._tag).toBe("Success");
+    expect(markAwaitingCustomerEmailDelivery).toHaveBeenCalledWith({
+      id: "reservation-id",
+      customerEmailDeliveryId: acceptedDeliveryId,
+    });
   });
 });

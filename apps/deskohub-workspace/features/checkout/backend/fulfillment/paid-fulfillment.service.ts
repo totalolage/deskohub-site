@@ -22,6 +22,7 @@ import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { captureReservationCompleted } from "../analytics/posthog-lifecycle-events";
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
 import {
+  createCustomerEmailInitialIdempotencyKey,
   createCustomerEmailRecoveryIdempotencyKey,
   WorkspaceReservationEmailService,
 } from "./workspace-reservation-email.service";
@@ -389,12 +390,14 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
             const customerEmailDeliveryId = yield* reservationEmails
               .sendPaidReservationEmails({
                 reservation: reservationForDelivery,
-                ...(claimed.activeCustomerEmailDeliveryId && {
-                  customerEmailIdempotencyKey:
-                    createCustomerEmailRecoveryIdempotencyKey(
-                      claimed.activeCustomerEmailDeliveryId
-                    ),
-                }),
+                customerEmailIdempotencyKey:
+                  claimed.activeCustomerEmailDeliveryId
+                    ? createCustomerEmailRecoveryIdempotencyKey(
+                        claimed.activeCustomerEmailDeliveryId
+                      )
+                    : createCustomerEmailInitialIdempotencyKey(
+                        reservationForDelivery.id
+                      ),
               })
               .pipe(
                 Effect.catch((cause) =>
