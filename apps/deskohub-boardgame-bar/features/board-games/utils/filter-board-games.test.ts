@@ -30,6 +30,10 @@ const games = [
     playingTimeMinutes: null,
     inStock: true,
   },
+  {
+    name: "Game without optional metadata",
+    inStock: true,
+  },
 ];
 
 describe("filterBoardGames", () => {
@@ -50,7 +54,7 @@ describe("filterBoardGames", () => {
         durations: [],
         search: "",
       })
-    ).toEqual([games[0]!, games[1]!, games[3]!]);
+    ).toEqual([games[0]!, games[1]!, games[3]!, games[4]!]);
 
     expect(
       filterBoardGames(games, {

@@ -15,7 +15,29 @@ describe("GamesService", () => {
         return Response.json({
           games: [
             {
-              id: 3,
+              id: 1,
+              bggId: 13,
+              name: "Catan",
+              yearPublished: 1995,
+              imageUrl: "https://images.example.test/game.jpg",
+              thumbnailUrl: "https://images.example.test/game-small.jpg",
+              description: "A complete game",
+              minPlayers: 3,
+              maxPlayers: 4,
+              playingTimeMinutes: 120,
+              minAge: 10,
+              weight: 2.31,
+              rating: 7.4,
+              categories: ["Economic"],
+              mechanics: ["Dice Rolling"],
+              inStock: true,
+              note: null,
+              language: "cz",
+              addedAt: "2026-08-20T14:32:00.000Z",
+              updatedAt: "2026-08-28T09:10:00.000Z",
+            },
+            {
+              id: 2,
               bggId: 173346,
               name: "Darwin&#039;s &amp; &quot;Journey&quot; &#x1F3B2;",
               yearPublished: null,
@@ -36,6 +58,14 @@ describe("GamesService", () => {
               addedAt: "2026-08-30T11:45:06.698Z",
               updatedAt: "2026-08-30T11:45:06.698Z",
             },
+            {
+              id: 3,
+              bggId: 224517,
+              name: "Brass: Birmingham",
+              inStock: true,
+              addedAt: "2026-08-30T12:00:00.000Z",
+              updatedAt: "2026-08-30T12:00:00.000Z",
+            },
           ],
         });
       }
@@ -52,15 +82,20 @@ describe("GamesService", () => {
       Effect.runPromise
     );
 
-    expect(games).toHaveLength(1);
-    expect(games[0]?.name).toBe('Darwin\'s & "Journey" 🎲');
-    expect(games[0]?.yearPublished).toBeNull();
-    expect(games[0]?.imageUrl).toBeNull();
-    expect(games[0]?.thumbnailUrl).toBeNull();
-    expect(games[0]?.minPlayers).toBeNull();
-    expect(games[0]?.maxPlayers).toBeNull();
-    expect(games[0]?.playingTimeMinutes).toBeNull();
-    expect(games[0]?.categories).toBeNull();
+    expect(games).toHaveLength(3);
+    expect(games.map((game) => game.name)).toEqual([
+      "Catan",
+      'Darwin\'s & "Journey" 🎲',
+      "Brass: Birmingham",
+    ]);
+    expect(games[1]?.yearPublished).toBeNull();
+    expect(games[1]?.imageUrl).toBeNull();
+    expect(games[1]?.thumbnailUrl).toBeNull();
+    expect(games[1]?.minPlayers).toBeNull();
+    expect(games[1]?.maxPlayers).toBeNull();
+    expect(games[1]?.playingTimeMinutes).toBeNull();
+    expect(games[1]?.categories).toBeNull();
+    expect(games[2]).not.toHaveProperty("playingTimeMinutes");
     expect(requests.map((request) => request.url)).toEqual([
       "https://deskohub-games.vercel.app/api/games",
     ]);

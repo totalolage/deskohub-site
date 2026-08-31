@@ -8,7 +8,7 @@
     "./generated": "./src/generated/effect.gen.ts"
   },
   "scripts": {
-    "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/games-api.yaml --name GamesClient --output ./src/generated/effect.gen.ts",
+    "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/games-api.yaml --name GamesClient --output ./src/generated/effect.gen.ts --convert-nullable-to-31",
     "lint": "cd ../.. && biome check packages/games/src --config-path biome.json --vcs-root .",
     "test": "bun test",
     "typecheck": "tsc --project tsconfig.json"

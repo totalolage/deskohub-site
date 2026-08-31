@@ -24,7 +24,7 @@ const makeGamesService = Effect.gen(function* () {
   });
 
   const listGames = Effect.fn("GamesService.listGames")(function* () {
-    const response = yield* client.listGames(undefined).pipe(
+    const response = yield* client["GET/api/games"](undefined).pipe(
       Effect.mapError(
         (cause) =>
           new GamesRequestError({
