@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
+import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Effect, Layer } from "effect";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
@@ -68,9 +69,13 @@ describe("WorkspacePaidFulfillmentService", () => {
       Effect.die("already confirmed reservations do not update confirmation")
     );
     const deliverySteps: string[] = [];
+    const customerEmailDeliveryId = EmailDeliveryIdSchema.make(
+      "accepted-customer-email-delivery"
+    );
     const sendPaidReservationEmails = mock(() =>
       Effect.sync(() => {
         deliverySteps.push("email");
+        return customerEmailDeliveryId;
       })
     );
     const resolveCustomerAccessCode = mock(() =>
@@ -178,7 +183,11 @@ describe("WorkspacePaidFulfillmentService", () => {
     };
     const confirmReservation = mock(() => Effect.void);
     const markReservationConfirmed = mock(() => Effect.void);
-    const sendPaidReservationEmails = mock(() => Effect.void);
+    const sendPaidReservationEmails = mock(() =>
+      Effect.succeed(
+        EmailDeliveryIdSchema.make("accepted-customer-email-delivery")
+      )
+    );
     const markFulfilled = mock(() => Effect.void);
     const processInvoice = mock(() => Effect.void);
 
@@ -241,6 +250,75 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(processInvoice).toHaveBeenCalledWith({
       paymentAttemptId: "payment-attempt-id",
     });
+  });
+
+  test("skips awaiting_delivery paid orders even when updatedAt is stale", async () => {
+    const order = {
+      id: "reservation-id",
+      activePaymentAttemptId: "payment-attempt-id",
+      paymentState: "paid",
+      fulfillmentState: "awaiting_delivery",
+      updatedAt: Temporal.Now.instant().subtract({
+        milliseconds: PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS + 1000,
+      }),
+    };
+    const claimPaidFulfillment = mock(() =>
+      Effect.die("awaiting_delivery reservations must not be claimed")
+    );
+    const sendPaidReservationEmails = mock(() =>
+      Effect.die("awaiting_delivery reservations must not send emails")
+    );
+    const markFulfillmentFailed = mock(() => Effect.void);
+
+    const result = await Effect.gen(function* () {
+      const service = yield* WorkspacePaidFulfillmentService;
+      return yield* service
+        .fulfillPaidOrder({ orderId: "reservation-id" })
+        .pipe(Effect.result);
+    }).pipe(
+      Effect.provide(
+        WorkspacePaidFulfillmentService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.mock(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment,
+                markFulfilled: mock(() => Effect.void),
+                markFulfillmentFailed,
+              }),
+              Layer.mock(DotyposService, {}),
+              Layer.mock(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.die("email flow should not start")
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.mock(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails,
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.mock(WorkspaceCheckoutAccessCodeService, {
+                resolveCustomerAccessCode: mock(() =>
+                  Effect.die("access flow should not start")
+                ),
+              }),
+              Layer.mock(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              }),
+              Layer.mock(ReservationInvoiceService, {
+                processByPaymentAttemptId: mock(() =>
+                  Effect.die("invoice processing should not start")
+                ),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result._tag).toBe("Success");
+    expect(claimPaidFulfillment).not.toHaveBeenCalled();
+    expect(sendPaidReservationEmails).not.toHaveBeenCalled();
+    expect(markFulfillmentFailed).not.toHaveBeenCalled();
   });
 
   test("retries invoice processing without reverting completed access fulfillment", async () => {

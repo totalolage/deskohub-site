@@ -199,6 +199,16 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
               return;
             }
 
+            if (reservation.fulfillmentState === "awaiting_delivery") {
+              yield* Effect.logInfo(
+                "Paid fulfillment skipped: awaiting customer email delivery",
+                {
+                  reason: "awaiting_customer_email_delivery",
+                }
+              );
+              return;
+            }
+
             const staleProcessingBefore = Temporal.Now.instant().subtract({
               milliseconds: PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
             });
@@ -373,7 +383,7 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                   })
                 )
               );
-            yield* reservationEmails
+            const customerEmailDeliveryId = yield* reservationEmails
               .sendPaidReservationEmails({
                 reservation: reservationForDelivery,
               })
@@ -400,6 +410,13 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
               return;
             }
 
+            yield* Effect.logInfo(
+              "Paid fulfillment recorded accepted customer email delivery"
+            );
+            yield* reservations.markAwaitingCustomerEmailDelivery({
+              id: claimed.id,
+              customerEmailDeliveryId,
+            });
             yield* Effect.logInfo(
               "Paid fulfillment is awaiting Resend delivery webhook"
             );

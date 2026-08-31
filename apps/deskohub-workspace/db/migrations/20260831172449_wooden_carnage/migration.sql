@@ -1,0 +1,5 @@
+ALTER TABLE "workspace_reservations" ADD COLUMN "active_customer_email_delivery_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "workspace_reservations_active_email_delivery_unique_idx" ON "workspace_reservations" ("active_customer_email_delivery_id") WHERE "active_customer_email_delivery_id" is not null;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_awaiting_delivery_check" CHECK ("fulfillment_state" <> 'awaiting_delivery' or "active_customer_email_delivery_id" is not null);--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_active_email_delivery_state_check" CHECK ("active_customer_email_delivery_id" is null or "fulfillment_state" in ('awaiting_delivery', 'failed', 'fulfilled'));--> statement-breakpoint
+ALTER TABLE "workspace_reservations" DROP CONSTRAINT "workspace_reservations_fulfillment_state_check", ADD CONSTRAINT "workspace_reservations_fulfillment_state_check" CHECK ("fulfillment_state" in ('not_started', 'processing', 'awaiting_delivery', 'fulfilled', 'failed'));

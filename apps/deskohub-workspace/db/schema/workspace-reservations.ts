@@ -2,6 +2,7 @@ import type {
   DotyposCustomerId,
   DotyposReservationId,
 } from "@deskohub/dotypos";
+import type { EmailDeliveryId } from "@deskohub/email";
 import type { NexiCorrelationId } from "@deskohub/nexi";
 import { sql } from "drizzle-orm";
 import {
@@ -56,6 +57,7 @@ export const paymentStates = [
 export const fulfillmentStates = [
   "not_started",
   "processing",
+  "awaiting_delivery",
   "fulfilled",
   "failed",
 ] as const;
@@ -109,6 +111,9 @@ export const workspaceReservations = pgTable(
     activePaymentAttemptId: text(
       "active_payment_attempt_id"
     ).$type<PaymentAttemptId>(),
+    activeCustomerEmailDeliveryId: text(
+      "active_customer_email_delivery_id"
+    ).$type<EmailDeliveryId>(),
     reservationDetails: jsonb("reservation_details")
       .$type<StoredWorkspaceReservationDetails>()
       .notNull(),
@@ -163,6 +168,20 @@ export const workspaceReservations = pgTable(
       "workspace_reservations_fulfillment_failed_check",
       sql`${t.fulfillmentState} <> 'failed' or (${t.fulfillmentFailedAt} is not null and ${t.fulfillmentFailureCode} is not null)`
     ),
+    check(
+      "workspace_reservations_awaiting_delivery_check",
+      sql`${t.fulfillmentState} <> 'awaiting_delivery' or ${t.activeCustomerEmailDeliveryId} is not null`
+    ),
+    check(
+      "workspace_reservations_active_email_delivery_state_check",
+      sql`${t.activeCustomerEmailDeliveryId} is null or ${t.fulfillmentState} in (${quotedSqlList(
+        [
+          "awaiting_delivery",
+          "failed",
+          "fulfilled",
+        ] satisfies readonly FulfillmentState[]
+      )})`
+    ),
     uniqueIndex("workspace_reservations_attempt_key_unique_idx").on(
       t.checkoutAttemptKey
     ),
@@ -176,6 +195,9 @@ export const workspaceReservations = pgTable(
     uniqueIndex("workspace_reservations_dotypos_reservation_unique_idx")
       .on(t.dotyposReservationId)
       .where(sql`${t.dotyposReservationId} is not null`),
+    uniqueIndex("workspace_reservations_active_email_delivery_unique_idx")
+      .on(t.activeCustomerEmailDeliveryId)
+      .where(sql`${t.activeCustomerEmailDeliveryId} is not null`),
     index("workspace_reservations_states_idx").on(
       t.reservationState,
       t.paymentState,

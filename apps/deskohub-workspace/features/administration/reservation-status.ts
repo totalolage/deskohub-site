@@ -21,6 +21,7 @@ export const canCancelReservation = (
 ) =>
   Boolean(reservation.dotyposReservationId?.trim()) &&
   reservation.fulfillmentState !== "processing" &&
+  reservation.fulfillmentState !== "awaiting_delivery" &&
   (allowPendingPayment || reservation.paymentState !== "pending") &&
   (["held", "hold_expired", "confirmed", "cancellation_failed"].includes(
     reservation.reservationState
@@ -169,6 +170,7 @@ export const getAdministrationReservationLifecycle = (
   if (
     input.paymentState === "paid" ||
     input.fulfillmentState === "processing" ||
+    input.fulfillmentState === "awaiting_delivery" ||
     input.reservationState === "confirming" ||
     input.reservationState === "confirmed"
   ) {
@@ -250,6 +252,9 @@ export const getAdministrationReservationStatus = (
   }
   if (input.reservationState === "hold_expired") {
     return { group: "cancelled", label: "Expired" };
+  }
+  if (input.fulfillmentState === "awaiting_delivery") {
+    return { group: "in_progress", label: "Delivering confirmation" };
   }
   if (
     input.paymentState === "paid" ||

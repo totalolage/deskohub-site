@@ -85,6 +85,7 @@ Advertised, signed, and freshly affirmed quotes and local payment attempts alway
 | Checkout session and attempt idempotency | Deskohub workflow | Store only the HMAC session and attempt keys. The object payloads used to derive them are transient and must not be persisted. |
 | Payment session and terminal state | Nexi plus Deskohub workflow | Store positive Nexi attempts with their external identifiers and store zero-total internal attempts without external fields. |
 | Nexi webhooks | Nexi plus Deskohub workflow | Store dedupe identity and normalized processing state. Never store raw notification bodies or optional sensitive provider fields. |
+| Customer email delivery tracking | Email provider plus Deskohub workflow | Store the active non-PII provider delivery ID and local fulfillment state only. Never store the customer address or raw delivery payloads. |
 | Administration order and operation views | Nexi, joined to Deskohub attempts | Read current orders and operations from Nexi on demand and expose only allowlisted identifiers, status, channel, timestamps, and amounts. Do not persist provider snapshots. |
 | Customer marketing consent | Deskohub customer consent | Store one active-or-withdrawn row per `dotypos_customer_id`, with the accepted marketing document hash, locale, and grant/withdrawal timestamps. Never store customer contact data. |
 | Reservation terms acceptance | Deskohub legal evidence | Store the accepted terms and operating-rules document keys, paths, hashes, timestamps, locale, and source. Never store rendered legal documents or customer contact data. |
@@ -96,7 +97,7 @@ No customer PII may be persisted in plaintext database columns, JSON, text messa
 Allowed local values:
 
 - Dotypos customer IDs and reservation IDs.
-- Deskohub IDs, correlation IDs, HMAC checkout session and attempt keys, payment attempt IDs, webhook event IDs, and provider operation IDs.
+- Deskohub IDs, correlation IDs, HMAC checkout session and attempt keys, payment attempt IDs, webhook event IDs, provider operation IDs, and active customer email delivery IDs.
 - Nexi `securityToken`, because it is short-lived non-PII and needed for payment-attempt safety.
 - Legal document paths and hashes.
 - Customer marketing grant and withdrawal timestamps.
@@ -131,6 +132,7 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | `payment_state` | text enum | yes | Aggregate payment state across attempts. |
 | `fulfillment_state` | text enum | yes | Local post-payment/legal-delivery workflow state. |
 | `active_payment_attempt_id` | text | no | Current Nexi or internal payment attempt. |
+| `active_customer_email_delivery_id` | text | no | Active non-PII provider delivery ID awaiting the customer email delivery webhook. |
 | `reservation_hold_expires_at` | timestamptz | no | Local hold deadline used for cleanup scheduling. Mirrors Deskohub hold policy, not Dotypos facts. |
 | `reservation_hold_expired_at` | timestamptz | no | When local cleanup observed the hold as expired. |
 | `reservation_created_at` | timestamptz | no | When Dotypos reservation creation succeeded. |
@@ -152,12 +154,15 @@ Indexes and constraints:
 - Lookup index on `(checkout_session_key, created_at)`.
 - Unique index on `correlation_id`.
 - Partial unique index on `dotypos_reservation_id` where not null.
+- Unique index on `active_customer_email_delivery_id` where not null.
 - Partial index on `reservation_hold_expires_at` for `reservation_state = 'held'`.
 - Recovery index on `(reservation_state, payment_state, fulfillment_state)`.
 - `dotypos_reservation_id` must be non-null for `held`, `confirming`, `confirmed`, `cancelling`, `cancelled`, and `cancellation_failed` states.
 - `paid_at` must be non-null when `payment_state = 'paid'`.
 - `fulfilled_at` must be non-null when `fulfillment_state = 'fulfilled'`.
 - `fulfillment_failed_at` and `fulfillment_failure_code` must be non-null when `fulfillment_state = 'failed'`.
+- `active_customer_email_delivery_id` must be non-null when `fulfillment_state = 'awaiting_delivery'`.
+- `active_customer_email_delivery_id` is non-null only for `awaiting_delivery`, `failed`, and `fulfilled` fulfillment states.
 
 ### `payment_attempts`
 
@@ -337,6 +342,7 @@ Allowed payment transitions:
 
 - `not_started`: no post-payment confirmation/delivery work has completed.
 - `processing`: paid workflow is claimed by a fulfillment worker.
+- `awaiting_delivery`: production recorded the accepted customer send's active non-PII provider delivery ID and is waiting for the matching delivery webhook.
 - `fulfilled`: Dotypos reservation confirmation and required customer-confirmation/internal notifications are complete.
 - `failed`: payment succeeded but fulfillment needs retry or manual recovery.
 
@@ -345,17 +351,27 @@ Allowed fulfillment transitions:
 - `not_started -> processing -> fulfilled`
 - `not_started -> processing -> failed`
 - `failed -> processing -> fulfilled`
+- `processing -> awaiting_delivery -> fulfilled`
 - `processing -> failed`
+- `awaiting_delivery -> failed`
+- `failed -> fulfilled` only when the failure code is `fulfillment_email_failed` and a matching delivered webhook arrives.
 
 Fulfillment is allowed only when `payment_state = 'paid'`.
 
-Production reaches `fulfilled` only after the Resend delivery webhook confirms
-the customer reservation-confirmation email. Preview and Development reach `fulfilled` after the
-configured email provider accepts the required customer send; the internal
-notification remains best effort. Protected Preview deployments cannot receive
-provider callbacks reliably. Recovery sends use deterministic
-reservation-and-category idempotency keys, and an abandoned `processing` claim
-becomes retryable after one minute.
+When the production email provider accepts the required customer send, the
+fulfillment worker records its active non-PII provider delivery ID and moves
+`processing -> awaiting_delivery`. Stale `processing` recovery may reclaim an
+abandoned claim after one minute but never reclaims `awaiting_delivery`. A
+delivery webhook may change state only when its provider email ID matches the
+recorded active delivery ID. A matching delivered event completes
+`awaiting_delivery` or repairs only `failed` with failure code
+`fulfillment_email_failed`; a failure or bounce event fails only
+`awaiting_delivery` and never downgrades `fulfilled`. Outside production,
+fulfillment reaches `fulfilled` when the configured email provider accepts the
+required customer send; the internal notification remains best effort.
+Protected Preview deployments cannot receive provider callbacks reliably.
+Recovery sends use deterministic reservation-and-category idempotency keys and
+record a new active delivery ID.
 
 The customer confirmation contains a protected reservation-access link and
 never contains the door PIN. The dedicated access page resolves the current PIN
@@ -581,7 +597,8 @@ sequenceDiagram
   Webhook->>DB: Claim fulfillment_state=processing and reservation_state=confirming
   Fulfillment->>Dotypos: Confirm/finalize reservation using dotyposReservationId
   Dotypos-->>Fulfillment: Confirmation success
-  Fulfillment->>DB: reservation_state=confirmed, fulfillment_state=fulfilled
+  Fulfillment->>DB: reservation_state=confirmed; record provider delivery ID; fulfillment_state=awaiting_delivery
+  note over Fulfillment,DB: A matching email.delivered webhook later marks fulfillment_state=fulfilled
   Webhook->>DB: webhook_events processed
   end
 ```
@@ -639,6 +656,7 @@ sequenceDiagram
 | Pending payment | `payment_state = 'pending'` plus active attempt | Wait for webhook, verify with Nexi, or show pending status. |
 | Paid but not fulfilled | `payment_state = 'paid' and fulfillment_state in ('not_started', 'failed')` | Run fulfillment worker. |
 | Fulfillment stuck | `payment_state = 'paid' and fulfillment_state = 'processing'` | Inspect staleness; retry only through guarded repair path. |
+| Awaiting customer email delivery | `payment_state = 'paid' and fulfillment_state = 'awaiting_delivery'` | Wait for the matching provider delivery webhook; never reclaim or resend. |
 | Expired unpaid hold | `reservation_state = 'held' and payment_state <> 'paid' and reservation_hold_expires_at <= now()` | Cancel Dotypos hold. |
 | Cancellation failed | `reservation_state = 'cancellation_failed'` | Retry Dotypos cancellation. |
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
@@ -654,6 +672,7 @@ sequenceDiagram
 - Confirm Nexi `securityToken` is stored only on `payment_attempts` and is not copied to webhook events.
 - Confirm internal attempts are exactly zero, already paid, and contain no Nexi identifiers, security token, redirect URL, webhook, operation, or provider-status fields.
 - Confirm webhook handling verifies through Nexi before marking payment paid or terminal unsuccessful.
+- Confirm fulfillment never reclaims `awaiting_delivery` and production completes only through the matching non-PII provider delivery webhook.
 - Confirm failure/cancel/expired payment paths cancel unpaid Dotypos holds or leave guarded local state for retry.
 - Confirm test data uses clearly fake customers and test payment instruments.
 - Confirm no production Dotypos or Nexi credentials are used for live tests unless an explicit production smoke test has been approved.

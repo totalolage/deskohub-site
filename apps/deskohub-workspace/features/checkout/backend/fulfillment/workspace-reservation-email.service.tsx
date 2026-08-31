@@ -1,4 +1,5 @@
 import type { Customer } from "@deskohub/dotypos/generated";
+import type { EmailDeliveryId } from "@deskohub/email";
 import type { NetworkError } from "@deskohub/email/backend/network-error";
 import {
   EmailConfigTag,
@@ -57,7 +58,7 @@ import { createWorkspaceMeetingRoomEmailDetailRows } from "./workspace-meeting-r
 export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
-  }) => Effect.Effect<void, EmailServiceError | NetworkError>;
+  }) => Effect.Effect<EmailDeliveryId, EmailServiceError | NetworkError>;
   readonly sendCancellationEmail: (input: {
     readonly reservation: WorkspaceReservationDetails;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
@@ -633,15 +634,16 @@ export class WorkspaceReservationEmailService extends Context.Service<
             metadata,
           };
 
-          yield* emailService.send(customerMessage).pipe(
-            Effect.tapError((cause) =>
-              Effect.logError("Workspace reservation customer email failed", {
-                cause,
-                workspaceReservationId: reservation.id,
-              })
-            ),
-            Effect.asVoid
-          );
+          const customerSendResult = yield* emailService
+            .send(customerMessage)
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logError("Workspace reservation customer email failed", {
+                  cause,
+                  workspaceReservationId: reservation.id,
+                })
+              )
+            );
 
           yield* Effect.gen(function* () {
             const renderedInternalEmail = yield* renderWorkspaceEmail(
@@ -668,6 +670,8 @@ export class WorkspaceReservationEmailService extends Context.Service<
             ),
             Effect.ignore
           );
+
+          return customerSendResult.id;
         }),
       };
     })

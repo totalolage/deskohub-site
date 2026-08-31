@@ -97,6 +97,7 @@ describe("ProviderPaymentFinalizationService", () => {
   for (const fulfillmentState of [
     "not_started",
     "processing",
+    "awaiting_delivery",
     "fulfilled",
   ] as const) {
     test(`starts fulfillment for already-paid ${fulfillmentState} provider returns`, async () => {

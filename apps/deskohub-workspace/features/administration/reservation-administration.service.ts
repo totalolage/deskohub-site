@@ -95,12 +95,24 @@ export class ReservationAdministrationService extends Context.Service<
                 forcedPendingPayment
               )
             ) {
+              if (current.fulfillmentState === "awaiting_delivery") {
+                return yield* new ReservationAdministrationError({
+                  code: "not_cancellable",
+                  message:
+                    "The confirmation email is still being delivered. Try again after delivery completes.",
+                });
+              }
+              if (current.fulfillmentState === "processing") {
+                return yield* new ReservationAdministrationError({
+                  code: "not_cancellable",
+                  message:
+                    "The reservation is being confirmed. Try again after confirmation finishes.",
+                });
+              }
               return yield* new ReservationAdministrationError({
                 code: "not_cancellable",
                 message:
-                  current.fulfillmentState === "processing"
-                    ? "The reservation is being confirmed. Try again after confirmation finishes."
-                    : "The reservation cannot be cancelled in its current state.",
+                  "The reservation cannot be cancelled in its current state.",
               });
             }
 

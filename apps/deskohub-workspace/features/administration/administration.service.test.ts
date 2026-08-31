@@ -268,6 +268,84 @@ describe("AdministrationService", () => {
     expect(result.items[0]?.purpose).toBe("business");
   });
 
+  test("reports an awaiting-delivery reservation as delivering confirmation", async () => {
+    const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
+    const row = {
+      id: "workspace-reservation",
+      dotyposCustomerId: "dotypos-customer",
+      dotyposReservationId: "dotypos-reservation",
+      reservationState: "confirmed",
+      paymentState: "paid",
+      fulfillmentState: "awaiting_delivery",
+      reservationPurpose: "business",
+      reservationDetails: { kind: "meeting-room" },
+      reservationCreatedAt: instant,
+      reservationConfirmedAt: instant,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: null,
+      paidAt: instant,
+      fulfilledAt: null,
+      fulfillmentFailedAt: null,
+      failureCode: null,
+      createdAt: instant,
+      updatedAt: instant,
+    } as const;
+    const rows = [[{ value: 1 }], [row], [], [], []] as const;
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(rows[selectCall++] ?? []),
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({});
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Default.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                getCustomers: () =>
+                  Effect.succeed([{ id: "dotypos-customer" }]),
+                listReservations: () =>
+                  Effect.succeed([
+                    {
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "dotypos-customer",
+                      id: "dotypos-reservation",
+                      startDate: "2026-08-10T10:00:00Z",
+                      endDate: "2026-08-10T11:00:00Z",
+                      seats: "1",
+                      status: "CONFIRMED" as const,
+                    },
+                  ]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result.items[0]?.status).toEqual({
+      group: "in_progress",
+      label: "Delivering confirmation",
+    });
+    expect(result.items[0]?.statusNote).toBeNull();
+  });
+
   test("flags queued late-payment recovery ahead of cleanup state", async () => {
     const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
     const row = {
