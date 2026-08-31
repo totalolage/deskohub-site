@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "d87b684b-82b5-4b84-97b9-4beac57c2c4c",
+  "id": "d4b2b7cb-557c-462b-8201-f56a27423e1b",
   "prevIds": [
     "b4530a5e-e181-4e4c-9551-461785e62764"
   ],
@@ -6028,7 +6028,7 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "\"active_customer_email_delivery_id\" is null or \"fulfillment_state\" in ('awaiting_delivery', 'failed', 'fulfilled')",
+      "value": "\"active_customer_email_delivery_id\" is null or \"fulfillment_state\" in ('processing', 'awaiting_delivery', 'failed', 'fulfilled')",
       "name": "workspace_reservations_active_email_delivery_state_check",
       "entityType": "checks",
       "schema": "public",

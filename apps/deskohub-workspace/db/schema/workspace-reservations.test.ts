@@ -27,15 +27,15 @@ describe("workspace reservations active customer email delivery", () => {
     );
   });
 
-  test("widens the delivery state check as one same-name constraint replacement", async () => {
+  test("creates the final delivery state check in the single migration", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260831184749_lovely_titanium_man/migration.sql",
+        "../migrations/20260831172449_wooden_carnage/migration.sql",
         import.meta.url
       )
     ).text();
 
-    expect(migration).toContain(
+    expect(migration).not.toContain(
       'DROP CONSTRAINT "workspace_reservations_active_email_delivery_state_check"'
     );
     expect(migration).toContain(

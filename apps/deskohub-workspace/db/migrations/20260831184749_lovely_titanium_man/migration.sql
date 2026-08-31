@@ -1,1 +1,0 @@
-ALTER TABLE "workspace_reservations" DROP CONSTRAINT "workspace_reservations_active_email_delivery_state_check", ADD CONSTRAINT "workspace_reservations_active_email_delivery_state_check" CHECK ("active_customer_email_delivery_id" is null or "fulfillment_state" in ('processing', 'awaiting_delivery', 'failed', 'fulfilled'));
