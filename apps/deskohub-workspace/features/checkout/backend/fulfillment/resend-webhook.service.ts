@@ -1,5 +1,13 @@
 import { EmailDeliveryIdSchema } from "@deskohub/email";
-import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import {
+  Context,
+  Data,
+  Effect,
+  Layer,
+  Option,
+  Schema,
+  SchemaGetter,
+} from "effect";
 import { Resend } from "resend";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { ReservationInvoiceService } from "@/features/accounting/backend/reservation-invoice.service";
@@ -12,6 +20,12 @@ import {
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
 import { PostHogEventService } from "@/shared/backend/analytics/posthog-event.service";
+import {
+  type Instant,
+  instantStringSchema,
+  TemporalInstantSchema,
+  temporalInstantToIsoString,
+} from "@/shared/utils/temporal";
 import { captureReservationFulfilled } from "../analytics/posthog-lifecycle-events";
 import { ResendWebhookRuntimeConfig } from "./resend-webhook.config";
 
@@ -34,6 +48,20 @@ export const ResendEmailIdSchema = EmailDeliveryIdSchema.pipe(
   description: "Opaque identifier assigned to an email delivery by Resend.",
 });
 export type ResendEmailId = typeof ResendEmailIdSchema.Type;
+
+const ResendWebhookCreatedAtSchema = instantStringSchema
+  .pipe(
+    Schema.decodeTo(TemporalInstantSchema, {
+      decode: SchemaGetter.transform((value) => Temporal.Instant.from(value)),
+      encode: SchemaGetter.transform(
+        (instant) => temporalInstantToIsoString(instant) as Instant
+      ),
+    })
+  )
+  .annotate({
+    identifier: "ResendWebhookCreatedAt",
+    description: "ISO-8601 time at which Resend created the webhook event.",
+  });
 
 const ResendWebhookHeadersSchema = Schema.Struct({
   id: ResendWebhookEventIdSchema,
@@ -59,6 +87,7 @@ const ResendTagsSchema = Schema.Union([
 
 const ResendWebhookEventInputSchema = Schema.Struct({
   type: Schema.NonEmptyString,
+  created_at: ResendWebhookCreatedAtSchema,
   data: Schema.Struct({
     email_id: Schema.optional(ResendEmailIdSchema),
     tags: Schema.optional(ResendTagsSchema),
@@ -71,6 +100,7 @@ type ResendWebhookEventInput = Schema.Schema.Type<
 
 interface ResendWebhookEvent {
   readonly type: string;
+  readonly createdAt: Temporal.Instant;
   readonly data: {
     readonly email_id?: ResendEmailId;
     readonly tags: readonly { readonly name: string; readonly value: string }[];
@@ -92,6 +122,7 @@ const decodeResendWebhookEvent = <T>(input: T) =>
     Effect.map(
       (event): ResendWebhookEvent => ({
         type: event.type,
+        createdAt: event.created_at,
         data: {
           email_id: event.data.email_id,
           tags: normalizeResendTags(event.data.tags),
@@ -312,12 +343,60 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
             }
 
             if (reservation.fulfillmentState === "failed") {
-              yield* Effect.logInfo(
-                "Resend delivery success ignored: reservation already failed",
-                { eventId: input.eventId, workspaceReservationId }
-              );
+              if (
+                reservation.fulfillmentFailureCode !==
+                fulfillmentEmailFailureCode
+              ) {
+                yield* Effect.logInfo(
+                  "Resend delivery success ignored: reservation already failed",
+                  { eventId: input.eventId, workspaceReservationId }
+                );
 
-              return ignored("reservation_already_failed");
+                return ignored("reservation_already_failed");
+              }
+
+              const recovered = yield* reservations
+                .recoverEmailDeliveryFailure({
+                  id: workspaceReservationId,
+                  deliveredAt: event.createdAt,
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ResendWebhookProcessingError({
+                        errorCode: "resend_webhook_reservation_update_failed",
+                        message:
+                          "Resend webhook could not recover reservation email delivery failure.",
+                        eventId: input.eventId,
+                        workspaceReservationId,
+                        cause,
+                      })
+                  )
+                );
+
+              if (!recovered) {
+                yield* Effect.logInfo(
+                  "Resend delivery success ignored: email failure recovery not applied",
+                  { eventId: input.eventId, workspaceReservationId }
+                );
+
+                return ignored("recovery_not_applied");
+              }
+
+              yield* captureReservationFulfilled({
+                reservation: recovered,
+                timestamp: event.createdAt,
+              }).pipe(
+                Effect.provideService(PostHogEventService, posthogEvents)
+              );
+              yield* processReservationInvoice({
+                eventId: input.eventId,
+                reservation: recovered,
+              });
+
+              return {
+                status: "processed",
+              } satisfies ResendWebhookProcessingResult;
             }
 
             if (reservation.fulfillmentState !== "processing") {
@@ -333,7 +412,7 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
               return ignored("reservation_not_processing");
             }
 
-            const fulfilledAt = Temporal.Now.instant();
+            const fulfilledAt = event.createdAt;
             yield* reservations
               .markFulfilled({
                 id: workspaceReservationId,
@@ -366,22 +445,11 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
             } satisfies ResendWebhookProcessingResult;
           }
 
-          if (reservation.fulfillmentState === "failed") {
-            return ignored("reservation_already_failed");
-          }
-
-          if (
-            reservation.fulfillmentState !== "processing" &&
-            reservation.fulfillmentState !== "fulfilled"
-          ) {
-            return ignored("reservation_not_fulfillable");
-          }
-
-          yield* reservations
+          const failed = yield* reservations
             .markFulfillmentDeliveryFailed({
               id: workspaceReservationId,
               failureCode: fulfillmentEmailFailureCode,
-              failedAt: Temporal.Now.instant(),
+              failedAt: event.createdAt,
             })
             .pipe(
               Effect.mapError(
@@ -396,6 +464,15 @@ function makeResendWebhookServiceLayer(service: typeof ResendWebhookService) {
                   })
               )
             );
+
+          if (!failed) {
+            yield* Effect.logInfo(
+              "Resend delivery failure ignored: failure marker not applied",
+              { eventId: input.eventId, workspaceReservationId }
+            );
+
+            return ignored("delivery_failure_not_applied");
+          }
 
           return {
             status: "processed",
