@@ -23,7 +23,12 @@ export function filterBoardGames<T extends FilterableGame>(
     if (!game.inStock) return false;
 
     if (filters.playerCount !== null) {
-      if (game.minPlayers === null || game.maxPlayers === null) return false;
+      if (
+        typeof game.minPlayers !== "number" ||
+        typeof game.maxPlayers !== "number"
+      ) {
+        return false;
+      }
 
       const matchesPlayers =
         filters.playerCount === 7
@@ -36,7 +41,7 @@ export function filterBoardGames<T extends FilterableGame>(
     if (filters.durations.length > 0) {
       const minutes = game.playingTimeMinutes;
       if (
-        minutes === null ||
+        typeof minutes !== "number" ||
         !filters.durations.some((duration) =>
           matchesDuration(minutes, duration)
         )

@@ -171,7 +171,7 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
                   <h3 className="font-bold text-base text-white leading-tight">
                     {game.name}
                   </h3>
-                  {game.rating !== null && (
+                  {typeof game.rating === "number" && (
                     <span
                       className="shrink-0 font-extrabold text-[#4fbba3] text-sm"
                       title={m["boardGames.rating"]()}
@@ -180,22 +180,24 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
                     </span>
                   )}
                 </div>
-                {((game.minPlayers !== null && game.maxPlayers !== null) ||
-                  game.playingTimeMinutes !== null) && (
+                {((typeof game.minPlayers === "number" &&
+                  typeof game.maxPlayers === "number") ||
+                  typeof game.playingTimeMinutes === "number") && (
                   <div className="flex flex-wrap items-center gap-3.5 text-[#b9c2d1] text-xs">
-                    {game.minPlayers !== null && game.maxPlayers !== null && (
-                      <span className="font-semibold text-[#4fbba3]">
-                        {game.minPlayers === game.maxPlayers
-                          ? m["boardGames.playerCount"]({
-                              count: game.minPlayers,
-                            })
-                          : m["boardGames.playerRange"]({
-                              min: game.minPlayers,
-                              max: game.maxPlayers,
-                            })}
-                      </span>
-                    )}
-                    {game.playingTimeMinutes !== null && (
+                    {typeof game.minPlayers === "number" &&
+                      typeof game.maxPlayers === "number" && (
+                        <span className="font-semibold text-[#4fbba3]">
+                          {game.minPlayers === game.maxPlayers
+                            ? m["boardGames.playerCount"]({
+                                count: game.minPlayers,
+                              })
+                            : m["boardGames.playerRange"]({
+                                min: game.minPlayers,
+                                max: game.maxPlayers,
+                              })}
+                        </span>
+                      )}
+                    {typeof game.playingTimeMinutes === "number" && (
                       <span>
                         {m["boardGames.minutes"]({
                           count: game.playingTimeMinutes,
