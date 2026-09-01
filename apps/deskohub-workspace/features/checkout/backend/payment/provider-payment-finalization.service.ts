@@ -121,6 +121,7 @@ function makeProviderPaymentFinalizationServiceLayer(
                 reservation.paymentState === "paid" &&
                 (reservation.fulfillmentState === "not_started" ||
                   reservation.fulfillmentState === "processing" ||
+                  reservation.fulfillmentState === "awaiting_delivery" ||
                   reservation.fulfillmentState === "fulfilled")
               ) {
                 yield* Effect.logWarning(

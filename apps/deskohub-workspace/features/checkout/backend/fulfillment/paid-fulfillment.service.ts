@@ -21,7 +21,11 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { captureReservationCompleted } from "../analytics/posthog-lifecycle-events";
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
-import { WorkspaceReservationEmailService } from "./workspace-reservation-email.service";
+import {
+  createCustomerEmailInitialIdempotencyKey,
+  createCustomerEmailRecoveryIdempotencyKey,
+  WorkspaceReservationEmailService,
+} from "./workspace-reservation-email.service";
 
 export type WorkspacePaidFulfillmentFailureCode =
   | "dotypos_reservation_failed"
@@ -199,6 +203,16 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
               return;
             }
 
+            if (reservation.fulfillmentState === "awaiting_delivery") {
+              yield* Effect.logInfo(
+                "Paid fulfillment skipped: awaiting customer email delivery",
+                {
+                  reason: "awaiting_customer_email_delivery",
+                }
+              );
+              return;
+            }
+
             const staleProcessingBefore = Temporal.Now.instant().subtract({
               milliseconds: PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
             });
@@ -373,9 +387,17 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
                   })
                 )
               );
-            yield* reservationEmails
+            const customerEmailDeliveryId = yield* reservationEmails
               .sendPaidReservationEmails({
                 reservation: reservationForDelivery,
+                customerEmailIdempotencyKey:
+                  claimed.activeCustomerEmailDeliveryId
+                    ? createCustomerEmailRecoveryIdempotencyKey(
+                        claimed.activeCustomerEmailDeliveryId
+                      )
+                    : createCustomerEmailInitialIdempotencyKey(
+                        reservationForDelivery.id
+                      ),
               })
               .pipe(
                 Effect.catch((cause) =>
@@ -400,6 +422,13 @@ export class WorkspacePaidFulfillmentService extends Context.Service<
               return;
             }
 
+            yield* Effect.logInfo(
+              "Paid fulfillment recorded accepted customer email delivery"
+            );
+            yield* reservations.markAwaitingCustomerEmailDelivery({
+              id: claimed.id,
+              customerEmailDeliveryId,
+            });
             yield* Effect.logInfo(
               "Paid fulfillment is awaiting Resend delivery webhook"
             );

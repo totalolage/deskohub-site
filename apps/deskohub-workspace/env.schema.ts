@@ -105,7 +105,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   IGLOOHOME_CLIENT_ID: optionalNonEmptyStringSchema,
   IGLOOHOME_CLIENT_SECRET: optionalNonEmptyStringSchema,
   IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: nonEmptyStringSchema,
-  RESEND_WEBHOOK_SECRET: optionalStringSchema,
+  RESEND_WEBHOOK_SECRET: nonEmptyStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
