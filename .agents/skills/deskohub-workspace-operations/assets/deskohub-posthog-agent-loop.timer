@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Deskohub PostHog incident agent every five minutes
+
+[Timer]
+OnStartupSec=2m
+OnUnitInactiveSec=5m
+AccuracySec=30s
+Unit=deskohub-posthog-agent-loop.service
+
+[Install]
+WantedBy=timers.target

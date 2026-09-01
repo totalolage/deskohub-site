@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+pid="$(systemctl --user show t3code.service --property MainPID --value)"
+case "$pid" in
+  ""|0|*[!0-9]*)
+    echo "t3code.service has no live main process" >&2
+    exit 1
+    ;;
+esac
+
+t3_executable="/proc/$pid/exe"
+test -x "$t3_executable"
+exec "$t3_executable" "$@"

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+thread_id="${1:?Usage: posthog-configure-dispatcher <thread-id>}"
+t3_bin="${T3_BIN:-/home/dev/.local/bin/t3}"
+t3_base_dir="${T3_BASE_DIR:-/home/dev/.t3}"
+curl_bin="${CURL_BIN:-curl}"
+
+origin="$($t3_bin session --base-dir "$t3_base_dir" | jq -er '.target.httpBaseUrl')"
+token="$($t3_bin auth session issue \
+  --base-dir "$t3_base_dir" \
+  --ttl 10m \
+  --label "PostHog dispatcher model" \
+  --subject posthog-cron \
+  --token-only)"
+payload="$(jq -cn --arg thread "$thread_id" '{
+  type: "thread.meta.update",
+  commandId: ("posthog-dispatcher-model-luna-xhigh-v1:" + $thread),
+  threadId: $thread,
+  modelSelection: {
+    instanceId: "codex",
+    model: "gpt-5.6-luna",
+    options: [{ id: "reasoningEffort", value: "xhigh" }]
+  }
+}')"
+
+response="$("$curl_bin" \
+  --fail-with-body \
+  --silent \
+  --show-error \
+  --config - \
+  --header "Content-Type: application/json" \
+  --data-binary "$payload" \
+  "$origin/api/orchestration/dispatch" <<EOF
+header = "Authorization: Bearer $token"
+EOF
+)"
+unset token
+jq -e '.sequence | numbers' <<<"$response" >/dev/null
