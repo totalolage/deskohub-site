@@ -74,6 +74,22 @@ describe("administration reservation status", () => {
     ).toBe(false);
   });
 
+  test("blocks cancellation while confirmation delivery is awaiting", () => {
+    const now = Temporal.Now.instant();
+    expect(
+      canCancelReservation(
+        {
+          dotyposReservationId: "dotypos-reservation",
+          fulfillmentState: "awaiting_delivery",
+          paymentState: "paid",
+          reservationState: "confirmed",
+          updatedAt: now,
+        },
+        now
+      )
+    ).toBe(false);
+  });
+
   test.each([
     ["confirmed", "paid", "failed", "Confirmation issue", "attention"],
     [
@@ -87,6 +103,13 @@ describe("administration reservation status", () => {
     ["cancelled", "cancelled", "not_started", "Cancelled", "cancelled"],
     ["cancelling", "paid", "not_started", "Cancelling", "in_progress"],
     ["hold_expired", "expired", "not_started", "Expired", "cancelled"],
+    [
+      "confirmed",
+      "paid",
+      "awaiting_delivery",
+      "Delivering confirmation",
+      "in_progress",
+    ],
     ["confirmed", "paid", "processing", "Confirming", "in_progress"],
     ["held", "pending", "not_started", "Payment pending", "in_progress"],
     ["held", "failed", "not_started", "Payment failed", "in_progress"],
@@ -200,6 +223,7 @@ describe("administration reservation lifecycle", () => {
     ["held", "pending", "not_started", "held", "neutral"],
     ["held", "failed", "not_started", "held", "attention"],
     ["confirmed", "paid", "processing", "paid", "neutral"],
+    ["confirmed", "paid", "awaiting_delivery", "paid", "neutral"],
     ["confirmed", "paid", "failed", "paid", "attention"],
     ["confirmed", "paid", "fulfilled", "complete", "positive"],
     ["cancelling", "cancelled", "not_started", "cancelling", "neutral"],
@@ -224,6 +248,21 @@ describe("administration reservation lifecycle", () => {
       ).toMatchObject({ currentStage, tone });
     }
   );
+
+  test("places awaiting confirmation delivery at the paid stage without completion", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "awaiting_delivery",
+        paymentState: "paid",
+        reservationState: "confirmed",
+      })
+    ).toEqual({
+      currentStage: "paid",
+      label: "Being confirmed",
+      reachedStages: ["started", "held", "paid"],
+      tone: "neutral",
+    });
+  });
 
   test("does not claim an expired payment cancelled a live hold", () => {
     expect(

@@ -16,7 +16,11 @@ process.env.RESERVATION_ACCESS_TOKEN_SECRET ??=
   "synthetic reservation access token secret";
 process.env.CLOUDINARY_API_KEY ??= "test";
 process.env.CLOUDINARY_API_SECRET ??= "test";
-process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";
+if (process.env.WORKSPACE_TEST_DATABASE_URL) {
+  process.env.DATABASE_URL = process.env.WORKSPACE_TEST_DATABASE_URL;
+} else {
+  process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";
+}
 process.env.ADMIN_BASIC_AUTH_SHA256 ??= createHash("sha256")
   .update(
     `${workspaceTestAdminCredentials.username}:${workspaceTestAdminCredentials.password}`
@@ -29,6 +33,7 @@ process.env.DOTYPOS_CLIENT_SECRET ??= "secret";
 process.env.DOTYPOS_CLOUD_ID ??= "cloud";
 process.env.DOTYPOS_EMPLOYEE_ID ??= "employee";
 process.env.DOTYPOS_REFRESH_TOKEN ??= "refresh";
+process.env.EMAIL_API_KEY ??= "re_test";
 process.env.GOOGLE_CALENDAR_PRIVATE_KEY ??= "test-private-key";
 process.env.GOOGLE_CALENDAR_SALES_ID ??= "sales-calendar";
 process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL ??= "calendar@example.test";

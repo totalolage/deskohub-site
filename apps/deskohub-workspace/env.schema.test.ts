@@ -115,6 +115,18 @@ describe("workspace environment schemas", () => {
     );
   });
 
+  test("requires a non-empty Resend webhook secret", () => {
+    const decodeSecret = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.RESEND_WEBHOOK_SECRET
+    );
+
+    expect(() => decodeSecret(undefined)).toThrow();
+    expect(() => decodeSecret("")).toThrow();
+    expect(decodeSecret("whsec_synthetic_test_value")).toBe(
+      "whsec_synthetic_test_value"
+    );
+  });
+
   test("validates URLs without changing their string representation", () => {
     const decodeDatabaseUrl = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.DATABASE_URL

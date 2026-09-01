@@ -231,6 +231,76 @@ test("retrying an already-cancelled reservation does not email again", async () 
   expect(sendCancellationEmail).not.toHaveBeenCalled();
 });
 
+test("refuses cancellation while the confirmation email is still delivering", async () => {
+  const { WorkspaceReservationEmailService } = await import(
+    "@/features/checkout/backend/fulfillment/workspace-reservation-email.service"
+  );
+  const { WorkspaceReservationRepository } = await import(
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const { WorkspaceReservationService } = await import(
+    "@/features/reservation/backend/workspace-reservation.service"
+  );
+  const { ReservationAdministrationError, ReservationAdministrationService } =
+    await import("./reservation-administration.service");
+  const id = Schema.decodeUnknownSync(workspaceReservationIdSchema)(
+    "reservation-awaiting-delivery"
+  );
+  const cancelReservation = mock(() =>
+    Effect.die("awaiting delivery must not cancel at the provider")
+  );
+  const claimAdministrationCancellation = mock(() =>
+    Effect.die("awaiting delivery must not claim cancellation")
+  );
+
+  const result = await Effect.gen(function* () {
+    const service = yield* ReservationAdministrationService;
+    return yield* service.cancel({
+      accessGrantUpdatedAt: null,
+      providerCredentialRemoved: false,
+      reservationId: id,
+      sendCancellationEmail: true,
+    });
+  }).pipe(
+    Effect.provide(
+      ReservationAdministrationService.Default.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(DotyposService, { cancelReservation }),
+            Layer.mock(WorkspaceReservationEmailService, {}),
+            Layer.mock(WorkspaceReservationRepository, {
+              claimAdministrationCancellation,
+              findById: () =>
+                Effect.succeed({
+                  id,
+                  dotyposReservationId: "dotypos-awaiting-delivery",
+                  fulfillmentState: "awaiting_delivery",
+                  paymentState: "paid",
+                  reservationState: "confirmed",
+                  updatedAt: Temporal.Now.instant(),
+                } as never),
+            }),
+            Layer.mock(WorkspaceReservationService, {
+              getReservation: () => Effect.die("details must not be loaded"),
+            })
+          )
+        )
+      )
+    ),
+    Effect.flip,
+    Effect.runPromise
+  );
+
+  expect(result).toBeInstanceOf(ReservationAdministrationError);
+  expect(result).toMatchObject({
+    code: "not_cancellable",
+    message:
+      "The confirmation email is still being delivered. Try again after delivery completes.",
+  });
+  expect(cancelReservation).not.toHaveBeenCalled();
+  expect(claimAdministrationCancellation).not.toHaveBeenCalled();
+});
+
 test("does not adopt a pre-existing provider cancellation", async () => {
   const { WorkspaceReservationEmailService } = await import(
     "@/features/checkout/backend/fulfillment/workspace-reservation-email.service"

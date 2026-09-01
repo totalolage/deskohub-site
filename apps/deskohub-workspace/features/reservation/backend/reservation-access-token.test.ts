@@ -36,6 +36,37 @@ describe("reservation access token", () => {
     expect(claims).toMatchObject({ orderId, locale: "en-US" });
   });
 
+  test("reproduces identical bytes for the same issuance timestamp input", async () => {
+    const first = await Effect.runPromise(createToken());
+    const second = await Effect.runPromise(createToken());
+
+    expect(second).toBe(first);
+  });
+
+  test("binds token bytes to the issuance timestamp", async () => {
+    const earlier = await Effect.runPromise(createToken());
+    const later = await Effect.runPromise(
+      createReservationAccessToken(
+        { orderId, locale: "en-US" },
+        { secret, now: () => now.epochMilliseconds + 60_000 }
+      )
+    );
+
+    expect(later).not.toBe(earlier);
+  });
+
+  test("keeps a reservation-anchored token valid regardless of later clock time", async () => {
+    const token = await Effect.runPromise(createToken());
+    const claims = await Effect.runPromise(
+      openReservationAccessToken(
+        { token, orderId, locale: "en-US" },
+        { secret }
+      )
+    );
+
+    expect(claims.issuedAtEpochMilliseconds).toBe(now.epochMilliseconds);
+  });
+
   test("rejects tampering and reservation or locale mismatches", async () => {
     const token = await Effect.runPromise(createToken());
     const inputs = [

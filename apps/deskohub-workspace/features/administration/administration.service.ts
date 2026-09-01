@@ -864,6 +864,8 @@ const reservationStatusSort = sql<string>`case
   when ${workspaceReservations.fulfillmentState} = 'fulfilled' then 'Complete'
   when ${workspaceReservations.reservationState} = 'cancelling' then 'Cancelling'
   when ${workspaceReservations.reservationState} = 'hold_expired' then 'Expired'
+  when ${workspaceReservations.fulfillmentState} = 'awaiting_delivery'
+    then 'Delivering confirmation'
   when ${workspaceReservations.paymentState} = 'paid'
     or ${workspaceReservations.fulfillmentState} = 'processing'
     or ${workspaceReservations.reservationState} in ('confirming', 'confirmed')
