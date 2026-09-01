@@ -171,8 +171,8 @@ printf '{"sequence":42}\n'
 }
 
 describe("posthog-agent-loop", () => {
-  test("uses the create turn as the first dispatcher pass", async () => {
-    const { calls, configuredThread } = await runAgentLoop(false, 0, true);
+  test("runs the first dispatcher pass after configuring the new thread", async () => {
+    const { calls, configuredThread } = await runAgentLoop(false);
 
     expect(configuredThread).toBe("thread-1");
     expect(calls[0]).toContain(
@@ -181,9 +181,11 @@ describe("posthog-agent-loop", () => {
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
       "watch",
+      "send",
       "watch",
       "compact",
     ]);
+    expect(calls[2]).toContain("Run one complete dispatcher pass now.");
   });
 
   test("sends one idempotent pass to an existing dispatcher", async () => {

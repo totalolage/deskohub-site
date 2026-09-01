@@ -28,6 +28,10 @@ create_result="$($t3_bin create "$project_id" "$bootstrap_message" \
 thread_id="$(jq -er '.threadId' <<<"$create_result")"
 replayed="$(jq -r 'if (.replayed | type) == "boolean" then .replayed else error("missing replayed boolean") end' <<<"$create_result")"
 "$configure_dispatcher" "$thread_id"
+new_thread=false
+if [[ "$replayed" == "false" ]]; then
+  new_thread=true
+fi
 
 if [[ "$replayed" == "true" ]]; then
   existing_status=0
@@ -55,6 +59,15 @@ for _ in {1..30}; do
     --format json \
     >/dev/null || watch_status=$?
   if [[ "$watch_status" == 0 ]]; then
+    if [[ "$new_thread" == "true" ]]; then
+      "$t3_bin" send "$thread_id" "$dispatcher_message" \
+        --base-dir "$t3_base_dir" \
+        --yes \
+        --idempotency-key "deskohub-posthog-dispatcher:$tick_id" \
+        >/dev/null
+      new_thread=false
+      continue
+    fi
     "$t3_bin" compact "$thread_id" \
       --base-dir "$t3_base_dir" \
       --yes \
