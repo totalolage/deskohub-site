@@ -33,6 +33,22 @@ jobs:
   test-functional:
     if: github.event.action != 'converted_to_draft'
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: ghcr.io/fboulnois/pg_uuidv7:1.7.0
+        env:
+          POSTGRES_USER: workspace
+          POSTGRES_PASSWORD: workspace
+          POSTGRES_DB: workspace
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U workspace"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -64,4 +80,7 @@ jobs:
 
       - run: bun turbo typecheck
 
-      - run: bun turbo test --filter=./apps/deskohub-workspace
+      - name: Run Workspace tests
+        env:
+          WORKSPACE_TEST_DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace
+        run: bun turbo test --filter=./apps/deskohub-workspace

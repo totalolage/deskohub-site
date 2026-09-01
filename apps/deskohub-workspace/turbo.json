@@ -65,13 +65,15 @@
       ]
     },
     "test": {
+      "cache": false,
       "dependsOn": [
         "$TURBO_EXTENDS$",
         "@deskohub/dotypos#generate",
         "@deskohub/igloohome#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
-      ]
+      ],
+      "passThroughEnv": ["WORKSPACE_TEST_DATABASE_URL"]
     },
     "test:admin-cli": {
       "dependsOn": [
