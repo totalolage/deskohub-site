@@ -51,24 +51,6 @@ const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
   );
 });
 
-const resendWebhookProductionEnvironmentCheck = Schema.makeFilter<{
-  readonly VERCEL_ENV: "production" | "preview" | "development";
-  readonly RESEND_WEBHOOK_SECRET?: string | undefined;
-}>((environment) => {
-  if (environment.VERCEL_ENV !== "production") return undefined;
-
-  return environment.RESEND_WEBHOOK_SECRET === undefined ||
-    environment.RESEND_WEBHOOK_SECRET === ""
-    ? [
-        {
-          path: ["RESEND_WEBHOOK_SECRET"],
-          issue:
-            "RESEND_WEBHOOK_SECRET is required and must be non-empty in production.",
-        },
-      ]
-    : [];
-});
-
 export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
     Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/))
@@ -123,7 +105,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   IGLOOHOME_CLIENT_ID: optionalNonEmptyStringSchema,
   IGLOOHOME_CLIENT_SECRET: optionalNonEmptyStringSchema,
   IGLOOHOME_ALGOPIN_TARGET_DEVICE_ID: nonEmptyStringSchema,
-  RESEND_WEBHOOK_SECRET: optionalStringSchema,
+  RESEND_WEBHOOK_SECRET: nonEmptyStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
@@ -163,8 +145,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
 }).check(
   postHogFeatureFlagOverridesEnvironmentCheck,
-  igloohomeProductionEnvironmentCheck,
-  resendWebhookProductionEnvironmentCheck
+  igloohomeProductionEnvironmentCheck
 );
 
 export const workspaceClientEnvSchema = Schema.Struct({
@@ -195,8 +176,7 @@ export const createEnvironmentSchema = (
     isServer
       ? schema.check(
           postHogFeatureFlagOverridesEnvironmentCheck,
-          igloohomeProductionEnvironmentCheck,
-          resendWebhookProductionEnvironmentCheck
+          igloohomeProductionEnvironmentCheck
         )
       : schema
   );

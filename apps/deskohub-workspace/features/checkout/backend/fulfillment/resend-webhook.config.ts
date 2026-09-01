@@ -6,7 +6,7 @@ import { env } from "@/env";
 export interface ResendWebhookRuntimeConfigObj {
   readonly apiKey?: string;
   readonly deploymentEnvironment: string;
-  readonly webhookSecret?: string;
+  readonly webhookSecret: string;
 }
 
 export class ResendWebhookRuntimeConfig extends Context.Service<
