@@ -38,7 +38,7 @@ export const loadAdvertisedPrices = Effect.fn(
         )
       )
     ),
-    { concurrency: "unbounded" }
+    { concurrency: 2 }
   );
 
   return results.filter(Option.isSome).map(({ value }) => value);
