@@ -820,15 +820,21 @@ const getDateBounds = (date: string) => {
   return getDateRangeBounds(date, plainDate.add({ days: 1 }).toString());
 };
 
+const successfulReservationCondition = and(
+  sql`${workspaceReservations.fulfillmentState} = 'fulfilled'`,
+  sql`${workspaceReservations.reservationState} not in ('cancelled', 'cancelling', 'cancellation_failed')`
+)!;
+
+const successfulReservationCount =
+  sql<number>`count(*) filter (where ${successfulReservationCondition})`.mapWith(
+    Number
+  );
+
 const statusCondition = (
   status: Exclude<AdministrationStatusGroup, "attention">
 ): SQL => {
   if (status === "complete") {
-    return and(
-      sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
-      sql`${workspaceReservations.reservationState} <> 'cancellation_failed'`,
-      eq(workspaceReservations.fulfillmentState, "fulfilled")
-    )!;
+    return successfulReservationCondition;
   }
   if (status === "cancelled") {
     return and(
@@ -2376,7 +2382,7 @@ export class AdministrationService extends Context.Service<
             requestedPage: input.page,
             total,
           });
-          const reservationCount = count();
+          const reservationCount = successfulReservationCount;
           const lastActivityAt = max(workspaceReservations.updatedAt);
           const order = input.direction === "asc" ? asc : desc;
           const rows = yield* db
@@ -2549,7 +2555,12 @@ export class AdministrationService extends Context.Service<
             reservationCountRows: db
               .select({ value: count() })
               .from(workspaceReservations)
-              .where(eq(workspaceReservations.dotyposCustomerId, customerId)),
+              .where(
+                and(
+                  eq(workspaceReservations.dotyposCustomerId, customerId),
+                  successfulReservationCondition
+                )
+              ),
             revenueRows: db
               .select({
                 value: sum(paymentAttempts.amountValue),
