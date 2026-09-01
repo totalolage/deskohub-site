@@ -95,6 +95,34 @@ test("binds the manual target origin to a successful exact-SHA Workspace deploym
   );
 });
 
+test("waives exact-SHA E2E only when Vercel marks Workspace unaffected", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const skippedStatusJob = workflow.slice(
+    workflow.indexOf("  publish-skipped-status:")
+  );
+
+  expect(workflow).toContain("vercel.deployment.skipped");
+  expect(workflow).toContain("TARGET_SKIPPED:");
+  expect(workflow).toContain('.creator.login == "vercel[bot]"');
+  expect(workflow).toContain('.state == "inactive"');
+  expect(workflow).toContain('.description == "Skipped - Not affected"');
+  expect(workflow).toContain('context == "Workspace E2E"');
+  expect(workflow).toContain("gh api --paginate --slurp");
+  expect(workflow).toContain("target_seen=true");
+  expect(workflow).toContain('if [[ "$target_seen" != "true" ]]');
+  expect(workflow).toContain("Workspace unchanged; prior E2E did not pass");
+  expect(workflow).toContain("needs.resolve-target.outputs.skipped != 'true'");
+  expect(skippedStatusJob).toContain("statuses: write");
+  expect(skippedStatusJob).toContain(
+    '"repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA"'
+  );
+  expect(skippedStatusJob).toContain("-f context='Workspace E2E'");
+  expect(workflow).toContain("Workspace unchanged; E2E skipped");
+  expect(skippedStatusJob).not.toContain("vercel deploy");
+});
+
 test("uses the allocator without a global provider lock", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")

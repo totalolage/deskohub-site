@@ -24,6 +24,7 @@
         "@deskohub/cloudinary-image": "workspace:*",
         "@deskohub/dotypos": "workspace:*",
         "@deskohub/email": "workspace:*",
+        "@deskohub/games": "workspace:*",
         "@deskohub/google-calendar": "workspace:*",
         "@deskohub/i18n": "workspace:*",
         "@deskohub/next-effect": "workspace:*",
@@ -176,6 +177,7 @@
         "date-fns": "^4.1.0",
         "drizzle-orm": "1.0.0-rc.4",
         "effect": "4.0.0-beta.85",
+        "leaflet": "^1.9.4",
         "libphonenumber-js": "^1.12.10",
         "lucide-react": "^0.545.0",
         "motion": "^12.40.0",
@@ -191,6 +193,7 @@
         "react-email": "6.9.1",
         "react-error-boundary": "^6.1.2",
         "react-hook-form": "^7.74.0",
+        "react-leaflet": "^5.0.0",
         "react-photo-album": "^3.6.0",
         "resend": "^6.0.1",
         "scheduler": "0.27.0",
@@ -212,6 +215,7 @@
         "@testing-library/react": "^16.3.2",
         "@total-typescript/ts-reset": "^0.6.1",
         "@types/country-list": "^2.1.4",
+        "@types/leaflet": "^1.9.20",
         "@types/node": "^22",
         "@types/pg": "^8.20.0",
         "@types/react": "^19.2.17",
@@ -290,6 +294,17 @@
       "dependencies": {
         "effect": "4.0.0-beta.85",
         "resend": "^6.0.1",
+      },
+    },
+    "packages/games": {
+      "name": "@deskohub/games",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "4.0.0-beta.85",
+        "entities": "^4.5.0",
+      },
+      "devDependencies": {
+        "typescript": "^5",
       },
     },
     "packages/google-calendar": {
@@ -531,6 +546,8 @@
     "@deskohub/dotypos": ["@deskohub/dotypos@workspace:packages/dotypos"],
 
     "@deskohub/email": ["@deskohub/email@workspace:packages/email"],
+
+    "@deskohub/games": ["@deskohub/games@workspace:packages/games"],
 
     "@deskohub/google-calendar": ["@deskohub/google-calendar@workspace:packages/google-calendar"],
 
@@ -2845,6 +2862,8 @@
     "@cloudinary-util/url-loader/zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
 
     "@deskohub/dotypos/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
+
+    "@deskohub/games/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "@deskohub/google-calendar/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

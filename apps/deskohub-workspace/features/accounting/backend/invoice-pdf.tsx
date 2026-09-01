@@ -230,6 +230,7 @@ const InvoiceLines = ({
     </View>
     {presentation.lines.map((line, index) => (
       <View
+        // biome-ignore lint/suspicious/noArrayIndexKey: Issued invoice lines are ordered and may contain duplicate descriptions and amounts.
         key={`${line.kind}-${index}`}
         style={line.kind === "discount" ? styles.discountLine : styles.line}
         wrap={false}

@@ -14,6 +14,7 @@ import {
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Cause, type Context, Effect, Layer, Logger, References } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import { createTracingLive } from "../observability/otel-tracing";
 
 type LogAnnotations = Context.Service.Shape<
@@ -323,7 +324,7 @@ describe("censorLogValue", () => {
     ]);
   });
 
-  test("projects Drizzle query errors without exposing their dynamic message", () => {
+  test("projects Drizzle query errors with a censored cause", () => {
     const error = new EffectDrizzleQueryError({
       query:
         "select * from customers where id = $1 and email = /* deskohub:sensitive */ $2",
@@ -337,30 +338,86 @@ describe("censorLogValue", () => {
     const censored = censorLogValue({ cause: error });
     const serialized = JSON.stringify(censored);
 
-    expect(censored).toEqual({
+    expect(censored).toMatchObject({
       cause: {
         _tag: "EffectDrizzleQueryError",
         query:
           "select * from customers where id = $1 and email = /* deskohub:sensitive */ $2",
         params: ["visible", CENSORED_LOG_VALUE],
+        cause: {
+          errorType: "Error",
+          message: CENSORED_LOG_VALUE,
+        },
       },
     });
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
   });
 
-  test("projects errors without retaining messages or nested causes", () => {
+  test("retains recursively censored Effect SQL causes", () => {
+    const privateValue = "private@example.com";
+    const driverCause = Object.assign(
+      new Error(`driver echoed ${privateValue}`, {
+        cause: Object.assign(new Error(`socket echoed ${privateValue}`), {
+          code: "ETIMEDOUT",
+        }),
+      }),
+      {
+        detail: privateValue,
+        hint: privateValue,
+        internalQuery: privateValue,
+        where: privateValue,
+      }
+    );
+    const error = new EffectDrizzleQueryError({
+      query: "select /* deskohub:sensitive */ $1",
+      params: [privateValue],
+      cause: Cause.fail(
+        new SqlError.SqlError({
+          reason: new SqlError.UnknownError({
+            cause: driverCause,
+            message: `acquisition echoed ${privateValue}`,
+            operation: "acquireConnection",
+          }),
+        })
+      ),
+    });
+
+    const serialized = JSON.stringify(censorLogValue({ cause: error }));
+
+    expect(serialized).toContain("EffectDrizzleQueryError");
+    expect(serialized).toContain("SqlError");
+    expect(serialized).toContain("UnknownError");
+    expect(serialized).toContain("acquireConnection");
+    expect(serialized).toContain("ETIMEDOUT");
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(privateValue);
+    expect(serialized).not.toContain("driver echoed");
+    expect(serialized).not.toContain("socket echoed");
+    expect(serialized).not.toContain("acquisition echoed");
+  });
+
+  test("projects errors with recursively censored causes", () => {
     const error = new Error("boom");
     error.cause = new Error("nested private value");
+    const aggregate = new AggregateError(
+      [
+        new Error("aggregate member private value"),
+        "aggregate scalar private value",
+        { payload: "aggregate object private value" },
+      ],
+      "aggregate private value",
+      { cause: new Error("aggregate cause private value") }
+    );
     const date = new Date("2026-05-30T00:00:00.000Z");
     const set = new Set(["secret"]);
     const custom = new CustomValue("secret");
     const promise = Promise.resolve("secret");
 
-    const input = { thrown: error, date, set, custom, promise };
+    const input = { thrown: error, aggregate, date, set, custom, promise };
     const censored = censorLogValue(input) as typeof input;
 
-    expect(censored.thrown).toEqual({
+    expect(censored.thrown).toMatchObject({
       errorType: "Error",
       message: CENSORED_LOG_VALUE,
       cause: {
@@ -368,19 +425,152 @@ describe("censorLogValue", () => {
         message: CENSORED_LOG_VALUE,
       },
     });
+    expect(censored.aggregate).toMatchObject({
+      errorType: "AggregateError",
+      message: CENSORED_LOG_VALUE,
+      cause: {
+        errorType: "Error",
+        message: CENSORED_LOG_VALUE,
+      },
+      errors: [
+        {
+          errorType: "Error",
+          message: CENSORED_LOG_VALUE,
+        },
+        CENSORED_LOG_VALUE,
+        CENSORED_LOG_VALUE,
+      ],
+    });
     expect(censored.date).toBe(date);
     expect(censored.set).toBe(set);
     expect(censored.custom).toBe(custom);
     expect(censored.promise).toBe(promise);
     expect(JSON.stringify(censored)).not.toContain("boom");
     expect(JSON.stringify(censored)).not.toContain("nested private value");
+    expect(JSON.stringify(censored)).not.toContain("aggregate private value");
+    expect(JSON.stringify(censored)).not.toContain(
+      "aggregate member private value"
+    );
+    expect(JSON.stringify(censored)).not.toContain(
+      "aggregate scalar private value"
+    );
+    expect(JSON.stringify(censored)).not.toContain(
+      "aggregate object private value"
+    );
+  });
+
+  test("retains stack frames while redacting recursive error messages", () => {
+    const privateValue = "private@example.com";
+    const multilineMessage = `${privateValue}\n    at /${privateValue}:8:9`;
+    const nested = new Error(privateValue);
+    nested.stack = `Error: ${privateValue}\n    at nestedFailure (/app/nested.ts:2:3)`;
+    const error = new Error(privateValue, { cause: nested });
+    error.stack = `Error: ${privateValue}\n    at outerFailure (/app/outer.ts:4:5)`;
+
+    expect(censorLogValue(error)).toEqual({
+      errorType: "Error",
+      message: CENSORED_LOG_VALUE,
+      stack: `${CENSORED_LOG_VALUE}\n    at /app/outer.ts:4:5`,
+      cause: {
+        errorType: "Error",
+        message: CENSORED_LOG_VALUE,
+        stack: `${CENSORED_LOG_VALUE}\n    at /app/nested.ts:2:3`,
+      },
+    });
+    expect(
+      censorLogValue({
+        "exception.message": multilineMessage,
+        "exception.stacktrace": `Error: ${multilineMessage}\n    at tracedFailure (https://${privateValue}:${privateValue}@example.com/app.js?code=${privateValue}#${privateValue}:6:7)\n    at relativeFailure (/admin/cli/authenticate?code=${privateValue}#${privateValue}:8:9)\n    at fileFailure (file:///app/file.js?token=${privateValue}:10:11)\n    at mappedFailure (turbopack:///[project]/app/page.ts?token=${privateValue}:12:13)\n    at malformedUrl (https://user:${privateValue}@exa mple.com/app.js:14:15)\n    at malformedRelativeUrl (//user:${privateValue}@exa mple.com/app.js:16:17)`,
+      })
+    ).toEqual({
+      "exception.message": CENSORED_LOG_VALUE,
+      "exception.stacktrace": `${CENSORED_LOG_VALUE}\n    at https://example.com/app.js:6:7\n    at /admin/cli/authenticate:8:9\n    at file:///app/file.js:10:11\n    at turbopack:///[project]/app/page.ts:12:13`,
+    });
+
+    const sqlError = new SqlError.SqlError({
+      reason: new SqlError.UnknownError({
+        cause: new Error(privateValue),
+        message: privateValue,
+        operation: "acquireConnection",
+      }),
+    });
+    expect(
+      (censorLogValue(sqlError) as { readonly stack: string }).stack
+    ).toContain("censorship.test.ts");
+
+    const staleMessageError = new Error(multilineMessage);
+    const staleStack = staleMessageError.stack;
+    staleMessageError.message = "replacement";
+    staleMessageError.stack = staleStack;
+    expect(censorLogValue(staleMessageError)).toMatchObject({
+      stack: CENSORED_LOG_VALUE,
+    });
+    staleMessageError.message = "";
+    expect(censorLogValue(staleMessageError)).toMatchObject({
+      stack: CENSORED_LOG_VALUE,
+    });
+  });
+
+  test("retains only safe error classification fields", () => {
+    const privateValue = "private@example.com";
+    const error = Object.assign(new Error(privateValue), {
+      _tag: "CalendarSaleConfigurationError",
+      reason: "invalid_event",
+      operation: "normalize",
+      code: "INVALID_EVENT",
+      outcome: "uncertain",
+      failureCode: "fulfillment_access_failed",
+      errorCode: "nexi_webhook_verification_failed",
+      eventReference: privateValue,
+      issue: { actual: privateValue },
+    });
+
+    const censored = censorLogValue({ cause: error });
+
+    expect(censored).toMatchObject({
+      cause: {
+        errorType: "Error",
+        message: CENSORED_LOG_VALUE,
+        _tag: "CalendarSaleConfigurationError",
+        reason: "invalid_event",
+        operation: "normalize",
+        code: "INVALID_EVENT",
+        outcome: "uncertain",
+        failureCode: "fulfillment_access_failed",
+        errorCode: "nexi_webhook_verification_failed",
+      },
+    });
+    expect(JSON.stringify(censored)).not.toContain(privateValue);
+
+    const dynamicClassifications = Object.assign(new Error(privateValue), {
+      _tag: privateValue,
+      reason: `invalid ${privateValue}`,
+      operation: `load ${privateValue}`,
+      code: privateValue,
+      outcome: { email: privateValue },
+      failureCode: `failed ${privateValue}`,
+      errorCode: `error ${privateValue}`,
+      status: `status ${privateValue}`,
+      statusCode: privateValue,
+      constraint: `constraint ${privateValue}`,
+    });
+    const dynamicCensored = censorLogValue(dynamicClassifications);
+    expect(dynamicCensored).toMatchObject(
+      Object.fromEntries(
+        Object.keys(dynamicClassifications).map((key) => [
+          key,
+          CENSORED_LOG_VALUE,
+        ])
+      )
+    );
+    expect(JSON.stringify(dynamicCensored)).not.toContain(privateValue);
   });
 
   test("projects native errors from another realm", () => {
     const error = runInNewContext('new Error("cross-realm private value")');
 
     expect(error).not.toBeInstanceOf(Error);
-    expect(censorLogValue(error)).toEqual({
+    expect(censorLogValue(error)).toMatchObject({
       errorType: "Error",
       message: CENSORED_LOG_VALUE,
     });
@@ -395,7 +585,7 @@ describe("censorLogValue", () => {
     });
 
     try {
-      expect(censorLogValue(new Error("private value"))).toEqual({
+      expect(censorLogValue(new Error("private value"))).toMatchObject({
         errorType: "Error",
         message: CENSORED_LOG_VALUE,
       });
@@ -789,6 +979,9 @@ describe("createCensoredOtelSpanExporter", () => {
       sessionDuration: 123,
     });
     expect(span?.events[0]?.name).toBe("exception");
+    expect(span?.events[0]?.attributes?.["exception.stacktrace"]).toContain(
+      "censorship.test.ts"
+    );
     expect(span?.resource.attributes).toMatchObject({
       email: CENSORED_LOG_VALUE,
       "service.name": "censorship-test",

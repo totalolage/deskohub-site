@@ -57,21 +57,18 @@ describe("selectWorkspaceTableFromCandidates", () => {
     ).toBe(8);
   });
 
-  test.each([
-    undefined,
-    "not-a-number",
-    "8.5",
-    "0",
-    "-1",
-  ])("rejects an invalid seat capacity of %s", (seats) => {
-    expect(() =>
-      Effect.runSync(
-        getWorkspaceTableSeatCapacity(
-          makeTable({ id: "invalid", name: "Office", seats })
+  test.each([undefined, "not-a-number", "8.5", "0", "-1"])(
+    "rejects an invalid seat capacity of %s",
+    (seats) => {
+      expect(() =>
+        Effect.runSync(
+          getWorkspaceTableSeatCapacity(
+            makeTable({ id: "invalid", name: "Office", seats })
+          )
         )
-      )
-    ).toThrow("invalid seat capacity");
-  });
+      ).toThrow("invalid seat capacity");
+    }
+  );
 
   test("selects the candidate with the strongest normalized distance score", () => {
     const occupied = makeTable({

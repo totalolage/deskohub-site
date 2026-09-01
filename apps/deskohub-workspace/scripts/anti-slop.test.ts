@@ -69,13 +69,18 @@ void handleFailure;
   expect(output).not.toContain("[anti-slop/no-unknown-parameters]");
 });
 
-test("anti-slop reports all ten rules", () => {
+test("anti-slop reports all eleven rules", () => {
   const result = lint(`
 declare const externalValue: unknown;
 const chained = externalValue as unknown as { value: string };
 const conditionalSpread = { ...(true ? { value: 1 } : {}) };
 const widened: unknown = { value: 1 };
 const objectParameter = (_value: object) => undefined;
+declare function operationOn(value: { id: string }): string;
+declare const repeatedConditionalOperands: readonly ({ id: string } | undefined)[];
+const repeatedConditional = repeatedConditionalOperands[0]
+  ? operationOn(repeatedConditionalOperands[0])
+  : null;
 const runtimeType = typeof externalValue;
 const payloadShape = 1;
 const unknownParameter = (_value: unknown) => undefined;
@@ -89,6 +94,7 @@ void chained;
 void conditionalSpread;
 void widened;
 void objectParameter;
+void repeatedConditional;
 void runtimeType;
 void payloadShape;
 void unknownParameter;
@@ -101,6 +107,7 @@ void reconstruct;
     "no-conditional-empty-object-spread",
     "no-known-value-widening",
     "no-object-parameters",
+    "no-repeated-computed-conditional-operand",
     "no-runtime-typeof",
     "no-shape-in-symbol-names",
     "no-unknown-parameters",
@@ -110,6 +117,34 @@ void reconstruct;
   ]) {
     expect(output).toContain(`[anti-slop/${rule}]`);
   }
+});
+
+test("repeated computed conditional operand rule allows independent branches", () => {
+  const result = lint(`
+declare const condition: boolean;
+declare function loadValue(): string;
+const value = condition ? loadValue() : null;
+void value;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain(
+    "[anti-slop/no-repeated-computed-conditional-operand]"
+  );
+});
+
+test("repeated computed conditional operand rule preserves falsey semantics", () => {
+  const result = lint(`
+declare const values: readonly (number | undefined)[];
+const value = values[0] ? values[0] : null;
+void value;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain(
+    "[anti-slop/no-repeated-computed-conditional-operand]"
+  );
+  expect(output).not.toContain("logical AND");
 });
 
 test("chained assertion rule retains Workspace e2e coverage", () => {

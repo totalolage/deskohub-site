@@ -232,17 +232,20 @@ describe("ReservationAccessService", () => {
     ["unpaid", { paymentState: "pending" }],
     ["not locally confirmed", { reservationState: "held" }],
     ["missing provider reservation id", { dotyposReservationId: null }],
-  ] as const)("fails closed when the reservation is %s", async (_label, overrides) => {
-    const accessToken = await createAccessToken();
-    const result = await runAccess({
-      accessToken,
-      reservation: makeReservation(overrides),
-    });
+  ] as const)(
+    "fails closed when the reservation is %s",
+    async (_label, overrides) => {
+      const accessToken = await createAccessToken();
+      const result = await runAccess({
+        accessToken,
+        reservation: makeReservation(overrides),
+      });
 
-    expect(result.access).toEqual({ state: "unavailable" });
-    expect(result.getReservation).not.toHaveBeenCalled();
-    expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
-  });
+      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.getReservation).not.toHaveBeenCalled();
+      expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
+    }
+  );
 
   test("fails closed when the provider is unavailable, cancelled, or returns invalid timing", async () => {
     const accessToken = await createAccessToken();

@@ -74,23 +74,21 @@ describe("parseWorkspaceAvailabilityQuery", () => {
     });
   });
 
-  test.each([
-    "0",
-    "-1",
-    "1.5",
-    "invalid",
-  ])("drops an invalid office seat count of %s", (seats) => {
-    const query = parseWorkspaceAvailabilityQuery(
-      new URLSearchParams({
-        kind: "office",
-        from: "2099-06-10",
-        to: "2099-06-12",
-        seats,
-      })
-    );
+  test.each(["0", "-1", "1.5", "invalid"])(
+    "drops an invalid office seat count of %s",
+    (seats) => {
+      const query = parseWorkspaceAvailabilityQuery(
+        new URLSearchParams({
+          kind: "office",
+          from: "2099-06-10",
+          to: "2099-06-12",
+          seats,
+        })
+      );
 
-    expect(query).not.toHaveProperty("seats");
-  });
+      expect(query).not.toHaveProperty("seats");
+    }
+  );
 
   test("drops interval fields from cowork availability queries", () => {
     const query = parseWorkspaceAvailabilityQuery(

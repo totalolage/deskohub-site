@@ -1,10 +1,13 @@
+import { eq, getTableColumns } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { retryDatabaseRead } from "@/db/retry-database-read";
+import { discountProductTargets, discounts } from "@/db/schema";
 import {
   type DiscountDefinition,
   type DiscountDefinitionMalformedError,
+  type DiscountDefinitionRow,
   decodeDiscountDefinition,
 } from "./discount-definition";
 import type { StoredDiscountId } from "./persistence-contracts";
@@ -35,12 +38,31 @@ export class DiscountDefinitionRepository extends Context.Service<
 
       const loadById = Effect.fn("DiscountDefinitionRepository.loadById")(
         function* (input: LoadDiscountDefinitionInput) {
-          const row = yield* db.query.discounts
-            .findFirst({
-              where: { id: { eq: input.discountId } },
-              with: { productTargets: {} },
+          const rows = yield* db
+            .select({
+              discount: getTableColumns(discounts),
+              productTarget: {
+                discountId: discountProductTargets.discountId,
+                productTarget: discountProductTargets.productTarget,
+              },
             })
+            .from(discounts)
+            .leftJoin(
+              discountProductTargets,
+              eq(discountProductTargets.discountId, discounts.id)
+            )
+            .where(eq(discounts.id, input.discountId))
             .pipe(retryDatabaseRead);
+
+          const firstRow = rows[0];
+          const row =
+            firstRow &&
+            ({
+              ...firstRow.discount,
+              productTargets: rows
+                .map(({ productTarget }) => productTarget)
+                .filter(Boolean),
+            } satisfies DiscountDefinitionRow);
 
           if (!row) {
             return yield* new DiscountDefinitionNotFoundError({

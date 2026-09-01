@@ -101,49 +101,52 @@ describe("DiscountReleaseGateService", () => {
     ["calendar_sales", "calendarSales"],
     ["customer_discounts", "customerDiscounts"],
     ["discount_codes", "discountCodes"],
-  ] as const)("fails only %s closed when PostHog omits it", async (flag, gate) => {
-    flagValues.delete(flag);
-    const logRecords: {
-      readonly annotations: LogAnnotations;
-      readonly level: string;
-    }[] = [];
-    const logger = Logger.make((options) => {
-      logRecords.push({
-        annotations: options.fiber.getRef(References.CurrentLogAnnotations),
-        level: options.logLevel,
+  ] as const)(
+    "fails only %s closed when PostHog omits it",
+    async (flag, gate) => {
+      flagValues.delete(flag);
+      const logRecords: {
+        readonly annotations: LogAnnotations;
+        readonly level: string;
+      }[] = [];
+      const logger = Logger.make((options) => {
+        logRecords.push({
+          annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+          level: options.logLevel,
+        });
       });
-    });
 
-    const result = await Effect.gen(function* () {
-      const releaseGates = yield* DiscountReleaseGateService;
-      return yield* releaseGates.evaluate({
-        operation: "affirm_displayed_discounts",
+      const result = await Effect.gen(function* () {
+        const releaseGates = yield* DiscountReleaseGateService;
+        return yield* releaseGates.evaluate({
+          operation: "affirm_displayed_discounts",
+        });
+      }).pipe(
+        Effect.provide(DiscountReleaseGateService.Default),
+        Effect.provide(featureFlagLayer),
+        Effect.provide(Logger.layer([logger])),
+        Effect.runPromise
+      );
+
+      expect(result).toEqual({
+        calendarSales: gate !== "calendarSales",
+        customerDiscounts: gate !== "customerDiscounts",
+        discountCodes: gate !== "discountCodes",
       });
-    }).pipe(
-      Effect.provide(DiscountReleaseGateService.Default),
-      Effect.provide(featureFlagLayer),
-      Effect.provide(Logger.layer([logger])),
-      Effect.runPromise
-    );
-
-    expect(result).toEqual({
-      calendarSales: gate !== "calendarSales",
-      customerDiscounts: gate !== "customerDiscounts",
-      discountCodes: gate !== "discountCodes",
-    });
-    expect(logRecords).toContainEqual({
-      level: "Error",
-      annotations: expect.objectContaining({
-        discountBoundary: "release_gate",
-        discountOperation: "affirm_displayed_discounts",
-        discountFeatureFlag: flag,
-        discountErrorTag: "MissingFeatureFlag",
-        discountErrorReason: "missing_flag",
-      }),
-    });
-    expect(JSON.stringify(logRecords)).not.toContain("SAVE20");
-    expect(JSON.stringify(logRecords)).not.toContain("customer-1");
-  });
+      expect(logRecords).toContainEqual({
+        level: "Error",
+        annotations: expect.objectContaining({
+          discountBoundary: "release_gate",
+          discountOperation: "affirm_displayed_discounts",
+          discountFeatureFlag: flag,
+          discountErrorTag: "MissingFeatureFlag",
+          discountErrorReason: "missing_flag",
+        }),
+      });
+      expect(JSON.stringify(logRecords)).not.toContain("SAVE20");
+      expect(JSON.stringify(logRecords)).not.toContain("customer-1");
+    }
+  );
 
   test("fails every gate closed when evaluation fails", async () => {
     const failingFeatureFlags = WorkspaceFeatureFlagServiceMock({

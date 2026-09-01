@@ -843,17 +843,22 @@
   "boardGames": {
     "pageTitle": "Deskové hry - Deskohub",
     "pageDescription": "Objevte naši rozsáhlou kolekci deskových her pro všechny věkové kategorie a úrovně hráčů v Deskohub bar s deskovými hrami.",
-    "title": "Sbírka deskových her",
-    "viewSpreadsheet": "Zobrazit seznam deskových her",
     "hero": {
       "title": "Deskové hry",
       "subtitle": "Objevte naši rozsáhlou kolekci deskových her pro všechny věkové kategorie a úrovně hráčů"
     },
     "filters": {
+      "label": "Filtry her",
+      "playersQuestion": "Kolik vás je?",
+      "sevenOrMorePlayers": "Sedm a více hráčů",
+      "timeQuestion": "Kolik máte času?",
+      "upTo30": "Do 30 minut",
+      "upTo60": "30–60 minut",
+      "upTo120": "1–2 hodiny",
+      "over120": "Přes 2 hodiny",
       "search": "Hledat",
-      "searchPlaceholder": "Hledat hry...",
-      "category": "Kategorie",
-      "difficulty": "Obtížnost",
+      "searchPlaceholder": "Název hry…",
+      "reset": "Zrušit filtry",
       "foundGames": [
         {
           "declarations": ["input count", "local countPlural = count: plural"],
@@ -865,41 +870,30 @@
             "countPlural=other": "Nalezeno {count} her"
           }
         }
-      ],
-      "categories": {
-        "all": "Všechny",
-        "strategic": "Strategické",
-        "family": "Rodinné",
-        "dungeonCrawler": "Dungeon Crawler",
-        "party": "Párty"
-      },
-      "difficulties": {
-        "all": "Všechny",
-        "easy": "Lehké",
-        "medium": "Střední",
-        "hard": "Těžké"
-      },
-      "sortBy": "Řadit podle",
-      "sort": {
-        "nameAsc": "Název (A-Z)",
-        "nameDesc": "Název (Z-A)",
-        "ratingAsc": "Hodnocení (nejnižší)",
-        "ratingDesc": "Hodnocení (nejvyšší)",
-        "playersAsc": "Počet hráčů (nejméně)",
-        "playersDesc": "Počet hráčů (nejvíce)",
-        "durationAsc": "Délka hry (nejkratší)",
-        "durationDesc": "Délka hry (nejdelší)"
+      ]
+    },
+    "empty": {
+      "title": "Tomuto zadání žádná hra neodpovídá",
+      "hint": "Zkuste jiný počet hráčů, delší čas nebo jiný název."
+    },
+    "unavailable": {
+      "title": "Seznam her je dočasně nedostupný",
+      "hint": "Zkuste to prosím znovu za pár minut."
+    },
+    "playerCount": [
+      {
+        "declarations": ["input count", "local countPlural = count: plural"],
+        "selectors": ["countPlural"],
+        "match": {
+          "countPlural=one": "{count} hráč",
+          "countPlural=few": "{count} hráči",
+          "countPlural=other": "{count} hráčů"
+        }
       }
-    },
-    "table": {
-      "game": "Hra",
-      "players": "Hráči",
-      "duration": "Doba hry",
-      "difficulty": "Obtížnost",
-      "category": "Kategorie",
-      "rating": "Hodnocení"
-    },
-    "noGamesFound": "Žádné hry neodpovídají vašim kritériím."
+    ],
+    "playerRange": "{min}–{max} hráčů",
+    "minutes": "{count} min",
+    "rating": "Hodnocení"
   },
   "gallery": {
     "pageTitle": "Galerie - Deskohub",

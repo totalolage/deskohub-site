@@ -1,0 +1,168 @@
+openapi: 3.0.3
+info:
+  title: Deskohub — databáze her API
+  description: >
+    Veřejné, nezabezpečené JSON API se seznamem deskových her v baru.
+    Data spravuje majitelka přes admin rozhraní (/admin) — přidávání her
+    z BoardGameGeek, poznámky, dostupnost, jazyk.
+  version: "1.0.0"
+servers:
+  - url: https://deskohub-games.vercel.app
+    description: Produkce
+
+paths:
+  /api/games:
+    get:
+      summary: Seznam her
+      description: >
+        Vrací hry v baru. Bez parametru `all` jen ty, které jsou aktuálně
+        dostupné (`inStock: true`). Odpověď je cachovaná 60 s.
+      parameters:
+        - name: all
+          in: query
+          required: false
+          description: Když je "1", vrátí i dočasně skryté (nedostupné) hry.
+          schema:
+            type: string
+            enum: ["1"]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [games]
+                properties:
+                  games:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Game"
+              examples:
+                default:
+                  value:
+                    games:
+                      - id: 1
+                        bggId: 13
+                        name: "Catan"
+                        yearPublished: 1995
+                        imageUrl: "https://cf.geekdo-images.com/full.jpg"
+                        thumbnailUrl: "https://cf.geekdo-images.com/thumb.jpg"
+                        description: "Klasická stavební strategie s obchodováním surovin na ostrově."
+                        minPlayers: 3
+                        maxPlayers: 4
+                        playingTimeMinutes: 120
+                        minAge: 10
+                        weight: 2.31
+                        rating: 7.4
+                        categories: ["Economic", "Negotiation"]
+                        mechanics: ["Dice Rolling"]
+                        inStock: true
+                        note: null
+                        language: "cz"
+                        addedAt: "2026-08-20T14:32:00.000Z"
+                        updatedAt: "2026-08-28T09:10:00.000Z"
+
+components:
+  schemas:
+    Game:
+      type: object
+      description: >
+        Odpovídá řádku v tabulce `games`. Pole `null` znamená, že daný
+        údaj u té hry nikdo (ani BGG, ani admin) zatím nevyplnil — ne že
+        by šlo o prázdný řetězec nebo 0.
+      required:
+        - id
+        - bggId
+        - name
+        - inStock
+        - addedAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+          description: Interní ID v naší databázi (ne BGG ID).
+          example: 1
+        bggId:
+          type: integer
+          description: ID hry na BoardGameGeek — dá se z něj poskládat odkaz `https://boardgamegeek.com/boardgame/{bggId}`.
+          example: 13
+        name:
+          type: string
+          example: "Catan"
+        yearPublished:
+          type: integer
+          nullable: true
+          example: 1995
+        imageUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Plné rozlišení obrázku z BGG.
+        thumbnailUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Menší náhled z BGG.
+        description:
+          type: string
+          nullable: true
+          description: Popis hry z BGG (může obsahovat delší text, žádné HTML tagy).
+        minPlayers:
+          type: integer
+          nullable: true
+        maxPlayers:
+          type: integer
+          nullable: true
+        playingTimeMinutes:
+          type: integer
+          nullable: true
+          description: Herní doba v minutách (jedno číslo, ne rozsah).
+        minAge:
+          type: integer
+          nullable: true
+        weight:
+          type: number
+          format: float
+          nullable: true
+          description: Náročnost hry podle BGG, škála zhruba 1–5.
+          example: 2.31
+        rating:
+          type: number
+          format: float
+          nullable: true
+          description: Průměrné hodnocení hry na BGG, škála 0–10.
+          example: 7.4
+        categories:
+          type: array
+          nullable: true
+          items:
+            type: string
+          example: ["Economic", "Negotiation"]
+        mechanics:
+          type: array
+          nullable: true
+          items:
+            type: string
+          example: ["Dice Rolling"]
+        inStock:
+          type: boolean
+          description: false = dočasně nedostupná/skrytá, nevrací se bez ?all=1.
+        note:
+          type: string
+          nullable: true
+          description: Volná poznámka od majitelky (např. "chybí karta, doobjednáno").
+        language:
+          type: string
+          nullable: true
+          enum: ["cz", "en", "any"]
+          description: >
+            null = jazyk zatím nikdo nevyplnil (BGG ho nezná, doplňuje se
+            ručně v adminu) — nebrat jako "any"/"neznámý", ale jako
+            "zatím nevíme".
+        addedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time

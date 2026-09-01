@@ -26,7 +26,6 @@ import {
 } from "./table-frame";
 
 declare module "@tanstack/react-table" {
-  // biome-ignore lint/correctness/noUnusedVariables: TanStack declaration merging requires these exact type parameters.
   interface ColumnMeta<TData extends RowData, TValue> {
     readonly cellClassName?: string;
     readonly headClassName?: string;

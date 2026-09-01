@@ -241,7 +241,7 @@ function makeReservationHoldCleanupServiceLayer(
               ));
           yield* Effect.annotateLogsScoped({ claimed });
 
-          if (!claimed || claimed.reservationState !== "cancelling") {
+          if (claimed?.reservationState !== "cancelling") {
             yield* Effect.logWarning(
               "Reservation hold cancellation skipped: claim not cancellable"
             );
