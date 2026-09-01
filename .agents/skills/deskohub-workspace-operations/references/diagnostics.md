@@ -20,3 +20,7 @@ When an exact Cloudinary public ID returns 404, verify the full Cloudinary accou
 ## Reuse bounded database read retries
 
 For Workspace database read instability, reuse `retryDatabaseRead` from `apps/deskohub-workspace/db/retry-database-read.ts` at the repository query boundary. It retries Drizzle failures whose nested Effect SQL error is marked retryable, plus uncoded failures that Effect SQL reports as unknown. It makes at most two retries 100 ms apart. Apply it to idempotent reads; state-changing operations need their own idempotency boundary before retrying.
+
+## Bound batch database concurrency
+
+Batch workflows that can issue several concurrent database reads must use a numeric concurrency limit that leaves headroom in the process pool.
