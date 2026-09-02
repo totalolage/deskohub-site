@@ -67,7 +67,8 @@ authorization/response mapping at route level.
 
 With the approved settings, the user-facing retention statement can say:
 
-- sessions remain valid for up to 30 days and roll forward while used;
+- sessions have a 30-day rolling lifetime and refresh at most once per day
+  while used;
 - magic-link verification data remains valid for 10 minutes;
 - expired session, verification, and IP-based rate-limit rows are removed by a
   daily cleanup job; and
