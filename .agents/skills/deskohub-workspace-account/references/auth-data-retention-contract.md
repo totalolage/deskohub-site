@@ -125,15 +125,19 @@ event, scheduling fields, and tags
   not place profile, reservation, billing, or Dotypos identifiers in the
   subject, body, or tags.
 - Do not mirror Resend message bodies or delivery events into Workspace.
+- Keep open and link tracking disabled for authentication email; those signals
+  are not needed to complete sign-in and Resend's DPA says tracking can add IP,
+  location, operating-system, browser, device, and email-client data.
 - Treat the URL in the message as a bearer credential and keep it out of logs
   and analytics.
 - Protected-preview E2E uses only Resend's synthetic test recipient, retrieves
   the message transiently, and stores neither message nor link after the run.
 - Privacy copy must name Resend as the email processor and disclose the
   recipient address, message content including the magic link, delivery
-  metadata, the applicable 30-day active-account retention, and seven-day
-  backups. Account deletion cannot synchronously erase an already-sent email;
-  use Resend's contact process only for an exceptional early-removal request.
+  metadata, United States storage, the applicable 30-day active-account
+  retention, and seven-day backups. Account deletion cannot synchronously
+  erase an already-sent email; use Resend's contact process only for an
+  exceptional early-removal request.
 
 No separate application cleanup job is needed for Resend because Workspace
 does not retain a copy and Resend publishes no sent-message delete API; the
@@ -207,4 +211,3 @@ The minimum verification set is:
 - static legal-content assertions that both locales name Better Auth data in
   Neon Postgres, Dotypos profile/history ownership, Resend processing, and the
   non-immediate provider/backup limitations.
-
