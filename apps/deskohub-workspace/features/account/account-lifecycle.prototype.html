@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Customer account lifecycle prototype</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        --navy: #00024f;
+        --orange: #d56a1f;
+        --cream: #f4f3ef;
+        --green: #007a59;
+        --red: #9b1c1c;
+        --line: rgba(0, 2, 79, 0.14);
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--cream); color: var(--navy); }
+      button, input, select { font: inherit; }
+      button { cursor: pointer; }
+      .page { width: min(1180px, calc(100% - 32px)); margin: 32px auto 64px; }
+      .intro { max-width: 830px; }
+      .eyebrow { color: var(--orange); font-size: 12px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+      h1 { margin: 8px 0 12px; font-size: clamp(34px, 5vw, 58px); line-height: .98; }
+      h2, h3, p { margin-top: 0; }
+      .intro p { color: rgba(0, 2, 79, .72); line-height: 1.6; }
+      .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
+      button { border: 1px solid var(--line); border-radius: 999px; background: white; color: var(--navy); padding: 9px 14px; font-weight: 700; }
+      button:hover { border-color: var(--orange); }
+      button.primary { background: var(--navy); color: white; border-color: var(--navy); }
+      button.danger { color: var(--red); }
+      button[disabled] { cursor: not-allowed; opacity: .45; }
+      .grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .7fr); gap: 20px; align-items: start; }
+      .card { border: 1px solid rgba(255,255,255,.8); border-radius: 28px; background: rgba(255,255,255,.94); box-shadow: 0 24px 70px -48px rgba(0,2,79,.6); padding: clamp(20px, 4vw, 36px); }
+      .screen { min-height: 470px; }
+      .screen h2 { font-size: clamp(28px, 4vw, 42px); margin-bottom: 10px; }
+      .muted { color: rgba(0,2,79,.64); line-height: 1.55; }
+      .notice { border: 1px solid rgba(213,106,31,.25); border-radius: 18px; background: rgba(255,220,162,.23); padding: 16px; margin: 20px 0; }
+      .notice.error { border-color: rgba(155,28,28,.25); background: rgba(155,28,28,.06); color: var(--red); }
+      .notice.success { border-color: rgba(0,122,89,.25); background: rgba(0,122,89,.07); color: var(--green); }
+      .fields { display: grid; gap: 14px; margin: 22px 0; }
+      .fields.two { grid-template-columns: 1fr 1fr; }
+      label { display: grid; gap: 6px; font-size: 13px; font-weight: 800; }
+      input, select { width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; color: var(--navy); background: white; }
+      input[readonly] { background: rgba(0,2,79,.04); color: rgba(0,2,79,.66); }
+      details { margin: 18px 0; border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+      summary { cursor: pointer; font-weight: 800; }
+      .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+      .summary { display: grid; gap: 10px; }
+      .summary div { border-bottom: 1px solid var(--line); padding-bottom: 9px; }
+      .summary dt { color: rgba(0,2,79,.55); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+      .summary dd { margin: 3px 0 0; font-weight: 700; overflow-wrap: anywhere; }
+      .reservations { display: grid; gap: 12px; margin: 24px 0; }
+      .reservation { border: 1px solid var(--line); border-radius: 16px; padding: 14px; }
+      .reservation strong { display: block; margin-bottom: 4px; }
+      .tabs { display: flex; gap: 8px; overflow-x: auto; margin: 34px 0 14px; padding-bottom: 4px; }
+      .tabs button[aria-selected="true"] { background: var(--navy); color: white; }
+      .walkthrough { border: 1px solid var(--line); border-radius: 24px; background: rgba(255,255,255,.7); padding: 22px; }
+      .steps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+      .steps button.done { background: rgba(0,122,89,.08); border-color: rgba(0,122,89,.35); color: var(--green); }
+      .steps button.current { outline: 3px solid rgba(213,106,31,.22); border-color: var(--orange); }
+      .free-play { margin-top: 28px; }
+      .free-play .toolbar { margin: 12px 0 0; }
+      code { font-size: .9em; }
+      @media (max-width: 820px) {
+        .grid { grid-template-columns: 1fr; }
+        .fields.two { grid-template-columns: 1fr; }
+        .screen { min-height: auto; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="intro">
+        <div class="eyebrow">Throwaway decision prototype</div>
+        <h1>Customer account lifecycle</h1>
+        <p>
+          This demo asks whether one email-first flow can safely cover sign-in,
+          account creation, verified Dotypos linking, profile completion,
+          reservations, logout, deletion, and later reactivation without exposing
+          profile data before email ownership is proven.
+        </p>
+      </section>
+
+      <div class="toolbar">
+        <button id="locale" type="button">Switch to Czech</button>
+        <button id="reset" type="button">Reset prototype</button>
+      </div>
+
+      <section class="grid">
+        <article class="card screen" id="screen" aria-live="polite"></article>
+        <aside class="card">
+          <h2>Current state</h2>
+          <dl class="summary" id="state"></dl>
+        </aside>
+      </section>
+
+      <nav class="tabs" id="tabs" aria-label="Guided walkthroughs"></nav>
+      <section class="walkthrough" id="walkthrough"></section>
+
+      <section class="free-play">
+        <h2>Free play</h2>
+        <p class="muted">Jump to any important outcome. The state panel shows what the product is allowed to know.</p>
+        <div class="toolbar" id="free-play"></div>
+      </section>
+    </main>
+
+    <script>
+      const initialState = Object.freeze({
+        locale: "en",
+        view: "signed-out",
+        session: "none",
+        account: "none",
+        emailVerified: false,
+        profile: "hidden",
+        profileStatus: "unknown",
+        reservations: "hidden",
+        deletion: "none",
+        message: "",
+      });
+
+      function reduce(state, action) {
+        switch (action.type) {
+          case "RESET":
+            return { ...initialState, locale: state.locale };
+          case "TOGGLE_LOCALE":
+            return { ...state, locale: state.locale === "en" ? "cs" : "en" };
+          case "REQUEST_LINK":
+            return { ...initialState, locale: state.locale, view: "request-accepted", message: "generic-request" };
+          case "INVALID_LINK":
+            return { ...initialState, locale: state.locale, view: "link-failed", message: "invalid-link" };
+          case "VERIFY_ACTIVE":
+            return { ...state, view: "account", session: "fresh", account: "active", emailVerified: true, profile: "visible", profileStatus: "active-linked", reservations: "available", deletion: "none", message: "signed-in" };
+          case "VERIFY_EXPIRED_PROFILE":
+            return { ...state, view: "account", session: "fresh", account: "active", emailVerified: true, profile: "visible", profileStatus: "reactivated-linked", reservations: "available", deletion: "none", message: "profile-reactivated" };
+          case "VERIFY_NO_PROFILE":
+            return { ...state, view: "profile-completion", session: "fresh", account: "active", emailVerified: true, profile: "empty", profileStatus: "none", reservations: "hidden", deletion: "none", message: "profile-required" };
+          case "COMPLETE_PROFILE":
+            if (!state.emailVerified || state.profileStatus !== "none") return state;
+            return { ...state, view: "account", profile: "visible", profileStatus: "created-linked", reservations: "available", message: "profile-created" };
+          case "VERIFY_SUPPORT_REQUIRED":
+            return { ...state, view: "support-required", session: "fresh", account: "active", emailVerified: true, profile: "hidden", profileStatus: action.reason, reservations: "hidden", deletion: "none", message: "support-required" };
+          case "RESERVATIONS_DOWN":
+            if (state.view !== "account") return state;
+            return { ...state, reservations: "unavailable", message: "reservations-down" };
+          case "PROFILE_SAVED":
+            if (state.view !== "account") return state;
+            return { ...state, message: "profile-saved" };
+          case "LOGOUT":
+            return { ...initialState, locale: state.locale, profileStatus: state.profileStatus, message: "logged-out" };
+          case "REVOKE_SESSION":
+            return { ...initialState, locale: state.locale, profileStatus: state.profileStatus, message: "session-revoked" };
+          case "MAKE_SESSION_STALE":
+            if (state.account !== "active") return state;
+            return { ...state, session: "stale", message: "session-stale" };
+          case "OPEN_DELETE":
+            if (state.view !== "account") return state;
+            return { ...state, view: "delete-confirmation", message: "" };
+          case "CONFIRM_DELETE":
+            if (state.view !== "delete-confirmation") return state;
+            return state.session === "fresh"
+              ? { ...state, deletion: "expiring-profile", message: "deleting" }
+              : { ...state, view: "delete-reauth", deletion: "awaiting-reauth", message: "reauth-required" };
+          case "REQUEST_DELETE_REAUTH":
+            if (state.view !== "delete-reauth") return state;
+            return { ...state, view: "request-accepted", message: "delete-reauth-sent" };
+          case "VERIFY_DELETE_REAUTH":
+            return { ...state, view: "delete-confirmation", session: "fresh", deletion: "none", message: "reauth-complete" };
+          case "DOTYPOS_EXPIRY_FAILED":
+            if (state.deletion !== "expiring-profile") return state;
+            return { ...state, deletion: "retryable-error", message: "delete-failed" };
+          case "RETRY_DELETE":
+            if (state.deletion !== "retryable-error") return state;
+            return { ...state, deletion: "expiring-profile", message: "deleting" };
+          case "DELETE_SUCCEEDED":
+            if (state.deletion !== "expiring-profile") return state;
+            return { ...initialState, locale: state.locale, view: "deleted", profileStatus: "expired-unlinked", deletion: "complete", message: "deleted" };
+          default:
+            return state;
+        }
+      }
+
+      const copy = {
+        en: {
+          signedOutTitle: "Sign in or create an account",
+          signedOutBody: "Enter your email. We will send the same response whether an account already exists or not.",
+          requestTitle: "Check your inbox",
+          requestBody: "If the address can receive mail, a single-use link will arrive shortly. It expires in 10 minutes.",
+          failedTitle: "This link cannot be used",
+          failedBody: "It may have expired or already been opened. Request a new link to continue.",
+          completeTitle: "Complete your profile",
+          completeBody: "Your email is verified. No matching customer profile exists, so we need your name before creating one.",
+          accountTitle: "My Workspace",
+          accountBody: "Your Dotypos profile and reservations are available because this email has been verified and linked.",
+          supportTitle: "We need to verify your profile",
+          supportBody: "We could not safely choose one customer profile. No profile details or reservation history have been shown.",
+          deleteTitle: "Delete your account?",
+          deleteBody: "Your login account and sessions will be deleted. Your customer profile will be expired and retained with reservation records.",
+          reauthTitle: "Sign in again to delete",
+          reauthBody: "Your session is older than 10 minutes. Use a new magic link, then confirm deletion again.",
+          deletedTitle: "Your account was deleted",
+          deletedBody: "You are signed out. Signing up later with the same verified email can reactivate the retained customer profile.",
+        },
+        cs: {
+          signedOutTitle: "Přihlášení nebo vytvoření účtu",
+          signedOutBody: "Zadejte e-mail. Odpověď bude stejná bez ohledu na to, zda účet již existuje.",
+          requestTitle: "Zkontrolujte svou e-mailovou schránku",
+          requestBody: "Pokud lze na adresu doručit zprávu, brzy přijde jednorázový odkaz. Platí 10 minut.",
+          failedTitle: "Tento odkaz nelze použít",
+          failedBody: "Jeho platnost mohla vypršet nebo už byl použit. Vyžádejte si nový odkaz.",
+          completeTitle: "Doplňte svůj profil",
+          completeBody: "E-mail je ověřený. Nenašli jsme odpovídající zákaznický profil, proto před jeho vytvořením potřebujeme vaše jméno.",
+          accountTitle: "Můj Workspace",
+          accountBody: "Profil z Dotyposu a rezervace jsou dostupné, protože e-mail byl ověřen a bezpečně propojen.",
+          supportTitle: "Potřebujeme ověřit váš profil",
+          supportBody: "Nebylo možné bezpečně vybrat jeden zákaznický profil. Nezobrazili jsme žádné profilové údaje ani historii rezervací.",
+          deleteTitle: "Smazat účet?",
+          deleteBody: "Přihlašovací účet a relace budou smazány. Zákaznický profil bude deaktivován a zachován s historií rezervací.",
+          reauthTitle: "Pro smazání se přihlaste znovu",
+          reauthBody: "Relace je starší než 10 minut. Použijte nový přihlašovací odkaz a smazání znovu potvrďte.",
+          deletedTitle: "Váš účet byl smazán",
+          deletedBody: "Byli jste odhlášeni. Pozdější registrace se stejným ověřeným e-mailem může obnovit zachovaný zákaznický profil.",
+        },
+      };
+
+      const scenarios = [
+        { id: "returning", title: "Returning customer", description: "A verified email uniquely matches an active profile. Profile data appears only after the link is consumed.", actions: [["Request link", "REQUEST_LINK"], ["Open valid link", "VERIFY_ACTIVE"], ["Save profile", "PROFILE_SAVED"], ["Log out", "LOGOUT"]] },
+        { id: "new", title: "New customer", description: "Authentication creates the account first. Dotypos remains untouched until verification, then profile completion creates and links the customer.", actions: [["Request link", "REQUEST_LINK"], ["Verify, no profile found", "VERIFY_NO_PROFILE"], ["Complete required name", "COMPLETE_PROFILE"]] },
+        { id: "reactivate", title: "Return after deletion", description: "The verified email finds one expired profile. Workspace reactivates and links that same record, preserving reservation history.", actions: [["Request link", "REQUEST_LINK"], ["Verify and reactivate", "VERIFY_EXPIRED_PROFILE"]] },
+        { id: "support", title: "Ambiguous identity", description: "Multiple, deleted, or already claimed matches stop automatic linking. The account exists, but customer data stays hidden.", actions: [["Request link", "REQUEST_LINK"], ["Verify ambiguous match", "VERIFY_SUPPORT_REQUIRED", "ambiguous"]] },
+        { id: "replay", title: "Invalid or replayed link", description: "Expired, malformed, and already consumed links share one safe failure screen and never establish a session.", actions: [["Request link", "REQUEST_LINK"], ["Open unusable link", "INVALID_LINK"], ["Request replacement", "REQUEST_LINK"]] },
+        { id: "delete", title: "Stale-session deletion", description: "A stale session must sign in again. Dotypos expiry happens first; failure leaves the auth account intact and deletion retryable.", actions: [["Sign in", "VERIFY_ACTIVE"], ["Let session become stale", "MAKE_SESSION_STALE"], ["Open deletion", "OPEN_DELETE"], ["Confirm", "CONFIRM_DELETE"], ["Request new sign-in link", "REQUEST_DELETE_REAUTH"], ["Open new link", "VERIFY_DELETE_REAUTH"], ["Confirm again", "CONFIRM_DELETE"], ["Dotypos fails", "DOTYPOS_EXPIRY_FAILED"], ["Retry", "RETRY_DELETE"], ["Dotypos succeeds", "DELETE_SUCCEEDED"]] },
+      ];
+
+      const freePlay = [
+        ["Request magic link", "REQUEST_LINK"],
+        ["Active profile match", "VERIFY_ACTIVE"],
+        ["Expired profile match", "VERIFY_EXPIRED_PROFILE"],
+        ["No profile match", "VERIFY_NO_PROFILE"],
+        ["Ambiguous match", "VERIFY_SUPPORT_REQUIRED", "ambiguous"],
+        ["Claimed profile", "VERIFY_SUPPORT_REQUIRED", "claimed"],
+        ["Deleted profile", "VERIFY_SUPPORT_REQUIRED", "deleted"],
+        ["Invalid or replayed link", "INVALID_LINK"],
+        ["Reservation provider fails", "RESERVATIONS_DOWN"],
+        ["Session becomes stale", "MAKE_SESSION_STALE"],
+        ["Session is revoked", "REVOKE_SESSION"],
+        ["Open deletion", "OPEN_DELETE"],
+        ["Confirm deletion", "CONFIRM_DELETE"],
+        ["Dotypos expiry fails", "DOTYPOS_EXPIRY_FAILED"],
+        ["Retry deletion", "RETRY_DELETE"],
+        ["Deletion succeeds", "DELETE_SUCCEEDED"],
+        ["Log out", "LOGOUT"],
+      ];
+
+      let state = { ...initialState };
+      let activeScenario = scenarios[0];
+      let completedSteps = 0;
+
+      function dispatch(type, reason) {
+        state = reduce(state, { type, reason });
+        render();
+      }
+
+      function notice(message, kind = "") {
+        return message ? `<div class="notice ${kind}">${message}</div>` : "";
+      }
+
+      function billingFields() {
+        return `<details><summary>Billing details, optional</summary><div class="fields two"><label>Billing profile<select><option>Personal</option><option>Business</option></select></label><label>Company name<input /></label><label>Company ID<input /></label><label>VAT ID<input /></label><label>Street and number<input /></label><label>City<input /></label><label>Postal code<input /></label></div></details>`;
+      }
+
+      function renderScreen() {
+        const c = copy[state.locale];
+        const message = {
+          "logged-out": notice("You have been signed out.", "success"),
+          "session-revoked": notice("Your session is no longer valid. Sign in again to continue.", "error"),
+          "profile-reactivated": notice("Your retained customer profile was reactivated.", "success"),
+          "profile-created": notice("Your customer profile was created and linked.", "success"),
+          "profile-saved": notice("Profile updated in Dotypos.", "success"),
+          "reservations-down": notice("Reservation history is temporarily unavailable. Your profile is still available.", "error"),
+          "delete-failed": notice("We could not expire the customer profile, so the account was not deleted. Retry when the provider recovers.", "error"),
+          "reauth-complete": notice("Signed in again. Review and confirm deletion once more.", "success"),
+        }[state.message] || "";
+
+        if (state.view === "signed-out") return `${message}<div class="eyebrow">Account access</div><h2>${c.signedOutTitle}</h2><p class="muted">${c.signedOutBody}</p><div class="fields"><label>Email<input type="email" value="customer@example.test" /></label></div><div class="actions"><button class="primary" onclick="dispatch('REQUEST_LINK')">Email me a sign-in link</button></div>`;
+        if (state.view === "request-accepted") return `<div class="eyebrow">Magic link requested</div><h2>${c.requestTitle}</h2><p class="muted">${c.requestBody}</p>${state.message === "delete-reauth-sent" ? notice("After signing in, return to deletion and confirm again.") : ""}<div class="actions"><button onclick="dispatch('REQUEST_LINK')">Send another link</button></div>`;
+        if (state.view === "link-failed") return `<div class="eyebrow">Link unavailable</div><h2>${c.failedTitle}</h2><p class="muted">${c.failedBody}</p><div class="actions"><button class="primary" onclick="dispatch('REQUEST_LINK')">Request a new link</button></div>`;
+        if (state.view === "profile-completion") return `<div class="eyebrow">Verified account</div><h2>${c.completeTitle}</h2><p class="muted">${c.completeBody}</p><div class="fields two"><label>First name, required<input required value="Ada" /></label><label>Last name, optional<input value="Lovelace" /></label><label>Phone, optional<input type="tel" /></label><label>Verified login email<input readonly value="customer@example.test" /></label></div>${billingFields()}<div class="actions"><button class="primary" onclick="dispatch('COMPLETE_PROFILE')">Create customer profile</button></div>`;
+        if (state.view === "support-required") return `<div class="eyebrow">Verified account</div><h2>${c.supportTitle}</h2><p class="muted">${c.supportBody}</p>${notice("Reference the fixed support reason only. Do not display matched customer names, reservations, or IDs.")}<div class="actions"><button>Contact Deskohub</button><button onclick="dispatch('LOGOUT')">Log out</button></div>`;
+        if (state.view === "delete-reauth") return `<div class="eyebrow">Recent sign-in required</div><h2>${c.reauthTitle}</h2><p class="muted">${c.reauthBody}</p><div class="actions"><button class="primary" onclick="dispatch('REQUEST_DELETE_REAUTH')">Email me a new link</button><button onclick="dispatch('VERIFY_DELETE_REAUTH')">Prototype: open link</button></div>`;
+        if (state.view === "delete-confirmation") return `${message}<div class="eyebrow">Account deletion</div><h2>${c.deleteTitle}</h2><p class="muted">${c.deleteBody}</p>${notice("Deletion order: expire Dotypos profile, remove local link, delete Better Auth identity and every session.")}<div class="actions"><button onclick="dispatch('VERIFY_ACTIVE')">Keep account</button><button class="danger" onclick="dispatch('CONFIRM_DELETE')">I understand, delete account</button>${state.deletion === "retryable-error" ? `<button class="primary" onclick="dispatch('RETRY_DELETE')">Retry deletion</button>` : ""}${state.deletion === "expiring-profile" ? `<button class="primary" onclick="dispatch('DELETE_SUCCEEDED')">Prototype: provider succeeds</button>` : ""}</div>`;
+        if (state.view === "deleted") return `<div class="eyebrow">Deletion complete</div><h2>${c.deletedTitle}</h2><p class="muted">${c.deletedBody}</p><div class="actions"><button class="primary" onclick="dispatch('REQUEST_LINK')">Create an account again</button></div>`;
+
+        return `${message}<div class="eyebrow">Verified customer account</div><h2>${c.accountTitle}</h2><p class="muted">${c.accountBody}</p><div class="fields two"><label>First name, required<input required value="Ada" /></label><label>Last name, optional<input value="Lovelace" /></label><label>Phone, optional<input value="" /></label><label>Verified login email<input readonly value="customer@example.test" /></label></div>${billingFields()}<div class="actions"><button class="primary" onclick="dispatch('PROFILE_SAVED')">Save profile</button><button onclick="dispatch('LOGOUT')">Log out</button><button class="danger" onclick="dispatch('OPEN_DELETE')">Delete account</button></div><section class="reservations"><h3>Current and upcoming</h3>${state.reservations === "unavailable" ? notice("Our reservation system could not be reached. Try again later.", "error") : `<div class="reservation"><strong>Meeting room</strong><span class="muted">18 September 2026, 14:00–16:00 · Confirmed</span></div><h3>Past reservations</h3><div class="reservation"><strong>Cowork day pass</strong><span class="muted">21 August 2026 · Completed</span></div><h3>Missing date details</h3><div class="reservation"><strong>Office</strong><span class="muted">Date unavailable · Requires attention</span></div>`}</section>`;
+      }
+
+      function renderState() {
+        const entries = [
+          ["Screen", state.view], ["Session", state.session], ["Customer account", state.account],
+          ["Email verified", state.emailVerified ? "yes" : "no"], ["Customer profile visibility", state.profile],
+          ["Profile link state", state.profileStatus], ["Reservation data", state.reservations],
+          ["Deletion", state.deletion], ["Last outcome", state.message || "none"],
+        ];
+        return entries.map(([key, value]) => `<div><dt>${key}</dt><dd>${value}</dd></div>`).join("");
+      }
+
+      function renderTabs() {
+        return scenarios.map((scenario) => `<button type="button" aria-selected="${scenario.id === activeScenario.id}" onclick="selectScenario('${scenario.id}')">${scenario.title}</button>`).join("");
+      }
+
+      function renderWalkthrough() {
+        return `<h2>${activeScenario.title}</h2><p class="muted">${activeScenario.description}</p><div class="steps">${activeScenario.actions.map(([label, type, reason], index) => `<button type="button" class="${index < completedSteps ? "done" : index === completedSteps ? "current" : ""}" ${index > completedSteps ? "disabled" : ""} onclick="runStep(${index}, '${type}', '${reason || ""}')">${index + 1}. ${label}</button>`).join("")}</div>`;
+      }
+
+      function renderFreePlay() {
+        return freePlay.map(([label, type, reason]) => `<button type="button" onclick="dispatch('${type}', '${reason || ""}')">${label}</button>`).join("");
+      }
+
+      function selectScenario(id) {
+        activeScenario = scenarios.find((scenario) => scenario.id === id);
+        completedSteps = 0;
+        state = { ...initialState, locale: state.locale };
+        render();
+      }
+
+      function runStep(index, type, reason) {
+        if (index > completedSteps) return;
+        if (index < completedSteps) {
+          completedSteps = 0;
+          state = { ...initialState, locale: state.locale };
+          for (let i = 0; i <= index; i += 1) state = reduce(state, { type: activeScenario.actions[i][1], reason: activeScenario.actions[i][2] });
+          completedSteps = index + 1;
+        } else {
+          state = reduce(state, { type, reason });
+          completedSteps += 1;
+        }
+        render();
+      }
+
+      function render() {
+        document.documentElement.lang = state.locale === "en" ? "en" : "cs";
+        document.getElementById("locale").textContent = state.locale === "en" ? "Switch to Czech" : "Přepnout do angličtiny";
+        document.getElementById("screen").innerHTML = renderScreen();
+        document.getElementById("state").innerHTML = renderState();
+        document.getElementById("tabs").innerHTML = renderTabs();
+        document.getElementById("walkthrough").innerHTML = renderWalkthrough();
+        document.getElementById("free-play").innerHTML = renderFreePlay();
+      }
+
+      document.getElementById("locale").addEventListener("click", () => dispatch("TOGGLE_LOCALE"));
+      document.getElementById("reset").addEventListener("click", () => { completedSteps = 0; dispatch("RESET"); });
+      render();
+    </script>
+  </body>
+</html>
