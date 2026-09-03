@@ -534,7 +534,7 @@ export const loadDotyposCapacityInventory = (
     )
   );
 
-const getDotyposLayer = (config: DatasourceConfig) =>
+export const getDotyposLayer = (config: DatasourceConfig) =>
   DotyposService.Live.pipe(
     Layer.provide(
       Layer.succeed(DotyposRuntimeConfig, {

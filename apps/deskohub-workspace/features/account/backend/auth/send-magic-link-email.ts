@@ -36,6 +36,17 @@ export type MagicLinkEmailRenderer = (
   unknown
 >;
 
+/**
+ * Fixed, non-secret, non-PII Resend tags attached to every magic-link
+ * message. The exact-SHA E2E runner uses them as one additional equality
+ * check when matching the synthetic message; they never carry bearer or
+ * request-specific content.
+ */
+export const magicLinkCorrelationTags = [
+  { name: "category", value: "account-magic-link" },
+  { name: "surface", value: "workspace" },
+] as const;
+
 export const makeMagicLinkEmailDelivery = (
   sender: MagicLinkEmailSender | null,
   render: MagicLinkEmailRenderer

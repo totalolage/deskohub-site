@@ -53,13 +53,16 @@ type PlaywrightSession = {
   readonly networkRequests: string[];
   readonly pageIds: Map<Page, string>;
   readonly primedOrigins: Set<string>;
-  readonly rawHarPath: string;
+  rawHarPath?: string;
 };
 
 const maximumDiagnosticEntries = 500;
 
-export const makePlaywrightBrowserRunner = (browser: Browser): Runner =>
-  makePlaywrightRuntimeRunner(new PlaywrightRuntime(browser));
+export const makePlaywrightBrowserRunner = (
+  browser: Browser,
+  options: { readonly recordHar?: boolean } = {}
+): Runner =>
+  makePlaywrightRuntimeRunner(new PlaywrightRuntime(browser, options));
 
 const makePlaywrightRuntimeRunner = (runtime: PlaywrightRuntime): Runner => {
   const run = (async (
@@ -109,7 +112,10 @@ class PlaywrightRuntime {
     Promise<PlaywrightSession>
   >();
 
-  constructor(private readonly browser: Browser) {}
+  constructor(
+    private readonly browser: Browser,
+    private readonly options: { readonly recordHar?: boolean } = {}
+  ) {}
 
   async execute(
     args: string[],
@@ -283,9 +289,11 @@ class PlaywrightRuntime {
         if (commandArgs[0] === "har" && commandArgs[1] === "stop") {
           await this.closeSession(session);
           const destination = commandArgs[2];
-          if (destination && destination !== devNull)
-            await copyFile(session.rawHarPath, destination);
-          await rm(session.rawHarPath, { force: true });
+          if (session.rawHarPath) {
+            if (destination && destination !== devNull)
+              await copyFile(session.rawHarPath, destination);
+            await rm(session.rawHarPath, { force: true });
+          }
           return "";
         }
         throw new Error(
@@ -293,7 +301,7 @@ class PlaywrightRuntime {
         );
       case "close":
         await this.closeSession(session);
-        await rm(session.rawHarPath, { force: true });
+        if (session.rawHarPath) await rm(session.rawHarPath, { force: true });
         return "";
       default:
         throw new Error(
@@ -312,14 +320,19 @@ class PlaywrightRuntime {
   }
 
   private async createSession(sessionId: string): Promise<PlaywrightSession> {
-    const rawHarPath = resolve(
-      tmpdir(),
-      `${sessionId.replaceAll(/[^a-zA-Z0-9_-]/g, "-")}-${crypto.randomUUID()}.har`
-    );
+    const recordHar = this.options.recordHar !== false;
+    const rawHarPath = recordHar
+      ? resolve(
+          tmpdir(),
+          `${sessionId.replaceAll(/[^a-zA-Z0-9_-]/g, "-")}-${crypto.randomUUID()}.har`
+        )
+      : undefined;
     let context: BrowserContext | undefined;
     try {
       context = await this.browser.newContext({
-        recordHar: { content: "embed", mode: "full", path: rawHarPath },
+        recordHar: rawHarPath
+          ? { content: "embed", mode: "full", path: rawHarPath }
+          : undefined,
         viewport: { height: 900, width: 1440 },
       });
       const initialPage = await context.newPage();
@@ -341,7 +354,7 @@ class PlaywrightRuntime {
       return session;
     } catch (cause) {
       await context?.close().catch(() => undefined);
-      await rm(rawHarPath, { force: true });
+      if (rawHarPath) await rm(rawHarPath, { force: true });
       throw cause;
     }
   }
@@ -350,7 +363,7 @@ class PlaywrightRuntime {
     try {
       await this.closeSession(session);
     } finally {
-      await rm(session.rawHarPath, { force: true });
+      if (session.rawHarPath) await rm(session.rawHarPath, { force: true });
     }
   }
 

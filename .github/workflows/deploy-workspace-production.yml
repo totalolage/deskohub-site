@@ -44,6 +44,11 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Retain the current production deployment for rollback
+        id: rollback-target
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts resolve-previous
+
       - name: Build staged production deployment
         id: deploy
         working-directory: apps/deskohub-workspace
@@ -65,5 +70,30 @@ jobs:
             DATABASE_URL_UNPOOLED="$database_url" \
             bun run db:migrate
 
+      - name: Probe staged deployment auth readiness
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts probe --url "${{ steps.deploy.outputs.url }}"
+
+      - name: Verify registered workspace crons
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts verify-crons
+
       - name: Promote production deployment
+        id: promote
         run: bunx vercel@54.9.1 promote "${{ steps.deploy.outputs.url }}" --scope filip-kalny-projects --yes --timeout 10m --token "$VERCEL_TOKEN"
+
+      - name: Probe canonical production after promotion
+        id: canonical-smoke
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts verify-canonical
+
+      - name: Restore the retained production deployment
+        if: always() && steps.canonical-smoke.outcome == 'failure' && steps.promote.outcome == 'success' && steps.rollback-target.outputs.previous_url != ''
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts rollback --url "${{ steps.rollback-target.outputs.previous_url }}"
+
+      - name: Fail the release after rollback
+        if: always() && steps.canonical-smoke.outcome == 'failure'
+        run: |
+          echo "The canonical production smoke failed after promotion" >&2
+          exit 1

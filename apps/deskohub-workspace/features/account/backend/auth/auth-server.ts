@@ -26,7 +26,10 @@ import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { authOptions, betterAuthMagicLinkOptions } from "./auth-options";
 import { renderMagicLinkEmail } from "./magic-link-email";
-import { makeMagicLinkEmailDelivery } from "./send-magic-link-email";
+import {
+  magicLinkCorrelationTags,
+  makeMagicLinkEmailDelivery,
+} from "./send-magic-link-email";
 
 export type MagicLinkSendFunction = NonNullable<
   Parameters<typeof magicLink>[0]["sendMagicLink"]
@@ -129,6 +132,7 @@ export const makeResendMagicLinkSender = (apiKey: string | undefined) => {
         subject: message.subject,
         html: message.html,
         text: message.text,
+        tags: [...magicLinkCorrelationTags],
       })
       .then((result) => ({
         id: result.data?.id ?? null,

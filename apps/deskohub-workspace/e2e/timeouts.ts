@@ -2,7 +2,9 @@ const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
 
 export const workspaceE2ETimeouts = {
+  accountCase: 8 * MINUTE,
   artifactCapture: 60 * SECOND,
+  authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
   browserNavigation: 60 * SECOND,
   checkoutCase: 6 * MINUTE,

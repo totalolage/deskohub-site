@@ -158,6 +158,44 @@ test("passes allocated shard and provider coordination through Turborepo", async
   expect(environment).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
+  expect(environment).toContain("WORKSPACE_E2E_RESEND_API_KEY");
+});
+
+test("keeps the Resend retrieval key inside the account Playwright execution only", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const turbo = await Bun.file(
+    resolve(import.meta.dir, "../../../turbo.json")
+  ).json();
+  const productionWorkflow = await Bun.file(
+    resolve(
+      import.meta.dir,
+      "../../../.github/workflows/deploy-workspace-production.yml"
+    )
+  ).text();
+
+  const runE2EIndex = workflow.indexOf("- name: Run checkout E2E");
+  const runE2EStep = workflow.slice(
+    runE2EIndex,
+    workflow.indexOf("- uses: actions/upload-artifact@v4", runE2EIndex)
+  );
+  expect(runE2EStep).toContain(
+    `WORKSPACE_E2E_RESEND_API_KEY: \${{ secrets.WORKSPACE_E2E_RESEND_API_KEY }}`
+  );
+
+  const occurrences = workflow.split("WORKSPACE_E2E_RESEND_API_KEY").length - 1;
+  expect(occurrences).toBe(2);
+
+  expect(workflow).not.toContain(
+    `RESEND_API_KEY: \${{ secrets.RESEND_API_KEY }}`
+  );
+  expect(productionWorkflow).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
+  expect(productionWorkflow).not.toContain("EMAIL_API_KEY");
+  expect(productionWorkflow).not.toContain("BETTER_AUTH");
+
+  const turboGlobal = turbo.global?.passThroughEnv ?? [];
+  expect(turboGlobal).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
 });
 
 test("runs invoice persistence inside the normal exact-SHA Playwright graph", async () => {
