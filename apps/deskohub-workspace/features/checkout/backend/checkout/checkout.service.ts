@@ -11,6 +11,7 @@ import {
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { OptionalAccountActivityGuard } from "@/features/account";
 import {
   type AccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
@@ -178,6 +179,7 @@ export class CheckoutService extends Context.Service<
   static Default = makeCheckoutServiceLayer(this);
 
   static Live = this.Default.pipe(
+    Layer.provide(OptionalAccountActivityGuard.Live),
     Layer.provide(WorkspacePaidFulfillmentService.Live),
     Layer.provide(PayableReservationService.Default),
     Layer.provide(LegalEvidenceEventRepository.Default),
@@ -480,6 +482,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       const posthogEvents = yield* PostHogEventService;
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
+      const accountActivity = yield* OptionalAccountActivityGuard;
 
       const handleHostedPaymentPageCreationFailure = Effect.fn(
         "checkout.handleHostedPaymentPageCreationFailure"
@@ -1009,6 +1012,21 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                   "Early performance consent is required before checkout.",
               });
             }
+
+            // The last authority check before this seam creates state: a
+            // deletion-marked or removed account fails here instead of
+            // updating the reservation, recording evidence, or starting a
+            // payment. Idempotent recovery paths above stay reachable.
+            yield* accountActivity.require.pipe(
+              Effect.mapError(
+                () =>
+                  new CheckoutError({
+                    code: "checkout_failed",
+                    message:
+                      "Reservation checkout is unavailable for this account.",
+                  })
+              )
+            );
 
             yield* reservations.updateReservationDetails({
               id: reservation.id,

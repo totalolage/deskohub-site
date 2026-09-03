@@ -16,6 +16,7 @@ import {
   Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { OptionalAccountActivityGuard } from "@/features/account";
 import {
   captureAvailabilityResult,
   capturePrePaymentOutcome,
@@ -685,6 +686,12 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
+    // Authoritative account activity must be re-checked before this action
+    // creates its first provider or database state: a deletion-marked or
+    // removed account stops here, while anonymous callers are unaffected.
+    const accountActivity = yield* OptionalAccountActivityGuard;
+    yield* accountActivity.require;
+
     yield* Match.value(input.reservation).pipe(
       Match.discriminatorsExhaustive("kind")({
         cowork: () => Effect.void,
@@ -1079,6 +1086,21 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
               Match.tag("BotDetectedError", () =>
                 m.reservationRateLimitMessage({}, { locale: input.locale })
               ),
+              Match.tag("CustomerAccountAccessError", (cause) => {
+                if (
+                  cause.reason === "link-required" &&
+                  cause.linkReason === "deletion-requested"
+                ) {
+                  return m.accountDeletionPendingError(
+                    {},
+                    { locale: input.locale }
+                  );
+                }
+                if (cause.reason === "unauthenticated") {
+                  return m.accountSessionExpired({}, { locale: input.locale });
+                }
+                return m.reservationErrorMessage({}, { locale: input.locale });
+              }),
               Match.orElse(() =>
                 m.reservationErrorMessage({}, { locale: input.locale })
               )
@@ -1091,6 +1113,9 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 );
 
 const PreparePayStateLive = Layer.mergeAll(
+  OptionalAccountActivityGuard.Live.pipe(
+    Layer.provide(WorkspaceDatabase.Default)
+  ),
   Layer.mergeAll(
     WorkspaceReservationRepository.Default,
     CustomerMarketingConsentRepository.Default

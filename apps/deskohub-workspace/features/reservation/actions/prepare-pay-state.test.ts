@@ -6,6 +6,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
+import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
@@ -247,6 +248,15 @@ const makeReusableReservation = (
     ...overrides,
   }) as WorkspaceReservation;
 
+const accountAuthorityFixture = async (
+  options?: OptionalAccountActivityFixture
+) => {
+  const { makeOptionalAccountActivityGuard } = await import(
+    "@/features/account/backend/customer-account-activity.test-utils"
+  );
+  return makeOptionalAccountActivityGuard(options);
+};
+
 const runReusableReservationScenario = async (input: {
   readonly findByAttemptKey: ReturnType<typeof mock>;
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
@@ -269,6 +279,7 @@ const runReusableReservationScenario = async (input: {
     | typeof reservation
     | (Omit<typeof reservation, "billing"> & { readonly billing: unknown });
   readonly updateCustomerBillingDetails?: ReturnType<typeof mock>;
+  readonly accountAuthority?: Parameters<typeof accountAuthorityFixture>[0];
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { PostHogEventService } = await import(
@@ -336,7 +347,11 @@ const runReusableReservationScenario = async (input: {
   );
   const updateCustomerBillingDetails =
     input.updateCustomerBillingDetails ?? mock(() => Effect.void);
+  const accountAuthority = await accountAuthorityFixture(
+    input.accountAuthority
+  );
   const testLayer = Layer.mergeAll(
+    accountAuthority.layer,
     CheckoutPricingServiceMock({
       affirmCoworkAdvertisement: affirmAdvertisement,
       quoteForCustomer: quoteForCustomerResult as never,
@@ -392,10 +407,12 @@ const runReusableReservationScenario = async (input: {
       input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
     reservation: input.reservation ?? reservation,
     marketingConsent: input.marketingConsent,
-  }).pipe(Effect.provide(testLayer), Effect.runPromise);
+  }).pipe(Effect.provide(testLayer), Effect.result, Effect.runPromise);
 
   return {
-    result,
+    result: result._tag === "Success" ? result.success : undefined,
+    error: result._tag === "Failure" ? (result.failure as unknown) : undefined,
+    guardEvents: accountAuthority.events,
     enqueueCleanup,
     updateReservationDetails,
     grantMarketingConsent,
@@ -486,6 +503,7 @@ const runMeetingRoomNewHoldScenario = async (
   });
   const affirmedAdvertisement =
     affirmedDiscountAdvertisementQuoteCodec.make(advertisementQuote);
+  const accountAuthority = await accountAuthorityFixture();
   const affirmAdvertisement = mock(() => Effect.succeed(affirmedAdvertisement));
   const applyCustomerDiscount = mock(() =>
     Effect.succeed(affirmedAdvertisement)
@@ -501,6 +519,7 @@ const runMeetingRoomNewHoldScenario = async (
       })
   );
   const testLayer = Layer.mergeAll(
+    accountAuthority.layer,
     CheckoutPricingService.Default.pipe(
       Layer.provide(
         DiscountServiceMock({
@@ -577,6 +596,7 @@ describe("prepareWorkspacePayState", () => {
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
     const verifyHuman = mock(() => Effect.void);
+    const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
     const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
@@ -594,6 +614,7 @@ describe("prepareWorkspacePayState", () => {
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
+          accountAuthorityLayer,
           BotProtectionServiceMock({ verifyHuman }),
           CheckoutPricingServiceMock({}),
           OfficeReservationFeatureFlagService.Default.pipe(
@@ -860,7 +881,9 @@ describe("prepareWorkspacePayState", () => {
           quote,
         }))
       );
+    const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
     const testLayer = Layer.mergeAll(
+      accountAuthorityLayer,
       CheckoutPricingServiceMock({
         affirmCoworkAdvertisement: affirmAdvertisement,
         quoteForCustomer: quoteForCustomerResult as never,
@@ -1045,16 +1068,149 @@ describe("prepareWorkspacePayState", () => {
       cause: new Error("database unavailable"),
     });
 
-    await expect(
-      runReusableReservationScenario({
-        findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
-        marketingConsent: true,
-        grantMarketingConsent: mock(() => Effect.fail(persistenceFailure)),
-      })
-    ).rejects.toMatchObject({
+    const { error } = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      marketingConsent: true,
+      grantMarketingConsent: mock(() => Effect.fail(persistenceFailure)),
+    });
+
+    expect(error).toMatchObject({
       _tag: "PublicSafeActionError",
       cause: persistenceFailure,
     });
+  });
+
+  test("keeps anonymous preparation flowing without consulting account activity", async () => {
+    const scenario = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "fresh-reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            correlationId: "fresh-correlation-id",
+            dotyposCustomerId: input.dotyposCustomerId,
+            reservationDetails: input.reservationDetails,
+            locale: input.locale,
+            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          })
+        )
+      ),
+      accountAuthority: { session: null },
+    });
+
+    expect(scenario.result?.status).toBe("ready");
+    expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+    expect(scenario.findOrCreateCustomer).toHaveBeenCalledTimes(1);
+    expect(scenario.guardEvents).toEqual([]);
+  });
+
+  test("keeps an active authenticated account preparation flowing", async () => {
+    const scenario = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "fresh-reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            correlationId: "fresh-correlation-id",
+            dotyposCustomerId: input.dotyposCustomerId,
+            reservationDetails: input.reservationDetails,
+            locale: input.locale,
+            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          })
+        )
+      ),
+      accountAuthority: { session: {}, activityState: "active" },
+    });
+
+    expect(scenario.result?.status).toBe("ready");
+    expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+    expect(scenario.findOrCreateCustomer).toHaveBeenCalledTimes(1);
+    expect(scenario.guardEvents).toEqual([
+      "account-session",
+      "account-activity",
+    ]);
+  });
+
+  test("keeps preparation flowing when no account authority can be read", async () => {
+    const scenario = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "fresh-reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            correlationId: "fresh-correlation-id",
+            dotyposCustomerId: input.dotyposCustomerId,
+            reservationDetails: input.reservationDetails,
+            locale: input.locale,
+            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          })
+        )
+      ),
+      accountAuthority: { sessionUnavailable: true },
+    });
+
+    expect(scenario.result?.status).toBe("ready");
+    expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+    expect(scenario.guardEvents).toEqual([]);
+  });
+
+  test("stops a deletion-marked authenticated preparation before any mutation", async () => {
+    const { m } = await import("@/features/i18n");
+    const scenario = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      accountAuthority: {
+        session: { deletionRequested: true },
+        activityState: "deletion-requested",
+      },
+    });
+
+    expect(scenario.result).toBeUndefined();
+    expect(scenario.error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.accountDeletionPendingError({}, { locale: "en-US" }),
+      cause: {
+        _tag: "CustomerAccountAccessError",
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      },
+    });
+    expect(scenario.guardEvents).toEqual([
+      "account-session",
+      "account-activity",
+    ]);
+    expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+    expect(scenario.createDraft).not.toHaveBeenCalled();
+    expect(scenario.grantMarketingConsent).not.toHaveBeenCalled();
+  });
+
+  test("stops preparation when the account row disappears during the authority window", async () => {
+    const { m } = await import("@/features/i18n");
+    const scenario = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      accountAuthority: { session: {}, activityState: "missing" },
+    });
+
+    expect(scenario.result).toBeUndefined();
+    expect(scenario.error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.accountSessionExpired({}, { locale: "en-US" }),
+      cause: {
+        _tag: "CustomerAccountAccessError",
+        reason: "unauthenticated",
+      },
+    });
+    expect(scenario.guardEvents).toEqual([
+      "account-session",
+      "account-activity",
+    ]);
+    expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+    expect(scenario.createDraft).not.toHaveBeenCalled();
   });
 
   test("reuses a held reservation returned by a conflicting draft insert", async () => {
@@ -1362,6 +1518,7 @@ describe("prepareWorkspacePayState", () => {
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
     const token = await buildAdvertisedPriceToken();
+    const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
     const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
@@ -1370,7 +1527,8 @@ describe("prepareWorkspacePayState", () => {
       reservation,
     }).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          accountAuthorityLayer,
           BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
           CheckoutPricingServiceMock({})
         )
@@ -1393,6 +1551,7 @@ describe("prepareWorkspacePayState", () => {
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
+    const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
     const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
@@ -1401,7 +1560,8 @@ describe("prepareWorkspacePayState", () => {
       reservation: { ...reservation, coffee: true },
     }).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          accountAuthorityLayer,
           BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
           CheckoutPricingServiceMock({})
         )
@@ -1424,6 +1584,7 @@ describe("prepareWorkspacePayState", () => {
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
+    const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
     const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
@@ -1435,7 +1596,8 @@ describe("prepareWorkspacePayState", () => {
       reservation,
     }).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          accountAuthorityLayer,
           BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
           CheckoutPricingServiceMock({})
         )
@@ -1526,6 +1688,7 @@ describe("prepareWorkspacePayState", () => {
         new BotDetectedError({ message: "Automated request detected" })
       )
     );
+    const { layer: accountAuthorityLayer } = await accountAuthorityFixture();
     const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
@@ -1534,7 +1697,8 @@ describe("prepareWorkspacePayState", () => {
       reservation,
     }).pipe(
       Effect.provide(
-        Layer.merge(
+        Layer.mergeAll(
+          accountAuthorityLayer,
           BotProtectionServiceMock({ verifyHuman }),
           CheckoutPricingServiceMock({})
         )

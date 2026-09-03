@@ -6,6 +6,8 @@ import { DotyposService } from "@deskohub/dotypos";
 import { ExternalAPIError, NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
+import type { OptionalAccountActivityFixture } from "@/features/account/backend/customer-account-activity.test-utils";
+import { makeOptionalAccountActivityGuard } from "@/features/account/backend/customer-account-activity.test-utils";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
@@ -436,6 +438,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
   readonly fulfillPaidOrder?: ReturnType<typeof mock>;
   readonly capture?: ReturnType<typeof mock>;
+  readonly accountAuthority?: OptionalAccountActivityFixture;
 };
 
 const createCheckoutHarness = async <ReservationOverrides extends object>(
@@ -580,6 +583,10 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
       }))
     );
 
+  const accountAuthority = makeOptionalAccountActivityGuard(
+    options.accountAuthority ?? { session: null }
+  );
+
   const effect = Effect.gen(function* () {
     const service = yield* CheckoutService;
     return yield* service.createHostedPaymentCheckout(
@@ -604,6 +611,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
       CheckoutService.Default.pipe(
         Layer.provide(
           Layer.mergeAll(
+            accountAuthority.layer,
             CheckoutPricingServiceMock({
               affirmForPayment: affirmForPayment as never,
             }),
@@ -632,6 +640,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
 
   return {
     effect,
+    guardEvents: accountAuthority.events,
     affirm,
     createPendingNexiAttempt,
     completeInternalPayment,
@@ -1834,5 +1843,85 @@ describe("CheckoutService", () => {
     expect(completeInternalPayment).toHaveBeenCalledTimes(1);
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("keeps anonymous checkout flowing without consulting account activity", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-anonymous-account-activity",
+      accountAuthority: { session: null },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({ status: "redirect" });
+    expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
+    expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+    expect(harness.guardEvents).toEqual([]);
+  });
+
+  test("keeps an active authenticated account checkout flowing", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-active-account-activity",
+      accountAuthority: { session: {}, activityState: "active" },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({ status: "redirect" });
+    expect(harness.updateReservationDetails).toHaveBeenCalledTimes(1);
+    expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+    expect(harness.guardEvents).toEqual([
+      "account-session",
+      "account-activity",
+    ]);
+  });
+
+  test("stops a deletion-marked account before updating the reservation or starting payment", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-deletion-marked-account-activity",
+      accountAuthority: {
+        session: { deletionRequested: true },
+        activityState: "deletion-requested",
+      },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "checkout_failed",
+    });
+    expect(harness.guardEvents).toEqual([
+      "account-session",
+      "account-activity",
+    ]);
+    expect(harness.updateReservationDetails).not.toHaveBeenCalled();
+    expect(harness.updateReservation).not.toHaveBeenCalled();
+    expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.completeInternalPayment).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("stops checkout when the account row disappears during the authority window", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-removed-account-activity",
+      accountAuthority: { session: {}, activityState: "missing" },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "checkout_failed",
+    });
+    expect(harness.guardEvents).toEqual([
+      "account-session",
+      "account-activity",
+    ]);
+    expect(harness.updateReservationDetails).not.toHaveBeenCalled();
+    expect(harness.updateReservation).not.toHaveBeenCalled();
+    expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
   });
 });
