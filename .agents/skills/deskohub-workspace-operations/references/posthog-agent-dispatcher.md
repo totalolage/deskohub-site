@@ -40,7 +40,15 @@ Call `logs-count` first. When it exceeds 1,000, split the time range until every
 
 Group related rows by failure mechanism. Use Log UUIDs, Error Tracking issue IDs, event UUIDs, fingerprints, messages, boundaries, operations, traces, timing, existing issues, pull requests, and current code. Exact identifiers are the first duplicate check. Your semantic judgment is the final check.
 
-Create an issue only when the evidence is likely actionable and no active issue or pull request already owns the same failure. A recurrence after a completed fix can become a regression issue. Routine expected failures and evidence already handled need no issue.
+Create an issue only when the evidence is likely actionable and no active issue or pull request already owns the same failure. Before creating a recurrence, inspect the latest matching closed issue. A closure containing `<!-- posthog-agent:triage-non-actionable -->` owns later occurrences of the same mechanism. Create another issue only when at least one condition changed:
+
+- the fingerprint or failure boundary changed;
+- severity rose;
+- the affected code changed after the prior triage;
+- correlated failures point to a new cause;
+- the same mechanism occurs more often than the prior issue documented over an equal-length window.
+
+A new occurrence UUID or additional isolated occurrences do not count as a change. A recurrence after a completed code fix can become a regression issue.
 
 Use a short `[PostHog]` title. Include the bounded evidence needed to investigate, a PostHog link when available, and these exact hidden markers for every included occurrence:
 
