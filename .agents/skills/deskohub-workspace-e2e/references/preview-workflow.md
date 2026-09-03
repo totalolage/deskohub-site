@@ -360,6 +360,16 @@ require a schema-breaking migration before E2E starts. Schema-breaking changes
 must preserve compatibility with this ordering or introduce a preview-only
 pre-runtime migration mechanism. Do not add migrations to the Vercel build.
 
+### Preview data boundary
+
+Production-derived Neon preview branches may contain the limited authentication
+data inherited at the branch point: Better Auth login email, pending-verification
+email, and short-lived rate-limit IP keys. Everything else stays synthetic.
+Every preview fixture, and all Dotypos profile and reservation data, must be
+synthetic; never sign in as or copy a real customer identity into a preview.
+Do not add a branch scrubber or a separately provisioned preview parent;
+branch access controls and integration-owned expiry bound the inherited rows.
+
 Production remains unchanged: build a staged production deployment, migrate the
 production Neon branch, then promote the ready deployment.
 

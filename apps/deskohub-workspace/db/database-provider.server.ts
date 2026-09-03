@@ -7,16 +7,17 @@ import { WorkspaceDatabase } from "./database.service";
 import { makeDatabaseClient, makeDatabasePool } from "./database-client";
 import { databasePoolTimeouts } from "./database-pool-timeouts";
 
-const pool = makeDatabasePool({
+export const workspaceDatabasePool = makeDatabasePool({
   connectionString: env.DATABASE_URL,
   ...databasePoolTimeouts,
 });
-attachDatabasePool(pool);
+
+attachDatabasePool(workspaceDatabasePool);
 
 export const makeWorkspaceDatabaseLayer = () =>
   Layer.effect(
     WorkspaceDatabase,
-    makeDatabaseClient(pool).pipe(
+    makeDatabaseClient(workspaceDatabasePool).pipe(
       Effect.map((db) => WorkspaceDatabase.of({ db }))
     )
   );
