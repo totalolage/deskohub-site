@@ -14,12 +14,12 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceReservations } from "@/db/schema";
 import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import type {
-  CustomerReservationGroups,
   CustomerReservationHistory,
   CustomerReservationProduct,
   CustomerReservationStatus,
   CustomerReservationSummary,
 } from "../contracts";
+import { groupCustomerReservations } from "../contracts";
 import {
   CustomerAccountAccessError,
   type LinkedCustomerAccount,
@@ -75,32 +75,6 @@ const getReservationStatus = (
     return "requires-attention";
   }
   return reservation.status === "CONFIRMED" ? "confirmed" : "pending";
-};
-
-export const groupCustomerReservations = (
-  reservations: readonly CustomerReservationSummary[],
-  now: Temporal.Instant = Temporal.Now.instant()
-): CustomerReservationGroups => {
-  const current: CustomerReservationSummary[] = [];
-  const past: CustomerReservationSummary[] = [];
-  const unavailable: CustomerReservationSummary[] = [];
-
-  for (const reservation of reservations) {
-    if (!reservation.endsAt) {
-      unavailable.push(reservation);
-    } else if (
-      reservation.status === "cancelled" ||
-      Temporal.Instant.compare(
-        Temporal.Instant.from(reservation.endsAt),
-        now
-      ) <= 0
-    ) {
-      past.push(reservation);
-    } else {
-      current.push(reservation);
-    }
-  }
-  return { current, past, unavailable };
 };
 
 const toReservationSummary = (

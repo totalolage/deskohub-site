@@ -107,6 +107,8 @@ test("uses document navigation for every alternate-locale full-header link", asy
     capturedLinks.length = 0;
     const view = render(
       <SiteHeader
+        accountHref={`/${currentLocale}/account`}
+        accountLabel="Account"
         contactHref={contactHref}
         contactLabel="Contact"
         currentLocale={currentLocale}
@@ -121,6 +123,9 @@ test("uses document navigation for every alternate-locale full-header link", asy
     expect(capturedLinks.filter(({ href }) => href === alternateHref)).toEqual(
       []
     );
+    expect(
+      view.container.querySelectorAll(`a[href="/${currentLocale}/account"]`)
+    ).toHaveLength(2);
     view.unmount();
   }
 });
@@ -130,6 +135,8 @@ test("renders only the configured full-header items without reserved slots", asy
   const galleryHref = "/en-US/gallery";
   const view = render(
     <SiteHeader
+      accountHref="/en-US/account"
+      accountLabel="Account"
       closeNavigationMenuLabel="Close navigation menu"
       contactHref="/en-US/reservation/cowork"
       contactLabel="Book"

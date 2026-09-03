@@ -53,7 +53,7 @@ interface ICustomerProfileService {
     input: CustomerProfileInput
   ) => Effect.Effect<CustomerProfile, CustomerAccountAccessError>;
   readonly create: (
-    account: LinkedCustomerAccount,
+    accountId: CustomerAccountId,
     verifiedEmail: string,
     input: CustomerProfileInput
   ) => Effect.Effect<CustomerProfile, CustomerAccountAccessError>;
@@ -105,15 +105,15 @@ export class CustomerProfileService extends Context.Service<
 
       const create = Effect.fn("CustomerProfileService.create")(
         (
-          account: LinkedCustomerAccount,
+          accountId: CustomerAccountId,
           verifiedEmail: string,
           input: CustomerProfileInput
         ) =>
           links
             .withAccountLock(
-              account.accountId,
+              accountId,
               Effect.gen(function* () {
-                yield* requireActiveAccount(links, account.accountId);
+                yield* requireActiveAccount(links, accountId);
 
                 const createdId = yield* dotypos
                   .createCustomerProfile({
@@ -127,7 +127,7 @@ export class CustomerProfileService extends Context.Service<
                   );
 
                 const claimed = yield* links
-                  .claim(account.accountId, createdId)
+                  .claim(accountId, createdId)
                   .pipe(
                     Effect.mapError(
                       mapCustomerAccountFailure("account-link.claim")

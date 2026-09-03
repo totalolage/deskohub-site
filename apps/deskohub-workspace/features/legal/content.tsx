@@ -610,8 +610,8 @@ const legalDocuments = {
   "en-US": {
     "privacy-policy": {
       title: "Privacy Policy",
-      lead: "This page explains how Desktechub s.r.o. handles personal data submitted through the public Deskohub Workspace website, including contact and reservation forms.",
-      updatedAt: "12 August 2026",
+      lead: "This page explains how Desktechub s.r.o. handles personal data on the Deskohub Workspace website, including customer accounts, contact forms, and reservations.",
+      updatedAt: "3 September 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -656,6 +656,13 @@ const legalDocuments = {
               payment-card details from the payment provider.
             </>,
             <>
+              If you create a customer account, we process an authentication
+              identifier, your profile details, your verified email address, and
+              the session and single-use sign-in link data needed to sign you in
+              and operate the account securely. The account works with one-time
+              email links, so we never collect a password.
+            </>,
+            <>
               For website operation and abuse prevention, we may also process
               limited technical data such as IP address, User-Agent, origin or
               host information where available, and short-lived rate-limit or
@@ -687,6 +694,12 @@ const legalDocuments = {
               provide requested accounting documents, handle cancellation or
               complaints, prevent duplicate or fraudulent orders, and support
               the Booking when you contact us.
+            </>,
+            <>
+              We use customer account data to authenticate you, let you manage
+              your profile, and connect the account with reservations made using
+              the same verified email address. The Workspace application stores
+              only opaque account and customer identifiers for this connection.
             </>,
             <>
               We do not use reservation or enquiry data for marketing unless you
@@ -721,6 +734,13 @@ const legalDocuments = {
               obligations.
             </>,
             <>
+              Account authentication, profile management, and the reservation
+              history are processed to provide the account service you request
+              and, where applicable, to perform or prepare the related
+              reservation contract. Account security, session integrity, and
+              abuse prevention are based on our legitimate interests.
+            </>,
+            <>
               For website security, abuse and fraud prevention, reliable payment
               and reservation evidence, and the establishment, exercise, or
               defense of legal claims, we rely on our legitimate interests where
@@ -752,6 +772,17 @@ const legalDocuments = {
               claims. Technical abuse-prevention signals are short-lived.
             </>,
             <>
+              We keep the customer account profile and authentication sessions
+              while the account is active, and expired sessions and unused
+              sign-in links are removed automatically every day. Deleting the
+              account removes its login identity, sessions, and the Workspace
+              account-to-customer link, and expires the linked customer profile.
+              Reservation, payment, accounting, fraud-prevention, and legal
+              evidence records are not erased with the login account and remain
+              only for the applicable service, statutory, or legitimate
+              retention period.
+            </>,
+            <>
               Analytics and campaign measurement data is retained according to
               the applicable analytics and technical provider settings and only
               as long as necessary for the stated measurement purposes.
@@ -776,6 +807,16 @@ const legalDocuments = {
               is sent to the payment provider only to create and verify the
               transaction. We use appropriate contractual, organizational, and
               technical safeguards for provider access.
+            </>,
+            <>
+              Customer accounts run inside our application with the open-source
+              Better Auth authentication library; we do not use a separate
+              managed authentication provider. The account database is hosted by
+              our database provider, magic-link emails are delivered by our
+              email delivery provider, and customer profiles and reservations
+              are processed in our booking-system provider Dotypos. Each
+              provider may process only the account, session, delivery, profile,
+              or technical data needed to perform its role on our behalf.
             </>,
             <>
               When you opt in to marketing emails, our email delivery provider
@@ -812,6 +853,19 @@ const legalDocuments = {
                 {contactEmail}
               </a>
               . Withdrawal does not affect processing that took place before it.
+            </>,
+            <>
+              You can delete the customer account from its profile page. This
+              self-service action deletes the login account but does not replace
+              a broader data-protection request concerning reservations or
+              legally retained records; send those requests to{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
             </>,
           ],
         },
@@ -912,6 +966,12 @@ const legalDocuments = {
               handling, security, and storing your cookie consent state. These
               cookies are always active because the site cannot work reliably
               without them.
+            </>,
+            <>
+              When you sign in to your customer account, a strictly necessary
+              session cookie keeps you signed in for up to 30 days. It is set
+              only after you sign in and is removed when you sign out or delete
+              your account.
             </>,
           ],
         },
@@ -1054,6 +1114,12 @@ const legalDocuments = {
               podvodných objednávek a podpoře Rezervace, když nás kontaktujete.
             </>,
             <>
+              Údaje zákaznického účtu používáme k vašemu ověření, správě vašeho
+              profilu a propojení účtu s rezervacemi vytvořenými se stejnou
+              ověřenou e-mailovou adresou. Aplikace Workspace ukládá pro toto
+              propojení pouze neprůhledné identifikátory účtu a zákazníka.
+            </>,
+            <>
               Rezervační ani poptávkové údaje nepoužíváme pro marketing, pokud k
               tomu neudělíte samostatný souhlas.
             </>,
@@ -1083,6 +1149,13 @@ const legalDocuments = {
               jejímu plnění, včetně platby, přístupu, podpory, storna a
               reklamací. Účetní a transakční záznamy zpracováváme také pro
               splnění právních povinností.
+            </>,
+            <>
+              Přihlášení k účtu, správu profilu a historii rezervací
+              zpracováváme, abychom poskytli službu účtu, o kterou si žádáte, a
+              podle okolností také plnili nebo připravovali související
+              rezervační smlouvu. Zabezpečení účtu, integrita relací a ochrana
+              před zneužitím vycházejí z našich oprávněných zájmů.
             </>,
             <>
               Pro zabezpečení webu, prevenci zneužití a podvodů, spolehlivé
@@ -1115,6 +1188,17 @@ const legalDocuments = {
               signály pro ochranu před zneužitím jsou krátkodobé.
             </>,
             <>
+              Profil zákaznického účtu a autentizační relace uchováváme po dobu
+              aktivního účtu; expirované relace a nepoužité přihlašovací odkazy
+              odstraňujeme každý den automaticky. Smazáním účtu dojde k
+              odstranění přihlašovací identity, relací a propojení účtu se
+              zákazníkem ve Workspace a k deaktivaci propojeného zákaznického
+              profilu. Rezervační, platební, účetní záznamy a záznamy potřebné
+              pro prevenci podvodů nebo právní důkazy se spolu s přihlašovacím
+              účtem nemažou a zůstávají pouze po příslušnou smluvní, zákonnou
+              nebo oprávněnou dobu uchování.
+            </>,
+            <>
               Analytické údaje a údaje pro kampanové měření uchováváme podle
               nastavení příslušných analytických a technických poskytovatelů a
               pouze po dobu potřebnou pro uvedené účely měření.
@@ -1139,6 +1223,16 @@ const legalDocuments = {
               poskytovateli plateb pouze pro vytvoření a ověření transakce. Pro
               přístup poskytovatelů používáme přiměřené smluvní, organizační a
               technické záruky.
+            </>,
+            <>
+              Zákaznické účty běží v naší aplikaci s otevřenou autentizační
+              knihovnou Better Auth; nepoužíváme samostatnou spravovanou
+              autentizační službu. Databázi účtů hostuje náš poskytovatel
+              databáze, přihlašovací odkazy doručuje náš poskytovatel
+              e-mailových služeb a zákaznické profily a rezervace zpracovává náš
+              rezervační systém Dotypos. Každý poskytovatel může zpracovávat
+              pouze účetní, relacyjní, doručovací, profilové nebo technické
+              údaje nutné k výkonu své role naším jménem.
             </>,
             <>
               Pokud se přihlásíte k marketingovým e-mailům, může náš
@@ -1176,6 +1270,20 @@ const legalDocuments = {
               </a>
               . Odvolání nemá vliv na zpracování, které proběhlo před jeho
               odvoláním.
+            </>,
+            <>
+              Zákaznický účet můžete smazat na stránce svého profilu. Tato
+              samoobslužná akce smaže přihlašovací účet, ale nenahrazuje širší
+              žádost podle předpisů o ochraně osobních údajů týkající se
+              rezervací nebo zákonně uchovávaných záznamů; takovou žádost
+              pošlete na{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
             </>,
           ],
         },
@@ -1276,6 +1384,11 @@ const legalDocuments = {
               zabezpečení a uložení stavu vašeho souhlasu s cookies. Tyto
               cookies jsou vždy aktivní, protože bez nich web nemůže spolehlivě
               fungovat.
+            </>,
+            <>
+              Po přihlášení k zákaznickému účtu vás nezbytná cookie relace
+              udržuje přihlášené nejvýše 30 dní. Nastaví se až po přihlášení a
+              odstraní se při odhlášení nebo smazání účtu.
             </>,
           ],
         },

@@ -126,6 +126,28 @@ test("prevents private reservation responses from being cached", () => {
   }
 });
 
+test("prevents account and auth page responses from being cached", () => {
+  for (const path of [
+    "/en-US/account",
+    "/en-US/account/deleted",
+    "/cs-CZ/account",
+    "/en-US/auth/sign-in",
+    "/cs-CZ/auth/callback",
+  ]) {
+    const response = proxy(new NextRequest(`https://workspace.example${path}`));
+
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+  }
+});
+
+test("keeps public pages cacheable while locale switching", () => {
+  const response = proxy(
+    new NextRequest("https://workspace.example/cs-CZ/reservation/cowork")
+  );
+
+  expect(response.headers.get("cache-control")).toBeNull();
+});
+
 test("does not treat a GET with a spoofed action header as a Server Action", () => {
   const request = new NextRequest("https://workspace.example/", {
     headers: {

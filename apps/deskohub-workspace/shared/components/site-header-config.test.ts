@@ -96,4 +96,16 @@ describe("getSiteHeaderConfig", () => {
       expect.objectContaining({ href: "/en-US/reservation/office" })
     );
   });
+
+  test("points the account entry at the localized account page in both locales", async () => {
+    const { getSiteHeaderConfig } = await import("./site-header-config");
+
+    const en = await getSiteHeaderConfig("en-US");
+    expect(en.accountHref).toBe("/en-US/account");
+    expect(en.accountLabel).toBe("Account");
+
+    const cs = await getSiteHeaderConfig("cs-CZ");
+    expect(cs.accountHref).toBe("/cs-CZ/account");
+    expect(cs.accountLabel).toBe("Účet");
+  });
 });

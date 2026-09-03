@@ -69,7 +69,7 @@ describe("Customer-account boundary", () => {
     );
   });
 
-  test("confines Better Auth imports to the auth adapter and auth modules", async () => {
+  test("confines Better Auth imports to the auth boundary, the session adapter, and the browser client", async () => {
     const files = await listAccountFiles();
     const offenders: string[] = [];
 
@@ -81,7 +81,8 @@ describe("Customer-account boundary", () => {
         file.includes(`${accountDirectory}/backend/auth/`) ||
         file.includes(
           `${accountDirectory}/backend/customer-authentication.service.ts`
-        );
+        ) ||
+        file.includes(`${accountDirectory}/auth.client.ts`);
       if (importsBetterAuth && !withinAuthBoundary) {
         offenders.push(file);
       }
@@ -106,27 +107,38 @@ describe("Customer-account boundary", () => {
     }
   });
 
-  test("adds no HTTP auth route, client auth provider, pages, or server actions", async () => {
+  test("exposes the official GET/POST auth route without a React auth provider", async () => {
     const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+
+    const routeSource = await Bun.file(
+      path.resolve(accountDirectory, "../../app/api/auth/[...all]/route.ts")
+    ).text();
+    expect(routeSource).toContain("export const GET");
+    expect(routeSource).toContain("export const POST");
+    expect(routeSource).not.toMatch(/export const (PUT|PATCH|DELETE)\b/);
+    expect(routeSource).toContain("private, no-store");
 
     await expect(
-      fs.access(
-        (await import("node:path")).resolve(
-          accountDirectory,
-          "../../app/api/auth"
-        )
-      )
+      fs.access(path.resolve(accountDirectory, "components/auth-provider.tsx"))
     ).rejects.toThrow();
+  });
 
+  test("keeps client and server directives out of the backend and confines the browser client", async () => {
     const files = (await listAccountFiles()).filter(
       (file) => !file.includes("account-boundary.test")
     );
     for (const file of files) {
       const source = await Bun.file(file).text();
-      expect(source).not.toContain("use client");
-      expect(source).not.toContain("use server");
+      const isBackendFile = file.includes("/backend/");
+      if (isBackendFile) {
+        expect(source).not.toContain("use client");
+        expect(source).not.toContain("use server");
+      }
+      if (!file.includes(`${accountDirectory}/auth.client.ts`)) {
+        expect(source).not.toContain("createAuthClient");
+      }
       expect(source).not.toContain("toNextJsHandler");
-      expect(source).not.toContain("createAuthClient");
     }
   });
 

@@ -152,7 +152,7 @@ describe("CustomerProfileService", () => {
     const layers = makeLayers({ createdCustomerId: "60999" });
 
     const profile = await runProfile(layers, (service) =>
-      service.create(account, verifiedEmail, { firstName: "Ada" })
+      service.create(account.accountId, verifiedEmail, { firstName: "Ada" })
     );
 
     expect(profile.firstName).toBe("Ada");
@@ -171,7 +171,7 @@ describe("CustomerProfileService", () => {
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const service = yield* CustomerProfileService;
-        return yield* service.create(account, verifiedEmail, {
+        return yield* service.create(account.accountId, verifiedEmail, {
           firstName: "Ada",
         });
       }).pipe(Effect.provide(layers.service), Effect.result)

@@ -97,3 +97,41 @@ export type CustomerReservationHistory =
         | "link-required"
         | "provider-unavailable";
     };
+
+const toInstantOrNull = (value: string): Temporal.Instant | null => {
+  try {
+    return Temporal.Instant.from(value);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Groups a customer's reservations for the account history. Cancelled
+ * reservations always count as past, a reservation is current until its exact
+ * end instant, and a missing or unparseable end date leaves the reservation
+ * undated in the unavailable group instead of crashing the page.
+ */
+export const groupCustomerReservations = (
+  reservations: readonly CustomerReservationSummary[],
+  now: Temporal.Instant = Temporal.Now.instant()
+): CustomerReservationGroups => {
+  const current: CustomerReservationSummary[] = [];
+  const past: CustomerReservationSummary[] = [];
+  const unavailable: CustomerReservationSummary[] = [];
+
+  for (const reservation of reservations) {
+    const end = reservation.endsAt ? toInstantOrNull(reservation.endsAt) : null;
+    if (!end) {
+      unavailable.push(reservation);
+    } else if (
+      reservation.status === "cancelled" ||
+      Temporal.Instant.compare(end, now) <= 0
+    ) {
+      past.push(reservation);
+    } else {
+      current.push(reservation);
+    }
+  }
+  return { current, past, unavailable };
+};
