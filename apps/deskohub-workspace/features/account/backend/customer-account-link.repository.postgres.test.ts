@@ -110,27 +110,45 @@ describe.skipIf(!testDatabase)(
       expect(rows.rows).toHaveLength(1);
     });
 
-    test("persists and exposes the deletion marker, then removes everything on user deletion", async () => {
+    test("exposes the activity state and stops it once the auth account row is gone", async () => {
       const layer = makeRepositoryLayer();
       const account = customerAccountIdSchema.make(uniqueId());
       await insertAuthUser(account, `d-${account}@deskohub.test`);
       await linkRow(account, uniqueDotyposId());
 
       const marker = new Date("2026-09-02T10:00:00.000Z");
-      const requestedAt = await Effect.runPromise(
+      const states = await Effect.runPromise(
         Effect.gen(function* () {
           const links = yield* CustomerAccountLinkRepository;
-          expect(yield* links.findDeletionRequestedAt(account)).toBeNull();
+          const initial = yield* links.findActivityState(account);
           yield* links.markDeletionRequested(account, marker);
-          return yield* links.findDeletionRequestedAt(account);
+          const marked = yield* links.findActivityState(account);
+          return { initial, marked };
         }).pipe(Effect.provide(layer))
       );
 
-      expect(requestedAt?.toISOString()).toBe(marker.toISOString());
+      expect(states.initial).toEqual({
+        kind: "active",
+        deletionRequestedAt: null,
+      });
+      expect(states.marked.kind).toBe("active");
+      if (states.marked.kind === "active") {
+        expect(states.marked.deletionRequestedAt?.toISOString()).toBe(
+          marker.toISOString()
+        );
+      }
 
       await testDatabase!.pool.query(`delete from auth."user" where id = $1`, [
         account,
       ]);
+
+      const afterDeletion = await Effect.runPromise(
+        Effect.gen(function* () {
+          const links = yield* CustomerAccountLinkRepository;
+          return yield* links.findActivityState(account);
+        }).pipe(Effect.provide(layer))
+      );
+      expect(afterDeletion).toEqual({ kind: "missing" });
 
       const link = await testDatabase!.pool.query(
         `select * from customer_account_links where customer_account_id = $1`,

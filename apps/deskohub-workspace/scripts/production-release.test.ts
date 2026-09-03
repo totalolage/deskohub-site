@@ -12,6 +12,7 @@ type VercelApiPayload =
         readonly ready: number | null;
         readonly target: string | null;
         readonly url: string | null;
+        readonly readySubstate?: string;
       }[];
     }
   | {
@@ -140,24 +141,27 @@ describe("workspace production release checks", () => {
     ).rejects.toThrow("magic-link form");
   });
 
-  test("retains the newest ready production deployment as the rollback target", async () => {
+  test("captures the promoted deployment and skips a newer staged deployment", async () => {
     mockGlobalFetch(() =>
       jsonResponse({
         deployments: [
           {
-            ready: 100,
+            ready: 500,
             target: "production",
-            url: "https://workspace-old.vercel.app",
+            url: "https://workspace-staged.vercel.app",
+            readySubstate: "STAGED",
           },
           {
             ready: 300,
             target: "production",
-            url: "https://workspace-newest.vercel.app",
+            url: "https://workspace-promoted.vercel.app",
+            readySubstate: "PROMOTED",
           },
           {
-            ready: 400,
-            target: "preview",
-            url: "https://workspace-preview.vercel.app",
+            ready: 100,
+            target: "production",
+            url: "https://workspace-older.vercel.app",
+            readySubstate: "PROMOTED",
           },
         ],
       })
@@ -168,7 +172,44 @@ describe("workspace production release checks", () => {
       "token",
       undefined
     );
-    expect(previous).toBe("https://workspace-newest.vercel.app");
+    expect(previous).toBe("https://workspace-promoted.vercel.app");
+  });
+
+  test("excludes production deployments without a promoted substate", async () => {
+    mockGlobalFetch(() =>
+      jsonResponse({
+        deployments: [
+          {
+            ready: 500,
+            target: "production",
+            url: "https://workspace-unknown.vercel.app",
+          },
+          {
+            ready: 300,
+            target: "production",
+            url: "https://workspace-rolling.vercel.app",
+            readySubstate: "ROLLING",
+          },
+        ],
+      })
+    );
+
+    const previous = await resolvePreviousProductionDeployment(
+      "prj_test",
+      "token",
+      undefined
+    );
+    expect(previous).toBeUndefined();
+  });
+
+  test("rolls back with the Vercel rollback operation instead of promoting", async () => {
+    const source = await Bun.file(
+      new URL("./production-release.ts", import.meta.url).pathname
+    ).text();
+
+    expect(source).toMatch(/rollback \${url}/);
+    expect(source).not.toContain("vercel@54.9.1 promote");
+    expect(source).toContain("::add-mask::");
   });
 
   test("fails closed when the registered crons are missing the account cleanup", async () => {

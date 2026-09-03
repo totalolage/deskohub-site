@@ -21,6 +21,7 @@ const productionDeploymentsResponse = Schema.Struct({
       ready: Schema.NullOr(Schema.Finite),
       target: Schema.NullOr(Schema.String),
       url: Schema.NullOr(Schema.String),
+      readySubstate: Schema.optional(Schema.String),
     })
   ),
 });
@@ -100,6 +101,12 @@ export const assertCanonicalSignInReady = async (
   }
 };
 
+/**
+ * Captures the deployment that currently serves production traffic: the
+ * newest READY production deployment that Vercel marks as PROMOTED. Staged
+ * or rolling deployments ahead of it never served traffic, so they are
+ * excluded — an instant rollback must land on the actually promoted one.
+ */
 export const resolvePreviousProductionDeployment = async (
   projectId: string,
   token: string,
@@ -113,17 +120,18 @@ export const resolvePreviousProductionDeployment = async (
   });
   if (teamId) query.set("teamId", teamId);
   const payload = Schema.decodeUnknownSync(productionDeploymentsResponse)(
-    await vercelApiGet(`/v6/deployments?${query.toString()}`, token)
+    await vercelApiGet(`/v7/deployments?${query.toString()}`, token)
   );
-  const ready = payload.deployments
+  const promoted = payload.deployments
     .filter(
       (deployment) =>
         deployment.target === "production" &&
         deployment.url !== null &&
-        deployment.ready !== null
+        deployment.ready !== null &&
+        deployment.readySubstate === "PROMOTED"
     )
     .toSorted((left, right) => (right.ready ?? 0) - (left.ready ?? 0));
-  return ready[0]?.url ?? undefined;
+  return promoted[0]?.url ?? undefined;
 };
 
 export const assertRegisteredCrons = async (
@@ -148,17 +156,22 @@ export const assertRegisteredCrons = async (
   }
 };
 
-const promote = async (url: string) => {
+/**
+ * Instant rollback to the retained promoted deployment. Vercel's rollback
+ * operation repoints production traffic atomically; promoting a prior
+ * deployment would instead disable auto-assignment of the production domain.
+ */
+const rollbackToDeployment = async (url: string) => {
   const token = requireEnv("VERCEL_TOKEN");
   const deployment =
-    await $`bunx vercel@54.9.1 promote ${url} --scope filip-kalny-projects --yes --timeout 10m --token ${token}`
+    await $`bunx vercel@54.9.1 rollback ${url} --scope filip-kalny-projects --yes --timeout 10m --token ${token}`
       .cwd(fileURLToPath(new URL("../..", import.meta.url)))
       .quiet()
       .nothrow();
   if (deployment.exitCode !== 0) {
     process.stderr.write(deployment.stderr.toString());
     throw new Error(
-      `Vercel promote failed with exit code ${deployment.exitCode}`
+      `Vercel rollback failed with exit code ${deployment.exitCode}`
     );
   }
 };
@@ -212,7 +225,7 @@ const run = async () => {
       return;
     }
     case "rollback": {
-      await promote(readUrlOption());
+      await rollbackToDeployment(readUrlOption());
       return;
     }
     default:

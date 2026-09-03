@@ -70,7 +70,7 @@ const saveCustomerProfile = (input: CustomerProfileInput, locale: Locale) =>
   Effect.gen(function* () {
     const user = yield* requireVerifiedSession;
     const resolution = yield* CustomerAccountResolver.pipe(
-      Effect.flatMap((resolver) => resolver.resolve()),
+      Effect.flatMap((resolver) => resolver.resolve),
       Effect.result
     );
 

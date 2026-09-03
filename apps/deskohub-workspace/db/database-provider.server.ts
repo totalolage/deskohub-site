@@ -14,10 +14,9 @@ export const workspaceDatabasePool = makeDatabasePool({
 
 attachDatabasePool(workspaceDatabasePool);
 
-export const makeWorkspaceDatabaseLayer = () =>
-  Layer.effect(
-    WorkspaceDatabase,
-    makeDatabaseClient(workspaceDatabasePool).pipe(
-      Effect.map((db) => WorkspaceDatabase.of({ db }))
-    )
-  );
+export const workspaceDatabaseLayer = Layer.effect(
+  WorkspaceDatabase,
+  makeDatabaseClient(workspaceDatabasePool).pipe(
+    Effect.map((db) => WorkspaceDatabase.of({ db }))
+  )
+);

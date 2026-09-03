@@ -1,3 +1,5 @@
+export { requireAccountActivity } from "./backend/customer-account-activity";
+export type { CustomerAccountActivityState } from "./backend/customer-account-link.repository";
 export {
   CustomerAccountResolver,
   resolveCurrentCustomerAccount,

@@ -30,6 +30,8 @@ const makeDependencies = (
     readonly link?: string | null;
     readonly matches?: ReturnType<typeof matches>;
     readonly claimResult?: "linked" | "claimed";
+    readonly claimCustomerId?: string;
+    readonly reactivation?: "succeeds" | "fails";
   } & Partial<CustomerAccountResolutionDependencies> = {}
 ) => {
   const calls: string[] = [];
@@ -51,18 +53,23 @@ const makeDependencies = (
       calls.push("classify");
       return Effect.succeed(overrides.matches ?? { kind: "not-found" });
     },
-    claimLink: () => {
+    claimLink: (_accountId, customerId) => {
       calls.push("claim");
       const claimResult = overrides.claimResult ?? "linked";
       return Effect.succeed(
         claimResult === "linked"
-          ? ({ kind: "linked", customerId: "60111" } as const)
+          ? ({
+              kind: "linked",
+              customerId: overrides.claimCustomerId ?? customerId,
+            } as const)
           : ({ kind: "claimed" } as const)
       );
     },
     reactivate: () => {
       calls.push("reactivate");
-      return Effect.succeed(undefined);
+      return overrides.reactivation === "fails"
+        ? Effect.fail(new Error("dotypos unavailable"))
+        : Effect.succeed(undefined);
     },
     withAccountLock: (_accountId, effect) => {
       calls.push("lock-acquire");
@@ -147,7 +154,7 @@ describe("CustomerAccountResolver", () => {
     ]);
   });
 
-  test("reserves a unique expired profile and reactivates it after the claim", async () => {
+  test("reactivates a unique expired profile before claiming the link", async () => {
     const { dependencies, calls } = makeDependencies({
       matches: matches({
         kind: "matched",
@@ -162,7 +169,56 @@ describe("CustomerAccountResolver", () => {
     if (outcome._tag === "Success") {
       expect(outcome.success.dotyposCustomerId).toBe("60222");
     }
-    expect(calls.indexOf("claim")).toBeLessThan(calls.indexOf("reactivate"));
+    expect(calls.indexOf("reactivate")).toBeLessThan(calls.indexOf("claim"));
+  });
+
+  test("keeps an expired profile unclaimed when reactivation fails, then retries", async () => {
+    const failedAttempt = makeDependencies({
+      matches: matches({
+        kind: "matched",
+        state: "expired",
+        customerId: "60222",
+      }),
+      reactivation: "fails",
+    });
+
+    const failedOutcome = await runResolution(failedAttempt.dependencies);
+
+    await expectAccessError(failedOutcome, "unavailable");
+    expect(failedAttempt.calls).not.toContain("claim");
+
+    const retryAttempt = makeDependencies({
+      matches: matches({
+        kind: "matched",
+        state: "expired",
+        customerId: "60222",
+      }),
+    });
+    const retryOutcome = await runResolution(retryAttempt.dependencies);
+
+    expect(retryOutcome._tag).toBe("Success");
+    if (retryOutcome._tag === "Success") {
+      expect(retryOutcome.success.dotyposCustomerId).toBe("60222");
+    }
+    expect(retryAttempt.calls).toContain("claim");
+  });
+
+  test("returns the linked customer the claim confirmed, not another match", async () => {
+    const { dependencies } = makeDependencies({
+      matches: matches({
+        kind: "matched",
+        state: "active",
+        customerId: "60111",
+      }),
+      claimCustomerId: "60333",
+    });
+
+    const outcome = await runResolution(dependencies);
+
+    expect(outcome._tag).toBe("Success");
+    if (outcome._tag === "Success") {
+      expect(outcome.success.dotyposCustomerId).toBe("60333");
+    }
   });
 
   test("requires profile completion without creating a Dotypos profile", async () => {

@@ -26,6 +26,24 @@ const validateFeatureFlagOverrideEnvironment = (
     stdout: "pipe",
   });
 
+const validateProductionDeliveryEnvironment = (
+  mutation: string,
+  vercelEnvironment: "production" | "preview" | "development"
+) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      `${mutation}; await import("./env.ts");`,
+    ],
+    cwd: import.meta.dir,
+    env: { ...process.env, VERCEL_ENV: vercelEnvironment },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 const validateMissingIgloohomeEnvironment = (
   missing: "credentials" | "target-device",
   vercelEnvironment: "production" | "preview"
@@ -233,6 +251,55 @@ describe("workspace environment schemas", () => {
     expect(decodeVercelEnvironment("preview")).toBe("preview");
     expect(decodeVercelEnvironment("production")).toBe("production");
     expect(() => decodeVercelEnvironment("staging")).toThrow();
+  });
+
+  test("fails production closed when delivery or cron authentication is unconfigured", () => {
+    const cases: readonly {
+      readonly mutation: string;
+      readonly expected: string;
+    }[] = [
+      {
+        mutation: "delete process.env.EMAIL_API_KEY",
+        expected: "Invalid production email delivery configuration.",
+      },
+      {
+        mutation: 'process.env.EMAIL_API_KEY = "   "',
+        expected: "Invalid production email delivery configuration.",
+      },
+      {
+        mutation: "delete process.env.CRON_SECRET",
+        expected: "Invalid production cron authentication configuration.",
+      },
+      {
+        mutation: 'process.env.CRON_SECRET = ""',
+        expected: "Invalid production cron authentication configuration.",
+      },
+    ];
+
+    for (const { mutation, expected } of cases) {
+      const validation = validateProductionDeliveryEnvironment(
+        mutation,
+        "production"
+      );
+      const error = validation.stderr.toString();
+
+      expect(validation.exitCode).toBe(1);
+      expect(error).toContain(expected);
+      expect(error).not.toContain("re_");
+    }
+  });
+
+  test("keeps local development and preview usable without delivery or cron secrets", () => {
+    const mutation =
+      "delete process.env.EMAIL_API_KEY; delete process.env.CRON_SECRET;";
+
+    for (const vercelEnvironment of ["development", "preview"] as const) {
+      const validation = validateProductionDeliveryEnvironment(
+        mutation,
+        vercelEnvironment
+      );
+      expect(validation.exitCode).toBe(0);
+    }
   });
 
   test("requires the browser PostHog proxy when browser analytics is enabled", () => {

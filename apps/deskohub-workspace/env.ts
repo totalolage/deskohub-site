@@ -124,6 +124,20 @@ export const env = createEnv({
         };
       }
 
+      if (hasPath("EMAIL_API_KEY")) {
+        return {
+          ...issue,
+          message: "Invalid production email delivery configuration.",
+        };
+      }
+
+      if (hasPath("CRON_SECRET")) {
+        return {
+          ...issue,
+          message: "Invalid production cron authentication configuration.",
+        };
+      }
+
       return issue;
     });
 

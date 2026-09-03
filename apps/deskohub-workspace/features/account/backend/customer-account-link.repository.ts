@@ -16,6 +16,15 @@ export type CustomerAccountLinkClaim =
   | { readonly kind: "linked"; readonly customerId: DotyposCustomerId }
   | { readonly kind: "claimed" };
 
+/**
+ * Authoritative account activity facts read from the auth schema. A missing
+ * auth row means the identity no longer exists, so it is never conflated with
+ * an active account that simply has no deletion marker.
+ */
+export type CustomerAccountActivityState =
+  | { readonly kind: "missing" }
+  | { readonly kind: "active"; readonly deletionRequestedAt: Date | null };
+
 export type CustomerAccountLinkError = EffectDrizzleQueryError | SqlError;
 
 const accountLockKey = (
@@ -30,9 +39,9 @@ interface ICustomerAccountLinkRepository {
     accountId: CustomerAccountId,
     customerId: DotyposCustomerId
   ) => Effect.Effect<CustomerAccountLinkClaim, CustomerAccountLinkError>;
-  readonly findDeletionRequestedAt: (
+  readonly findActivityState: (
     accountId: CustomerAccountId
-  ) => Effect.Effect<Date | null, CustomerAccountLinkError>;
+  ) => Effect.Effect<CustomerAccountActivityState, CustomerAccountLinkError>;
   readonly markDeletionRequested: (
     accountId: CustomerAccountId,
     requestedAt: Date
@@ -89,15 +98,19 @@ export class CustomerAccountLinkRepository extends Context.Service<
           : ({ kind: "claimed" } as const);
       });
 
-      const findDeletionRequestedAt = Effect.fn(
-        "CustomerAccountLinkRepository.findDeletionRequestedAt"
+      const findActivityState = Effect.fn(
+        "CustomerAccountLinkRepository.findActivityState"
       )(function* (accountId: CustomerAccountId) {
         const [row] = yield* db
           .select({ deletionRequestedAt: authUser.deletionRequestedAt })
           .from(authUser)
           .where(eq(authUser.id, accountId))
           .limit(1);
-        return row?.deletionRequestedAt ?? null;
+        if (!row) return { kind: "missing" } as const;
+        return {
+          kind: "active",
+          deletionRequestedAt: row.deletionRequestedAt ?? null,
+        } as const;
       });
 
       const markDeletionRequested = Effect.fn(
@@ -117,7 +130,7 @@ export class CustomerAccountLinkRepository extends Context.Service<
       return {
         claim,
         find,
-        findDeletionRequestedAt,
+        findActivityState,
         markDeletionRequested,
         withAccountLock,
       } satisfies ICustomerAccountLinkRepository;

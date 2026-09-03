@@ -2,6 +2,16 @@
 
 Research date: 2026-09-02
 
+> **Decision status (2026-09-03).** This is a restored historical research
+> note. Its isolated synthetic Resend tenant/team-and-domain option is
+> **superseded**: the closed decision uses the **existing Resend team and
+> domain** for Preview delivery and exact-SHA retrieval (send-only
+> `EMAIL_API_KEY` in Vercel Preview; full-access `WORKSPACE_E2E_RESEND_API_KEY`
+> only in the protected `workspace-checkout-e2e` GitHub environment, never in
+> Vercel or application configuration). Do not cite the tenant-isolation
+> arrangement below as the current plan. Delivery-boundary, redaction, and
+> retrieval mechanics remain accurate.
+
 This note resolves the research question in
 [Research magic-link delivery and protected-preview retrieval](https://github.com/totalolage/deskohub-site/issues/343).
 It records current primary-source facts and viable arrangements; it does not

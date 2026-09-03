@@ -8,28 +8,12 @@ import {
   type LinkedCustomerAccount,
   mapCustomerAccountFailure,
 } from "../customer-account";
+import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import {
   CustomerDotyposAdapter,
   type CustomerProfile,
 } from "./customer-dotypos-adapter.service";
-
-const deletionBlocked = () =>
-  new CustomerAccountAccessError({
-    reason: "link-required",
-    linkReason: "deletion-requested",
-  });
-
-const requireActiveAccount = (
-  links: CustomerAccountLinkRepository["Service"],
-  accountId: CustomerAccountId
-) =>
-  links.findDeletionRequestedAt(accountId).pipe(
-    Effect.mapError(mapCustomerAccountFailure("account.deletion-state")),
-    Effect.flatMap((requestedAt) =>
-      requestedAt ? Effect.fail(deletionBlocked()) : Effect.succeed(undefined)
-    )
-  );
 
 const readLinkedProfile = (
   dotypos: CustomerDotyposAdapter["Service"],
@@ -71,7 +55,7 @@ export class CustomerProfileService extends Context.Service<
 
       const load = Effect.fn("CustomerProfileService.load")(
         (account: LinkedCustomerAccount) =>
-          requireActiveAccount(links, account.accountId).pipe(
+          requireAccountActivity(links, account.accountId).pipe(
             Effect.andThen(
               readLinkedProfile(dotypos, account.dotyposCustomerId)
             )
@@ -84,7 +68,7 @@ export class CustomerProfileService extends Context.Service<
             .withAccountLock(
               account.accountId,
               Effect.gen(function* () {
-                yield* requireActiveAccount(links, account.accountId);
+                yield* requireAccountActivity(links, account.accountId);
                 yield* dotypos
                   .updateCustomerProfile(account.dotyposCustomerId, input)
                   .pipe(
@@ -113,7 +97,18 @@ export class CustomerProfileService extends Context.Service<
             .withAccountLock(
               accountId,
               Effect.gen(function* () {
-                yield* requireActiveAccount(links, accountId);
+                yield* requireAccountActivity(links, accountId);
+
+                const linkedCustomerId = yield* links
+                  .find(accountId)
+                  .pipe(
+                    Effect.mapError(
+                      mapCustomerAccountFailure("account-link.read")
+                    )
+                  );
+                if (linkedCustomerId) {
+                  return yield* readLinkedProfile(dotypos, linkedCustomerId);
+                }
 
                 const createdId = yield* dotypos
                   .createCustomerProfile({
@@ -140,7 +135,7 @@ export class CustomerProfileService extends Context.Service<
                   });
                 }
 
-                return yield* readLinkedProfile(dotypos, createdId);
+                return yield* readLinkedProfile(dotypos, claimed.customerId);
               })
             )
             .pipe(

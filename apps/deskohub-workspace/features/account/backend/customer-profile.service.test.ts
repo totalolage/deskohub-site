@@ -4,6 +4,7 @@ import {
   type CustomerAccountAccessError,
   customerAccountIdSchema,
 } from "../customer-account";
+import type { CustomerAccountActivityState } from "./customer-account-link.repository";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
 import { CustomerProfileService } from "./customer-profile.service";
@@ -23,20 +24,26 @@ const linkedProfile = {
 };
 
 const makeLayers = (fakes: {
-  readonly deletionRequestedAt?: Date | null;
+  readonly accountState?: CustomerAccountActivityState;
   readonly link?: string | null;
   readonly profile?: typeof linkedProfile | null;
   readonly createdCustomerId?: string;
+  readonly claimedCustomerId?: string;
   readonly claimResult?: "linked" | "claimed";
 }) => {
   const calls: string[] = [];
+  const readCustomerIds: string[] = [];
   const updatePayloads: unknown[] = [];
   const createInputs: unknown[] = [];
+  const state: CustomerAccountActivityState = fakes.accountState ?? {
+    kind: "active",
+    deletionRequestedAt: null,
+  };
 
   const links = Layer.mock(CustomerAccountLinkRepository, {
-    findDeletionRequestedAt: () => {
+    findActivityState: () => {
       calls.push("deletion-state");
-      return Effect.succeed(fakes.deletionRequestedAt ?? null);
+      return Effect.succeed(state);
     },
     find: () => {
       calls.push("find-link");
@@ -49,7 +56,8 @@ const makeLayers = (fakes: {
           ? ({ kind: "claimed" } as const)
           : ({
               kind: "linked",
-              customerId: fakes.createdCustomerId ?? "60111",
+              customerId:
+                fakes.claimedCustomerId ?? fakes.createdCustomerId ?? "60111",
             } as const)
       );
     },
@@ -63,8 +71,9 @@ const makeLayers = (fakes: {
   } satisfies Partial<CustomerAccountLinkRepository["Service"]>);
 
   const dotypos = Layer.mock(CustomerDotyposAdapter, {
-    readCustomerProfile: () => {
+    readCustomerProfile: (customerId) => {
       calls.push("read-profile");
+      readCustomerIds.push(customerId);
       return Effect.succeed(fakes.profile ?? linkedProfile);
     },
     updateCustomerProfile: (_customerId, profile) => {
@@ -82,7 +91,13 @@ const makeLayers = (fakes: {
   const service = CustomerProfileService.Default.pipe(
     Layer.provide(Layer.mergeAll(links, dotypos))
   );
-  return { service, calls, updatePayloads, createInputs };
+  return {
+    service,
+    calls,
+    readCustomerIds,
+    updatePayloads,
+    createInputs,
+  };
 };
 
 const runProfile = <A, E>(
@@ -107,7 +122,9 @@ describe("CustomerProfileService", () => {
     );
     expect(profile.firstName).toBe("Ada");
 
-    const blockedLayers = makeLayers({ deletionRequestedAt: new Date() });
+    const blockedLayers = makeLayers({
+      accountState: { kind: "active", deletionRequestedAt: new Date() },
+    });
     const outcome = await Effect.runPromise(
       Effect.gen(function* () {
         const service = yield* CustomerProfileService;
@@ -121,6 +138,24 @@ describe("CustomerProfileService", () => {
       expect(error.reason).toBe("link-required");
       expect(error.linkReason).toBe("deletion-requested");
     }
+  });
+
+  test("stops already-authorized work when the auth account row is gone", async () => {
+    const layers = makeLayers({ accountState: { kind: "missing" } });
+
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* CustomerProfileService;
+        return yield* service.update(account, { firstName: "Grace" });
+      }).pipe(Effect.provide(layers.service), Effect.result)
+    );
+
+    expect(outcome._tag).toBe("Failure");
+    if (outcome._tag === "Failure") {
+      const error = outcome.failure as CustomerAccountAccessError;
+      expect(error.reason).toBe("unauthenticated");
+    }
+    expect(layers.calls).not.toContain("update-profile");
   });
 
   test("serializes updates under the account lock and never sends an email", async () => {
@@ -183,5 +218,36 @@ describe("CustomerProfileService", () => {
       expect(error.reason).toBe("link-required");
       expect(error.linkReason).toBe("claimed");
     }
+  });
+
+  test("returns the linked profile without provider creation when a link already exists", async () => {
+    const layers = makeLayers({ link: "60111" });
+
+    const profile = await runProfile(layers, (service) =>
+      service.create(account.accountId, verifiedEmail, { firstName: "Ada" })
+    );
+
+    expect(profile.firstName).toBe("Ada");
+    expect(layers.calls.indexOf("find-link")).toBeGreaterThan(-1);
+    expect(layers.calls.indexOf("find-link")).toBeLessThan(
+      layers.calls.indexOf("read-profile")
+    );
+    expect(layers.calls).not.toContain("create-profile");
+    expect(layers.calls).not.toContain("claim");
+    expect(layers.readCustomerIds).toEqual(["60111"]);
+  });
+
+  test("reads the claimed link customer instead of the created id after a raced claim", async () => {
+    const layers = makeLayers({
+      createdCustomerId: "60999",
+      claimedCustomerId: "60111",
+    });
+
+    await runProfile(layers, (service) =>
+      service.create(account.accountId, verifiedEmail, { firstName: "Ada" })
+    );
+
+    expect(layers.calls).toContain("create-profile");
+    expect(layers.readCustomerIds).toEqual(["60111"]);
   });
 });

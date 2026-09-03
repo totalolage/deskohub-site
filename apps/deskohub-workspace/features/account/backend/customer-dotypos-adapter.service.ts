@@ -99,43 +99,87 @@ export const toCustomerProfile = (
   };
 };
 
+/**
+ * Builds the provider PATCH payload so every editable field carries an
+ * explicit value: optional fields the user cleared send the provider's
+ * clearing value instead of being omitted, which would leave the previous
+ * provider state in place.
+ */
 const toUpdateRequest = (
   input: CustomerProfileInput
 ): UpdateCustomerRequest => {
   const billing = input.billing;
   const business = billing?.kind === "business" ? billing : undefined;
-  const personal = billing?.kind === "personal" ? billing : undefined;
-  const address = billing ? billing : undefined;
-
-  let companyName: string | undefined;
-  let companyId: string | undefined;
-  let vatId: string | undefined;
-  if (business) {
-    companyName = business.companyName;
-    companyId = business.companyId ?? "";
-    vatId = business.vatId ?? "";
-  } else if (personal) {
-    companyName = "";
-    companyId = "";
-    vatId = "";
-  }
+  const address = billing ?? null;
 
   return {
     firstName: input.firstName,
-    lastName: input.lastName,
-    phone:
-      input.phone === undefined
-        ? undefined
-        : normalizePhoneNumber(input.phone) || "",
-    addressLine1: address ? (address.addressLine1 ?? "") : undefined,
-    addressLine2: address ? (address.addressLine2 ?? "") : undefined,
-    city: address ? (address.city ?? "") : undefined,
-    zip: address ? (address.zip ?? "") : undefined,
-    country: address ? (address.country ?? "") : undefined,
-    companyName,
-    companyId,
-    vatId,
+    lastName: input.lastName ?? "",
+    phone: normalizePhoneNumber(input.phone) ?? "",
+    addressLine1: address?.addressLine1 ?? "",
+    addressLine2: address?.addressLine2 ?? "",
+    city: address?.city ?? "",
+    zip: address?.zip ?? "",
+    country: address?.country ?? "",
+    companyName: business?.companyName ?? "",
+    companyId: business?.companyId ?? "",
+    vatId: business?.vatId ?? "",
   };
+};
+
+/**
+ * Decides whether a provider profile reflects every requested editable
+ * field, including optional-only changes. Used after uncertain provider
+ * responses, where a partial comparison would report a dropped field as
+ * applied.
+ */
+export const customerProfileAppliesInput = (
+  customer: DotyposCustomer,
+  input: CustomerProfileInput
+): boolean => {
+  if (customer.deleted) return false;
+  const stored = toCustomerProfile(customer);
+
+  if (stored.firstName !== input.firstName) return false;
+  if ((stored.lastName ?? "") !== (input.lastName ?? "")) return false;
+  if ((stored.phone ?? "") !== (normalizePhoneNumber(input.phone) ?? "")) {
+    return false;
+  }
+
+  const storedBilling = stored.billing;
+  if (storedBilling == null) return false;
+
+  const billing = input.billing;
+  if (!billing) {
+    return (
+      storedBilling.kind === "personal" &&
+      storedBilling.addressLine1 == null &&
+      storedBilling.addressLine2 == null &&
+      storedBilling.city == null &&
+      storedBilling.zip == null &&
+      storedBilling.country == null &&
+      storedBilling.companyName == null &&
+      storedBilling.companyId == null &&
+      storedBilling.vatId == null
+    );
+  }
+  if (storedBilling.kind !== billing.kind) return false;
+
+  const addressMatches =
+    (storedBilling.addressLine1 ?? "") === (billing.addressLine1 ?? "") &&
+    (storedBilling.addressLine2 ?? "") === (billing.addressLine2 ?? "") &&
+    (storedBilling.city ?? "") === (billing.city ?? "") &&
+    (storedBilling.zip ?? "") === (billing.zip ?? "") &&
+    (storedBilling.country ?? "") === (billing.country ?? "");
+
+  if (billing.kind === "personal") return addressMatches;
+
+  return (
+    addressMatches &&
+    (storedBilling.companyName ?? "") === billing.companyName &&
+    (storedBilling.companyId ?? "") === (billing.companyId ?? "") &&
+    (storedBilling.vatId ?? "") === (billing.vatId ?? "")
+  );
 };
 
 const toCustomerDetails = (input: {
@@ -294,7 +338,7 @@ export class CustomerDotyposAdapter extends Context.Service<
             continue;
           }
 
-          return yield* Effect.fail(error);
+          return yield* error;
         }
 
         if (lastError && isUncertainDotyposError(lastError)) {
@@ -302,7 +346,7 @@ export class CustomerDotyposAdapter extends Context.Service<
           if (input.isApplied(finalReread)) return;
         }
 
-        return yield* Effect.fail(lastError!);
+        return yield* lastError!;
       });
 
       const updateCustomerProfile = Effect.fn(
@@ -312,8 +356,7 @@ export class CustomerDotyposAdapter extends Context.Service<
           customerId,
           payload: toUpdateRequest(profile),
           isApplied: (customer) =>
-            customer != null &&
-            customer.firstName?.trim() === profile.firstName,
+            customer != null && customerProfileAppliesInput(customer, profile),
         })
       );
 
@@ -335,8 +378,9 @@ export class CustomerDotyposAdapter extends Context.Service<
           customerId,
           payload: expirationPatch(false),
           isApplied: (customer) =>
-            customer == null ||
-            (!customer.deleted && !isCustomerProfileExpired(customer)),
+            customer != null &&
+            !customer.deleted &&
+            !isCustomerProfileExpired(customer),
         })
       );
 

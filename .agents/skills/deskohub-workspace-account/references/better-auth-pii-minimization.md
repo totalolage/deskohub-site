@@ -1,6 +1,14 @@
 # Better Auth data minimization in Neon
 
-Research snapshot: 2026-09-02. This note checks Better Auth 1.7.2, pinned at
+Research snapshot: 2026-09-02.
+
+> **Decision status (2026-09-03).** This is a restored historical research
+> note. The closed rule (see repository AGENTS.md) accepts that an ordinary
+> protected production-derived Neon preview branch inherits Better Auth login
+> email, pending-verification email, and short-lived rate-limit IP keys. No
+> sanitizer, scrub-on-branch procedure, or custom identity adapter is planned;
+> the HMAC rate-key alternative below is also not planned. The session
+> minimization facts remain accurate. This note checks Better Auth 1.7.2, pinned at
 commit [`ba12fcd`](https://github.com/better-auth/better-auth/tree/ba12fcdfa774ca27d417079dbac0b1b5894ccaf2).
 It focuses on the email and IP addresses that a magic-link deployment can put
 in Neon. Names, phone numbers, billing details, and reservations remain in

@@ -52,8 +52,9 @@ description: Workspace customer account, Better Auth, magic link, auth persisten
   `DotyposCustomerId`, without exposing session or profile data.
 - Require the authoritative current session and verified email. Resolve the
   profile in a fixed order: an existing durable link wins; one unique active
-  exact-email profile links; one unique expired profile reserves the link and
-  clears its expiration; no match requires profile completion and creates a
+  exact-email profile links; one unique expired profile reactivates first and
+  only then claims the link, so a failed reactivation leaves the link
+  unreserved and retryable; no match requires profile completion and creates a
   Dotypos profile only afterward; ambiguous, deleted, unusable, or
   already-claimed profiles return the common support state.
 - Claim links with database uniqueness and conflict rereads so same-account
@@ -98,11 +99,14 @@ description: Workspace customer account, Better Auth, magic link, auth persisten
 - Run account E2E against the immutable protected Vercel preview for the exact
   SHA and its matching Neon branch. Never use a separate auth database, a
   static preview URL, or a runtime bypass.
-- Retrieve magic links through the isolated synthetic Resend tenant with
-  send-only deployed authority and retrieval authority for trusted exact-SHA
-  runs only. Use synthetic recipients; keep links and tokens in memory,
-  register them with the E2E redactor, and never expose the production email
-  credential. No tunnels and no webhook capture.
+- Deliver Preview magic links through the existing Resend team/domain: the
+  preview runtime keeps the existing send-only `EMAIL_API_KEY`, and
+  `WORKSPACE_E2E_RESEND_API_KEY` is a full-access retrieval key on the same
+  team that lives only in the protected `workspace-checkout-e2e` GitHub
+  environment and never enters Vercel or application configuration. Do not
+  provision an isolated synthetic tenant. Use synthetic recipients; keep
+  links and tokens in memory, register them with the E2E redactor, and never
+  expose the production email credential. No tunnels and no webhook capture.
 - The Playwright lifecycle must cover anonymous protection, invalid and
   replayed links, no-match profile completion, profile updates with immutable
   email, active and expired profile linking, the support state, current and

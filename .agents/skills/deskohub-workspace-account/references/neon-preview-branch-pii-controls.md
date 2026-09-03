@@ -5,6 +5,12 @@ ordinary Vercel preview branches that inherit authentication email and IP data
 from production. It deliberately excludes a separate preview parent and a
 custom post-clone scrub job.
 
+> **Decision status (2026-09-03).** This note's recommendation is the closed
+> decision: keep the ordinary protected production-derived preview workflow.
+> The PII-free parent, schema-only branch, scrub pipeline, reset job, custom
+> deletion job, and Neon masking-branch options evaluated below are
+> **superseded/rejected** — none may be reintroduced for Customer Accounts.
+
 ## Recommendation
 
 Keep the existing production-to-preview branch workflow. Treat each preview

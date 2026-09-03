@@ -296,6 +296,17 @@ export const makeWorkspaceE2EAccountCases = ({
     execute: WorkspaceE2EAccountCase["execute"]
   ): WorkspaceE2EAccountCase => ({ execute, id, timeoutMs: caseTimeout });
 
+  /**
+   * In-memory handoff between the serial deletion cases: the marker case
+   * completes the deletion and records the removed identity and its retained
+   * Dotypos customer, which the reactivation case then verifies under a new
+   * Better Auth identity.
+   */
+  const completedDeletion: {
+    deletedUserId?: string;
+    retainedCustomerId?: string;
+  } = {};
+
   const step = <A, R>(
     id: string,
     execute: Effect.Effect<A, WorkspaceE2EError, R>,
@@ -645,23 +656,32 @@ export const makeWorkspaceE2EAccountCases = ({
         );
       })
     ),
-    makeCase("account-deletion-marker-reauth", ({ runStep }) =>
+    makeCase("account-deletion-marker-reauth", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
         const userId = yield* runStep(
           step(
             "reads the synthetic account identity",
-            requireAuthUserId(recipient),
+            Effect.gen(function* () {
+              const userId = yield* requireAuthUserId(recipient);
+              const linked = yield* requireLinkedCustomerId(userId);
+              yield* recordFixtureIds(journalRef, {
+                dotyposCustomerIds: [linked],
+              });
+              return { linked, userId };
+            }),
             datasourceTimeout
           )
         );
         yield* rateBudget.reserve("send");
+        yield* rateBudget.reserve("verify");
+        const startedAt = new Date();
         yield* runStep(
           step(
             "shows the durable deletion marker state",
             Effect.gen(function* () {
-              yield* setDeletionRequestedAt(userId, new Date());
+              yield* setDeletionRequestedAt(userId.userId, new Date());
               yield* setSessionCreatedAt(
-                userId,
+                userId.userId,
                 new Date(Date.now() - staleSessionAgeMs)
               );
               yield* openPage(localized(accountSuffix));
@@ -703,6 +723,13 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
+        const observedMessageIds = yield* runStep(
+          step(
+            "records the delivered message baseline",
+            observeDeliveredMessageIds(recipient),
+            providerTransition
+          )
+        );
         yield* runStep(
           step(
             "sends the reauthentication link",
@@ -720,44 +747,35 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
-        yield* runStep(
+        const reauthenticationLink = yield* runStep(
           step(
-            "restores the linked state after clearing the marker",
-            Effect.gen(function* () {
-              yield* setDeletionRequestedAt(userId, null);
-              yield* setSessionCreatedAt(userId, new Date());
-              yield* openPage(localized(accountSuffix));
-              yield* waitText("linked account restored", linkedDeleteCardTitle);
-            }),
-            datasourceTimeout
-          )
-        );
-      })
-    ),
-    makeCase("account-deletion-and-reactivation", ({ journalRef, runStep }) =>
-      Effect.gen(function* () {
-        const startedAt = new Date();
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("verify");
-        const before = yield* runStep(
-          step(
-            "reads the identity and provider profile before deletion",
-            Effect.gen(function* () {
-              const userId = yield* requireAuthUserId(recipient);
-              const linked = yield* requireLinkedCustomerId(userId);
-              yield* recordFixtureIds(journalRef, {
-                dotyposCustomerIds: [linked],
-              });
-              return { linked, userId };
-            }),
-            datasourceTimeout
+            "retrieves the delivered reauthentication link",
+            retrieveSignInLink(recipient, observedMessageIds, startedAt),
+            authDeliveryTimeout
           )
         );
         yield* runStep(
           step(
-            "deletes the account behind the destructive confirmation",
+            "keeps the deletion marker state after reauthentication",
             Effect.gen(function* () {
-              yield* openPage(localized(accountSuffix));
+              yield* openPage(reauthenticationLink);
+              yield* waitText(
+                "deletion pending state after reauthentication",
+                deletionPendingTitle
+              );
+              const linked = yield* findLinkedDotyposCustomerId(userId.userId);
+              assert(
+                linked === userId.linked,
+                "the reauthentication session lost the durable Dotypos link"
+              );
+            }),
+            providerTransition
+          )
+        );
+        yield* runStep(
+          step(
+            "completes the deletion on retry behind the destructive confirmation",
+            Effect.gen(function* () {
               yield* clickBrowserElement(run, session, deleteTriggerSelector, {
                 timeoutMs: browserTimeout,
               });
@@ -786,7 +804,7 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "expires the provider profile first and removes every identity row",
             Effect.gen(function* () {
-              const customer = yield* readProviderProfile(before.linked);
+              const customer = yield* readProviderProfile(userId.linked);
               assert(
                 customer.expireDate != null &&
                   new Date(customer.expireDate).getTime() <= Date.now(),
@@ -796,14 +814,35 @@ export const makeWorkspaceE2EAccountCases = ({
                 customer.deleted !== true,
                 "the provider profile was permanently deleted"
               );
-              yield* assertNoAuthRows(before.userId);
-              const link = yield* findLinkedDotyposCustomerId(before.userId);
+              yield* assertNoAuthRows(userId.userId);
+              const link = yield* findLinkedDotyposCustomerId(userId.userId);
               assert(
                 link === undefined,
                 "the customer account link survived identity removal"
               );
+              completedDeletion.deletedUserId = userId.userId;
+              completedDeletion.retainedCustomerId = userId.linked;
             }),
             datasourceTimeout
+          )
+        );
+      })
+    ),
+    makeCase("account-deletion-and-reactivation", ({ journalRef, runStep }) =>
+      Effect.gen(function* () {
+        const startedAt = new Date();
+        yield* rateBudget.reserve("send");
+        yield* rateBudget.reserve("verify");
+        yield* runStep(
+          step(
+            "requires the completed deletion handoff from the marker case",
+            Effect.sync(() => {
+              assert(
+                completedDeletion.deletedUserId != null &&
+                  completedDeletion.retainedCustomerId != null,
+                "the deletion marker case did not complete the deletion handoff"
+              );
+            })
           )
         );
         const observedMessageIds = yield* runStep(
@@ -838,12 +877,12 @@ export const makeWorkspaceE2EAccountCases = ({
               );
               const newUserId = yield* requireAuthUserId(recipient);
               assert(
-                newUserId !== before.userId,
+                newUserId !== completedDeletion.deletedUserId,
                 "the reactivated identity reused the deleted Better Auth id"
               );
               const linked = yield* requireLinkedCustomerId(newUserId);
               assert(
-                linked === before.linked,
+                linked === completedDeletion.retainedCustomerId,
                 "the reactivated identity claimed a different Dotypos customer"
               );
               const customer = yield* readProviderProfile(linked);

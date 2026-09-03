@@ -131,11 +131,9 @@ export const isPreviewPageAvailable = (
       return false;
     }
 
-    return yield* Effect.fail(
-      workspaceE2EError(
-        `${path} preview page did not render its expected content`,
-        { operation: `check ${path} preview page` }
-      )
+    return yield* workspaceE2EError(
+      `${path} preview page did not render its expected content`,
+      { operation: `check ${path} preview page` }
     );
   });
 

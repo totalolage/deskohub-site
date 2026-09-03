@@ -104,15 +104,6 @@ export const resolveCustomerAccount = (
             return yield* accessError("link-required", "ambiguous");
           }
 
-          const claimed = yield* dependencies
-            .claimLink(lockedIdentity.accountId, match.customerId)
-            .pipe(
-              Effect.mapError(mapCustomerAccountFailure("account-link.claim"))
-            );
-          if (claimed.kind === "claimed") {
-            return yield* accessError("link-required", "claimed");
-          }
-
           if (match.state === "expired") {
             yield* dependencies
               .reactivate(match.customerId)
@@ -123,9 +114,18 @@ export const resolveCustomerAccount = (
               );
           }
 
+          const claimed = yield* dependencies
+            .claimLink(lockedIdentity.accountId, match.customerId)
+            .pipe(
+              Effect.mapError(mapCustomerAccountFailure("account-link.claim"))
+            );
+          if (claimed.kind === "claimed") {
+            return yield* accessError("link-required", "claimed");
+          }
+
           return {
             accountId: lockedIdentity.accountId,
-            dotyposCustomerId: match.customerId,
+            dotyposCustomerId: claimed.customerId,
           };
         })
       )
@@ -133,7 +133,7 @@ export const resolveCustomerAccount = (
   });
 
 interface ICustomerAccountResolver {
-  readonly resolve: () => Effect.Effect<
+  readonly resolve: Effect.Effect<
     LinkedCustomerAccount,
     CustomerAccountAccessError
   >;
@@ -150,16 +150,14 @@ export class CustomerAccountResolver extends Context.Service<
       const links = yield* CustomerAccountLinkRepository;
       const dotypos = yield* CustomerDotyposAdapter;
 
-      const resolve = Effect.fn("CustomerAccountResolver.resolve")(() =>
-        resolveCustomerAccount({
-          currentUser: () => authentication.currentUser,
-          findLink: links.find,
-          classify: dotypos.classifyExactEmailCustomers,
-          claimLink: links.claim,
-          reactivate: dotypos.reactivateCustomer,
-          withAccountLock: links.withAccountLock,
-        })
-      );
+      const resolve = resolveCustomerAccount({
+        currentUser: () => authentication.currentUser,
+        findLink: links.find,
+        classify: dotypos.classifyExactEmailCustomers,
+        claimLink: links.claim,
+        reactivate: dotypos.reactivateCustomer,
+        withAccountLock: links.withAccountLock,
+      });
 
       return { resolve } satisfies ICustomerAccountResolver;
     })
@@ -176,13 +174,13 @@ export class CustomerAccountResolver extends Context.Service<
   );
 }
 
-export const resolveCurrentCustomerAccount = (): Effect.Effect<
+export const resolveCurrentCustomerAccount: Effect.Effect<
   LinkedCustomerAccount,
   CustomerAccountAccessError
-> =>
-  Effect.flatMap(CustomerAccountResolver, (resolver) =>
-    resolver.resolve()
-  ).pipe(
-    Effect.provide(CustomerAccountResolver.Live),
-    Effect.mapError(mapCustomerAccountFailure("account-link.lock"))
-  );
+> = Effect.flatMap(
+  CustomerAccountResolver,
+  (resolver) => resolver.resolve
+).pipe(
+  Effect.provide(CustomerAccountResolver.Live),
+  Effect.mapError(mapCustomerAccountFailure("account-link.lock"))
+);

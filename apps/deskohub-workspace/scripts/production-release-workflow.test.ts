@@ -67,6 +67,20 @@ describe("deploy-workspace-production workflow", () => {
     );
   });
 
+  test("rolls the release back through the script's Vercel rollback operation", async () => {
+    const workflow = await readWorkflow();
+    const script = await Bun.file(
+      resolve(import.meta.dir, "production-release.ts")
+    ).text();
+
+    expect(script).toMatch(/vercel@\d[\d.]* rollback/);
+    expect(script).not.toMatch(/vercel@\d[\d.]* promote/);
+    expect(workflow).not.toMatch(/rollback[^\n]*vercel@\d[\d.]* promote/);
+    expect(workflow).toContain(
+      `bun scripts/production-release.ts rollback --url "\${{ steps.rollback-target.outputs.previous_url }}"`
+    );
+  });
+
   test("keeps GitHub free of Better Auth, Resend, and mail authority", async () => {
     const workflow = await readWorkflow();
 

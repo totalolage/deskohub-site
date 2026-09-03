@@ -5,6 +5,16 @@ source of the pinned `better-auth` 1.7.2 release. It distinguishes documented
 behavior from product policy so the implementation and privacy copy do not
 promise behavior a provider does not guarantee.
 
+> **Decision status (2026-09-03).** This is a restored historical research
+> note. Its PII-free preview parent / schema-only / sanitized-provisioning
+> option is **superseded**: the closed rule (see repository AGENTS.md) is that
+> an ordinary protected production-derived Neon preview branch may inherit
+> Better Auth login email, pending-verification email, and short-lived
+> rate-limit IP keys, with no sanitizer and no alternate branch procedure.
+> Preview fixtures and all Dotypos profile and reservation data stay
+> synthetic. Do not cite the PII-free-parent or sanitization options below as
+> open choices.
+
 ## Better Auth 1.7.2 data
 
 The pinned core schema defines these records:

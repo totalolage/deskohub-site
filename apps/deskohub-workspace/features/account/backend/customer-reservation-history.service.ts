@@ -20,11 +20,11 @@ import type {
   CustomerReservationSummary,
 } from "../contracts";
 import { groupCustomerReservations } from "../contracts";
-import {
+import type {
   CustomerAccountAccessError,
-  type LinkedCustomerAccount,
-  mapCustomerAccountFailure,
+  LinkedCustomerAccount,
 } from "../customer-account";
+import { requireAccountActivity } from "./customer-account-activity";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
 
 type CustomerReservationHistoryError =
@@ -112,19 +112,7 @@ export class CustomerReservationHistoryService extends Context.Service<
 
       const load = Effect.fn("CustomerReservationHistoryService.load")(
         function* (account: LinkedCustomerAccount) {
-          const requestedAt = yield* links
-            .findDeletionRequestedAt(account.accountId)
-            .pipe(
-              Effect.mapError(
-                mapCustomerAccountFailure("account.deletion-state")
-              )
-            );
-          if (requestedAt) {
-            return yield* new CustomerAccountAccessError({
-              reason: "link-required",
-              linkReason: "deletion-requested",
-            });
-          }
+          yield* requireAccountActivity(links, account.accountId);
 
           const rows = yield* db
             .select({

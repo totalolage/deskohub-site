@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { makeMagicLinkEmailDelivery } from "./send-magic-link-email";
+import {
+  MagicLinkDeliveryTransportError,
+  makeMagicLinkEmailDelivery,
+} from "./send-magic-link-email";
 
 const request = {
   email: "ada@example.test",
@@ -48,6 +51,18 @@ describe("Magic-link email delivery", () => {
     );
 
     expect(code).toBe("account.magic-link.delivery-failed");
+  });
+
+  test("fails with an account-owned tagged transport error", async () => {
+    const transport = new MagicLinkDeliveryTransportError();
+
+    expect(transport._tag).toBe("MagicLinkDeliveryTransportError");
+
+    const source = await Bun.file(
+      new URL("./send-magic-link-email.ts", import.meta.url).pathname
+    ).text();
+    expect(source).toContain("MagicLinkDeliveryTransportError");
+    expect(source).not.toContain("new Error(");
   });
 
   test("reports renderer failures without leaking the message", async () => {

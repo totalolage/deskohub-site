@@ -227,6 +227,35 @@ describe("CustomerDotyposAdapter", () => {
       expect(payloads).toEqual([{ expireDate: null }]);
     });
 
+    test("does not treat an uncertain response followed by a missing profile as reactivated", async () => {
+      const calls: string[] = [];
+
+      const outcome = await runWithDotypos(
+        {
+          patchCustomer: () => {
+            calls.push("patch");
+            return Effect.fail(
+              new NetworkError({ message: "connection reset" })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.fail(
+              new ExternalAPIError({
+                service: "Dotypos",
+                operation: "getCustomer",
+                statusCode: 404,
+              })
+            );
+          },
+        },
+        (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
+      );
+
+      expect(calls).toContain("read");
+      expect(outcome._tag).toBe("Failure");
+    });
+
     test("rereads after an uncertain response and retries only when unapplied", async () => {
       const calls: string[] = [];
       let patchCount = 0;
@@ -297,6 +326,143 @@ describe("CustomerDotyposAdapter", () => {
 
       expect(calls).toEqual(["patch", "patch"]);
       expect(outcome._tag).toBe("Failure");
+    });
+  });
+
+  describe("profile updates", () => {
+    test("sends explicit clearing values instead of omitting optional fields", async () => {
+      const payloads: unknown[] = [];
+
+      await runWithDotypos(
+        {
+          patchCustomer: (_id, payload) => {
+            payloads.push(payload);
+            return Effect.succeed(makeCustomer());
+          },
+        },
+        (adapter) =>
+          adapter.updateCustomerProfile("60111", {
+            firstName: "Ada",
+            lastName: undefined,
+            phone: undefined,
+            billing: undefined,
+          })
+      );
+
+      expect(payloads).toEqual([
+        {
+          firstName: "Ada",
+          lastName: "",
+          phone: "",
+          addressLine1: "",
+          addressLine2: "",
+          city: "",
+          zip: "",
+          country: "",
+          companyName: "",
+          companyId: "",
+          vatId: "",
+        },
+      ]);
+    });
+
+    test("clears business billing when the profile switches to personal", async () => {
+      const payloads: unknown[] = [];
+
+      await runWithDotypos(
+        {
+          patchCustomer: (_id, payload) => {
+            payloads.push(payload);
+            return Effect.succeed(makeCustomer());
+          },
+        },
+        (adapter) =>
+          adapter.updateCustomerProfile("60111", {
+            firstName: "Ada",
+            billing: {
+              kind: "personal",
+              addressLine1: "Pražská 1",
+              addressLine2: undefined,
+              city: "Praha",
+              zip: "11000",
+              country: "CZ",
+            },
+          })
+      );
+
+      expect(payloads[0]).toMatchObject({
+        addressLine1: "Pražská 1",
+        addressLine2: "",
+        companyName: "",
+        companyId: "",
+        vatId: "",
+      });
+    });
+
+    test("retries an uncertain optional-only update whose reread shows it unapplied", async () => {
+      const calls: string[] = [];
+      let patchCount = 0;
+
+      await runWithDotypos(
+        {
+          patchCustomer: () => {
+            patchCount += 1;
+            calls.push("patch");
+            return Effect.fail(
+              new NetworkError({ message: "connection reset" })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(
+              makeCustomer({ lastName: "Old-name", phone: "+420601111222" })
+            );
+          },
+        },
+        (adapter) =>
+          adapter
+            .updateCustomerProfile("60111", {
+              firstName: "Ada",
+              lastName: undefined,
+              phone: undefined,
+              billing: undefined,
+            })
+            .pipe(Effect.result)
+      );
+
+      expect(calls[0]).toBe("patch");
+      expect(calls[1]).toBe("read");
+      expect(patchCount).toBe(2);
+    });
+
+    test("accepts an uncertain optional-only clearing update once a reread shows it applied", async () => {
+      const calls: string[] = [];
+
+      const outcome = await runWithDotypos(
+        {
+          patchCustomer: () => {
+            calls.push("patch");
+            return Effect.fail(
+              new NetworkError({ message: "connection reset" })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(makeCustomer({ lastName: "Lovelace" }));
+          },
+        },
+        (adapter) =>
+          adapter
+            .updateCustomerProfile("60111", {
+              firstName: "Ada",
+              lastName: "Lovelace",
+              billing: undefined,
+            })
+            .pipe(Effect.result)
+      );
+
+      expect(calls).toEqual(["patch", "read"]);
+      expect(outcome._tag).toBe("Success");
     });
   });
 

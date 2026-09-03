@@ -54,7 +54,7 @@ export const loadCustomerAccountPage = cache(
       return { kind: "deletion-pending", email: user.email };
     }
 
-    const account = await resolveCurrentCustomerAccount().pipe(
+    const account = await resolveCurrentCustomerAccount.pipe(
       Effect.tapError((error) =>
         Effect.logError("Account resolution failed", { error })
       ),

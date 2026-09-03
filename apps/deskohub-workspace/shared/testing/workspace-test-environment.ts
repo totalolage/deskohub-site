@@ -4,7 +4,10 @@ import { createHash } from "node:crypto";
 
 const checkoutKey = Buffer.alloc(32, 7).toString("base64url");
 const accountingSnapshotKey = "synthetic accounting snapshot secret!";
-const betterAuthSecret = Buffer.alloc(48, 11).toString("base64url");
+// Synthetic but strong: 56 base64url characters with high character
+// variety, satisfying the fail-closed BETTER_AUTH_SECRETS strength gate.
+const betterAuthSecret =
+  "bGF2ZW5kZXItc3ludGhldGljLXRlc3Qta2V5LTk3MzctY2FmZS0wMzQ5";
 export const workspaceTestAdminCredentials = {
   password: "test-password",
   username: "admin",
@@ -36,6 +39,7 @@ process.env.DOTYPOS_CLOUD_ID ??= "cloud";
 process.env.DOTYPOS_EMPLOYEE_ID ??= "employee";
 process.env.DOTYPOS_REFRESH_TOKEN ??= "refresh";
 process.env.EMAIL_API_KEY ??= "re_test";
+process.env.CRON_SECRET ??= "synthetic-cron-secret";
 process.env.GOOGLE_CALENDAR_PRIVATE_KEY ??= "test-private-key";
 process.env.GOOGLE_CALENDAR_SALES_ID ??= "sales-calendar";
 process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL ??= "calendar@example.test";

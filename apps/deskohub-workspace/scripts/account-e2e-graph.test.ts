@@ -79,10 +79,25 @@ describe("workspace account e2e graph", () => {
       .split("\n")
       .filter((line) => line.includes("rateBudget.reserve("))
       .map((line) => line.indexOf("yield* rateBudget.reserve("));
-    expect(reserveIndents).toHaveLength(16);
+    expect(reserveIndents).toHaveLength(17);
     expect(new Set(reserveIndents).size).toBe(1);
     expect(cases.match(/rateBudget\.reserve\("send"\)/g)).toHaveLength(9);
-    expect(cases.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(7);
+    expect(cases.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(8);
+  });
+
+  test("completes the stale deletion through the delivered reauthentication link", async () => {
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const markerCase = cases.slice(
+      cases.indexOf('makeCase("account-deletion-marker-reauth"'),
+      cases.indexOf('makeCase("account-deletion-and-reactivation"')
+    );
+
+    expect(markerCase).toContain("retrieveSignInLink");
+    expect(markerCase).toContain("openPage(reauthenticationLink)");
+    expect(markerCase).toContain("deleted page");
+    expect(markerCase).not.toContain("setDeletionRequestedAt(userId, null)");
+    expect(markerCase).not.toContain("linked account restored");
+    expect(markerCase.match(/setDeletionRequestedAt\(/g) ?? []).toHaveLength(1);
   });
 
   test("disambiguates repeated sign-ins by excluding observed messages", async () => {

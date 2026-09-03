@@ -131,7 +131,7 @@ mock.module(
 mock.module(
   "@/features/account/backend/customer-account-resolver.service",
   () => ({
-    resolveCurrentCustomerAccount: () => resolveEffect,
+    resolveCurrentCustomerAccount: Effect.suspend(() => resolveEffect),
     CustomerAccountResolver: Resolver,
   })
 );

@@ -1,5 +1,18 @@
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import type { WorkspaceEmailLocale } from "@/emails/_components/workspace-email-layout";
+
+/**
+ * Account-owned transport failure. The original provider rejection is
+ * deliberately not attached: the error must stay censored even if it escapes
+ * delivery handling.
+ */
+export class MagicLinkDeliveryTransportError extends Data.TaggedError(
+  "MagicLinkDeliveryTransportError"
+)<{ readonly code: "account.magic-link.transport" }> {
+  constructor() {
+    super({ code: "account.magic-link.transport" });
+  }
+}
 
 /**
  * Fixed, censored result codes for magic-link delivery. These are the only
@@ -72,7 +85,7 @@ export const makeMagicLinkEmailDelivery = (
             html: rendered.html,
             text: rendered.text,
           }),
-        catch: () => new Error("Magic-link email transport failed."),
+        catch: () => new MagicLinkDeliveryTransportError(),
       });
 
       if (sent.error) {

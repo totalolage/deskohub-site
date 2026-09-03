@@ -74,17 +74,20 @@ type Resolution =
     }
   | { readonly reason: string; readonly linkReason?: string };
 
-let resolve: () => Effect.Effect<
+let resolve: Effect.Effect<
   Extract<Resolution, { accountId: string }>,
   Extract<Resolution, { reason: string }>
 >;
+type ResolutionEffect = typeof resolve;
 const Resolver = Context.Service<
   Resolver,
-  { readonly resolve: () => ReturnType<typeof resolve> }
+  { readonly resolve: ResolutionEffect }
 >()("@test/ActionsResolver");
 Object.assign(Resolver, {
   Live: Layer.succeed(Resolver, {
-    resolve: () => resolve(),
+    get resolve() {
+      return resolve;
+    },
   }),
 });
 mock.module(
@@ -136,24 +139,22 @@ describe("account actions", () => {
     profileCalls.length = 0;
     revalidatePath.mockClear();
     currentUser = Effect.succeed(activeSession);
-    resolve = () =>
-      Effect.succeed({
-        accountId: "@test/account-id",
-        dotyposCustomerId: "60111",
-      });
+    resolve = Effect.succeed({
+      accountId: "@test/account-id",
+      dotyposCustomerId: "60111",
+    });
     deleteUser = () => Promise.resolve({ success: true });
   });
 
   const importActions = () => import("./actions");
 
   test("creates the profile from the verified session when no profile matches", async () => {
-    resolve = () =>
-      Effect.fail(
-        new CustomerAccountAccessError({
-          reason: "link-required",
-          linkReason: "not-found",
-        })
-      );
+    resolve = Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "not-found",
+      })
+    );
     const { completeCustomerProfile } = await importActions();
 
     const result = await completeCustomerProfile({ firstName: "Ada" });
@@ -192,13 +193,12 @@ describe("account actions", () => {
   });
 
   test("returns the localized profile error when the resolver blocks the edit", async () => {
-    resolve = () =>
-      Effect.fail(
-        new CustomerAccountAccessError({
-          reason: "link-required",
-          linkReason: "deletion-requested",
-        })
-      );
+    resolve = Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
     const { updateCustomerProfile } = await importActions();
 
     const result = await updateCustomerProfile({ firstName: "Ada" });

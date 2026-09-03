@@ -13,10 +13,10 @@ export class WorkspaceDatabase extends Context.Service<
 >()("WorkspaceDatabase") {
   static Default = Layer.unwrap(
     Effect.promise(async () => {
-      const { makeWorkspaceDatabaseLayer } = await import(
+      const { workspaceDatabaseLayer } = await import(
         "./database-provider.server"
       );
-      return makeWorkspaceDatabaseLayer();
+      return workspaceDatabaseLayer;
     })
   );
 }

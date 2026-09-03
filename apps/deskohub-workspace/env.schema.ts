@@ -51,6 +51,32 @@ const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
   );
 });
 
+const isBlank = (value: string | undefined): boolean =>
+  value === undefined || value.trim() === "";
+
+/**
+ * Production must never serve a release whose account email delivery or
+ * cron authentication is unconfigured: magic links would silently fail to
+ * send and cleanup jobs would be publicly invokable. Preview, development,
+ * and test environments stay usable without these secrets.
+ */
+const accountOperationsProductionEnvironmentCheck = Schema.makeFilter<{
+  readonly VERCEL_ENV: "production" | "preview" | "development";
+  readonly EMAIL_API_KEY?: string | undefined;
+  readonly CRON_SECRET?: string | undefined;
+}>((environment) => {
+  if (environment.VERCEL_ENV !== "production") return undefined;
+
+  return (
+    [
+      ["EMAIL_API_KEY", "EMAIL_API_KEY is required in production."],
+      ["CRON_SECRET", "CRON_SECRET is required in production."],
+    ] as const
+  ).flatMap(([key, issue]) =>
+    isBlank(environment[key]) ? [{ path: [key], issue }] : []
+  );
+});
+
 export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
     Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/))
@@ -147,7 +173,8 @@ export const workspaceServerEnvSchema = Schema.Struct({
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
 }).check(
   postHogFeatureFlagOverridesEnvironmentCheck,
-  igloohomeProductionEnvironmentCheck
+  igloohomeProductionEnvironmentCheck,
+  accountOperationsProductionEnvironmentCheck
 );
 
 export const workspaceClientEnvSchema = Schema.Struct({
@@ -178,7 +205,8 @@ export const createEnvironmentSchema = (
     isServer
       ? schema.check(
           postHogFeatureFlagOverridesEnvironmentCheck,
-          igloohomeProductionEnvironmentCheck
+          igloohomeProductionEnvironmentCheck,
+          accountOperationsProductionEnvironmentCheck
         )
       : schema
   );

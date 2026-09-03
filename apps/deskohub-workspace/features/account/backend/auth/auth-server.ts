@@ -52,7 +52,7 @@ const decodeMagicLinkLocale = (
   data: Parameters<MagicLinkSendFunction>[0]
 ): Locale => {
   const decoded = Option.getOrUndefined(
-    Schema.decodeUnknownOption(magicLinkMetadataSchema)(data.metadata ?? {})
+    Schema.decodeOption(magicLinkMetadataSchema)(data.metadata ?? {})
   );
   const locale = decoded?.locale;
   return locale && isLocale(locale) ? locale : defaultLocale;
