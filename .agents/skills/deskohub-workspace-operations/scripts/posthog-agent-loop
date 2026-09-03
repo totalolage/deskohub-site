@@ -28,6 +28,19 @@ create_result="$($t3_bin create "$project_id" "$bootstrap_message" \
 thread_id="$(jq -er '.threadId' <<<"$create_result")"
 replayed="$(jq -r 'if (.replayed | type) == "boolean" then .replayed else error("missing replayed boolean") end' <<<"$create_result")"
 "$configure_dispatcher" "$thread_id"
+latest_turn_id() {
+  "$t3_bin" thread "$thread_id" --base-dir "$t3_base_dir" |
+    sed -n '/"latestTurn": {/,/"state":/ s/^[[:space:]]*"turnId": "\([^"]*\)",$/\1/p'
+}
+compact_dispatcher() {
+  "$t3_bin" compact "$thread_id" \
+    --base-dir "$t3_base_dir" \
+    --yes \
+    --idempotency-key "deskohub-posthog-dispatcher-compact:$tick_id" \
+    >/dev/null
+}
+turn_id="$(latest_turn_id)"
+test -n "$turn_id"
 new_thread=false
 if [[ "$replayed" == "false" ]]; then
   new_thread=true
@@ -37,17 +50,24 @@ if [[ "$replayed" == "true" ]]; then
   existing_status=0
   "$t3_bin" watch "$thread_id" \
     --base-dir "$t3_base_dir" \
+    --turn "$turn_id" \
     --timeout 1s \
     --format json \
     >/dev/null || existing_status=$?
 
   if [[ "$existing_status" != 23 ]]; then
     [[ "$existing_status" == 0 || "$existing_status" == 20 || "$existing_status" == 21 || "$existing_status" == 22 || "$existing_status" == 25 ]] || exit "$existing_status"
+    previous_turn_id="$turn_id"
     "$t3_bin" send "$thread_id" "$dispatcher_message" \
       --base-dir "$t3_base_dir" \
       --yes \
       --idempotency-key "deskohub-posthog-dispatcher:$tick_id" \
       >/dev/null
+    for _ in {1..20}; do
+      turn_id="$(latest_turn_id)"
+      [[ "$turn_id" != "$previous_turn_id" ]] && break
+      sleep 0.25
+    done
   fi
 fi
 
@@ -55,25 +75,32 @@ for _ in {1..30}; do
   watch_status=0
   "$t3_bin" watch "$thread_id" \
     --base-dir "$t3_base_dir" \
+    --turn "$turn_id" \
     --timeout 4h \
     --format json \
     >/dev/null || watch_status=$?
   if [[ "$watch_status" == 0 ]]; then
     if [[ "$new_thread" == "true" ]]; then
+      previous_turn_id="$turn_id"
       "$t3_bin" send "$thread_id" "$dispatcher_message" \
         --base-dir "$t3_base_dir" \
         --yes \
         --idempotency-key "deskohub-posthog-dispatcher:$tick_id" \
         >/dev/null
+      for _ in {1..20}; do
+        turn_id="$(latest_turn_id)"
+        [[ "$turn_id" != "$previous_turn_id" ]] && break
+        sleep 0.25
+      done
       new_thread=false
       continue
     fi
-    "$t3_bin" compact "$thread_id" \
-      --base-dir "$t3_base_dir" \
-      --yes \
-      --idempotency-key "deskohub-posthog-dispatcher-compact:$tick_id" \
-      >/dev/null
+    compact_dispatcher
     exit 0
+  fi
+  if [[ "$watch_status" == 20 || "$watch_status" == 21 || "$watch_status" == 22 ]]; then
+    compact_dispatcher
+    exit "$watch_status"
   fi
   [[ "$watch_status" == 25 ]] || exit "$watch_status"
   sleep 1
