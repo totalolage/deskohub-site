@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 
 const checkoutKey = Buffer.alloc(32, 7).toString("base64url");
 const accountingSnapshotKey = "synthetic accounting snapshot secret!";
+const betterAuthSecret = Buffer.alloc(48, 11).toString("base64url");
 export const workspaceTestAdminCredentials = {
   password: "test-password",
   username: "admin",
@@ -11,6 +12,7 @@ export const workspaceTestAdminCredentials = {
 
 process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID ??= "K202608";
 process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608 ??= accountingSnapshotKey;
+process.env.BETTER_AUTH_SECRETS ??= `1:${betterAuthSecret}`;
 process.env.CHECKOUT_PAY_STATE_KEYS ??= `test:${checkoutKey}`;
 process.env.RESERVATION_ACCESS_TOKEN_SECRET ??=
   "synthetic reservation access token secret";

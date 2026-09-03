@@ -1,0 +1,362 @@
+import { describe, expect, test } from "bun:test";
+import {
+  type DotyposCustomer,
+  DotyposService,
+  ExternalAPIError,
+  FindCustomerResult,
+  NetworkError,
+} from "@deskohub/dotypos";
+import { Effect, Layer } from "effect";
+import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
+
+const makeCustomer = (
+  overrides: Partial<DotyposCustomer> = {}
+): DotyposCustomer =>
+  ({
+    id: "60111",
+    _cloudId: "cloud",
+    firstName: "Ada",
+    lastName: null,
+    email: null,
+    phone: null,
+    points: "0",
+    flags: "0",
+    display: true,
+    deleted: false,
+    expireDate: null,
+    ...overrides,
+  }) as DotyposCustomer;
+
+const activeCustomer = makeCustomer();
+const expiredCustomer = makeCustomer({
+  id: "60222",
+  expireDate: "2020-01-01T00:00:00Z",
+});
+
+type DotyposServicePartial = Partial<DotyposService["Service"]>;
+
+const runWithDotypos = <A, E>(
+  dotypos: DotyposServicePartial,
+  run: (
+    adapter: CustomerDotyposAdapter["Service"]
+  ) => Effect.Effect<A, E, never>
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      const adapter = yield* CustomerDotyposAdapter;
+      return yield* run(adapter);
+    }).pipe(
+      Effect.provide(
+        CustomerDotyposAdapter.Default.pipe(
+          Layer.provide(Layer.mock(DotyposService, dotypos))
+        )
+      )
+    )
+  );
+
+describe("CustomerDotyposAdapter", () => {
+  describe("exact-email classification", () => {
+    test("reports a unique active profile as matched and active", async () => {
+      const result = await runWithDotypos(
+        {
+          findCustomer: () =>
+            Effect.succeed(
+              FindCustomerResult.Matched({
+                customer: activeCustomer,
+                matches: [activeCustomer],
+              })
+            ),
+        },
+        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
+      );
+
+      expect(result).toEqual({
+        kind: "matched",
+        state: "active",
+        customerId: "60111",
+      });
+    });
+
+    test("reports a unique expired profile as matched and expired", async () => {
+      const result = await runWithDotypos(
+        {
+          findCustomer: () =>
+            Effect.succeed(
+              FindCustomerResult.Matched({
+                customer: expiredCustomer,
+                matches: [expiredCustomer],
+              })
+            ),
+        },
+        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
+      );
+
+      expect(result).toEqual({
+        kind: "matched",
+        state: "expired",
+        customerId: "60222",
+      });
+    });
+
+    test("treats several matches as ambiguous and none as not-found", async () => {
+      const ambiguous = await runWithDotypos(
+        {
+          findCustomer: () =>
+            Effect.succeed(
+              FindCustomerResult.Ambiguous({
+                matches: [activeCustomer, expiredCustomer],
+              })
+            ),
+        },
+        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
+      );
+      expect(ambiguous).toEqual({ kind: "ambiguous" });
+
+      const notFound = await runWithDotypos(
+        {
+          findCustomer: () =>
+            Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
+        },
+        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
+      );
+      expect(notFound).toEqual({ kind: "not-found" });
+    });
+  });
+
+  describe("profile mapping", () => {
+    test("maps optional provider fields onto the closed profile shape", async () => {
+      const customer = makeCustomer({
+        lastName: "Lovelace",
+        phone: "+420 601 111 222",
+        companyName: "Analytical Engines",
+        companyId: "12345678",
+        vatId: "CZ12345678",
+        addressLine1: "Pražská 1",
+        city: "Praha",
+        zip: "11000",
+        country: "CZ",
+      });
+
+      const profile = await runWithDotypos(
+        { getCustomer: () => Effect.succeed(customer) },
+        (adapter) => adapter.readCustomerProfile("60111")
+      );
+
+      expect(profile).toEqual({
+        firstName: "Ada",
+        lastName: "Lovelace",
+        phone: "+420 601 111 222",
+        billing: {
+          kind: "business",
+          addressLine1: "Pražská 1",
+          addressLine2: null,
+          city: "Praha",
+          zip: "11000",
+          country: "CZ",
+          companyName: "Analytical Engines",
+          companyId: "12345678",
+          vatId: "CZ12345678",
+        },
+      });
+    });
+
+    test("treats definitively missing and deleted profiles as absent", async () => {
+      const missing = await runWithDotypos(
+        {
+          getCustomer: () =>
+            Effect.fail(
+              new ExternalAPIError({
+                service: "Dotypos",
+                operation: "getCustomer",
+                statusCode: 404,
+              })
+            ),
+        },
+        (adapter) => adapter.readCustomerProfile("60111")
+      );
+      expect(missing).toBeNull();
+
+      const deleted = await runWithDotypos(
+        {
+          getCustomer: () => Effect.succeed(makeCustomer({ deleted: true })),
+        },
+        (adapter) => adapter.readCustomerProfile("60111")
+      );
+      expect(deleted).toBeNull();
+    });
+  });
+
+  describe("expiration and reactivation", () => {
+    test("expires with a fresh ETag and a past expireDate", async () => {
+      const calls: string[] = [];
+      const payloads: unknown[] = [];
+
+      await runWithDotypos(
+        {
+          patchCustomer: (_id, payload) => {
+            calls.push("patch");
+            payloads.push(payload);
+            return Effect.succeed(
+              makeCustomer({ expireDate: "2020-01-01T00:00:00Z" })
+            );
+          },
+        },
+        (adapter) => adapter.expireCustomer("60111")
+      );
+
+      expect(calls).toEqual(["patch"]);
+      expect(payloads).toHaveLength(1);
+      const payload = payloads[0] as { expireDate: string };
+      expect(payload.expireDate).not.toBeNull();
+      expect(new Date(payload.expireDate).getTime()).toBeLessThan(Date.now());
+    });
+
+    test("reactivates by clearing expireDate", async () => {
+      const payloads: unknown[] = [];
+
+      await runWithDotypos(
+        {
+          patchCustomer: (_id, payload) => {
+            payloads.push(payload);
+            return Effect.succeed(makeCustomer());
+          },
+        },
+        (adapter) => adapter.reactivateCustomer("60222")
+      );
+
+      expect(payloads).toEqual([{ expireDate: null }]);
+    });
+
+    test("rereads after an uncertain response and retries only when unapplied", async () => {
+      const calls: string[] = [];
+      let patchCount = 0;
+
+      await runWithDotypos(
+        {
+          patchCustomer: () => {
+            patchCount += 1;
+            calls.push("patch");
+            if (patchCount === 1) {
+              return Effect.fail(
+                new NetworkError({ message: "connection reset" })
+              );
+            }
+            return Effect.succeed(makeCustomer());
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(expiredCustomer);
+          },
+        },
+        (adapter) => adapter.reactivateCustomer("60222")
+      );
+
+      expect(calls).toEqual(["patch", "read", "patch"]);
+    });
+
+    test("accepts an uncertain response once a reread shows it applied", async () => {
+      const calls: string[] = [];
+
+      await runWithDotypos(
+        {
+          patchCustomer: () => {
+            calls.push("patch");
+            return Effect.fail(
+              new NetworkError({ message: "connection reset" })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(expiredCustomer);
+          },
+        },
+        (adapter) => adapter.expireCustomer("60111")
+      );
+
+      expect(calls).toEqual(["patch", "read"]);
+    });
+
+    test("retries once on an ETag conflict and fails after a second conflict", async () => {
+      const calls: string[] = [];
+      const conflict = () =>
+        new ExternalAPIError({
+          service: "Dotypos",
+          operation: "patchCustomer",
+          statusCode: 412,
+        });
+
+      const outcome = await runWithDotypos(
+        {
+          patchCustomer: () => {
+            calls.push("patch");
+            return Effect.fail(conflict());
+          },
+        },
+        (adapter) => adapter.reactivateCustomer("60222").pipe(Effect.result)
+      );
+
+      expect(calls).toEqual(["patch", "patch"]);
+      expect(outcome._tag).toBe("Failure");
+    });
+  });
+
+  describe("profile creation", () => {
+    test("creates with the verified email and optional billing only", async () => {
+      const details: unknown[] = [];
+
+      const customerId = await runWithDotypos(
+        {
+          createCustomer: (input) => {
+            details.push(input);
+            return Effect.succeed(makeCustomer({ id: "60999" }));
+          },
+        },
+        (adapter) =>
+          adapter.createCustomerProfile({
+            email: "ada@example.test",
+            profile: {
+              firstName: "Ada",
+              lastName: "Lovelace",
+              phone: "+420601111222",
+              billing: {
+                kind: "business",
+                companyName: "Analytical Engines",
+                companyId: "12345678",
+                vatId: "CZ12345678",
+                addressLine1: "Pražská 1",
+              },
+            },
+          })
+      );
+
+      expect(customerId).toBe("60999");
+      expect(details[0]).toMatchObject({
+        firstName: "Ada",
+        lastName: "Lovelace",
+        email: "ada@example.test",
+      });
+    });
+
+    test("rereads by exact email when creation returns no id", async () => {
+      const customerId = await runWithDotypos(
+        {
+          createCustomer: () => Effect.succeed(makeCustomer({ id: undefined })),
+          findCustomer: () =>
+            Effect.succeed(
+              FindCustomerResult.Matched({
+                customer: makeCustomer({ id: "60777" }),
+                matches: [],
+              })
+            ),
+        },
+        (adapter) =>
+          adapter.createCustomerProfile({
+            email: "ada@example.test",
+            profile: { firstName: "Ada" },
+          })
+      );
+
+      expect(customerId).toBe("60777");
+    });
+  });
+});

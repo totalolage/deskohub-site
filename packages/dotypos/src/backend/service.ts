@@ -1591,6 +1591,7 @@ const makeDotyposService = Effect.gen(function* () {
     getCustomer,
     getCustomers,
     createCustomer,
+    patchCustomer,
     searchCustomers,
     getCustomerDiscountGroup,
     getCustomerDiscount,

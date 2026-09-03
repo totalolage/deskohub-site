@@ -127,6 +127,16 @@ describe("workspace environment schemas", () => {
     );
   });
 
+  test("validates the Better Auth secrets without making them browser-visible", () => {
+    const decodeSecrets = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.BETTER_AUTH_SECRETS
+    );
+
+    expect(decodeSecrets(undefined)).toBeUndefined();
+    expect(decodeSecrets("1:synthetic-secret")).toBe("1:synthetic-secret");
+    expect(() => decodeSecrets("")).toThrow();
+  });
+
   test("validates URLs without changing their string representation", () => {
     const decodeDatabaseUrl = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.DATABASE_URL
