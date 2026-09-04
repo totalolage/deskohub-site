@@ -17,6 +17,7 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
+import { Result } from "effect";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -24,6 +25,7 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import {
   shiftStandaloneAccessCodeLocalEnd,
+  standaloneAccessCodeCleanupConfirmationLabel,
   standaloneAccessCodeMaximumDurationHours,
 } from "./create-access-code";
 
@@ -101,19 +103,29 @@ const createdOutcome = {
 };
 
 const fillForm = (view: ReturnType<typeof render>) => {
-  fireEvent.change(view.getByLabelText("Name"), {
+  fireEvent.input(view.getByLabelText("Name"), {
     target: { value: "Booth A" },
   });
-  fireEvent.change(view.getByLabelText("Starts"), {
+  fireEvent.input(view.getByLabelText("Starts"), {
     target: { value: "2026-09-10T10:00" },
   });
-  fireEvent.change(view.getByLabelText("Ends"), {
+  fireEvent.input(view.getByLabelText("Ends"), {
     target: { value: "2026-09-10T12:00" },
   });
 };
 
-const submitForm = (view: ReturnType<typeof render>) => {
-  fireEvent.submit(view.getByRole("form", { name: "Create an access code" }));
+const submitForm = async (view: ReturnType<typeof render>) => {
+  await act(async () => {
+    fireEvent.submit(view.getByRole("form", { name: "Create an access code" }));
+  });
+};
+
+const submitCleanupConfirmation = async (view: ReturnType<typeof render>) => {
+  await act(async () => {
+    fireEvent.submit(
+      view.getByRole("form", { name: "Confirm the lock is clean" })
+    );
+  });
 };
 
 const renderForm = async () => {
@@ -146,7 +158,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(endsAt.min).toBe("");
     expect(endsAt.max).toBe("");
 
-    fireEvent.change(view.getByLabelText("Starts"), {
+    fireEvent.input(view.getByLabelText("Starts"), {
       target: { value: "2026-03-29T01:00" },
     });
 
@@ -171,7 +183,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
   test("reports field errors without calling the action", async () => {
     const view = await renderForm();
 
-    submitForm(view);
+    await submitForm(view);
 
     expect(view.getByText("Enter a name for this access code.")).toBeDefined();
     expect(view.getByText("Choose a start time.")).toBeDefined();
@@ -184,11 +196,11 @@ describe("CreateStandaloneAccessCodeForm", () => {
     const view = await renderForm();
     fillForm(view);
 
-    submitForm(view);
+    await submitForm(view);
     const firstInput = execute.mock
       .calls[0][0] as CreateStandaloneAccessCodeActionInput;
 
-    submitForm(view);
+    await submitForm(view);
     const retryInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
 
@@ -205,14 +217,14 @@ describe("CreateStandaloneAccessCodeForm", () => {
     const view = await renderForm();
     fillForm(view);
 
-    submitForm(view);
+    await submitForm(view);
     const firstInput = execute.mock
       .calls[0][0] as CreateStandaloneAccessCodeActionInput;
 
-    fireEvent.change(view.getByLabelText("Name"), {
+    fireEvent.input(view.getByLabelText("Name"), {
       target: { value: "Booth B" },
     });
-    submitForm(view);
+    await submitForm(view);
     const secondInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
 
@@ -225,16 +237,14 @@ describe("CreateStandaloneAccessCodeForm", () => {
     const view = await renderForm();
     fillForm(view);
 
-    submitForm(view);
+    await submitForm(view);
     const firstInput = execute.mock
       .calls[0][0] as CreateStandaloneAccessCodeActionInput;
 
     act(() => {
-      actionOptions?.onSuccess({
-        data: { outcome: "failed", kind: "rejected" },
-      });
+      actionOptions?.onSuccess({ data: Result.fail("rejected") });
     });
-    submitForm(view);
+    await submitForm(view);
     const resubmittedInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
 
@@ -251,16 +261,14 @@ describe("CreateStandaloneAccessCodeForm", () => {
     const view = await renderForm();
     fillForm(view);
 
-    submitForm(view);
+    await submitForm(view);
     const firstInput = execute.mock
       .calls[0][0] as CreateStandaloneAccessCodeActionInput;
 
     act(() => {
-      actionOptions?.onSuccess({
-        data: { outcome: "failed", kind: "unavailable" },
-      });
+      actionOptions?.onSuccess({ data: Result.fail("unavailable") });
     });
-    submitForm(view);
+    await submitForm(view);
     const retriedInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
 
@@ -270,13 +278,13 @@ describe("CreateStandaloneAccessCodeForm", () => {
   test("focuses the first invalid field after failed validation", async () => {
     const view = await renderForm();
 
-    submitForm(view);
+    await submitForm(view);
     expect(document.activeElement).toBe(view.getByLabelText("Name"));
 
-    fireEvent.change(view.getByLabelText("Name"), {
+    fireEvent.input(view.getByLabelText("Name"), {
       target: { value: "Booth A" },
     });
-    submitForm(view);
+    await submitForm(view);
     expect(document.activeElement).toBe(view.getByLabelText("Starts"));
   });
 
@@ -284,9 +292,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
     act(() => {
-      actionOptions?.onSuccess({ data: createdOutcome });
+      actionOptions?.onSuccess({ data: Result.succeed(createdOutcome) });
     });
     expect(document.activeElement).toBe(
       view.container.querySelector(
@@ -299,10 +307,10 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
     act(() => {
       actionOptions?.onSuccess({
-        data: { ...createdOutcome, outcome: "already-created" },
+        data: Result.succeed({ ...createdOutcome, outcome: "already-created" }),
       });
     });
     expect(document.activeElement).toBe(
@@ -316,11 +324,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
     act(() => {
-      actionOptions?.onSuccess({
-        data: { outcome: "failed", kind: "ambiguous" },
-      });
+      actionOptions?.onSuccess({ data: Result.fail("ambiguous") });
     });
     expect(document.activeElement).toBe(
       view.container.querySelector(
@@ -331,38 +337,37 @@ describe("CreateStandaloneAccessCodeForm", () => {
 
   test("clears the end range error when the start changes", async () => {
     const view = await renderForm();
-    fireEvent.change(view.getByLabelText("Name"), {
+    fireEvent.input(view.getByLabelText("Name"), {
       target: { value: "Booth A" },
     });
-    fireEvent.change(view.getByLabelText("Starts"), {
+    fireEvent.input(view.getByLabelText("Starts"), {
       target: { value: "2026-09-10T12:00" },
     });
-    fireEvent.change(view.getByLabelText("Ends"), {
+    fireEvent.input(view.getByLabelText("Ends"), {
       target: { value: "2026-09-10T10:00" },
     });
-    submitForm(view);
+    await submitForm(view);
     expect(
       view.getByText("The end must be 1 to 672 hours after the start.")
     ).toBeDefined();
 
-    fireEvent.change(view.getByLabelText("Starts"), {
+    fireEvent.input(view.getByLabelText("Starts"), {
       target: { value: "2026-09-10T08:00" },
     });
-    await waitFor(() =>
-      expect(
-        view.queryByText("The end must be 1 to 672 hours after the start.")
-      ).toBeNull()
-    );
+    await act(async () => {});
+    expect(
+      view.queryByText("The end must be 1 to 672 hours after the start.")
+    ).toBeNull();
   });
 
   test("reveals the one-time pin with masking and a copy action", async () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({ data: createdOutcome });
+      actionOptions?.onSuccess({ data: Result.succeed(createdOutcome) });
     });
 
     const region = view.container.querySelector(
@@ -389,12 +394,12 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
     const firstAttemptId = (
       execute.mock.calls[0][0] as CreateStandaloneAccessCodeActionInput
     ).attemptId;
     act(() => {
-      actionOptions?.onSuccess({ data: createdOutcome });
+      actionOptions?.onSuccess({ data: Result.succeed(createdOutcome) });
     });
 
     fireEvent.click(
@@ -409,7 +414,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
       form.querySelector("input[name='name']")
     );
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
     const nextInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
     expect(nextInput.attemptId).not.toBe(firstAttemptId);
@@ -419,11 +424,11 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     act(() => {
       actionOptions?.onSuccess({
-        data: { ...createdOutcome, outcome: "already-created" },
+        data: Result.succeed({ ...createdOutcome, outcome: "already-created" }),
       });
     });
 
@@ -441,12 +446,10 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({
-        data: { outcome: "failed", kind: "rejected" },
-      });
+      actionOptions?.onSuccess({ data: Result.fail("rejected") });
     });
 
     expect(
@@ -466,12 +469,10 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({
-        data: { outcome: "failed", kind: "ambiguous" },
-      });
+      actionOptions?.onSuccess({ data: Result.fail("ambiguous") });
     });
 
     expect(
@@ -495,19 +496,16 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({
-        data: { outcome: "failed", kind: "ambiguous" },
-      });
+      actionOptions?.onSuccess({ data: Result.fail("ambiguous") });
     });
 
-    const checkbox = view.getByLabelText(
-      "I removed the named access code at the lock, or verified that it is absent."
-    ) as HTMLInputElement;
-    expect(checkbox.type).toBe("checkbox");
-    expect(checkbox.checked).toBe(false);
+    const checkbox = view.getByRole("checkbox", {
+      name: standaloneAccessCodeCleanupConfirmationLabel,
+    });
+    expect(checkbox.getAttribute("aria-checked")).toBe("false");
     expect(
       view
         .getByRole("button", { name: "Create another access code" })
@@ -515,23 +513,27 @@ describe("CreateStandaloneAccessCodeForm", () => {
     ).toBe(true);
 
     fireEvent.click(checkbox);
+    expect(checkbox.getAttribute("aria-checked")).toBe("true");
     expect(
       view
         .getByRole("button", { name: "Create another access code" })
         .hasAttribute("disabled")
     ).toBe(false);
 
-    fireEvent.submit(
-      view.getByRole("form", { name: "Confirm the lock is clean" })
+    await submitCleanupConfirmation(view);
+    await waitFor(() =>
+      expect(
+        view.getByRole("form", { name: "Create an access code" })
+      ).toBeDefined()
     );
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     const confirmedInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
     expect(confirmedInput.providerCredentialRemoved).toBe(true);
 
-    submitForm(view);
+    await submitForm(view);
     const followUpInput = execute.mock
       .calls[2][0] as CreateStandaloneAccessCodeActionInput;
     expect("providerCredentialRemoved" in followUpInput).toBe(false);
@@ -541,12 +543,10 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({
-        data: { outcome: "failed", kind: "cleanup-required" },
-      });
+      actionOptions?.onSuccess({ data: Result.fail("cleanup-required") });
     });
 
     expect(
@@ -556,9 +556,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     ).not.toBeNull();
     expect(view.getByText(/still ambiguous/)).toBeDefined();
     expect(
-      view.getByLabelText(
-        "I removed the named access code at the lock, or verified that it is absent."
-      )
+      view.getByRole("checkbox", {
+        name: standaloneAccessCodeCleanupConfirmationLabel,
+      })
     ).toBeDefined();
     expect(execute).toHaveBeenCalledTimes(1);
   });
@@ -567,27 +567,28 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({
-        data: { outcome: "failed", kind: "ambiguous" },
-      });
+      actionOptions?.onSuccess({ data: Result.fail("ambiguous") });
     });
     fireEvent.click(
-      view.getByLabelText(
-        "I removed the named access code at the lock, or verified that it is absent."
-      )
+      view.getByRole("checkbox", {
+        name: standaloneAccessCodeCleanupConfirmationLabel,
+      })
     );
-    fireEvent.submit(
-      view.getByRole("form", { name: "Confirm the lock is clean" })
+    await submitCleanupConfirmation(view);
+    await waitFor(() =>
+      expect(
+        view.getByRole("form", { name: "Create an access code" })
+      ).toBeDefined()
     );
 
     fillForm(view);
-    fireEvent.change(view.getByLabelText("Name"), {
+    fireEvent.input(view.getByLabelText("Name"), {
       target: { value: "Booth B" },
     });
-    submitForm(view);
+    await submitForm(view);
     const changedInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
 
@@ -599,7 +600,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
-    submitForm(view);
+    await submitForm(view);
 
     act(() => {
       actionOptions?.onTransportError();
@@ -611,7 +612,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
       )
     ).toBeDefined();
 
-    submitForm(view);
+    await submitForm(view);
     const firstInput = execute.mock
       .calls[0][0] as CreateStandaloneAccessCodeActionInput;
     const retryInput = execute.mock

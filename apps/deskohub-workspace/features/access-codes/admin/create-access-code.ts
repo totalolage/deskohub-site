@@ -5,7 +5,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Schema } from "effect";
+import { type Result, Schema } from "effect";
 import type { StandaloneAccessCodeCreationOutcome } from "../standalone-access-code";
 
 export const standaloneAccessCodeMinimumDurationHours = 1;
@@ -26,12 +26,10 @@ export type CreateStandaloneAccessCodeInput = StandardSchemaV1.InferOutput<
   typeof createStandaloneAccessCodeInputSchema
 >;
 
-export type CreateStandaloneAccessCodeResult =
-  | AdministrationStandaloneAccessCodeCreationOutcome
-  | {
-      readonly outcome: "failed";
-      readonly kind: StandaloneAccessCodeCreationOutcome;
-    };
+export type CreateStandaloneAccessCodeResult = Result.Result<
+  AdministrationStandaloneAccessCodeCreationOutcome,
+  StandaloneAccessCodeCreationOutcome
+>;
 
 export const createStandaloneAccessCodeAttemptId =
   (): AdministrationStandaloneAccessCodeAttemptId =>
@@ -126,65 +124,62 @@ export const isStandaloneAccessCodeWindowValid = (
   );
 };
 
-export interface StandaloneAccessCodeFormFieldErrors {
-  readonly name?: string;
-  readonly startsAt?: string;
-  readonly endsAt?: string;
-}
-
-const standaloneAccessCodeNameError = (name: string) => {
-  const trimmedName = name.trim();
-  if (trimmedName.length === 0) return "Enter a name for this access code.";
-  if (trimmedName.length > 60) return "Use at most 60 characters.";
-  return undefined;
-};
-
-const standaloneAccessCodeStartError = (startsAt: string) => {
-  if (startsAt === "") return "Choose a start time.";
-  if (!isStandaloneAccessCodeLocalDateTime(startsAt)) {
-    return "Choose a valid start time on the whole hour.";
-  }
-  return undefined;
-};
-
-const standaloneAccessCodeEndError = (
-  {
-    startsAt,
-    endsAt,
-  }: Pick<StandaloneAccessCodeWindowValues, "startsAt" | "endsAt">,
-  startsAtError: string | undefined
-) => {
-  if (endsAt === "") return "Choose an end time.";
-  if (!isStandaloneAccessCodeLocalDateTime(endsAt)) {
-    return "Choose a valid end time on the whole hour.";
-  }
-  if (
-    startsAtError === undefined &&
-    !isStandaloneAccessCodeWindowValid({ startsAt, endsAt })
-  ) {
-    return "The end must be 1 to 672 hours after the start.";
-  }
-  return undefined;
-};
-
-export const validateStandaloneAccessCodeForm = ({
-  name,
-  startsAt,
-  endsAt,
-}: StandaloneAccessCodeWindowValues): StandaloneAccessCodeFormFieldErrors => {
-  const nameError = standaloneAccessCodeNameError(name);
-  const startsAtError = standaloneAccessCodeStartError(startsAt);
-  const endsAtError = standaloneAccessCodeEndError(
-    { startsAt, endsAt },
-    startsAtError
+const standaloneAccessCodeFormWholeHourDateTime = (
+  emptyMessage: string,
+  invalidMessage: string
+) =>
+  Schema.String.check(
+    Schema.isNonEmpty({ message: emptyMessage }),
+    Schema.makeFilter(
+      (value) => value === "" || isStandaloneAccessCodeLocalDateTime(value),
+      { message: invalidMessage }
+    )
   );
 
-  return {
-    ...(nameError !== undefined && { name: nameError }),
-    ...(startsAtError !== undefined && { startsAt: startsAtError }),
-    ...(endsAtError !== undefined && { endsAt: endsAtError }),
-  };
-};
+export const createStandaloneAccessCodeFormSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({
+    name: Schema.Trim.check(
+      Schema.isNonEmpty({
+        message: "Enter a name for this access code.",
+      }),
+      Schema.isMaxLength(60, { message: "Use at most 60 characters." })
+    ),
+    startsAt: standaloneAccessCodeFormWholeHourDateTime(
+      "Choose a start time.",
+      "Choose a valid start time on the whole hour."
+    ),
+    endsAt: standaloneAccessCodeFormWholeHourDateTime(
+      "Choose an end time.",
+      "Choose a valid end time on the whole hour."
+    ),
+  }).check(
+    Schema.makeFilter<{
+      readonly startsAt: string;
+      readonly endsAt: string;
+    }>(
+      ({ startsAt, endsAt }) =>
+        isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) || {
+          path: ["endsAt"],
+          issue: "The end must be 1 to 672 hours after the start.",
+        }
+    )
+  ),
+  { parseOptions: { errors: "all" } }
+);
+
+export type CreateStandaloneAccessCodeFormInput = StandardSchemaV1.InferInput<
+  typeof createStandaloneAccessCodeFormSchema
+>;
+
+export type CreateStandaloneAccessCodeFormValues = StandardSchemaV1.InferOutput<
+  typeof createStandaloneAccessCodeFormSchema
+>;
+
+export const createStandaloneAccessCodeFormDefaults = {
+  name: "",
+  startsAt: "",
+  endsAt: "",
+} satisfies CreateStandaloneAccessCodeFormInput;
 
 export const formatStandaloneAccessCodeLocalDateTime = (value: string) =>
   Temporal.PlainDateTime.from(value).toLocaleString("en-GB", {

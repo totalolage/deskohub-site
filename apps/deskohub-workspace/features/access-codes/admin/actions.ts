@@ -1,15 +1,12 @@
 "use server";
 
 import { AdministrationStandaloneAccessCodeCreateInput } from "@deskohub/workspace-admin-api";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-import {
-  type CreateStandaloneAccessCodeResult,
-  createStandaloneAccessCodeInputSchema,
-} from "./create-access-code";
+import { createStandaloneAccessCodeInputSchema } from "./create-access-code";
 
 const createStandaloneAccessCodeAction = defineWorkspaceAction(
   {
@@ -44,7 +41,7 @@ const createStandaloneAccessCodeAction = defineWorkspaceAction(
         )
       );
       const administration = yield* StandaloneAccessCodeAdministration;
-      const outcome = yield* administration
+      return yield* administration
         .create({
           attemptId: input.attemptId,
           actor,
@@ -52,14 +49,10 @@ const createStandaloneAccessCodeAction = defineWorkspaceAction(
           request,
           providerCredentialRemoved: input.providerCredentialRemoved === true,
         })
-        .pipe(Effect.result);
-      return Result.match(outcome, {
-        onSuccess: (created): CreateStandaloneAccessCodeResult => created,
-        onFailure: (error): CreateStandaloneAccessCodeResult => ({
-          outcome: "failed",
-          kind: error.outcome,
-        }),
-      });
+        .pipe(
+          Effect.mapError((error) => error.outcome),
+          Effect.result
+        );
     }).pipe(
       Effect.provide(StandaloneAccessCodeAdministration.Live),
       Effect.mapError(

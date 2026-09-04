@@ -1,28 +1,41 @@
 "use client";
 
+import type { AdministrationStandaloneAccessCodeCreationOutcome } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
+import { Result } from "effect";
 import { Plus } from "lucide-react";
-import { type FormEvent, useEffect, useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import {
   AccessCodeCopyButton,
   AccessCodeDigits,
 } from "@/features/access-codes/components/access-code-digits";
 import { AdministrationAlert } from "@/features/administration/notice";
 import { Button } from "@/shared/components/ui/button";
+import { Checkbox } from "@/shared/components/ui/checkbox";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { createStandaloneAccessCode } from "./actions";
 import {
-  type CreateStandaloneAccessCodeResult,
+  type CreateStandaloneAccessCodeFormInput,
+  type CreateStandaloneAccessCodeFormValues,
   createStandaloneAccessCodeAttemptId,
+  createStandaloneAccessCodeFormDefaults,
+  createStandaloneAccessCodeFormSchema,
   formatStandaloneAccessCodeDuration,
   formatStandaloneAccessCodeLocalDateTime,
   isSameStandaloneAccessCodeWindow,
   isStandaloneAccessCodeLocalDateTime,
   isStandaloneAccessCodeWindowValid,
-  type StandaloneAccessCodeFormFieldErrors,
-  type StandaloneAccessCodeWindowValues,
   shiftStandaloneAccessCodeLocalEnd,
   standaloneAccessCodeCleanupConfirmationLabel,
   standaloneAccessCodeEarliestLocalEnd,
@@ -30,11 +43,10 @@ import {
   standaloneAccessCodeFailureNotices,
   standaloneAccessCodeMaximumDurationHours,
   standaloneAccessCodeMinimumDurationHours,
-  validateStandaloneAccessCodeForm,
 } from "./create-access-code";
 
 type CreatedOutcome = Extract<
-  CreateStandaloneAccessCodeResult,
+  AdministrationStandaloneAccessCodeCreationOutcome,
   { outcome: "created" }
 >;
 
@@ -48,93 +60,37 @@ type CreationState =
       readonly name: string;
     };
 
-interface WindowPreview {
-  readonly startsAt: string;
-  readonly endsAt: string;
-}
-
-const readStandaloneAccessCodeFormValues = (
-  form: HTMLFormElement
-): StandaloneAccessCodeWindowValues => {
-  const fields = new FormData(form);
-  return {
-    name: (fields.get("name")?.toString() ?? "").trim(),
-    startsAt: fields.get("startsAt")?.toString() ?? "",
-    endsAt: fields.get("endsAt")?.toString() ?? "",
-  };
+const focusOnMount = (node: HTMLDivElement | null) => {
+  node?.focus();
 };
 
 export function CreateStandaloneAccessCodeForm() {
   const [creation, setCreation] = useState<CreationState>({ kind: "editing" });
-  const [cleanupConfirmed, setCleanupConfirmed] = useState(false);
-  const [fieldErrors, setFieldErrors] =
-    useState<StandaloneAccessCodeFormFieldErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
-  const [windowPreview, setWindowPreview] = useState<WindowPreview>({
-    startsAt: "",
-    endsAt: "",
-  });
+  const [focusNameOnReturn, setFocusNameOnReturn] = useState(false);
   const attemptIdRef = useRef(createStandaloneAccessCodeAttemptId());
-  const attemptInputRef = useRef<StandaloneAccessCodeWindowValues | null>(null);
+  const attemptInputRef = useRef<CreateStandaloneAccessCodeFormValues | null>(
+    null
+  );
   const cleanupConfirmedWindowRef =
-    useRef<StandaloneAccessCodeWindowValues | null>(null);
-  const formRef = useRef<HTMLFormElement>(null);
-  const nameInputRef = useRef<HTMLInputElement>(null);
-  const startsAtInputRef = useRef<HTMLInputElement>(null);
-  const endsAtInputRef = useRef<HTMLInputElement>(null);
-  const resultRef = useRef<HTMLDivElement>(null);
-  const focusNameAfterEditRemountRef = useRef(false);
-  const nameId = useId();
-  const startsAtId = useId();
-  const endsAtId = useId();
+    useRef<CreateStandaloneAccessCodeFormValues | null>(null);
 
-  // React's synthetic change events are unavailable in the component test
-  // environment, so the window preview listens to native input events.
-  useEffect(() => {
-    const form = formRef.current;
-    if (!form) return;
-    const syncWindow = (event: Event) => {
-      const input = event.target;
-      if (
-        !(input instanceof HTMLInputElement) ||
-        (input.name !== "name" &&
-          input.name !== "startsAt" &&
-          input.name !== "endsAt")
-      ) {
-        return;
-      }
-      const { name, value } = input;
-      if (name === "startsAt" || name === "endsAt") {
-        setWindowPreview((previous) => ({ ...previous, [name]: value }));
-      }
-      if (name === "startsAt") {
-        setFieldErrors((previous) => ({
-          ...previous,
-          startsAt: undefined,
-          endsAt: undefined,
-        }));
-        return;
-      }
-      setFieldErrors((previous) => ({ ...previous, [name]: undefined }));
-    };
-    form.addEventListener("input", syncWindow);
-    form.addEventListener("change", syncWindow);
-    return () => {
-      form.removeEventListener("input", syncWindow);
-      form.removeEventListener("change", syncWindow);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (creation.kind === "editing") {
-      if (focusNameAfterEditRemountRef.current) {
-        focusNameAfterEditRemountRef.current = false;
-        nameInputRef.current?.focus();
-      }
-      return;
-    }
-    resultRef.current?.focus();
-  }, [creation]);
+  const form = useForm<
+    CreateStandaloneAccessCodeFormInput,
+    unknown,
+    CreateStandaloneAccessCodeFormValues
+  >({
+    defaultValues: createStandaloneAccessCodeFormDefaults,
+    mode: "onSubmit",
+    reValidateMode: "onChange",
+    resolver: standardSchemaResolver(createStandaloneAccessCodeFormSchema),
+  });
+  const [watchedStartsAt, watchedEndsAt] = useWatch({
+    control: form.control,
+    name: ["startsAt", "endsAt"],
+  });
+  const startsAt = watchedStartsAt ?? "";
+  const endsAt = watchedEndsAt ?? "";
 
   const { execute, isExecuting } = useWorkspaceAction(
     createStandaloneAccessCode,
@@ -143,30 +99,31 @@ export function CreateStandaloneAccessCodeForm() {
       onSuccess: ({ data }) => {
         cleanupConfirmedWindowRef.current = null;
         if (!data) return;
-        if (data.outcome === "created") {
+        if (Result.isSuccess(data)) {
+          const outcome = data.success;
           setNotice(null);
-          setCreation({ kind: "created", outcome: data });
-          return;
-        }
-        if (data.outcome === "already-created") {
-          setNotice(null);
+          if (outcome.outcome === "created") {
+            setCreation({ kind: "created", outcome });
+            return;
+          }
           setCreation({ kind: "already-created" });
           return;
         }
-        if (data.kind === "rejected") {
+        const kind = data.failure;
+        if (kind === "rejected") {
           attemptInputRef.current = null;
           setNotice(standaloneAccessCodeFailureNotices.rejected);
           return;
         }
-        if (data.kind === "ambiguous" || data.kind === "cleanup-required") {
+        if (kind === "ambiguous" || kind === "cleanup-required") {
           setCreation({
             kind: "cleanup-confirm",
-            reason: data.kind,
+            reason: kind,
             name: attemptInputRef.current?.name ?? "",
           });
           return;
         }
-        setNotice(standaloneAccessCodeFailureNotices[data.kind]);
+        setNotice(standaloneAccessCodeFailureNotices[kind]);
       },
       onError: ({ error }) => {
         cleanupConfirmedWindowRef.current = null;
@@ -184,57 +141,29 @@ export function CreateStandaloneAccessCodeForm() {
     }
   );
 
-  const elapsedHours = standaloneAccessCodeElapsedHours({
-    startsAt: windowPreview.startsAt,
-    endsAt: windowPreview.endsAt,
-  });
-  const endMin = isStandaloneAccessCodeLocalDateTime(windowPreview.startsAt)
-    ? standaloneAccessCodeEarliestLocalEnd(windowPreview.startsAt)
+  const elapsedHours = standaloneAccessCodeElapsedHours({ startsAt, endsAt });
+  const endMin = isStandaloneAccessCodeLocalDateTime(startsAt)
+    ? standaloneAccessCodeEarliestLocalEnd(startsAt)
     : undefined;
-  const endMax = isStandaloneAccessCodeLocalDateTime(windowPreview.startsAt)
+  const endMax = isStandaloneAccessCodeLocalDateTime(startsAt)
     ? shiftStandaloneAccessCodeLocalEnd({
-        startsAt: windowPreview.startsAt,
+        startsAt,
         hours: standaloneAccessCodeMaximumDurationHours,
       })
     : undefined;
 
-  const focusFirstInvalidField = (
-    errors: StandaloneAccessCodeFormFieldErrors
-  ) => {
-    if (errors.name) {
-      nameInputRef.current?.focus();
-    } else if (errors.startsAt) {
-      startsAtInputRef.current?.focus();
-    } else if (errors.endsAt) {
-      endsAtInputRef.current?.focus();
-    }
-  };
-
-  const resetForm = () => {
-    setWindowPreview({ startsAt: "", endsAt: "" });
-    setFieldErrors({});
-    setNotice(null);
-    attemptInputRef.current = null;
+  const startNewAttempt = () => {
     attemptIdRef.current = createStandaloneAccessCodeAttemptId();
-    focusNameAfterEditRemountRef.current = true;
+    attemptInputRef.current = null;
+    cleanupConfirmedWindowRef.current = null;
+    setNotice(null);
+    form.reset(createStandaloneAccessCodeFormDefaults);
+    setFocusNameOnReturn(true);
     setCreation({ kind: "editing" });
   };
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submit = (values: CreateStandaloneAccessCodeFormValues) => {
     setNotice(null);
-    const values = readStandaloneAccessCodeFormValues(event.currentTarget);
-    const errors = validateStandaloneAccessCodeForm(values);
-    setFieldErrors(errors);
-    if (errors.name || errors.startsAt || errors.endsAt) {
-      focusFirstInvalidField(errors);
-      return;
-    }
-    setWindowPreview({
-      startsAt: values.startsAt,
-      endsAt: values.endsAt,
-    });
-
     const bound = attemptInputRef.current;
     if (!bound || !isSameStandaloneAccessCodeWindow(bound, values)) {
       // A changed window is a new intent: it must never reuse the attempt id.
@@ -257,30 +186,13 @@ export function CreateStandaloneAccessCodeForm() {
   };
 
   const confirmLockCleanup = () => {
-    if (!attemptInputRef.current) return;
-    cleanupConfirmedWindowRef.current = attemptInputRef.current;
-    setWindowPreview({ startsAt: "", endsAt: "" });
-    setFieldErrors({});
-    setNotice(null);
-    attemptIdRef.current = createStandaloneAccessCodeAttemptId();
-    focusNameAfterEditRemountRef.current = true;
-    setCreation({ kind: "editing" });
-  };
-
-  const fieldError = (
-    field: keyof StandaloneAccessCodeFormFieldErrors,
-    fieldId: string
-  ) => {
-    const message = fieldErrors[field];
-    if (!message) return null;
-    return (
-      <p
-        className="mt-2 text-sm font-semibold text-burned-orange-ink"
-        id={`${fieldId}-error`}
-      >
-        {message}
-      </p>
-    );
+    const attemptInput = attemptInputRef.current;
+    if (!attemptInput) return;
+    startNewAttempt();
+    // The unchanged window keeps its intent binding, so the next submission
+    // replays the confirmed cleanup for this window only.
+    attemptInputRef.current = attemptInput;
+    cleanupConfirmedWindowRef.current = attemptInput;
   };
 
   if (creation.kind === "created") {
@@ -289,7 +201,7 @@ export function CreateStandaloneAccessCodeForm() {
       <div
         className="rounded-xl outline-none"
         data-standalone-access-code-creation="created"
-        ref={resultRef}
+        ref={focusOnMount}
         tabIndex={-1}
       >
         <AdministrationAlert className="font-semibold" status="warning">
@@ -332,7 +244,7 @@ export function CreateStandaloneAccessCodeForm() {
         <div className="mt-6 border-t border-navy-blue/10 pt-5">
           <Button
             className="w-full sm:w-auto"
-            onClick={resetForm}
+            onClick={startNewAttempt}
             type="button"
           >
             <Plus aria-hidden className="size-4" />
@@ -347,7 +259,7 @@ export function CreateStandaloneAccessCodeForm() {
     return (
       <div
         data-standalone-access-code-creation="already-created"
-        ref={resultRef}
+        ref={focusOnMount}
         tabIndex={-1}
       >
         <AdministrationAlert className="font-semibold" status="warning">
@@ -357,7 +269,7 @@ export function CreateStandaloneAccessCodeForm() {
         <div className="mt-6 border-t border-navy-blue/10 pt-5">
           <Button
             className="w-full sm:w-auto"
-            onClick={resetForm}
+            onClick={startNewAttempt}
             type="button"
           >
             <Plus aria-hidden className="size-4" />
@@ -372,7 +284,7 @@ export function CreateStandaloneAccessCodeForm() {
     return (
       <div
         data-standalone-access-code-creation={creation.reason}
-        ref={resultRef}
+        ref={focusOnMount}
         tabIndex={-1}
       >
         <AdministrationAlert role="alert" status="warning">
@@ -385,135 +297,178 @@ export function CreateStandaloneAccessCodeForm() {
           Igloohome app over Bluetooth and remove “{creation.name}” if it is
           there.
         </p>
-        <form
-          aria-label="Confirm the lock is clean"
-          className="mt-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!cleanupConfirmed) return;
-            confirmLockCleanup();
-          }}
-        >
-          <label className="flex items-start gap-3 text-sm leading-6 text-navy-blue">
-            <input
-              checked={cleanupConfirmed}
-              name="providerCredentialRemoved"
-              onChange={(event) => setCleanupConfirmed(event.target.checked)}
-              type="checkbox"
-            />
-            <span>{standaloneAccessCodeCleanupConfirmationLabel}</span>
-          </label>
-          <div className="mt-6 flex flex-wrap gap-3 border-t border-navy-blue/10 pt-5">
-            <Button disabled={!cleanupConfirmed} type="submit">
-              <Plus aria-hidden className="size-4" />
-              Create another access code
-            </Button>
-            <Button
-              onClick={() => {
-                setCleanupConfirmed(false);
-                resetForm();
-              }}
-              type="button"
-              variant="secondary"
-            >
-              Start over
-            </Button>
-          </div>
-        </form>
+        <CleanupConfirmationForm
+          onConfirmed={confirmLockCleanup}
+          onStartOver={startNewAttempt}
+        />
       </div>
     );
   }
 
   return (
-    <form
-      aria-label="Create an access code"
-      data-standalone-access-code-creation="editing"
-      noValidate
-      onSubmit={submit}
-      ref={formRef}
-    >
-      <div className="grid gap-5">
-        <div className="grid gap-2">
-          <Label htmlFor={nameId}>Name</Label>
-          <Input
-            aria-describedby={fieldErrors.name ? `${nameId}-error` : undefined}
-            aria-invalid={fieldErrors.name ? true : undefined}
-            id={nameId}
-            maxLength={60}
+    <Form {...form}>
+      <form
+        aria-label="Create an access code"
+        data-standalone-access-code-creation="editing"
+        noValidate
+        onSubmit={(event) => {
+          void form.handleSubmit(submit)(event);
+        }}
+      >
+        <div className="grid gap-5">
+          <FormField
+            control={form.control}
             name="name"
-            ref={nameInputRef}
-            required
+            render={({ field: { onChange, ...field }, fieldState }) => (
+              <FormItem>
+                <FormLabel>Name</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    autoFocus={focusNameOnReturn}
+                    maxLength={60}
+                    onInput={onChange}
+                    required
+                    variant={fieldState.error ? "error" : "default"}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-          {fieldError("name", nameId)}
-        </div>
-        <fieldset>
-          <legend className="text-sm font-medium text-navy-blue">
-            Access window ({WORKSPACE_SITE_TIME_ZONE})
-          </legend>
-          <div className="mt-5 grid gap-5 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor={startsAtId}>Starts</Label>
-              <Input
-                aria-describedby={
-                  fieldErrors.startsAt ? `${startsAtId}-error` : undefined
-                }
-                aria-invalid={fieldErrors.startsAt ? true : undefined}
-                id={startsAtId}
+          <fieldset>
+            <legend className="text-sm font-medium text-navy-blue">
+              Access window ({WORKSPACE_SITE_TIME_ZONE})
+            </legend>
+            <div className="mt-5 grid gap-5 sm:grid-cols-2">
+              <FormField
+                control={form.control}
                 name="startsAt"
-                ref={startsAtInputRef}
-                required
-                step={3600}
-                type="datetime-local"
+                rules={{ deps: ["endsAt"] }}
+                render={({ field: { onChange, ...field }, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>Starts</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        onInput={onChange}
+                        required
+                        step={3600}
+                        type="datetime-local"
+                        variant={fieldState.error ? "error" : "default"}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-              {fieldError("startsAt", startsAtId)}
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor={endsAtId}>Ends</Label>
-              <Input
-                aria-describedby={
-                  fieldErrors.endsAt ? `${endsAtId}-error` : undefined
-                }
-                aria-invalid={fieldErrors.endsAt ? true : undefined}
-                id={endsAtId}
-                max={endMax}
-                min={endMin}
+              <FormField
+                control={form.control}
                 name="endsAt"
-                ref={endsAtInputRef}
-                required
-                step={3600}
-                type="datetime-local"
+                render={({ field: { onChange, ...field }, fieldState }) => (
+                  <FormItem>
+                    <FormLabel>Ends</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        max={endMax}
+                        min={endMin}
+                        onInput={onChange}
+                        required
+                        step={3600}
+                        type="datetime-local"
+                        variant={fieldState.error ? "error" : "default"}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-              {fieldError("endsAt", endsAtId)}
             </div>
-          </div>
-        </fieldset>
-      </div>
+          </fieldset>
+        </div>
 
-      {elapsedHours !== null &&
-        isStandaloneAccessCodeWindowValid({
-          startsAt: windowPreview.startsAt,
-          endsAt: windowPreview.endsAt,
-        }) && (
-          <p className="mt-4 text-sm text-navy-blue/65" aria-live="polite">
-            Duration: {formatStandaloneAccessCodeDuration(elapsedHours)}
-          </p>
+        {elapsedHours !== null &&
+          isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) && (
+            <p aria-live="polite" className="mt-4 text-sm text-navy-blue/65">
+              Duration: {formatStandaloneAccessCodeDuration(elapsedHours)}
+            </p>
+          )}
+
+        {notice && (
+          <AdministrationAlert
+            className="mt-5 font-semibold"
+            role="alert"
+            status="error"
+          >
+            {notice}
+          </AdministrationAlert>
         )}
 
-      {notice && (
-        <AdministrationAlert
-          className="mt-5 font-semibold"
-          role="alert"
-          status="error"
-        >
-          {notice}
-        </AdministrationAlert>
-      )}
+        <div className="mt-6 flex justify-end border-t border-navy-blue/10 pt-5">
+          <Button disabled={isExecuting} type="submit">
+            {isExecuting ? "Creating…" : "Create access code"}
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
 
-      <div className="mt-6 flex justify-end border-t border-navy-blue/10 pt-5">
-        <Button disabled={isExecuting} type="submit">
-          {isExecuting ? "Creating…" : "Create access code"}
-        </Button>
-      </div>
-    </form>
+function CleanupConfirmationForm({
+  onConfirmed,
+  onStartOver,
+}: {
+  readonly onConfirmed: () => void;
+  readonly onStartOver: () => void;
+}) {
+  const cleanupForm = useForm<{
+    providerCredentialRemoved: boolean;
+  }>({
+    defaultValues: { providerCredentialRemoved: false },
+  });
+  const cleanupConfirmed = useWatch({
+    control: cleanupForm.control,
+    name: "providerCredentialRemoved",
+  });
+
+  return (
+    <Form {...cleanupForm}>
+      <form
+        aria-label="Confirm the lock is clean"
+        className="mt-5"
+        onSubmit={cleanupForm.handleSubmit(onConfirmed)}
+      >
+        <FormField
+          control={cleanupForm.control}
+          name="providerCredentialRemoved"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="flex items-start gap-3 text-sm leading-6 text-navy-blue">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={(checked) =>
+                      field.onChange(checked === true)
+                    }
+                  />
+                </FormControl>
+                <span>{standaloneAccessCodeCleanupConfirmationLabel}</span>
+              </FormLabel>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        <div className="mt-6 flex flex-wrap gap-3 border-t border-navy-blue/10 pt-5">
+          <Button disabled={!cleanupConfirmed} type="submit">
+            <Plus aria-hidden className="size-4" />
+            Create another access code
+          </Button>
+          <Button onClick={onStartOver} type="button" variant="secondary">
+            Start over
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 }

@@ -4,7 +4,10 @@ import { describe, expect, test } from "bun:test";
 import { AdministrationStandaloneAccessCodeAttemptId } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
 import {
+  type CreateStandaloneAccessCodeFormInput,
   createStandaloneAccessCodeAttemptId,
+  createStandaloneAccessCodeFormDefaults,
+  createStandaloneAccessCodeFormSchema,
   createStandaloneAccessCodeInputSchema,
   formatStandaloneAccessCodeDuration,
   formatStandaloneAccessCodeLocalDateTime,
@@ -14,7 +17,6 @@ import {
   shiftStandaloneAccessCodeLocalEnd,
   standaloneAccessCodeEarliestLocalEnd,
   standaloneAccessCodeElapsedHours,
-  validateStandaloneAccessCodeForm,
 } from "./create-access-code";
 
 const validWindow = {
@@ -182,47 +184,95 @@ describe("standalone access-code window arithmetic", () => {
   });
 });
 
-describe("standalone access-code form validation", () => {
-  test("reports concise field errors for missing values", () => {
-    expect(
-      validateStandaloneAccessCodeForm({ name: "", startsAt: "", endsAt: "" })
-    ).toEqual({
-      name: "Enter a name for this access code.",
-      startsAt: "Choose a start time.",
-      endsAt: "Choose an end time.",
+describe("standalone access-code form schema", () => {
+  const validateForm = async (values: CreateStandaloneAccessCodeFormInput) => {
+    const result =
+      await createStandaloneAccessCodeFormSchema["~standard"].validate(values);
+    return result.issues
+      ? Object.groupBy(
+          result.issues.map((issue) => ({
+            path: issue.path?.map(String).join(".") ?? "",
+            message: issue.message,
+          })),
+          (issue) => issue.path
+        )
+      : result.value;
+  };
+
+  test("defaults to blank form fields", () => {
+    expect(createStandaloneAccessCodeFormDefaults).toEqual({
+      name: "",
+      startsAt: "",
+      endsAt: "",
     });
   });
 
-  test("reports the contract name bound without server help", () => {
-    expect(
-      validateStandaloneAccessCodeForm({
-        name: "x".repeat(61),
-        startsAt: validWindow.startsAt,
-        endsAt: validWindow.endsAt,
-      }).name
-    ).toBe("Use at most 60 characters.");
+  test("reports concise field errors for missing values", async () => {
+    const issues = await validateForm(createStandaloneAccessCodeFormDefaults);
+
+    expect(issues.name?.map(({ message }) => message)).toEqual([
+      "Enter a name for this access code.",
+    ]);
+    expect(issues.startsAt?.map(({ message }) => message)).toEqual([
+      "Choose a start time.",
+    ]);
+    expect(issues.endsAt?.map(({ message }) => message)).toEqual([
+      "Choose an end time.",
+    ]);
   });
 
-  test("rejects out-of-window ends on the end field only", () => {
-    const errors = validateStandaloneAccessCodeForm({
+  test("reports the contract name bound without server help", async () => {
+    const issues = await validateForm({
+      ...validWindow,
+      name: "x".repeat(61),
+    });
+    expect(issues.name?.map(({ message }) => message)).toEqual([
+      "Use at most 60 characters.",
+    ]);
+  });
+
+  test("rejects out-of-window ends on the end field only", async () => {
+    const issues = await validateForm({
       name: validWindow.name,
       startsAt: "2026-09-10T12:00",
       endsAt: "2026-09-10T10:00",
     });
 
-    expect(errors).toEqual({
-      endsAt: "The end must be 1 to 672 hours after the start.",
+    expect(issues).toEqual({
+      endsAt: [
+        {
+          path: "endsAt",
+          message: "The end must be 1 to 672 hours after the start.",
+        },
+      ],
     });
   });
 
-  test("accepts trimmed names and valid windows", () => {
-    expect(
-      validateStandaloneAccessCodeForm({
-        name: "  Booth A  ",
-        startsAt: validWindow.startsAt,
-        endsAt: validWindow.endsAt,
-      })
-    ).toEqual({});
+  test("keeps window errors off fields that are individually invalid", async () => {
+    const issues = await validateForm({
+      name: validWindow.name,
+      startsAt: "2026-03-29T02:00",
+      endsAt: "2026-03-29T01:00",
+    });
+
+    expect(issues.endsAt).toBeUndefined();
+    expect(issues.startsAt?.map(({ message }) => message)).toEqual([
+      "Choose a valid start time on the whole hour.",
+    ]);
+  });
+
+  test("accepts trimmed names and valid windows", async () => {
+    const values = await validateForm({
+      name: "  Booth A  ",
+      startsAt: validWindow.startsAt,
+      endsAt: validWindow.endsAt,
+    });
+
+    expect(values).toEqual({
+      name: "Booth A",
+      startsAt: validWindow.startsAt,
+      endsAt: validWindow.endsAt,
+    });
   });
 });
 
