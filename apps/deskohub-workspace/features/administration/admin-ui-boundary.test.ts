@@ -163,14 +163,17 @@ describe("administration UI boundaries", () => {
     expect(breadcrumbLoader).not.toContain("InvoiceAdministrationService");
     expect(breadcrumbLoader).not.toContain("loadInvoiceAdministrationDetail(");
 
-    const broadAccountingImports =
-      /page-data\.server|invoice-administration\.service|invoice-pdf|invoice-email-delivery\.service|@deskohub\/dotypos/;
+    const forbiddenBreadcrumbDependencies =
+      /page-data\.server|invoice-administration\.service|invoice\.repository|snapshot|invoice-pdf|invoice-email-delivery\.service|@deskohub\/dotypos/;
     for (const path of [
       "features/accounting/admin/invoice-breadcrumb.server.ts",
       "features/accounting/admin/invoice-breadcrumb.service.ts",
+      "features/accounting/admin/invoice-administration-identifier.ts",
       "features/accounting/admin/authorization.server.ts",
     ]) {
-      expect(await readWorkspaceFile(path)).not.toMatch(broadAccountingImports);
+      expect(await readWorkspaceFile(path)).not.toMatch(
+        forbiddenBreadcrumbDependencies
+      );
     }
   });
 
