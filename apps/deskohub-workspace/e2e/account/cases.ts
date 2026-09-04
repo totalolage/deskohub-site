@@ -471,23 +471,6 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "rejects the replayed link",
-            Effect.gen(function* () {
-              yield* openPage(link);
-              yield* waitText(
-                "replayed link failure state",
-                callbackFailedTitle
-              );
-            }),
-            providerTransition
-          )
-        );
-      })
-    ),
-    makeCase("account-profile-completion", ({ journalRef, runStep }) =>
-      Effect.gen(function* () {
-        yield* runStep(
-          step(
             "completes the profile with a required first name",
             Effect.gen(function* () {
               yield* waitText("completion page", completionTitle);
@@ -503,6 +486,85 @@ export const makeWorkspaceE2EAccountCases = ({
               });
               yield* waitText("profile completion saved", completionSaved);
             })
+          )
+        );
+        yield* runStep(
+          step(
+            "signs out through the account page before replaying the link",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* clickBrowserElement(run, session, signOutSelector, {
+                timeoutMs: browserTimeout,
+              });
+              yield* waitUrlContains(
+                "sign-out landing page",
+                `${config.baseUrl}/${config.locale}`
+              );
+            })
+          )
+        );
+        yield* runStep(
+          step(
+            "rejects the replayed link",
+            Effect.gen(function* () {
+              yield* openPage(link);
+              yield* waitText(
+                "replayed link failure state",
+                callbackFailedTitle
+              );
+            }),
+            providerTransition
+          )
+        );
+        yield* rateBudget.reserve("send");
+        yield* rateBudget.reserve("verify");
+        const reauthenticationStartedAt = new Date();
+        const observedMessageIds = yield* runStep(
+          step(
+            "records the delivered message baseline",
+            observeDeliveredMessageIds(recipient),
+            providerTransition
+          )
+        );
+        yield* runStep(
+          step(
+            "requests the returning sign-in link",
+            requestSignInLink(recipient),
+            navigationTimeout
+          )
+        );
+        const returningLink = yield* runStep(
+          step(
+            "retrieves the returning sign-in link",
+            retrieveSignInLink(
+              recipient,
+              observedMessageIds,
+              reauthenticationStartedAt
+            ),
+            authDeliveryTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "restores the signed-in linked account for the profile steps",
+            Effect.gen(function* () {
+              yield* openPage(returningLink);
+              yield* waitText(
+                "linked account after replay",
+                linkedDeleteCardTitle
+              );
+            }),
+            providerTransition
+          )
+        );
+      })
+    ),
+    makeCase("account-profile-completion", ({ journalRef, runStep }) =>
+      Effect.gen(function* () {
+        yield* runStep(
+          step(
+            "arrives at the linked account after reauthentication",
+            waitText("linked account page", linkedDeleteCardTitle)
           )
         );
         const customerId = yield* runStep(
