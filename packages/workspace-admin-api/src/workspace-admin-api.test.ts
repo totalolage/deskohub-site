@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Schema, SchemaAST } from "effect";
 import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
 import {
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
   AdminCliAdministrationApi,
   AdministrationBookingQuery,
   AdministrationCustomerProfile,
@@ -49,6 +51,7 @@ import {
   CliServiceUnavailable,
   CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
+  isStandaloneAccessCodeWindowWithinContractDuration,
   StartCliAuthentication,
 } from "./workspace-admin-api";
 
@@ -320,6 +323,66 @@ describe("standalone access-code contract", () => {
     expect(httpApiStatusOf(CliMutationUncertain.schema.ast)).toBe(409);
     expect(httpApiStatusOf(CliServiceUnavailable.schema.ast)).toBe(503);
     expect(JSON.stringify(error)).not.toContain("1234567");
+  });
+});
+
+describe("standalone access-code duration contract", () => {
+  const decodeSiteLocal = Schema.decodeUnknownSync(
+    AdministrationWorkspaceSiteLocalWholeHourDateTime
+  );
+  const contractWindow = (startsAt: string, endsAt: string) => ({
+    startsAt: decodeSiteLocal(startsAt),
+    endsAt: decodeSiteLocal(endsAt),
+  });
+
+  test("exposes the authoritative duration bounds", () => {
+    expect(ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS).toBe(
+      1
+    );
+    expect(ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS).toBe(
+      672
+    );
+  });
+
+  test("accepts the bounds and counts the repeated fall-back hour on instants", () => {
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T10:00", "2026-09-10T11:00")
+      )
+    ).toBe(true);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T10:00", "2026-10-08T10:00")
+      )
+    ).toBe(true);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-10-24T01:00", "2026-11-21T00:00")
+      )
+    ).toBe(true);
+  });
+
+  test("rejects empty, reversed, and overshooting windows", () => {
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T10:00", "2026-09-10T10:00")
+      )
+    ).toBe(false);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T11:00", "2026-09-10T10:00")
+      )
+    ).toBe(false);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T10:00", "2026-10-08T11:00")
+      )
+    ).toBe(false);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-10-24T00:00", "2026-11-21T00:00")
+      )
+    ).toBe(false);
   });
 });
 

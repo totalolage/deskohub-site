@@ -1,17 +1,24 @@
 import {
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeCleanupTargetType,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreationOutcome,
   type AdministrationWorkspaceSiteLocalWholeHourDateTime,
+  isStandaloneAccessCodeWindowWithinContractDuration,
 } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Match, Result, Schema } from "effect";
 import type { StandaloneAccessCodeCreationOutcome } from "../standalone-access-code";
 
-export const standaloneAccessCodeMinimumDurationHours = 1;
-export const standaloneAccessCodeMaximumDurationHours = 672;
+export const standaloneAccessCodeMinimumDurationHours =
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS;
+export const standaloneAccessCodeMaximumDurationHours =
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS;
+
+const standaloneAccessCodeWindowDurationIssue = `The end must be ${ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS} to ${ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS} hours after the start.`;
 
 const elapsedHoursPerNanosecond = 1 / 3_600_000_000_000;
 
@@ -28,9 +35,12 @@ export const createStandaloneAccessCodeInputSchema = Schema.toStandardSchemaV1(
       readonly endsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
     }>(
       ({ startsAt, endsAt }) =>
-        isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) || {
+        isStandaloneAccessCodeWindowWithinContractDuration({
+          startsAt,
+          endsAt,
+        }) || {
           path: ["endsAt"],
-          issue: "The end must be 1 to 672 hours after the start.",
+          issue: standaloneAccessCodeWindowDurationIssue,
         }
     )
   ),
@@ -193,7 +203,7 @@ export const shiftStandaloneAccessCodeLocalEnd = ({
 export const standaloneAccessCodeEarliestLocalEnd = (startsAt: string) => {
   let candidate = shiftStandaloneAccessCodeLocalEnd({
     startsAt,
-    hours: standaloneAccessCodeMinimumDurationHours,
+    hours: ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
   });
   while (!isStandaloneAccessCodeWindowValid({ startsAt, endsAt: candidate })) {
     candidate = Temporal.PlainDateTime.from(candidate)
@@ -209,8 +219,9 @@ export const isStandaloneAccessCodeWindowValid = (
   const elapsedHours = standaloneAccessCodeElapsedHours(values);
   return (
     elapsedHours !== null &&
-    elapsedHours >= standaloneAccessCodeMinimumDurationHours &&
-    elapsedHours <= standaloneAccessCodeMaximumDurationHours
+    elapsedHours >=
+      ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS &&
+    elapsedHours <= ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS
   );
 };
 
@@ -250,7 +261,7 @@ export const createStandaloneAccessCodeFormSchema = Schema.toStandardSchemaV1(
       ({ startsAt, endsAt }) =>
         isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) || {
           path: ["endsAt"],
-          issue: "The end must be 1 to 672 hours after the start.",
+          issue: standaloneAccessCodeWindowDurationIssue,
         }
     )
   ),

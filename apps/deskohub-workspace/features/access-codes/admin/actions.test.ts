@@ -265,6 +265,28 @@ describe("createStandaloneAccessCode action", () => {
     expect(serviceCreateCalls).toHaveLength(0);
   });
 
+  test("rejects a window beyond the shared upper bound through input validation", async () => {
+    serviceCreateCalls.length = 0;
+    serviceCreateResult = Effect.die("must not be called");
+    const { createStandaloneAccessCode } = await import("./actions");
+
+    const result = await createStandaloneAccessCode({
+      ...validInput,
+      startsAt: "2026-10-24T00:00",
+      endsAt: "2026-11-21T00:00",
+    });
+
+    expect(result).toMatchObject({
+      validationErrors: {
+        formErrors: [],
+        fieldErrors: {
+          endsAt: ["The end must be 1 to 672 hours after the start."],
+        },
+      },
+    });
+    expect(serviceCreateCalls).toHaveLength(0);
+  });
+
   test("rejects unauthenticated callers before calling the service", async () => {
     authorizationAllowed = false;
     serviceCreateCalls.length = 0;

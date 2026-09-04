@@ -1050,9 +1050,6 @@ export const AdministrationReservationAccessMutation = Schema.Union([
 export type AdministrationReservationAccessMutation =
   typeof AdministrationReservationAccessMutation.Type;
 
-const minimumStandaloneAccessCodeDurationHours = 1;
-const maximumStandaloneAccessCodeDurationHours = 672;
-
 export const AdministrationInstant = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
@@ -1108,10 +1105,16 @@ const toWorkspaceSiteInstant = (
     .toZonedDateTime(WORKSPACE_SITE_TIME_ZONE)
     .toInstant();
 
-const administrationStandaloneAccessCodeWindow = Schema.makeFilter<{
+export const ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS = 1;
+export const ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS = 672;
+
+export const isStandaloneAccessCodeWindowWithinContractDuration = ({
+  startsAt,
+  endsAt,
+}: {
   readonly startsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
   readonly endsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
-}>(({ startsAt, endsAt }) => {
+}) => {
   const start = toWorkspaceSiteInstant(startsAt);
   const end = toWorkspaceSiteInstant(endsAt);
   const elapsedHours =
@@ -1120,10 +1123,16 @@ const administrationStandaloneAccessCodeWindow = Schema.makeFilter<{
   return (
     Temporal.Instant.compare(end, start) > 0 &&
     Number.isInteger(elapsedHours) &&
-    elapsedHours >= minimumStandaloneAccessCodeDurationHours &&
-    elapsedHours <= maximumStandaloneAccessCodeDurationHours
+    elapsedHours >=
+      ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS &&
+    elapsedHours <= ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS
   );
-});
+};
+
+const administrationStandaloneAccessCodeWindow = Schema.makeFilter<{
+  readonly startsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
+  readonly endsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
+}>(isStandaloneAccessCodeWindowWithinContractDuration);
 
 export const AdministrationStandaloneAccessCodePin = Schema.String.check(
   Schema.isPattern(/^[0-9]{7,9}$/)

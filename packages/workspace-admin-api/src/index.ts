@@ -9,6 +9,8 @@ export {
   type WorkspaceSiteTimeZone,
 } from "./site-time-zone";
 export {
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
   AdminCliAdministrationApi,
   AdminCliApi,
   AdminCliInfo,
@@ -297,6 +299,7 @@ export {
   type ExchangeCliGrant as ExchangeCliGrantType,
   GrantedCliSession,
   type GrantedCliSession as GrantedCliSessionType,
+  isStandaloneAccessCodeWindowWithinContractDuration,
   RenameCliSession,
   type RenameCliSession as RenameCliSessionType,
   StartCliAuthentication,

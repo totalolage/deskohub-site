@@ -106,6 +106,42 @@ describe("standalone access-code creation contract", () => {
     );
   });
 
+  test("accepts the shared contract upper bound", async () => {
+    const accepted = await createStandaloneAccessCodeInputSchema[
+      "~standard"
+    ].validate({
+      attemptId: "01980000-0000-7000-8000-000000000042",
+      ...validWindow,
+      endsAt: "2026-10-08T10:00",
+    });
+    expect(accepted.issues).toBeUndefined();
+  });
+
+  test("counts the repeated fall-back hour through the shared contract check", async () => {
+    const sixHundredSeventyTwoHours =
+      await createStandaloneAccessCodeInputSchema["~standard"].validate({
+        attemptId: "01980000-0000-7000-8000-000000000042",
+        name: "Booth A",
+        startsAt: "2026-10-24T01:00",
+        endsAt: "2026-11-21T00:00",
+      });
+    expect(sixHundredSeventyTwoHours.issues).toBeUndefined();
+
+    const sixHundredSeventyThreeHours =
+      await createStandaloneAccessCodeInputSchema["~standard"].validate({
+        attemptId: "01980000-0000-7000-8000-000000000042",
+        name: "Booth A",
+        startsAt: "2026-10-24T00:00",
+        endsAt: "2026-11-21T00:00",
+      });
+    expect(sixHundredSeventyThreeHours.issues?.[0]?.path?.map(String)).toEqual([
+      "endsAt",
+    ]);
+    expect(sixHundredSeventyThreeHours.issues?.[0]?.message).toBe(
+      "The end must be 1 to 672 hours after the start."
+    );
+  });
+
   test("accepts the confirmed cleanup attempt id beside the contract fields", async () => {
     const result = await createStandaloneAccessCodeInputSchema[
       "~standard"
