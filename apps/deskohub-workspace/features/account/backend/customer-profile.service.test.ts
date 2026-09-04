@@ -23,11 +23,19 @@ const linkedProfile = {
   billing: null,
 };
 
+const createdProfile = {
+  firstName: "Nova",
+  lastName: null,
+  phone: null,
+  billing: null,
+};
+
 const makeLayers = (fakes: {
   readonly accountState?: CustomerAccountActivityState;
   readonly link?: string | null;
   readonly profile?: typeof linkedProfile | null;
   readonly createdCustomerId?: string;
+  readonly createdProfile?: typeof createdProfile;
   readonly claimedCustomerId?: string;
   readonly claimResult?: "linked" | "claimed";
 }) => {
@@ -84,7 +92,10 @@ const makeLayers = (fakes: {
     createCustomerProfile: (input) => {
       calls.push("create-profile");
       createInputs.push(input);
-      return Effect.succeed(fakes.createdCustomerId ?? "60111");
+      return Effect.succeed({
+        customerId: fakes.createdCustomerId ?? "60111",
+        profile: fakes.createdProfile ?? createdProfile,
+      });
     },
   } satisfies Partial<CustomerDotyposAdapter["Service"]>);
 
@@ -187,14 +198,29 @@ describe("CustomerProfileService", () => {
     const layers = makeLayers({ createdCustomerId: "60999" });
 
     const profile = await runProfile(layers, (service) =>
-      service.create(account.accountId, verifiedEmail, { firstName: "Ada" })
+      service.create(account.accountId, verifiedEmail, { firstName: "Nova" })
     );
 
-    expect(profile.firstName).toBe("Ada");
+    expect(profile).toEqual(createdProfile);
     expect(layers.createInputs[0]).toMatchObject({ email: verifiedEmail });
     expect(layers.calls.indexOf("create-profile")).toBeLessThan(
       layers.calls.indexOf("claim")
     );
+  });
+
+  test("returns the create-response profile for a fresh matching claim without a provider read", async () => {
+    const layers = makeLayers({
+      createdCustomerId: "60999",
+      createdProfile,
+    });
+
+    const profile = await runProfile(layers, (service) =>
+      service.create(account.accountId, verifiedEmail, { firstName: "Nova" })
+    );
+
+    expect(profile).toEqual(createdProfile);
+    expect(layers.calls).not.toContain("read-profile");
+    expect(layers.readCustomerIds).toEqual([]);
   });
 
   test("returns the support state when another account claimed the new profile", async () => {
@@ -243,11 +269,13 @@ describe("CustomerProfileService", () => {
       claimedCustomerId: "60111",
     });
 
-    await runProfile(layers, (service) =>
+    const profile = await runProfile(layers, (service) =>
       service.create(account.accountId, verifiedEmail, { firstName: "Ada" })
     );
 
+    expect(profile).toEqual(linkedProfile);
     expect(layers.calls).toContain("create-profile");
+    expect(layers.calls).toContain("read-profile");
     expect(layers.readCustomerIds).toEqual(["60111"]);
   });
 });

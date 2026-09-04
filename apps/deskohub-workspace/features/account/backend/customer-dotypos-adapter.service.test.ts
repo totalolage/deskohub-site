@@ -653,14 +653,33 @@ describe("CustomerDotyposAdapter", () => {
   });
 
   describe("profile creation", () => {
-    test("creates with the verified email and optional billing only", async () => {
+    test("returns the created id and mapped create response without an extra provider read", async () => {
+      const calls: string[] = [];
       const details: unknown[] = [];
 
-      const customerId = await runWithDotypos(
+      const created = await runWithDotypos(
         {
           createCustomer: (input) => {
+            calls.push("create");
             details.push(input);
-            return Effect.succeed(makeCustomer({ id: "60999" }));
+            return Effect.succeed(
+              makeCustomer({
+                id: "60999",
+                lastName: "Lovelace",
+                phone: "+420 601 111 222",
+                companyName: "Analytical Engines",
+                companyId: "12345678",
+                vatId: "CZ12345678",
+                addressLine1: "Pražská 1",
+                city: "Praha",
+                zip: "11000",
+                country: "CZ",
+              })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(makeCustomer());
           },
         },
         (adapter) =>
@@ -681,7 +700,26 @@ describe("CustomerDotyposAdapter", () => {
           })
       );
 
-      expect(customerId).toBe("60999");
+      expect(created).toEqual({
+        customerId: "60999",
+        profile: {
+          firstName: "Ada",
+          lastName: "Lovelace",
+          phone: "+420 601 111 222",
+          billing: {
+            kind: "business",
+            addressLine1: "Pražská 1",
+            addressLine2: null,
+            city: "Praha",
+            zip: "11000",
+            country: "CZ",
+            companyName: "Analytical Engines",
+            companyId: "12345678",
+            vatId: "CZ12345678",
+          },
+        },
+      });
+      expect(calls).toEqual(["create"]);
       expect(details[0]).toMatchObject({
         firstName: "Ada",
         lastName: "Lovelace",
@@ -689,17 +727,33 @@ describe("CustomerDotyposAdapter", () => {
       });
     });
 
-    test("rereads by exact email when creation returns no id", async () => {
-      const customerId = await runWithDotypos(
+    test("recovers the id and profile from the exact-email match when creation returns no id", async () => {
+      const calls: string[] = [];
+      const matched = makeCustomer({
+        id: "60777",
+        lastName: "Lovelace",
+        phone: "+420601111222",
+      });
+
+      const created = await runWithDotypos(
         {
-          createCustomer: () => Effect.succeed(makeCustomer({ id: undefined })),
-          findCustomer: () =>
-            Effect.succeed(
+          createCustomer: () => {
+            calls.push("create");
+            return Effect.succeed(makeCustomer({ id: undefined }));
+          },
+          findCustomer: () => {
+            calls.push("find");
+            return Effect.succeed(
               FindCustomerResult.Matched({
-                customer: makeCustomer({ id: "60777" }),
-                matches: [],
+                customer: matched,
+                matches: [matched],
               })
-            ),
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(makeCustomer());
+          },
         },
         (adapter) =>
           adapter.createCustomerProfile({
@@ -708,7 +762,39 @@ describe("CustomerDotyposAdapter", () => {
           })
       );
 
-      expect(customerId).toBe("60777");
+      expect(created).toEqual({
+        customerId: "60777",
+        profile: {
+          firstName: "Ada",
+          lastName: "Lovelace",
+          phone: "+420601111222",
+          billing: null,
+        },
+      });
+      expect(calls).toEqual(["create", "find"]);
+    });
+
+    test("fails with the unusable-create error when the exact-email fallback has no match", async () => {
+      const outcome = await runWithDotypos(
+        {
+          createCustomer: () => Effect.succeed(makeCustomer({ id: undefined })),
+          findCustomer: () =>
+            Effect.succeed(FindCustomerResult.NotFound({ matches: [] })),
+        },
+        (adapter) =>
+          adapter
+            .createCustomerProfile({
+              email: "ada@example.test",
+              profile: { firstName: "Ada" },
+            })
+            .pipe(Effect.result)
+      );
+
+      expect(outcome._tag).toBe("Failure");
+      if (outcome._tag === "Failure") {
+        const error = outcome.failure as ExternalAPIError;
+        expect(error.statusCode).toBe(502);
+      }
     });
   });
 });

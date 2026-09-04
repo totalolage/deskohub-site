@@ -3,6 +3,7 @@ import {
   type DotyposCustomerId,
   DotyposService,
   ExternalAPIError,
+  type FindCustomerResult,
   type NetworkError,
   normalizePhoneNumber,
   type ValidationError,
@@ -49,6 +50,31 @@ export type ExactEmailCustomerMatch =
       readonly state: "active" | "expired";
       readonly customerId: DotyposCustomerId;
     };
+
+/**
+ * Adapter-internal classification that retains the decoded provider row for
+ * the matched candidate so callers inside the adapter can map it without a
+ * second provider read.
+ */
+type ExactEmailCustomerRowMatch =
+  | { readonly kind: "not-found" }
+  | { readonly kind: "ambiguous" }
+  | { readonly kind: "unusable" }
+  | {
+      readonly kind: "matched";
+      readonly state: "active" | "expired";
+      readonly customerId: DotyposCustomerId;
+      readonly customer: DotyposCustomer;
+    };
+
+/**
+ * The provider's create response, closed as the created link id plus the
+ * app-level profile mapped from that same decoded response.
+ */
+export type CreatedCustomerProfile = {
+  readonly customerId: DotyposCustomerId;
+  readonly profile: CustomerProfile;
+};
 
 export const isCustomerProfileExpired = (
   customer: DotyposCustomer,
@@ -242,7 +268,7 @@ interface ICustomerDotyposAdapter {
   readonly createCustomerProfile: (input: {
     readonly email: string;
     readonly profile: CustomerProfileInput;
-  }) => Effect.Effect<DotyposCustomerId, DotyposCustomerError>;
+  }) => Effect.Effect<CreatedCustomerProfile, DotyposCustomerError>;
   readonly updateCustomerProfile: (
     customerId: DotyposCustomerId,
     profile: CustomerProfileInput
@@ -278,26 +304,19 @@ export class CustomerDotyposAdapter extends Context.Service<
       const classifyExactEmailCustomers = Effect.fn(
         "CustomerDotyposAdapter.classifyExactEmailCustomers"
       )((email: string) =>
-        dotypos
-          .findCustomer({ firstName: "", email }, { lookupFields: ["email"] })
-          .pipe(
-            Effect.map((result): ExactEmailCustomerMatch => {
-              if (result._tag === "NotFound") return { kind: "not-found" };
-              if (result._tag === "Ambiguous") return { kind: "ambiguous" };
-              if (result._tag === "Deleted") return { kind: "unusable" };
-
-              const customer = result.customer;
-              if (!customer.id) return { kind: "ambiguous" };
-
-              return {
-                kind: "matched",
-                state: isCustomerProfileExpired(customer)
-                  ? "expired"
-                  : "active",
-                customerId: customer.id,
-              };
-            })
-          )
+        Effect.map(
+          findExactEmailCustomer(email),
+          (result): ExactEmailCustomerMatch => {
+            const match = classifyExactEmailResult(result);
+            return match.kind === "matched"
+              ? {
+                  kind: "matched",
+                  state: match.state,
+                  customerId: match.customerId,
+                }
+              : match;
+          }
+        )
       );
 
       const readCustomerProfile = Effect.fn(
@@ -317,10 +336,23 @@ export class CustomerDotyposAdapter extends Context.Service<
         const customer = yield* dotypos.createCustomer(
           toCustomerDetails(input)
         );
-        if (customer.id) return customer.id;
+        if (customer.id) {
+          return {
+            customerId: customer.id,
+            profile: toCustomerProfile(customer),
+          };
+        }
 
-        const reread = yield* classifyExactEmailCustomers(input.email);
-        if (reread.kind === "matched") return reread.customerId;
+        const reread = yield* Effect.map(
+          findExactEmailCustomer(input.email),
+          classifyExactEmailResult
+        );
+        if (reread.kind === "matched") {
+          return {
+            customerId: reread.customerId,
+            profile: toCustomerProfile(reread.customer),
+          };
+        }
 
         return yield* new ExternalAPIError({
           service: "Dotypos",
@@ -329,6 +361,30 @@ export class CustomerDotyposAdapter extends Context.Service<
           statusCode: 502,
         });
       });
+
+      const findExactEmailCustomer = (email: string) =>
+        dotypos.findCustomer(
+          { firstName: "", email },
+          { lookupFields: ["email"] }
+        );
+
+      const classifyExactEmailResult = (
+        result: FindCustomerResult
+      ): ExactEmailCustomerRowMatch => {
+        if (result._tag === "NotFound") return { kind: "not-found" };
+        if (result._tag === "Ambiguous") return { kind: "ambiguous" };
+        if (result._tag === "Deleted") return { kind: "unusable" };
+
+        const customer = result.customer;
+        if (!customer.id) return { kind: "ambiguous" };
+
+        return {
+          kind: "matched",
+          state: isCustomerProfileExpired(customer) ? "expired" : "active",
+          customerId: customer.id,
+          customer,
+        };
+      };
 
       const patchWithReread = Effect.fn(
         "CustomerDotyposAdapter.patchWithReread"

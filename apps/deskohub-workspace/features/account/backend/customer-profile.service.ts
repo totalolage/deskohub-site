@@ -110,7 +110,7 @@ export class CustomerProfileService extends Context.Service<
                   return yield* readLinkedProfile(dotypos, linkedCustomerId);
                 }
 
-                const createdId = yield* dotypos
+                const created = yield* dotypos
                   .createCustomerProfile({
                     email: verifiedEmail,
                     profile: input,
@@ -122,7 +122,7 @@ export class CustomerProfileService extends Context.Service<
                   );
 
                 const claimed = yield* links
-                  .claim(accountId, createdId)
+                  .claim(accountId, created.customerId)
                   .pipe(
                     Effect.mapError(
                       mapCustomerAccountFailure("account-link.claim")
@@ -133,6 +133,10 @@ export class CustomerProfileService extends Context.Service<
                     reason: "link-required",
                     linkReason: "claimed",
                   });
+                }
+
+                if (claimed.customerId === created.customerId) {
+                  return created.profile;
                 }
 
                 return yield* readLinkedProfile(dotypos, claimed.customerId);
