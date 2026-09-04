@@ -110,11 +110,66 @@ describe("deploy-workspace-production workflow", () => {
       "steps.promote.outputs.promotion_state == 'recovery-needed'"
     );
     expect(restoreStep).toContain(
-      "(steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome == 'failure')"
+      "(steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome != 'success')"
     );
 
     const failStep = workflow.slice(failIndex);
     expect(failStep).toContain("if: always() && failure()");
+  });
+
+  test("recovers whenever the canonical smoke does not succeed, including cancellation", async () => {
+    const workflow = await readWorkflow();
+    const restoreIndex = workflow.indexOf(
+      "Restore the pre-request production baseline"
+    );
+    const failIndex = workflow.indexOf("Fail the release after rollback");
+    const restoreStep = workflow.slice(restoreIndex, failIndex);
+
+    expect(restoreStep).toContain("steps.canonical-smoke.outcome != 'success'");
+    expect(restoreStep).not.toContain("steps.canonical-smoke.outcome ==");
+
+    // Mirrors the GitHub expression literals from the restore condition.
+    const recovers = (promoted: string, smokeOutcome: string) =>
+      promoted === "true" && smokeOutcome !== "success";
+
+    expect(recovers("true", "success")).toBe(false);
+    expect(recovers("true", "failure")).toBe(true);
+    expect(recovers("true", "cancelled")).toBe(true);
+    expect(recovers("true", "skipped")).toBe(true);
+    expect(recovers("false", "failure")).toBe(false);
+    expect(recovers("false", "")).toBe(false);
+  });
+
+  test("budgets the job timeout for setup, the promotion poll, and both recovery attempts", async () => {
+    const workflow = await readWorkflow();
+    const script = await readScript();
+
+    const jobTimeoutMinutes = Number(
+      workflow.match(/timeout-minutes: (\d+)/)?.[1]
+    );
+    const pollDeadlineMinutes = Number(
+      script.match(/defaultPollDeadlineMilliseconds = (\d+) \* 60_000/)?.[1]
+    );
+    const rollbackTimeoutMinutes = Number(
+      script.match(/rollback \$\{url\} --scope \S+ --yes --timeout (\d+)m/)?.[1]
+    );
+
+    expect(jobTimeoutMinutes).toBeGreaterThan(0);
+    expect(pollDeadlineMinutes).toBeGreaterThan(0);
+    expect(rollbackTimeoutMinutes).toBeGreaterThan(0);
+
+    // Worst case after the promotion request: the bounded promotion poll,
+    // then the in-script rollback plus its verification, then the always()
+    // finalizer rollback plus its verification — each rollback bounded by
+    // the CLI timeout and each verification by the poll deadline.
+    const recoveryWorstCaseMinutes =
+      pollDeadlineMinutes + 2 * (rollbackTimeoutMinutes + pollDeadlineMinutes);
+    // Checkout, dependency install, build, migration, and probes keep their
+    // own bounded headroom inside the job budget.
+    const setupAndBuildHeadroomMinutes = 25;
+    expect(jobTimeoutMinutes).toBeGreaterThanOrEqual(
+      recoveryWorstCaseMinutes + setupAndBuildHeadroomMinutes
+    );
   });
 
   test("smokes the customer-facing production host only after a confirmed promotion", async () => {
@@ -156,6 +211,14 @@ describe("deploy-workspace-production workflow", () => {
     expect(workflow).toContain(
       "bun scripts/production-release.ts rollback --url"
     );
+  });
+
+  test("confirms rollbacks against the paginated required-alias authority, not a single canonical alias", async () => {
+    const script = await readScript();
+
+    expect(script).toContain("listProjectAliases");
+    expect(script).toContain("requiredProductionAliases");
+    expect(script).not.toContain("waitForCanonicalAlias");
   });
 
   test("publishes recovery state through GITHUB_OUTPUT for the workflow conditions", async () => {

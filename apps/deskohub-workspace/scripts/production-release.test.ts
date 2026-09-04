@@ -538,6 +538,9 @@ describe("workspace production release checks", () => {
       keepCustomDomainOnBaseline: () => {
         customDomainServes = () => "baseline";
       },
+      keepCustomDomainOnStaged: () => {
+        customDomainServes = () => "staged";
+      },
       dropCustomDomainAlias: () => {
         customDomainServes = () => "missing";
       },
@@ -729,7 +732,58 @@ describe("workspace production release checks", () => {
     );
 
     expect(rollbackUrls).toEqual(["https://workspace-baseline.vercel.app"]);
-    expect(environment.persisted).toContain("promotion_state=restored\n");
+    expect(environment.persisted).not.toContain("promotion_state=restored\n");
+    expect(environment.persisted).toContain(
+      "promotion_state=recovery-needed\n"
+    );
+  });
+
+  test("does not persist restored when rollback recovers the project alias but the customer domain still serves the staged deployment", async () => {
+    const environment = promotionEnvironment();
+    environment.serveAliasUntil(30_000);
+    environment.keepCustomDomainOnBaseline();
+    mockGlobalFetch(environment.mockFetch);
+    const rollbackUrls: string[] = [];
+    const rollback = mock((url: string) => {
+      rollbackUrls.push(url);
+      environment.restoreBaselineAlias();
+      environment.keepCustomDomainOnStaged();
+      return Promise.resolve();
+    });
+
+    await expect(promote(environment, {}, { rollback })).rejects.toThrow(
+      "verification"
+    );
+
+    expect(rollbackUrls).toEqual(["https://workspace-baseline.vercel.app"]);
+    expect(environment.persisted).not.toContain("promotion_state=restored\n");
+    expect(environment.persisted).toContain(
+      "promotion_state=recovery-needed\n"
+    );
+  });
+
+  test("does not persist restored when the customer domain alias is missing after the rollback", async () => {
+    const environment = promotionEnvironment();
+    environment.serveAliasUntil(30_000);
+    environment.keepCustomDomainOnBaseline();
+    mockGlobalFetch(environment.mockFetch);
+    const rollbackUrls: string[] = [];
+    const rollback = mock((url: string) => {
+      rollbackUrls.push(url);
+      environment.restoreBaselineAlias();
+      environment.dropCustomDomainAlias();
+      return Promise.resolve();
+    });
+
+    await expect(promote(environment, {}, { rollback })).rejects.toThrow(
+      "workspace.deskohub.cz"
+    );
+
+    expect(rollbackUrls).toEqual(["https://workspace-baseline.vercel.app"]);
+    expect(environment.persisted).not.toContain("promotion_state=restored\n");
+    expect(environment.persisted).toContain(
+      "promotion_state=recovery-needed\n"
+    );
   });
 
   test("rolls back to the baseline and verifies before failing an ambiguous promotion", async () => {
@@ -820,7 +874,7 @@ describe("workspace production release checks", () => {
     );
   });
 
-  test("verifies the canonical alias serves the restored deployment after rollback", async () => {
+  test("verifies the restored deployment across the required production aliases after rollback", async () => {
     const environment = promotionEnvironment();
     mockGlobalFetch(environment.mockFetch);
 
@@ -837,6 +891,48 @@ describe("workspace production release checks", () => {
         environment.virtualDeps
       )
     ).resolves.toBeUndefined();
+  });
+
+  test("fails rollback verification while the customer domain still serves the staged deployment", async () => {
+    const environment = promotionEnvironment();
+    environment.restoreBaselineAlias();
+    environment.keepCustomDomainOnStaged();
+    mockGlobalFetch(environment.mockFetch);
+
+    await expect(
+      verifyCanonicalAliasServes(
+        "https://workspace-baseline.vercel.app",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: "team_test",
+          pollDeadlineMilliseconds: 60_000,
+          pollIntervalMilliseconds: 30_000,
+        },
+        environment.virtualDeps
+      )
+    ).rejects.toThrow("verification");
+  });
+
+  test("fails rollback verification when the customer domain alias is missing", async () => {
+    const environment = promotionEnvironment();
+    environment.restoreBaselineAlias();
+    environment.dropCustomDomainAlias();
+    mockGlobalFetch(environment.mockFetch);
+
+    await expect(
+      verifyCanonicalAliasServes(
+        "https://workspace-baseline.vercel.app",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: "team_test",
+          pollDeadlineMilliseconds: 60_000,
+          pollIntervalMilliseconds: 30_000,
+        },
+        environment.virtualDeps
+      )
+    ).rejects.toThrow("workspace.deskohub.cz");
   });
 
   test("fails verification when the canonical alias serves a different deployment", async () => {

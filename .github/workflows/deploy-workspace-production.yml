@@ -24,7 +24,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     environment:
       name: Production – deskohub-workspace-site
       url: ${{ steps.deploy.outputs.url }}
@@ -94,7 +94,7 @@ jobs:
           always() &&
           (steps.promote.outputs.promotion_state == 'possibly-started' ||
             steps.promote.outputs.promotion_state == 'recovery-needed' ||
-            (steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome == 'failure'))
+            (steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome != 'success'))
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts rollback --url "${{ steps.promote.outputs.baseline_url }}"
 

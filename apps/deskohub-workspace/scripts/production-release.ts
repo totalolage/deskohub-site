@@ -348,46 +348,10 @@ const makePolling = ({ sleep, now }: PollingDependencies = {}) => ({
 });
 
 /**
- * Bounded authoritative poll of the canonical production alias. Resolves
- * once the alias serves the expected deployment, or reports false when the
- * deadline passes without the alias ever confirming the deployment.
- */
-const waitForCanonicalAlias = async (
-  expected: { readonly id: string | null; readonly url: string },
-  input: {
-    readonly token: string;
-    readonly projectId: string;
-    readonly teamId: string | undefined;
-  } & PollingOptions,
-  dependencies: PollingDependencies = {}
-): Promise<boolean> => {
-  const { sleep, now } = makePolling(dependencies);
-  const deadline =
-    now() + (input.pollDeadlineMilliseconds ?? defaultPollDeadlineMilliseconds);
-  const interval =
-    input.pollIntervalMilliseconds ?? defaultPollIntervalMilliseconds;
-  while (now() < deadline) {
-    let alias: CanonicalAlias;
-    try {
-      alias = await resolveCanonicalAlias(
-        input.token,
-        input.projectId,
-        input.teamId
-      );
-    } catch {
-      await sleep(interval);
-      continue;
-    }
-    if (aliasServesDeployment(alias, expected)) return true;
-    await sleep(interval);
-  }
-  return false;
-};
-
-/**
- * Verifies that the canonical production alias serves the restored
- * deployment after a rollback. A rollback that the alias does not confirm is
- * a failed recovery.
+ * Verifies that every required production alias — the project alias and the
+ * customer-facing custom domain — serves the restored deployment after a
+ * rollback. A rollback that any required alias does not confirm is a failed
+ * recovery.
  */
 export const verifyCanonicalAliasServes = async (
   expectedUrl: string,
@@ -398,14 +362,14 @@ export const verifyCanonicalAliasServes = async (
   } & PollingOptions,
   dependencies: PollingDependencies = {}
 ): Promise<void> => {
-  const confirmed = await waitForCanonicalAlias(
+  const confirmed = await waitForProductionAliases(
     { id: null, url: expectedUrl },
     input,
     dependencies
   );
   if (!confirmed) {
     throw new Error(
-      "Rollback verification failed: the canonical production alias does not serve the restored deployment"
+      "Rollback verification failed: the required production aliases do not all serve the restored deployment"
     );
   }
 };
@@ -457,13 +421,14 @@ const listProjectAliases = async (
 
 /**
  * Bounded authoritative poll across every required production alias
- * (the project alias and the customer-facing custom domain). Each alias is
+ * (the project alias and the customer-facing custom domain), shared by
+ * promotion confirmation and rollback verification. Each alias is
  * classified separately: an alias still serving another deployment is
  * pending, while an alias missing from the fully paginated project listing
  * can never serve this release and fails the promotion immediately.
  */
 const waitForProductionAliases = async (
-  expected: { readonly id: string; readonly url: string },
+  expected: { readonly id: string | null; readonly url: string },
   input: {
     readonly token: string;
     readonly projectId: string;
@@ -548,10 +513,11 @@ const persistReleaseOutput = async (output: string) => {
  *    customer-facing custom domain — is then polled within a bounded
  *    window; only terminal per-alias success declares the promotion done.
  * 4. When the window closes without an answer after a possibly-started
- *    promotion, the release rolls back to the baseline, verifies the alias,
- *    and fails — never exiting with production in an untested state. A
- *    rollback or verification failure persists "recovery-needed" so the
- *    workflow's always() finalizer restores and re-verifies the baseline.
+ *    promotion, the release rolls back to the baseline, verifies every
+ *    required production alias serves it, and fails — never exiting with
+ *    production in an untested state. A rollback or verification failure
+ *    persists "recovery-needed" so the workflow's always() finalizer
+ *    restores and re-verifies the baseline.
  */
 export const promoteStagedDeployment = async (
   input: PromotionInput,
@@ -616,14 +582,14 @@ export const promoteStagedDeployment = async (
     dependencies.rollback ?? (async (url: string) => rollbackToDeployment(url));
   try {
     await recovery(baseline.deploymentUrl);
-    const verified = await waitForCanonicalAlias(
+    const verified = await waitForProductionAliases(
       { id: baseline.deploymentId, url: baseline.deploymentUrl },
       input,
       dependencies
     );
     if (!verified) {
       throw new Error(
-        "Rollback verification failed after an ambiguous promotion: the canonical production alias does not serve the baseline deployment"
+        "Rollback verification failed after an ambiguous promotion: the required production aliases do not all serve the baseline deployment"
       );
     }
     await persist("promotion_state=restored\n");
