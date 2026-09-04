@@ -11,9 +11,16 @@ import {
   writeWorkspaceE2EAccountJournal,
 } from "./journal";
 import { makeMagicLinkRateBudget } from "./rate-budget";
+import type { WorkspaceE2EAccountDeletionHandoff } from "./types";
 
 type WorkspaceE2EAccountLane = {
   readonly config: ReturnType<typeof getAccountE2EConfig>;
+  /**
+   * The one mutable deletion handoff for the whole worker. The case factory
+   * runs again for every Playwright test, so this object must outlive it;
+   * it stays in memory only and never joins the cleanup journal.
+   */
+  readonly deletionHandoff: WorkspaceE2EAccountDeletionHandoff;
   readonly journalRef: {
     readonly journal: WorkspaceE2EAccountJournal;
     readonly record: (update: {
@@ -45,6 +52,7 @@ const accountTest = runtimeTest.extend<
     async ({ browser, environment, runContext }, use) => {
       const config = getAccountE2EConfig(environment);
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
+      const deletionHandoff: WorkspaceE2EAccountDeletionHandoff = {};
       let journal = emptyWorkspaceE2EAccountJournal();
       const mergeIds = (
         existing: readonly string[],
@@ -77,6 +85,7 @@ const accountTest = runtimeTest.extend<
       try {
         await use({
           config,
+          deletionHandoff,
           journalRef,
           rateBudget: makeMagicLinkRateBudget(),
           run,
@@ -100,6 +109,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
     const cases = makeWorkspaceE2EAccountCases({
       config: accountLane.config,
       datasourceConfig: getDatasourceConfig(environment),
+      deletionHandoff: accountLane.deletionHandoff,
       rateBudget: accountLane.rateBudget,
       run: accountLane.run,
       session: accountLane.session,

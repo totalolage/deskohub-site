@@ -49,6 +49,7 @@ import {
 } from "./resend-retrieval";
 import type {
   WorkspaceE2EAccountCase,
+  WorkspaceE2EAccountDeletionHandoff,
   WorkspaceE2EAccountJournalRef,
 } from "./types";
 
@@ -112,6 +113,12 @@ const invalidEmailSettleMs = 2_000;
 export type WorkspaceE2EAccountCaseInputs = {
   readonly config: WorkspaceE2EAccountConfig;
   readonly datasourceConfig: DatasourceConfig;
+  /**
+   * The worker-scoped lane fixture owns this mutable handoff once; the case
+   * factory is rebuilt for every Playwright test, so a factory-local object
+   * could never carry the completed deletion between the two deletion cases.
+   */
+  readonly deletionHandoff: WorkspaceE2EAccountDeletionHandoff;
   readonly rateBudget: MagicLinkRateBudget;
   readonly run: Runner;
   readonly session: string;
@@ -126,6 +133,7 @@ export type WorkspaceE2EAccountCaseInputs = {
 export const makeWorkspaceE2EAccountCases = ({
   config,
   datasourceConfig,
+  deletionHandoff,
   rateBudget,
   run,
   session,
@@ -182,6 +190,44 @@ export const makeWorkspaceE2EAccountCases = ({
         timeoutMs: uiTransition,
       }
     );
+
+  const withoutTrailingSlash = (url: string) =>
+    url.length > 1 && url.endsWith("/") ? url.slice(0, -1) : url;
+
+  /**
+   * Signs out on the current device and proves the session is gone. The
+   * sign-out button resolves its server request before assigning the bare
+   * locale root, so only an exact root URL proves the logout finished, and a
+   * fresh protected-account visit must then redirect the anonymous browser to
+   * the sign-in form. The account URL itself must never satisfy the landing
+   * wait, which is why the comparison is exact rather than a substring.
+   */
+  const signOutAndRequireAnonymous = () =>
+    Effect.gen(function* () {
+      yield* clickBrowserElement(run, session, signOutSelector, {
+        timeoutMs: browserTimeout,
+      });
+      yield* pollUntil(
+        readBrowserUrl(run, session).pipe(
+          Effect.map((url) =>
+            url !== undefined && withoutTrailingSlash(url) === localized("")
+              ? url
+              : undefined
+          )
+        ),
+        {
+          intervalMs: workspaceE2EPollIntervalMs.browser,
+          label: "sign-out landing on the bare locale root",
+          timeoutMs: uiTransition,
+        }
+      );
+      yield* openPage(localized(accountSuffix));
+      yield* waitUrlContains(
+        "anonymous account redirect after sign-out",
+        signInSuffix
+      );
+      yield* waitSignInForm();
+    });
 
   const readNormalizedText = () =>
     readBrowserText(run, session).pipe(Effect.map(normalizeBrowserText));
@@ -295,17 +341,6 @@ export const makeWorkspaceE2EAccountCases = ({
     id: WorkspaceE2EAccountCaseId,
     execute: WorkspaceE2EAccountCase["execute"]
   ): WorkspaceE2EAccountCase => ({ execute, id, timeoutMs: caseTimeout });
-
-  /**
-   * In-memory handoff between the serial deletion cases: the marker case
-   * completes the deletion and records the removed identity and its retained
-   * Dotypos customer, which the reactivation case then verifies under a new
-   * Better Auth identity.
-   */
-  const completedDeletion: {
-    deletedUserId?: string;
-    retainedCustomerId?: string;
-  } = {};
 
   const step = <A, R>(
     id: string,
@@ -471,6 +506,23 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
+            "rejects the replayed link",
+            Effect.gen(function* () {
+              yield* openPage(link);
+              yield* waitText(
+                "replayed link failure state",
+                callbackFailedTitle
+              );
+            }),
+            providerTransition
+          )
+        );
+      })
+    ),
+    makeCase("account-profile-completion", ({ journalRef, runStep }) =>
+      Effect.gen(function* () {
+        yield* runStep(
+          step(
             "completes the profile with a required first name",
             Effect.gen(function* () {
               yield* waitText("completion page", completionTitle);
@@ -486,85 +538,6 @@ export const makeWorkspaceE2EAccountCases = ({
               });
               yield* waitText("profile completion saved", completionSaved);
             })
-          )
-        );
-        yield* runStep(
-          step(
-            "signs out through the account page before replaying the link",
-            Effect.gen(function* () {
-              yield* openPage(localized(accountSuffix));
-              yield* clickBrowserElement(run, session, signOutSelector, {
-                timeoutMs: browserTimeout,
-              });
-              yield* waitUrlContains(
-                "sign-out landing page",
-                `${config.baseUrl}/${config.locale}`
-              );
-            })
-          )
-        );
-        yield* runStep(
-          step(
-            "rejects the replayed link",
-            Effect.gen(function* () {
-              yield* openPage(link);
-              yield* waitText(
-                "replayed link failure state",
-                callbackFailedTitle
-              );
-            }),
-            providerTransition
-          )
-        );
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("verify");
-        const reauthenticationStartedAt = new Date();
-        const observedMessageIds = yield* runStep(
-          step(
-            "records the delivered message baseline",
-            observeDeliveredMessageIds(recipient),
-            providerTransition
-          )
-        );
-        yield* runStep(
-          step(
-            "requests the returning sign-in link",
-            requestSignInLink(recipient),
-            navigationTimeout
-          )
-        );
-        const returningLink = yield* runStep(
-          step(
-            "retrieves the returning sign-in link",
-            retrieveSignInLink(
-              recipient,
-              observedMessageIds,
-              reauthenticationStartedAt
-            ),
-            authDeliveryTimeout
-          )
-        );
-        yield* runStep(
-          step(
-            "restores the signed-in linked account for the profile steps",
-            Effect.gen(function* () {
-              yield* openPage(returningLink);
-              yield* waitText(
-                "linked account after replay",
-                linkedDeleteCardTitle
-              );
-            }),
-            providerTransition
-          )
-        );
-      })
-    ),
-    makeCase("account-profile-completion", ({ journalRef, runStep }) =>
-      Effect.gen(function* () {
-        yield* runStep(
-          step(
-            "arrives at the linked account after reauthentication",
-            waitText("linked account page", linkedDeleteCardTitle)
           )
         );
         const customerId = yield* runStep(
@@ -882,10 +855,36 @@ export const makeWorkspaceE2EAccountCases = ({
                 link === undefined,
                 "the customer account link survived identity removal"
               );
-              completedDeletion.deletedUserId = userId.userId;
-              completedDeletion.retainedCustomerId = userId.linked;
+              deletionHandoff.deletedUserId = userId.userId;
+              deletionHandoff.retainedCustomerId = userId.linked;
             }),
             datasourceTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "requires anonymous access after the completed deletion",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitUrlContains(
+                "anonymous account redirect after deletion",
+                signInSuffix
+              );
+              yield* waitSignInForm();
+            })
+          )
+        );
+        yield* runStep(
+          step(
+            "rejects the already-consumed reauthentication link",
+            Effect.gen(function* () {
+              yield* openPage(reauthenticationLink);
+              yield* waitText(
+                "replayed reauthentication failure state",
+                callbackFailedTitle
+              );
+            }),
+            providerTransition
           )
         );
       })
@@ -900,8 +899,8 @@ export const makeWorkspaceE2EAccountCases = ({
             "requires the completed deletion handoff from the marker case",
             Effect.sync(() => {
               assert(
-                completedDeletion.deletedUserId != null &&
-                  completedDeletion.retainedCustomerId != null,
+                deletionHandoff.deletedUserId != null &&
+                  deletionHandoff.retainedCustomerId != null,
                 "the deletion marker case did not complete the deletion handoff"
               );
             })
@@ -939,12 +938,12 @@ export const makeWorkspaceE2EAccountCases = ({
               );
               const newUserId = yield* requireAuthUserId(recipient);
               assert(
-                newUserId !== completedDeletion.deletedUserId,
+                newUserId !== deletionHandoff.deletedUserId,
                 "the reactivated identity reused the deleted Better Auth id"
               );
               const linked = yield* requireLinkedCustomerId(newUserId);
               assert(
-                linked === completedDeletion.retainedCustomerId,
+                linked === deletionHandoff.retainedCustomerId,
                 "the reactivated identity claimed a different Dotypos customer"
               );
               const customer = yield* readProviderProfile(linked);
@@ -995,29 +994,9 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "signs out on the current device",
-            Effect.gen(function* () {
-              yield* openPage(localized(accountSuffix));
-              yield* clickBrowserElement(run, session, signOutSelector, {
-                timeoutMs: browserTimeout,
-              });
-              yield* waitUrlContains(
-                "sign-out landing page",
-                `${config.baseUrl}/${config.locale}`
-              );
-            })
-          )
-        );
-        yield* runStep(
-          step(
-            "blocks the account after sign-out",
-            Effect.gen(function* () {
-              yield* openPage(localized(accountSuffix));
-              yield* waitUrlContains(
-                "anonymous redirect after sign-out",
-                signInSuffix
-              );
-            })
+            "signs out on the current device and blocks the account",
+            signOutAndRequireAnonymous(),
+            navigationTimeout
           )
         );
         const observedMessageIds = yield* runStep(
@@ -1074,16 +1053,8 @@ export const makeWorkspaceE2EAccountCases = ({
         yield* runStep(
           step(
             "signs out of the synthetic main identity",
-            Effect.gen(function* () {
-              yield* openPage(localized(accountSuffix));
-              yield* clickBrowserElement(run, session, signOutSelector, {
-                timeoutMs: browserTimeout,
-              });
-              yield* waitUrlContains(
-                "sign-out landing page",
-                `${config.baseUrl}/${config.locale}`
-              );
-            })
+            signOutAndRequireAnonymous(),
+            navigationTimeout
           )
         );
         const activeCustomerId = yield* runStep(

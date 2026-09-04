@@ -83,6 +83,40 @@ describe("workspace account e2e graph", () => {
     expect(new Set(reserveIndents).size).toBe(1);
     expect(cases.match(/rateBudget\.reserve\("send"\)/g)).toHaveLength(9);
     expect(cases.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(8);
+
+    // The rolling-window budget consumes the real spacing between delivered
+    // links, so a fake-clock duration claim would have to assume provider
+    // latency to separate a healthy lane from a blocked reserve; the count
+    // and per-case shape below are the accurate regression instead.
+    const deliveryCase = cases.slice(
+      cases.indexOf('makeCase("account-magic-link-delivery"'),
+      cases.indexOf('makeCase("account-profile-completion"')
+    );
+    expect(deliveryCase.match(/rateBudget\.reserve\("send"\)/g)).toHaveLength(
+      1
+    );
+    expect(deliveryCase.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(
+      2
+    );
+    const afterDeliveryReplay = deliveryCase.slice(
+      deliveryCase.indexOf("rejects the replayed link")
+    );
+    expect(afterDeliveryReplay).not.toContain("rateBudget.reserve(");
+
+    const profileCompletionCase = cases.slice(
+      cases.indexOf('makeCase("account-profile-completion"'),
+      cases.indexOf('makeCase("account-reservation-transitions"')
+    );
+    expect(profileCompletionCase).not.toContain("rateBudget.reserve(");
+
+    const markerCase = cases.slice(
+      cases.indexOf('makeCase("account-deletion-marker-reauth"'),
+      cases.indexOf('makeCase("account-deletion-and-reactivation"')
+    );
+    expect(markerCase.match(/rateBudget\.reserve\("send"\)/g)).toHaveLength(1);
+    expect(markerCase.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(
+      1
+    );
   });
 
   test("completes the stale deletion through the delivered reauthentication link", async () => {
@@ -98,6 +132,54 @@ describe("workspace account e2e graph", () => {
     expect(markerCase).not.toContain("setDeletionRequestedAt(userId, null)");
     expect(markerCase).not.toContain("linked account restored");
     expect(markerCase.match(/setDeletionRequestedAt\(/g) ?? []).toHaveLength(1);
+  });
+
+  test("replays the consumed deletion link after proving anonymous access", async () => {
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const markerCase = cases.slice(
+      cases.indexOf('makeCase("account-deletion-marker-reauth"'),
+      cases.indexOf('makeCase("account-deletion-and-reactivation"')
+    );
+    const consumptions = markerCase.match(/openPage\(reauthenticationLink\)/g);
+    expect(consumptions).toHaveLength(2);
+
+    const consumedAt = markerCase.indexOf("openPage(reauthenticationLink)");
+    const deletedAt = markerCase.indexOf("deleted page");
+    const anonymousAt = markerCase.indexOf(
+      "anonymous account redirect after deletion"
+    );
+    const replayAt = markerCase.lastIndexOf("openPage(reauthenticationLink)");
+    expect(deletedAt).toBeGreaterThan(consumedAt);
+    expect(anonymousAt).toBeGreaterThan(deletedAt);
+    expect(replayAt).toBeGreaterThan(anonymousAt);
+    expect(markerCase.slice(replayAt)).toContain("callbackFailedTitle");
+  });
+
+  test("hands the completed deletion through the worker-scoped lane fixture", async () => {
+    const lane = await Bun.file(
+      repoFile("e2e/account/account-lane.pw.ts")
+    ).text();
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+
+    const perTestLoopAt = lane.indexOf("for (const caseId");
+    const fixtureScope = lane.slice(0, perTestLoopAt);
+    expect(fixtureScope).toContain(
+      "deletionHandoff: WorkspaceE2EAccountDeletionHandoff"
+    );
+    expect(fixtureScope).toContain("const deletionHandoff");
+    expect(fixtureScope).toContain("deletionHandoff,");
+
+    const factoryCall = lane.slice(
+      lane.indexOf("makeWorkspaceE2EAccountCases({")
+    );
+    expect(factoryCall).toContain(
+      "deletionHandoff: accountLane.deletionHandoff"
+    );
+
+    expect(cases).toContain(
+      "readonly deletionHandoff: WorkspaceE2EAccountDeletionHandoff"
+    );
+    expect(cases).not.toContain("completedDeletion");
   });
 
   test("disambiguates repeated sign-ins by excluding observed messages", async () => {
