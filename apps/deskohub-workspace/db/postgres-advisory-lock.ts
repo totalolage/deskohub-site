@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Result } from "effect";
 import { SqlError, UnknownError } from "effect/unstable/sql/SqlError";
 import type { Pool } from "pg";
 
@@ -42,11 +42,15 @@ const releaseSessionLock = (
   key: PostgresAdvisoryLockKey
 ) =>
   Effect.gen(function* () {
-    yield* Effect.tryPromise({
-      try: () => client.query(unlockSql, [...key]),
-      catch: toSqlError,
-    }).pipe(Effect.ignore);
-    yield* Effect.sync(() => client.release());
+    const unlock = yield* Effect.result(
+      Effect.tryPromise({
+        try: () => client.query(unlockSql, [...key]),
+        catch: toSqlError,
+      })
+    );
+    yield* Effect.sync(() =>
+      client.release(Result.isFailure(unlock) ? unlock.failure : undefined)
+    );
   });
 
 /**

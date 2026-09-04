@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Deferred, Effect, Fiber } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber } from "effect";
 import { connectWorkspacePostgresTestDatabase } from "@/shared/testing/workspace-postgres-test-database.test-utils";
 import {
   type PostgresAdvisoryLockClient,
@@ -9,7 +9,10 @@ import {
 
 const key: PostgresAdvisoryLockKey = ["test-namespace", "resource-1"];
 
-const makeFakePool = (options?: { readonly failAcquire?: boolean }) => {
+const makeFakePool = (options?: {
+  readonly failAcquire?: boolean;
+  readonly failUnlock?: boolean;
+}) => {
   const queries: string[] = [];
   const released: (Error | boolean | undefined)[] = [];
   let connected = 0;
@@ -17,6 +20,9 @@ const makeFakePool = (options?: { readonly failAcquire?: boolean }) => {
   const client: PostgresAdvisoryLockClient = {
     query: (text: string) => {
       queries.push(text);
+      if (options?.failUnlock && text.includes("pg_advisory_unlock")) {
+        return Promise.reject(new Error("unlock went wrong"));
+      }
       return Promise.resolve({ rows: [] });
     },
     release: (error?: Error | boolean) => {
@@ -100,6 +106,34 @@ describe("Postgres advisory lock helper", () => {
     expect((error as { _tag?: string })._tag).toBe("SqlError");
     expect(fake.queries).toHaveLength(0);
     expect(fake.released).toHaveLength(0);
+  });
+
+  test("evicts the pooled client when the unlock query fails", async () => {
+    const fake = makeFakePool({ failUnlock: true });
+
+    const result = await Effect.runPromise(
+      withPostgresAdvisoryLock(fake.pool, key, Effect.succeed("inside"))
+    );
+
+    expect(result).toBe("inside");
+    expect(fake.queries).toHaveLength(2);
+    expect(fake.released).toHaveLength(1);
+    expect(fake.released[0]).toBeInstanceOf(Error);
+    expect((fake.released[0] as { _tag?: string })._tag).toBe("SqlError");
+  });
+
+  test("keeps the guarded effect's failure when the unlock also fails", async () => {
+    const fake = makeFakePool({ failUnlock: true });
+    const insideFailure = new Error("inside failure");
+
+    const exit = await Effect.runPromiseExit(
+      withPostgresAdvisoryLock(fake.pool, key, Effect.fail(insideFailure))
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(Cause.squash(exit.cause)).toBe(insideFailure);
+    expect(fake.released).toHaveLength(1);
+    expect(fake.released[0]).toBeInstanceOf(Error);
   });
 });
 
