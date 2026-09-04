@@ -177,7 +177,11 @@ class PlaywrightRuntime {
       case "eval": {
         if (commandArgs[0] !== "--stdin" || input === undefined)
           throw new Error("Playwright evaluation input is required");
-        const value = await frame().evaluate(input);
+        const value = await withinCommandTimeout(
+          frame().evaluate(input),
+          timeoutMs,
+          "frame.evaluate"
+        );
         return serializeBrowserValue(value);
       }
       case "fill":
@@ -513,6 +517,21 @@ const formatResponse = (response: Response) =>
 
 const toPlaywrightSelector = (selector: string) =>
   selector.startsWith("@") ? `aria-ref=${selector.slice(1)}` : selector;
+
+const withinCommandTimeout = <A>(
+  operation: Promise<A>,
+  timeoutMs: number,
+  label: string
+): Promise<A> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label}: Timeout ${timeoutMs}ms exceeded.`)),
+      timeoutMs
+    );
+  });
+  return Promise.race([operation, budget]).finally(() => clearTimeout(timer));
+};
 
 const serializeBrowserValue = (value: unknown) => {
   if (typeof value === "string") return value;

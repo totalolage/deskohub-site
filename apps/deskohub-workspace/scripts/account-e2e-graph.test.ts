@@ -149,6 +149,36 @@ describe("workspace account e2e graph", () => {
     expect(completionCase).not.toContain('includes("555 000 111")');
   });
 
+  test("bounds the confirmed-reservations step as one combined condition", async () => {
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const stepId = '"shows the confirmed reservations in the current group"';
+    const stepStart = cases.indexOf(stepId);
+    expect(stepStart).toBeGreaterThan(-1);
+    // Isolate exactly this runStep block; the next step's admission bounds it
+    // so assertions cannot be satisfied by sibling steps.
+    const nextStepStart = cases.indexOf("yield* runStep(", stepStart);
+    const stepBlock = cases.slice(stepStart, nextStepStart);
+
+    const conditionCount =
+      stepBlock.split("waitForBrowserCondition").length - 1;
+    expect(conditionCount).toBe(1);
+
+    const titleAt = stepBlock.indexOf(
+      "JSON.stringify(currentReservationsTitle)"
+    );
+    const statusAt = stepBlock.indexOf("JSON.stringify(confirmedStatus)");
+    expect(titleAt).toBeGreaterThan(-1);
+    expect(statusAt).toBeGreaterThan(-1);
+    const [joinStart, joinEnd] =
+      titleAt < statusAt ? [titleAt, statusAt] : [statusAt, titleAt];
+    const join = stepBlock.slice(joinStart + 1, joinEnd);
+    expect(join).toContain("&&");
+    expect(join).not.toContain("||");
+
+    expect(stepBlock).toContain("{ timeoutMs: uiTransition }");
+    expect(stepBlock.split("datasourceTimeout").length - 1).toBe(1);
+  });
+
   test("completes the stale deletion through the delivered reauthentication link", async () => {
     const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
     const markerCase = cases.slice(

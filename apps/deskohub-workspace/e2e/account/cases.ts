@@ -676,12 +676,22 @@ export const makeWorkspaceE2EAccountCases = ({
             "shows the confirmed reservations in the current group",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              yield* waitText(
-                "current reservations group",
-                currentReservationsTitle
+              // Navigation and both content assertions are bounded as one
+              // condition under the step's datasource budget; two sequential
+              // text polls cannot fit their parent timeout after a navigation.
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "current reservations group with a confirmed card",
+                `(() => {
+                    const text = document.body?.innerText ?? "";
+                    return text.includes(${JSON.stringify(currentReservationsTitle)}) &&
+                      text.includes(${JSON.stringify(confirmedStatus)});
+                  })()`,
+                { timeoutMs: uiTransition }
               );
-              yield* waitText("confirmed reservation status", confirmedStatus);
-            })
+            }),
+            datasourceTimeout
           )
         );
         yield* runStep(
