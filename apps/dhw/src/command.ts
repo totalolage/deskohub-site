@@ -25,11 +25,17 @@ import {
   type AdministrationReservationAccessMutationType,
   AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
+  AdministrationStandaloneAccessCodeAttemptId,
+  AdministrationStandaloneAccessCodeCreateInput,
+  type AdministrationStandaloneAccessCodeCreateInputType,
+  type AdministrationStandaloneAccessCodeCreationOutcomeType,
+  AdministrationStandaloneAccessCodeName,
   AdministrationStoredDiscountId,
   AdministrationVoucherId,
   type AdministrationWorkspaceProductTargetType,
   AdministrationWorkspaceReservationId,
   type AdministrationWorkspaceReservationIdType,
+  AdministrationWorkspaceSiteLocalWholeHourDateTime,
   type CliAccessTokenType,
   CliClientName,
   CliMutationRequestId,
@@ -38,6 +44,7 @@ import {
   CliSessionUnauthorized,
   makeCliAuthenticationChallenge,
   makeCliAuthenticationVerifier,
+  WORKSPACE_SITE_TIME_ZONE,
 } from "@deskohub/workspace-admin-api";
 import {
   BigDecimal,
@@ -1840,6 +1847,97 @@ const vouchersCommand = Command.make("vouchers").pipe(
   ])
 );
 
+const accessCodesCreateCommand = Command.make(
+  "create",
+  {
+    name: Argument.string("name").pipe(
+      Argument.withSchema(AdministrationStandaloneAccessCodeName)
+    ),
+    startsAt: Flag.string("starts-at").pipe(
+      Flag.withSchema(AdministrationWorkspaceSiteLocalWholeHourDateTime),
+      Flag.withDescription("Inclusive site-local start (YYYY-MM-DDTHH:mm)")
+    ),
+    endsAt: Flag.string("ends-at").pipe(
+      Flag.withSchema(AdministrationWorkspaceSiteLocalWholeHourDateTime),
+      Flag.withDescription("Exclusive site-local end (YYYY-MM-DDTHH:mm)")
+    ),
+    yes: confirmationFlag,
+  },
+  ({ endsAt, name, startsAt, yes }) =>
+    runAuthenticatedCommand((api, accessToken, json, session) =>
+      Effect.gen(function* () {
+        if (session.approvedBy === null) {
+          return yield* new AuthenticationRequiredError({
+            message:
+              "This legacy CLI session cannot create access codes. Run dhw auth again.",
+          });
+        }
+        const request = yield* Schema.decodeUnknownEffect(
+          AdministrationStandaloneAccessCodeCreateInput
+        )({ name, startsAt, endsAt }).pipe(
+          Effect.mapError(
+            () =>
+              new InvalidMutationInputError({
+                message:
+                  "The access window must span 1 to 672 whole hours between site-local whole-hour times.",
+              })
+          )
+        );
+        const confirmed = yield* confirmChange(
+          yes,
+          json,
+          formatStandaloneAccessCodeConfirmation(request)
+        );
+        if (!confirmed) {
+          yield* reportCancellation(json);
+          return;
+        }
+        const crypto = yield* Crypto.Crypto;
+        const attemptId = AdministrationStandaloneAccessCodeAttemptId.make(
+          yield* crypto.randomUUIDv7
+        );
+        const outcome = yield* api.createStandaloneAccessCode(
+          accessToken,
+          attemptId,
+          request
+        );
+        yield* Console.log(
+          json
+            ? JSON.stringify(outcome)
+            : formatStandaloneAccessCodeOutcome(outcome)
+        );
+      })
+    )
+).pipe(
+  Command.withDescription(
+    "Create a standalone door access code and show its one-time PIN"
+  )
+);
+
+export const formatStandaloneAccessCodeOutcome = (
+  outcome: AdministrationStandaloneAccessCodeCreationOutcomeType
+) => {
+  const window = `${outcome.startsAt} to ${outcome.endsAt} (${WORKSPACE_SITE_TIME_ZONE})`;
+  if (outcome.outcome === "created") {
+    return [
+      `Created access code ${outcome.name} (${window}).`,
+      `PIN: ${outcome.pin}`,
+      "This PIN is shown only once and the code cannot be removed remotely. Record it now.",
+    ].join("\n");
+  }
+  return `Access code ${outcome.name} (${window}) was already created for this attempt. The PIN cannot be shown again.`;
+};
+
+const formatStandaloneAccessCodeConfirmation = (
+  request: AdministrationStandaloneAccessCodeCreateInputType
+) =>
+  `Create access code ${request.name} from ${request.startsAt} to ${request.endsAt} (${WORKSPACE_SITE_TIME_ZONE})? Creation is irreversible remotely and the PIN is shown only once.`;
+
+const accessCodesCommand = Command.make("access-codes").pipe(
+  Command.withDescription("Create standalone door access codes"),
+  Command.withSubcommands([accessCodesCreateCommand])
+);
+
 const salesListCommand = Command.make("list", {}, () =>
   runAuthenticatedCommand((api, accessToken, json) =>
     Effect.gen(function* () {
@@ -2074,6 +2172,7 @@ const updateCommand = Command.make(
 export const dhwCommand = rootCommand.pipe(
   Command.withSubcommands([
     versionCommand,
+    accessCodesCommand,
     apiCommand,
     authCommand,
     bookingsCommand,

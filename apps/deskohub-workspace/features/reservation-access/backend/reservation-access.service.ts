@@ -357,6 +357,7 @@ export class ReservationAccessService extends Context.Service<
           const issued = yield* igloohome
             .issueHourlyAlgoPin({
               deviceId,
+              variance: 1,
               startsAt: interval.providerStartsAt,
               endsAt: interval.providerEndsAt,
               accessName: `Deskohub ${input.reservationId}`.slice(0, 60),

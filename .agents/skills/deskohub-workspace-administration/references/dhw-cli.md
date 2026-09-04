@@ -29,7 +29,8 @@ bearer in macOS Keychain or the Linux Secret Service.
 The server records the Basic-auth username that approved each new session. That
 server-derived actor is used for invoice provenance; it is never accepted from
 CLI input. Sessions issued before approver tracking was added remain valid for
-reads, but must run `dhw auth` again before creating an invoice.
+reads, but must run `dhw auth` again before creating an invoice or a standalone
+access code.
 
 With `--json`, browser approval instructions are written to stderr while stdout
 is reserved for the single final JSON result.
@@ -125,6 +126,9 @@ dhw codes remove-customer <code-id> <customer-id>
 dhw codes make-unrestricted <code-id>
 dhw codes delete <code-id>
 
+dhw access-codes create "Workshop door" \
+  --starts-at 2026-09-05T14:00 --ends-at 2026-09-05T18:00 --yes
+
 dhw vouchers create GIFT100 --credit-value 10000 --currency CZK
 dhw vouchers update <voucher-id> GIFT150 --credit-value 15000 \
   --currency CZK --enabled true
@@ -154,7 +158,7 @@ omitted bounds and global or per-customer code maximum uses are stored as
 unrestricted values. Update commands replace the editable resource fields,
 matching the corresponding Admin UI forms.
 
-Commands that cancel reservations, delete resources, remove restrictions, revoke sessions, change a
+Commands that cancel reservations, create an access code, delete resources, remove restrictions, revoke sessions, change a
 customer's discount group, or add a code-audience member ask for confirmation.
 Pass `--yes` to approve explicitly; non-interactive and `--json` invocations
 require it.
@@ -183,6 +187,17 @@ response replays safe grant metadata without issuing another credential.
 An incomplete access request claim can be reclaimed after the one-minute
 provisioning window; recovery returns an issued grant, safely retries a failed
 grant, or requires provider reconciliation for every ambiguous state.
+
+`dhw access-codes create` creates a standalone door access code that is
+independent of reservations. It is separate from `dhw codes`, which manages
+discount codes. The created PIN prints once. The window must span 1 to 672
+whole hours between site-local whole-hour times in `Europe/Prague`.
+
+The server uses the command's client-generated attempt identifier as the CLI
+mutation-ledger request identifier. Retrying with the same identifier after a
+lost response is safe: a completed attempt returns `already-created` without
+the PIN. An uncertain provider outcome is terminal and is not retried
+automatically.
 
 ## Development
 

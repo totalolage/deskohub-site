@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { Cause, Effect, Exit, Layer } from "effect";
 import type { DatasourceConfig } from "./config";
 import { WorkspaceE2EProviderVerificationPermitServiceMock } from "./coordination/provider-verification-permit.service.mock";
+import { withinWorkspaceE2EDeadline } from "./polling";
 import type { Runner } from "./runtime";
 import { WorkspaceE2ECleanupService } from "./services/cleanup";
 import {
@@ -256,6 +257,40 @@ test("propagates browser finalizer failures", async () => {
       outcome: "failed",
     },
   ]);
+});
+
+test("bounds an execution with a real deadline that fails as a timeout", async () => {
+  const failure = await Effect.runPromise(
+    Effect.flip(
+      withinWorkspaceE2EDeadline(
+        Effect.never,
+        "access-code-creation/assert-step",
+        20
+      )
+    )
+  );
+
+  expect(failure.reason).toBe("timeout");
+  expect(failure.operation).toBe("access-code-creation/assert-step");
+  expect(failure.message).toContain("after 20ms");
+});
+
+test("runs the interruption-safe finalizer after the deadline fires", async () => {
+  const finalizerOperations: string[] = [];
+
+  await Effect.runPromiseExit(
+    withinWorkspaceE2EDeadline(
+      Effect.never as Effect.Effect<never, never>,
+      "access-code-creation e2e case",
+      20
+    ).pipe(
+      Effect.ensuring(
+        Effect.sync(() => finalizerOperations.push("case-finalizer"))
+      )
+    )
+  );
+
+  expect(finalizerOperations).toEqual(["case-finalizer"]);
 });
 
 const makeTestRunner = (): Runner => async (_command, args) => ({

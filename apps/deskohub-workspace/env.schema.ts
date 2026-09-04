@@ -1,3 +1,4 @@
+import { igloohomeApiTimeoutMaximumMilliseconds } from "@deskohub/igloohome/config";
 import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
 import {
@@ -86,6 +87,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   IGLOOHOME_API_TIMEOUT: toEnvSchema(
     Schema.FiniteFromString.check(Schema.isInt())
       .check(Schema.isGreaterThan(0))
+      .check(Schema.isLessThanOrEqualTo(igloohomeApiTimeoutMaximumMilliseconds))
       .pipe(Schema.withDecodingDefaultType(Effect.succeed(10_000)))
   ),
   IGLOOHOME_API_URL: toEnvSchema(

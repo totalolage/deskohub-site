@@ -4,7 +4,7 @@
 
 Workspace administration helps authorized operators find reservations and customers, understand a reservation's current condition and history, manage discounts and sales, and control issued administration sessions.
 
-The primary navigation includes Overview, Reservations, Customers, Invoices, Codes, Vouchers, Sales, and CLI sessions. Payment and booking records appear in the reservation that owns them instead of competing as separate primary workflows.
+The primary navigation includes Overview, Reservations, Customers, Invoices, Codes, Access codes, Vouchers, Sales, and CLI sessions. Codes manages discount codes; Access codes creates standalone door access codes. Payment and booking records appear in the reservation that owns them instead of competing as separate primary workflows.
 
 ## Invoice administration
 
@@ -13,6 +13,12 @@ Administration shows order and ad-hoc invoices in one sortable, paginated histor
 Reservation invoices are shown as paid. An operator can also mark an ad-hoc invoice as already paid and record its payment date. Paid invoices omit payment instructions. Positive-total unpaid ad-hoc invoices are shown as issued before their due date, due on that date, and overdue afterwards, using the current Prague calendar date. Zero-total and negative-total unpaid documents remain issued because they do not request payment. Email delivery is shown separately as sending, sent, or needing a resend.
 
 An operator can issue an ad-hoc service invoice to an existing Dotypos customer or a new customer reused by exact email. Each invoice records either a due date or an already-paid date. The reviewed billing identity and delivery email are saved to Dotypos before issuance. Creation requires at least one description and signed decimal price, uses a single configured invoice currency, and records the authenticated Basic-auth username and whether the operation came from the administration UI or `dhw`. The final confirmation shows the generated PDF preview and explicitly warns that creation is immutable and immediately emails both recipients; the final invoice number and issue time are assigned only after confirmation.
+
+## Access code creation
+
+Access codes creates standalone Igloohome door access codes that are independent of reservations. Operators create them at `/admin/access-codes`, through the administration API, or with `dhw access-codes create`. Each code requires a name of at most 60 characters and a window of 1 to 672 elapsed whole hours between an inclusive site-local start and an exclusive site-local end. Both times sit on the whole hour. Workspace interprets them in `Europe/Prague`. Creation targets one configured lock device and allows at most two live codes for the same device and identical window.
+
+The PIN appears once in the creation result and is never stored or retrievable. Replaying a completed attempt with the same identifier returns `already-created` without a PIN. An uncertain provider outcome is terminal: before creating another code for that window, an operator must check the lock over Bluetooth in the Igloohome app and remove the code if it is there. Each creation records the approving administrator and whether it came from the administration UI or `dhw`.
 
 ## Operator responsibilities
 
@@ -34,6 +40,8 @@ An unavailable external record never hides an existing Workspace reservation. Pr
 Customer contact search is protected. Contact values are not placed in shareable URLs or copied into Workspace records merely to support search. Filters may use non-sensitive identifiers, dates, reservation families, and business statuses.
 
 Secret Workspace access codes, payment security values, payment redirect addresses, free-form provider notes, and raw provider or analytics payloads are excluded from administration projections. Reservation access state, validity, device, provider credential identifier, and failure metadata are visible without the code itself.
+
+Standalone access-code creation keeps internal attempt evidence containing safe metadata and the final outcome only, never the PIN. That evidence supports reliable retries; it is not an operator-facing audit history.
 
 A definitively failed access issuance can be retried. An uncertain issuance can be retried only after an operator uses the Igloohome app over Bluetooth at the lock to remove the named credential or verify that it is absent, then explicitly confirms that cleanup. If cleanup cannot be confirmed, the possible credential must be allowed to expire instead of creating another one.
 

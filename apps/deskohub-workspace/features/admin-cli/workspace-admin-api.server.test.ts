@@ -1,17 +1,29 @@
+import "@/shared/testing/workspace-test-env";
+
 import { describe, expect, test } from "bun:test";
+import { IgloohomeService } from "@deskohub/igloohome";
 import {
   AdministrationActorUsername,
   AdministrationCanonicalPromotionCode,
   AdministrationDiscountCodeId,
   type AdministrationDiscountMutationType,
   AdministrationDotyposCustomerId,
+  AdministrationInstant,
+  AdministrationProviderCredentialId,
+  AdministrationStandaloneAccessCodeAttemptId,
+  AdministrationStandaloneAccessCodeCreateInput,
+  type AdministrationStandaloneAccessCodeCreationOutcomeType,
+  AdministrationStandaloneAccessCodeName,
+  AdministrationStandaloneAccessCodePin,
   AdministrationStoredDiscountId,
+  AdministrationWorkspaceSiteLocalWholeHourDateTime,
   CliAuthenticationChallenge,
   CliAuthenticationCode,
   CliBearerAuthentication,
   CliMutationInProgress,
   CliMutationRejected,
   CliMutationRequestId,
+  CliMutationUncertain,
   CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionId,
@@ -21,6 +33,11 @@ import {
 import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
+import {
+  StandaloneAccessCodeAdministration,
+  StandaloneAccessCodeCreationError,
+} from "@/features/access-codes";
+import { StandaloneAccessCodeAttemptLogRepository } from "@/features/access-codes/backend/standalone-access-code-attempt-log.repository";
 import {
   InvoiceAdministrationInProgressError,
   InvoiceAdministrationService,
@@ -79,6 +96,12 @@ const UnusedDiscountAdministration = Layer.succeed(
 const UnusedInvoiceAdministration = Layer.succeed(
   InvoiceAdministrationService,
   {} as InvoiceAdministrationService["Service"]
+);
+const UnusedStandaloneAccessCodeAdministration = Layer.succeed(
+  StandaloneAccessCodeAdministration,
+  {
+    create: () => Effect.die("not expected"),
+  } satisfies StandaloneAccessCodeAdministration["Service"]
 );
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
@@ -185,6 +208,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedReservationAccessAdministration),
       Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(UnusedCliAuthentication),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
@@ -623,6 +647,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
       Effect.provide(UnusedInvoiceAdministration),
+      Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(reservationAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
@@ -810,6 +835,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
       Effect.provide(UnusedInvoiceAdministration),
+      Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(discounts),
       Effect.provide(authentication),
@@ -1020,6 +1046,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
       Effect.provide(UnusedInvoiceAdministration),
+      Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(UnusedDiscountAdministration),
       Effect.provide(UnusedCliAuthentication),
@@ -1125,6 +1152,7 @@ describe("Workspace Admin API", () => {
       Effect.provide(AuthorizedCliRequest),
       Effect.provide(idempotency),
       Effect.provide(UnusedInvoiceAdministration),
+      Effect.provide(UnusedStandaloneAccessCodeAdministration),
       Effect.provide(UnusedReservationAdministration),
       Effect.provide(discounts),
       Effect.provide(UnusedCliAuthentication),
@@ -1145,5 +1173,466 @@ describe("Workspace Admin API", () => {
     expect(result.pending).toBeInstanceOf(CliMutationInProgress);
     expect(executions).toBe(1);
     expect(releases).toBe(1);
+  });
+});
+
+describe("standalone access-code CLI endpoint", () => {
+  const attemptId = Schema.decodeUnknownSync(
+    AdministrationStandaloneAccessCodeAttemptId
+  )("01980000-0000-7000-8000-000000000042");
+  const payload = {
+    attemptId,
+    input: Schema.decodeUnknownSync(
+      AdministrationStandaloneAccessCodeCreateInput
+    )({
+      name: "Booth A",
+      startsAt: "2026-09-10T10:00",
+      endsAt: "2026-09-10T12:00",
+    }),
+  };
+  const createdOutcome = {
+    outcome: "created",
+    attemptId,
+    providerCredentialId: Schema.decodeUnknownSync(
+      AdministrationProviderCredentialId
+    )("pin-1"),
+    name: Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)(
+      "Booth A"
+    ),
+    startsAt: Schema.decodeUnknownSync(
+      AdministrationWorkspaceSiteLocalWholeHourDateTime
+    )("2026-09-10T10:00"),
+    endsAt: Schema.decodeUnknownSync(
+      AdministrationWorkspaceSiteLocalWholeHourDateTime
+    )("2026-09-10T12:00"),
+    issuedAt: Schema.decodeUnknownSync(AdministrationInstant)(
+      "2026-09-10T08:00:00Z"
+    ),
+    pin: Schema.decodeUnknownSync(AdministrationStandaloneAccessCodePin)(
+      "7654321"
+    ),
+  } satisfies AdministrationStandaloneAccessCodeCreationOutcomeType;
+  const creationFailure = (
+    outcome: StandaloneAccessCodeCreationError["outcome"],
+    message: string
+  ) =>
+    new StandaloneAccessCodeCreationError({
+      attemptId,
+      outcome,
+      message,
+    });
+
+  const runAdministration = <A, E, R>(
+    bearer: Layer.Layer<CliBearerAuthentication>,
+    standalone: Layer.Layer<StandaloneAccessCodeAdministration>,
+    idempotency: Layer.Layer<CliMutationIdempotency>,
+    operation: Effect.Effect<A, E, R>
+  ) =>
+    operation.pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(bearer),
+      Effect.provide(standalone),
+      Effect.provide(idempotency),
+      Effect.provide(UnusedInvoiceAdministration),
+      Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(
+        Layer.succeed(
+          AdministrationService,
+          {} as AdministrationService["Service"]
+        )
+      ),
+      Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped
+    );
+
+  const createAccessCodeError = Effect.gen(function* () {
+    const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+      "administration",
+    ]);
+    return yield* client.administration
+      .createStandaloneAccessCode({ payload })
+      .pipe(Effect.flip);
+  });
+
+  test("discloses the PIN once and stores only PIN-free completion metadata", async () => {
+    const creations: unknown[] = [];
+    const completions: unknown[] = [];
+    const completedResults = new Map<string, unknown>();
+    let claimedOnce = false;
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: (input) =>
+        Effect.sync(() => {
+          creations.push(input);
+          return createdOutcome;
+        }),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: ({ requestId }) =>
+        Effect.sync(() => {
+          if (completedResults.has(requestId)) {
+            return {
+              kind: "completed" as const,
+              result: completedResults.get(requestId) as never,
+            };
+          }
+          if (claimedOnce) return { kind: "in-progress" as const };
+          claimedOnce = true;
+          return { kind: "claimed" as const };
+        }),
+      complete: ({ requestId, result }) =>
+        Effect.sync(() => {
+          completions.push(result);
+          completedResults.set(requestId, result);
+        }),
+      reclaimStale: () => Effect.succeed(false),
+      release: () => Effect.die("not expected"),
+    });
+
+    const [created, replayed] = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      Effect.gen(function* () {
+        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+          "administration",
+        ]);
+        const first = yield* client.administration.createStandaloneAccessCode({
+          payload,
+        });
+        const second = yield* client.administration.createStandaloneAccessCode({
+          payload,
+        });
+        return [first, second] as const;
+      })
+    ).pipe(Effect.runPromise);
+
+    expect(created).toMatchObject({ outcome: "created", pin: "7654321" });
+    expect(completions).toHaveLength(1);
+    expect(JSON.stringify(completions[0])).not.toContain("7654321");
+    expect(completions[0]).toEqual({
+      attemptId,
+      providerCredentialId: "pin-1",
+      name: "Booth A",
+      startsAt: "2026-09-10T10:00",
+      endsAt: "2026-09-10T12:00",
+      issuedAt: "2026-09-10T08:00:00Z",
+    });
+    expect(replayed).toMatchObject({ outcome: "already-created" });
+    expect("pin" in replayed).toBe(false);
+    expect(JSON.stringify(replayed)).not.toContain("7654321");
+    expect(creations).toHaveLength(1);
+    expect(creations[0]).toMatchObject({
+      attemptId,
+      source: "dhw-cli",
+      actor: "admin",
+    });
+  });
+
+  test("rejects a legacy CLI session before claiming the mutation ledger", async () => {
+    let claims = 0;
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () =>
+        Effect.sync(() => {
+          claims += 1;
+          return { kind: "claimed" as const };
+        }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () => Effect.void,
+    });
+
+    const error = await runAdministration(
+      AuthorizedCliRequest,
+      UnusedStandaloneAccessCodeAdministration,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliMutationRejected);
+    expect(error.message).toContain("dhw auth");
+    expect(claims).toBe(0);
+  });
+
+  test("rejects a mismatched attempt identity without calling the provider", async () => {
+    let creations = 0;
+    let releases = 0;
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.sync(() => {
+          creations += 1;
+          return createdOutcome;
+        }),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "mismatch" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliMutationRejected);
+    expect(error.message).toContain("different input");
+    expect(creations).toBe(0);
+    expect(releases).toBe(0);
+  });
+
+  test("releases the claim and rejects when creation is definitively rejected", async () => {
+    let releases = 0;
+    let completions = 0;
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.fail(
+          creationFailure(
+            "rejected",
+            "The standalone access-code request was rejected."
+          )
+        ),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () =>
+        Effect.sync(() => {
+          completions += 1;
+        }),
+      reclaimStale: () => Effect.succeed(false),
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliMutationRejected);
+    expect(error.message).toContain("rejected");
+    expect(releases).toBe(1);
+    expect(completions).toBe(0);
+  });
+
+  test("releases the claim and reports unavailability without completion", async () => {
+    let releases = 0;
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.fail(
+          creationFailure(
+            "unavailable",
+            "Standalone access-code creation is temporarily unavailable."
+          )
+        ),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliServiceUnavailable);
+    expect(releases).toBe(1);
+  });
+
+  test("keeps the claim and reports uncertainty without a replayable result", async () => {
+    let releases = 0;
+    let completions = 0;
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.fail(
+          creationFailure(
+            "ambiguous",
+            "The standalone access-code creation outcome is ambiguous."
+          )
+        ),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () =>
+        Effect.sync(() => {
+          completions += 1;
+        }),
+      reclaimStale: () => Effect.succeed(false),
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliMutationUncertain);
+    expect(releases).toBe(0);
+    expect(completions).toBe(0);
+  });
+
+  test("reports an unexpired in-progress claim without resuming", async () => {
+    let creations = 0;
+    let reclaims = 0;
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.sync(() => {
+          creations += 1;
+          return createdOutcome;
+        }),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "in-progress" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () =>
+        Effect.sync(() => {
+          reclaims += 1;
+          return false;
+        }),
+      release: () => Effect.void,
+    });
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliMutationInProgress);
+    expect(error.requestId).toBe(attemptId);
+    expect(reclaims).toBe(1);
+    expect(creations).toBe(0);
+  });
+
+  test("resumes a stale claim through the standalone attempt log without another provider call", async () => {
+    const providerCredentialId = Schema.decodeUnknownSync(
+      AdministrationProviderCredentialId
+    )("pin-already-issued");
+    const occurredAt = Temporal.Now.instant();
+    let providerCalls = 0;
+    let claimCalls = 0;
+    let appendTerminalCalls = 0;
+    const reclaims: Array<{
+      readonly requestId: string;
+      readonly staleMilliseconds: bigint;
+    }> = [];
+    const completions: unknown[] = [];
+    const attemptLog = Layer.mock(StandaloneAccessCodeAttemptLogRepository, {
+      claim: (input: { readonly attempt: { readonly attemptId: string } }) =>
+        Effect.sync(() => {
+          claimCalls += 1;
+          if (input.attempt.attemptId !== attemptId) {
+            return { kind: "mismatch" } as const;
+          }
+          return {
+            kind: "created" as const,
+            terminal: {
+              name: Schema.decodeUnknownSync(
+                AdministrationStandaloneAccessCodeName
+              )("Booth A"),
+              startsAtLocal: payload.input.startsAt,
+              endsAtLocal: payload.input.endsAt,
+              providerCredentialId,
+              occurredAt,
+            },
+          } as const;
+        }),
+      appendTerminal: () =>
+        Effect.sync(() => {
+          appendTerminalCalls += 1;
+          return true;
+        }),
+    });
+    const igloohome = Layer.mock(IgloohomeService, {
+      issueHourlyAlgoPin: () =>
+        Effect.sync(() => {
+          providerCalls += 1;
+          return { pin: "0000000", pinId: "unexpected" };
+        }),
+    });
+    const standalone = StandaloneAccessCodeAdministration.Default.pipe(
+      Layer.provide(Layer.mergeAll(attemptLog, igloohome))
+    );
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "in-progress" as const }),
+      complete: ({ result }) =>
+        Effect.sync(() => {
+          completions.push(result);
+        }),
+      reclaimStale: ({ requestId, reclaimedAt, staleBefore }) =>
+        Effect.sync(() => {
+          reclaims.push({
+            requestId,
+            staleMilliseconds:
+              reclaimedAt.epochNanoseconds - staleBefore.epochNanoseconds,
+          });
+          return true;
+        }),
+      release: () => Effect.die("not expected"),
+    });
+
+    const [outcome, storedResult] = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      Effect.gen(function* () {
+        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+          "administration",
+        ]);
+        const replayed =
+          yield* client.administration.createStandaloneAccessCode({
+            payload,
+          });
+        return [replayed, completions[0]] as const;
+      })
+    ).pipe(Effect.runPromise);
+
+    expect(outcome).toMatchObject({
+      outcome: "already-created",
+      attemptId,
+      providerCredentialId: "pin-already-issued",
+    });
+    expect("pin" in outcome).toBe(false);
+    expect(providerCalls).toBe(0);
+    expect(claimCalls).toBe(1);
+    expect(appendTerminalCalls).toBe(0);
+    expect(reclaims).toEqual([
+      { requestId: attemptId, staleMilliseconds: 60_000_000_000n },
+    ]);
+    expect(storedResult).toEqual({
+      attemptId,
+      providerCredentialId: "pin-already-issued",
+      name: "Booth A",
+      startsAt: "2026-09-10T10:00",
+      endsAt: "2026-09-10T12:00",
+      issuedAt: occurredAt.toString(),
+    });
+    expect(JSON.stringify(storedResult)).not.toContain("7654321");
   });
 });

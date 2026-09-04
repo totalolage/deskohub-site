@@ -4,6 +4,8 @@ import type {
   AdministrationDiscountMutationType,
   AdministrationReservationAccessGrantType,
   AdministrationReservationAccessMutationType,
+  AdministrationStandaloneAccessCodeCreateInputType,
+  AdministrationStandaloneAccessCodeResultType,
   AdministrationWorkspaceReservationIdType,
   CliBuildTargetType,
   CliMutationRequestIdType,
@@ -194,11 +196,16 @@ export type CliStoredMutation =
       readonly kind: "reservation-access";
       readonly reservationId: AdministrationWorkspaceReservationIdType;
       readonly mutation: AdministrationReservationAccessMutationType;
+    }
+  | {
+      readonly kind: "standalone-access-code";
+      readonly request: AdministrationStandaloneAccessCodeCreateInputType;
     };
 
 export type CliStoredMutationResult =
   | AdministrationDiscountMutationResultType
-  | AdministrationReservationAccessGrantType;
+  | AdministrationReservationAccessGrantType
+  | AdministrationStandaloneAccessCodeResultType;
 
 export type CliSessionRow = typeof cliSessions.$inferSelect;
 export type NewCliSessionRow = typeof cliSessions.$inferInsert;

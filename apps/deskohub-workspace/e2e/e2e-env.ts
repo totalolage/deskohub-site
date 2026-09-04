@@ -6,6 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import { createEnv } from "@t3-oss/env-core";
 import { Schema } from "effect";
+import { isAdminBasicAuthCredentialPair } from "./admin-basic-auth";
 import { urlStringSchema } from "../shared/utils/url-schema";
 
 const toEnvironmentSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
@@ -44,6 +45,15 @@ const optionalDirectPostgresUrl = toEnvironmentSchema(
   )
 );
 const nonEmptyString = toEnvironmentSchema(Schema.NonEmptyString);
+const optionalAdminBasicAuthPair = toEnvironmentSchema(
+  Schema.optional(
+    Schema.String.check(
+      Schema.makeFilter(isAdminBasicAuthCredentialPair, {
+        expected: "a Basic auth username:password credential",
+      })
+    )
+  )
+);
 const optionalUrl = toEnvironmentSchema(Schema.optional(urlStringSchema));
 const url = toEnvironmentSchema(urlStringSchema);
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
@@ -78,6 +88,7 @@ export const e2eEnvironmentSchema = Schema.Struct({
   TMPDIR: optionalNonEmptyString,
   USER: optionalNonEmptyString,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalNonEmptyString,
+  WORKSPACE_E2E_ADMIN_BASIC_AUTH: optionalAdminBasicAuthPair,
   WORKSPACE_E2E_EXECUTION_CONTEXT: toEnvironmentSchema(
     Schema.optional(Schema.Literals(["ci", "manual"]))
   ),
@@ -130,6 +141,8 @@ export const makeE2EEnvironment = (
       USER: runtimeEnvironment.USER,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         runtimeEnvironment.VERCEL_AUTOMATION_BYPASS_SECRET,
+      WORKSPACE_E2E_ADMIN_BASIC_AUTH:
+        runtimeEnvironment.WORKSPACE_E2E_ADMIN_BASIC_AUTH,
       WORKSPACE_E2E_BASE_URL: runtimeEnvironment.WORKSPACE_E2E_BASE_URL,
       WORKSPACE_E2E_ALLOCATION_SHARD:
         runtimeEnvironment.WORKSPACE_E2E_ALLOCATION_SHARD,

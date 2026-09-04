@@ -41,6 +41,9 @@ import {
   type AdministrationReservationLookupResultType,
   type AdministrationReservationPageType,
   type AdministrationReservationQueryType,
+  type AdministrationStandaloneAccessCodeAttemptIdType,
+  type AdministrationStandaloneAccessCodeCreateInputType,
+  type AdministrationStandaloneAccessCodeCreationOutcomeType,
   type AdministrationVoucherDetailType,
   type AdministrationVoucherIdType,
   type AdministrationWorkspaceReservationIdType,
@@ -52,6 +55,7 @@ import {
   CliMutationInProgress,
   CliMutationRejected,
   type CliMutationRequestIdType,
+  CliMutationUncertain,
   CliResourceNotFound,
   CliServiceUnavailable,
   type CliSessionAdministrationType,
@@ -314,6 +318,19 @@ interface IWorkspaceAdminApiClient {
     | CliApiRequestError
     | CliMutationRejected
     | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly createStandaloneAccessCode: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    attemptId: AdministrationStandaloneAccessCodeAttemptIdType,
+    input: AdministrationStandaloneAccessCodeCreateInputType
+  ) => Effect.Effect<
+    AdministrationStandaloneAccessCodeCreationOutcomeType,
+    | CliApiRequestError
+    | CliMutationInProgress
+    | CliMutationRejected
+    | CliMutationUncertain
     | CliSessionUnauthorized
     | CliServiceUnavailable
   >;
@@ -734,6 +751,31 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.mapError(sanitizeReservationMutationError)
         )
     ),
+    createStandaloneAccessCode: Effect.fn(
+      "WorkspaceAdminApiClient.createStandaloneAccessCode"
+    )(
+      (
+        accessToken,
+        attemptId: AdministrationStandaloneAccessCodeAttemptIdType,
+        input: AdministrationStandaloneAccessCodeCreateInputType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.createStandaloneAccessCode({
+              payload: { attemptId, input },
+            })
+          ),
+          Effect.retry({
+            schedule: Schedule.spaced("250 millis"),
+            times: 240,
+            while: (cause) =>
+              cause instanceof CliMutationInProgress ||
+              cause instanceof CliServiceUnavailable ||
+              HttpClientError.isHttpClientError(cause),
+          }),
+          Effect.mapError(sanitizeAccessCodeCreationError)
+        )
+    ),
     listSessions: Effect.fn("WorkspaceAdminApiClient.listSessions")(
       (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
         makeClient(accessToken).pipe(
@@ -913,5 +955,21 @@ const sanitizeInvoiceCreationError = (
     | Schema.SchemaError
 ) =>
   cause instanceof CliMutationInProgress || cause instanceof CliMutationRejected
+    ? cause
+    : sanitizeSessionError(cause);
+
+const sanitizeAccessCodeCreationError = (
+  cause:
+    | CliMutationInProgress
+    | CliMutationRejected
+    | CliMutationUncertain
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliMutationInProgress ||
+  cause instanceof CliMutationRejected ||
+  cause instanceof CliMutationUncertain
     ? cause
     : sanitizeSessionError(cause);

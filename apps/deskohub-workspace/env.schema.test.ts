@@ -90,6 +90,16 @@ describe("workspace environment schemas", () => {
     expect(() => decodeTimeout("0")).toThrow();
   });
 
+  test("bounds the Igloohome timeout at the shared per-request maximum", () => {
+    const decodeIgloohomeTimeout = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.IGLOOHOME_API_TIMEOUT
+    );
+
+    expect(decodeIgloohomeTimeout("20000")).toBe(20_000);
+    expect(() => decodeIgloohomeTimeout("20001")).toThrow();
+    expect(() => decodeIgloohomeTimeout("0")).toThrow();
+  });
+
   test("always requires the Igloohome target device and requires credentials only in production", () => {
     const previewCredentials = validateMissingIgloohomeEnvironment(
       "credentials",

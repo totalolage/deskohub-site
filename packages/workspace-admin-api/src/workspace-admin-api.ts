@@ -8,6 +8,7 @@ import {
   HttpApiSchema,
   HttpApiSecurity,
 } from "effect/unstable/httpapi";
+import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
 
 export const WORKSPACE_ADMIN_API_VERSION = "v1" as const;
 
@@ -219,6 +220,13 @@ export class CliMutationInProgress extends Schema.TaggedErrorClass<CliMutationIn
     message: Schema.String,
     requestId: CliMutationRequestId,
   }
+) {
+  static schema = this.pipe(HttpApiSchema.status("Conflict"));
+}
+
+export class CliMutationUncertain extends Schema.TaggedErrorClass<CliMutationUncertain>()(
+  "CliMutationUncertain",
+  { message: Schema.String }
 ) {
   static schema = this.pipe(HttpApiSchema.status("Conflict"));
 }
@@ -990,6 +998,190 @@ export const AdministrationReservationAccessMutation = Schema.Union([
 export type AdministrationReservationAccessMutation =
   typeof AdministrationReservationAccessMutation.Type;
 
+const minimumStandaloneAccessCodeDurationHours = 1;
+const maximumStandaloneAccessCodeDurationHours = 672;
+
+export const AdministrationInstant = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      Temporal.Instant.from(value);
+      return true;
+    } catch {
+      return false;
+    }
+  })
+)
+  .pipe(Schema.brand("Instant"))
+  .annotate({ identifier: "Instant" });
+export type AdministrationInstant = typeof AdministrationInstant.Type;
+
+export const AdministrationStandaloneAccessCodeAttemptId = uuidSchema
+  .pipe(Schema.brand("StandaloneAccessCodeAttemptId"))
+  .annotate({
+    identifier: "AdministrationStandaloneAccessCodeAttemptId",
+    description:
+      "Client-supplied identifier that keeps standalone access-code creation idempotent across retries.",
+  });
+export type AdministrationStandaloneAccessCodeAttemptId =
+  typeof AdministrationStandaloneAccessCodeAttemptId.Type;
+
+export const AdministrationStandaloneAccessCodeName = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(60)
+)
+  .pipe(Schema.brand("StandaloneAccessCodeName"))
+  .annotate({
+    identifier: "AdministrationStandaloneAccessCodeName",
+    description:
+      "Trimmed access label of at most 60 characters, matching the lock provider's access-name bound.",
+  });
+export type AdministrationStandaloneAccessCodeName =
+  typeof AdministrationStandaloneAccessCodeName.Type;
+
+const isWholeHourLocalTime = (dateTime: Temporal.PlainDateTime) =>
+  dateTime.minute === 0 &&
+  dateTime.second === 0 &&
+  dateTime.millisecond === 0 &&
+  dateTime.microsecond === 0 &&
+  dateTime.nanosecond === 0;
+
+const isWorkspaceSiteLocalWholeHourDateTime = (value: string) => {
+  try {
+    const dateTime = Temporal.PlainDateTime.from(value);
+    if (dateTime.toString({ smallestUnit: "minute" }) !== value) return false;
+    if (!isWholeHourLocalTime(dateTime)) return false;
+    const resolved = dateTime.toZonedDateTime(WORKSPACE_SITE_TIME_ZONE);
+    return resolved.toPlainDateTime().equals(dateTime);
+  } catch {
+    return false;
+  }
+};
+
+export const AdministrationWorkspaceSiteLocalWholeHourDateTime =
+  Schema.String.check(
+    Schema.makeFilter(isWorkspaceSiteLocalWholeHourDateTime, {
+      description:
+        "A site-local wall-clock date-time on the whole hour without an offset. Nonexistent spring-forward times are rejected; ambiguous fall-back times resolve to the earlier occurrence.",
+    })
+  )
+    .pipe(Schema.brand("WorkspaceSiteLocalDateTime"))
+    .annotate({
+      identifier: "AdministrationWorkspaceSiteLocalWholeHourDateTime",
+      description: `Site-local whole-hour wall-clock date-time interpreted in ${WORKSPACE_SITE_TIME_ZONE}.`,
+    });
+export type AdministrationWorkspaceSiteLocalWholeHourDateTime =
+  typeof AdministrationWorkspaceSiteLocalWholeHourDateTime.Type;
+
+const toWorkspaceSiteInstant = (
+  value: AdministrationWorkspaceSiteLocalWholeHourDateTime
+) =>
+  Temporal.PlainDateTime.from(value)
+    .toZonedDateTime(WORKSPACE_SITE_TIME_ZONE)
+    .toInstant();
+
+const administrationStandaloneAccessCodeWindow = Schema.makeFilter<{
+  readonly startsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
+  readonly endsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
+}>(({ startsAt, endsAt }) => {
+  const start = toWorkspaceSiteInstant(startsAt);
+  const end = toWorkspaceSiteInstant(endsAt);
+  const elapsedHours =
+    Number(end.epochNanoseconds - start.epochNanoseconds) / 3_600_000_000_000;
+
+  return (
+    Temporal.Instant.compare(end, start) > 0 &&
+    Number.isInteger(elapsedHours) &&
+    elapsedHours >= minimumStandaloneAccessCodeDurationHours &&
+    elapsedHours <= maximumStandaloneAccessCodeDurationHours
+  );
+});
+
+export const AdministrationStandaloneAccessCodePin = Schema.String.check(
+  Schema.isPattern(/^[0-9]{7,9}$/)
+)
+  .pipe(Schema.brand("StandaloneAccessCodePin"))
+  .annotate({
+    identifier: "AdministrationStandaloneAccessCodePin",
+    description:
+      "Seven-to-nine-digit access PIN, disclosed only by the created outcome.",
+  });
+export type AdministrationStandaloneAccessCodePin =
+  typeof AdministrationStandaloneAccessCodePin.Type;
+
+export const AdministrationProviderCredentialId = Schema.NonEmptyString.pipe(
+  Schema.brand("ProviderCredentialId")
+).annotate({
+  identifier: "AdministrationProviderCredentialId",
+  description: "Opaque credential identifier assigned by the access provider.",
+});
+export type AdministrationProviderCredentialId =
+  typeof AdministrationProviderCredentialId.Type;
+
+export const AdministrationStandaloneAccessCodeResult = Schema.Struct({
+  attemptId: AdministrationStandaloneAccessCodeAttemptId,
+  providerCredentialId: AdministrationProviderCredentialId,
+  name: AdministrationStandaloneAccessCodeName,
+  startsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime,
+  endsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime,
+  issuedAt: AdministrationInstant,
+}).annotate({
+  identifier: "AdministrationStandaloneAccessCodeResult",
+  description:
+    "PIN-free safe result metadata for a standalone access-code creation attempt.",
+});
+export type AdministrationStandaloneAccessCodeResult =
+  typeof AdministrationStandaloneAccessCodeResult.Type;
+
+export const AdministrationStandaloneAccessCodeCreateInput = Schema.Struct({
+  name: AdministrationStandaloneAccessCodeName,
+  startsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime,
+  endsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime,
+})
+  .check(administrationStandaloneAccessCodeWindow)
+  .annotate({
+    identifier: "AdministrationStandaloneAccessCodeCreateInput",
+    description:
+      "Strict standalone access-code creation request; site-local times are interpreted in the Workspace site time zone.",
+    parseOptions: { errors: "all", onExcessProperty: "error" },
+  });
+export type AdministrationStandaloneAccessCodeCreateInput =
+  typeof AdministrationStandaloneAccessCodeCreateInput.Type;
+
+export const AdministrationStandaloneAccessCodeCreateRequest = Schema.Struct({
+  attemptId: AdministrationStandaloneAccessCodeAttemptId,
+  input: AdministrationStandaloneAccessCodeCreateInput,
+}).annotate({
+  identifier: "AdministrationStandaloneAccessCodeCreateRequest",
+  description:
+    "CLI standalone access-code creation request; the client-generated attempt identifier is also the CLI mutation-ledger request identifier.",
+  parseOptions: { errors: "all", onExcessProperty: "error" },
+});
+export type AdministrationStandaloneAccessCodeCreateRequest =
+  typeof AdministrationStandaloneAccessCodeCreateRequest.Type;
+
+const AdministrationStandaloneAccessCodeCreatedOutcome = Schema.Struct({
+  ...AdministrationStandaloneAccessCodeResult.fields,
+  outcome: Schema.Literal("created"),
+  pin: AdministrationStandaloneAccessCodePin,
+});
+
+const AdministrationStandaloneAccessCodeAlreadyCreatedOutcome = Schema.Struct({
+  ...AdministrationStandaloneAccessCodeResult.fields,
+  outcome: Schema.Literal("already-created"),
+});
+
+export const AdministrationStandaloneAccessCodeCreationOutcome = Schema.Union([
+  AdministrationStandaloneAccessCodeCreatedOutcome,
+  AdministrationStandaloneAccessCodeAlreadyCreatedOutcome,
+]).annotate({
+  identifier: "AdministrationStandaloneAccessCodeCreationOutcome",
+  description:
+    "Standalone access-code creation outcome; the created variant discloses the one-time PIN, the already-created replay variant structurally cannot.",
+  parseOptions: { errors: "all", onExcessProperty: "error" },
+});
+export type AdministrationStandaloneAccessCodeCreationOutcome =
+  typeof AdministrationStandaloneAccessCodeCreationOutcome.Type;
+
 export const AdministrationReservationDetail = Schema.Struct({
   reservation: AdministrationReservationSummary,
   booking: Schema.NullOr(AdministrationBookingSummary),
@@ -1328,20 +1520,6 @@ export const AdministrationDiscountUpdateInput = Schema.Struct({
 });
 export type AdministrationDiscountUpdateInput =
   typeof AdministrationDiscountUpdateInput.Type;
-
-export const AdministrationInstant = Schema.String.check(
-  Schema.makeFilter((value) => {
-    try {
-      Temporal.Instant.from(value);
-      return true;
-    } catch {
-      return false;
-    }
-  })
-)
-  .pipe(Schema.brand("Instant"))
-  .annotate({ identifier: "Instant" });
-export type AdministrationInstant = typeof AdministrationInstant.Type;
 
 const administrationDiscountCodeWindow = Schema.makeFilter<{
   readonly validFrom: string | null;
@@ -1877,6 +2055,18 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       error: [
         CliMutationInProgress.schema,
         CliMutationRejected.schema,
+        CliServiceUnavailable.schema,
+      ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.post("createStandaloneAccessCode", "/access-codes", {
+      payload: AdministrationStandaloneAccessCodeCreateRequest,
+      success: AdministrationStandaloneAccessCodeCreationOutcome,
+      error: [
+        CliMutationInProgress.schema,
+        CliMutationRejected.schema,
+        CliMutationUncertain.schema,
         CliServiceUnavailable.schema,
       ],
     })

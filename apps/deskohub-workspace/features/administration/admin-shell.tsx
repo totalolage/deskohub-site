@@ -7,6 +7,7 @@ import {
   CircleGauge,
   FileText,
   Gift,
+  KeyRound,
   Menu,
   SquareTerminal,
   Ticket,
@@ -53,6 +54,7 @@ const navigation = [
       { href: "/admin/customers", icon: Users, label: "Customers" },
       { href: "/admin/invoices", icon: FileText, label: "Invoices" },
       { href: "/admin/codes", icon: Ticket, label: "Codes" },
+      { href: "/admin/access-codes", icon: KeyRound, label: "Access codes" },
       { href: "/admin/vouchers", icon: Gift, label: "Vouchers" },
       { href: "/admin/sales", icon: BadgePercent, label: "Sales" },
       {
@@ -136,6 +138,7 @@ function NavigationLink({
 
 const breadcrumbNames = new Map([
   ["admin", "Overview"],
+  ["access-codes", "Access codes"],
   ["bookings", "Bookings"],
   ["cli", "CLI"],
   ["codes", "Codes"],

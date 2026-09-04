@@ -8,13 +8,17 @@ import {
   AdministrationOperation,
   AdministrationOrder,
   AdministrationReservationSummary,
+  AdministrationStandaloneAccessCodeAttemptId,
+  AdministrationStandaloneAccessCodeCreateInput,
   AdministrationStoredDiscountId,
   CliAccessToken,
   CliAuthenticationChallenge,
   CliAuthenticationCode,
   CliAuthenticationVerifier,
   CliGrantToken,
+  CliMutationRejected,
   CliMutationRequestId,
+  CliMutationUncertain,
   CliSessionId,
 } from "@deskohub/workspace-admin-api";
 import { Clock, Duration, Effect, Layer, Redacted, Schema } from "effect";
@@ -24,6 +28,27 @@ import {
   CliApiRequestError,
   WorkspaceAdminApiClient,
 } from "./workspace-admin-api-client.service";
+
+const accessCodeAttemptId = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeAttemptId
+)("01980000-0000-7000-8000-000000000042");
+const accessCodeInput = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeCreateInput
+)({
+  name: "Booth A",
+  startsAt: "2026-09-10T10:00",
+  endsAt: "2026-09-10T12:00",
+});
+const createdAccessCodeOutcome = {
+  outcome: "created",
+  attemptId: accessCodeAttemptId,
+  providerCredentialId: "pin-1",
+  name: "Booth A",
+  startsAt: "2026-09-10T10:00",
+  endsAt: "2026-09-10T12:00",
+  issuedAt: "2026-09-10T08:00:00Z",
+  pin: "7654321",
+};
 
 describe("WorkspaceAdminApiClient", () => {
   test("uses the shared contract and configured preview headers", async () => {
@@ -947,6 +972,169 @@ describe("WorkspaceAdminApiClient", () => {
         {
           method: "DELETE",
           path: `/api/v1/cli/sessions/${sessionId}`,
+        },
+      ]);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("retries access-code creation with one captured attempt id and never on terminal outcomes", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("i".repeat(43))
+    );
+    const requests: Array<{
+      readonly method: string;
+      readonly path: string;
+      readonly payload: unknown;
+    }> = [];
+    let retryableAttempts = 0;
+    let terminalAttempts = 0;
+    let elapsedRetryMilliseconds = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const url = new URL(request.url);
+        requests.push({
+          method: request.method,
+          path: url.pathname,
+          payload: await request.json(),
+        });
+        if (
+          request.headers.get("authorization") !==
+          `Bearer ${Redacted.value(accessToken)}`
+        ) {
+          return new Response(null, { status: 401 });
+        }
+        if (requests.length === 1) {
+          return Response.json(
+            {
+              _tag: "CliMutationInProgress",
+              message: "The access-code creation is still being applied.",
+              requestId: accessCodeAttemptId,
+            },
+            { status: 409 }
+          );
+        }
+        if (requests.length === 2) {
+          retryableAttempts += 1;
+          return Response.json(
+            {
+              _tag: "CliServiceUnavailable",
+              message: "The administration API is temporarily unavailable.",
+            },
+            { status: 503 }
+          );
+        }
+        if (requests.length === 3) {
+          return Response.json(createdAccessCodeOutcome);
+        }
+        terminalAttempts += 1;
+        if (terminalAttempts === 1) {
+          return Response.json(
+            {
+              _tag: "CliMutationUncertain",
+              message: "The access-code creation outcome is uncertain.",
+            },
+            { status: 409 }
+          );
+        }
+        return Response.json(
+          {
+            _tag: "CliMutationRejected",
+            message: "The standalone access-code request was rejected.",
+          },
+          { status: 409 }
+        );
+      },
+    });
+
+    try {
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-access-code-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const [created, uncertain, rejected] = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        const created = yield* client.createStandaloneAccessCode(
+          accessToken,
+          accessCodeAttemptId,
+          accessCodeInput
+        );
+        const uncertain = yield* client
+          .createStandaloneAccessCode(
+            accessToken,
+            accessCodeAttemptId,
+            accessCodeInput
+          )
+          .pipe(Effect.flip);
+        const rejected = yield* client
+          .createStandaloneAccessCode(
+            accessToken,
+            accessCodeAttemptId,
+            accessCodeInput
+          )
+          .pipe(Effect.flip);
+        return [created, uncertain, rejected] as const;
+      }).pipe(
+        Effect.provide(clientLayer),
+        Effect.provideService(Clock.Clock, {
+          currentTimeMillisUnsafe: () => elapsedRetryMilliseconds,
+          currentTimeMillis: Effect.sync(() => elapsedRetryMilliseconds),
+          currentTimeNanosUnsafe: () =>
+            BigInt(elapsedRetryMilliseconds) * 1_000_000n,
+          currentTimeNanos: Effect.sync(
+            () => BigInt(elapsedRetryMilliseconds) * 1_000_000n
+          ),
+          sleep: (duration) =>
+            Effect.sync(() => {
+              elapsedRetryMilliseconds += Duration.toMillis(duration);
+            }),
+        }),
+        Effect.runPromise
+      );
+
+      expect(created).toMatchObject({ outcome: "created", pin: "7654321" });
+      expect(uncertain).toBeInstanceOf(CliMutationUncertain);
+      expect(rejected).toBeInstanceOf(CliMutationRejected);
+      expect(retryableAttempts).toBe(1);
+      expect(elapsedRetryMilliseconds).toBeGreaterThanOrEqual(500);
+      expect(requests).toHaveLength(5);
+      expect(
+        requests.map(({ method, path, payload }) => ({ method, path, payload }))
+      ).toEqual([
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
         },
       ]);
     } finally {
