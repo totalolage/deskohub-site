@@ -44,7 +44,7 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Retain the current production deployment for rollback
+      - name: Verify the production baseline before building
         id: rollback-target
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts resolve-previous
@@ -89,10 +89,14 @@ jobs:
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts verify-canonical
 
-      - name: Restore the retained production deployment
-        if: always() && steps.canonical-smoke.outcome == 'failure' && steps.rollback-target.outputs.previous_url != ''
+      - name: Restore the pre-request production baseline
+        if: >-
+          always() &&
+          (steps.promote.outputs.promotion_state == 'possibly-started' ||
+            steps.promote.outputs.promotion_state == 'recovery-needed' ||
+            (steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome == 'failure'))
         working-directory: apps/deskohub-workspace
-        run: bun scripts/production-release.ts rollback --url "${{ steps.rollback-target.outputs.previous_url }}"
+        run: bun scripts/production-release.ts rollback --url "${{ steps.promote.outputs.baseline_url }}"
 
       - name: Fail the release after rollback
         if: always() && failure()

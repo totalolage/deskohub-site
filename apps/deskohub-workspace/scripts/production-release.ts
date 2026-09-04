@@ -2,10 +2,16 @@ import { appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import { Schema } from "effect";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 const vercelApiOrigin = "https://api.vercel.com";
 
 const workspaceProductionDomain = "deskohub-workspace-site.vercel.app";
+const customerFacingProductionDomain = workspaceSiteConstants.brand.domain;
+const requiredProductionAliases = [
+  workspaceProductionDomain,
+  customerFacingProductionDomain,
+] as const;
 const signInPath = "/en-US/auth/sign-in";
 const authSessionPath = "/api/auth/get-session";
 const authSessionCacheControl = "private, no-store";
@@ -34,6 +40,26 @@ const stagedDeploymentResponse = Schema.Struct({
 
 const projectCronsResponse = Schema.Struct({
   crons: Schema.Array(Schema.Struct({ path: Schema.optional(Schema.String) })),
+});
+
+const projectAliasesPageResponse = Schema.Struct({
+  aliases: Schema.Array(
+    Schema.Struct({
+      alias: Schema.String,
+      deploymentId: Schema.optional(Schema.NullOr(Schema.String)),
+      deployment: Schema.optional(
+        Schema.NullOr(
+          Schema.Struct({
+            id: Schema.optional(Schema.NullOr(Schema.String)),
+            url: Schema.optional(Schema.NullOr(Schema.String)),
+          })
+        )
+      ),
+    })
+  ),
+  pagination: Schema.Struct({
+    next: Schema.NullOr(Schema.Number),
+  }),
 });
 
 const requireEnv = (name: string) => {
@@ -158,14 +184,16 @@ export const assertAuthSessionReady = async (
 };
 
 /**
- * Canonical production smoke: the anonymous session endpoint and the public
- * sign-in page must both be healthy. Deliberately never requests a magic
- * link; delivery is proven by the exact-SHA preview E2E.
+ * Production smoke against the customer-facing host from the business
+ * specification: the anonymous session endpoint and the public sign-in page
+ * must both be healthy on the domain customers actually use. Deliberately
+ * never requests a magic link; delivery is proven by the exact-SHA preview
+ * E2E.
  */
 export const assertCanonicalSignInReady = async (
   fetchImpl: typeof fetch = fetch
 ) => {
-  const base = `https://${workspaceProductionDomain}`;
+  const base = `https://${customerFacingProductionDomain}`;
   await assertAuthSessionReady(base, fetchImpl);
   const response = await fetchImpl(new URL(signInPath, base));
   if (response.status !== 200) {
@@ -382,6 +410,112 @@ export const verifyCanonicalAliasServes = async (
   }
 };
 
+type ProjectAliasRow = {
+  readonly alias: string;
+  readonly deploymentId: string | null;
+  readonly deploymentUrl: string | null;
+};
+
+/**
+ * Lists every alias of the configured Vercel project, following the Vercel
+ * pagination cursor (`pagination.next` becomes the `until` timestamp of the
+ * next page) until the listing is exhausted, so a required production alias
+ * can never be missed just because it sits on a later page.
+ */
+const listProjectAliases = async (
+  token: string,
+  projectId: string,
+  teamId: string | undefined
+): Promise<ProjectAliasRow[]> => {
+  const rows: ProjectAliasRow[] = [];
+  let until: number | undefined;
+  for (let page = 0; page < 100; page++) {
+    const payload = Schema.decodeUnknownSync(projectAliasesPageResponse)(
+      await vercelApiGet(
+        `/v4/aliases${vercelApiQuery({
+          projectId,
+          teamId,
+          limit: "100",
+          until: until === undefined ? undefined : String(until),
+        })}`,
+        token
+      )
+    );
+    rows.push(
+      ...payload.aliases.map((row) => ({
+        alias: row.alias,
+        deploymentId: row.deploymentId ?? null,
+        deploymentUrl: row.deployment?.url ?? null,
+      }))
+    );
+    const next = payload.pagination.next;
+    if (next === null) return rows;
+    until = next;
+  }
+  throw new Error("Vercel alias pagination did not terminate");
+};
+
+/**
+ * Bounded authoritative poll across every required production alias
+ * (the project alias and the customer-facing custom domain). Each alias is
+ * classified separately: an alias still serving another deployment is
+ * pending, while an alias missing from the fully paginated project listing
+ * can never serve this release and fails the promotion immediately.
+ */
+const waitForProductionAliases = async (
+  expected: { readonly id: string; readonly url: string },
+  input: {
+    readonly token: string;
+    readonly projectId: string;
+    readonly teamId: string | undefined;
+  } & PollingOptions,
+  dependencies: PollingDependencies = {}
+): Promise<boolean> => {
+  const { sleep, now } = makePolling(dependencies);
+  const deadline =
+    now() + (input.pollDeadlineMilliseconds ?? defaultPollDeadlineMilliseconds);
+  const interval =
+    input.pollIntervalMilliseconds ?? defaultPollIntervalMilliseconds;
+  while (now() < deadline) {
+    let aliases: ProjectAliasRow[];
+    try {
+      aliases = await listProjectAliases(
+        input.token,
+        input.projectId,
+        input.teamId
+      );
+    } catch {
+      await sleep(interval);
+      continue;
+    }
+    const missing = requiredProductionAliases.filter(
+      (alias) => !aliases.some((row) => row.alias === alias)
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `Production aliases are missing from the Vercel project and can never serve this release: ${missing.join(", ")}`
+      );
+    }
+    const unconfirmed = requiredProductionAliases.filter((alias) => {
+      const row = aliases.find((candidate) => candidate.alias === alias);
+      return (
+        !row ||
+        !aliasServesDeployment(
+          {
+            deploymentId: row.deploymentId,
+            deploymentUrl: row.deploymentUrl ?? "",
+            projectId: input.projectId,
+          },
+          expected
+        )
+      );
+    });
+    if (unconfirmed.length === 0) return true;
+    await sleep(interval);
+  }
+  return false;
+};
+
 export type PromotionInput = {
   readonly stagedUrl: string;
   readonly token: string;
@@ -391,28 +525,39 @@ export type PromotionInput = {
 
 export type PromotionDependencies = PollingDependencies & {
   readonly rollback?: (url: string) => Promise<void>;
+  readonly persist?: (output: string) => Promise<void>;
+};
+
+const persistReleaseOutput = async (output: string) => {
+  await appendFile(requireEnv("GITHUB_OUTPUT"), output);
 };
 
 /**
  * Promotes the staged production deployment so the outcome can never leave a
  * possibly promoted untested release behind:
  *
- * 1. The canonical alias is resolved before the request, giving the
- *    authoritative baseline for every later decision.
+ * 1. The canonical alias is resolved immediately before the request; that
+ *    authoritative baseline and a "promotion possibly started" state are
+ *    persisted through GITHUB_OUTPUT before any side effect, so the workflow
+ *    finalizer can always recover, even after a crash.
  * 2. The promotion request goes through the primary Vercel API, which
  *    classifies it without waiting: a 4xx answer is a definitive rejection
  *    before any change, while acceptance or an ambiguous failure may still
  *    complete server-side.
- * 3. The canonical alias is then polled within a bounded window; it is the
- *    only authority on whether the promotion took effect.
+ * 3. Every required production alias — the project alias and the
+ *    customer-facing custom domain — is then polled within a bounded
+ *    window; only terminal per-alias success declares the promotion done.
  * 4. When the window closes without an answer after a possibly-started
  *    promotion, the release rolls back to the baseline, verifies the alias,
- *    and fails — never exiting with production in an untested state.
+ *    and fails — never exiting with production in an untested state. A
+ *    rollback or verification failure persists "recovery-needed" so the
+ *    workflow's always() finalizer restores and re-verifies the baseline.
  */
 export const promoteStagedDeployment = async (
   input: PromotionInput,
   dependencies: PromotionDependencies = {}
 ): Promise<{ readonly promoted: boolean }> => {
+  const persist = dependencies.persist ?? persistReleaseOutput;
   const staged = await resolveStagedDeployment(
     input.stagedUrl,
     input.token,
@@ -429,47 +574,70 @@ export const promoteStagedDeployment = async (
     input.projectId,
     input.teamId
   );
+  process.stdout.write(`::add-mask::${baseline.deploymentUrl}\n`);
+  await persist(`baseline_url=${baseline.deploymentUrl}\n`);
+
+  let pollingFailure: unknown;
   if (
-    aliasServesDeployment(baseline, { id: staged.id, url: input.stagedUrl })
+    !aliasServesDeployment(baseline, { id: staged.id, url: input.stagedUrl })
   ) {
+    await persist("promotion_state=possibly-started\n");
+    const requestOutcome = await requestPromotion(
+      input.projectId,
+      staged.id,
+      input.token,
+      input.teamId
+    );
+    if (requestOutcome === "rejected") {
+      await persist("promotion_state=rejected\n");
+      throw new Error(
+        "Vercel rejected the promotion request; the previous deployment is still serving production"
+      );
+    }
+  }
+
+  let promoted: boolean;
+  try {
+    promoted = await waitForProductionAliases(
+      { id: staged.id, url: input.stagedUrl },
+      input,
+      dependencies
+    );
+  } catch (cause) {
+    promoted = false;
+    pollingFailure = cause;
+  }
+  if (promoted) {
+    await persist("promoted=true\npromotion_state=promoted\n");
     return { promoted: true };
   }
 
-  const requestOutcome = await requestPromotion(
-    input.projectId,
-    staged.id,
-    input.token,
-    input.teamId
-  );
-  if (requestOutcome === "rejected") {
-    throw new Error(
-      "Vercel rejected the promotion request; the previous deployment is still serving production"
-    );
-  }
-
-  const promoted = await waitForCanonicalAlias(
-    { id: staged.id, url: input.stagedUrl },
-    input,
-    dependencies
-  );
-  if (promoted) return { promoted: true };
-
   const recovery =
     dependencies.rollback ?? (async (url: string) => rollbackToDeployment(url));
-  await recovery(baseline.deploymentUrl);
-  const verified = await waitForCanonicalAlias(
-    { id: baseline.deploymentId, url: baseline.deploymentUrl },
-    input,
-    dependencies
-  );
-  if (!verified) {
-    throw new Error(
-      "Rollback verification failed after an ambiguous promotion: the canonical production alias does not serve the baseline deployment"
+  try {
+    await recovery(baseline.deploymentUrl);
+    const verified = await waitForCanonicalAlias(
+      { id: baseline.deploymentId, url: baseline.deploymentUrl },
+      input,
+      dependencies
     );
+    if (!verified) {
+      throw new Error(
+        "Rollback verification failed after an ambiguous promotion: the canonical production alias does not serve the baseline deployment"
+      );
+    }
+    await persist("promotion_state=restored\n");
+  } catch (cause) {
+    await persist("promotion_state=recovery-needed\n");
+    throw cause instanceof Error ? cause : new Error(String(cause));
   }
-  throw new Error(
-    "The promotion outcome stayed ambiguous past the polling deadline, so production was rolled back to the baseline deployment and the release failed"
-  );
+  throw pollingFailure instanceof Error
+    ? pollingFailure
+    : new Error(
+        pollingFailure
+          ? String(pollingFailure)
+          : "The promotion outcome stayed ambiguous past the polling deadline, so production was rolled back to the baseline deployment and the release failed"
+      );
 };
 
 const usage = (message?: string): never => {
@@ -511,16 +679,12 @@ const run = async () => {
       return;
     }
     case "promote": {
-      const outcome = await promoteStagedDeployment({
+      await promoteStagedDeployment({
         stagedUrl: readUrlOption(),
         token: vercelToken,
         projectId,
         teamId,
       });
-      await appendFile(
-        requireEnv("GITHUB_OUTPUT"),
-        `promoted=${outcome.promoted ? "true" : "false"}\n`
-      );
       return;
     }
     case "rollback": {

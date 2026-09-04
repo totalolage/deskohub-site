@@ -7,18 +7,20 @@ const workflowPath = resolve(
 );
 
 const readWorkflow = async () => Bun.file(workflowPath).text();
+const readScript = async () =>
+  Bun.file(resolve(import.meta.dir, "production-release.ts")).text();
 
 describe("deploy-workspace-production workflow", () => {
-  test("retains the previous deployment before building the staged release", async () => {
+  test("gates the release on the production baseline before building and promoting", async () => {
     const workflow = await readWorkflow();
-    const retainIndex = workflow.indexOf(
-      "Retain the current production deployment for rollback"
+    const gateIndex = workflow.indexOf(
+      "Verify the production baseline before building"
     );
     const buildIndex = workflow.indexOf("Build staged production deployment");
     const promoteIndex = workflow.indexOf("Promote production deployment");
 
-    expect(retainIndex).toBeGreaterThan(-1);
-    expect(retainIndex).toBeLessThan(buildIndex);
+    expect(gateIndex).toBeGreaterThan(-1);
+    expect(gateIndex).toBeLessThan(buildIndex);
     expect(buildIndex).toBeLessThan(promoteIndex);
     expect(workflow).toContain(
       "bun scripts/production-release.ts resolve-previous"
@@ -46,29 +48,6 @@ describe("deploy-workspace-production workflow", () => {
     );
   });
 
-  test("restores the retained deployment when the canonical smoke fails", async () => {
-    const workflow = await readWorkflow();
-    const smokeIndex = workflow.indexOf(
-      "Probe canonical production after promotion"
-    );
-    const rollbackIndex = workflow.indexOf(
-      "Restore the retained production deployment"
-    );
-    const failIndex = workflow.indexOf("Fail the release after rollback");
-
-    expect(smokeIndex).toBeGreaterThan(-1);
-    expect(rollbackIndex).toBeGreaterThan(smokeIndex);
-    expect(failIndex).toBeGreaterThan(rollbackIndex);
-    expect(workflow).toContain(
-      "if: always() && steps.canonical-smoke.outcome == 'failure'"
-    );
-    expect(workflow).toContain("steps.rollback-target.outputs.previous_url");
-    expect(workflow).toContain("bun scripts/production-release.ts rollback");
-    expect(workflow).toContain(
-      "bun scripts/production-release.ts verify-canonical"
-    );
-  });
-
   test("promotes through the script so a failed promotion request cannot skip recovery", async () => {
     const workflow = await readWorkflow();
     const promoteStep = workflow.indexOf("Promote production deployment");
@@ -84,43 +63,109 @@ describe("deploy-workspace-production workflow", () => {
     expect(workflow).not.toMatch(/vercel@\d[\d.]* promote/);
   });
 
-  test("never leaves a possibly promoted release untested or unrestored", async () => {
+  test("persists the pre-request baseline before the promotion request", async () => {
+    const script = await readScript();
+
+    expect(script).toContain("baseline_url=");
+    expect(script).toContain("promotion_state=possibly-started");
+    expect(script.indexOf("promotion_state=possibly-started")).toBeLessThan(
+      script.indexOf("requestPromotion(")
+    );
+  });
+
+  test("restores the pre-request baseline, never the stale pre-build retention target", async () => {
     const workflow = await readWorkflow();
+    const script = await readScript();
+
+    expect(workflow).not.toContain(
+      "steps.rollback-target.outputs.previous_url"
+    );
+    expect(workflow).toContain(
+      `bun scripts/production-release.ts rollback --url "\${{ steps.promote.outputs.baseline_url }}"`
+    );
+    expect(script).toMatch(/baseline_url=/);
+  });
+
+  test("runs an always() finalizer while promotion is possibly started but unresolved", async () => {
+    const workflow = await readWorkflow();
+    const smokeIndex = workflow.indexOf(
+      "Probe canonical production after promotion"
+    );
+    const restoreIndex = workflow.indexOf(
+      "Restore the pre-request production baseline"
+    );
+    const failIndex = workflow.indexOf("Fail the release after rollback");
+
+    expect(smokeIndex).toBeGreaterThan(-1);
+    expect(restoreIndex).toBeGreaterThan(smokeIndex);
+    expect(failIndex).toBeGreaterThan(restoreIndex);
+
+    const restoreStep = workflow.slice(restoreIndex, failIndex);
+    expect(restoreStep).toContain("if: >-");
+    expect(restoreStep).toContain("always()");
+    expect(restoreStep).toContain(
+      "steps.promote.outputs.promotion_state == 'possibly-started'"
+    );
+    expect(restoreStep).toContain(
+      "steps.promote.outputs.promotion_state == 'recovery-needed'"
+    );
+    expect(restoreStep).toContain(
+      "(steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome == 'failure')"
+    );
+
+    const failStep = workflow.slice(failIndex);
+    expect(failStep).toContain("if: always() && failure()");
+  });
+
+  test("smokes the customer-facing production host only after a confirmed promotion", async () => {
+    const workflow = await readWorkflow();
+    const script = await readScript();
+    const siteConstants = await Bun.file(
+      resolve(import.meta.dir, "../shared/utils/site-constants.ts")
+    ).text();
 
     expect(workflow).toContain(
       "if: always() && steps.promote.outputs.promoted == 'true'"
     );
-    expect(workflow).toContain("if: always() && failure()");
+    expect(workflow).toContain(
+      "bun scripts/production-release.ts verify-canonical"
+    );
+    expect(script).toContain("customerFacingProductionDomain");
+    expect(script).toContain("@/shared/utils/site-constants");
+    expect(siteConstants).toContain('domain: "workspace.deskohub.cz"');
+  });
+
+  test("never leaves a possibly promoted release untested or unrestored", async () => {
+    const workflow = await readWorkflow();
+
     expect(workflow).toContain("steps.promote.outputs.promoted");
+    expect(workflow).toContain("if: always() && failure()");
+    expect(workflow).toContain(
+      "steps.promote.outputs.promotion_state == 'recovery-needed'"
+    );
     expect(workflow).toContain("bun scripts/production-release.ts promote");
   });
 
   test("rolls the release back through the script's Vercel rollback operation", async () => {
     const workflow = await readWorkflow();
-    const script = await Bun.file(
-      resolve(import.meta.dir, "production-release.ts")
-    ).text();
+    const script = await readScript();
 
     expect(script).toMatch(/vercel@\d[\d.]* rollback/);
     expect(script).not.toMatch(/vercel@\d[\d.]* promote/);
     expect(workflow).not.toMatch(/rollback[^\n]*vercel@\d[\d.]* promote/);
     expect(workflow).toContain(
-      `bun scripts/production-release.ts rollback --url "\${{ steps.rollback-target.outputs.previous_url }}"`
+      "bun scripts/production-release.ts rollback --url"
     );
   });
 
-  test("publishes the rollback target through GITHUB_OUTPUT for the rollback condition", async () => {
+  test("publishes recovery state through GITHUB_OUTPUT for the workflow conditions", async () => {
     const workflow = await readWorkflow();
-    const script = await Bun.file(
-      resolve(import.meta.dir, "production-release.ts")
-    ).text();
+    const script = await readScript();
 
     expect(script).toContain("GITHUB_OUTPUT");
-    expect(script).toMatch(/previous_url=/);
     expect(script).toContain("::add-mask::");
-    expect(workflow).toContain(
-      "steps.rollback-target.outputs.previous_url != ''"
-    );
+    expect(workflow).toContain("steps.promote.outputs.baseline_url");
+    expect(workflow).toContain("steps.promote.outputs.promotion_state");
     expect(workflow).toContain(
       "bun scripts/production-release.ts rollback --url"
     );

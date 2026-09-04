@@ -31,6 +31,20 @@ type VercelApiPayload =
         readonly id: string | null;
         readonly url: string | null;
       };
+    }
+  | {
+      readonly aliases?: readonly {
+        readonly alias: string;
+        readonly deploymentId?: string | null;
+        readonly deployment?: {
+          readonly id?: string | null;
+          readonly url?: string | null;
+        };
+      }[];
+      readonly pagination?: {
+        readonly count: number;
+        readonly next: number | null;
+      };
     };
 
 const jsonResponse = (payload: VercelApiPayload, status = 200) =>
@@ -109,11 +123,11 @@ describe("workspace production release checks", () => {
     ).rejects.toThrow("failed with 503");
   });
 
-  test("probes the canonical production sign-in page and session endpoint", async () => {
-    const paths: string[] = [];
+  test("probes the customer-facing production host for the session endpoint and sign-in page", async () => {
+    const requests: URL[] = [];
     await assertCanonicalSignInReady(async (input) => {
       const url = new URL(input.toString());
-      paths.push(url.pathname);
+      requests.push(url);
       if (url.pathname === "/api/auth/get-session") {
         return nullSessionResponse();
       }
@@ -122,7 +136,14 @@ describe("workspace production release checks", () => {
       });
     });
 
-    expect(paths).toEqual(["/api/auth/get-session", "/en-US/auth/sign-in"]);
+    expect(requests.map((request) => request.host)).toEqual([
+      "workspace.deskohub.cz",
+      "workspace.deskohub.cz",
+    ]);
+    expect(requests.map((request) => request.pathname)).toEqual([
+      "/api/auth/get-session",
+      "/en-US/auth/sign-in",
+    ]);
   });
 
   test("never sends a production magic link as a release probe", async () => {
@@ -143,7 +164,7 @@ describe("workspace production release checks", () => {
     );
   });
 
-  test("rejects a canonical sign-in page without the magic-link form", async () => {
+  test("rejects a sign-in page without the magic-link form on the customer-facing host", async () => {
     await expect(
       assertCanonicalSignInReady(async (input) => {
         const url = new URL(input.toString());
@@ -398,22 +419,37 @@ describe("workspace production release checks", () => {
     expect(source).toContain("::add-mask::");
   });
 
+  type DeploymentState = "baseline" | "staged";
+
   const promotionEnvironment = () => {
     const requests: { readonly method: string; readonly url: URL }[] = [];
     let postStatus = 202;
     let clock = 0;
-    let aliasAt: (clock: number) => VercelApiPayload = () =>
-      ({
-        projectId: "prj_test",
-        deployment: {
-          id: "dpl_baseline",
-          url: "https://workspace-baseline.vercel.app",
-        },
-      }) as VercelApiPayload;
-    const promotedAlias = {
-      projectId: "prj_test",
-      deployment: { id: "dpl_staged", url: "workspace-staged.vercel.app" },
-    } as VercelApiPayload;
+    let baselineDeployment: { readonly id: string; readonly url: string } = {
+      id: "dpl_baseline",
+      url: "https://workspace-baseline.vercel.app",
+    };
+    let aliasServes: (now: number) => DeploymentState = () => "baseline";
+    let customDomainServes: (
+      now: number
+    ) => DeploymentState | "missing" | "follow" = () => "follow";
+    let splitAliasPages = false;
+    const persisted: string[] = [];
+    const stagedDeployment = {
+      id: "dpl_staged",
+      url: "workspace-staged.vercel.app",
+    } as const;
+    const customDomainStateAt = (now: number): DeploymentState | "missing" => {
+      const state = customDomainServes(now);
+      return state === "follow" ? aliasServes(now) : state;
+    };
+    const deploymentFor = (state: DeploymentState) =>
+      state === "baseline" ? baselineDeployment : stagedDeployment;
+    const aliasRow = (alias: string, state: DeploymentState | "missing") => {
+      if (state === "missing") return undefined;
+      const deployment = deploymentFor(state);
+      return { alias, deploymentId: deployment.id, deployment };
+    };
     const mockFetch: typeof globalThis.fetch = (input, init) => {
       const url = new URL(input.toString());
       requests.push({
@@ -433,30 +469,80 @@ describe("workspace production release checks", () => {
         );
       }
       if (url.pathname === "/v4/aliases/deskohub-workspace-site.vercel.app") {
-        return Promise.resolve(jsonResponse(aliasAt(clock)));
+        return Promise.resolve(
+          jsonResponse({
+            projectId: "prj_test",
+            deployment: deploymentFor(aliasServes(clock)),
+          })
+        );
+      }
+      if (url.pathname === "/v4/aliases") {
+        if (splitAliasPages) {
+          const until = url.searchParams.get("until");
+          if (until === null) {
+            return Promise.resolve(
+              jsonResponse({
+                aliases: [
+                  aliasRow("workspace.deskohub.cz", customDomainStateAt(clock)),
+                ].filter((row) => row !== undefined),
+                pagination: { count: 1, next: 123 },
+              })
+            );
+          }
+          return Promise.resolve(
+            jsonResponse({
+              aliases: [
+                aliasRow(
+                  "deskohub-workspace-site.vercel.app",
+                  aliasServes(clock)
+                ),
+              ].filter((row) => row !== undefined),
+              pagination: { count: 1, next: null },
+            })
+          );
+        }
+        const rows = [
+          aliasRow("deskohub-workspace-site.vercel.app", aliasServes(clock)),
+          aliasRow("workspace.deskohub.cz", customDomainStateAt(clock)),
+        ].filter((row) => row !== undefined);
+        return Promise.resolve(
+          jsonResponse({
+            aliases: rows,
+            pagination: { count: rows.length, next: null },
+          })
+        );
       }
       return Promise.resolve(new Response("Not found", { status: 404 }));
     };
     return {
       requests,
-      promotedAlias,
+      persisted,
       setPostStatus: (status: number) => {
         postStatus = status;
       },
+      rebaseProduction: (baseline: {
+        readonly id: string;
+        readonly url: string;
+      }) => {
+        baselineDeployment = baseline;
+      },
       serveAliasUntil: (flipClock: number) => {
-        aliasAt = (now) =>
-          now < flipClock
-            ? ({
-                projectId: "prj_test",
-                deployment: {
-                  id: "dpl_baseline",
-                  url: "https://workspace-baseline.vercel.app",
-                },
-              } as VercelApiPayload)
-            : promotedAlias;
+        aliasServes = (now) => (now < flipClock ? "baseline" : "staged");
       },
       serveStagedAliasImmediately: () => {
-        aliasAt = () => promotedAlias;
+        aliasServes = () => "staged";
+      },
+      restoreBaselineAlias: () => {
+        aliasServes = () => "baseline";
+      },
+      keepCustomDomainOnBaseline: () => {
+        customDomainServes = () => "baseline";
+      },
+      dropCustomDomainAlias: () => {
+        customDomainServes = () => "missing";
+      },
+      splitAliasPagesIntoTwoRequests: () => {
+        splitAliasPages = true;
       },
       mockFetch,
       requestsMade: () =>
@@ -467,6 +553,12 @@ describe("workspace production release checks", () => {
           return Promise.resolve();
         },
         now: () => clock,
+      },
+      persistDeps: {
+        persist: (output: string) => {
+          persisted.push(output);
+          return Promise.resolve();
+        },
       },
     };
   };
@@ -486,12 +578,12 @@ describe("workspace production release checks", () => {
         pollIntervalMilliseconds: 30_000,
         ...overrides,
       },
-      { ...environment.virtualDeps, ...deps }
+      { ...environment.virtualDeps, ...environment.persistDeps, ...deps }
     ).catch((error: Error) => {
       throw new Error(error.message);
     });
 
-  test("promotes a ready staged deployment and reports success once the canonical alias serves it", async () => {
+  test("promotes a ready staged deployment and reports success once every production alias serves it", async () => {
     const environment = promotionEnvironment();
     environment.serveAliasUntil(30_000);
     mockGlobalFetch(environment.mockFetch);
@@ -502,6 +594,32 @@ describe("workspace production release checks", () => {
     expect(environment.requestsMade()).toContain(
       "POST /v10/projects/prj_test/promote/dpl_staged"
     );
+    expect(environment.persisted[0]).toBe(
+      "baseline_url=https://workspace-baseline.vercel.app\n"
+    );
+    expect(environment.persisted).toContain(
+      "promoted=true\npromotion_state=promoted\n"
+    );
+  });
+
+  test("confirms promotion across every production alias, following alias pagination", async () => {
+    const environment = promotionEnvironment();
+    environment.serveAliasUntil(30_000);
+    environment.splitAliasPagesIntoTwoRequests();
+    mockGlobalFetch(environment.mockFetch);
+
+    const outcome = await promote(environment);
+
+    expect(outcome).toEqual({ promoted: true });
+    const aliasRequests = environment.requests.filter(
+      (request) => request.url.pathname === "/v4/aliases"
+    );
+    expect(aliasRequests.length).toBeGreaterThanOrEqual(2);
+    expect(
+      aliasRequests.some(
+        (request) => request.url.searchParams.get("until") === "123"
+      )
+    ).toBe(true);
   });
 
   test("requests the promotion through the primary Vercel API, not a CLI wait", async () => {
@@ -532,6 +650,7 @@ describe("workspace production release checks", () => {
     expect(
       environment.requestsMade().some((request) => request.startsWith("POST"))
     ).toBe(false);
+    expect(environment.persisted).toEqual([]);
   });
 
   test("does not request a promotion when the canonical alias already serves the staged deployment", async () => {
@@ -547,7 +666,7 @@ describe("workspace production release checks", () => {
     ).toBe(false);
   });
 
-  test("fails without rollback when Vercel definitively rejects the promotion request", async () => {
+  test("fails without recovery when Vercel definitively rejects the promotion request", async () => {
     const environment = promotionEnvironment();
     environment.setPostStatus(409);
     mockGlobalFetch(environment.mockFetch);
@@ -558,9 +677,10 @@ describe("workspace production release checks", () => {
     );
 
     expect(rollback).not.toHaveBeenCalled();
+    expect(environment.persisted).toContain("promotion_state=rejected\n");
   });
 
-  test("keeps polling a pending promotion until the canonical alias eventually changes", async () => {
+  test("keeps polling a pending promotion until every production alias eventually changes", async () => {
     const environment = promotionEnvironment();
     environment.serveAliasUntil(90_000);
     mockGlobalFetch(environment.mockFetch);
@@ -570,6 +690,46 @@ describe("workspace production release checks", () => {
     });
 
     expect(outcome).toEqual({ promoted: true });
+  });
+
+  test("does not declare promotion while the custom production domain still serves the baseline", async () => {
+    const environment = promotionEnvironment();
+    environment.serveAliasUntil(30_000);
+    environment.keepCustomDomainOnBaseline();
+    mockGlobalFetch(environment.mockFetch);
+    const rollbackUrls: string[] = [];
+    const rollback = mock((url: string) => {
+      rollbackUrls.push(url);
+      environment.restoreBaselineAlias();
+      return Promise.resolve();
+    });
+
+    await expect(promote(environment, {}, { rollback })).rejects.toThrow(
+      "ambiguous"
+    );
+
+    expect(rollbackUrls).toEqual(["https://workspace-baseline.vercel.app"]);
+    expect(environment.persisted).toContain("promotion_state=restored\n");
+  });
+
+  test("fails the release when the custom production domain alias is missing from the Vercel project", async () => {
+    const environment = promotionEnvironment();
+    environment.serveAliasUntil(30_000);
+    environment.dropCustomDomainAlias();
+    mockGlobalFetch(environment.mockFetch);
+    const rollbackUrls: string[] = [];
+    const rollback = mock((url: string) => {
+      rollbackUrls.push(url);
+      environment.restoreBaselineAlias();
+      return Promise.resolve();
+    });
+
+    await expect(promote(environment, {}, { rollback })).rejects.toThrow(
+      "workspace.deskohub.cz"
+    );
+
+    expect(rollbackUrls).toEqual(["https://workspace-baseline.vercel.app"]);
+    expect(environment.persisted).toContain("promotion_state=restored\n");
   });
 
   test("rolls back to the baseline and verifies before failing an ambiguous promotion", async () => {
@@ -587,16 +747,76 @@ describe("workspace production release checks", () => {
     );
 
     expect(rollbackUrls).toEqual(["https://workspace-baseline.vercel.app"]);
+    expect(environment.persisted[0]).toBe(
+      "baseline_url=https://workspace-baseline.vercel.app\n"
+    );
+    expect(environment.persisted[1]).toBe("promotion_state=possibly-started\n");
+    expect(environment.persisted).toContain("promotion_state=restored\n");
   });
 
-  test("fails the release when the recovery rollback cannot be verified on the canonical alias", async () => {
+  test("persists recovery-needed so the workflow finalizer restores the baseline when recovery verification fails", async () => {
     const environment = promotionEnvironment();
     environment.serveAliasUntil(60_000);
     mockGlobalFetch(environment.mockFetch);
-    const rollback = mock((_url: string) => Promise.resolve());
+    const rollbackUrls: string[] = [];
+    const rollback = mock((url: string) => {
+      rollbackUrls.push(url);
+      return Promise.resolve();
+    });
 
     await expect(promote(environment, {}, { rollback })).rejects.toThrow(
       "verification"
+    );
+
+    expect(environment.persisted).toContain(
+      "promotion_state=recovery-needed\n"
+    );
+
+    environment.restoreBaselineAlias();
+    await expect(
+      verifyCanonicalAliasServes(
+        "https://workspace-baseline.vercel.app",
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: "team_test",
+          pollDeadlineMilliseconds: 60_000,
+          pollIntervalMilliseconds: 30_000,
+        },
+        environment.virtualDeps
+      )
+    ).resolves.toBeUndefined();
+    expect(rollbackUrls).toEqual(["https://workspace-baseline.vercel.app"]);
+  });
+
+  test("recovers to the immediate pre-request baseline, never the pre-build retained target", async () => {
+    const environment = promotionEnvironment();
+    environment.setPostStatus(503);
+    mockGlobalFetch(environment.mockFetch);
+    const retained = await resolveProductionRollbackTarget(
+      "token",
+      "prj_test",
+      "team_test"
+    );
+    environment.rebaseProduction({
+      id: "dpl_rebased",
+      url: "https://workspace-rebased.vercel.app",
+    });
+    const rollbackUrls: string[] = [];
+    const rollback = mock((url: string) => {
+      rollbackUrls.push(url);
+      environment.restoreBaselineAlias();
+      return Promise.resolve();
+    });
+
+    await expect(promote(environment, {}, { rollback })).rejects.toThrow(
+      "rolled back"
+    );
+
+    expect(retained.url).toBe("https://workspace-baseline.vercel.app");
+    expect(rollbackUrls).toEqual(["https://workspace-rebased.vercel.app"]);
+    expect(environment.persisted[0]).toBe(
+      "baseline_url=https://workspace-rebased.vercel.app\n"
     );
   });
 
