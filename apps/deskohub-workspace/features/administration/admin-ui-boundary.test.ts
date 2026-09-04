@@ -140,8 +140,10 @@ describe("administration UI boundaries", () => {
       "loadAdministrationReservationBreadcrumbLabel"
     );
     expect(breadcrumbs).toContain("loadDiscountAdminCustomerBreadcrumbLabel");
+    expect(breadcrumbs).toContain("loadInvoiceAdministrationBreadcrumbLabel");
     expect(breadcrumbs).not.toContain("loadAdministrationBooking(");
     expect(breadcrumbs).not.toContain("loadAdministrationReservation(");
+    expect(breadcrumbs).not.toContain("loadInvoiceAdministrationDetail(");
   });
 
   test("keeps empty and sorting chrome in their shared foundations", async () => {

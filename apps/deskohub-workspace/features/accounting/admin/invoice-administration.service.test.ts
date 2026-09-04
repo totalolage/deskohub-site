@@ -118,6 +118,54 @@ describe("InvoiceAdministrationService", () => {
     expect(result[0].items[1]?.reservationId).toBeNull();
   });
 
+  test("projects the invoice breadcrumb label from findById alone", async () => {
+    const document = makeTestManualInvoiceDocument("cs-CZ");
+    const invoice = {
+      id: document.invoiceId,
+      workspaceReservationId: null,
+      paymentAttemptId: null,
+      dotyposCustomerId: document.dotyposCustomerId,
+      invoiceNumber: document.invoiceNumber,
+      issuedAt: Temporal.Instant.from(document.issuedAt),
+      document,
+    } satisfies Invoice;
+    const findById = mock((invoiceId: string) =>
+      Effect.succeed(invoiceId === invoice.id ? invoice : null)
+    );
+    const layer = InvoiceAdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(DotyposService, {}),
+          Layer.mock(InvoiceRepository, {
+            findById,
+            list: () => Effect.die("repository list"),
+          }),
+          Layer.mock(InvoiceEmailDeliveryService, {}),
+          Layer.mock(ManualInvoiceCreationRequests, {})
+        )
+      )
+    );
+
+    const result = await Effect.gen(function* () {
+      const service = yield* InvoiceAdministrationService;
+      return {
+        label: yield* service.getBreadcrumbLabel(invoice.id),
+        missing: yield* service.getBreadcrumbLabel(
+          "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb31"
+        ),
+        invalid: yield* Effect.flip(
+          service.getBreadcrumbLabel("not-an-invoice-id")
+        ),
+      };
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(result.label).toBe(`Invoice ${document.invoiceNumber}`);
+    expect(result.missing).toBeNull();
+    expect(result.invalid).toBeInstanceOf(InvoiceAdministrationNotFoundError);
+    expect(findById).toHaveBeenCalledWith(invoice.id);
+    expect(findById).not.toHaveBeenCalledWith("not-an-invoice-id");
+  });
+
   test("renders a PDF preview without touching providers or persistence", async () => {
     const providerMutation = mock(() => Effect.die("provider mutation"));
     const repositoryMutation = mock(() => Effect.die("repository mutation"));

@@ -76,6 +76,25 @@ export const loadInvoiceAdministrationDetail = async (invoiceId: string) => {
   return detail;
 };
 
+export const loadInvoiceAdministrationBreadcrumbLabel = cache(
+  async (invoiceId: string) => {
+    await authorizeInvoiceAdministrationPage();
+    const label = await Effect.gen(function* () {
+      const administration = yield* InvoiceAdministrationService;
+      return yield* administration.getBreadcrumbLabel(invoiceId);
+    }).pipe(
+      Effect.catchTag("InvoiceAdministrationNotFoundError", () =>
+        Effect.succeed(null)
+      ),
+      Effect.provide(InvoiceAdministrationService.Live),
+      runWorkspaceEffect("invoice-administration.breadcrumb", {
+        boundary: "route",
+      })
+    );
+    return label ?? undefined;
+  }
+);
+
 export const loadInvoiceAdministrationPdf = async (invoiceId: string) => {
   await authorizeInvoiceAdministrationPage();
   const pdf = await Effect.gen(function* () {
