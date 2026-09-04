@@ -106,6 +106,13 @@ const navigationTimeout = workspaceE2ETimeouts.browserNavigation;
 const caseTimeout = workspaceE2ETimeouts.accountCase;
 
 /**
+ * One datasource-backed account page assertion after navigation: a full
+ * browser command window plus a full datasource convergence window, since
+ * server-rendered reservation content races a bare uiTransition budget.
+ */
+const accountPageLoadTimeout = browserTimeout + datasourceTimeout;
+
+/**
  * The deployed deletion gate treats a session as stale after ten minutes;
  * back-dating by eleven makes the reauthentication branch deterministic.
  */
@@ -676,9 +683,10 @@ export const makeWorkspaceE2EAccountCases = ({
             "shows the confirmed reservations in the current group",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              // Navigation and both content assertions are bounded as one
-              // condition under the step's datasource budget; two sequential
-              // text polls cannot fit their parent timeout after a navigation.
+              // One combined condition bounds navigation and both content
+              // assertions. The child window is the datasource budget; the
+              // step budget adds the navigation command window on top so a
+              // slow server render cannot exhaust the parent first.
               yield* waitForBrowserCondition(
                 run,
                 session,
@@ -688,7 +696,21 @@ export const makeWorkspaceE2EAccountCases = ({
                     return text.includes(${JSON.stringify(currentReservationsTitle)}) &&
                       text.includes(${JSON.stringify(confirmedStatus)});
                   })()`,
-                { timeoutMs: uiTransition }
+                { timeoutMs: datasourceTimeout }
+              );
+            }),
+            accountPageLoadTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "cancels the second synthetic reservation",
+            Effect.gen(function* () {
+              const second = reservations[1]?.reservationId;
+              assert(second, "second synthetic reservation id missing");
+              yield* cancelSyntheticReservation(
+                datasourceConfig,
+                second as DotyposReservationId
               );
             }),
             datasourceTimeout
@@ -698,17 +720,20 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "moves the cancelled reservation to the past group",
             Effect.gen(function* () {
-              const second = reservations[1]?.reservationId;
-              assert(second, "second synthetic reservation id missing");
-              yield* cancelSyntheticReservation(
-                datasourceConfig,
-                second as DotyposReservationId
-              );
               yield* openPage(localized(accountSuffix));
-              yield* waitText("past reservations group", pastReservationsTitle);
-              yield* waitText("cancelled reservation status", cancelledStatus);
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "past reservations group with a cancelled card",
+                `(() => {
+                    const text = document.body?.innerText ?? "";
+                    return text.includes(${JSON.stringify(pastReservationsTitle)}) &&
+                      text.includes(${JSON.stringify(cancelledStatus)});
+                  })()`,
+                { timeoutMs: datasourceTimeout }
+              );
             }),
-            datasourceTimeout
+            accountPageLoadTimeout
           )
         );
       })

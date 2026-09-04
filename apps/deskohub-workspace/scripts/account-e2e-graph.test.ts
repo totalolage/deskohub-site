@@ -4,6 +4,40 @@ import { workspaceE2EAccountCaseIds } from "../e2e/account/catalog";
 
 const repoFile = (relative: string) => resolve(import.meta.dir, "..", relative);
 
+/**
+ * Isolates one runStep block: from its unique step id to the next step's
+ * admission, so content assertions cannot be satisfied by sibling steps.
+ */
+const isolatedStepBlock = (cases: string, stepId: string) => {
+  const start = cases.indexOf(stepId);
+  expect(start).toBeGreaterThan(-1);
+  return cases.slice(start, cases.indexOf("yield* runStep(", start));
+};
+
+const countOccurrences = (text: string, needle: string) =>
+  text.split(needle).length - 1;
+
+/**
+ * Pins the page contract inside one isolated step: exactly one combined
+ * browser condition whose two expected text checks are joined conjunctively.
+ */
+const expectSingleConjunctivePageCondition = (
+  stepBlock: string,
+  firstName: string,
+  secondName: string
+) => {
+  expect(countOccurrences(stepBlock, "waitForBrowserCondition")).toBe(1);
+  const firstAt = stepBlock.indexOf(`JSON.stringify(${firstName})`);
+  const secondAt = stepBlock.indexOf(`JSON.stringify(${secondName})`);
+  expect(firstAt).toBeGreaterThan(-1);
+  expect(secondAt).toBeGreaterThan(-1);
+  const [joinStart, joinEnd] =
+    firstAt < secondAt ? [firstAt, secondAt] : [secondAt, firstAt];
+  const join = stepBlock.slice(joinStart + 1, joinEnd);
+  expect(join).toContain("&&");
+  expect(join).not.toContain("||");
+};
+
 describe("workspace account e2e graph", () => {
   test("runs account cases as one project in the existing Playwright graph", async () => {
     const config = await Bun.file(repoFile("playwright.e2e.config.ts")).text();
@@ -151,32 +185,54 @@ describe("workspace account e2e graph", () => {
 
   test("bounds the confirmed-reservations step as one combined condition", async () => {
     const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
-    const stepId = '"shows the confirmed reservations in the current group"';
-    const stepStart = cases.indexOf(stepId);
-    expect(stepStart).toBeGreaterThan(-1);
-    // Isolate exactly this runStep block; the next step's admission bounds it
-    // so assertions cannot be satisfied by sibling steps.
-    const nextStepStart = cases.indexOf("yield* runStep(", stepStart);
-    const stepBlock = cases.slice(stepStart, nextStepStart);
-
-    const conditionCount =
-      stepBlock.split("waitForBrowserCondition").length - 1;
-    expect(conditionCount).toBe(1);
-
-    const titleAt = stepBlock.indexOf(
-      "JSON.stringify(currentReservationsTitle)"
+    expect(cases).toContain(
+      "const accountPageLoadTimeout = browserTimeout + datasourceTimeout;"
     );
-    const statusAt = stepBlock.indexOf("JSON.stringify(confirmedStatus)");
-    expect(titleAt).toBeGreaterThan(-1);
-    expect(statusAt).toBeGreaterThan(-1);
-    const [joinStart, joinEnd] =
-      titleAt < statusAt ? [titleAt, statusAt] : [statusAt, titleAt];
-    const join = stepBlock.slice(joinStart + 1, joinEnd);
-    expect(join).toContain("&&");
-    expect(join).not.toContain("||");
+    const stepBlock = isolatedStepBlock(
+      cases,
+      '"shows the confirmed reservations in the current group"'
+    );
 
-    expect(stepBlock).toContain("{ timeoutMs: uiTransition }");
-    expect(stepBlock.split("datasourceTimeout").length - 1).toBe(1);
+    expect(stepBlock).not.toContain("cancelSyntheticReservation");
+    expectSingleConjunctivePageCondition(
+      stepBlock,
+      "currentReservationsTitle",
+      "confirmedStatus"
+    );
+    expect(stepBlock).toContain("{ timeoutMs: datasourceTimeout }");
+    expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
+  });
+
+  test("keeps cancellation a standalone datasource step before the past page", async () => {
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cancellationId = '"cancels the second synthetic reservation"';
+    const pastPageId = '"moves the cancelled reservation to the past group"';
+    const cancellationBlock = isolatedStepBlock(cases, cancellationId);
+
+    expect(cases.indexOf(cancellationId)).toBeLessThan(
+      cases.indexOf(pastPageId)
+    );
+    expect(cancellationBlock).toContain("cancelSyntheticReservation");
+    expect(cancellationBlock).not.toContain("waitForBrowserCondition");
+    expect(cancellationBlock).not.toContain("openPage(");
+    expect(cancellationBlock.split("datasourceTimeout").length - 1).toBe(1);
+  });
+
+  test("bounds the past-reservations page step as one combined condition", async () => {
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const stepBlock = isolatedStepBlock(
+      cases,
+      '"moves the cancelled reservation to the past group"'
+    );
+
+    expect(stepBlock).not.toContain("cancelSyntheticReservation");
+    expectSingleConjunctivePageCondition(
+      stepBlock,
+      "pastReservationsTitle",
+      "cancelledStatus"
+    );
+    expect(stepBlock).toContain("{ timeoutMs: datasourceTimeout }");
+    expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
   });
 
   test("completes the stale deletion through the delivered reauthentication link", async () => {
