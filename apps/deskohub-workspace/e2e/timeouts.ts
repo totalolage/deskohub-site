@@ -2,7 +2,10 @@ const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
 
 export const workspaceE2ETimeouts = {
-  accountCase: 8 * MINUTE,
+  // Original 8-minute account work budget plus one full 10-minute magic-link
+  // rolling window: a case can spend that entire window reserving rate-budget
+  // slots before its first semantic step starts (see account/rate-budget.ts).
+  accountCase: 18 * MINUTE,
   artifactCapture: 60 * SECOND,
   authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
@@ -20,11 +23,23 @@ export const workspaceE2ETimeouts = {
   zeroTotalCheckoutCase: 5 * MINUTE,
 } as const;
 
-export const workspaceE2EPlaywrightCheckoutTimeout =
+// Keep the Playwright watchdog outside the longest semantic case plus the
+// artifact-capture and cleanup budgets, for both the checkout lanes and the
+// serial account lane whose cases also wait out the magic-link rate window.
+const checkoutWatchdogRequirement =
   workspaceE2ETimeouts.checkoutCase * 2 +
   workspaceE2ETimeouts.artifactCapture +
   workspaceE2ETimeouts.cleanupAction +
   workspaceE2ETimeouts.datasource;
+const accountWatchdogRequirement =
+  workspaceE2ETimeouts.accountCase +
+  workspaceE2ETimeouts.artifactCapture +
+  workspaceE2ETimeouts.cleanupAction;
+
+export const workspaceE2EPlaywrightCheckoutTimeout = Math.max(
+  checkoutWatchdogRequirement,
+  accountWatchdogRequirement
+);
 
 export type WorkspaceE2ETimeouts = Readonly<
   Record<keyof typeof workspaceE2ETimeouts, number>
