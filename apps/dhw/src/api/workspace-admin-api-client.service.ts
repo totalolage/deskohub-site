@@ -327,7 +327,7 @@ interface IWorkspaceAdminApiClient {
     accessToken: Redacted.Redacted<CliAccessTokenType>,
     attemptId: AdministrationStandaloneAccessCodeAttemptIdType,
     input: AdministrationStandaloneAccessCodeCreateInputType,
-    providerCredentialRemoved: boolean
+    providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType
   ) => Effect.Effect<
     AdministrationStandaloneAccessCodeCreationOutcomeType,
     | CliApiRequestError
@@ -763,7 +763,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         accessToken,
         attemptId: AdministrationStandaloneAccessCodeAttemptIdType,
         input: AdministrationStandaloneAccessCodeCreateInputType,
-        providerCredentialRemoved: boolean
+        providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
@@ -771,8 +771,8 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
               payload: {
                 attemptId,
                 input,
-                ...(providerCredentialRemoved && {
-                  providerCredentialRemoved: true as const,
+                ...(providerCredentialRemovedAttemptId && {
+                  providerCredentialRemovedAttemptId,
                 }),
               },
             })

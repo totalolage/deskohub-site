@@ -10,6 +10,7 @@ import {
   AdministrationReservationSummary,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCreateInput,
+  AdministrationStandaloneAccessCodeName,
   AdministrationStoredDiscountId,
   CliAccessToken,
   CliAuthenticationChallenge,
@@ -20,6 +21,7 @@ import {
   CliMutationRequestId,
   CliMutationUncertain,
   CliSessionId,
+  CliStandaloneAccessCodeCleanupRequired,
   CliStandaloneAccessCodeReconciled,
 } from "@deskohub/workspace-admin-api";
 import { Clock, Duration, Effect, Layer, Redacted, Schema } from "effect";
@@ -33,6 +35,12 @@ import {
 const accessCodeAttemptId = Schema.decodeUnknownSync(
   AdministrationStandaloneAccessCodeAttemptId
 )("01980000-0000-7000-8000-000000000042");
+const cleanupTargetAttemptId = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeAttemptId
+)("01980000-0000-7000-8000-000000000043");
+const cleanupTargetName = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeName
+)("Booth A");
 const accessCodeInput = Schema.decodeUnknownSync(
   AdministrationStandaloneAccessCodeCreateInput
 )({
@@ -1068,15 +1076,13 @@ describe("WorkspaceAdminApiClient", () => {
         const created = yield* client.createStandaloneAccessCode(
           accessToken,
           accessCodeAttemptId,
-          accessCodeInput,
-          false
+          accessCodeInput
         );
         const uncertain = yield* client
           .createStandaloneAccessCode(
             accessToken,
             accessCodeAttemptId,
-            accessCodeInput,
-            false
+            accessCodeInput
           )
           .pipe(Effect.flip);
         const rejected = yield* client
@@ -1084,7 +1090,7 @@ describe("WorkspaceAdminApiClient", () => {
             accessToken,
             accessCodeAttemptId,
             accessCodeInput,
-            true
+            cleanupTargetAttemptId
           )
           .pipe(Effect.flip);
         return [created, uncertain, rejected] as const;
@@ -1112,6 +1118,7 @@ describe("WorkspaceAdminApiClient", () => {
       expect(retryableAttempts).toBe(1);
       expect(elapsedRetryMilliseconds).toBeGreaterThanOrEqual(500);
       expect(requests).toHaveLength(5);
+      expect(cleanupTargetAttemptId).not.toBe(accessCodeAttemptId);
       expect(
         requests.map(({ method, path, payload }) => ({ method, path, payload }))
       ).toEqual([
@@ -1141,10 +1148,83 @@ describe("WorkspaceAdminApiClient", () => {
           payload: {
             attemptId: accessCodeAttemptId,
             input: accessCodeInput,
-            providerCredentialRemoved: true,
+            providerCredentialRemovedAttemptId: cleanupTargetAttemptId,
           },
         },
       ]);
+      expect(
+        requests.some(({ payload }) =>
+          Object.hasOwn(payload as object, "providerCredentialRemoved")
+        )
+      ).toBe(false);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("decodes the cleanup-required target and forwards the exact attempt id", async () => {
+    const payloads: Array<Record<string, unknown>> = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        payloads.push(await request.json());
+        return Response.json(
+          {
+            _tag: "CliStandaloneAccessCodeCleanupRequired",
+            message:
+              "A previous ambiguous attempt still occupies this window. Remove the possible credential at the lock or verify it is absent, then confirm the cleanup.",
+            cleanupTarget: {
+              attemptId: cleanupTargetAttemptId,
+              name: "Booth A",
+            },
+          },
+          { status: 409 }
+        );
+      },
+    });
+
+    try {
+      const accessToken = Redacted.make(
+        Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+      );
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-cleanup-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const error = await WorkspaceAdminApiClient.pipe(
+        Effect.flatMap((client) =>
+          client.createStandaloneAccessCode(
+            accessToken,
+            accessCodeAttemptId,
+            accessCodeInput,
+            cleanupTargetAttemptId
+          )
+        ),
+        Effect.flip,
+        Effect.provide(clientLayer),
+        Effect.runPromise
+      );
+
+      expect(error instanceof CliStandaloneAccessCodeCleanupRequired).toBe(
+        true
+      );
+      if (!(error instanceof CliStandaloneAccessCodeCleanupRequired)) return;
+      expect(error.cleanupTarget.attemptId).toBe(cleanupTargetAttemptId);
+      expect(error.cleanupTarget.name).toBe(cleanupTargetName);
+      expect(payloads).toHaveLength(1);
+      expect(payloads[0]?.attemptId).toBe(accessCodeAttemptId);
+      expect(payloads[0]?.providerCredentialRemovedAttemptId).toBe(
+        cleanupTargetAttemptId
+      );
+      expect("providerCredentialRemoved" in (payloads[0] ?? {})).toBe(false);
     } finally {
       server.stop(true);
     }
@@ -1228,7 +1308,7 @@ describe("WorkspaceAdminApiClient", () => {
             accessToken,
             accessCodeAttemptId,
             accessCodeInput,
-            true
+            cleanupTargetAttemptId
           )
         ),
         Effect.flip,
@@ -1242,7 +1322,7 @@ describe("WorkspaceAdminApiClient", () => {
         payload: {
           attemptId: accessCodeAttemptId,
           input: accessCodeInput,
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: cleanupTargetAttemptId,
         },
       });
     } finally {

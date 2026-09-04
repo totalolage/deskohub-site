@@ -25,6 +25,7 @@ import {
   type AdministrationReservationAccessMutationType,
   AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
+  AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptIdType,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreateInputType,
@@ -1866,9 +1867,11 @@ const accessCodesCreateCommand = Command.make(
       Flag.withSchema(AdministrationWorkspaceSiteLocalWholeHourDateTime),
       Flag.withDescription("Exclusive site-local end (YYYY-MM-DDTHH:mm)")
     ),
-    providerCredentialRemoved: Flag.boolean("provider-credential-removed").pipe(
+    providerCredentialRemoved: Flag.string("provider-credential-removed").pipe(
+      Flag.withSchema(AdministrationStandaloneAccessCodeAttemptId),
+      Flag.optional,
       Flag.withDescription(
-        "Confirm the possible AlgoPIN was removed or verified absent in Igloohome"
+        "Confirm the possible AlgoPIN of this exact attempt was removed or verified absent in Igloohome"
       )
     ),
     yes: confirmationFlag,
@@ -1904,16 +1907,19 @@ const accessCodesCreateCommand = Command.make(
         }
         const attemptStore = yield* AccessCodeAttemptStore;
         const identity = { sessionId: session.id, request };
+        const cleanupTargetAttemptId = Option.isSome(providerCredentialRemoved)
+          ? providerCredentialRemoved.value
+          : undefined;
         const issueCreation = (
           currentAttemptId: AdministrationStandaloneAccessCodeAttemptIdType,
-          confirmedCleanup: boolean
+          providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType
         ) =>
           api
             .createStandaloneAccessCode(
               accessToken,
               currentAttemptId,
               request,
-              confirmedCleanup
+              providerCredentialRemovedAttemptId
             )
             .pipe(
               Effect.catchIf(isConclusiveAccessCodeCreationError, (error) =>
@@ -1934,13 +1940,13 @@ const accessCodesCreateCommand = Command.make(
         let issuedAttemptId = attemptId;
         const outcome = yield* issueCreation(
           issuedAttemptId,
-          providerCredentialRemoved
+          cleanupTargetAttemptId
         ).pipe(
           Effect.catchIf(isReconciledAccessCodeCreationError, () =>
             attemptStore.reserve(identity).pipe(
               Effect.flatMap((freshAttemptId) => {
                 issuedAttemptId = freshAttemptId;
-                return issueCreation(freshAttemptId, false);
+                return issueCreation(freshAttemptId);
               })
             )
           )
