@@ -100,11 +100,12 @@ const runCreate = (
     Effect.runPromise
   );
 
+const appended = { kind: "appended" } as const;
 const claimed = { kind: "claimed", variance: 2 } as const;
 
 describe("StandaloneAccessCodeAdministration.create", () => {
   test("calls Igloohome once and discloses the PIN only on the current call", async () => {
-    const appendTerminal = mock(() => Effect.succeed(true));
+    const appendTerminal = mock(() => Effect.succeed(appended));
     const issueHourlyAlgoPin = mock(() => Effect.succeed({ pin, pinId }));
     const result = await runCreate({
       claim: mock(() => Effect.succeed(claimed)),
@@ -150,7 +151,7 @@ describe("StandaloneAccessCodeAdministration.create", () => {
         claim: mock(() =>
           Effect.succeed({ kind: "claimed", variance: 3 } as const)
         ),
-        appendTerminal: mock(() => Effect.succeed(true)),
+        appendTerminal: mock(() => Effect.succeed(appended)),
         issueHourlyAlgoPin,
       },
       { ...input, request: dstRequest }
@@ -375,6 +376,105 @@ describe("StandaloneAccessCodeAdministration.create", () => {
         outcome: "created",
         pin: "7654321",
       });
+    }
+  });
+
+  test("reports the stored stale ambiguity when a late provider success conflicts with an already-terminal attempt", async () => {
+    const result = await runCreate({
+      claim: mock(() => Effect.succeed(claimed)),
+      appendTerminal: mock(() =>
+        Effect.succeed({
+          kind: "already-terminal",
+          terminal: {
+            kind: "ambiguous",
+            failureCode: "standalone_attempt_stale",
+          },
+        } as const)
+      ),
+      issueHourlyAlgoPin: mock(() => Effect.succeed({ pin, pinId })),
+    });
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure.outcome).toBe("ambiguous");
+      expect(result.failure.failureCode).toBe("standalone_attempt_stale");
+      expect(JSON.stringify(result.failure)).not.toContain("7654321");
+    }
+  });
+
+  test("reports already-created when a late provider rejection conflicts with a stored created terminal", async () => {
+    const storedCredentialId = Schema.decodeUnknownSync(
+      AdministrationProviderCredentialId
+    )("stored-pin-id");
+    const result = await runCreate({
+      claim: mock(() => Effect.succeed(claimed)),
+      appendTerminal: mock(() =>
+        Effect.succeed({
+          kind: "already-terminal",
+          terminal: {
+            kind: "created",
+            terminal: {
+              name: request.name,
+              startsAtLocal: request.startsAt,
+              endsAtLocal: request.endsAt,
+              providerCredentialId: storedCredentialId,
+              occurredAt: Temporal.Instant.from("2026-09-10T08:00:00Z"),
+            },
+          },
+        } as const)
+      ),
+      issueHourlyAlgoPin: mock(() =>
+        Effect.fail(
+          new IgloohomeRequestError({
+            operation: "issue_hourly_algopin",
+            outcome: "rejected",
+            message: "provider rejected late",
+            statusCode: 422,
+          })
+        )
+      ),
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success).toMatchObject({
+        outcome: "already-created",
+        attemptId,
+        providerCredentialId: "stored-pin-id",
+        issuedAt: "2026-09-10T08:00:00Z",
+      });
+      expect("pin" in result.success).toBe(false);
+      expect(JSON.stringify(result.success)).not.toContain("7654321");
+    }
+  });
+
+  test("reports the stored rejection when a late provider outcome conflicts with a stored rejected terminal", async () => {
+    const result = await runCreate({
+      claim: mock(() => Effect.succeed(claimed)),
+      appendTerminal: mock(() =>
+        Effect.succeed({
+          kind: "already-terminal",
+          terminal: {
+            kind: "rejected",
+            failureCode: "standalone_provider_rejected",
+          },
+        } as const)
+      ),
+      issueHourlyAlgoPin: mock(() =>
+        Effect.fail(
+          new IgloohomeRequestError({
+            operation: "issue_hourly_algopin",
+            outcome: "ambiguous",
+            message: "connection lost mid-flight",
+          })
+        )
+      ),
+    });
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure.outcome).toBe("rejected");
+      expect(result.failure.failureCode).toBe("standalone_provider_rejected");
     }
   });
 

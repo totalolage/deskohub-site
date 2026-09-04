@@ -48,11 +48,7 @@ export interface StandaloneAccessCodeCreatedAttemptTerminal {
   readonly occurredAt: Temporal.Instant;
 }
 
-export type StandaloneAccessCodeAttemptClaim =
-  | {
-      readonly kind: "claimed";
-      readonly variance: StandaloneAccessCodeProviderVariance;
-    }
+export type StandaloneAccessCodeAttemptTerminalResolution =
   | {
       readonly kind: "created";
       readonly terminal: StandaloneAccessCodeCreatedAttemptTerminal;
@@ -64,12 +60,26 @@ export type StandaloneAccessCodeAttemptClaim =
   | {
       readonly kind: "ambiguous";
       readonly failureCode: StandaloneAccessCodeFailureCode;
+    };
+
+export type StandaloneAccessCodeAttemptClaim =
+  | StandaloneAccessCodeAttemptTerminalResolution
+  | {
+      readonly kind: "claimed";
+      readonly variance: StandaloneAccessCodeProviderVariance;
     }
   | { readonly kind: "in-progress" }
   | { readonly kind: "cleanup-required" }
   | { readonly kind: "reconciled" }
   | { readonly kind: "mismatch" }
   | { readonly kind: "exhausted" };
+
+export type StandaloneAccessCodeAppendTerminalResult =
+  | { readonly kind: "appended" }
+  | {
+      readonly kind: "already-terminal";
+      readonly terminal: StandaloneAccessCodeAttemptTerminalResolution;
+    };
 
 export class StandaloneAccessCodeAttemptLogStorageError extends Data.TaggedError(
   "StandaloneAccessCodeAttemptLogStorageError"
@@ -98,7 +108,10 @@ export interface IStandaloneAccessCodeAttemptLogRepository {
     readonly providerCredentialId?: AdministrationProviderCredentialId;
     readonly providerStatusCode?: number;
     readonly failureCode?: StandaloneAccessCodeFailureCode;
-  }) => Effect.Effect<boolean, StandaloneAccessCodeAttemptLogStorageError>;
+  }) => Effect.Effect<
+    StandaloneAccessCodeAppendTerminalResult,
+    StandaloneAccessCodeAttemptLogStorageError
+  >;
 }
 
 export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
@@ -394,7 +407,11 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
 
       const resolveTerminalEvent = (
         terminal: StandaloneAccessCodeAttemptEventRow
-      ): StandaloneAccessCodeAttemptClaim =>
+      ):
+        | StandaloneAccessCodeAttemptTerminalResolution
+        | {
+            readonly kind: "in-progress";
+          } =>
         Match.value(terminal.eventKind).pipe(
           Match.when("created", () => {
             if (terminal.providerCredentialId === null) {
@@ -581,30 +598,50 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         appendTerminal: Effect.fn(
           "StandaloneAccessCodeAttemptLogRepository.appendTerminal"
         )(function* (input) {
-          const written = yield* db
-            .insert(events)
-            .values({
-              attemptId: input.attempt.attemptId,
-              eventKind: input.eventKind,
-              actor: input.attempt.actor,
-              source: input.attempt.source,
-              name: input.attempt.name,
-              deviceId: input.attempt.deviceId,
-              startsAtLocal: input.attempt.startsAtLocal,
-              endsAtLocal: input.attempt.endsAtLocal,
-              startsAt: input.attempt.startsAt,
-              endsAt: input.attempt.endsAt,
-              variance: input.variance,
-              providerCredentialId: input.providerCredentialId ?? null,
-              providerStatusCode: input.providerStatusCode ?? null,
-              failureCode: input.failureCode ?? null,
-              occurredAt: input.occurredAt,
-            })
-            .onConflictDoNothing({
-              target: [events.attemptId],
-              where: sql`${events.eventKind} in (${quotedSqlList([...standaloneAccessCodeTerminalEventKinds])})`,
-            })
-            .returning({ id: events.id })
+          return yield* db
+            .transaction((tx) =>
+              Effect.gen(function* () {
+                const written = yield* insertTerminalEvent(tx, {
+                  attempt: input.attempt,
+                  variance: input.variance,
+                  eventKind: input.eventKind,
+                  occurredAt: input.occurredAt,
+                  providerCredentialId: input.providerCredentialId ?? null,
+                  providerStatusCode: input.providerStatusCode ?? null,
+                  failureCode: input.failureCode ?? null,
+                });
+                if (written.length > 0) {
+                  return { kind: "appended" } as const;
+                }
+
+                const [existing] = yield* findTerminalEvent(
+                  tx,
+                  input.attempt.attemptId
+                );
+                if (!existing) {
+                  return yield* new StandaloneAccessCodeAttemptLogStorageError({
+                    operation: "append_terminal",
+                    attemptId: input.attempt.attemptId,
+                    message:
+                      "Conflicting standalone access-code terminal event could not be read.",
+                  });
+                }
+
+                const stored = resolveTerminalEvent(existing);
+                if (stored.kind === "in-progress") {
+                  return yield* new StandaloneAccessCodeAttemptLogStorageError({
+                    operation: "append_terminal",
+                    attemptId: input.attempt.attemptId,
+                    message:
+                      "Conflicting standalone access-code terminal event did not resolve to a terminal outcome.",
+                  });
+                }
+                return {
+                  kind: "already-terminal",
+                  terminal: stored,
+                } as const;
+              })
+            )
             .pipe(
               Effect.mapError(
                 (cause) =>
@@ -617,7 +654,6 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
                   })
               )
             );
-          return written.length > 0;
         }),
       });
     })

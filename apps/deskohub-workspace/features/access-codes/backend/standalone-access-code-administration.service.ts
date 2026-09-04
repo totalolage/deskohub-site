@@ -12,7 +12,7 @@ import {
   type AdministrationStandaloneAccessCodeCreationOutcome,
   AdministrationStandaloneAccessCodePin,
 } from "@deskohub/workspace-admin-api";
-import { Context, Data, Effect, Layer, Match, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Result, Schema } from "effect";
 import { env } from "@/env";
 import { WorkspaceIgloohomeLayer } from "@/shared/backend/config/igloohome.config";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -27,6 +27,7 @@ import { standaloneAccessCodeAttemptStaleAfterMilliseconds } from "../standalone
 import {
   type StandaloneAccessCodeAttempt,
   StandaloneAccessCodeAttemptLogRepository,
+  type StandaloneAccessCodeAttemptTerminalResolution,
   type StandaloneAccessCodeCreatedAttemptTerminal,
 } from "./standalone-access-code-attempt-log.repository";
 
@@ -116,6 +117,35 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
         issuedAt: AdministrationInstant.make(terminal.occurredAt.toString()),
       });
 
+      const storedTerminalOutcome = (
+        input: StandaloneAccessCodeCreationRequest,
+        terminal: StandaloneAccessCodeAttemptTerminalResolution
+      ) =>
+        Match.value(terminal).pipe(
+          Match.discriminatorsExhaustive("kind")({
+            created: (stored) =>
+              Effect.succeed(alreadyCreatedOutcome(input, stored.terminal)),
+            ambiguous: (stored) =>
+              Effect.fail(
+                failCreation(
+                  input,
+                  "ambiguous",
+                  "The standalone access-code creation outcome is ambiguous.",
+                  stored.failureCode
+                )
+              ),
+            rejected: (stored) =>
+              Effect.fail(
+                failCreation(
+                  input,
+                  "rejected",
+                  "The standalone access-code request was rejected.",
+                  stored.failureCode
+                )
+              ),
+          })
+        );
+
       const providerTimestamps = (
         request: AdministrationStandaloneAccessCodeCreateInput
       ) => ({
@@ -157,36 +187,50 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
           eventKind === "rejected"
             ? "standalone_provider_rejected"
             : "standalone_provider_ambiguous";
-        return attempts
-          .appendTerminal({
-            attempt: input.attempt,
-            variance: input.variance,
-            eventKind,
-            occurredAt: Temporal.Now.instant(),
-            providerStatusCode: input.error.statusCode,
-            failureCode,
-          })
-          .pipe(
-            Effect.catch((storageError) =>
-              logTerminalAuditFailure({
-                attemptId: input.request.attemptId,
-                eventKind,
-                cause: storageError,
-              })
-            ),
-            Effect.andThen(
-              Effect.fail(
-                failCreation(
-                  input.request,
-                  eventKind,
-                  eventKind === "rejected"
-                    ? "The standalone access-code request was rejected."
-                    : "The standalone access-code creation outcome is ambiguous.",
-                  failureCode
-                )
-              )
-            )
+        return Effect.gen(function* () {
+          const appended = yield* Effect.result(
+            attempts.appendTerminal({
+              attempt: input.attempt,
+              variance: input.variance,
+              eventKind,
+              occurredAt: Temporal.Now.instant(),
+              providerStatusCode: input.error.statusCode,
+              failureCode,
+            })
           );
+          if (Result.isFailure(appended)) {
+            yield* logTerminalAuditFailure({
+              attemptId: input.request.attemptId,
+              eventKind,
+              cause: appended.failure,
+            });
+            return yield* failCreation(
+              input.request,
+              eventKind,
+              eventKind === "rejected"
+                ? "The standalone access-code request was rejected."
+                : "The standalone access-code creation outcome is ambiguous.",
+              failureCode
+            );
+          }
+          return yield* Match.value(appended.success).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              appended: () =>
+                Effect.fail(
+                  failCreation(
+                    input.request,
+                    eventKind,
+                    eventKind === "rejected"
+                      ? "The standalone access-code request was rejected."
+                      : "The standalone access-code creation outcome is ambiguous.",
+                    failureCode
+                  )
+                ),
+              "already-terminal": ({ terminal }) =>
+                storedTerminalOutcome(input.request, terminal),
+            })
+          );
+        });
       };
 
       const recordCreated = (input: {
@@ -202,33 +246,45 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
         const providerCredentialId = Schema.decodeSync(
           AdministrationProviderCredentialId
         )(input.issued.pinId);
-        return attempts
-          .appendTerminal({
-            attempt: input.attempt,
-            variance: input.variance,
-            eventKind: "created",
-            occurredAt: issuedAt,
-            providerCredentialId,
-          })
-          .pipe(
-            Effect.catch((storageError) =>
-              logTerminalAuditFailure({
-                attemptId: input.request.attemptId,
-                eventKind: "created",
-                cause: storageError,
-              })
-            ),
-            Effect.andThen(
-              Effect.succeed(
-                createdOutcome({
-                  request: input.request,
-                  providerCredentialId,
-                  pin,
-                  issuedAt,
-                })
-              )
-            )
+        return Effect.gen(function* () {
+          const appended = yield* Effect.result(
+            attempts.appendTerminal({
+              attempt: input.attempt,
+              variance: input.variance,
+              eventKind: "created",
+              occurredAt: issuedAt,
+              providerCredentialId,
+            })
           );
+          if (Result.isFailure(appended)) {
+            yield* logTerminalAuditFailure({
+              attemptId: input.request.attemptId,
+              eventKind: "created",
+              cause: appended.failure,
+            });
+            return createdOutcome({
+              request: input.request,
+              providerCredentialId,
+              pin,
+              issuedAt,
+            });
+          }
+          return yield* Match.value(appended.success).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              appended: () =>
+                Effect.succeed(
+                  createdOutcome({
+                    request: input.request,
+                    providerCredentialId,
+                    pin,
+                    issuedAt,
+                  })
+                ),
+              "already-terminal": ({ terminal }) =>
+                storedTerminalOutcome(input.request, terminal),
+            })
+          );
+        });
       };
 
       return StandaloneAccessCodeAdministration.of({
@@ -276,31 +332,30 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
             return yield* Match.value(claimed).pipe(
               Match.discriminatorsExhaustive("kind")({
                 claimed: ({ variance }) =>
-                  igloohome
-                    .issueHourlyAlgoPin({
-                      deviceId,
+                  Effect.gen(function* () {
+                    const issued = yield* Effect.result(
+                      igloohome.issueHourlyAlgoPin({
+                        deviceId,
+                        variance,
+                        ...providerTimestamps(input.request),
+                        accessName: input.request.name,
+                      })
+                    );
+                    if (Result.isSuccess(issued)) {
+                      return yield* recordCreated({
+                        request: input,
+                        attempt,
+                        variance,
+                        issued: issued.success,
+                      });
+                    }
+                    return yield* recordProviderRejection({
+                      request: input,
+                      attempt,
                       variance,
-                      ...providerTimestamps(input.request),
-                      accessName: input.request.name,
-                    })
-                    .pipe(
-                      Effect.catch((error: IgloohomeRequestError) =>
-                        recordProviderRejection({
-                          request: input,
-                          attempt,
-                          variance,
-                          error,
-                        })
-                      ),
-                      Effect.andThen((issued) =>
-                        recordCreated({
-                          request: input,
-                          attempt,
-                          variance,
-                          issued,
-                        })
-                      )
-                    ),
+                      error: issued.failure,
+                    });
+                  }),
                 created: ({ terminal }) =>
                   Effect.succeed(alreadyCreatedOutcome(input, terminal)),
                 rejected: ({ failureCode }) =>

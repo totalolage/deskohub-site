@@ -360,10 +360,92 @@ describe.skipIf(!postgresDatabase)(
         })
       );
 
-      expect(first).toBe(true);
-      expect(second).toBe(false);
+      expect(first).toMatchObject({ kind: "appended" });
+      expect(second).toMatchObject({
+        kind: "already-terminal",
+        terminal: { kind: "created" },
+      });
       expect(await eventKindsOf(attempt.attemptId)).toEqual([
         "created",
+        "started",
+      ]);
+    });
+
+    test("returns the stored created resolution when a later terminal append conflicts", async () => {
+      const attempt = attemptFixture();
+      const occurredAt = Temporal.Instant.from("2026-09-10T08:00:00Z");
+      await Effect.runPromise(claim({ attempt }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt,
+          variance: 2,
+          eventKind: "created",
+          occurredAt,
+          providerCredentialId,
+        })
+      );
+
+      const conflicting = await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt,
+          variance: 2,
+          eventKind: "rejected",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_rejected",
+        })
+      );
+
+      expect(conflicting).toEqual({
+        kind: "already-terminal",
+        terminal: {
+          kind: "created",
+          terminal: {
+            name: accessName,
+            startsAtLocal: window.startsAtLocal,
+            endsAtLocal: window.endsAtLocal,
+            providerCredentialId,
+            occurredAt,
+          },
+        },
+      });
+      expect(await eventKindsOf(attempt.attemptId)).toEqual([
+        "created",
+        "started",
+      ]);
+    });
+
+    test("returns the stored stale-ambiguous resolution when a late created append conflicts", async () => {
+      const attempt = attemptFixture();
+      await Effect.runPromise(claim({ attempt }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_attempt_stale",
+        })
+      );
+
+      const lateCreated = await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt,
+          variance: 2,
+          eventKind: "created",
+          occurredAt: Temporal.Now.instant(),
+          providerCredentialId,
+        })
+      );
+
+      expect(lateCreated).toEqual({
+        kind: "already-terminal",
+        terminal: {
+          kind: "ambiguous",
+          failureCode: "standalone_attempt_stale",
+        },
+      });
+      expect(await eventKindsOf(attempt.attemptId)).toEqual([
+        "ambiguous",
         "started",
       ]);
     });

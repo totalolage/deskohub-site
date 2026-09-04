@@ -1680,7 +1680,7 @@ describe("standalone access-code CLI endpoint", () => {
       appendTerminal: () =>
         Effect.sync(() => {
           appendTerminalCalls += 1;
-          return true;
+          return { kind: "appended" as const };
         }),
     });
     const igloohome = Layer.mock(IgloohomeService, {
