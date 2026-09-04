@@ -1,12 +1,18 @@
 import type { User as BetterAuthUser } from "better-auth";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import { headers } from "next/headers";
+import { env } from "@/env";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
   customerAccountIdSchema,
+  customerAccountUnavailable,
 } from "../customer-account";
+import {
+  type BetterAuthSecretsMessage,
+  parseBetterAuthSecrets,
+} from "./auth/auth-secrets";
 
 /**
  * The closed account-domain view of an authoritative Better Auth session.
@@ -52,13 +58,51 @@ export const decodeCustomerAccountSession = (
     } satisfies CustomerAccountSession;
   });
 
-const readAuthoritativeSession = () =>
-  Effect.tryPromise({
-    try: async () => {
-      const { auth } = await import("@/features/account/server/auth.server");
-      return auth.api.getSession({ headers: await headers() });
-    },
-    catch: () => accessError("not-configured"),
+/**
+ * The environment facts behind the authoritative session read. Secret
+ * absence is meaningful: outside production the deployment may intentionally
+ * run without authentication and anonymous visitors stay supported.
+ */
+export interface CustomerAuthenticationEnvironment {
+  readonly readBetterAuthSecretsRaw: () => string | undefined;
+  /**
+   * The Better Auth session for the current request. Rejections are
+   * bootstrap, provider, or database failures.
+   */
+  readonly readCurrentSession: () => Promise<{
+    readonly user: BetterAuthUser;
+  } | null>;
+}
+
+const authenticationUnconfiguredSecretsMessage: BetterAuthSecretsMessage =
+  "BETTER_AUTH_SECRETS is not configured.";
+
+/**
+ * Reads the authoritative session and classifies failures for the closed
+ * account error contract. Only genuinely absent Better Auth secrets yield
+ * `not-configured`; once configured, bootstrap, provider, and database
+ * session-read failures fail closed as `unavailable` under the fixed
+ * `authentication.session` code without the raw failure.
+ */
+const readAuthoritativeSession = (
+  environment: CustomerAuthenticationEnvironment
+): Effect.Effect<
+  { readonly user: BetterAuthUser } | null,
+  CustomerAccountAccessError
+> =>
+  Effect.gen(function* () {
+    const secrets = parseBetterAuthSecrets(
+      environment.readBetterAuthSecretsRaw()
+    );
+    if (secrets.kind === "valid") {
+      return yield* Effect.tryPromise({
+        try: environment.readCurrentSession,
+        catch: () => customerAccountUnavailable("authentication.session"),
+      });
+    }
+    return yield* secrets.message === authenticationUnconfiguredSecretsMessage
+      ? accessError("not-configured")
+      : customerAccountUnavailable("authentication.session");
   });
 
 interface ICustomerAuthentication {
@@ -72,9 +116,23 @@ export class CustomerAuthentication extends Context.Service<
   CustomerAuthentication,
   ICustomerAuthentication
 >()("@deskohub-workspace/account/CustomerAuthentication") {
-  static Default = Layer.succeed(this, {
-    currentUser: readAuthoritativeSession().pipe(
-      Effect.flatMap(decodeCustomerAccountSession)
-    ),
+  /**
+   * Builds the service over an injected authentication environment so
+   * adapter tests can prove configuration classification and fail-closed
+   * session reads without touching the global environment.
+   */
+  static fromEnvironment = (environment: CustomerAuthenticationEnvironment) =>
+    Layer.succeed(this, {
+      currentUser: readAuthoritativeSession(environment).pipe(
+        Effect.flatMap(decodeCustomerAccountSession)
+      ),
+    });
+
+  static Default = this.fromEnvironment({
+    readBetterAuthSecretsRaw: () => env.BETTER_AUTH_SECRETS,
+    readCurrentSession: async () => {
+      const { auth } = await import("@/features/account/server/auth.server");
+      return auth.api.getSession({ headers: await headers() });
+    },
   });
 }

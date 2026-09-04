@@ -7,12 +7,25 @@ import {
 } from "../customer-account";
 import { guardOptionalAccountStateCreation } from "./customer-account-activity";
 import type { CustomerAccountActivityState } from "./customer-account-link.repository";
+import {
+  CustomerAuthentication,
+  type CustomerAuthenticationEnvironment,
+} from "./customer-authentication.service";
 
 const accountId = customerAccountIdSchema.make(
   "5b6f31d0-2c1a-4f0e-9a3d-6c7b8e2f1a01"
 );
 
 type GuardBackend = Parameters<typeof guardOptionalAccountStateCreation>[0];
+
+const serviceCurrentUserFrom = (
+  environment: CustomerAuthenticationEnvironment
+) =>
+  Effect.runPromise(
+    Effect.gen(function* () {
+      return (yield* CustomerAuthentication).currentUser;
+    }).pipe(Effect.provide(CustomerAuthentication.fromEnvironment(environment)))
+  );
 
 const activeState = (): CustomerAccountActivityState => ({
   kind: "active",
@@ -273,5 +286,60 @@ describe("optional account activity guard", () => {
     expect(events.indexOf("account-activity")).toBeLessThan(
       events.indexOf("account-lock-released")
     );
+  });
+
+  test("proceeds anonymously when the service classifies authentication as not configured", async () => {
+    const events: string[] = [];
+    const currentUser = await serviceCurrentUserFrom({
+      readBetterAuthSecretsRaw: () => undefined,
+      readCurrentSession: () =>
+        Promise.reject(new Error("session authority rejected")),
+    });
+    const backend: GuardBackend = {
+      currentUser,
+      findActivityState: () => Effect.die("activity must not be read"),
+      withAccountLock: () => Effect.die("lock must not be acquired"),
+    };
+    const stateCreation = Effect.sync(() => {
+      events.push("state-creation");
+      return "created" as const;
+    });
+
+    const outcome = await Effect.runPromise(
+      guardOptionalAccountStateCreation(backend, stateCreation)
+    );
+
+    expect(outcome).toBe("created");
+    expect(events).toEqual(["state-creation"]);
+  });
+
+  test("blocks state creation when the configured session authority fails", async () => {
+    const events: string[] = [];
+    const currentUser = await serviceCurrentUserFrom({
+      readBetterAuthSecretsRaw: () =>
+        "1:test-only-strong-secret-value-9f2c7a41b8e6d530417c",
+      readCurrentSession: () =>
+        Promise.reject(new Error("database connection refused")),
+    });
+    const backend: GuardBackend = {
+      currentUser,
+      findActivityState: () => Effect.die("activity must not be read"),
+      withAccountLock: () => Effect.die("lock must not be acquired"),
+    };
+
+    const error = await Effect.runPromise(
+      Effect.flip(
+        guardOptionalAccountStateCreation(backend, Effect.succeed("created"))
+      )
+    );
+
+    expect(error).toMatchObject({
+      _tag: "CustomerAccountAccessError",
+      reason: "unavailable",
+    });
+    expect((error as CustomerAccountAccessError).cause?.code).toBe(
+      "authentication.session"
+    );
+    expect(events).toEqual([]);
   });
 });
