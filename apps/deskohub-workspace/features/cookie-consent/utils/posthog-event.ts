@@ -14,22 +14,33 @@ type PostHogException = {
   };
 };
 
-function isOpaqueCrossOriginScriptError(event: PostHogBeforeSendEvent) {
+const browserDeliveryNoiseValues = [
+  "Script error.",
+  "ResizeObserver loop completed with undelivered notifications.",
+];
+
+function isBrowserDeliveryNoise(event: PostHogBeforeSendEvent) {
   if (event.event !== "$exception") return false;
 
   const exceptionList = event.properties.$exception_list;
   if (!Array.isArray(exceptionList) || exceptionList.length !== 1) return false;
 
   const exception = exceptionList[0] as PostHogException | undefined;
-  if (exception?.value !== "Script error.") return false;
   if (
-    exception.mechanism?.handled !== false ||
-    exception.mechanism.synthetic !== true
+    !browserDeliveryNoiseValues.some(
+      (noiseValue) => exception?.value === noiseValue
+    )
+  ) {
+    return false;
+  }
+  if (
+    exception?.mechanism?.handled !== false ||
+    exception?.mechanism?.synthetic !== true
   ) {
     return false;
   }
 
-  const frames = exception.stacktrace?.frames;
+  const frames = exception?.stacktrace?.frames;
   return !Array.isArray(frames) || frames.length === 0;
 }
 
@@ -37,7 +48,7 @@ export function preparePostHogEvent(
   event: PostHogBeforeSendEvent,
   posthogEnvironment: string
 ) {
-  if (isOpaqueCrossOriginScriptError(event)) return null;
+  if (isBrowserDeliveryNoise(event)) return null;
 
   event.properties = sanitizePostHogProperties(
     event.properties,
