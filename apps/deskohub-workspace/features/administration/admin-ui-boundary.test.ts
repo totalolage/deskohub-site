@@ -15,29 +15,30 @@ describe("administration UI boundaries", () => {
   });
 
   test("establishes the request boundary in shared page authorization", async () => {
+    const sharedAuthorizer = await readWorkspaceFile(
+      "features/administration/page-authorization.server.ts"
+    );
+
+    expect(sharedAuthorizer.match(/connection\(/g)).toHaveLength(1);
+    expect(sharedAuthorizer.indexOf("await connection()")).toBeLessThan(
+      sharedAuthorizer.indexOf(
+        'runWorkspaceEffect("administration.authorize-page"'
+      )
+    );
+
     for (const path of [
-      "features/accounting/admin/authorization.server.ts",
       "features/administration/page-data.server.ts",
       "features/discounts/admin/page-data.server.ts",
+      "features/accounting/admin/page-data.server.ts",
+      "features/accounting/admin/invoice-breadcrumb.server.ts",
+      "features/admin-cli/page-data.server.ts",
     ]) {
       const source = await readWorkspaceFile(path);
 
-      expect(source.match(/await connection\(\)/g)).toHaveLength(1);
-      expect(source).toMatch(
-        /(?:export )?const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\)/
-      );
-      if (path === "features/accounting/admin/authorization.server.ts") {
-        expect(source.indexOf("await connection()")).toBeLessThan(
-          source.indexOf("runWorkspaceEffect(")
-        );
-      }
+      expect(source).toContain("page-authorization.server");
+      expect(source).not.toContain("connection(");
+      expect(source).not.toMatch(/authorize[A-Za-z]+Page = cache/);
     }
-
-    const accountingPageData = await readWorkspaceFile(
-      "features/accounting/admin/page-data.server.ts"
-    );
-    expect(accountingPageData).toContain('from "./authorization.server"');
-    expect(accountingPageData).not.toContain("connection(");
   });
 
   test("creates invoice request identities only after user interaction", async () => {
@@ -169,7 +170,7 @@ describe("administration UI boundaries", () => {
       "features/accounting/admin/invoice-breadcrumb.server.ts",
       "features/accounting/admin/invoice-breadcrumb.service.ts",
       "features/accounting/admin/invoice-administration-identifier.ts",
-      "features/accounting/admin/authorization.server.ts",
+      "features/administration/page-authorization.server.ts",
     ]) {
       expect(await readWorkspaceFile(path)).not.toMatch(
         forbiddenBreadcrumbDependencies

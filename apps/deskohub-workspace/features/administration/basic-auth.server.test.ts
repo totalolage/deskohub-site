@@ -9,14 +9,18 @@ mock.module("server-only", () => ({}));
 mock.module("next/headers", () => ({
   headers: async () => requestHeaders,
 }));
+mock.module("next/server", () => ({
+  after: () => {},
+  connection: () => Promise.resolve(),
+}));
 
 const loadAuthorization = async () =>
   await import("./basic-auth.server").then(
-    ({ requireDiscountAdminAuthorization }) =>
-      requireDiscountAdminAuthorization()
+    ({ requireAdministrationAuthorization }) =>
+      requireAdministrationAuthorization()
   );
 
-describe("discount administration server authorization", () => {
+describe("administration server authorization", () => {
   test("authorizes the configured Basic credentials at the operation boundary", async () => {
     requestHeaders = new Headers({
       authorization: `Basic ${Buffer.from("admin:test-password").toString("base64")}`,
@@ -43,7 +47,7 @@ describe("discount administration server authorization", () => {
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         expect(exit.cause.toString()).toContain(
-          "DiscountAdminUnauthorizedError"
+          "AdministrationUnauthorizedError"
         );
       }
     }
@@ -54,7 +58,7 @@ describe("discount administration server authorization", () => {
       referer: "https://deskohub.test/admin/discounts",
     });
     const { mutateDiscountAdmin, searchDiscountAdminCustomers } = await import(
-      "./actions"
+      "@/features/discounts/admin/actions"
     );
     const { getAdministrationReservation } = await import(
       "@/features/administration/actions"
@@ -81,13 +85,25 @@ describe("discount administration server authorization", () => {
 
   test("rejects direct invocations of every exported admin page-data loader", async () => {
     requestHeaders = new Headers();
+    const pageAuthorization = await import(
+      "@/features/administration/page-authorization.server"
+    );
     const administration = await import(
       "@/features/administration/page-data.server"
     );
-    const discounts = await import("./page-data.server");
+    const discounts = await import(
+      "@/features/discounts/admin/page-data.server"
+    );
+    const accounting = await import(
+      "@/features/accounting/admin/page-data.server"
+    );
+    const invoiceBreadcrumb = await import(
+      "@/features/accounting/admin/invoice-breadcrumb.server"
+    );
+    const adminCli = await import("@/features/admin-cli/page-data.server");
     const searchParams = Promise.resolve({});
     const operations = [
-      administration.authorizeAdministrationPage,
+      pageAuthorization.authorizeAdministrationPage,
       administration.loadAdministrationOverview,
       () => administration.loadAdministrationReservations(searchParams),
       () =>
@@ -113,7 +129,6 @@ describe("discount administration server authorization", () => {
       () => administration.loadAdministrationOperations(searchParams),
       () =>
         administration.loadAdministrationOperationsPage(searchParams).result,
-      discounts.authorizeDiscountAdminPage,
       () => discounts.loadDiscountAdminPageData(searchParams),
       () => discounts.loadDiscountAdminCodesPageData(searchParams),
       () => discounts.loadDiscountAdminSalesPageData(searchParams),
@@ -136,6 +151,16 @@ describe("discount administration server authorization", () => {
           searchParams
         ),
       () => discounts.loadDiscountAdminCustomerBreadcrumbLabel("customer-id"),
+      () => accounting.loadInvoiceAdministrationList(searchParams),
+      () => accounting.loadInvoiceCreationPage(),
+      () => accounting.loadInvoiceAdministrationDetail("invoice-id"),
+      () => accounting.loadInvoiceAdministrationPdf("invoice-id"),
+      () =>
+        invoiceBreadcrumb.loadInvoiceAdministrationBreadcrumbLabel(
+          "invoice-id"
+        ),
+      () => adminCli.loadCliAuthenticationApproval("code"),
+      () => adminCli.loadCliSessions(),
     ] as const;
 
     for (const operation of operations) {

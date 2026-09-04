@@ -2,9 +2,7 @@ import "server-only";
 
 import { Effect, Predicate } from "effect";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
 import { cache } from "react";
-import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -14,6 +12,7 @@ import {
   AdministrationService,
 } from "./administration.service";
 import { formatAdministrationDateTime } from "./formatters";
+import { authorizeAdministrationPage } from "./page-authorization.server";
 import {
   getAdministrationOperationFilters,
   getAdministrationOrderDateTimeBounds,
@@ -91,18 +90,6 @@ const runAdministration =
       Effect.provide(AdministrationService.Live),
       runWorkspaceEffect(operation, { boundary: "route" })
     );
-
-export const authorizeAdministrationPage = cache(async () => {
-  const authorized = await requireDiscountAdminAuthorization().pipe(
-    Effect.as(true),
-    Effect.catchTag("DiscountAdminUnauthorizedError", () =>
-      Effect.succeed(false)
-    ),
-    runWorkspaceEffect("administration.authorize", { boundary: "route" })
-  );
-  if (!authorized) notFound();
-  await connection();
-});
 
 export const loadAdministrationOverview = async () => {
   await authorizeAdministrationPage();
