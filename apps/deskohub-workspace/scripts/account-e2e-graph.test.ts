@@ -30,6 +30,9 @@ const expectSingleConjunctiveSnapshotMatcher = (
   expect(countOccurrences(stepBlock, "waitForInteractiveSnapshot")).toBe(1);
   expect(countOccurrences(stepBlock, "waitForBrowserText")).toBe(0);
   expect(countOccurrences(stepBlock, "waitForBrowserCondition")).toBe(0);
+  // waitText is a cases-local wrapper around waitForBrowserText, so its calls
+  // must be rejected by their own name, not the wrapped helper's.
+  expect(countOccurrences(stepBlock, "waitText(")).toBe(0);
   const firstAt = stepBlock.indexOf(`snapshot.includes(${firstName})`);
   const secondAt = stepBlock.indexOf(`snapshot.includes(${secondName})`);
   expect(firstAt).toBeGreaterThan(-1);
@@ -226,6 +229,23 @@ describe("workspace account e2e graph", () => {
     const stepBlock = isolatedStepBlock(
       cases,
       '"moves the cancelled reservation to the past group"'
+    );
+
+    expect(stepBlock).not.toContain("cancelSyntheticReservation");
+    expectSingleConjunctiveSnapshotMatcher(
+      stepBlock,
+      "pastReservationsTitle",
+      "cancelledStatus"
+    );
+    expect(stepBlock).toContain("timeoutMs: datasourceTimeout");
+    expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
+  });
+
+  test("bounds the retained-history page step as one combined condition", async () => {
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const stepBlock = isolatedStepBlock(
+      cases,
+      '"keeps the retained reservation history across reactivation"'
     );
 
     expect(stepBlock).not.toContain("cancelSyntheticReservation");

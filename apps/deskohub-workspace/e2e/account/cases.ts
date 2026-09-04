@@ -1016,16 +1016,18 @@ export const makeWorkspaceE2EAccountCases = ({
             "keeps the retained reservation history across reactivation",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              yield* waitText(
-                "retained past reservation group",
-                pastReservationsTitle
-              );
-              yield* waitText(
-                "retained cancelled reservation status",
-                cancelledStatus
-              );
+              yield* waitForInteractiveSnapshot({
+                description:
+                  "retained past reservations group with a cancelled card",
+                matches: (snapshot) =>
+                  snapshot.includes(pastReservationsTitle) &&
+                  snapshot.includes(cancelledStatus),
+                run,
+                session,
+                timeoutMs: datasourceTimeout,
+              });
             }),
-            uiTransition
+            accountPageLoadTimeout
           )
         );
       })
