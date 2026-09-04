@@ -131,6 +131,17 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         typeof relations
       >;
 
+      const deviceWindowKey = (attempt: StandaloneAccessCodeAttempt) =>
+        `${attempt.deviceId}|${attempt.startsAt.toString()}|${attempt.endsAt.toString()}`;
+
+      const lockDeviceWindow = (
+        tx: Transaction,
+        attempt: StandaloneAccessCodeAttempt
+      ) =>
+        tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext('standalone-access-code'), hashtext(${deviceWindowKey(attempt)}))`
+        );
+
       const findStartedEvent = (
         tx: Transaction,
         attemptId: AdministrationStandaloneAccessCodeAttemptId
@@ -362,13 +373,18 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
             reconciledEvents.map((event) => event.attemptId)
           );
 
-          return startedEvents.filter((event) => {
-            if (reconciledAttemptIds.has(event.attemptId)) return false;
-            if (ambiguousAttemptIds.has(event.attemptId)) return true;
+          return startedEvents.flatMap((event) => {
+            if (reconciledAttemptIds.has(event.attemptId)) return [];
+            if (ambiguousAttemptIds.has(event.attemptId)) {
+              return [{ prior: event, staleStarted: false }];
+            }
             const isStale =
               Temporal.Instant.compare(event.occurredAt, input.staleBefore) <=
               0;
-            return isStale && !terminalAttemptIds.has(event.attemptId);
+            if (isStale && !terminalAttemptIds.has(event.attemptId)) {
+              return [{ prior: event, staleStarted: true }];
+            }
+            return [];
           });
         });
 
@@ -454,6 +470,38 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           Match.exhaustive
         );
 
+      const appendOrResolveStaleAmbiguous = (
+        tx: Transaction,
+        input: {
+          readonly prior: StandaloneAccessCodeAttemptEventRow;
+          readonly occurredAt: Temporal.Instant;
+        }
+      ) =>
+        Effect.gen(function* () {
+          yield* insertTerminalEvent(tx, {
+            attempt: input.prior,
+            variance: input.prior.variance,
+            eventKind: "ambiguous",
+            occurredAt: input.occurredAt,
+            providerCredentialId: null,
+            providerStatusCode: null,
+            failureCode: "standalone_attempt_stale",
+          });
+          const [terminal] = yield* findTerminalEvent(
+            tx,
+            input.prior.attemptId
+          );
+          if (!terminal) {
+            return yield* new StandaloneAccessCodeAttemptLogStorageError({
+              operation: "claim",
+              attemptId: input.prior.attemptId,
+              message:
+                "Conflicting standalone access-code terminal event could not be read.",
+            });
+          }
+          return terminal;
+        });
+
       const resolveReplay = (
         tx: Transaction,
         stored: StandaloneAccessCodeAttemptEventRow,
@@ -469,44 +517,36 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
             return { kind: "mismatch" } as const;
           }
 
-          const [terminal] = yield* findTerminalEvent(
+          let terminal = (yield* findTerminalEvent(
             tx,
             input.attempt.attemptId
-          );
-          if (terminal) {
-            if (
-              terminal.eventKind === "ambiguous" &&
-              input.providerCredentialRemoved
-            ) {
-              yield* insertReconciledEvent(tx, {
-                attempt: input.attempt,
-                prior: terminal,
-                occurredAt: input.claimedAt,
-              });
-              return { kind: "reconciled" } as const;
-            }
-            return resolveTerminalEvent(terminal);
-          }
-
+          ))[0];
           if (
+            !terminal &&
             Temporal.Instant.compare(stored.occurredAt, input.staleBefore) <= 0
           ) {
-            yield* insertTerminalEvent(tx, {
-              attempt: input.attempt,
-              variance: stored.variance,
-              eventKind: "ambiguous",
+            terminal = yield* appendOrResolveStaleAmbiguous(tx, {
+              prior: stored,
               occurredAt: input.claimedAt,
-              providerCredentialId: null,
-              providerStatusCode: null,
-              failureCode: "standalone_attempt_stale",
             });
-            return {
-              kind: "ambiguous",
-              failureCode: "standalone_attempt_stale",
-            } as const;
           }
+          if (!terminal) return { kind: "in-progress" } as const;
 
-          return { kind: "in-progress" } as const;
+          const resolution = resolveTerminalEvent(terminal);
+          if (resolution.kind === "in-progress") return resolution;
+
+          if (
+            resolution.kind === "ambiguous" &&
+            input.providerCredentialRemoved
+          ) {
+            yield* insertReconciledEvent(tx, {
+              attempt: input.attempt,
+              prior: terminal,
+              occurredAt: input.claimedAt,
+            });
+            return { kind: "reconciled" } as const;
+          }
+          return resolution;
         });
 
       const claimInTransaction = (
@@ -533,10 +573,18 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
             if (!input.providerCredentialRemoved) {
               return { kind: "cleanup-required" } as const;
             }
-            for (const prior of unresolved) {
+            for (const candidate of unresolved) {
+              if (candidate.staleStarted) {
+                const terminal = yield* appendOrResolveStaleAmbiguous(tx, {
+                  prior: candidate.prior,
+                  occurredAt: input.claimedAt,
+                });
+                const resolution = resolveTerminalEvent(terminal);
+                if (resolution.kind !== "ambiguous") continue;
+              }
               yield* insertReconciledEvent(tx, {
                 attempt: input.attempt,
-                prior,
+                prior: candidate.prior,
                 occurredAt: input.claimedAt,
               });
             }
@@ -572,14 +620,11 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
       return StandaloneAccessCodeAttemptLogRepository.of({
         claim: Effect.fn("StandaloneAccessCodeAttemptLogRepository.claim")(
           function* (input) {
-            const windowKey = `${input.attempt.deviceId}|${input.attempt.startsAt.toString()}|${input.attempt.endsAt.toString()}`;
             return yield* db
               .transaction((tx) =>
-                tx
-                  .execute(
-                    sql`select pg_advisory_xact_lock(hashtext('standalone-access-code'), hashtext(${windowKey}))`
-                  )
-                  .pipe(Effect.andThen(claimInTransaction(tx, input)))
+                lockDeviceWindow(tx, input.attempt).pipe(
+                  Effect.andThen(claimInTransaction(tx, input))
+                )
               )
               .pipe(
                 Effect.mapError(
@@ -600,47 +645,55 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         )(function* (input) {
           return yield* db
             .transaction((tx) =>
-              Effect.gen(function* () {
-                const written = yield* insertTerminalEvent(tx, {
-                  attempt: input.attempt,
-                  variance: input.variance,
-                  eventKind: input.eventKind,
-                  occurredAt: input.occurredAt,
-                  providerCredentialId: input.providerCredentialId ?? null,
-                  providerStatusCode: input.providerStatusCode ?? null,
-                  failureCode: input.failureCode ?? null,
-                });
-                if (written.length > 0) {
-                  return { kind: "appended" } as const;
-                }
+              lockDeviceWindow(tx, input.attempt).pipe(
+                Effect.andThen(
+                  Effect.gen(function* () {
+                    const written = yield* insertTerminalEvent(tx, {
+                      attempt: input.attempt,
+                      variance: input.variance,
+                      eventKind: input.eventKind,
+                      occurredAt: input.occurredAt,
+                      providerCredentialId: input.providerCredentialId ?? null,
+                      providerStatusCode: input.providerStatusCode ?? null,
+                      failureCode: input.failureCode ?? null,
+                    });
+                    if (written.length > 0) {
+                      return { kind: "appended" } as const;
+                    }
 
-                const [existing] = yield* findTerminalEvent(
-                  tx,
-                  input.attempt.attemptId
-                );
-                if (!existing) {
-                  return yield* new StandaloneAccessCodeAttemptLogStorageError({
-                    operation: "append_terminal",
-                    attemptId: input.attempt.attemptId,
-                    message:
-                      "Conflicting standalone access-code terminal event could not be read.",
-                  });
-                }
+                    const [existing] = yield* findTerminalEvent(
+                      tx,
+                      input.attempt.attemptId
+                    );
+                    if (!existing) {
+                      return yield* new StandaloneAccessCodeAttemptLogStorageError(
+                        {
+                          operation: "append_terminal",
+                          attemptId: input.attempt.attemptId,
+                          message:
+                            "Conflicting standalone access-code terminal event could not be read.",
+                        }
+                      );
+                    }
 
-                const stored = resolveTerminalEvent(existing);
-                if (stored.kind === "in-progress") {
-                  return yield* new StandaloneAccessCodeAttemptLogStorageError({
-                    operation: "append_terminal",
-                    attemptId: input.attempt.attemptId,
-                    message:
-                      "Conflicting standalone access-code terminal event did not resolve to a terminal outcome.",
-                  });
-                }
-                return {
-                  kind: "already-terminal",
-                  terminal: stored,
-                } as const;
-              })
+                    const stored = resolveTerminalEvent(existing);
+                    if (stored.kind === "in-progress") {
+                      return yield* new StandaloneAccessCodeAttemptLogStorageError(
+                        {
+                          operation: "append_terminal",
+                          attemptId: input.attempt.attemptId,
+                          message:
+                            "Conflicting standalone access-code terminal event did not resolve to a terminal outcome.",
+                        }
+                      );
+                    }
+                    return {
+                      kind: "already-terminal",
+                      terminal: stored,
+                    } as const;
+                  })
+                )
+              )
             )
             .pipe(
               Effect.mapError(

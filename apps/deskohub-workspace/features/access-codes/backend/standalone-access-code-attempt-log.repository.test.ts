@@ -1,6 +1,13 @@
 import "@/shared/testing/workspace-test-env";
 
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import { AlgoPinSchema, IgloohomeDeviceIdSchema } from "@deskohub/igloohome";
 import {
   AdministrationActorUsername,
@@ -11,6 +18,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer, Schema } from "effect";
+import { Pool } from "pg";
 import { standaloneAccessCodeAttemptEvents } from "@/db/schema";
 import {
   connectWorkspacePostgresTestDatabase,
@@ -143,6 +151,85 @@ describe.skipIf(!postgresDatabase)(
           .from(standaloneAccessCodeAttemptEvents)
           .where(eq(standaloneAccessCodeAttemptEvents.attemptId, attemptId))
       );
+
+    const barrierPool = new Pool({
+      connectionString: process.env.WORKSPACE_TEST_DATABASE_URL,
+    });
+    afterAll(async () => {
+      await barrierPool.end();
+    });
+
+    const reconcileBarrierKey = 987654321099;
+
+    const waitForWaitingLock = async (
+      predicate: string,
+      description: string
+    ) => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        const waiting = await barrierPool.query(
+          `select 1 from pg_locks where not granted and ${predicate}`
+        );
+        if (waiting.rows.length > 0) return;
+        await Bun.sleep(10);
+      }
+      throw new Error(`Timed out waiting for ${description}.`);
+    };
+
+    const installReconcileBarrier = async () => {
+      await barrierPool.query(`
+        create or replace function standalone_access_code_attempt_events_test_reconcile_barrier()
+        returns trigger as $$
+        begin
+          if new.event_kind in ('ambiguous', 'reconciled') then
+            perform pg_advisory_xact_lock(${reconcileBarrierKey}::bigint);
+          end if;
+          return new;
+        end;
+        $$ language plpgsql
+      `);
+      await barrierPool.query(`
+        drop trigger if exists standalone_access_code_attempt_events_reconcile_barrier
+        on standalone_access_code_attempt_events
+      `);
+      await barrierPool.query(`
+        create trigger standalone_access_code_attempt_events_reconcile_barrier
+        before insert on standalone_access_code_attempt_events
+        for each row execute function
+          standalone_access_code_attempt_events_test_reconcile_barrier()
+      `);
+    };
+
+    const removeReconcileBarrier = async () => {
+      await barrierPool.query(`
+        drop trigger if exists standalone_access_code_attempt_events_reconcile_barrier
+        on standalone_access_code_attempt_events
+      `);
+      await barrierPool.query(`
+        drop function if exists
+          standalone_access_code_attempt_events_test_reconcile_barrier()
+      `);
+    };
+
+    const insertRogueCreatedEvent = {
+      text: `insert into standalone_access_code_attempt_events
+        (attempt_id, event_kind, actor, source, name, device_id, starts_at_local,
+         ends_at_local, starts_at, ends_at, variance, provider_credential_id, occurred_at)
+       values ($1, 'created', $2, $3, $4, $5, $6, $7, $8, $9, 2, $10, $11)`,
+      values: (attemptId: string, occurredAt: Temporal.Instant) => [
+        attemptId,
+        actor,
+        source,
+        accessName,
+        deviceId,
+        window.startsAtLocal,
+        window.endsAtLocal,
+        window.startsAt.toString(),
+        window.endsAt.toString(),
+        providerCredentialId,
+        occurredAt.toString(),
+      ],
+    };
 
     test("allocates standalone variances 2 and 3, then rejects a third attempt", async () => {
       const firstAttempt = attemptFixture();
@@ -897,6 +984,153 @@ describe.skipIf(!postgresDatabase)(
       const serialized = JSON.stringify(rows);
       expect(serialized).not.toContain(pin);
       expect(serialized).not.toMatch(/"pin"/i);
+    });
+
+    test("resolves a stale confirmed replay to the durable created winner when a provider completion commits first", async () => {
+      const attempt = attemptFixture();
+      const staleClaimedAt = Temporal.Now.instant().subtract({ minutes: 5 });
+      await Effect.runPromise(claim({ attempt, claimedAt: staleClaimedAt }));
+
+      const barrier = await barrierPool.connect();
+      try {
+        const completionAt = Temporal.Now.instant();
+        await barrier.query("begin");
+        await barrier.query(insertRogueCreatedEvent.text, [
+          ...insertRogueCreatedEvent.values(attempt.attemptId, completionAt),
+        ]);
+
+        const replay = Effect.runPromise(
+          claim({
+            attempt,
+            providerCredentialRemoved: true,
+            staleBefore: Temporal.Now.instant(),
+          })
+        );
+        void replay.catch(() => {});
+        await waitForWaitingLock(
+          "locktype = 'transactionid'",
+          "the stale replay to reach the contested terminal insert"
+        );
+
+        await barrier.query("commit");
+        expect(await replay).toMatchObject({
+          kind: "created",
+          terminal: { providerCredentialId, name: accessName },
+        });
+      } finally {
+        await barrier.query("rollback").catch(() => {});
+        barrier.release();
+      }
+
+      expect(await eventKindsOf(attempt.attemptId)).toEqual([
+        "created",
+        "started",
+      ]);
+      const rows = await loadEvents(attempt.attemptId);
+      expect(
+        rows.filter(({ eventKind }) => eventKind === "reconciled")
+      ).toHaveLength(0);
+    });
+
+    test("never reconciles a stale attempt whose provider completion wins the terminal race", async () => {
+      const stale = attemptFixture();
+      const staleClaimedAt = Temporal.Now.instant().subtract({ minutes: 5 });
+      await Effect.runPromise(
+        claim({ attempt: stale, claimedAt: staleClaimedAt })
+      );
+
+      const barrier = await barrierPool.connect();
+      try {
+        await installReconcileBarrier();
+        await barrier.query("begin");
+        await barrier.query(insertRogueCreatedEvent.text, [
+          ...insertRogueCreatedEvent.values(
+            stale.attemptId,
+            Temporal.Now.instant()
+          ),
+        ]);
+        await barrier.query(
+          `select pg_advisory_lock(${reconcileBarrierKey}::bigint)`
+        );
+
+        const confirmed = Effect.runPromise(
+          claim({
+            attempt: attemptFixture(),
+            providerCredentialRemoved: true,
+          })
+        );
+        void confirmed.catch(() => {});
+        await waitForWaitingLock(
+          `locktype = 'advisory' and classid = (${reconcileBarrierKey}::bigint >> 32)::oid and objid = (${reconcileBarrierKey}::bigint & 4294967295)::oid`,
+          "the confirmed claim to reach the reconciliation barrier"
+        );
+
+        await barrier.query("commit");
+        await barrier.query(
+          `select pg_advisory_unlock(${reconcileBarrierKey}::bigint)`
+        );
+
+        expect(await confirmed).toMatchObject({
+          kind: "claimed",
+          variance: 3,
+        });
+      } finally {
+        await barrier.query("rollback").catch(() => {});
+        await barrier
+          .query(`select pg_advisory_unlock(${reconcileBarrierKey}::bigint)`)
+          .catch(() => {});
+        barrier.release();
+        await removeReconcileBarrier();
+      }
+
+      const events = await loadEvents(stale.attemptId);
+      expect(
+        events.filter(({ eventKind }) => eventKind === "reconciled")
+      ).toHaveLength(0);
+      expect(events.some(({ eventKind }) => eventKind === "created")).toBe(
+        true
+      );
+    });
+
+    test("reconciles a confirmed stale replay immediately and rejects a later completion", async () => {
+      const attempt = attemptFixture();
+      await Effect.runPromise(claim({ attempt }));
+
+      const replay = await Effect.runPromise(
+        claim({
+          attempt,
+          providerCredentialRemoved: true,
+          staleBefore: Temporal.Now.instant(),
+        })
+      );
+      expect(replay).toMatchObject({ kind: "reconciled" });
+      expect(await eventKindsOf(attempt.attemptId)).toEqual([
+        "ambiguous",
+        "reconciled",
+        "started",
+      ]);
+
+      const lateCreated = await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt,
+          variance: 2,
+          eventKind: "created",
+          occurredAt: Temporal.Now.instant(),
+          providerCredentialId,
+        })
+      );
+      expect(lateCreated).toEqual({
+        kind: "already-terminal",
+        terminal: {
+          kind: "ambiguous",
+          failureCode: "standalone_attempt_stale",
+        },
+      });
+      expect(await eventKindsOf(attempt.attemptId)).toEqual([
+        "ambiguous",
+        "reconciled",
+        "started",
+      ]);
     });
   }
 );
