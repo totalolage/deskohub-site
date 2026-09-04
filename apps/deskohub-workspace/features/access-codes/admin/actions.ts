@@ -2,7 +2,7 @@
 
 import { Effect, Result } from "effect";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
-import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
+import { requireAdministrationAuthorization } from "@/features/administration/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
@@ -16,7 +16,7 @@ const createStandaloneAccessCodeWorkflow = Effect.fn(
   "access-codes.createStandaloneAccessCode"
 )(
   function* (input: CreateStandaloneAccessCodeInput) {
-    const actor = yield* requireDiscountAdminAuthorization().pipe(
+    const actor = yield* requireAdministrationAuthorization().pipe(
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

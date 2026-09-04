@@ -59,8 +59,8 @@ mock.module("@/features/access-codes", () => ({
   ),
 }));
 
-mock.module("@/features/discounts/admin/basic-auth.server", () => ({
-  requireDiscountAdminAuthorization: () =>
+mock.module("@/features/administration/basic-auth.server", () => ({
+  requireAdministrationAuthorization: () =>
     Effect.gen(function* () {
       authorizationCalls += 1;
       if (!authorizationAllowed) {
