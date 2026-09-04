@@ -1,7 +1,6 @@
 "use server";
 
-import { AdministrationStandaloneAccessCodeCreateInput } from "@deskohub/workspace-admin-api";
-import { Effect, Result, Schema } from "effect";
+import { Effect, Result } from "effect";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -29,28 +28,17 @@ const createStandaloneAccessCodeAction = defineWorkspaceAction(
             })
         )
       );
-      const request = yield* Schema.decodeEffect(
-        AdministrationStandaloneAccessCodeCreateInput
-      )({
-        name: input.name,
-        startsAt: input.startsAt,
-        endsAt: input.endsAt,
-      }).pipe(
-        Effect.mapError(
-          () =>
-            new PublicSafeActionError({
-              message:
-                "The access window must be 1 to 672 whole hours long, in site-local time.",
-            })
-        )
-      );
       const administration = yield* StandaloneAccessCodeAdministration;
       const attempted = yield* administration
         .create({
           attemptId: input.attemptId,
           actor,
           source: "admin-ui",
-          request,
+          request: {
+            name: input.name,
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+          },
           ...(input.providerCredentialRemovedAttemptId !== undefined && {
             providerCredentialRemovedAttemptId:
               input.providerCredentialRemovedAttemptId,

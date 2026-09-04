@@ -1951,12 +1951,12 @@ const accessCodesCreateCommand = Command.make(
             )
           )
         );
-        yield* attemptStore.forget(identity, issuedAttemptId);
         yield* Console.log(
           json
             ? JSON.stringify(outcome)
             : formatStandaloneAccessCodeOutcome(outcome)
         );
+        yield* attemptStore.forget(identity, issuedAttemptId);
       })
     )
 ).pipe(

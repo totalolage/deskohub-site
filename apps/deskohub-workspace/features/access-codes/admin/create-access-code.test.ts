@@ -91,7 +91,7 @@ describe("standalone access-code creation contract", () => {
     expect(attemptId.issues?.[0]?.path?.map(String)).toEqual(["attemptId"]);
   });
 
-  test("keeps the shared contract authoritative for the access window", async () => {
+  test("rejects an access window outside the shared contract bounds", async () => {
     const rejected = await createStandaloneAccessCodeInputSchema[
       "~standard"
     ].validate({
@@ -99,7 +99,11 @@ describe("standalone access-code creation contract", () => {
       ...validWindow,
       endsAt: "2026-09-10T09:00",
     });
-    expect(rejected.issues).toBeUndefined();
+    expect(rejected.issues).toBeDefined();
+    expect(rejected.issues?.[0]?.path?.map(String)).toEqual(["endsAt"]);
+    expect(rejected.issues?.[0]?.message).toBe(
+      "The end must be 1 to 672 hours after the start."
+    );
   });
 
   test("accepts the confirmed cleanup attempt id beside the contract fields", async () => {

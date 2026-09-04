@@ -244,7 +244,7 @@ describe("createStandaloneAccessCode action", () => {
     );
   });
 
-  test("enforces the shared contract window before calling the service", async () => {
+  test("rejects an invalid access window through input validation", async () => {
     serviceCreateCalls.length = 0;
     serviceCreateResult = Effect.die("must not be called");
     const { createStandaloneAccessCode } = await import("./actions");
@@ -255,7 +255,12 @@ describe("createStandaloneAccessCode action", () => {
     });
 
     expect(result).toMatchObject({
-      serverError: expect.stringContaining("1 to 672 whole hours"),
+      validationErrors: {
+        formErrors: [],
+        fieldErrors: {
+          endsAt: ["The end must be 1 to 672 hours after the start."],
+        },
+      },
     });
     expect(serviceCreateCalls).toHaveLength(0);
   });

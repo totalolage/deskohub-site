@@ -462,7 +462,25 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                       ...request,
                       result: toStandaloneAccessCodeResult(outcome),
                     })
-                    .pipe(mapServiceFailure)
+                    .pipe(
+                      Effect.catch((cause) =>
+                        Effect.logWarning(
+                          "Standalone access-code mutation-ledger completion failed after creation concluded",
+                          {
+                            requestId,
+                            sessionId: session.id,
+                            outcome: outcome.outcome,
+                            cause,
+                          }
+                        ).pipe(
+                          Effect.andThen(
+                            mutationIdempotency
+                              .release(request)
+                              .pipe(Effect.catch(() => Effect.void))
+                          )
+                        )
+                      )
+                    )
                 )
               );
             const resumeInterruptedCreation = Effect.gen(function* () {

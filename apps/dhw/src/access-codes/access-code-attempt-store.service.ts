@@ -152,22 +152,19 @@ export const makeAccessCodeAttemptStore = ({
     KeyValueStore.toSchemaStore(keyValueStore, AccessCodeAttemptReservation);
 
   const readAt = (key: string) =>
-    Effect.gen(function* () {
-      const keyValueStore = yield* KeyValueStore.KeyValueStore;
-      return yield* schemaStoreFor(keyValueStore).get(key);
-    });
+    Effect.flatMap(KeyValueStore.KeyValueStore, (keyValueStore) =>
+      schemaStoreFor(keyValueStore).get(key)
+    );
 
   const writeAt = (key: string, reservation: AccessCodeAttemptReservation) =>
-    Effect.gen(function* () {
-      const keyValueStore = yield* KeyValueStore.KeyValueStore;
-      yield* schemaStoreFor(keyValueStore).set(key, reservation);
-    });
+    Effect.flatMap(KeyValueStore.KeyValueStore, (keyValueStore) =>
+      schemaStoreFor(keyValueStore).set(key, reservation)
+    );
 
   const removeAt = (key: string) =>
-    Effect.gen(function* () {
-      const keyValueStore = yield* KeyValueStore.KeyValueStore;
-      yield* schemaStoreFor(keyValueStore).remove(key);
-    });
+    Effect.flatMap(KeyValueStore.KeyValueStore, (keyValueStore) =>
+      schemaStoreFor(keyValueStore).remove(key)
+    );
 
   const lockError = (lockPath: string) =>
     new KeyValueStore.KeyValueStoreError({
@@ -176,31 +173,30 @@ export const makeAccessCodeAttemptStore = ({
       message: `The access-code attempt reservation is locked by another process and the bounded wait expired. If no other dhw process is running, remove ${lockPath} and run the command again.`,
     });
 
-  const acquireLock = (lockPath: string) =>
-    Effect.gen(function* () {
-      const token = `${process.pid} ${yield* crypto.randomUUIDv4}`;
-      const deadline = Date.now() + lockOptions.waitMilliseconds;
-      while (true) {
-        if (Date.now() >= deadline) {
-          return yield* lockError(lockPath);
-        }
-        const acquired = yield* fileSystem
-          .writeFileString(lockPath, token, { flag: "wx" })
-          .pipe(
-            Effect.as(true),
-            Effect.catch((error) =>
-              error.reason._tag === "AlreadyExists"
-                ? Effect.succeed(false)
-                : Effect.fail(error)
-            )
-          );
-        if (acquired) return token;
-        yield* Effect.sleep(`${lockOptions.retryMilliseconds} millis`);
+  const acquireLock = Effect.fn("acquireLock")(function* (lockPath: string) {
+    const token = `${process.pid} ${yield* crypto.randomUUIDv4}`;
+    const deadline = Date.now() + lockOptions.waitMilliseconds;
+    while (true) {
+      if (Date.now() >= deadline) {
+        return yield* lockError(lockPath);
       }
-    });
+      const acquired = yield* fileSystem
+        .writeFileString(lockPath, token, { flag: "wx" })
+        .pipe(
+          Effect.as(true),
+          Effect.catch((error) =>
+            error.reason._tag === "AlreadyExists"
+              ? Effect.succeed(false)
+              : Effect.fail(error)
+          )
+        );
+      if (acquired) return token;
+      yield* Effect.sleep(`${lockOptions.retryMilliseconds} millis`);
+    }
+  });
 
-  const releaseLock = (lockPath: string, token: string) =>
-    Effect.gen(function* () {
+  const releaseLock = Effect.fn("releaseLock")(
+    function* (lockPath: string, token: string) {
       const current = yield* fileSystem
         .readFileString(lockPath)
         .pipe(Effect.option);
@@ -209,7 +205,9 @@ export const makeAccessCodeAttemptStore = ({
           .remove(lockPath)
           .pipe(Effect.catch(() => Effect.void));
       }
-    }).pipe(Effect.catch(() => Effect.void));
+    },
+    (effect) => effect.pipe(Effect.catch(() => Effect.void))
+  );
 
   const withLock = <A, E>(
     key: string,
@@ -228,8 +226,8 @@ export const makeAccessCodeAttemptStore = ({
       (token) => releaseLock(`${directory}/${key}.lock`, token)
     );
 
-  const reserve = (identity: AccessCodeAttemptIdentity) =>
-    Effect.gen(function* () {
+  const reserve = Effect.fn("AccessCodeAttemptStore.reserve")(
+    function* (identity: AccessCodeAttemptIdentity) {
       const key = yield* reservationKey(identity);
       return yield* withLock(
         key,
@@ -253,13 +251,15 @@ export const makeAccessCodeAttemptStore = ({
           return attemptId;
         })
       );
-    }).pipe(Effect.provide(serviceLayer));
+    },
+    (effect) => effect.pipe(Effect.provide(serviceLayer))
+  );
 
-  const forget = (
-    identity: AccessCodeAttemptIdentity,
-    attemptId: AdministrationStandaloneAccessCodeAttemptIdType
-  ) =>
-    Effect.gen(function* () {
+  const forget = Effect.fn("AccessCodeAttemptStore.forget")(
+    function* (
+      identity: AccessCodeAttemptIdentity,
+      attemptId: AdministrationStandaloneAccessCodeAttemptIdType
+    ) {
       const key = yield* reservationKey(identity);
       yield* withLock(
         key,
@@ -282,18 +282,18 @@ export const makeAccessCodeAttemptStore = ({
           );
         })
       );
-    }).pipe(
-      Effect.provide(serviceLayer),
-      Effect.catch(() => Effect.void)
-    );
+    },
+    (effect) =>
+      effect.pipe(
+        Effect.provide(serviceLayer),
+        Effect.catch(() => Effect.void)
+      )
+  );
 
   return Effect.gen(function* () {
     yield* fileSystem
       .makeDirectory(directory, { recursive: true })
       .pipe(Effect.catch(() => Effect.void));
-    return Effect.succeed({
-      reserve: Effect.fn("AccessCodeAttemptStore.reserve")(reserve),
-      forget: Effect.fn("AccessCodeAttemptStore.forget")(forget),
-    });
+    return Effect.succeed({ reserve, forget });
   }).pipe(Effect.flatten);
 };

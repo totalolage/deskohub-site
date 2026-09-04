@@ -21,7 +21,7 @@ import {
   CliStandaloneAccessCodeReconciled,
 } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
-import { Effect, Layer, Option, Redacted, Schema } from "effect";
+import { Console, Effect, Exit, Layer, Option, Redacted, Schema } from "effect";
 import { Command } from "effect/unstable/cli";
 import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store.service";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
@@ -438,6 +438,53 @@ describe("dhw mutation commands", () => {
 
     await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
     responseLost = false;
+    await runCommand(args, layer).pipe(Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).toBe(attemptIds[0]);
+  });
+
+  test("keeps the reserved attempt id recoverable when the PIN output is interrupted", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return attemptIds.length === 1
+          ? Effect.succeed(createdAccessCodeOutcome)
+          : Effect.succeed(alreadyCreatedAccessCodeOutcome);
+      },
+    });
+    const interruptedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        if (args.join(" ").includes("7654321")) {
+          throw new Error(
+            "The output was interrupted before the PIN was shown."
+          );
+        }
+      },
+    } satisfies Console.Console);
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--yes",
+    ];
+
+    const interrupted = await runCommand(
+      args,
+      Layer.mergeAll(layer, interruptedOutput)
+    ).pipe(Effect.exit, Effect.runPromise);
+    expect(Exit.isFailure(interrupted)).toBe(true);
     await runCommand(args, layer).pipe(Effect.runPromise);
 
     expect(attemptIds).toHaveLength(2);

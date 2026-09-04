@@ -34,7 +34,8 @@ import {
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
-import { Effect, Layer, Result, Schema } from "effect";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { Effect, Layer, Logger, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
 import {
   StandaloneAccessCodeAdministration,
@@ -1345,6 +1346,56 @@ describe("standalone access-code CLI endpoint", () => {
       source: "dhw-cli",
       actor: "admin",
     });
+  });
+
+  test("returns the created PIN even when the ledger completion write fails", async () => {
+    const releases: unknown[] = [];
+    const logRecords: string[] = [];
+    const capturingLogger = Logger.make<unknown, void>(({ message }) => {
+      logRecords.push(JSON.stringify(message));
+    });
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () => Effect.succeed(createdOutcome),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () =>
+        Effect.fail(
+          new EffectDrizzleQueryError({
+            query: "update cli mutation requests",
+            params: [],
+            cause: new Error("write unavailable"),
+          })
+        ),
+      reclaimStale: () => Effect.succeed(false),
+      release: (request) =>
+        Effect.sync(() => {
+          releases.push(request);
+        }),
+    });
+
+    const created = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      Effect.gen(function* () {
+        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+          "administration",
+        ]);
+        return yield* client.administration.createStandaloneAccessCode({
+          payload,
+        });
+      })
+    ).pipe(Effect.withLogger(capturingLogger), Effect.runPromise);
+
+    expect(created).toMatchObject({ outcome: "created", pin: "7654321" });
+    expect(releases).toHaveLength(1);
+    expect(
+      logRecords.some(
+        (record) => record.includes("completion") && record.includes(attemptId)
+      )
+    ).toBe(true);
+    expect(logRecords.join("\n")).not.toContain("7654321");
   });
 
   test("rejects a legacy CLI session before claiming the mutation ledger", async () => {

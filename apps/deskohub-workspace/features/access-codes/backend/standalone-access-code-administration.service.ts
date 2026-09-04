@@ -195,12 +195,14 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
         );
       });
 
-      const recordProviderRejection = (input: {
+      const recordProviderRejection = Effect.fn(
+        "StandaloneAccessCodeAdministration.recordProviderRejection"
+      )(function* (input: {
         readonly request: StandaloneAccessCodeCreationRequest;
         readonly attempt: StandaloneAccessCodeAttempt;
         readonly variance: StandaloneAccessCodeProviderVariance;
         readonly error: IgloohomeRequestError;
-      }) => {
+      }) {
         const eventKind = input.error.outcome;
         const failureCode =
           eventKind === "rejected"
@@ -220,41 +222,41 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
               }),
             }
           );
-        return Effect.gen(function* () {
-          const appended = yield* Effect.result(
-            attempts.appendTerminal({
-              attempt: input.attempt,
-              variance: input.variance,
-              eventKind,
-              occurredAt: Temporal.Now.instant(),
-              providerStatusCode: input.error.statusCode,
-              failureCode,
-            })
-          );
-          if (Result.isFailure(appended)) {
-            yield* logTerminalAuditFailure({
-              attemptId: input.request.attemptId,
-              eventKind,
-              cause: appended.failure,
-            });
-            return yield* outcomeFailure();
-          }
-          return yield* Match.value(appended.success).pipe(
-            Match.discriminatorsExhaustive("kind")({
-              appended: () => Effect.fail(outcomeFailure()),
-              "already-terminal": ({ terminal }) =>
-                storedTerminalOutcome(input.request, terminal),
-            })
-          );
-        });
-      };
+        const appended = yield* Effect.result(
+          attempts.appendTerminal({
+            attempt: input.attempt,
+            variance: input.variance,
+            eventKind,
+            occurredAt: Temporal.Now.instant(),
+            providerStatusCode: input.error.statusCode,
+            failureCode,
+          })
+        );
+        if (Result.isFailure(appended)) {
+          yield* logTerminalAuditFailure({
+            attemptId: input.request.attemptId,
+            eventKind,
+            cause: appended.failure,
+          });
+          return yield* outcomeFailure();
+        }
+        return yield* Match.value(appended.success).pipe(
+          Match.discriminatorsExhaustive("kind")({
+            appended: () => Effect.fail(outcomeFailure()),
+            "already-terminal": ({ terminal }) =>
+              storedTerminalOutcome(input.request, terminal),
+          })
+        );
+      });
 
-      const recordCreated = (input: {
+      const recordCreated = Effect.fn(
+        "StandaloneAccessCodeAdministration.recordCreated"
+      )(function* (input: {
         readonly request: StandaloneAccessCodeCreationRequest;
         readonly attempt: StandaloneAccessCodeAttempt;
         readonly variance: StandaloneAccessCodeProviderVariance;
         readonly issued: { readonly pin: string; readonly pinId: string };
-      }) => {
+      }) {
         const issuedAt = Temporal.Now.instant();
         const pin = Schema.decodeSync(AdministrationStandaloneAccessCodePin)(
           input.issued.pin
@@ -262,46 +264,44 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
         const providerCredentialId = Schema.decodeSync(
           AdministrationProviderCredentialId
         )(input.issued.pinId);
-        return Effect.gen(function* () {
-          const appended = yield* Effect.result(
-            attempts.appendTerminal({
-              attempt: input.attempt,
-              variance: input.variance,
-              eventKind: "created",
-              occurredAt: issuedAt,
-              providerCredentialId,
-            })
-          );
-          if (Result.isFailure(appended)) {
-            yield* logTerminalAuditFailure({
-              attemptId: input.request.attemptId,
-              eventKind: "created",
-              cause: appended.failure,
-            });
-            return createdOutcome({
-              request: input.request,
-              providerCredentialId,
-              pin,
-              issuedAt,
-            });
-          }
-          return yield* Match.value(appended.success).pipe(
-            Match.discriminatorsExhaustive("kind")({
-              appended: () =>
-                Effect.succeed(
-                  createdOutcome({
-                    request: input.request,
-                    providerCredentialId,
-                    pin,
-                    issuedAt,
-                  })
-                ),
-              "already-terminal": ({ terminal }) =>
-                storedTerminalOutcome(input.request, terminal),
-            })
-          );
-        });
-      };
+        const appended = yield* Effect.result(
+          attempts.appendTerminal({
+            attempt: input.attempt,
+            variance: input.variance,
+            eventKind: "created",
+            occurredAt: issuedAt,
+            providerCredentialId,
+          })
+        );
+        if (Result.isFailure(appended)) {
+          yield* logTerminalAuditFailure({
+            attemptId: input.request.attemptId,
+            eventKind: "created",
+            cause: appended.failure,
+          });
+          return createdOutcome({
+            request: input.request,
+            providerCredentialId,
+            pin,
+            issuedAt,
+          });
+        }
+        return yield* Match.value(appended.success).pipe(
+          Match.discriminatorsExhaustive("kind")({
+            appended: () =>
+              Effect.succeed(
+                createdOutcome({
+                  request: input.request,
+                  providerCredentialId,
+                  pin,
+                  issuedAt,
+                })
+              ),
+            "already-terminal": ({ terminal }) =>
+              storedTerminalOutcome(input.request, terminal),
+          })
+        );
+      });
 
       return StandaloneAccessCodeAdministration.of({
         create: Effect.fn("StandaloneAccessCodeAdministration.create")(

@@ -3,6 +3,7 @@ import {
   type AdministrationStandaloneAccessCodeCleanupTargetType,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreationOutcome,
+  type AdministrationWorkspaceSiteLocalWholeHourDateTime,
 } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -21,7 +22,18 @@ export const createStandaloneAccessCodeInputSchema = Schema.toStandardSchemaV1(
     providerCredentialRemovedAttemptId: Schema.optionalKey(
       AdministrationStandaloneAccessCodeAttemptId
     ),
-  }),
+  }).check(
+    Schema.makeFilter<{
+      readonly startsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
+      readonly endsAt: AdministrationWorkspaceSiteLocalWholeHourDateTime;
+    }>(
+      ({ startsAt, endsAt }) =>
+        isStandaloneAccessCodeWindowValid({ startsAt, endsAt }) || {
+          path: ["endsAt"],
+          issue: "The end must be 1 to 672 hours after the start.",
+        }
+    )
+  ),
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
 

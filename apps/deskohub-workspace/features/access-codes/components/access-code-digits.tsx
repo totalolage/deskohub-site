@@ -13,14 +13,14 @@ export function AccessCodeDigits({ code, className }: AccessCodeDigitsProps) {
   return (
     <output
       aria-label={Array.from(code).join(" ")}
-      className={className ?? "flex flex-wrap gap-2"}
+      className={`${className ?? "flex flex-wrap gap-2"} ph-no-capture`}
       data-ph-mask=""
       data-ph-no-capture=""
     >
       {Array.from(code).map((character, index) => (
         <span
           aria-hidden="true"
-          className="grid h-14 w-10 place-items-center rounded-xl bg-navy-blue/5 font-mono text-2xl font-medium tabular-nums text-navy-blue"
+          className="grid h-14 w-10 place-items-center rounded-xl bg-navy-blue/5 font-mono text-2xl font-medium tabular-nums text-navy-blue ph-no-capture"
           // biome-ignore lint/suspicious/noArrayIndexKey: Access-code characters are positional and may repeat.
           key={`${index}-${character}`}
         >
