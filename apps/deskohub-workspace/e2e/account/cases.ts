@@ -683,21 +683,19 @@ export const makeWorkspaceE2EAccountCases = ({
             "shows the confirmed reservations in the current group",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              // One combined condition bounds navigation and both content
-              // assertions. The child window is the datasource budget; the
-              // step budget adds the navigation command window on top so a
-              // slow server render cannot exhaust the parent first.
-              yield* waitForBrowserCondition(
+              // One Node-side text poll samples the rendered document for
+              // both assertions; in-page waitForFunction stayed false while
+              // the sanitized snapshot already showed the same content.
+              yield* waitForBrowserText({
+                description:
+                  "current reservations group with a confirmed card",
+                matches: (pageText) =>
+                  pageText.includes(currentReservationsTitle) &&
+                  pageText.includes(confirmedStatus),
                 run,
                 session,
-                "current reservations group with a confirmed card",
-                `(() => {
-                    const text = document.body?.innerText ?? "";
-                    return text.includes(${JSON.stringify(currentReservationsTitle)}) &&
-                      text.includes(${JSON.stringify(confirmedStatus)});
-                  })()`,
-                { timeoutMs: datasourceTimeout }
-              );
+                timeoutMs: datasourceTimeout,
+              });
             }),
             accountPageLoadTimeout
           )
@@ -721,17 +719,15 @@ export const makeWorkspaceE2EAccountCases = ({
             "moves the cancelled reservation to the past group",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              yield* waitForBrowserCondition(
+              yield* waitForBrowserText({
+                description: "past reservations group with a cancelled card",
+                matches: (pageText) =>
+                  pageText.includes(pastReservationsTitle) &&
+                  pageText.includes(cancelledStatus),
                 run,
                 session,
-                "past reservations group with a cancelled card",
-                `(() => {
-                    const text = document.body?.innerText ?? "";
-                    return text.includes(${JSON.stringify(pastReservationsTitle)}) &&
-                      text.includes(${JSON.stringify(cancelledStatus)});
-                  })()`,
-                { timeoutMs: datasourceTimeout }
-              );
+                timeoutMs: datasourceTimeout,
+              });
             }),
             accountPageLoadTimeout
           )
