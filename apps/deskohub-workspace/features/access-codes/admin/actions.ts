@@ -6,7 +6,10 @@ import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-import { createStandaloneAccessCodeInputSchema } from "./create-access-code";
+import {
+  createStandaloneAccessCodeInputSchema,
+  encodeCreateStandaloneAccessCodeResult,
+} from "./create-access-code";
 
 const createStandaloneAccessCodeAction = defineWorkspaceAction(
   {
@@ -51,7 +54,8 @@ const createStandaloneAccessCodeAction = defineWorkspaceAction(
         })
         .pipe(
           Effect.mapError((error) => error.outcome),
-          Effect.result
+          Effect.result,
+          Effect.map(encodeCreateStandaloneAccessCodeResult)
         );
     }).pipe(
       Effect.provide(StandaloneAccessCodeAdministration.Live),

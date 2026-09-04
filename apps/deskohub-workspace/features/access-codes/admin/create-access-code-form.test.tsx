@@ -17,7 +17,6 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
-import { Result } from "effect";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -242,7 +241,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
       .calls[0][0] as CreateStandaloneAccessCodeActionInput;
 
     act(() => {
-      actionOptions?.onSuccess({ data: Result.fail("rejected") });
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: "rejected" },
+      });
     });
     await submitForm(view);
     const resubmittedInput = execute.mock
@@ -266,7 +267,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
       .calls[0][0] as CreateStandaloneAccessCodeActionInput;
 
     act(() => {
-      actionOptions?.onSuccess({ data: Result.fail("unavailable") });
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: "unavailable" },
+      });
     });
     await submitForm(view);
     const retriedInput = execute.mock
@@ -294,7 +297,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     fillForm(view);
     await submitForm(view);
     act(() => {
-      actionOptions?.onSuccess({ data: Result.succeed(createdOutcome) });
+      actionOptions?.onSuccess({
+        data: { status: "succeeded", outcome: createdOutcome },
+      });
     });
     expect(document.activeElement).toBe(
       view.container.querySelector(
@@ -310,7 +315,10 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
     act(() => {
       actionOptions?.onSuccess({
-        data: Result.succeed({ ...createdOutcome, outcome: "already-created" }),
+        data: {
+          status: "succeeded",
+          outcome: { ...createdOutcome, outcome: "already-created" },
+        },
       });
     });
     expect(document.activeElement).toBe(
@@ -326,7 +334,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     fillForm(view);
     await submitForm(view);
     act(() => {
-      actionOptions?.onSuccess({ data: Result.fail("ambiguous") });
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: "ambiguous" },
+      });
     });
     expect(document.activeElement).toBe(
       view.container.querySelector(
@@ -367,7 +377,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({ data: Result.succeed(createdOutcome) });
+      actionOptions?.onSuccess({
+        data: { status: "succeeded", outcome: createdOutcome },
+      });
     });
 
     const region = view.container.querySelector(
@@ -399,7 +411,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
       execute.mock.calls[0][0] as CreateStandaloneAccessCodeActionInput
     ).attemptId;
     act(() => {
-      actionOptions?.onSuccess({ data: Result.succeed(createdOutcome) });
+      actionOptions?.onSuccess({
+        data: { status: "succeeded", outcome: createdOutcome },
+      });
     });
 
     fireEvent.click(
@@ -428,7 +442,10 @@ describe("CreateStandaloneAccessCodeForm", () => {
 
     act(() => {
       actionOptions?.onSuccess({
-        data: Result.succeed({ ...createdOutcome, outcome: "already-created" }),
+        data: {
+          status: "succeeded",
+          outcome: { ...createdOutcome, outcome: "already-created" },
+        },
       });
     });
 
@@ -449,7 +466,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({ data: Result.fail("rejected") });
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: "rejected" },
+      });
     });
 
     expect(
@@ -472,7 +491,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({ data: Result.fail("ambiguous") });
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: "ambiguous" },
+      });
     });
 
     expect(
@@ -499,7 +520,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({ data: Result.fail("ambiguous") });
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: "ambiguous" },
+      });
     });
 
     const checkbox = view.getByRole("checkbox", {
@@ -546,7 +569,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({ data: Result.fail("cleanup-required") });
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: "cleanup-required" },
+      });
     });
 
     expect(
@@ -570,7 +595,9 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({ data: Result.fail("ambiguous") });
+      actionOptions?.onSuccess({
+        data: { status: "failed", outcome: "ambiguous" },
+      });
     });
     fireEvent.click(
       view.getByRole("checkbox", {

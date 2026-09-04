@@ -9,7 +9,7 @@ import {
   AdministrationStandaloneAccessCodeName,
   AdministrationStandaloneAccessCodePin,
 } from "@deskohub/workspace-admin-api";
-import { Context, Effect, Layer, Result, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
@@ -117,7 +117,9 @@ describe("createStandaloneAccessCode action", () => {
     const result = await createStandaloneAccessCode(validInput);
 
     expect(authorizationCalls).toBe(1);
-    expect(result).toEqual({ data: Result.succeed(createdOutcome) });
+    expect(result).toEqual({
+      data: { status: "succeeded", outcome: createdOutcome },
+    });
     expect(serviceCreateCalls).toHaveLength(1);
     expect(serviceCreateCalls[0]).toMatchObject({
       attemptId,
@@ -145,7 +147,7 @@ describe("createStandaloneAccessCode action", () => {
     const { createStandaloneAccessCode } = await import("./actions");
 
     await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      data: Result.succeed(alreadyCreated),
+      data: { status: "succeeded", outcome: alreadyCreated },
     });
   });
 
@@ -157,7 +159,7 @@ describe("createStandaloneAccessCode action", () => {
     const { createStandaloneAccessCode } = await import("./actions");
 
     await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      data: Result.fail("rejected"),
+      data: { status: "failed", outcome: "rejected" },
     });
   });
 
@@ -169,7 +171,7 @@ describe("createStandaloneAccessCode action", () => {
     const { createStandaloneAccessCode } = await import("./actions");
 
     await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      data: Result.fail("ambiguous"),
+      data: { status: "failed", outcome: "ambiguous" },
     });
   });
 

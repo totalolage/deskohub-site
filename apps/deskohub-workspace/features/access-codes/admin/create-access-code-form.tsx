@@ -31,6 +31,7 @@ import {
   createStandaloneAccessCodeAttemptId,
   createStandaloneAccessCodeFormDefaults,
   createStandaloneAccessCodeFormSchema,
+  decodeCreateStandaloneAccessCodeResult,
   formatStandaloneAccessCodeDuration,
   formatStandaloneAccessCodeLocalDateTime,
   isSameStandaloneAccessCodeWindow,
@@ -99,8 +100,9 @@ export function CreateStandaloneAccessCodeForm() {
       onSuccess: ({ data }) => {
         cleanupConfirmedWindowRef.current = null;
         if (!data) return;
-        if (Result.isSuccess(data)) {
-          const outcome = data.success;
+        const result = decodeCreateStandaloneAccessCodeResult(data);
+        if (Result.isSuccess(result)) {
+          const outcome = result.success;
           setNotice(null);
           if (outcome.outcome === "created") {
             setCreation({ kind: "created", outcome });
@@ -109,7 +111,7 @@ export function CreateStandaloneAccessCodeForm() {
           setCreation({ kind: "already-created" });
           return;
         }
-        const kind = data.failure;
+        const kind = result.failure;
         if (kind === "rejected") {
           attemptInputRef.current = null;
           setNotice(standaloneAccessCodeFailureNotices.rejected);

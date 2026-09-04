@@ -5,7 +5,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { type Result, Schema } from "effect";
+import { Result, Schema } from "effect";
 import type { StandaloneAccessCodeCreationOutcome } from "../standalone-access-code";
 
 export const standaloneAccessCodeMinimumDurationHours = 1;
@@ -30,6 +30,35 @@ export type CreateStandaloneAccessCodeResult = Result.Result<
   AdministrationStandaloneAccessCodeCreationOutcome,
   StandaloneAccessCodeCreationOutcome
 >;
+
+/**
+ * Plain-data shape of the action result that survives Server Action
+ * transport; the domain Result is rebuilt client-side by its decode helper.
+ */
+export type CreateStandaloneAccessCodeTransport =
+  | {
+      readonly status: "succeeded";
+      readonly outcome: AdministrationStandaloneAccessCodeCreationOutcome;
+    }
+  | {
+      readonly status: "failed";
+      readonly outcome: StandaloneAccessCodeCreationOutcome;
+    };
+
+export const encodeCreateStandaloneAccessCodeResult = (
+  result: CreateStandaloneAccessCodeResult
+): CreateStandaloneAccessCodeTransport =>
+  Result.match(result, {
+    onSuccess: (outcome) => ({ status: "succeeded", outcome }),
+    onFailure: (outcome) => ({ status: "failed", outcome }),
+  });
+
+export const decodeCreateStandaloneAccessCodeResult = (
+  transport: CreateStandaloneAccessCodeTransport
+): CreateStandaloneAccessCodeResult =>
+  transport.status === "succeeded"
+    ? Result.succeed(transport.outcome)
+    : Result.fail(transport.outcome);
 
 export const createStandaloneAccessCodeAttemptId =
   (): AdministrationStandaloneAccessCodeAttemptId =>

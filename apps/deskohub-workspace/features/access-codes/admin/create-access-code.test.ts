@@ -1,14 +1,24 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { AdministrationStandaloneAccessCodeAttemptId } from "@deskohub/workspace-admin-api";
-import { Schema } from "effect";
+import {
+  AdministrationInstant,
+  AdministrationProviderCredentialId,
+  AdministrationStandaloneAccessCodeAttemptId,
+  type AdministrationStandaloneAccessCodeCreationOutcome,
+  AdministrationStandaloneAccessCodeName,
+  AdministrationStandaloneAccessCodePin,
+} from "@deskohub/workspace-admin-api";
+import { Result, Schema } from "effect";
 import {
   type CreateStandaloneAccessCodeFormInput,
+  type CreateStandaloneAccessCodeResult,
   createStandaloneAccessCodeAttemptId,
   createStandaloneAccessCodeFormDefaults,
   createStandaloneAccessCodeFormSchema,
   createStandaloneAccessCodeInputSchema,
+  decodeCreateStandaloneAccessCodeResult,
+  encodeCreateStandaloneAccessCodeResult,
   formatStandaloneAccessCodeDuration,
   formatStandaloneAccessCodeLocalDateTime,
   isSameStandaloneAccessCodeWindow,
@@ -23,6 +33,21 @@ const validWindow = {
   name: "Booth A",
   startsAt: "2026-09-10T10:00",
   endsAt: "2026-09-10T12:00",
+};
+
+const createdOutcome: AdministrationStandaloneAccessCodeCreationOutcome = {
+  outcome: "created",
+  attemptId: Schema.decodeSync(AdministrationStandaloneAccessCodeAttemptId)(
+    "01980000-0000-7000-8000-000000000042"
+  ),
+  providerCredentialId: Schema.decodeSync(AdministrationProviderCredentialId)(
+    "fixture-pin-id"
+  ),
+  name: Schema.decodeSync(AdministrationStandaloneAccessCodeName)("Booth A"),
+  startsAt: "2026-09-10T10:00",
+  endsAt: "2026-09-10T12:00",
+  issuedAt: AdministrationInstant.make("2026-09-10T09:00:00.000Z"),
+  pin: Schema.decodeSync(AdministrationStandaloneAccessCodePin)("7654321"),
 };
 
 describe("standalone access-code creation contract", () => {
@@ -181,6 +206,93 @@ describe("standalone access-code window arithmetic", () => {
         endsAt: "2026-09-10T11:30",
       })
     ).toBeNull();
+  });
+});
+
+describe("standalone access-code action transport", () => {
+  const alreadyCreatedOutcome: AdministrationStandaloneAccessCodeCreationOutcome =
+    { ...createdOutcome, outcome: "already-created" as const };
+
+  test("a raw Effect result does not survive plain-data transport", () => {
+    const raw: CreateStandaloneAccessCodeResult =
+      Result.succeed(createdOutcome);
+
+    // JSON keeps the Result's `_tag` via toJSON, so the client guard passes,
+    // but the payload moves to `value` and `.success` is gone.
+    const viaJson = JSON.parse(
+      JSON.stringify(raw)
+    ) as CreateStandaloneAccessCodeResult;
+    expect(Result.isSuccess(viaJson)).toBe(true);
+    expect(viaJson.success).toBeUndefined();
+
+    // Structured clone keeps `.success` but drops `_tag`, so the client
+    // guard reports neither success nor failure.
+    const viaClone = structuredClone(raw) as CreateStandaloneAccessCodeResult;
+    expect(Result.isSuccess(viaClone)).toBe(false);
+    expect(Result.isFailure(viaClone)).toBe(false);
+  });
+
+  test("round-trips a created outcome through JSON transport", () => {
+    const transport = encodeCreateStandaloneAccessCodeResult(
+      Result.succeed(createdOutcome)
+    );
+    const decoded = decodeCreateStandaloneAccessCodeResult(
+      JSON.parse(JSON.stringify(transport))
+    );
+
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success).toEqual(createdOutcome);
+    }
+  });
+
+  test("round-trips an already-created outcome through structured clone", () => {
+    const transport = encodeCreateStandaloneAccessCodeResult(
+      Result.succeed(alreadyCreatedOutcome)
+    );
+    const decoded = decodeCreateStandaloneAccessCodeResult(
+      structuredClone(transport)
+    );
+
+    expect(Result.isSuccess(decoded)).toBe(true);
+    if (Result.isSuccess(decoded)) {
+      expect(decoded.success).toEqual(alreadyCreatedOutcome);
+    }
+  });
+
+  test("round-trips a failure outcome through JSON transport", () => {
+    const transport = encodeCreateStandaloneAccessCodeResult(
+      Result.fail("rejected")
+    );
+    const decoded = decodeCreateStandaloneAccessCodeResult(
+      JSON.parse(JSON.stringify(transport))
+    );
+
+    expect(Result.isFailure(decoded)).toBe(true);
+    if (Result.isFailure(decoded)) {
+      expect(decoded.failure).toBe("rejected");
+    }
+  });
+
+  test("encodes both branches as plain own-property data", () => {
+    const succeeded = encodeCreateStandaloneAccessCodeResult(
+      Result.succeed(createdOutcome)
+    );
+    expect(Object.keys(succeeded)).toEqual(["status", "outcome"]);
+    expect(succeeded).toEqual({
+      status: "succeeded",
+      outcome: createdOutcome,
+    });
+    expect(JSON.parse(JSON.stringify(succeeded))).toEqual(succeeded);
+
+    const failed = encodeCreateStandaloneAccessCodeResult(
+      Result.fail("cleanup-required")
+    );
+    expect(Object.keys(failed)).toEqual(["status", "outcome"]);
+    expect(failed).toEqual({
+      status: "failed",
+      outcome: "cleanup-required",
+    });
   });
 });
 
