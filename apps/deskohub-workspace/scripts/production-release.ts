@@ -350,11 +350,13 @@ const makePolling = ({ sleep, now }: PollingDependencies = {}) => ({
 /**
  * Verifies that every required production alias — the project alias and the
  * customer-facing custom domain — serves the restored deployment after a
- * rollback. A rollback that any required alias does not confirm is a failed
+ * rollback. The restored deployment is matched by its id first, so alias
+ * rows that carry a deploymentId without a nested deployment url still
+ * confirm. A rollback that any required alias does not confirm is a failed
  * recovery.
  */
 export const verifyCanonicalAliasServes = async (
-  expectedUrl: string,
+  expected: ProductionRollbackTarget,
   input: {
     readonly token: string;
     readonly projectId: string;
@@ -363,7 +365,7 @@ export const verifyCanonicalAliasServes = async (
   dependencies: PollingDependencies = {}
 ): Promise<void> => {
   const confirmed = await waitForProductionAliases(
-    { id: null, url: expectedUrl },
+    expected,
     input,
     dependencies
   );
@@ -502,9 +504,10 @@ const persistReleaseOutput = async (output: string) => {
  * possibly promoted untested release behind:
  *
  * 1. The canonical alias is resolved immediately before the request; that
- *    authoritative baseline and a "promotion possibly started" state are
- *    persisted through GITHUB_OUTPUT before any side effect, so the workflow
- *    finalizer can always recover, even after a crash.
+ *    authoritative baseline's url and deployment id, plus a "promotion
+ *    possibly started" state, are persisted through GITHUB_OUTPUT before any
+ *    side effect, so the workflow finalizer can always recover, even after
+ *    a crash.
  * 2. The promotion request goes through the primary Vercel API, which
  *    classifies it without waiting: a 4xx answer is a definitive rejection
  *    before any change, while acceptance or an ambiguous failure may still
@@ -541,7 +544,12 @@ export const promoteStagedDeployment = async (
     input.teamId
   );
   process.stdout.write(`::add-mask::${baseline.deploymentUrl}\n`);
-  await persist(`baseline_url=${baseline.deploymentUrl}\n`);
+  if (baseline.deploymentId) {
+    process.stdout.write(`::add-mask::${baseline.deploymentId}\n`);
+  }
+  await persist(
+    `baseline_url=${baseline.deploymentUrl}\nbaseline_id=${baseline.deploymentId ?? ""}\n`
+  );
 
   let pollingFailure: unknown;
   if (
@@ -609,17 +617,19 @@ export const promoteStagedDeployment = async (
 const usage = (message?: string): never => {
   if (message) process.stderr.write(`${message}\n`);
   process.stderr.write(
-    "Usage: production-release.ts <resolve-previous|probe|verify-canonical|verify-crons|promote|rollback> [--url <url>]\n"
+    "Usage: production-release.ts <resolve-previous|probe|verify-canonical|verify-crons|promote|rollback> [--url <url>] [--id <id>]\n"
   );
   process.exit(1);
 };
 
-const readUrlOption = (): string => {
-  const index = process.argv.indexOf("--url");
+const readOptionValue = (option: string): string | undefined => {
+  const index = process.argv.indexOf(option);
   const value = index === -1 ? undefined : process.argv[index + 1];
-  if (!value) return usage("--url is required");
-  return value;
+  return value ? value : undefined;
 };
+
+const readUrlOption = (): string =>
+  readOptionValue("--url") ?? usage("--url is required");
 
 const run = async () => {
   const command = process.argv[2];
@@ -655,12 +665,16 @@ const run = async () => {
     }
     case "rollback": {
       const url = readUrlOption();
+      const id = readOptionValue("--id");
       await rollbackToDeployment(url);
-      await verifyCanonicalAliasServes(url, {
-        token: vercelToken,
-        projectId,
-        teamId,
-      });
+      await verifyCanonicalAliasServes(
+        { id: id ?? null, url },
+        {
+          token: vercelToken,
+          projectId,
+          teamId,
+        }
+      );
       return;
     }
     default:

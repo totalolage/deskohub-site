@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 90
     environment:
@@ -96,7 +97,7 @@ jobs:
             steps.promote.outputs.promotion_state == 'recovery-needed' ||
             (steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome != 'success'))
         working-directory: apps/deskohub-workspace
-        run: bun scripts/production-release.ts rollback --url "${{ steps.promote.outputs.baseline_url }}"
+        run: bun scripts/production-release.ts rollback --url "${{ steps.promote.outputs.baseline_url }}" --id "${{ steps.promote.outputs.baseline_id }}"
 
       - name: Fail the release after rollback
         if: always() && failure()

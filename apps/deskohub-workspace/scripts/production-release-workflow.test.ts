@@ -81,9 +81,30 @@ describe("deploy-workspace-production workflow", () => {
       "steps.rollback-target.outputs.previous_url"
     );
     expect(workflow).toContain(
-      `bun scripts/production-release.ts rollback --url "\${{ steps.promote.outputs.baseline_url }}"`
+      `bun scripts/production-release.ts rollback --url "\${{ steps.promote.outputs.baseline_url }}" --id "\${{ steps.promote.outputs.baseline_id }}"`
     );
     expect(script).toMatch(/baseline_url=/);
+    expect(script).toContain("baseline_id=");
+  });
+
+  test("survives workflow cancellation at the job level so the always() finalizers are reached", async () => {
+    const workflow = await readWorkflow();
+    const deployIndex = workflow.indexOf("\n  deploy:\n");
+    expect(deployIndex).toBeGreaterThan(-1);
+
+    // Direct job properties only: everything between the deploy job key and
+    // the first deeper-indented child block. A step-level always() lives six
+    // or more spaces in and cannot satisfy this assertion.
+    const firstChildBlockIndex = workflow.indexOf("\n      ", deployIndex);
+    expect(firstChildBlockIndex).toBeGreaterThan(deployIndex);
+    const deployJobProperties = workflow.slice(
+      deployIndex,
+      firstChildBlockIndex
+    );
+
+    const jobLevelIf = deployJobProperties.match(/^ {4}if: (.+)$/m)?.[1];
+    expect(jobLevelIf).toBeDefined();
+    expect(jobLevelIf).toContain("always()");
   });
 
   test("runs an always() finalizer while promotion is possibly started but unresolved", async () => {

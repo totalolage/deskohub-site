@@ -598,7 +598,7 @@ describe("workspace production release checks", () => {
       "POST /v10/projects/prj_test/promote/dpl_staged"
     );
     expect(environment.persisted[0]).toBe(
-      "baseline_url=https://workspace-baseline.vercel.app\n"
+      "baseline_url=https://workspace-baseline.vercel.app\nbaseline_id=dpl_baseline\n"
     );
     expect(environment.persisted).toContain(
       "promoted=true\npromotion_state=promoted\n"
@@ -802,7 +802,7 @@ describe("workspace production release checks", () => {
 
     expect(rollbackUrls).toEqual(["https://workspace-baseline.vercel.app"]);
     expect(environment.persisted[0]).toBe(
-      "baseline_url=https://workspace-baseline.vercel.app\n"
+      "baseline_url=https://workspace-baseline.vercel.app\nbaseline_id=dpl_baseline\n"
     );
     expect(environment.persisted[1]).toBe("promotion_state=possibly-started\n");
     expect(environment.persisted).toContain("promotion_state=restored\n");
@@ -829,7 +829,7 @@ describe("workspace production release checks", () => {
     environment.restoreBaselineAlias();
     await expect(
       verifyCanonicalAliasServes(
-        "https://workspace-baseline.vercel.app",
+        { id: "dpl_baseline", url: "https://workspace-baseline.vercel.app" },
         {
           token: "token",
           projectId: "prj_test",
@@ -870,7 +870,7 @@ describe("workspace production release checks", () => {
     expect(retained.url).toBe("https://workspace-baseline.vercel.app");
     expect(rollbackUrls).toEqual(["https://workspace-rebased.vercel.app"]);
     expect(environment.persisted[0]).toBe(
-      "baseline_url=https://workspace-rebased.vercel.app\n"
+      "baseline_url=https://workspace-rebased.vercel.app\nbaseline_id=dpl_rebased\n"
     );
   });
 
@@ -880,7 +880,7 @@ describe("workspace production release checks", () => {
 
     await expect(
       verifyCanonicalAliasServes(
-        "https://workspace-baseline.vercel.app",
+        { id: "dpl_baseline", url: "https://workspace-baseline.vercel.app" },
         {
           token: "token",
           projectId: "prj_test",
@@ -901,7 +901,7 @@ describe("workspace production release checks", () => {
 
     await expect(
       verifyCanonicalAliasServes(
-        "https://workspace-baseline.vercel.app",
+        { id: "dpl_baseline", url: "https://workspace-baseline.vercel.app" },
         {
           token: "token",
           projectId: "prj_test",
@@ -922,7 +922,7 @@ describe("workspace production release checks", () => {
 
     await expect(
       verifyCanonicalAliasServes(
-        "https://workspace-baseline.vercel.app",
+        { id: "dpl_baseline", url: "https://workspace-baseline.vercel.app" },
         {
           token: "token",
           projectId: "prj_test",
@@ -942,7 +942,7 @@ describe("workspace production release checks", () => {
 
     await expect(
       verifyCanonicalAliasServes(
-        "https://workspace-baseline.vercel.app",
+        { id: "dpl_baseline", url: "https://workspace-baseline.vercel.app" },
         {
           token: "token",
           projectId: "prj_test",
@@ -953,6 +953,93 @@ describe("workspace production release checks", () => {
         environment.virtualDeps
       )
     ).rejects.toThrow("verification");
+  });
+
+  test("verifies rollback by deployment id when alias rows omit the nested deployment", async () => {
+    mockGlobalFetch((input) => {
+      const url = new URL(input.toString());
+      if (url.pathname === "/v4/aliases") {
+        return Promise.resolve(
+          jsonResponse({
+            aliases: [
+              {
+                alias: "deskohub-workspace-site.vercel.app",
+                deploymentId: "dpl_baseline",
+              },
+              {
+                alias: "workspace.deskohub.cz",
+                deploymentId: "dpl_baseline",
+              },
+            ],
+            pagination: { count: 2, next: null },
+          })
+        );
+      }
+      return Promise.resolve(new Response("Not found", { status: 404 }));
+    });
+
+    let clock = 0;
+    await expect(
+      verifyCanonicalAliasServes(
+        { id: "dpl_baseline", url: "https://workspace-baseline.vercel.app" },
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: "team_test",
+          pollDeadlineMilliseconds: 60_000,
+          pollIntervalMilliseconds: 30_000,
+        },
+        {
+          sleep: (ms: number) => {
+            clock += ms;
+            return Promise.resolve();
+          },
+          now: () => clock,
+        }
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  test("fails rollback verification when an id-only alias row serves a different deployment", async () => {
+    mockGlobalFetch((input) => {
+      const url = new URL(input.toString());
+      if (url.pathname === "/v4/aliases") {
+        return Promise.resolve(
+          jsonResponse({
+            aliases: [
+              {
+                alias: "deskohub-workspace-site.vercel.app",
+                deploymentId: "dpl_staged",
+              },
+              { alias: "workspace.deskohub.cz", deploymentId: "dpl_staged" },
+            ],
+            pagination: { count: 2, next: null },
+          })
+        );
+      }
+      return Promise.resolve(new Response("Not found", { status: 404 }));
+    });
+
+    let clock = 0;
+    await expect(
+      verifyCanonicalAliasServes(
+        { id: "dpl_baseline", url: "https://workspace-baseline.vercel.app" },
+        {
+          token: "token",
+          projectId: "prj_test",
+          teamId: "team_test",
+          pollDeadlineMilliseconds: 60_000,
+          pollIntervalMilliseconds: 30_000,
+        },
+        {
+          sleep: (ms: number) => {
+            clock += ms;
+            return Promise.resolve();
+          },
+          now: () => clock,
+        }
+      )
+    ).rejects.toThrow("Rollback verification failed");
   });
 
   test("fails closed when the registered crons are missing the account cleanup", async () => {
