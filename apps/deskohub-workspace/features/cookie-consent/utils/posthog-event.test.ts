@@ -69,6 +69,68 @@ describe("preparePostHogEvent", () => {
     expect(preparePostHogEvent(event, "production")).toBe(event);
   });
 
+  const resizeObserverNoise = {
+    mechanism: { handled: false, synthetic: true },
+    type: "Error",
+    value: "ResizeObserver loop completed with undelivered notifications.",
+  };
+
+  test.each([
+    ["drops the exact production shape", [resizeObserverNoise], true],
+    [
+      "keeps a stackful application error",
+      [
+        {
+          ...resizeObserverNoise,
+          stacktrace: { frames: [{ filename: "app.js", in_app: true }] },
+        },
+      ],
+      false,
+    ],
+    [
+      "keeps a handled exception",
+      [
+        {
+          ...resizeObserverNoise,
+          mechanism: { handled: true, synthetic: true },
+        },
+      ],
+      false,
+    ],
+    [
+      "keeps a non-synthetic exception",
+      [
+        {
+          ...resizeObserverNoise,
+          mechanism: { handled: false, synthetic: false },
+        },
+      ],
+      false,
+    ],
+    ...[
+      "ResizeObserver loop completed with undelivered notifications",
+      "ResizeObserver loop limit exceeded",
+    ].map((value) => [
+      "keeps a near-match message",
+      [{ ...resizeObserverNoise, value }],
+      false,
+    ]),
+    [
+      "keeps a multi-exception event",
+      [
+        resizeObserverNoise,
+        { type: "TypeError", value: "Cannot read properties of undefined" },
+      ],
+      false,
+    ],
+  ])("%s", (_name, exceptionList, dropped) => {
+    const event = createEvent("$exception", { $exception_list: exceptionList });
+
+    expect(preparePostHogEvent(event, "production")).toBe(
+      dropped ? null : event
+    );
+  });
+
   test("keeps actionable exceptions and sanitizes their urls", () => {
     const event = createEvent("$exception", {
       $current_url:
