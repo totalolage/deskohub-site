@@ -22,7 +22,7 @@ const toHost = (url: string): string => {
 };
 
 const plainHostResult = (host: string): BetterAuthAllowedHostsResult => {
-  if (host.includes("*")) {
+  if (host.includes("*") || host.includes("?")) {
     return {
       kind: "invalid",
       message: "Wildcard hosts are not allowed for Better Auth.",

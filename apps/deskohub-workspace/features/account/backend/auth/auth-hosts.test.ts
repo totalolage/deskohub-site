@@ -145,4 +145,26 @@ describe("Better Auth allowed hosts resolution", () => {
       })
     ).toBe("Wildcard hosts are not allowed for Better Auth.");
   });
+
+  test("rejects one-character wildcard host patterns instead of trusting them", () => {
+    expect(
+      invalidMessage({
+        vercelEnv: "preview",
+        customerFacingHost: "workspace.deskohub.c?",
+        projectProductionUrl: undefined,
+        deploymentUrl: undefined,
+        branchUrl: undefined,
+      })
+    ).toBe("Wildcard hosts are not allowed for Better Auth.");
+
+    expect(
+      invalidMessage({
+        vercelEnv: "preview",
+        customerFacingHost: "workspace.deskohub.cz",
+        projectProductionUrl: undefined,
+        deploymentUrl: "deskohub-workspace-abc?23.vercel.app",
+        branchUrl: undefined,
+      })
+    ).toBe("Wildcard hosts are not allowed for Better Auth.");
+  });
 });
