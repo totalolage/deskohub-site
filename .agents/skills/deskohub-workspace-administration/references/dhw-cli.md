@@ -215,11 +215,13 @@ fresh identifier. When the local reservation cannot be written or read, the
 command refuses to create the access code instead of risking a duplicate.
 
 When the Workspace reports that a prior ambiguous or stale attempt still
-occupies the window, the command fails with a cleanup-required error without
-calling the provider. After removing the possible credential with the
-Igloohome app over Bluetooth, or verifying it is absent, rerun with
-`--provider-credential-removed` to confirm the cleanup; the server records the
-reconciliation and creates the new code in one transaction. If that rerun
+occupies the window, the command fails with a cleanup-required error that names
+the exact attempt without calling the provider. After removing that attempt's
+possible credential with the Igloohome app over Bluetooth, or verifying it is
+absent, rerun with `--provider-credential-removed <attempt-id>` to confirm that
+exact cleanup. The server records only that reconciliation and creates the new
+code in one transaction; another unresolved attempt produces another
+cleanup-required error. If the confirmed rerun
 resumed an earlier attempt identifier whose server-side outcome was already
 terminal ambiguous, the server records the reconciliation and answers with a
 reconciled signal, and `dhw` automatically reissues the creation under a fresh
