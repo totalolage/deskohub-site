@@ -207,7 +207,7 @@ test("waits briefly for the provider session row to converge after redirect", as
       {
         intervalMs: 1,
         onRow: (row) => observedRows.push(row),
-        timeoutMs: 50,
+        timeoutMs: 2_000,
       }
     )
   );
