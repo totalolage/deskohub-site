@@ -59,12 +59,40 @@ describe("deploy-workspace-production workflow", () => {
     expect(smokeIndex).toBeGreaterThan(-1);
     expect(rollbackIndex).toBeGreaterThan(smokeIndex);
     expect(failIndex).toBeGreaterThan(rollbackIndex);
-    expect(workflow).toContain("steps.canonical-smoke.outcome == 'failure'");
+    expect(workflow).toContain(
+      "if: always() && steps.canonical-smoke.outcome == 'failure'"
+    );
     expect(workflow).toContain("steps.rollback-target.outputs.previous_url");
     expect(workflow).toContain("bun scripts/production-release.ts rollback");
     expect(workflow).toContain(
       "bun scripts/production-release.ts verify-canonical"
     );
+  });
+
+  test("promotes through the script so a failed promotion request cannot skip recovery", async () => {
+    const workflow = await readWorkflow();
+    const promoteStep = workflow.indexOf("Promote production deployment");
+    const smokeStep = workflow.indexOf(
+      "Probe canonical production after promotion"
+    );
+
+    expect(promoteStep).toBeGreaterThan(-1);
+    expect(smokeStep).toBeGreaterThan(promoteStep);
+    expect(workflow).toMatch(
+      /id: promote\n\s+working-directory: apps\/deskohub-workspace\n\s+run: bun scripts\/production-release\.ts promote --url/
+    );
+    expect(workflow).not.toMatch(/vercel@\d[\d.]* promote/);
+  });
+
+  test("never leaves a possibly promoted release untested or unrestored", async () => {
+    const workflow = await readWorkflow();
+
+    expect(workflow).toContain(
+      "if: always() && steps.promote.outputs.promoted == 'true'"
+    );
+    expect(workflow).toContain("if: always() && failure()");
+    expect(workflow).toContain("steps.promote.outputs.promoted");
+    expect(workflow).toContain("bun scripts/production-release.ts promote");
   });
 
   test("rolls the release back through the script's Vercel rollback operation", async () => {

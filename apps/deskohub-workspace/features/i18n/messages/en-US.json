@@ -718,6 +718,7 @@
   "accountProfileFirstNameRequired": "Enter your first name.",
   "accountProfileLastNameLabel": "Last name, optional",
   "accountProfilePhoneLabel": "Phone, optional",
+  "accountProfilePhoneInvalid": "Enter a valid phone number or clear the field.",
   "accountProfileEmailLabel": "Verified login email",
   "accountProfileEmailReadonly": "To protect your reservation history, the login email cannot be changed.",
   "accountProfileBillingNone": "No billing details",

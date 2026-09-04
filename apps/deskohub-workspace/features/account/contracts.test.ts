@@ -3,7 +3,17 @@ import { Temporal } from "@js-temporal/polyfill";
 import {
   type CustomerReservationSummary,
   groupCustomerReservations,
+  updateCustomerProfileStandardSchema,
 } from "./contracts";
+
+const validateProfileInput = async (input: {
+  readonly firstName: string;
+  readonly phone?: string;
+}) => {
+  const outcome =
+    await updateCustomerProfileStandardSchema["~standard"].validate(input);
+  return outcome;
+};
 
 const now = Temporal.Instant.from("2026-09-03T12:00:00Z");
 
@@ -91,5 +101,73 @@ describe("groupCustomerReservations", () => {
     );
 
     expect(groups.unavailable.map(({ id }) => id)).toEqual(["invalid-end"]);
+  });
+});
+
+describe("customer profile input", () => {
+  test("rejects a nonblank phone that cannot be normalized instead of silently clearing it", async () => {
+    const outcome = await validateProfileInput({
+      firstName: "Ada",
+      phone: "call me maybe",
+    });
+
+    expect(outcome).toHaveProperty("issues");
+    const issues = (outcome as { readonly issues: readonly unknown[] }).issues;
+    expect(issues.length).toBeGreaterThan(0);
+    expect(JSON.stringify(issues)).toContain("phone");
+  });
+
+  test("rejects a digits-only phone that no provider format can normalize", async () => {
+    const outcome = await validateProfileInput({
+      firstName: "Ada",
+      phone: "123",
+    });
+
+    expect(outcome).toHaveProperty("issues");
+  });
+
+  test("treats a blank phone as clearing the field", async () => {
+    const outcome = await validateProfileInput({
+      firstName: "Ada",
+      phone: "   ",
+    });
+
+    expect(outcome).toHaveProperty("value");
+    expect(
+      (outcome as { readonly value: { readonly phone?: string } }).value.phone
+    ).toBe("");
+  });
+
+  test("keeps an absent phone absent", async () => {
+    const outcome = await validateProfileInput({ firstName: "Ada" });
+
+    expect(outcome).toHaveProperty("value");
+    expect(
+      (outcome as { readonly value: { readonly phone?: string } }).value.phone
+    ).toBeUndefined();
+  });
+
+  test("accepts a local phone format", async () => {
+    const outcome = await validateProfileInput({
+      firstName: "Ada",
+      phone: "601123456",
+    });
+
+    expect(outcome).toHaveProperty("value");
+    expect(
+      (outcome as { readonly value: { readonly phone: string } }).value.phone
+    ).toBe("601123456");
+  });
+
+  test("accepts an international phone format", async () => {
+    const outcome = await validateProfileInput({
+      firstName: "Ada",
+      phone: "+420 601 123 456",
+    });
+
+    expect(outcome).toHaveProperty("value");
+    expect(
+      (outcome as { readonly value: { readonly phone: string } }).value.phone
+    ).toBe("+420 601 123 456");
   });
 });

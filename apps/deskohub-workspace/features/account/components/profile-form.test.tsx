@@ -226,6 +226,59 @@ describe("ProfileForm", () => {
     );
   });
 
+  test("renders the stored legacy phone so an unparseable value stays visible", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm
+        mode="edit"
+        locale="en-US"
+        email="ada@example.test"
+        profile={{ ...editProfile, phone: "555-ALPHA" }}
+      />
+    );
+
+    const phone = view.getByLabelText("Phone, optional") as HTMLInputElement;
+    expect(phone.value).toBe("555-ALPHA");
+  });
+
+  test("forces phone correction instead of saving when the phone fails validation", async () => {
+    updateCustomerProfile.mockImplementationOnce(() =>
+      Promise.resolve({
+        validationErrors: {
+          formErrors: [],
+          fieldErrors: {
+            phone: ["Enter a valid phone number or clear the field."],
+          },
+        },
+      })
+    );
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm
+        mode="edit"
+        locale="en-US"
+        email="ada@example.test"
+        profile={{ ...editProfile, phone: "555-ALPHA" }}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    const phone = view.getByLabelText("Phone, optional");
+    expect(phone.getAttribute("aria-invalid")).toBe("true");
+    expect(phone.getAttribute("aria-describedby")).toBe(
+      "account-profile-phone-error"
+    );
+    expect(
+      view.getByText("Enter a valid phone number or clear the field.").id
+    ).toBe("account-profile-phone-error");
+    expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+  });
+
   test("shows the validation message when the action rejects the input shape", async () => {
     updateCustomerProfile.mockImplementationOnce(() =>
       Promise.resolve({

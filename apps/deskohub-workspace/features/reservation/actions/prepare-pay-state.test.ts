@@ -275,6 +275,7 @@ const runReusableReservationScenario = async (input: {
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
   readonly grantMarketingConsent?: ReturnType<typeof mock>;
+  readonly findOrCreateCustomer?: ReturnType<typeof mock>;
   readonly reservation?:
     | typeof reservation
     | (Omit<typeof reservation, "billing"> & { readonly billing: unknown });
@@ -342,9 +343,9 @@ const runReusableReservationScenario = async (input: {
         quote,
       }))
     );
-  const findOrCreateCustomer = mock(() =>
-    Effect.succeed({ id: "customer-id" })
-  );
+  const findOrCreateCustomer =
+    input.findOrCreateCustomer ??
+    mock(() => Effect.succeed({ id: "customer-id" }));
   const updateCustomerBillingDetails =
     input.updateCustomerBillingDetails ?? mock(() => Effect.void);
   const accountAuthority = await accountAuthorityFixture(
@@ -1131,8 +1132,40 @@ describe("prepareWorkspacePayState", () => {
     expect(scenario.findOrCreateCustomer).toHaveBeenCalledTimes(1);
     expect(scenario.guardEvents).toEqual([
       "account-session",
+      "account-lock-acquired",
       "account-activity",
+      "account-lock-released",
     ]);
+  });
+
+  test("holds the account advisory lock across reservation state creation", async () => {
+    const lockProbe = { held: false };
+    const lockSamples: boolean[] = [];
+    const scenario = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "locked-reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            correlationId: "locked-correlation-id",
+            dotyposCustomerId: input.dotyposCustomerId,
+            reservationDetails: input.reservationDetails,
+            locale: input.locale,
+            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          })
+        )
+      ),
+      findOrCreateCustomer: mock(() => {
+        lockSamples.push(lockProbe.held);
+        return Effect.succeed({ id: "customer-id" });
+      }),
+      accountAuthority: { session: {}, activityState: "active", lockProbe },
+    });
+
+    expect(scenario.result?.status).toBe("ready");
+    expect(lockSamples).toEqual([true]);
   });
 
   test("stops preparation when the account session authority cannot be read", async () => {
@@ -1179,7 +1212,9 @@ describe("prepareWorkspacePayState", () => {
     });
     expect(scenario.guardEvents).toEqual([
       "account-session",
+      "account-lock-acquired",
       "account-activity",
+      "account-lock-released",
     ]);
     expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
     expect(scenario.createDraft).not.toHaveBeenCalled();
@@ -1204,7 +1239,9 @@ describe("prepareWorkspacePayState", () => {
     });
     expect(scenario.guardEvents).toEqual([
       "account-session",
+      "account-lock-acquired",
       "account-activity",
+      "account-lock-released",
     ]);
     expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
     expect(scenario.createDraft).not.toHaveBeenCalled();

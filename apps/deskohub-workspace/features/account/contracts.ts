@@ -1,3 +1,4 @@
+import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { Schema } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 
@@ -8,6 +9,23 @@ const trimmedOptionalText = (maximumLength: number) =>
   Schema.optional(Schema.Trim.check(Schema.isMaxLength(maximumLength)));
 
 export const customerProfileNameFieldSchema = trimmedRequiredText(100);
+
+/**
+ * Dotypos owns the stored phone, so a blank value only means "clear the
+ * field". A nonblank value the provider normalizer cannot parse is rejected
+ * at this boundary: accepting it would let a profile save silently clear the
+ * phone, including a legacy stored value that the user was merely rendering
+ * back. The form therefore forces an explicit correction or an explicit
+ * clearing.
+ */
+const customerProfilePhoneFieldSchema = Schema.Trim.check(
+  Schema.isMaxLength(32),
+  Schema.makeFilter((value: string): boolean | string =>
+    value === "" || normalizePhoneNumber(value) != null
+      ? true
+      : "Invalid phone number"
+  )
+);
 
 const customerProfileAddressFields = {
   addressLine1: trimmedOptionalText(200),
@@ -50,7 +68,7 @@ export type CustomerProfileBillingInput =
 export const updateCustomerProfileSchema = Schema.Struct({
   firstName: customerProfileNameFieldSchema,
   lastName: trimmedOptionalText(100),
-  phone: trimmedOptionalText(32),
+  phone: Schema.optional(customerProfilePhoneFieldSchema),
   billing: Schema.optional(customerProfileBillingSchema),
 });
 

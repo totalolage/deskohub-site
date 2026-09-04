@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from "effect";
+import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
@@ -39,23 +40,42 @@ export const requireAccountActivity = (
     })
   );
 
+export type AccountActivityGuardDependencies = {
+  readonly currentUser: Effect.Effect<
+    {
+      readonly accountId: CustomerAccountId;
+    } | null,
+    CustomerAccountAccessError
+  >;
+} & Pick<
+  CustomerAccountLinkRepository["Service"],
+  "findActivityState" | "withAccountLock"
+>;
+
 /**
- * Activity guard for requests that may or may not carry an authoritative
- * account session. Only a successfully read null session stays anonymous; a
- * session-authority failure propagates as the closed public access error so
- * the request can never fall back to anonymous behavior. A successfully read
- * identity must still be an active, unmarked account, so the request fails
- * before the caller creates provider or database state when the deletion
- * marker is present or the auth account row disappeared after the identity
- * was read.
+ * Runs a state-creating section so deletion cannot slip between the
+ * authority check and the created state. For an authenticated account the
+ * section runs inside the account advisory lock: the authoritative activity
+ * is re-read under that lock, and the same lock is held until the section
+ * completes, so a concurrent deletion marker can only land before or after
+ * the whole section — never inside it. A successfully read null session runs
+ * the section unchanged without a lock; a session-authority failure fails
+ * closed before any state is created.
  */
-export const requireOptionalAccountActivity = (
-  authentication: Pick<CustomerAuthentication["Service"], "currentUser">,
-  links: Pick<CustomerAccountLinkRepository["Service"], "findActivityState">
-): Effect.Effect<void, CustomerAccountAccessError> =>
-  authentication.currentUser.pipe(
+export const guardOptionalAccountStateCreation = <A, E, R>(
+  dependencies: AccountActivityGuardDependencies,
+  stateCreation: Effect.Effect<A, E, R>
+): Effect.Effect<A, E | CustomerAccountAccessError | SqlError, R> =>
+  dependencies.currentUser.pipe(
     Effect.flatMap((session) =>
-      session ? requireAccountActivity(links, session.accountId) : Effect.void
+      session
+        ? dependencies.withAccountLock(
+            session.accountId,
+            requireAccountActivity(dependencies, session.accountId).pipe(
+              Effect.andThen(stateCreation)
+            )
+          )
+        : stateCreation
     )
   );
 
@@ -66,7 +86,9 @@ export const requireOptionalAccountActivity = (
 export class OptionalAccountActivityGuard extends Context.Service<
   OptionalAccountActivityGuard,
   {
-    readonly require: Effect.Effect<void, CustomerAccountAccessError>;
+    readonly guardStateCreation: <A, E, R>(
+      stateCreation: Effect.Effect<A, E, R>
+    ) => Effect.Effect<A, E | CustomerAccountAccessError | SqlError, R>;
   }
 >()("@deskohub-workspace/account/OptionalAccountActivityGuard") {
   static Default = Layer.effect(
@@ -75,7 +97,15 @@ export class OptionalAccountActivityGuard extends Context.Service<
       const authentication = yield* CustomerAuthentication;
       const links = yield* CustomerAccountLinkRepository;
       return {
-        require: requireOptionalAccountActivity(authentication, links),
+        guardStateCreation: (stateCreation) =>
+          guardOptionalAccountStateCreation(
+            {
+              currentUser: authentication.currentUser,
+              findActivityState: links.findActivityState,
+              withAccountLock: links.withAccountLock,
+            },
+            stateCreation
+          ),
       };
     })
   );

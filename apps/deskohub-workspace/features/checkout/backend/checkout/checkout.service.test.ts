@@ -1872,8 +1872,31 @@ describe("CheckoutService", () => {
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
     expect(harness.guardEvents).toEqual([
       "account-session",
+      "account-lock-acquired",
       "account-activity",
+      "account-lock-released",
     ]);
+  });
+
+  test("holds the account advisory lock across hosted checkout state creation", async () => {
+    const lockProbe = { held: false };
+    const lockSamples: boolean[] = [];
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-lock-held-checkout",
+      accountAuthority: { session: {}, activityState: "active", lockProbe },
+      createHostedPaymentPage: mock(() => {
+        lockSamples.push(lockProbe.held);
+        return Effect.succeed({
+          securityToken: "provider-security-token",
+          hostedPage: "https://payments.example/hosted",
+        });
+      }),
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({ status: "redirect" });
+    expect(lockSamples).toEqual([true]);
   });
 
   test("stops a deletion-marked account before updating the reservation or starting payment", async () => {
@@ -1893,7 +1916,9 @@ describe("CheckoutService", () => {
     });
     expect(harness.guardEvents).toEqual([
       "account-session",
+      "account-lock-acquired",
       "account-activity",
+      "account-lock-released",
     ]);
     expect(harness.updateReservationDetails).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
@@ -1917,7 +1942,9 @@ describe("CheckoutService", () => {
     });
     expect(harness.guardEvents).toEqual([
       "account-session",
+      "account-lock-acquired",
       "account-activity",
+      "account-lock-released",
     ]);
     expect(harness.updateReservationDetails).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();

@@ -244,6 +244,18 @@ describe("CustomerDotyposAdapter", () => {
       });
     });
 
+    test("keeps a legacy unparseable phone visible instead of normalizing or clearing it", async () => {
+      const profile = await runWithDotypos(
+        {
+          getCustomer: () =>
+            Effect.succeed(makeCustomer({ phone: "555-ALPHA" })),
+        },
+        (adapter) => adapter.readCustomerProfile("60111")
+      );
+
+      expect(profile?.phone).toBe("555-ALPHA");
+    });
+
     test("treats definitively missing and deleted profiles as absent", async () => {
       const missing = await runWithDotypos(
         {
@@ -429,6 +441,22 @@ describe("CustomerDotyposAdapter", () => {
       ).toBe(true);
     });
 
+    test("reconciles whitespace-only personal billing as cleared", () => {
+      expect(
+        customerProfileAppliesInput(makeCustomer(), {
+          firstName: "Ada",
+          billing: {
+            kind: "personal",
+            addressLine1: "   ",
+            addressLine2: "",
+            city: "",
+            zip: "",
+            country: "",
+          },
+        })
+      ).toBe(true);
+    });
+
     test("reports unapplied when billing data remains while the input clears billing", () => {
       expect(
         customerProfileAppliesInput(
@@ -448,6 +476,42 @@ describe("CustomerDotyposAdapter", () => {
           },
         })
       ).toBe(false);
+    });
+
+    test("completes an uncertain write that cleared whitespace-only personal billing", async () => {
+      const calls: string[] = [];
+
+      const outcome = await runWithDotypos(
+        {
+          patchCustomer: () => {
+            calls.push("patch");
+            return Effect.fail(
+              new NetworkError({ message: "connection reset" })
+            );
+          },
+          getCustomer: () => {
+            calls.push("read");
+            return Effect.succeed(makeCustomer());
+          },
+        },
+        (adapter) =>
+          adapter
+            .updateCustomerProfile("60111", {
+              firstName: "Ada",
+              billing: {
+                kind: "personal",
+                addressLine1: "   ",
+                addressLine2: "",
+                city: "",
+                zip: "",
+                country: "",
+              },
+            })
+            .pipe(Effect.result)
+      );
+
+      expect(calls).toEqual(["patch", "read"]);
+      expect(outcome._tag).toBe("Success");
     });
   });
 

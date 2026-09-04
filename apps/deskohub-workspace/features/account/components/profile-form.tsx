@@ -165,7 +165,21 @@ export function ProfileForm({
             defaultValue={profile?.phone ?? undefined}
             maxLength={32}
             autoComplete="tel"
+            aria-invalid={Boolean(validationErrors?.fieldErrors?.phone)}
+            aria-describedby={
+              validationErrors?.fieldErrors?.phone
+                ? "account-profile-phone-error"
+                : undefined
+            }
           />
+          {validationErrors?.fieldErrors?.phone ? (
+            <p
+              id="account-profile-phone-error"
+              className="text-sm text-red-700"
+            >
+              {m.accountProfilePhoneInvalid({}, { locale })}
+            </p>
+          ) : null}
         </div>
         <div className="space-y-2">
           <Label htmlFor="account-profile-email">

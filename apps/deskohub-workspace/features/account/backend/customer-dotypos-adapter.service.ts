@@ -78,11 +78,11 @@ const hasInputBillingData = (
   billing: NonNullable<CustomerProfileInput["billing"]>
 ): boolean =>
   billing.kind === "business" ||
-  billing.addressLine1 != null ||
-  billing.addressLine2 != null ||
-  billing.city != null ||
-  billing.zip != null ||
-  billing.country != null;
+  nonEmpty(billing.addressLine1) != null ||
+  nonEmpty(billing.addressLine2) != null ||
+  nonEmpty(billing.city) != null ||
+  nonEmpty(billing.zip) != null ||
+  nonEmpty(billing.country) != null;
 
 export const toCustomerProfile = (
   customer: DotyposCustomer

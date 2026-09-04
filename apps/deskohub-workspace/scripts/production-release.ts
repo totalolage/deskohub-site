@@ -11,16 +11,25 @@ const authSessionPath = "/api/auth/get-session";
 const authSessionCacheControl = "private, no-store";
 const signInFormMarker = 'id="account-sign-in-form"';
 
+const defaultPollDeadlineMilliseconds = 10 * 60_000;
+const defaultPollIntervalMilliseconds = 15_000;
+
 const requiredCronPaths = [
   "/api/cron/workspace/reservation-holds",
   "/api/cron/workspace/auth-cleanup",
 ] as const;
 
-const productionAliasResponse = Schema.Struct({
+const canonicalAliasResponse = Schema.Struct({
+  projectId: Schema.optional(Schema.NullOr(Schema.String)),
   deployment: Schema.Struct({
-    id: Schema.NullOr(Schema.String),
+    id: Schema.optional(Schema.NullOr(Schema.String)),
     url: Schema.NullOr(Schema.String),
   }),
+});
+
+const stagedDeploymentResponse = Schema.Struct({
+  id: Schema.String,
+  readyState: Schema.String,
 });
 
 const projectCronsResponse = Schema.Struct({
@@ -46,6 +55,79 @@ const vercelApiGet = async (
     );
   }
   return response.json() as unknown;
+};
+
+const vercelApiQuery = (params: Record<string, string | undefined>) => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.set(key, value);
+  }
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+};
+
+export type CanonicalAlias = {
+  readonly deploymentId: string | null;
+  readonly deploymentUrl: string;
+  readonly projectId: string | null;
+};
+
+/**
+ * Reads the deployment that serves the canonical Workspace production domain.
+ * The lookup is constrained to the configured project and the returned
+ * ownership is validated, so an alias that belongs to another project fails
+ * closed instead of being mistaken for the production target.
+ */
+export const resolveCanonicalAlias = async (
+  token: string,
+  projectId: string,
+  teamId: string | undefined
+): Promise<CanonicalAlias> => {
+  const payload = Schema.decodeUnknownSync(canonicalAliasResponse)(
+    await vercelApiGet(
+      `/v4/aliases/${workspaceProductionDomain}${vercelApiQuery({
+        teamId,
+        projectId,
+      })}`,
+      token
+    )
+  );
+  if (payload.projectId !== projectId) {
+    throw new Error(
+      `The canonical production alias serves a different Vercel project (${
+        payload.projectId ?? "unknown"
+      } instead of ${projectId}); refusing to act on it`
+    );
+  }
+  const { url } = payload.deployment;
+  if (!url) {
+    throw new Error(
+      "The canonical production alias serves no deployment url to retain"
+    );
+  }
+  return {
+    deploymentId: payload.deployment.id ?? null,
+    deploymentUrl: url,
+    projectId: payload.projectId,
+  };
+};
+
+const urlHostName = (url: string) => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
+
+const aliasServesDeployment = (
+  alias: CanonicalAlias,
+  deployment: { readonly id: string | null; readonly url: string }
+): boolean => {
+  if (deployment.id && alias.deploymentId) {
+    return alias.deploymentId === deployment.id;
+  }
+  return urlHostName(alias.deploymentUrl) === urlHostName(deployment.url);
 };
 
 /**
@@ -112,24 +194,11 @@ export type ProductionRollbackTarget = {
  */
 export const resolveProductionRollbackTarget = async (
   token: string,
+  projectId: string,
   teamId: string | undefined
 ): Promise<ProductionRollbackTarget> => {
-  const query = new URLSearchParams();
-  if (teamId) query.set("teamId", teamId);
-  const suffix = query.size > 0 ? `?${query.toString()}` : "";
-  const payload = Schema.decodeUnknownSync(productionAliasResponse)(
-    await vercelApiGet(
-      `/v4/aliases/${workspaceProductionDomain}${suffix}`,
-      token
-    )
-  );
-  const { id, url } = payload.deployment;
-  if (!url) {
-    throw new Error(
-      "The canonical production alias serves no deployment url to retain"
-    );
-  }
-  return { id, url };
+  const alias = await resolveCanonicalAlias(token, projectId, teamId);
+  return { id: alias.deploymentId, url: alias.deploymentUrl };
 };
 
 export const assertRegisteredCrons = async (
@@ -137,10 +206,11 @@ export const assertRegisteredCrons = async (
   token: string,
   teamId: string | undefined
 ) => {
-  const query = teamId ? `?teamId=${encodeURIComponent(teamId)}` : "";
   const payload = Schema.decodeUnknownSync(projectCronsResponse)(
     await vercelApiGet(
-      `/v1/projects/${encodeURIComponent(projectId)}/crons${query}`,
+      `/v1/projects/${encodeURIComponent(projectId)}/crons${vercelApiQuery({
+        teamId,
+      })}`,
       token
     )
   );
@@ -154,11 +224,6 @@ export const assertRegisteredCrons = async (
   }
 };
 
-/**
- * Instant rollback to the retained promoted deployment. Vercel's rollback
- * operation repoints production traffic atomically; promoting a prior
- * deployment would instead disable auto-assignment of the production domain.
- */
 const rollbackToDeployment = async (url: string) => {
   const token = requireEnv("VERCEL_TOKEN");
   const deployment =
@@ -184,16 +249,233 @@ const rollbackToDeployment = async (url: string) => {
 export const emitRollbackTarget = async (): Promise<void> => {
   const target = await resolveProductionRollbackTarget(
     requireEnv("VERCEL_TOKEN"),
+    requireEnv("VERCEL_PROJECT_ID"),
     process.env.VERCEL_ORG_ID
   );
   process.stdout.write(`::add-mask::${target.url}\n`);
   await appendFile(requireEnv("GITHUB_OUTPUT"), `previous_url=${target.url}\n`);
 };
 
+const resolveStagedDeployment = async (
+  stagedUrl: string,
+  token: string,
+  teamId: string | undefined
+): Promise<{ readonly id: string; readonly readyState: string }> => {
+  const host = urlHostName(stagedUrl);
+  const payload = Schema.decodeUnknownSync(stagedDeploymentResponse)(
+    await vercelApiGet(
+      `/v13/deployments/${encodeURIComponent(host)}${vercelApiQuery({
+        teamId,
+      })}`,
+      token
+    )
+  );
+  return { id: payload.id, readyState: payload.readyState };
+};
+
+/**
+ * Issues the promotion request. Vercel treats promotion as an asynchronous
+ * operation: an accepted request keeps proceeding server-side, so this only
+ * classifies the request itself. A definitive 4xx answer proves the request
+ * was refused before any change; anything else stays "unknown" and the
+ * canonical alias must decide the outcome.
+ */
+const requestPromotion = async (
+  projectId: string,
+  deploymentId: string,
+  token: string,
+  teamId: string | undefined
+): Promise<"accepted" | "rejected" | "unknown"> => {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${vercelApiOrigin}/v10/projects/${encodeURIComponent(
+        projectId
+      )}/promote/${encodeURIComponent(deploymentId)}${vercelApiQuery({
+        teamId,
+      })}`,
+      { method: "POST", headers: { authorization: `Bearer ${token}` } }
+    );
+  } catch {
+    return "unknown";
+  }
+  if (response.ok) return "accepted";
+  if (response.status >= 400 && response.status < 500) return "rejected";
+  return "unknown";
+};
+
+export type PollingOptions = {
+  readonly pollDeadlineMilliseconds?: number;
+  readonly pollIntervalMilliseconds?: number;
+};
+
+export type PollingDependencies = {
+  readonly sleep?: (ms: number) => Promise<void>;
+  readonly now?: () => number;
+};
+
+const makePolling = ({ sleep, now }: PollingDependencies = {}) => ({
+  sleep: sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms))),
+  now: now ?? (() => Date.now()),
+});
+
+/**
+ * Bounded authoritative poll of the canonical production alias. Resolves
+ * once the alias serves the expected deployment, or reports false when the
+ * deadline passes without the alias ever confirming the deployment.
+ */
+const waitForCanonicalAlias = async (
+  expected: { readonly id: string | null; readonly url: string },
+  input: {
+    readonly token: string;
+    readonly projectId: string;
+    readonly teamId: string | undefined;
+  } & PollingOptions,
+  dependencies: PollingDependencies = {}
+): Promise<boolean> => {
+  const { sleep, now } = makePolling(dependencies);
+  const deadline =
+    now() + (input.pollDeadlineMilliseconds ?? defaultPollDeadlineMilliseconds);
+  const interval =
+    input.pollIntervalMilliseconds ?? defaultPollIntervalMilliseconds;
+  while (now() < deadline) {
+    let alias: CanonicalAlias;
+    try {
+      alias = await resolveCanonicalAlias(
+        input.token,
+        input.projectId,
+        input.teamId
+      );
+    } catch {
+      await sleep(interval);
+      continue;
+    }
+    if (aliasServesDeployment(alias, expected)) return true;
+    await sleep(interval);
+  }
+  return false;
+};
+
+/**
+ * Verifies that the canonical production alias serves the restored
+ * deployment after a rollback. A rollback that the alias does not confirm is
+ * a failed recovery.
+ */
+export const verifyCanonicalAliasServes = async (
+  expectedUrl: string,
+  input: {
+    readonly token: string;
+    readonly projectId: string;
+    readonly teamId: string | undefined;
+  } & PollingOptions,
+  dependencies: PollingDependencies = {}
+): Promise<void> => {
+  const confirmed = await waitForCanonicalAlias(
+    { id: null, url: expectedUrl },
+    input,
+    dependencies
+  );
+  if (!confirmed) {
+    throw new Error(
+      "Rollback verification failed: the canonical production alias does not serve the restored deployment"
+    );
+  }
+};
+
+export type PromotionInput = {
+  readonly stagedUrl: string;
+  readonly token: string;
+  readonly projectId: string;
+  readonly teamId: string | undefined;
+} & PollingOptions;
+
+export type PromotionDependencies = PollingDependencies & {
+  readonly rollback?: (url: string) => Promise<void>;
+};
+
+/**
+ * Promotes the staged production deployment so the outcome can never leave a
+ * possibly promoted untested release behind:
+ *
+ * 1. The canonical alias is resolved before the request, giving the
+ *    authoritative baseline for every later decision.
+ * 2. The promotion request goes through the primary Vercel API, which
+ *    classifies it without waiting: a 4xx answer is a definitive rejection
+ *    before any change, while acceptance or an ambiguous failure may still
+ *    complete server-side.
+ * 3. The canonical alias is then polled within a bounded window; it is the
+ *    only authority on whether the promotion took effect.
+ * 4. When the window closes without an answer after a possibly-started
+ *    promotion, the release rolls back to the baseline, verifies the alias,
+ *    and fails — never exiting with production in an untested state.
+ */
+export const promoteStagedDeployment = async (
+  input: PromotionInput,
+  dependencies: PromotionDependencies = {}
+): Promise<{ readonly promoted: boolean }> => {
+  const staged = await resolveStagedDeployment(
+    input.stagedUrl,
+    input.token,
+    input.teamId
+  );
+  if (staged.readyState !== "READY") {
+    throw new Error(
+      `The staged deployment is ${staged.readyState}, not READY; refusing to promote`
+    );
+  }
+
+  const baseline = await resolveCanonicalAlias(
+    input.token,
+    input.projectId,
+    input.teamId
+  );
+  if (
+    aliasServesDeployment(baseline, { id: staged.id, url: input.stagedUrl })
+  ) {
+    return { promoted: true };
+  }
+
+  const requestOutcome = await requestPromotion(
+    input.projectId,
+    staged.id,
+    input.token,
+    input.teamId
+  );
+  if (requestOutcome === "rejected") {
+    throw new Error(
+      "Vercel rejected the promotion request; the previous deployment is still serving production"
+    );
+  }
+
+  const promoted = await waitForCanonicalAlias(
+    { id: staged.id, url: input.stagedUrl },
+    input,
+    dependencies
+  );
+  if (promoted) return { promoted: true };
+
+  const recovery =
+    dependencies.rollback ?? (async (url: string) => rollbackToDeployment(url));
+  await recovery(baseline.deploymentUrl);
+  const verified = await waitForCanonicalAlias(
+    { id: baseline.deploymentId, url: baseline.deploymentUrl },
+    input,
+    dependencies
+  );
+  if (!verified) {
+    throw new Error(
+      "Rollback verification failed after an ambiguous promotion: the canonical production alias does not serve the baseline deployment"
+    );
+  }
+  throw new Error(
+    "The promotion outcome stayed ambiguous past the polling deadline, so production was rolled back to the baseline deployment and the release failed"
+  );
+};
+
 const usage = (message?: string): never => {
   if (message) process.stderr.write(`${message}\n`);
   process.stderr.write(
-    "Usage: production-release.ts <resolve-previous|probe|verify-canonical|verify-crons|rollback> [--url <url>]\n"
+    "Usage: production-release.ts <resolve-previous|probe|verify-canonical|verify-crons|promote|rollback> [--url <url>]\n"
   );
   process.exit(1);
 };
@@ -228,8 +510,27 @@ const run = async () => {
       await assertRegisteredCrons(projectId, vercelToken, teamId);
       return;
     }
+    case "promote": {
+      const outcome = await promoteStagedDeployment({
+        stagedUrl: readUrlOption(),
+        token: vercelToken,
+        projectId,
+        teamId,
+      });
+      await appendFile(
+        requireEnv("GITHUB_OUTPUT"),
+        `promoted=${outcome.promoted ? "true" : "false"}\n`
+      );
+      return;
+    }
     case "rollback": {
-      await rollbackToDeployment(readUrlOption());
+      const url = readUrlOption();
+      await rollbackToDeployment(url);
+      await verifyCanonicalAliasServes(url, {
+        token: vercelToken,
+        projectId,
+        teamId,
+      });
       return;
     }
     default:

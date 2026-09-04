@@ -80,20 +80,22 @@ jobs:
 
       - name: Promote production deployment
         id: promote
-        run: bunx vercel@54.9.1 promote "${{ steps.deploy.outputs.url }}" --scope filip-kalny-projects --yes --timeout 10m --token "$VERCEL_TOKEN"
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts promote --url "${{ steps.deploy.outputs.url }}"
 
       - name: Probe canonical production after promotion
         id: canonical-smoke
+        if: always() && steps.promote.outputs.promoted == 'true'
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts verify-canonical
 
       - name: Restore the retained production deployment
-        if: always() && steps.canonical-smoke.outcome == 'failure' && steps.promote.outcome == 'success' && steps.rollback-target.outputs.previous_url != ''
+        if: always() && steps.canonical-smoke.outcome == 'failure' && steps.rollback-target.outputs.previous_url != ''
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts rollback --url "${{ steps.rollback-target.outputs.previous_url }}"
 
       - name: Fail the release after rollback
-        if: always() && steps.canonical-smoke.outcome == 'failure'
+        if: always() && failure()
         run: |
-          echo "The canonical production smoke failed after promotion" >&2
+          echo "The production release failed around promotion; production must never keep a promoted untested release" >&2
           exit 1
