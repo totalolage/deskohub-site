@@ -5,7 +5,7 @@ import {
   type CliAuthenticationCodeType,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Option, Schema } from "effect";
-import { authorizeDiscountAdminPage } from "@/features/discounts/admin/page-data.server";
+import { authorizeAdministrationPage } from "@/features/administration/page-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CliAuthentication } from "./cli-authentication.service";
 
@@ -14,7 +14,7 @@ type CliAuthenticationCodeInput = FormDataEntryValue | null | undefined;
 export const loadCliAuthenticationApproval = async (
   code: CliAuthenticationCodeInput
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   const decoded = Schema.decodeUnknownOption(CliAuthenticationCode)(code);
   if (Option.isNone(decoded)) return null;
 
@@ -30,7 +30,7 @@ export const loadCliAuthenticationApproval = async (
 };
 
 export const loadCliSessions = async () => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   return CliAuthentication.pipe(
     Effect.flatMap((authentication) => authentication.listSessions()),
     Effect.provide(CliAuthentication.Live),

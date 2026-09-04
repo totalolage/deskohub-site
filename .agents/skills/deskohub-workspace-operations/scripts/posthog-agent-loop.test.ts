@@ -9,6 +9,10 @@ const dispatcherConfigurer = join(
   "posthog-configure-dispatcher"
 );
 const workerCreator = join(import.meta.dir, "posthog-create-worker");
+const dispatcherInstructions = join(
+  import.meta.dir,
+  "../references/posthog-agent-dispatcher.md"
+);
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
@@ -22,7 +26,7 @@ afterEach(async () => {
 async function runAgentLoop(
   replayed: boolean,
   watchStatus = 0,
-  watchRace = false
+  expectedExitCode = 0
 ) {
   const directory = await mkdtemp(join(tmpdir(), "posthog-agent-loop-"));
   temporaryDirectories.push(directory);
@@ -41,7 +45,16 @@ case "$1" in
     printf '{"threadId":"thread-1","commandId":"create-1","sequence":1,"replayed":%s,"idempotencyKey":"dispatcher"}\\n' "$T3_FAKE_REPLAYED"
     ;;
   send)
+    touch "$T3_FAKE_SENT_MARKER"
     printf '{"threadId":"thread-1","commandId":"send-1","sequence":2,"replayed":false,"idempotencyKey":"tick"}\\n'
+    ;;
+  thread)
+    if [[ -e "$T3_FAKE_SENT_MARKER" ]]; then
+      turn_id=turn-1
+    else
+      turn_id=turn-0
+    fi
+    printf '{\\n  "thread": {\\n    "latestTurn": {\\n      "turnId": "%s",\\n      "state": "running"\\n    }\\n  }\\n}\\n' "$turn_id"
     ;;
   watch)
     if [[ ! -e "$T3_FAKE_STATUS_MARKER" ]]; then
@@ -49,10 +62,6 @@ case "$1" in
       if [[ "$T3_FAKE_WATCH_STATUS" != 0 ]]; then
         exit "$T3_FAKE_WATCH_STATUS"
       fi
-    fi
-    if [[ "$T3_FAKE_WATCH_RACE" == "true" && ! -e "$T3_FAKE_WATCH_MARKER" ]]; then
-      touch "$T3_FAKE_WATCH_MARKER"
-      exit 25
     fi
     ;;
   compact)
@@ -83,9 +92,8 @@ printf '%s' "$1" > "$POSTHOG_FAKE_CONFIGURED_THREAD"
       T3_BIN: fakeT3,
       T3_FAKE_CALLS: calls,
       T3_FAKE_REPLAYED: String(replayed),
+      T3_FAKE_SENT_MARKER: join(directory, "turn-sent"),
       T3_FAKE_STATUS_MARKER: join(directory, "watch-status-used"),
-      T3_FAKE_WATCH_MARKER: join(directory, "watch-raced"),
-      T3_FAKE_WATCH_RACE: String(watchRace),
       T3_FAKE_WATCH_STATUS: String(watchStatus),
       T3_PROJECT_ID: "project-1",
     },
@@ -98,7 +106,7 @@ printf '%s' "$1" > "$POSTHOG_FAKE_CONFIGURED_THREAD"
   ]);
 
   expect(stderr).toBe("");
-  expect(exitCode).toBe(0);
+  expect(exitCode).toBe(expectedExitCode);
   return {
     calls: (await Bun.file(calls).text()).trim().split("\n"),
     configuredThread: await Bun.file(configuredThread).text(),
@@ -180,12 +188,15 @@ describe("posthog-agent-loop", () => {
     );
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
+      "thread",
       "watch",
       "send",
+      "thread",
       "watch",
       "compact",
     ]);
-    expect(calls[2]).toContain("Run one complete dispatcher pass now.");
+    expect(calls[3]).toContain("Run one complete dispatcher pass now.");
+    expect(calls[5]).toContain("--turn turn-1");
   });
 
   test("sends one idempotent pass to an existing dispatcher", async () => {
@@ -193,17 +204,20 @@ describe("posthog-agent-loop", () => {
 
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
+      "thread",
       "watch",
       "send",
+      "thread",
       "watch",
       "compact",
     ]);
-    expect(calls[1]).toContain("--timeout 1s");
-    expect(calls[2]).toContain(
+    expect(calls[2]).toContain("--timeout 1s");
+    expect(calls[3]).toContain(
       "--idempotency-key deskohub-posthog-dispatcher:2026-08-28T22:00Z"
     );
-    expect(calls[2]).toContain("thread-1");
-    expect(calls[4]).toContain(
+    expect(calls[3]).toContain("thread-1");
+    expect(calls[5]).toContain("--turn turn-1");
+    expect(calls[6]).toContain(
       "--idempotency-key deskohub-posthog-dispatcher-compact:2026-08-28T22:00Z"
     );
   });
@@ -213,7 +227,28 @@ describe("posthog-agent-loop", () => {
 
     expect(calls.map((call) => call.split(" ")[0])).toEqual([
       "create",
+      "thread",
       "watch",
+      "watch",
+      "compact",
+    ]);
+    expect(calls[3]).toContain("--turn turn-0");
+  });
+
+  test("suppresses unchanged recurrences after non-actionable triage", async () => {
+    const instructions = await Bun.file(dispatcherInstructions).text();
+
+    expect(instructions).toContain(
+      "<!-- posthog-agent:triage-non-actionable -->"
+    );
+  });
+
+  test("compacts a dispatcher turn that ends in error", async () => {
+    const { calls } = await runAgentLoop(false, 22, 22);
+
+    expect(calls.map((call) => call.split(" ")[0])).toEqual([
+      "create",
+      "thread",
       "watch",
       "compact",
     ]);

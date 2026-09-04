@@ -32,9 +32,9 @@ import {
 import {
   InvoiceAdministrationCustomerError,
   InvoiceAdministrationInProgressError,
-  InvoiceAdministrationNotFoundError,
   InvoiceAdministrationService,
 } from "@/features/accounting/admin/invoice-administration.service";
+import { InvoiceAdministrationNotFoundError } from "@/features/accounting/admin/invoice-administration-identifier";
 import { ManualInvoiceConflictError } from "@/features/accounting/backend/invoice.repository";
 import { ManualInvoiceValidationError } from "@/features/accounting/manual-invoice";
 import { AdministrationService } from "@/features/administration/administration.service";

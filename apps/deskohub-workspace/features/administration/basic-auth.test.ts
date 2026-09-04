@@ -1,29 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import {
-  getDiscountAdminAuthorizationUsername,
-  isDiscountAdminAuthorizationValid,
+  getAdministrationAuthorizationUsername,
+  isAdministrationAuthorizationValid,
 } from "./basic-auth";
 
 const credentials = "operator:a-long-preview-password";
 const expectedHash = createHash("sha256").update(credentials).digest("hex");
 const authorization = `Basic ${Buffer.from(credentials).toString("base64")}`;
 
-describe("discount administration Basic authentication", () => {
+describe("administration Basic authentication", () => {
   test("accepts the exact credential pair", () => {
-    expect(isDiscountAdminAuthorizationValid(authorization, expectedHash)).toBe(
-      true
-    );
     expect(
-      getDiscountAdminAuthorizationUsername(authorization, expectedHash)
+      isAdministrationAuthorizationValid(authorization, expectedHash)
+    ).toBe(true);
+    expect(
+      getAdministrationAuthorizationUsername(authorization, expectedHash)
     ).toBe("operator");
   });
 
   test("fails closed for absent configuration or authorization", () => {
-    expect(isDiscountAdminAuthorizationValid(authorization, undefined)).toBe(
+    expect(isAdministrationAuthorizationValid(authorization, undefined)).toBe(
       false
     );
-    expect(isDiscountAdminAuthorizationValid(null, expectedHash)).toBe(false);
+    expect(isAdministrationAuthorizationValid(null, expectedHash)).toBe(false);
   });
 
   test("rejects malformed, incomplete, and incorrect credentials", () => {
@@ -38,7 +38,7 @@ describe("discount administration Basic authentication", () => {
     ];
 
     for (const candidate of cases) {
-      expect(isDiscountAdminAuthorizationValid(candidate, expectedHash)).toBe(
+      expect(isAdministrationAuthorizationValid(candidate, expectedHash)).toBe(
         false
       );
     }

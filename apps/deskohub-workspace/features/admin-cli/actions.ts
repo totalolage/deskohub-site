@@ -4,7 +4,7 @@ import { CliSessionId } from "@deskohub/workspace-admin-api";
 import { Effect, Predicate, Schema } from "effect";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
+import { requireAdministrationAuthorization } from "@/features/administration/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -17,7 +17,7 @@ export async function approveCliAuthentication(formData: FormData) {
   const codeForRedirect = Predicate.isString(rawCode) ? rawCode : "";
 
   const approved = await Effect.gen(function* () {
-    const approvedBy = yield* requireDiscountAdminAuthorization();
+    const approvedBy = yield* requireAdministrationAuthorization();
     const code = yield* decodeCliAuthenticationCode(rawCode);
     const authentication = yield* CliAuthentication;
     return yield* authentication.approve({ approvedBy, code });
@@ -37,7 +37,7 @@ export async function approveCliAuthentication(formData: FormData) {
 
 export async function revokeCliSession(formData: FormData) {
   const revoked = await Effect.gen(function* () {
-    yield* requireDiscountAdminAuthorization();
+    yield* requireAdministrationAuthorization();
     const sessionId = yield* Schema.decodeUnknownEffect(CliSessionId)(
       formData.get("sessionId")
     );
@@ -63,7 +63,7 @@ const renameCliSessionAction = defineWorkspaceAction(
   },
   (input) =>
     Effect.gen(function* () {
-      yield* requireDiscountAdminAuthorization();
+      yield* requireAdministrationAuthorization();
       const authentication = yield* CliAuthentication;
       const renamed = yield* authentication.renameSession(input);
       if (!renamed) {
