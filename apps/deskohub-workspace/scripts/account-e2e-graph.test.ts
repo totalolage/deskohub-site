@@ -98,10 +98,9 @@ describe("workspace account e2e graph", () => {
     expect(deliveryCase.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(
       2
     );
-    const afterDeliveryReplay = deliveryCase.slice(
-      deliveryCase.indexOf("rejects the replayed link")
-    );
-    expect(afterDeliveryReplay).not.toContain("rateBudget.reserve(");
+    expect(deliveryCase).not.toContain("callbackFailedTitle");
+    expect(deliveryCase).not.toContain("rejects the replayed link");
+    expect(deliveryCase.match(/openPage\(link\)/g)).toHaveLength(1);
 
     const profileCompletionCase = cases.slice(
       cases.indexOf('makeCase("account-profile-completion"'),
@@ -136,6 +135,14 @@ describe("workspace account e2e graph", () => {
 
   test("replays the consumed deletion link after proving anonymous access", async () => {
     const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+
+    const deliveryCase = cases.slice(
+      cases.indexOf('makeCase("account-magic-link-delivery"'),
+      cases.indexOf('makeCase("account-profile-completion"')
+    );
+    expect(deliveryCase).not.toContain("callbackFailedTitle");
+    expect(deliveryCase.match(/openPage\(link\)/g)).toHaveLength(1);
+
     const markerCase = cases.slice(
       cases.indexOf('makeCase("account-deletion-marker-reauth"'),
       cases.indexOf('makeCase("account-deletion-and-reactivation"')

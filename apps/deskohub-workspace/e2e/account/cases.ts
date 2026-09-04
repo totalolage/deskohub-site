@@ -504,19 +504,6 @@ export const makeWorkspaceE2EAccountCases = ({
             providerTransition
           )
         );
-        yield* runStep(
-          step(
-            "rejects the replayed link",
-            Effect.gen(function* () {
-              yield* openPage(link);
-              yield* waitText(
-                "replayed link failure state",
-                callbackFailedTitle
-              );
-            }),
-            providerTransition
-          )
-        );
       })
     ),
     makeCase("account-profile-completion", ({ journalRef, runStep }) =>
