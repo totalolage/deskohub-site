@@ -110,21 +110,114 @@ describe("workspace account e2e graph", () => {
     const budget = await Bun.file(
       repoFile("e2e/account/rate-budget.ts")
     ).text();
+    const budgetSource = budget.replace(/\s+/g, " ");
 
-    expect(budget).toContain("magicLinkOperationsPerWindow = 4");
-    expect(budget).toContain("magicLinkOperationWindowMs = 600_000");
+    // The budget must derive both constants from the deployed production
+    // options so the E2E window and one-request headroom cannot drift from
+    // the real limiter; numeric literals would pin a stale contract.
+    expect(budgetSource).toContain(
+      'import { betterAuthMagicLinkOptions } from "@/features/account/backend/auth/auth-options";'
+    );
+    expect(budgetSource).toContain(
+      "export const magicLinkOperationWindowMs = betterAuthMagicLinkOptions.rateLimit.window * 1000;"
+    );
+    expect(budgetSource).toContain(
+      "export const magicLinkOperationsPerWindow = betterAuthMagicLinkOptions.rateLimit.max - 1;"
+    );
+    expect(budgetSource).not.toMatch(/magicLinkOperationsPerWindow\s*=\s*\d/);
+    expect(budgetSource).not.toMatch(/magicLinkOperationWindowMs\s*=\s*\d/);
 
     const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
-    const reserveIndents = cases
-      .split("\n")
-      .filter((line) => line.includes("rateBudget.reserve("))
-      .map((line) => line.indexOf("yield* rateBudget.reserve("));
-    expect(reserveIndents).toHaveLength(17);
-    expect(new Set(reserveIndents).size).toBe(1);
-    expect(cases.match(/rateBudget\.reserve\("send"\)/g)).toHaveLength(9);
-    expect(cases.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(8);
+    expect(countOccurrences(cases, "rateBudget.run(")).toBe(17);
+    expect((cases.match(/rateBudget\.run\(\s*"send"/g) ?? []).length).toBe(9);
+    expect((cases.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length).toBe(8);
+    expect(cases).not.toContain(".reserve(");
+    expect(cases).not.toContain("tryReserve");
 
-    // The rolling-window budget consumes the real spacing between delivered
+    // Each wrapper must hug its exact semantic endpoint: the nearest
+    // preceding rateBudget.run carries the expected operation and directly
+    // wraps this runStep, so a quiet-window wait consumes the case budget,
+    // never the inner semantic step budget.
+    const budgetedCases = cases;
+    const expectBudgetedStep = (
+      stepId: string,
+      operation: "send" | "verify"
+    ) => {
+      const idAt = budgetedCases.indexOf(`"${stepId}"`);
+      expect(idAt).toBeGreaterThan(-1);
+      const wrapperAt = budgetedCases.lastIndexOf("rateBudget.run(", idAt);
+      expect(wrapperAt).toBeGreaterThan(-1);
+      const between = budgetedCases.slice(wrapperAt, idAt);
+      expect(between).toContain(`"${operation}"`);
+      expect(between).not.toContain(
+        operation === "send" ? '"verify"' : '"send"'
+      );
+      expect(countOccurrences(between, "rateBudget.run(")).toBe(1);
+      expect(countOccurrences(between, "runStep(")).toBe(1);
+      expect(countOccurrences(between, "step(")).toBe(1);
+    };
+
+    // Non-endpoints stay outside the budget: the nearest preceding wrapper
+    // must belong to an earlier step, never to this one. No preceding wrapper
+    // at all is trivially unbudgeted.
+    const expectUnbudgetedStep = (stepId: string) => {
+      const idAt = budgetedCases.indexOf(`"${stepId}"`);
+      expect(idAt).toBeGreaterThan(-1);
+      const wrapperAt = budgetedCases.lastIndexOf("rateBudget.run(", idAt);
+      if (wrapperAt === -1) return;
+      const between = budgetedCases.slice(wrapperAt, idAt);
+      expect(countOccurrences(between, "step(")).toBeGreaterThan(1);
+    };
+
+    expectBudgetedStep("accepts a first unknown email generically", "send");
+    expectBudgetedStep(
+      "accepts a second unknown email with an identical response",
+      "send"
+    );
+    expectBudgetedStep("requests the synthetic magic link", "send");
+    expectBudgetedStep("consumes the link into the completion state", "verify");
+    expectBudgetedStep("sends the reauthentication link", "send");
+    expectBudgetedStep(
+      "keeps the deletion marker state after reauthentication",
+      "verify"
+    );
+    expectBudgetedStep(
+      "rejects the already-consumed reauthentication link",
+      "verify"
+    );
+    expectBudgetedStep("requests the reactivation sign-in link", "send");
+    expectBudgetedStep(
+      "reactivates the retained profile under a new Better Auth identity",
+      "verify"
+    );
+    expectBudgetedStep("requests the returning sign-in link", "send");
+    expectBudgetedStep("signs the same account back in", "verify");
+    expectBudgetedStep("requests the active-profile sign-in link", "send");
+    expectBudgetedStep(
+      "links the active provider profile without completion",
+      "verify"
+    );
+    expectBudgetedStep("requests the expired-profile sign-in link", "send");
+    expectBudgetedStep(
+      "reactivates the expired provider profile on linking",
+      "verify"
+    );
+    expectBudgetedStep("requests the support-state sign-in link", "send");
+    expectBudgetedStep(
+      "requires support for an ambiguous provider profile",
+      "verify"
+    );
+
+    expectUnbudgetedStep("rejects an invalid email without requesting a link");
+    expectUnbudgetedStep("retrieves the delivered single-use link");
+    expectUnbudgetedStep("retrieves the delivered reauthentication link");
+    expectUnbudgetedStep("retrieves the reactivation link");
+    expectUnbudgetedStep("retrieves the returning sign-in link");
+    expectUnbudgetedStep("retrieves the active-profile sign-in link");
+    expectUnbudgetedStep("retrieves the expired-profile sign-in link");
+    expectUnbudgetedStep("retrieves the support-state sign-in link");
+
+    // The quiet-window budget consumes the real spacing between delivered
     // links, so a fake-clock duration claim would have to assume provider
     // latency to separate a healthy lane from a blocked reserve; the count
     // and per-case shape below are the accurate regression instead.
@@ -132,12 +225,12 @@ describe("workspace account e2e graph", () => {
       cases.indexOf('makeCase("account-magic-link-delivery"'),
       cases.indexOf('makeCase("account-profile-completion"')
     );
-    expect(deliveryCase.match(/rateBudget\.reserve\("send"\)/g)).toHaveLength(
-      1
-    );
-    expect(deliveryCase.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(
-      1
-    );
+    expect(
+      (deliveryCase.match(/rateBudget\.run\(\s*"send"/g) ?? []).length
+    ).toBe(1);
+    expect(
+      (deliveryCase.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length
+    ).toBe(1);
     expect(deliveryCase).not.toContain("callbackFailedTitle");
     expect(deliveryCase).not.toContain("rejects the replayed link");
     expect(deliveryCase.match(/openPage\(link\)/g)).toHaveLength(1);
@@ -146,16 +239,18 @@ describe("workspace account e2e graph", () => {
       cases.indexOf('makeCase("account-profile-completion"'),
       cases.indexOf('makeCase("account-reservation-transitions"')
     );
-    expect(profileCompletionCase).not.toContain("rateBudget.reserve(");
+    expect(profileCompletionCase).not.toContain("rateBudget.");
 
     const markerCase = cases.slice(
       cases.indexOf('makeCase("account-deletion-marker-reauth"'),
       cases.indexOf('makeCase("account-deletion-and-reactivation"')
     );
-    expect(markerCase.match(/rateBudget\.reserve\("send"\)/g)).toHaveLength(1);
-    expect(markerCase.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(
-      2
+    expect((markerCase.match(/rateBudget\.run\(\s*"send"/g) ?? []).length).toBe(
+      1
     );
+    expect(
+      (markerCase.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length
+    ).toBe(2);
   });
 
   test("waits for the durable linked edit state instead of the transient completion feedback", async () => {

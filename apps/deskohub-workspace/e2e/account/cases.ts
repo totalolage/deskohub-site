@@ -384,8 +384,6 @@ export const makeWorkspaceE2EAccountCases = ({
     ),
     makeCase("account-sign-in-form", ({ runStep }) =>
       Effect.gen(function* () {
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("send");
         yield* runStep(
           step(
             "rejects an invalid email without requesting a link",
@@ -419,35 +417,44 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
-        const firstAccepted = yield* runStep(
-          step(
-            "accepts a first unknown email generically",
-            Effect.gen(function* () {
-              yield* waitSignInForm();
-              yield* fillAndSubmitEmail(acceptedRecipientOne);
-              yield* waitText("first generic accepted response", acceptedTitle);
-              return yield* readNormalizedText();
-            })
+        const firstAccepted = yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "accepts a first unknown email generically",
+              Effect.gen(function* () {
+                yield* waitSignInForm();
+                yield* fillAndSubmitEmail(acceptedRecipientOne);
+                yield* waitText(
+                  "first generic accepted response",
+                  acceptedTitle
+                );
+                return yield* readNormalizedText();
+              })
+            )
           )
         );
-        const secondAccepted = yield* runStep(
-          step(
-            "accepts a second unknown email with an identical response",
-            Effect.gen(function* () {
-              yield* clickBrowserElement(
-                run,
-                session,
-                `button:has-text("${sendAnotherLinkLabel}")`,
-                { timeoutMs: browserTimeout }
-              );
-              yield* waitSignInForm();
-              yield* fillAndSubmitEmail(acceptedRecipientTwo);
-              yield* waitText(
-                "second generic accepted response",
-                acceptedTitle
-              );
-              return yield* readNormalizedText();
-            })
+        const secondAccepted = yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "accepts a second unknown email with an identical response",
+              Effect.gen(function* () {
+                yield* clickBrowserElement(
+                  run,
+                  session,
+                  `button:has-text("${sendAnotherLinkLabel}")`,
+                  { timeoutMs: browserTimeout }
+                );
+                yield* waitSignInForm();
+                yield* fillAndSubmitEmail(acceptedRecipientTwo);
+                yield* waitText(
+                  "second generic accepted response",
+                  acceptedTitle
+                );
+                return yield* readNormalizedText();
+              })
+            )
           )
         );
         yield* runStep(
@@ -470,13 +477,14 @@ export const makeWorkspaceE2EAccountCases = ({
     makeCase("account-magic-link-delivery", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
         const startedAt = new Date();
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("verify");
-        yield* runStep(
-          step(
-            "requests the synthetic magic link",
-            requestSignInLink(recipient),
-            navigationTimeout
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the synthetic magic link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
           )
         );
         yield* runStep(
@@ -502,23 +510,26 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
-        yield* runStep(
-          step(
-            "consumes the link into the completion state",
-            Effect.gen(function* () {
-              yield* openPage(link);
-              yield* waitText(
-                "completion state after verification",
-                completionTitle
-              );
-              yield* waitUrlContains(
-                "account URL after verification",
-                accountSuffix
-              );
-              const userId = yield* requireAuthUserId(recipient);
-              yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
-            }),
-            providerTransition
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "consumes the link into the completion state",
+              Effect.gen(function* () {
+                yield* openPage(link);
+                yield* waitText(
+                  "completion state after verification",
+                  completionTitle
+                );
+                yield* waitUrlContains(
+                  "account URL after verification",
+                  accountSuffix
+                );
+                const userId = yield* requireAuthUserId(recipient);
+                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
+              }),
+              providerTransition
+            )
           )
         );
       })
@@ -688,8 +699,7 @@ export const makeWorkspaceE2EAccountCases = ({
               // assertions; body innerText missed content the sanitized
               // snapshot already showed in the hosted context.
               yield* waitForInteractiveSnapshot({
-                description:
-                  "current reservations group with a confirmed card",
+                description: "current reservations group with a confirmed card",
                 matches: (snapshot) =>
                   snapshot.includes(currentReservationsTitle) &&
                   snapshot.includes(confirmedStatus),
@@ -751,11 +761,6 @@ export const makeWorkspaceE2EAccountCases = ({
             datasourceTimeout
           )
         );
-        // One verification covers the reauthentication consume; the second
-        // covers replaying the already-consumed link after deletion.
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("verify");
-        yield* rateBudget.reserve("verify");
         const startedAt = new Date();
         yield* runStep(
           step(
@@ -812,21 +817,24 @@ export const makeWorkspaceE2EAccountCases = ({
             providerTransition
           )
         );
-        yield* runStep(
-          step(
-            "sends the reauthentication link",
-            Effect.gen(function* () {
-              yield* clickBrowserElement(
-                run,
-                session,
-                deleteReauthSendSelector,
-                { timeoutMs: browserTimeout }
-              );
-              yield* waitText(
-                "reauthentication link accepted",
-                deletionReauthLinkSent
-              );
-            })
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "sends the reauthentication link",
+              Effect.gen(function* () {
+                yield* clickBrowserElement(
+                  run,
+                  session,
+                  deleteReauthSendSelector,
+                  { timeoutMs: browserTimeout }
+                );
+                yield* waitText(
+                  "reauthentication link accepted",
+                  deletionReauthLinkSent
+                );
+              })
+            )
           )
         );
         const reauthenticationLink = yield* runStep(
@@ -836,22 +844,29 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
-        yield* runStep(
-          step(
-            "keeps the deletion marker state after reauthentication",
-            Effect.gen(function* () {
-              yield* openPage(reauthenticationLink);
-              yield* waitText(
-                "deletion pending state after reauthentication",
-                deletionPendingTitle
-              );
-              const linked = yield* findLinkedDotyposCustomerId(userId.userId);
-              assert(
-                linked === userId.linked,
-                "the reauthentication session lost the durable Dotypos link"
-              );
-            }),
-            providerTransition
+        // One verification covers the reauthentication consume; the second
+        // covers replaying the already-consumed link after deletion.
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "keeps the deletion marker state after reauthentication",
+              Effect.gen(function* () {
+                yield* openPage(reauthenticationLink);
+                yield* waitText(
+                  "deletion pending state after reauthentication",
+                  deletionPendingTitle
+                );
+                const linked = yield* findLinkedDotyposCustomerId(
+                  userId.userId
+                );
+                assert(
+                  linked === userId.linked,
+                  "the reauthentication session lost the durable Dotypos link"
+                );
+              }),
+              providerTransition
+            )
           )
         );
         yield* runStep(
@@ -921,23 +936,26 @@ export const makeWorkspaceE2EAccountCases = ({
             })
           )
         );
-        yield* runStep(
-          step(
-            "rejects the already-consumed reauthentication link",
-            Effect.gen(function* () {
-              yield* openPage(reauthenticationLink);
-              const replayedUserId = yield* findAuthUserIdByEmail(recipient);
-              if (replayedUserId) {
-                yield* recordFixtureIds(journalRef, {
-                  authUserIds: [replayedUserId],
-                });
-              }
-              yield* waitText(
-                "replayed reauthentication failure state",
-                callbackFailedTitle
-              );
-            }),
-            providerTransition
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "rejects the already-consumed reauthentication link",
+              Effect.gen(function* () {
+                yield* openPage(reauthenticationLink);
+                const replayedUserId = yield* findAuthUserIdByEmail(recipient);
+                if (replayedUserId) {
+                  yield* recordFixtureIds(journalRef, {
+                    authUserIds: [replayedUserId],
+                  });
+                }
+                yield* waitText(
+                  "replayed reauthentication failure state",
+                  callbackFailedTitle
+                );
+              }),
+              providerTransition
+            )
           )
         );
       })
@@ -945,8 +963,6 @@ export const makeWorkspaceE2EAccountCases = ({
     makeCase("account-deletion-and-reactivation", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
         const startedAt = new Date();
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("verify");
         yield* runStep(
           step(
             "requires the completed deletion handoff from the marker case",
@@ -966,11 +982,14 @@ export const makeWorkspaceE2EAccountCases = ({
             providerTransition
           )
         );
-        yield* runStep(
-          step(
-            "requests the reactivation sign-in link",
-            requestSignInLink(recipient),
-            navigationTimeout
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the reactivation sign-in link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
           )
         );
         const link = yield* runStep(
@@ -980,35 +999,38 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
-        yield* runStep(
-          step(
-            "reactivates the retained profile under a new Better Auth identity",
-            Effect.gen(function* () {
-              yield* openPage(link);
-              yield* waitText(
-                "reactivated linked account",
-                linkedDeleteCardTitle
-              );
-              const newUserId = yield* requireAuthUserId(recipient);
-              assert(
-                newUserId !== deletionHandoff.deletedUserId,
-                "the reactivated identity reused the deleted Better Auth id"
-              );
-              const linked = yield* requireLinkedCustomerId(newUserId);
-              assert(
-                linked === deletionHandoff.retainedCustomerId,
-                "the reactivated identity claimed a different Dotypos customer"
-              );
-              const customer = yield* readProviderProfile(linked);
-              assert(
-                customer.expireDate == null,
-                "the retained Dotypos profile was not reactivated"
-              );
-              yield* recordFixtureIds(journalRef, {
-                authUserIds: [newUserId],
-              });
-            }),
-            providerTransition
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "reactivates the retained profile under a new Better Auth identity",
+              Effect.gen(function* () {
+                yield* openPage(link);
+                yield* waitText(
+                  "reactivated linked account",
+                  linkedDeleteCardTitle
+                );
+                const newUserId = yield* requireAuthUserId(recipient);
+                assert(
+                  newUserId !== deletionHandoff.deletedUserId,
+                  "the reactivated identity reused the deleted Better Auth id"
+                );
+                const linked = yield* requireLinkedCustomerId(newUserId);
+                assert(
+                  linked === deletionHandoff.retainedCustomerId,
+                  "the reactivated identity claimed a different Dotypos customer"
+                );
+                const customer = yield* readProviderProfile(linked);
+                assert(
+                  customer.expireDate == null,
+                  "the retained Dotypos profile was not reactivated"
+                );
+                yield* recordFixtureIds(journalRef, {
+                  authUserIds: [newUserId],
+                });
+              }),
+              providerTransition
+            )
           )
         );
         yield* runStep(
@@ -1035,8 +1057,6 @@ export const makeWorkspaceE2EAccountCases = ({
     makeCase("account-session-lifecycle", ({ runStep }) =>
       Effect.gen(function* () {
         const startedAt = new Date();
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("verify");
         const customerId = yield* runStep(
           step(
             "reads the linked synthetic customer",
@@ -1061,11 +1081,14 @@ export const makeWorkspaceE2EAccountCases = ({
             providerTransition
           )
         );
-        yield* runStep(
-          step(
-            "requests the returning sign-in link",
-            requestSignInLink(recipient),
-            navigationTimeout
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the returning sign-in link",
+              requestSignInLink(recipient),
+              navigationTimeout
+            )
           )
         );
         const link = yield* runStep(
@@ -1075,23 +1098,26 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
-        yield* runStep(
-          step(
-            "signs the same account back in",
-            Effect.gen(function* () {
-              yield* openPage(link);
-              yield* waitText(
-                "returning linked account",
-                linkedDeleteCardTitle
-              );
-              const userId = yield* requireAuthUserId(recipient);
-              const linked = yield* requireLinkedCustomerId(userId);
-              assert(
-                linked === customerId,
-                "the returning session linked a different Dotypos customer"
-              );
-            }),
-            providerTransition
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "signs the same account back in",
+              Effect.gen(function* () {
+                yield* openPage(link);
+                yield* waitText(
+                  "returning linked account",
+                  linkedDeleteCardTitle
+                );
+                const userId = yield* requireAuthUserId(recipient);
+                const linked = yield* requireLinkedCustomerId(userId);
+                assert(
+                  linked === customerId,
+                  "the returning session linked a different Dotypos customer"
+                );
+              }),
+              providerTransition
+            )
           )
         );
       })
@@ -1099,12 +1125,6 @@ export const makeWorkspaceE2EAccountCases = ({
     makeCase("account-linking-variants", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
         const startedAt = new Date();
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("send");
-        yield* rateBudget.reserve("verify");
-        yield* rateBudget.reserve("verify");
-        yield* rateBudget.reserve("verify");
         yield* runStep(
           step(
             "signs out of the synthetic main identity",
@@ -1135,11 +1155,14 @@ export const makeWorkspaceE2EAccountCases = ({
             providerTransition
           )
         );
-        yield* runStep(
-          step(
-            "requests the active-profile sign-in link",
-            requestSignInLink(activeRecipient),
-            navigationTimeout
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the active-profile sign-in link",
+              requestSignInLink(activeRecipient),
+              navigationTimeout
+            )
           )
         );
         const activeLink = yield* runStep(
@@ -1149,24 +1172,27 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
-        yield* runStep(
-          step(
-            "links the active provider profile without completion",
-            Effect.gen(function* () {
-              yield* openPage(activeLink);
-              yield* waitText(
-                "directly linked active profile",
-                linkedDeleteCardTitle
-              );
-              const userId = yield* requireAuthUserId(activeRecipient);
-              const linked = yield* requireLinkedCustomerId(userId);
-              assert(
-                linked === activeCustomerId,
-                "the active provider profile did not link to the verified account"
-              );
-              yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
-            }),
-            providerTransition
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "links the active provider profile without completion",
+              Effect.gen(function* () {
+                yield* openPage(activeLink);
+                yield* waitText(
+                  "directly linked active profile",
+                  linkedDeleteCardTitle
+                );
+                const userId = yield* requireAuthUserId(activeRecipient);
+                const linked = yield* requireLinkedCustomerId(userId);
+                assert(
+                  linked === activeCustomerId,
+                  "the active provider profile did not link to the verified account"
+                );
+                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
+              }),
+              providerTransition
+            )
           )
         );
         const expiredCustomerId = yield* runStep(
@@ -1205,11 +1231,14 @@ export const makeWorkspaceE2EAccountCases = ({
             providerTransition
           )
         );
-        yield* runStep(
-          step(
-            "requests the expired-profile sign-in link",
-            requestSignInLink(expiredRecipient),
-            navigationTimeout
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the expired-profile sign-in link",
+              requestSignInLink(expiredRecipient),
+              navigationTimeout
+            )
           )
         );
         const expiredLink = yield* runStep(
@@ -1219,26 +1248,32 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
-        yield* runStep(
-          step(
-            "reactivates the expired provider profile on linking",
-            Effect.gen(function* () {
-              yield* openPage(expiredLink);
-              yield* waitText("linked expired profile", linkedDeleteCardTitle);
-              const userId = yield* requireAuthUserId(expiredRecipient);
-              const linked = yield* requireLinkedCustomerId(userId);
-              assert(
-                linked === expiredCustomerId,
-                "the expired provider profile did not link to the verified account"
-              );
-              const customer = yield* readProviderProfile(linked);
-              assert(
-                customer.expireDate == null,
-                "the expired provider profile was not reactivated"
-              );
-              yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
-            }),
-            providerTransition
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "reactivates the expired provider profile on linking",
+              Effect.gen(function* () {
+                yield* openPage(expiredLink);
+                yield* waitText(
+                  "linked expired profile",
+                  linkedDeleteCardTitle
+                );
+                const userId = yield* requireAuthUserId(expiredRecipient);
+                const linked = yield* requireLinkedCustomerId(userId);
+                assert(
+                  linked === expiredCustomerId,
+                  "the expired provider profile did not link to the verified account"
+                );
+                const customer = yield* readProviderProfile(linked);
+                assert(
+                  customer.expireDate == null,
+                  "the expired provider profile was not reactivated"
+                );
+                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
+              }),
+              providerTransition
+            )
           )
         );
         yield* runStep(
@@ -1273,11 +1308,14 @@ export const makeWorkspaceE2EAccountCases = ({
             providerTransition
           )
         );
-        yield* runStep(
-          step(
-            "requests the support-state sign-in link",
-            requestSignInLink(ambiguousRecipient),
-            navigationTimeout
+        yield* rateBudget.run(
+          "send",
+          runStep(
+            step(
+              "requests the support-state sign-in link",
+              requestSignInLink(ambiguousRecipient),
+              navigationTimeout
+            )
           )
         );
         const supportLink = yield* runStep(
@@ -1287,21 +1325,24 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
-        yield* runStep(
-          step(
-            "requires support for an ambiguous provider profile",
-            Effect.gen(function* () {
-              yield* openPage(supportLink);
-              yield* waitText("support-required state", supportTitle);
-              const userId = yield* requireAuthUserId(ambiguousRecipient);
-              yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
-              const claimed = yield* findLinkedDotyposCustomerId(userId);
-              assert(
-                claimed === undefined,
-                "an ambiguous provider match claimed a link"
-              );
-            }),
-            providerTransition
+        yield* rateBudget.run(
+          "verify",
+          runStep(
+            step(
+              "requires support for an ambiguous provider profile",
+              Effect.gen(function* () {
+                yield* openPage(supportLink);
+                yield* waitText("support-required state", supportTitle);
+                const userId = yield* requireAuthUserId(ambiguousRecipient);
+                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
+                const claimed = yield* findLinkedDotyposCustomerId(userId);
+                assert(
+                  claimed === undefined,
+                  "an ambiguous provider match claimed a link"
+                );
+              }),
+              providerTransition
+            )
           )
         );
       })

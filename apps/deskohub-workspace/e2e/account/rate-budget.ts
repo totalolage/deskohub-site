@@ -1,57 +1,107 @@
 import { Effect } from "effect";
+import { betterAuthMagicLinkOptions } from "@/features/account/backend/auth/auth-options";
 
 /**
- * The deployed Better Auth magic-link endpoints allow a fixed number of
- * requests per client IP and path per rolling window. All account cases in a
- * run share the runner's egress IP, so the serial account lane reserves a
- * slot here before every send or verification. The budget stays below the
- * deployed ceiling so concurrent browser traffic can never trip the real
- * limiter.
+ * The deployed Better Auth magic-link endpoints rate limit each client IP and
+ * path with `{count, lastRequest}` state: the first request creates count 1,
+ * every allowed request below the maximum increments the count and advances
+ * `lastRequest`, a blocked request at the maximum advances nothing, and the
+ * count resets to 1 only once a full quiet window has passed since the last
+ * allowed request. All account cases in a run share the runner's egress IP,
+ * so the serial account lane wraps every send or verification through the
+ * same state machine here. The budget stays one request below the deployed
+ * ceiling so concurrent browser traffic can never trip the real limiter.
+ *
+ * `run` checks readiness by producing an immutable admission value: nothing
+ * is admitted while the quiet window still holds at capacity, otherwise the
+ * admission captures `nextCount` from the state at admission time. The
+ * supplied Effect then runs, and the finalizer writes
+ * `{count: admission.nextCount, lastRequest: now()}` once it completes,
+ * including on failure or interruption. `lastRequest` is the completion time
+ * rather than request receipt, which is intentionally conservative: the
+ * local quiet boundary never frees capacity before the deployed limiter
+ * would. The count is decided at admission because the deployed limiter
+ * received the request before completion, so a completion-time reset must
+ * never overwrite the consumed count.
  */
-export const magicLinkOperationWindowMs = 600_000;
-export const magicLinkOperationsPerWindow = 4;
+export const magicLinkOperationWindowMs =
+  betterAuthMagicLinkOptions.rateLimit.window * 1000;
+export const magicLinkOperationsPerWindow =
+  betterAuthMagicLinkOptions.rateLimit.max - 1;
 
 export type MagicLinkRateBudget = {
-  readonly reserve: (operation: MagicLinkOperation) => Effect.Effect<void>;
-  readonly tryReserve: (operation: MagicLinkOperation) => boolean;
+  readonly run: <A, E, R>(
+    operation: MagicLinkOperation,
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, R>;
 };
 
 export type MagicLinkOperation = "send" | "verify";
+
+type MagicLinkRateLimitState = {
+  count: number;
+  lastRequest: number;
+};
+
+/**
+ * The count this admission will consume, captured from the stored state at
+ * admission time and written only once the operation completes.
+ */
+type MagicLinkAdmission = {
+  readonly nextCount: number;
+};
 
 export const makeMagicLinkRateBudget = (
   options: {
     readonly maxPerWindow?: number;
     readonly now?: () => number;
     readonly windowMs?: number;
+    readonly retryAfterNotReady?: () => Effect.Effect<void>;
   } = {}
 ): MagicLinkRateBudget => {
   const maxPerWindow = options.maxPerWindow ?? magicLinkOperationsPerWindow;
   const windowMs = options.windowMs ?? magicLinkOperationWindowMs;
   const now = options.now ?? Date.now;
-  const timestampsByOperation = new Map<MagicLinkOperation, number[]>([
-    ["send", []],
-    ["verify", []],
-  ]);
+  const retryAfterNotReady =
+    options.retryAfterNotReady ?? (() => Effect.sleep("1 second"));
+  const states = new Map<MagicLinkOperation, MagicLinkRateLimitState>();
 
-  const tryReserve = (operation: MagicLinkOperation): boolean => {
+  const admit = (
+    operation: MagicLinkOperation
+  ): MagicLinkAdmission | undefined => {
     const current = now();
-    const timestamps = (timestampsByOperation.get(operation) ?? []).filter(
-      (timestamp) => current - timestamp < windowMs
-    );
-    if (timestamps.length >= maxPerWindow) {
-      timestampsByOperation.set(operation, timestamps);
-      return false;
+    const state = states.get(operation);
+    if (!state || current - state.lastRequest >= windowMs) {
+      return { nextCount: 1 };
     }
-    timestamps.push(current);
-    timestampsByOperation.set(operation, timestamps);
-    return true;
+    if (state.count < maxPerWindow) {
+      return { nextCount: state.count + 1 };
+    }
+    return undefined;
   };
 
-  const reserve = (operation: MagicLinkOperation): Effect.Effect<void> =>
+  const run = <A, E, R>(
+    operation: MagicLinkOperation,
+    effect: Effect.Effect<A, E, R>
+  ): Effect.Effect<A, E, R> =>
     Effect.suspend(() => {
-      if (tryReserve(operation)) return Effect.void;
-      return Effect.sleep("1 second").pipe(Effect.andThen(reserve(operation)));
+      const admission = admit(operation);
+      if (!admission) {
+        return Effect.andThen(retryAfterNotReady(), () =>
+          run(operation, effect)
+        );
+      }
+      return effect.pipe(
+        Effect.onExit(() =>
+          Effect.sync(() => {
+            states.set(operation, {
+              count: admission.nextCount,
+              lastRequest: now(),
+            });
+          })
+        )
+      );
     });
 
-  return { reserve, tryReserve };
+  return { run };
 };

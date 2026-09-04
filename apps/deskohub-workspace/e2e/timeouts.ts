@@ -3,8 +3,10 @@ const MINUTE = 60 * SECOND;
 
 export const workspaceE2ETimeouts = {
   // Original 8-minute account work budget plus one full 10-minute magic-link
-  // rolling window: a case can spend that entire window reserving rate-budget
-  // slots before its first semantic step starts (see account/rate-budget.ts).
+  // quiet window: the limiter resets only after a full window of inactivity
+  // since the last allowed request, so a case can spend that entire window
+  // waiting before a rate-limited semantic operation starts
+  // (see account/rate-budget.ts).
   accountCase: 18 * MINUTE,
   artifactCapture: 60 * SECOND,
   authDelivery: 2 * MINUTE,
