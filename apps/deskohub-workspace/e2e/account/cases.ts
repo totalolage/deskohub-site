@@ -62,8 +62,8 @@ const acceptedBody =
 const sendAnotherLinkLabel = "Send another link";
 const callbackFailedTitle = "This link cannot be used";
 const completionTitle = "Complete your profile";
-const completionSaved = "Your customer profile was created and linked.";
 const profileSaved = "Profile updated.";
+const linkedEditSubmitLabel = "Save profile";
 const linkedDeleteCardTitle = "Delete account";
 const supportTitle = "We need to verify your profile";
 const deletionPendingTitle = "Account deletion is pending";
@@ -528,7 +528,22 @@ export const makeWorkspaceE2EAccountCases = ({
               yield* clickBrowserElement(run, session, profileSubmitSelector, {
                 timeoutMs: browserTimeout,
               });
-              yield* waitText("profile completion saved", completionSaved);
+              // The completion feedback is transient: the successful action
+              // intentionally refreshes into the linked edit view, replacing
+              // it. The durable contract is the edit form's submit control,
+              // whose accessible name only the linked edit view renders.
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "linked account edit form with its Save profile submit control",
+                `(() => {
+                    const button = document.querySelector(${JSON.stringify(profileSubmitSelector)});
+                    return button instanceof HTMLButtonElement &&
+                      button.type === "submit" &&
+                      button.textContent?.trim() === ${JSON.stringify(linkedEditSubmitLabel)};
+                  })()`,
+                { timeoutMs: uiTransition }
+              );
             })
           )
         );

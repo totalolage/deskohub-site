@@ -159,8 +159,29 @@ describe("ProfileForm", () => {
     const input = completeCustomerProfile.mock.calls[0]![0] as ProfileInput;
     expect(input).toEqual({ firstName: "Ada" });
     expect(JSON.stringify(input)).not.toContain("email");
-    expect(workspaceRouterRefresh).toHaveBeenCalled();
+    expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
     await view.findByText("Your customer profile was created and linked.");
+  });
+
+  test("keeps the update success feedback without refreshing the page", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm
+        mode="edit"
+        locale="en-US"
+        email="ada@example.test"
+        profile={editProfile}
+      />
+    );
+
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    expect(updateCustomerProfile).toHaveBeenCalledTimes(1);
+    expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+    expect(view.getByText("Profile updated.")).toBeTruthy();
   });
 
   test("reports action failures in the polite live region", async () => {

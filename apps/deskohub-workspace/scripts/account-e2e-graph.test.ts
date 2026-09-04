@@ -118,6 +118,22 @@ describe("workspace account e2e graph", () => {
     );
   });
 
+  test("waits for the durable linked edit state instead of the transient completion feedback", async () => {
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const completionCase = cases.slice(
+      cases.indexOf('makeCase("account-profile-completion"'),
+      cases.indexOf('makeCase("account-reservation-transitions"')
+    );
+
+    expect(cases).not.toContain("created and linked");
+    expect(cases).toContain('const linkedEditSubmitLabel = "Save profile";');
+    expect(completionCase).toContain("waitForBrowserCondition");
+    expect(completionCase).toContain("JSON.stringify(linkedEditSubmitLabel)");
+    expect(completionCase).toContain(
+      'waitText("profile update saved", profileSaved)'
+    );
+  });
+
   test("completes the stale deletion through the delivered reauthentication link", async () => {
     const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
     const markerCase = cases.slice(

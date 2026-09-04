@@ -77,14 +77,18 @@ export function ProfileForm({
     profile?.billing?.kind ?? "hidden"
   );
 
+  const isComplete = mode === "complete";
+
   const action = (
-    mode === "complete" ? completeCustomerProfile : updateCustomerProfile
+    isComplete ? completeCustomerProfile : updateCustomerProfile
   ) as typeof updateCustomerProfile;
 
   const { execute, isExecuting, result } = useWorkspaceAction(action, {
     actionName: "account.profile",
     onSuccess: () => {
-      router.refresh();
+      if (isComplete) {
+        router.refresh();
+      }
     },
   });
 
@@ -98,7 +102,6 @@ export function ProfileForm({
     execute(input);
   };
 
-  const isComplete = mode === "complete";
   const submitLabel = isComplete
     ? m.accountCompletionSubmit({}, { locale })
     : m.accountProfileSave({}, { locale });
