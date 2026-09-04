@@ -29,7 +29,8 @@ bearer in macOS Keychain or the Linux Secret Service.
 The server records the Basic-auth username that approved each new session. That
 server-derived actor is used for invoice provenance; it is never accepted from
 CLI input. Sessions issued before approver tracking was added remain valid for
-reads, but must run `dhw auth` again before creating an invoice.
+reads, but must run `dhw auth` again before creating an invoice or a standalone
+access code.
 
 With `--json`, browser approval instructions are written to stderr while stdout
 is reserved for the single final JSON result.
@@ -125,6 +126,9 @@ dhw codes remove-customer <code-id> <customer-id>
 dhw codes make-unrestricted <code-id>
 dhw codes delete <code-id>
 
+dhw access-codes create "Workshop door" \
+  --starts-at 2026-09-05T14:00 --ends-at 2026-09-05T18:00 --yes
+
 dhw vouchers create GIFT100 --credit-value 10000 --currency CZK
 dhw vouchers update <voucher-id> GIFT150 --credit-value 15000 \
   --currency CZK --enabled true
@@ -154,7 +158,7 @@ omitted bounds and global or per-customer code maximum uses are stored as
 unrestricted values. Update commands replace the editable resource fields,
 matching the corresponding Admin UI forms.
 
-Commands that cancel reservations, delete resources, remove restrictions, revoke sessions, change a
+Commands that cancel reservations, create an access code, delete resources, remove restrictions, revoke sessions, change a
 customer's discount group, or add a code-audience member ask for confirmation.
 Pass `--yes` to approve explicitly; non-interactive and `--json` invocations
 require it.
@@ -183,6 +187,45 @@ response replays safe grant metadata without issuing another credential.
 An incomplete access request claim can be reclaimed after the one-minute
 provisioning window; recovery returns an issued grant, safely retries a failed
 grant, or requires provider reconciliation for every ambiguous state.
+
+`dhw access-codes create` creates a standalone door access code that is
+independent of reservations. It is separate from `dhw codes`, which manages
+discount codes. The created PIN prints once. The window must span 1 to 672
+whole hours between site-local whole-hour times in `Europe/Prague`.
+
+The server uses the command's client-generated attempt identifier as the CLI
+mutation-ledger request identifier. Retrying with the same identifier after a
+lost response is safe: a completed attempt returns `already-created` without
+the PIN. An uncertain provider outcome is terminal and is not retried
+automatically.
+
+`dhw` reserves the attempt identifier in its local state directory before
+sending the creation request, one reservation per CLI session and request
+window, protected by a per-request lock file that carries an owner token: a
+contender never steals a lock, waits a bounded time, then fails closed with
+manual-recovery instructions, and release verifies ownership before removing
+the lock. Rerunning the same command on the same machine and session reuses
+its own reserved identifier, so an interrupted or unanswered creation cannot
+create a second code, and a different request cannot overwrite an unrelated
+reservation. The reservation is released once creation concludes — created,
+already created, rejected, uncertain, cleanup-required, or reconciled — so a
+later intentional creation requests a fresh identifier; if the concluded
+reservation cannot be deleted, it is marked concluded, which also forces a
+fresh identifier. When the local reservation cannot be written or read, the
+command refuses to create the access code instead of risking a duplicate.
+
+When the Workspace reports that a prior ambiguous or stale attempt still
+occupies the window, the command fails with a cleanup-required error that names
+the exact attempt without calling the provider. After removing that attempt's
+possible credential with the Igloohome app over Bluetooth, or verifying it is
+absent, rerun with `--provider-credential-removed <attempt-id>` to confirm that
+exact cleanup. The server records only that reconciliation and creates the new
+code in one transaction; another unresolved attempt produces another
+cleanup-required error. If the confirmed rerun
+resumed an earlier attempt identifier whose server-side outcome was already
+terminal ambiguous, the server records the reconciliation and answers with a
+reconciled signal, and `dhw` automatically reissues the creation under a fresh
+identifier within the same invocation.
 
 ## Development
 
@@ -218,7 +261,8 @@ version.
 - `DHW_REQUEST_HEADERS` is a JSON object of additional API request headers. It
   is intended for preview-protection bypass headers and its values are redacted
   by Effect. It is never sent to GitHub during update checks.
-- `DHW_STATE_DIR` overrides the local updater state directory.
+- `DHW_STATE_DIR` overrides the local state directory holding updater state
+  and the access-code attempt reservation.
 - `DHW_NO_UPDATE_CHECK=true` disables automatic checks.
 
 For a protected Vercel preview, configuration can be scoped to one invocation:

@@ -294,6 +294,7 @@ describe("ReservationAccessService", () => {
     );
     expect(issueHourlyAlgoPin).toHaveBeenCalledWith({
       deviceId,
+      variance: 1,
       startsAt: "2099-07-01T10:00:00+02:00",
       endsAt: "2099-07-01T19:00:00+02:00",
       accessName: `Deskohub ${reservationId}`,

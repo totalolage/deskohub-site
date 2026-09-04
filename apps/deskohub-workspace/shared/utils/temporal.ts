@@ -129,6 +129,17 @@ export const temporalInstantToLocalDateTimeString = ({
     .toPlainDateTime()
     .toString({ smallestUnit: "minute" });
 
+export const localDateTimeToOffsetInstantString = ({
+  dateTime,
+  timeZone,
+}: {
+  readonly dateTime: string;
+  readonly timeZone: string;
+}) =>
+  Temporal.PlainDateTime.from(dateTime)
+    .toZonedDateTime(timeZone)
+    .toString({ smallestUnit: "second", timeZoneName: "never" });
+
 export const localDateTimeToTemporalInstantString = ({
   dateTime,
   timeZone,

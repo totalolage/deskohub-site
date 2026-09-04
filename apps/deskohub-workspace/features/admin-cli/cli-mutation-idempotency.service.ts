@@ -1,6 +1,7 @@
 import {
   AdministrationDiscountMutationResult,
   AdministrationReservationAccessGrant,
+  AdministrationStandaloneAccessCodeResult,
   type CliMutationRequestIdType,
   type CliSessionIdType,
 } from "@deskohub/workspace-admin-api";
@@ -92,6 +93,7 @@ export class CliMutationIdempotency extends Context.Service<
           Schema.Union([
             AdministrationDiscountMutationResult,
             AdministrationReservationAccessGrant,
+            AdministrationStandaloneAccessCodeResult,
           ])
         )(row.result);
         return { kind: "completed", result } as const;
