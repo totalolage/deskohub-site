@@ -4,6 +4,7 @@ import type {
   AdministrationDiscountMutationType,
   AdministrationReservationAccessGrantType,
   AdministrationReservationAccessMutationType,
+  AdministrationStandaloneAccessCodeAttemptIdType,
   AdministrationStandaloneAccessCodeCreateInputType,
   AdministrationStandaloneAccessCodeResultType,
   AdministrationWorkspaceReservationIdType,
@@ -200,6 +201,7 @@ export type CliStoredMutation =
   | {
       readonly kind: "standalone-access-code";
       readonly request: AdministrationStandaloneAccessCodeCreateInputType;
+      readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType;
     };
 
 export type CliStoredMutationResult =

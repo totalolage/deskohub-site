@@ -11,6 +11,7 @@ import {
   AdministrationInstant,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
+  type AdministrationStandaloneAccessCodeAttemptIdType,
   type AdministrationStandaloneAccessCodeCleanupTargetType,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreationOutcomeType,
@@ -35,8 +36,9 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Layer, Logger, Result, Schema } from "effect";
+import { Effect, Layer, Logger, Option, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
+import type { CliStoredMutation } from "@/db/schema";
 import {
   StandaloneAccessCodeAdministration,
   StandaloneAccessCodeCreationError,
@@ -1903,5 +1905,145 @@ describe("standalone access-code CLI endpoint", () => {
       issuedAt: occurredAt.toString(),
     });
     expect(JSON.stringify(storedResult)).not.toContain("7654321");
+  });
+
+  test("rejects a stale retry that confirms a different cleanup target without sharing the claim", async () => {
+    const otherAttemptId = Schema.decodeUnknownSync(
+      AdministrationStandaloneAccessCodeAttemptId
+    )("01980000-0000-7000-8000-000000000043");
+    let creations = 0;
+    const claims: CliStoredMutation[] = [];
+    const reclaims: CliStoredMutation[] = [];
+    const ledger = new Map<
+      string,
+      { readonly mutation: CliStoredMutation; result: unknown }
+    >();
+    const ledgerKey = (request: {
+      readonly sessionId: string;
+      readonly requestId: string;
+    }) => `${request.sessionId}/${request.requestId}`;
+    const sameStoredMutation = (
+      stored: CliStoredMutation,
+      incoming: CliStoredMutation
+    ) => JSON.stringify(stored) === JSON.stringify(incoming);
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: (request) =>
+        Effect.sync(() => {
+          claims.push(request.mutation);
+          const row = ledger.get(ledgerKey(request));
+          if (!row) {
+            ledger.set(ledgerKey(request), {
+              mutation: request.mutation,
+              result: null,
+            });
+            return { kind: "claimed" as const };
+          }
+          if (!sameStoredMutation(row.mutation, request.mutation)) {
+            return { kind: "mismatch" as const };
+          }
+          return row.result === null
+            ? { kind: "in-progress" as const }
+            : { kind: "completed" as const, result: row.result as never };
+        }),
+      complete: (request) =>
+        Effect.sync(() => {
+          const row = ledger.get(ledgerKey(request));
+          if (row) row.result = request.result;
+        }),
+      reclaimStale: (request) =>
+        Effect.sync(() => {
+          const row = ledger.get(ledgerKey(request));
+          if (!row || !sameStoredMutation(row.mutation, request.mutation)) {
+            return false;
+          }
+          reclaims.push(request.mutation);
+          row.result = null;
+          return true;
+        }),
+      release: (request) =>
+        Effect.sync(() => {
+          ledger.delete(ledgerKey(request));
+        }),
+    });
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.suspend(() => {
+          creations += 1;
+          return creations === 1
+            ? Effect.fail(
+                creationFailure(
+                  "ambiguous",
+                  "The standalone access-code creation outcome is ambiguous.",
+                  { cleanupTarget: priorCleanupTarget }
+                )
+              )
+            : Effect.succeed(createdOutcome);
+        }),
+    });
+    const confirmTarget = (
+      cleanupAttemptId: AdministrationStandaloneAccessCodeAttemptIdType
+    ) => ({
+      ...payload,
+      providerCredentialRemovedAttemptId: cleanupAttemptId,
+    });
+
+    const [firstAttempt, secondAttempt, thirdAttempt] = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      Effect.gen(function* () {
+        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+          "administration",
+        ]);
+        const first = yield* client.administration
+          .createStandaloneAccessCode({
+            payload: confirmTarget(priorAttemptId),
+          })
+          .pipe(Effect.flip);
+        const second = yield* client.administration
+          .createStandaloneAccessCode({
+            payload: confirmTarget(otherAttemptId),
+          })
+          .pipe(Effect.flip);
+        const third = yield* client.administration
+          .createStandaloneAccessCode({
+            payload: confirmTarget(priorAttemptId),
+          })
+          .pipe(Effect.result);
+        return [first, second, third] as const;
+      })
+    ).pipe(Effect.runPromise);
+
+    expect(firstAttempt).toBeInstanceOf(CliMutationUncertain);
+    expect(secondAttempt).toBeInstanceOf(CliMutationRejected);
+    expect(secondAttempt.message).toContain("different input");
+    expect(Result.isSuccess(thirdAttempt)).toBe(true);
+    if (Result.isSuccess(thirdAttempt)) {
+      expect(
+        Option.getOrUndefined(Result.getSuccess(thirdAttempt))
+      ).toMatchObject({
+        outcome: "created",
+        attemptId,
+      });
+    }
+    expect(creations).toBe(2);
+    expect(claims).toEqual([
+      {
+        kind: "standalone-access-code",
+        request: payload.input,
+        providerCredentialRemovedAttemptId: priorAttemptId,
+      },
+      {
+        kind: "standalone-access-code",
+        request: payload.input,
+        providerCredentialRemovedAttemptId: otherAttemptId,
+      },
+      {
+        kind: "standalone-access-code",
+        request: payload.input,
+        providerCredentialRemovedAttemptId: priorAttemptId,
+      },
+    ]);
+    expect(reclaims).toEqual([claims[0]]);
   });
 });

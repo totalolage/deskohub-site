@@ -431,6 +431,11 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               mutation: {
                 kind: "standalone-access-code" as const,
                 request: payload.input,
+                ...(payload.providerCredentialRemovedAttemptId !==
+                  undefined && {
+                  providerCredentialRemovedAttemptId:
+                    payload.providerCredentialRemovedAttemptId,
+                }),
               },
             };
             const executeCreation = standaloneAccessCodes
