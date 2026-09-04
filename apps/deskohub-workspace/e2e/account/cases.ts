@@ -1,6 +1,7 @@
-import type {
-  DotyposCustomerId,
-  DotyposReservationId,
+import {
+  type DotyposCustomerId,
+  type DotyposReservationId,
+  normalizePhoneNumber,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import {
@@ -92,6 +93,9 @@ const deleteTriggerSelector = "#delete-account-trigger";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
 const deleteConfirmCheckboxSelector = "#confirm-account-deletion";
 const deleteConfirmSelector = "#delete-account-confirm";
+
+/** Submitted as-is; the provider PATCH normalizes it to E.164. */
+const profilePhoneFixture = "+420 555 000 111";
 
 const browserTimeout = workspaceE2ETimeouts.browserAction;
 const uiTransition = workspaceE2ETimeouts.uiTransition;
@@ -605,7 +609,7 @@ export const makeWorkspaceE2EAccountCases = ({
                 run,
                 session,
                 profilePhoneSelector,
-                "+420 555 000 111",
+                profilePhoneFixture,
                 { timeoutMs: browserTimeout }
               );
               yield* clickBrowserElement(run, session, profileSubmitSelector, {
@@ -618,7 +622,8 @@ export const makeWorkspaceE2EAccountCases = ({
                 "the optional last name did not reach the provider profile"
               );
               assert(
-                (customer.phone ?? "").includes("555 000 111"),
+                normalizePhoneNumber(customer.phone) ===
+                  normalizePhoneNumber(profilePhoneFixture),
                 "the optional phone did not reach the provider profile"
               );
             }),

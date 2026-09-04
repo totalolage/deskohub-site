@@ -134,6 +134,21 @@ describe("workspace account e2e graph", () => {
     );
   });
 
+  test("compares the provider profile phone by canonical normalized value", async () => {
+    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const completionCase = cases.slice(
+      cases.indexOf('makeCase("account-profile-completion"'),
+      cases.indexOf('makeCase("account-reservation-transitions"')
+    );
+
+    expect(cases).toContain('const profilePhoneFixture = "+420 555 000 111";');
+    expect(completionCase).toContain("normalizePhoneNumber(customer.phone)");
+    expect(completionCase).toContain(
+      "normalizePhoneNumber(profilePhoneFixture)"
+    );
+    expect(completionCase).not.toContain('includes("555 000 111")');
+  });
+
   test("completes the stale deletion through the delivered reauthentication link", async () => {
     const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
     const markerCase = cases.slice(
