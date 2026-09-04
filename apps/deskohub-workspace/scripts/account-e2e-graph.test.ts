@@ -18,19 +18,20 @@ const countOccurrences = (text: string, needle: string) =>
   text.split(needle).length - 1;
 
 /**
- * Pins the page contract inside one isolated step: exactly one Node-side
- * text poll (never in-page waitForFunction) whose matcher checks both
- * expected displayed texts conjunctively.
+ * Pins the page contract inside one isolated step: exactly one aria-snapshot
+ * poll (never body-text or in-page waitForFunction channels) whose matcher
+ * checks both expected displayed texts conjunctively.
  */
-const expectSingleConjunctiveTextMatcher = (
+const expectSingleConjunctiveSnapshotMatcher = (
   stepBlock: string,
   firstName: string,
   secondName: string
 ) => {
-  expect(countOccurrences(stepBlock, "waitForBrowserText")).toBe(1);
+  expect(countOccurrences(stepBlock, "waitForInteractiveSnapshot")).toBe(1);
+  expect(countOccurrences(stepBlock, "waitForBrowserText")).toBe(0);
   expect(countOccurrences(stepBlock, "waitForBrowserCondition")).toBe(0);
-  const firstAt = stepBlock.indexOf(`pageText.includes(${firstName})`);
-  const secondAt = stepBlock.indexOf(`pageText.includes(${secondName})`);
+  const firstAt = stepBlock.indexOf(`snapshot.includes(${firstName})`);
+  const secondAt = stepBlock.indexOf(`snapshot.includes(${secondName})`);
   expect(firstAt).toBeGreaterThan(-1);
   expect(secondAt).toBeGreaterThan(-1);
   const [joinStart, joinEnd] =
@@ -196,7 +197,7 @@ describe("workspace account e2e graph", () => {
     );
 
     expect(stepBlock).not.toContain("cancelSyntheticReservation");
-    expectSingleConjunctiveTextMatcher(
+    expectSingleConjunctiveSnapshotMatcher(
       stepBlock,
       "currentReservationsTitle",
       "confirmedStatus"
@@ -228,7 +229,7 @@ describe("workspace account e2e graph", () => {
     );
 
     expect(stepBlock).not.toContain("cancelSyntheticReservation");
-    expectSingleConjunctiveTextMatcher(
+    expectSingleConjunctiveSnapshotMatcher(
       stepBlock,
       "pastReservationsTitle",
       "cancelledStatus"

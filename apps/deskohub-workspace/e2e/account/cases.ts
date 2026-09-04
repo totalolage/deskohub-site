@@ -15,6 +15,7 @@ import {
   waitForBrowserCondition,
   waitForBrowserReactFormAction,
   waitForBrowserText,
+  waitForInteractiveSnapshot,
 } from "../browser";
 import type { DatasourceConfig } from "../config";
 import {
@@ -683,15 +684,15 @@ export const makeWorkspaceE2EAccountCases = ({
             "shows the confirmed reservations in the current group",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              // One Node-side text poll samples the rendered document for
-              // both assertions; in-page waitForFunction stayed false while
-              // the sanitized snapshot already showed the same content.
-              yield* waitForBrowserText({
+              // One aria-snapshot poll samples the interactive tree for both
+              // assertions; body innerText missed content the sanitized
+              // snapshot already showed in the hosted context.
+              yield* waitForInteractiveSnapshot({
                 description:
                   "current reservations group with a confirmed card",
-                matches: (pageText) =>
-                  pageText.includes(currentReservationsTitle) &&
-                  pageText.includes(confirmedStatus),
+                matches: (snapshot) =>
+                  snapshot.includes(currentReservationsTitle) &&
+                  snapshot.includes(confirmedStatus),
                 run,
                 session,
                 timeoutMs: datasourceTimeout,
@@ -719,11 +720,11 @@ export const makeWorkspaceE2EAccountCases = ({
             "moves the cancelled reservation to the past group",
             Effect.gen(function* () {
               yield* openPage(localized(accountSuffix));
-              yield* waitForBrowserText({
+              yield* waitForInteractiveSnapshot({
                 description: "past reservations group with a cancelled card",
-                matches: (pageText) =>
-                  pageText.includes(pastReservationsTitle) &&
-                  pageText.includes(cancelledStatus),
+                matches: (snapshot) =>
+                  snapshot.includes(pastReservationsTitle) &&
+                  snapshot.includes(cancelledStatus),
                 run,
                 session,
                 timeoutMs: datasourceTimeout,
