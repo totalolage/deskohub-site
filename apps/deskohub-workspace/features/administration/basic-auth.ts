@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 const basicAuthorizationPrefix = "Basic ";
 
-export const getDiscountAdminAuthorizationUsername = (
+export const getAdministrationAuthorizationUsername = (
   authorization: string | null,
   expectedSha256: string | undefined
 ) => {
@@ -43,8 +43,9 @@ export const getDiscountAdminAuthorizationUsername = (
   }
 };
 
-export const isDiscountAdminAuthorizationValid = (
+export const isAdministrationAuthorizationValid = (
   authorization: string | null,
   expectedSha256: string | undefined
 ) =>
-  getDiscountAdminAuthorizationUsername(authorization, expectedSha256) !== null;
+  getAdministrationAuthorizationUsername(authorization, expectedSha256) !==
+  null;

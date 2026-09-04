@@ -65,6 +65,10 @@ import {
 import { InvoiceEmailDeliveryService } from "../backend/invoice-email-delivery.service";
 import { renderInvoicePdf } from "../backend/invoice-pdf";
 import {
+  decodeInvoiceAdministrationId,
+  InvoiceAdministrationNotFoundError,
+} from "./invoice-administration-identifier";
+import {
   ManualInvoiceCreationRequestError,
   ManualInvoiceCreationRequests,
 } from "./manual-invoice-creation-requests.service";
@@ -150,10 +154,6 @@ export type InvoiceAdministrationRetryResult = {
   readonly changed: boolean;
   readonly needsAttention: boolean;
 };
-
-export class InvoiceAdministrationNotFoundError extends Data.TaggedError(
-  "InvoiceAdministrationNotFoundError"
-)<{ readonly invoiceId: string }> {}
 
 export class InvoiceAdministrationCustomerError extends Data.TaggedError(
   "InvoiceAdministrationCustomerError"
@@ -670,11 +670,6 @@ const getPragueDate = () =>
   Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
-
-export const decodeInvoiceAdministrationId = (invoiceId: string) =>
-  Schema.decodeUnknownEffect(invoiceIdSchema)(invoiceId).pipe(
-    Effect.mapError(() => new InvoiceAdministrationNotFoundError({ invoiceId }))
-  );
 
 const minorUnitsToDecimal = (value: number, exponent: number) => {
   const sign = value < 0 ? "-" : "";

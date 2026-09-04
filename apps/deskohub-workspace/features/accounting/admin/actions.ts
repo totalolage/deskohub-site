@@ -7,7 +7,7 @@ import {
 } from "@deskohub/workspace-admin-api";
 import { Effect, Schema } from "effect";
 import { revalidatePath } from "next/cache";
-import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
+import { requireAdministrationAuthorization } from "@/features/administration/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
@@ -28,7 +28,7 @@ const createInvoiceAction = defineWorkspaceAction(
   },
   (input) =>
     Effect.gen(function* () {
-      const actor = yield* requireDiscountAdminAuthorization();
+      const actor = yield* requireAdministrationAuthorization();
       const administration = yield* InvoiceAdministrationService;
       const result = yield* administration.create(input, {
         source: "admin-ui",
@@ -58,7 +58,7 @@ const previewInvoiceAction = defineWorkspaceAction(
   },
   (input) =>
     Effect.gen(function* () {
-      const actor = yield* requireDiscountAdminAuthorization();
+      const actor = yield* requireAdministrationAuthorization();
       const administration = yield* InvoiceAdministrationService;
       const pdf = yield* administration.preview(input, {
         source: "admin-ui",
@@ -88,7 +88,7 @@ const searchCustomersAction = defineWorkspaceAction(
     logInput: false,
   },
   (input) =>
-    requireDiscountAdminAuthorization().pipe(
+    requireAdministrationAuthorization().pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* InvoiceAdministrationService;
@@ -115,7 +115,7 @@ const retryInvoiceAction = defineWorkspaceAction(
     ),
   },
   (input) =>
-    requireDiscountAdminAuthorization().pipe(
+    requireAdministrationAuthorization().pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* InvoiceAdministrationService;

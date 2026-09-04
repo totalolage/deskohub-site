@@ -26,13 +26,15 @@ import {
   InvoiceEmailDeliveryService,
 } from "../backend/invoice-email-delivery.service";
 import {
-  decodeInvoiceAdministrationId,
   getInvoiceAdministrationPaymentStatus,
   type InvoiceAdministrationListItem,
-  InvoiceAdministrationNotFoundError,
   InvoiceAdministrationService,
   sortInvoiceAdministrationItems,
 } from "./invoice-administration.service";
+import {
+  decodeInvoiceAdministrationId,
+  InvoiceAdministrationNotFoundError,
+} from "./invoice-administration-identifier";
 import { ManualInvoiceCreationRequests } from "./manual-invoice-creation-requests.service";
 
 const input = Schema.decodeUnknownSync(AdministrationInvoiceCreateInput)({
