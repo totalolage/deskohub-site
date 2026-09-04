@@ -166,7 +166,7 @@ describe("account actions", () => {
       "ada@example.test",
       { firstName: "Ada" },
     ]);
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   test("updates the profile when the account already links a customer", async () => {
@@ -176,7 +176,7 @@ describe("account actions", () => {
 
     expect(result).toEqual({ data: { status: "updated" } });
     expect(profileCalls.map(({ op }) => op)).toEqual(["update"]);
-    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   test("rejects an email in the profile input and never forwards profile fields containing one", async () => {
@@ -286,5 +286,6 @@ describe("account actions", () => {
 
     expect(result).toEqual({ data: { status: "failed" } });
     expect(revalidatePath).toHaveBeenCalledWith("/en-US/account");
+    expect(revalidatePath).toHaveBeenCalledWith("/en-US/account/deleted");
   });
 });

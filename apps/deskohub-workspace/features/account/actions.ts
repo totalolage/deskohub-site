@@ -108,16 +108,9 @@ const completeCustomerProfileAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.as(
-      Effect.andThen(
-        saveCustomerProfile(input, locale),
-        Effect.andThen(
-          Effect.sync(() => revalidatePath(`/${locale}/account`)),
-          Effect.logDebug("Account profile revalidation completed")
-        )
-      ),
-      { status: "completed" as const }
-    )
+    Effect.as(saveCustomerProfile(input, locale), {
+      status: "completed" as const,
+    })
 );
 
 const updateCustomerProfileAction = defineWorkspaceAction(
@@ -127,16 +120,9 @@ const updateCustomerProfileAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.as(
-      Effect.andThen(
-        saveCustomerProfile(input, locale),
-        Effect.andThen(
-          Effect.sync(() => revalidatePath(`/${locale}/account`)),
-          Effect.logDebug("Account profile revalidation completed")
-        )
-      ),
-      { status: "updated" as const }
-    )
+    Effect.as(saveCustomerProfile(input, locale), {
+      status: "updated" as const,
+    })
 );
 
 export type CustomerAccountDeletionResult =
