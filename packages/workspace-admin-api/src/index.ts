@@ -214,6 +214,8 @@ export {
   type AdministrationReservationSummary as AdministrationReservationSummaryType,
   AdministrationStandaloneAccessCodeAttemptId,
   type AdministrationStandaloneAccessCodeAttemptId as AdministrationStandaloneAccessCodeAttemptIdType,
+  AdministrationStandaloneAccessCodeCleanupTarget,
+  type AdministrationStandaloneAccessCodeCleanupTarget as AdministrationStandaloneAccessCodeCleanupTargetType,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreateInput as AdministrationStandaloneAccessCodeCreateInputType,
   AdministrationStandaloneAccessCodeCreateRequest,

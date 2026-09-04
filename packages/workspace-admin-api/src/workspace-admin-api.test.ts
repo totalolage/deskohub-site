@@ -32,6 +32,8 @@ import {
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
+  AdministrationStandaloneAccessCodeAttemptId,
+  AdministrationStandaloneAccessCodeCleanupTarget,
   AdministrationStandaloneAccessCodeCreateInput,
   AdministrationStandaloneAccessCodeCreateRequest,
   AdministrationStandaloneAccessCodeCreationOutcome,
@@ -323,6 +325,12 @@ describe("standalone access-code contract", () => {
 
 describe("standalone access-code CLI endpoint contract", () => {
   const attemptId = "01980000-0000-7000-8000-000000000042";
+  const confirmedAttemptId = Schema.decodeUnknownSync(
+    AdministrationStandaloneAccessCodeAttemptId
+  )(attemptId);
+  const storedAccessName = Schema.decodeUnknownSync(
+    AdministrationStandaloneAccessCodeName
+  )("Booth A");
   const decodeRequest = Schema.decodeUnknownSync(
     AdministrationStandaloneAccessCodeCreateRequest
   );
@@ -366,9 +374,11 @@ describe("standalone access-code CLI endpoint contract", () => {
         startsAt: "2026-09-10T10:00",
         endsAt: "2026-09-10T12:00",
       },
-      providerCredentialRemoved: true,
+      providerCredentialRemovedAttemptId: attemptId,
     });
-    expect(confirmed.providerCredentialRemoved).toBe(true);
+    expect(confirmed.providerCredentialRemovedAttemptId).toBe(
+      confirmedAttemptId
+    );
 
     const unconfirmed = decodeRequest({
       attemptId,
@@ -378,7 +388,7 @@ describe("standalone access-code CLI endpoint contract", () => {
         endsAt: "2026-09-10T12:00",
       },
     });
-    expect("providerCredentialRemoved" in unconfirmed).toBe(false);
+    expect("providerCredentialRemovedAttemptId" in unconfirmed).toBe(false);
 
     expect(() =>
       decodeRequest({
@@ -388,21 +398,48 @@ describe("standalone access-code CLI endpoint contract", () => {
           startsAt: "2026-09-10T10:00",
           endsAt: "2026-09-10T12:00",
         },
-        providerCredentialRemoved: false,
+        providerCredentialRemoved: true,
+      })
+    ).toThrow();
+    expect(() =>
+      decodeRequest({
+        attemptId,
+        input: {
+          name: "Booth A",
+          startsAt: "2026-09-10T10:00",
+          endsAt: "2026-09-10T12:00",
+        },
+        providerCredentialRemovedAttemptId: "not-a-uuid",
       })
     ).toThrow();
   });
 
   test("reports required at-lock cleanup as a typed conflict error", () => {
+    const cleanupTarget = Schema.decodeUnknownSync(
+      AdministrationStandaloneAccessCodeCleanupTarget
+    )({
+      attemptId,
+      name: "Booth A",
+    });
     const error = new CliStandaloneAccessCodeCleanupRequired({
       message:
         "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then confirm the cleanup before creating another code.",
+      cleanupTarget,
     });
     expect(error._tag).toBe("CliStandaloneAccessCodeCleanupRequired");
+    expect(error.cleanupTarget.attemptId).toBe(confirmedAttemptId);
+    expect(error.cleanupTarget.name).toBe(storedAccessName);
     const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
     expect(
       httpApiStatusOf(CliStandaloneAccessCodeCleanupRequired.schema.ast)
     ).toBe(409);
+    const encoded = Schema.encodeSync(
+      CliStandaloneAccessCodeCleanupRequired.schema
+    )(error);
+    expect(encoded.cleanupTarget).toEqual({
+      attemptId,
+      name: "Booth A",
+    });
     expect(JSON.stringify(error)).not.toContain("7654321");
   });
 

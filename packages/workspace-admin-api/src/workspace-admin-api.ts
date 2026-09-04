@@ -57,6 +57,41 @@ export const CliMutationRequestId = uuidSchema
   .annotate({ identifier: "CliMutationRequestId" });
 export type CliMutationRequestId = typeof CliMutationRequestId.Type;
 
+export const AdministrationStandaloneAccessCodeAttemptId = uuidSchema
+  .pipe(Schema.brand("StandaloneAccessCodeAttemptId"))
+  .annotate({
+    identifier: "AdministrationStandaloneAccessCodeAttemptId",
+    description:
+      "Client-supplied identifier that keeps standalone access-code creation idempotent across retries.",
+  });
+export type AdministrationStandaloneAccessCodeAttemptId =
+  typeof AdministrationStandaloneAccessCodeAttemptId.Type;
+
+export const AdministrationStandaloneAccessCodeName = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(60)
+)
+  .pipe(Schema.brand("StandaloneAccessCodeName"))
+  .annotate({
+    identifier: "AdministrationStandaloneAccessCodeName",
+    description:
+      "Trimmed access label of at most 60 characters, matching the lock provider's access-name bound.",
+  });
+export type AdministrationStandaloneAccessCodeName =
+  typeof AdministrationStandaloneAccessCodeName.Type;
+
+export const AdministrationStandaloneAccessCodeCleanupTarget = Schema.Struct({
+  attemptId: AdministrationStandaloneAccessCodeAttemptId,
+  name: AdministrationStandaloneAccessCodeName,
+}).annotate({
+  identifier: "AdministrationStandaloneAccessCodeCleanupTarget",
+  description:
+    "The single ambiguous standalone access-code creation attempt the operator must inspect in the lock provider, identified by attempt id and stored access-code name; a later confirmation names this exact attempt.",
+  parseOptions: { errors: "all", onExcessProperty: "error" },
+});
+export type AdministrationStandaloneAccessCodeCleanupTarget =
+  typeof AdministrationStandaloneAccessCodeCleanupTarget.Type;
+
 export const AdministrationActorUsername = Schema.Trim.check(
   Schema.isNonEmpty(),
   Schema.isMaxLength(80)
@@ -233,7 +268,10 @@ export class CliMutationUncertain extends Schema.TaggedErrorClass<CliMutationUnc
 
 export class CliStandaloneAccessCodeCleanupRequired extends Schema.TaggedErrorClass<CliStandaloneAccessCodeCleanupRequired>()(
   "CliStandaloneAccessCodeCleanupRequired",
-  { message: Schema.String }
+  {
+    message: Schema.String,
+    cleanupTarget: AdministrationStandaloneAccessCodeCleanupTarget,
+  }
 ) {
   static schema = this.pipe(HttpApiSchema.status("Conflict"));
 }
@@ -1029,29 +1067,6 @@ export const AdministrationInstant = Schema.String.check(
   .annotate({ identifier: "Instant" });
 export type AdministrationInstant = typeof AdministrationInstant.Type;
 
-export const AdministrationStandaloneAccessCodeAttemptId = uuidSchema
-  .pipe(Schema.brand("StandaloneAccessCodeAttemptId"))
-  .annotate({
-    identifier: "AdministrationStandaloneAccessCodeAttemptId",
-    description:
-      "Client-supplied identifier that keeps standalone access-code creation idempotent across retries.",
-  });
-export type AdministrationStandaloneAccessCodeAttemptId =
-  typeof AdministrationStandaloneAccessCodeAttemptId.Type;
-
-export const AdministrationStandaloneAccessCodeName = Schema.Trim.check(
-  Schema.isNonEmpty(),
-  Schema.isMaxLength(60)
-)
-  .pipe(Schema.brand("StandaloneAccessCodeName"))
-  .annotate({
-    identifier: "AdministrationStandaloneAccessCodeName",
-    description:
-      "Trimmed access label of at most 60 characters, matching the lock provider's access-name bound.",
-  });
-export type AdministrationStandaloneAccessCodeName =
-  typeof AdministrationStandaloneAccessCodeName.Type;
-
 const isWholeHourLocalTime = (dateTime: Temporal.PlainDateTime) =>
   dateTime.minute === 0 &&
   dateTime.second === 0 &&
@@ -1164,11 +1179,13 @@ export type AdministrationStandaloneAccessCodeCreateInput =
 export const AdministrationStandaloneAccessCodeCreateRequest = Schema.Struct({
   attemptId: AdministrationStandaloneAccessCodeAttemptId,
   input: AdministrationStandaloneAccessCodeCreateInput,
-  providerCredentialRemoved: Schema.optionalKey(Schema.Literal(true)),
+  providerCredentialRemovedAttemptId: Schema.optionalKey(
+    AdministrationStandaloneAccessCodeAttemptId
+  ),
 }).annotate({
   identifier: "AdministrationStandaloneAccessCodeCreateRequest",
   description:
-    "CLI standalone access-code creation request; the client-generated attempt identifier is also the CLI mutation-ledger request identifier. The provider-credential confirmation is required when a prior ambiguous attempt occupies the window.",
+    "CLI standalone access-code creation request; the client-generated attempt identifier is also the CLI mutation-ledger request identifier. The provider-credential-removed confirmation names the exact earlier attempt the operator verified as removed or absent.",
   parseOptions: { errors: "all", onExcessProperty: "error" },
 });
 export type AdministrationStandaloneAccessCodeCreateRequest =
