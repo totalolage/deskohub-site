@@ -9,11 +9,12 @@ describe("Better Auth allowed hosts resolution", () => {
     return result.kind === "invalid" ? result.message : "valid";
   };
 
-  test("allows only the canonical production and deployment hosts in production", () => {
+  test("allows the customer-facing production host ahead of the exact deployment hosts in production", () => {
     const result = resolveBetterAuthAllowedHosts({
       vercelEnv: "production",
-      productionUrl: "workspace.deskohub.cz",
-      commitUrl: "deskohub-workspace-abc123.vercel.app",
+      customerFacingHost: "workspace.deskohub.cz",
+      projectProductionUrl: "deskohub-workspace.vercel.app",
+      deploymentUrl: "deskohub-workspace-abc123.vercel.app",
       branchUrl: undefined,
     });
 
@@ -21,6 +22,7 @@ describe("Better Auth allowed hosts resolution", () => {
     if (result.kind === "valid") {
       expect(result.hosts).toEqual([
         "workspace.deskohub.cz",
+        "deskohub-workspace.vercel.app",
         "deskohub-workspace-abc123.vercel.app",
       ]);
     }
@@ -29,8 +31,9 @@ describe("Better Auth allowed hosts resolution", () => {
   test("allows the branch deployment host on previews", () => {
     const result = resolveBetterAuthAllowedHosts({
       vercelEnv: "preview",
-      productionUrl: "workspace.deskohub.cz",
-      commitUrl: "deskohub-workspace-abc123.vercel.app",
+      customerFacingHost: "workspace.deskohub.cz",
+      projectProductionUrl: "deskohub-workspace.vercel.app",
+      deploymentUrl: "deskohub-workspace-abc123.vercel.app",
       branchUrl: "deskohub-git-feature-git-team.vercel.app",
     });
 
@@ -38,6 +41,7 @@ describe("Better Auth allowed hosts resolution", () => {
     if (result.kind === "valid") {
       expect(result.hosts).toEqual([
         "workspace.deskohub.cz",
+        "deskohub-workspace.vercel.app",
         "deskohub-workspace-abc123.vercel.app",
         "deskohub-git-feature-git-team.vercel.app",
       ]);
@@ -47,8 +51,9 @@ describe("Better Auth allowed hosts resolution", () => {
   test("allows localhost only during local development", () => {
     const result = resolveBetterAuthAllowedHosts({
       vercelEnv: "development",
-      productionUrl: "workspace.deskohub.cz",
-      commitUrl: undefined,
+      customerFacingHost: "workspace.deskohub.cz",
+      projectProductionUrl: undefined,
+      deploymentUrl: undefined,
       branchUrl: undefined,
     });
 
@@ -61,8 +66,9 @@ describe("Better Auth allowed hosts resolution", () => {
   test("normalizes scheme, path, case, and trailing slashes", () => {
     const result = resolveBetterAuthAllowedHosts({
       vercelEnv: "preview",
-      productionUrl: "https://Workspace.Deskohub.cz/",
-      commitUrl: "https://deskohub-workspace-abc123.vercel.app/",
+      customerFacingHost: "https://Workspace.Deskohub.cz/",
+      projectProductionUrl: "https://deskohub-workspace.vercel.app/",
+      deploymentUrl: "https://deskohub-workspace-abc123.vercel.app/",
       branchUrl: undefined,
     });
 
@@ -70,6 +76,7 @@ describe("Better Auth allowed hosts resolution", () => {
     if (result.kind === "valid") {
       expect(result.hosts).toEqual([
         "workspace.deskohub.cz",
+        "deskohub-workspace.vercel.app",
         "deskohub-workspace-abc123.vercel.app",
       ]);
     }
@@ -78,22 +85,24 @@ describe("Better Auth allowed hosts resolution", () => {
   test("keeps an explicit port", () => {
     const result = resolveBetterAuthAllowedHosts({
       vercelEnv: "development",
-      productionUrl: "localhost:3000",
-      commitUrl: undefined,
+      customerFacingHost: "localhost:3000",
+      projectProductionUrl: undefined,
+      deploymentUrl: undefined,
       branchUrl: undefined,
     });
 
     expect(result.kind).toBe("valid");
     if (result.kind === "valid") {
-      expect(result.hosts).toContain("localhost:3000");
+      expect(result.hosts).toEqual(["localhost:3000"]);
     }
   });
 
-  test("deduplicates repeated hosts", () => {
+  test("deduplicates the customer-facing host repeated as a Vercel host", () => {
     const result = resolveBetterAuthAllowedHosts({
       vercelEnv: "production",
-      productionUrl: "workspace.deskohub.cz",
-      commitUrl: "workspace.deskohub.cz",
+      customerFacingHost: "workspace.deskohub.cz",
+      projectProductionUrl: "workspace.deskohub.cz",
+      deploymentUrl: undefined,
       branchUrl: undefined,
     });
 
@@ -103,12 +112,13 @@ describe("Better Auth allowed hosts resolution", () => {
     }
   });
 
-  test("fails closed without a production host", () => {
+  test("fails closed without the customer-facing production host", () => {
     expect(
       invalidMessage({
         vercelEnv: "production",
-        productionUrl: undefined,
-        commitUrl: undefined,
+        customerFacingHost: undefined,
+        projectProductionUrl: "deskohub-workspace.vercel.app",
+        deploymentUrl: undefined,
         branchUrl: undefined,
       })
     ).toBe("The canonical production host is not configured for Better Auth.");
@@ -118,8 +128,9 @@ describe("Better Auth allowed hosts resolution", () => {
     expect(
       invalidMessage({
         vercelEnv: "preview",
-        productionUrl: "*.vercel.app",
-        commitUrl: undefined,
+        customerFacingHost: "*.deskohub.cz",
+        projectProductionUrl: undefined,
+        deploymentUrl: undefined,
         branchUrl: undefined,
       })
     ).toBe("Wildcard hosts are not allowed for Better Auth.");
@@ -127,8 +138,9 @@ describe("Better Auth allowed hosts resolution", () => {
     expect(
       invalidMessage({
         vercelEnv: "preview",
-        productionUrl: "workspace.deskohub.cz",
-        commitUrl: "tenant-*.vercel.app",
+        customerFacingHost: "workspace.deskohub.cz",
+        projectProductionUrl: undefined,
+        deploymentUrl: "tenant-*.vercel.app",
         branchUrl: undefined,
       })
     ).toBe("Wildcard hosts are not allowed for Better Auth.");

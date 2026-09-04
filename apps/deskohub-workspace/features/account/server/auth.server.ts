@@ -9,6 +9,7 @@ import {
   workspaceBeforeDeleteUser,
   workspaceSendMagicLink,
 } from "@/features/account/backend/auth/auth-server";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 const secrets = parseBetterAuthSecrets(env.BETTER_AUTH_SECRETS);
 if (secrets.kind === "invalid") {
@@ -17,8 +18,9 @@ if (secrets.kind === "invalid") {
 
 const allowedHosts = resolveBetterAuthAllowedHosts({
   vercelEnv: env.VERCEL_ENV,
-  productionUrl: env.VERCEL_PROJECT_PRODUCTION_URL,
-  commitUrl: env.VERCEL_URL,
+  customerFacingHost: workspaceSiteConstants.brand.domain,
+  projectProductionUrl: env.VERCEL_PROJECT_PRODUCTION_URL,
+  deploymentUrl: env.VERCEL_URL,
   branchUrl: env.VERCEL_BRANCH_URL,
 });
 if (allowedHosts.kind === "invalid") {

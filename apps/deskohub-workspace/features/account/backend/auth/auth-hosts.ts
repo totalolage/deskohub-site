@@ -1,7 +1,8 @@
 export type BetterAuthHostEnvironment = {
   readonly vercelEnv: "development" | "preview" | "production";
-  readonly productionUrl: string | undefined;
-  readonly commitUrl: string | undefined;
+  readonly customerFacingHost: string | undefined;
+  readonly projectProductionUrl: string | undefined;
+  readonly deploymentUrl: string | undefined;
   readonly branchUrl: string | undefined;
 };
 
@@ -38,15 +39,16 @@ const plainHostResult = (host: string): BetterAuthAllowedHostsResult => {
 };
 
 /**
- * Resolves the exact Better Auth `allowedHosts` entries from the Vercel
- * deployment environment. Only the canonical production host, the exact
- * commit host, the exact branch host, and local development are trusted;
- * wildcard patterns fail closed.
+ * Resolves the exact Better Auth `allowedHosts` entries. The customer-facing
+ * production host is the canonical authority and must always be configured;
+ * the Vercel project, deployment, and branch hosts are trusted only as exact
+ * matches, and local development additionally allows localhost. Wildcard
+ * patterns fail closed.
  */
 export const resolveBetterAuthAllowedHosts = (
   environment: BetterAuthHostEnvironment
 ): BetterAuthAllowedHostsResult => {
-  if (!environment.productionUrl) {
+  if (!environment.customerFacingHost) {
     return {
       kind: "invalid",
       message:
@@ -55,8 +57,9 @@ export const resolveBetterAuthAllowedHosts = (
   }
 
   const candidateUrls = [
-    environment.productionUrl,
-    environment.commitUrl,
+    environment.customerFacingHost,
+    environment.projectProductionUrl,
+    environment.deploymentUrl,
     environment.branchUrl,
     ...(environment.vercelEnv === "development" ? [localDevelopmentHost] : []),
   ].filter((url): url is string => Boolean(url));
