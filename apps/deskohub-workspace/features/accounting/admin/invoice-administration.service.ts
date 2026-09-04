@@ -256,14 +256,6 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
     return toDetail(listed, getPragueDate());
   });
 
-  const getBreadcrumbLabel = Effect.fn(
-    "InvoiceAdministrationService.getBreadcrumbLabel"
-  )(function* (invoiceId: string) {
-    const id = yield* decodeInvoiceAdministrationId(invoiceId);
-    const stored = yield* invoices.findById(id);
-    return stored ? `Invoice ${stored.invoiceNumber}` : null;
-  });
-
   const getPdf = Effect.fn("InvoiceAdministrationService.getPdf")(function* (
     invoiceId: string
   ) {
@@ -416,7 +408,6 @@ const makeInvoiceAdministrationService = Effect.gen(function* () {
   return {
     create,
     get,
-    getBreadcrumbLabel,
     getCreationDefaults,
     getPdf,
     list,

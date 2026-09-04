@@ -144,6 +144,18 @@ describe("administration UI boundaries", () => {
     expect(breadcrumbs).not.toContain("loadAdministrationBooking(");
     expect(breadcrumbs).not.toContain("loadAdministrationReservation(");
     expect(breadcrumbs).not.toContain("loadInvoiceAdministrationDetail(");
+    expect(breadcrumbs).not.toContain("InvoiceAdministrationService");
+
+    const pageData = await readWorkspaceFile(
+      "features/accounting/admin/page-data.server.ts"
+    );
+    const breadcrumbLoader = pageData.slice(
+      pageData.indexOf("export const loadInvoiceAdministrationBreadcrumbLabel"),
+      pageData.indexOf("export const loadInvoiceAdministrationPdf")
+    );
+    expect(breadcrumbLoader).toContain("InvoiceBreadcrumbService");
+    expect(breadcrumbLoader).not.toContain("InvoiceAdministrationService");
+    expect(breadcrumbLoader).not.toContain("loadInvoiceAdministrationDetail(");
   });
 
   test("keeps empty and sorting chrome in their shared foundations", async () => {

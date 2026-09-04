@@ -10,6 +10,7 @@ import {
   type InvoiceAdministrationListQuery,
   InvoiceAdministrationService,
 } from "./invoice-administration.service";
+import { InvoiceBreadcrumbService } from "./invoice-breadcrumb.service";
 
 export type InvoiceAdministrationSearchParams = Promise<{
   readonly sort?: string;
@@ -20,7 +21,6 @@ export type InvoiceAdministrationSearchParams = Promise<{
 const authorizeInvoiceAdministrationPage = cache(async () => {
   await connection();
   await requireDiscountAdminAuthorization().pipe(
-    Effect.provide(InvoiceAdministrationService.Live),
     runWorkspaceEffect("invoice-administration.authorize", {
       boundary: "route",
     })
@@ -80,13 +80,13 @@ export const loadInvoiceAdministrationBreadcrumbLabel = cache(
   async (invoiceId: string) => {
     await authorizeInvoiceAdministrationPage();
     const label = await Effect.gen(function* () {
-      const administration = yield* InvoiceAdministrationService;
-      return yield* administration.getBreadcrumbLabel(invoiceId);
+      const breadcrumb = yield* InvoiceBreadcrumbService;
+      return yield* breadcrumb.getLabel(invoiceId);
     }).pipe(
       Effect.catchTag("InvoiceAdministrationNotFoundError", () =>
         Effect.succeed(null)
       ),
-      Effect.provide(InvoiceAdministrationService.Live),
+      Effect.provide(InvoiceBreadcrumbService.Live),
       runWorkspaceEffect("invoice-administration.breadcrumb", {
         boundary: "route",
       })
