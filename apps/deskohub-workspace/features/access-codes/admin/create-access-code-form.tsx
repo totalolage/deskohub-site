@@ -1,6 +1,10 @@
 "use client";
 
-import type { AdministrationStandaloneAccessCodeCreationOutcome } from "@deskohub/workspace-admin-api";
+import type {
+  AdministrationStandaloneAccessCodeAttemptIdType,
+  AdministrationStandaloneAccessCodeCleanupTargetType,
+  AdministrationStandaloneAccessCodeCreationOutcome,
+} from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Result } from "effect";
@@ -58,7 +62,7 @@ type CreationState =
   | {
       readonly kind: "cleanup-confirm";
       readonly reason: "ambiguous" | "cleanup-required";
-      readonly name: string;
+      readonly cleanupTarget: AdministrationStandaloneAccessCodeCleanupTargetType;
     };
 
 const focusOnMount = (node: HTMLDivElement | null) => {
@@ -73,8 +77,10 @@ export function CreateStandaloneAccessCodeForm() {
   const attemptInputRef = useRef<CreateStandaloneAccessCodeFormValues | null>(
     null
   );
-  const cleanupConfirmedWindowRef =
-    useRef<CreateStandaloneAccessCodeFormValues | null>(null);
+  const cleanupConfirmedRef = useRef<{
+    readonly window: CreateStandaloneAccessCodeFormValues;
+    readonly targetAttemptId: AdministrationStandaloneAccessCodeAttemptIdType;
+  } | null>(null);
 
   const form = useForm<
     CreateStandaloneAccessCodeFormInput,
@@ -98,7 +104,7 @@ export function CreateStandaloneAccessCodeForm() {
     {
       actionName: "createStandaloneAccessCode",
       onSuccess: ({ data }) => {
-        cleanupConfirmedWindowRef.current = null;
+        cleanupConfirmedRef.current = null;
         if (!data) return;
         const result = decodeCreateStandaloneAccessCodeResult(data);
         if (Result.isSuccess(result)) {
@@ -111,31 +117,34 @@ export function CreateStandaloneAccessCodeForm() {
           setCreation({ kind: "already-created" });
           return;
         }
-        const kind = result.failure;
-        if (kind === "rejected") {
+        const failure = result.failure;
+        if (failure.outcome === "rejected") {
           attemptInputRef.current = null;
           setNotice(standaloneAccessCodeFailureNotices.rejected);
           return;
         }
-        if (kind === "ambiguous" || kind === "cleanup-required") {
+        if (
+          failure.outcome === "ambiguous" ||
+          failure.outcome === "cleanup-required"
+        ) {
           setCreation({
             kind: "cleanup-confirm",
-            reason: kind,
-            name: attemptInputRef.current?.name ?? "",
+            reason: failure.outcome,
+            cleanupTarget: failure.cleanupTarget,
           });
           return;
         }
-        setNotice(standaloneAccessCodeFailureNotices[kind]);
+        setNotice(standaloneAccessCodeFailureNotices[failure.outcome]);
       },
       onError: ({ error }) => {
-        cleanupConfirmedWindowRef.current = null;
+        cleanupConfirmedRef.current = null;
         setNotice(
           error.serverError ??
             "The access code could not be created. Try again."
         );
       },
       onTransportError: () => {
-        cleanupConfirmedWindowRef.current = null;
+        cleanupConfirmedRef.current = null;
         setNotice(
           "The server could not be reached. This attempt is kept, so you can safely try again."
         );
@@ -157,7 +166,7 @@ export function CreateStandaloneAccessCodeForm() {
   const startNewAttempt = () => {
     attemptIdRef.current = createStandaloneAccessCodeAttemptId();
     attemptInputRef.current = null;
-    cleanupConfirmedWindowRef.current = null;
+    cleanupConfirmedRef.current = null;
     setNotice(null);
     form.reset(createStandaloneAccessCodeFormDefaults);
     setFocusNameOnReturn(true);
@@ -171,30 +180,40 @@ export function CreateStandaloneAccessCodeForm() {
       // A changed window is a new intent: it must never reuse the attempt id.
       attemptIdRef.current = createStandaloneAccessCodeAttemptId();
       attemptInputRef.current = values;
-      cleanupConfirmedWindowRef.current = null;
+      cleanupConfirmedRef.current = null;
     }
-    const cleanupConfirmed =
-      cleanupConfirmedWindowRef.current !== null &&
-      isSameStandaloneAccessCodeWindow(
-        cleanupConfirmedWindowRef.current,
-        values
-      );
-    cleanupConfirmedWindowRef.current = null;
+    const confirmed = cleanupConfirmedRef.current;
+    const confirmedTarget =
+      confirmed !== null &&
+      isSameStandaloneAccessCodeWindow(confirmed.window, values)
+        ? confirmed.targetAttemptId
+        : null;
+    cleanupConfirmedRef.current = null;
     execute({
       attemptId: attemptIdRef.current,
       ...values,
-      ...(cleanupConfirmed && { providerCredentialRemoved: true as const }),
+      ...(confirmedTarget && {
+        providerCredentialRemovedAttemptId: confirmedTarget,
+      }),
     });
   };
 
-  const confirmLockCleanup = () => {
+  const confirmLockCleanup = (
+    cleanupTarget: AdministrationStandaloneAccessCodeCleanupTargetType
+  ) => {
     const attemptInput = attemptInputRef.current;
     if (!attemptInput) return;
-    startNewAttempt();
-    // The unchanged window keeps its intent binding, so the next submission
-    // replays the confirmed cleanup for this window only.
-    attemptInputRef.current = attemptInput;
-    cleanupConfirmedWindowRef.current = attemptInput;
+    // The cleanup closes the earlier attempt: the next submission is a fresh
+    // creation attempt for the preserved values, echoing the confirmed target.
+    attemptIdRef.current = createStandaloneAccessCodeAttemptId();
+    cleanupConfirmedRef.current = {
+      window: attemptInput,
+      targetAttemptId: cleanupTarget.attemptId,
+    };
+    setNotice(null);
+    form.reset(attemptInput);
+    setFocusNameOnReturn(true);
+    setCreation({ kind: "editing" });
   };
 
   if (creation.kind === "created") {
@@ -296,11 +315,11 @@ export function CreateStandaloneAccessCodeForm() {
         </AdministrationAlert>
         <p className="mt-5 text-sm leading-6 text-navy-blue/70">
           Before creating another code for this window, check the lock in the
-          Igloohome app over Bluetooth and remove “{creation.name}” if it is
-          there.
+          Igloohome app over Bluetooth and remove{" "}
+          {`“${creation.cleanupTarget.name}”`} if it is there.
         </p>
         <CleanupConfirmationForm
-          onConfirmed={confirmLockCleanup}
+          onConfirmed={() => confirmLockCleanup(creation.cleanupTarget)}
           onStartOver={startNewAttempt}
         />
       </div>

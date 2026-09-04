@@ -27,6 +27,7 @@ import {
   shiftStandaloneAccessCodeLocalEnd,
   standaloneAccessCodeEarliestLocalEnd,
   standaloneAccessCodeElapsedHours,
+  toStandaloneAccessCodeCreationFailure,
 } from "./create-access-code";
 
 const validWindow = {
@@ -48,6 +49,15 @@ const createdOutcome: AdministrationStandaloneAccessCodeCreationOutcome = {
   endsAt: "2026-09-10T12:00",
   issuedAt: AdministrationInstant.make("2026-09-10T09:00:00.000Z"),
   pin: Schema.decodeSync(AdministrationStandaloneAccessCodePin)("7654321"),
+};
+
+const cleanupTarget = {
+  attemptId: Schema.decodeSync(AdministrationStandaloneAccessCodeAttemptId)(
+    "01980000-0000-7000-8000-0000000000aa"
+  ),
+  name: Schema.decodeSync(AdministrationStandaloneAccessCodeName)(
+    "Stale Booth"
+  ),
 };
 
 describe("standalone access-code creation contract", () => {
@@ -90,6 +100,41 @@ describe("standalone access-code creation contract", () => {
       endsAt: "2026-09-10T09:00",
     });
     expect(rejected.issues).toBeUndefined();
+  });
+
+  test("accepts the confirmed cleanup attempt id beside the contract fields", async () => {
+    const result = await createStandaloneAccessCodeInputSchema[
+      "~standard"
+    ].validate({
+      attemptId: "01980000-0000-7000-8000-000000000042",
+      ...validWindow,
+      providerCredentialRemovedAttemptId:
+        "01980000-0000-7000-8000-0000000000aa",
+    });
+
+    expect(result.issues).toBeUndefined();
+  });
+
+  test("rejects the removed boolean confirmation and malformed cleanup attempt ids", async () => {
+    const legacy = await createStandaloneAccessCodeInputSchema[
+      "~standard"
+    ].validate({
+      attemptId: "01980000-0000-7000-8000-000000000042",
+      ...validWindow,
+      providerCredentialRemoved: true,
+    });
+    expect(legacy.issues).toBeDefined();
+
+    const malformed = await createStandaloneAccessCodeInputSchema[
+      "~standard"
+    ].validate({
+      attemptId: "01980000-0000-7000-8000-000000000042",
+      ...validWindow,
+      providerCredentialRemovedAttemptId: "not-a-uuid",
+    });
+    expect(malformed.issues?.[0]?.path?.map(String)).toEqual([
+      "providerCredentialRemovedAttemptId",
+    ]);
   });
 
   test("generates attempt identifiers that satisfy the contract schema", () => {
@@ -262,7 +307,7 @@ describe("standalone access-code action transport", () => {
 
   test("round-trips a failure outcome through JSON transport", () => {
     const transport = encodeCreateStandaloneAccessCodeResult(
-      Result.fail("rejected")
+      Result.fail({ outcome: "rejected" })
     );
     const decoded = decodeCreateStandaloneAccessCodeResult(
       JSON.parse(JSON.stringify(transport))
@@ -270,7 +315,38 @@ describe("standalone access-code action transport", () => {
 
     expect(Result.isFailure(decoded)).toBe(true);
     if (Result.isFailure(decoded)) {
-      expect(decoded.failure).toBe("rejected");
+      expect(decoded.failure).toEqual({ outcome: "rejected" });
+    }
+  });
+
+  test("round-trips a target-bearing failure through JSON transport", () => {
+    const transport = encodeCreateStandaloneAccessCodeResult(
+      Result.fail({ outcome: "cleanup-required", cleanupTarget })
+    );
+    const decoded = decodeCreateStandaloneAccessCodeResult(
+      JSON.parse(JSON.stringify(transport))
+    );
+
+    expect(Result.isFailure(decoded)).toBe(true);
+    if (Result.isFailure(decoded)) {
+      expect(decoded.failure).toEqual({
+        outcome: "cleanup-required",
+        cleanupTarget,
+      });
+    }
+  });
+
+  test("round-trips an ambiguous target through structured clone", () => {
+    const transport = encodeCreateStandaloneAccessCodeResult(
+      Result.fail({ outcome: "ambiguous", cleanupTarget })
+    );
+    const decoded = decodeCreateStandaloneAccessCodeResult(
+      structuredClone(transport)
+    );
+
+    expect(Result.isFailure(decoded)).toBe(true);
+    if (Result.isFailure(decoded)) {
+      expect(decoded.failure.cleanupTarget).toEqual(cleanupTarget);
     }
   });
 
@@ -286,13 +362,58 @@ describe("standalone access-code action transport", () => {
     expect(JSON.parse(JSON.stringify(succeeded))).toEqual(succeeded);
 
     const failed = encodeCreateStandaloneAccessCodeResult(
-      Result.fail("cleanup-required")
+      Result.fail({ outcome: "cleanup-required", cleanupTarget })
     );
     expect(Object.keys(failed)).toEqual(["status", "outcome"]);
     expect(failed).toEqual({
       status: "failed",
-      outcome: "cleanup-required",
+      outcome: { outcome: "cleanup-required", cleanupTarget },
     });
+    expect(JSON.parse(JSON.stringify(failed))).toEqual(failed);
+  });
+});
+
+describe("standalone access-code failure mapping", () => {
+  test("keeps the reported cleanup target for target-bearing outcomes", () => {
+    expect(
+      toStandaloneAccessCodeCreationFailure({
+        outcome: "cleanup-required",
+        cleanupTarget,
+      })
+    ).toEqual({ outcome: "cleanup-required", cleanupTarget });
+    expect(
+      toStandaloneAccessCodeCreationFailure({
+        outcome: "ambiguous",
+        cleanupTarget,
+      })
+    ).toEqual({ outcome: "ambiguous", cleanupTarget });
+  });
+
+  test("reports a defect for target-bearing outcomes without a target", () => {
+    expect(
+      toStandaloneAccessCodeCreationFailure({ outcome: "ambiguous" })
+    ).toBeNull();
+    expect(
+      toStandaloneAccessCodeCreationFailure({ outcome: "cleanup-required" })
+    ).toBeNull();
+  });
+
+  test("keeps unrelated failures target-free", () => {
+    expect(
+      toStandaloneAccessCodeCreationFailure({
+        outcome: "rejected",
+        cleanupTarget,
+      })
+    ).toEqual({ outcome: "rejected" });
+    expect(
+      toStandaloneAccessCodeCreationFailure({ outcome: "in-progress" })
+    ).toEqual({ outcome: "in-progress" });
+    expect(
+      toStandaloneAccessCodeCreationFailure({ outcome: "unavailable" })
+    ).toEqual({ outcome: "unavailable" });
+    expect(
+      toStandaloneAccessCodeCreationFailure({ outcome: "reconciled" })
+    ).toEqual({ outcome: "reconciled" });
   });
 });
 

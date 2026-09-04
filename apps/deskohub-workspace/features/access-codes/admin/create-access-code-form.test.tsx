@@ -36,6 +36,7 @@ interface CreateStandaloneAccessCodeActionInput {
   readonly name: string;
   readonly startsAt: string;
   readonly endsAt: string;
+  readonly providerCredentialRemovedAttemptId?: string;
 }
 
 type ActionOptions = {
@@ -100,6 +101,33 @@ const createdOutcome = {
   issuedAt: "2026-09-10T09:00:00.000Z",
   pin: "7654321",
 };
+
+const priorAttemptId = "01980000-0000-7000-8000-0000000000aa";
+
+const staleTarget = {
+  attemptId: priorAttemptId,
+  name: "Stale Booth",
+};
+
+const ambiguousFailure = (cleanupTarget: {
+  readonly attemptId: string;
+  readonly name: string;
+}) => ({
+  status: "failed" as const,
+  outcome: { outcome: "ambiguous" as const, cleanupTarget },
+});
+
+const cleanupRequiredFailure = (cleanupTarget: {
+  readonly attemptId: string;
+  readonly name: string;
+}) => ({
+  status: "failed" as const,
+  outcome: { outcome: "cleanup-required" as const, cleanupTarget },
+});
+
+const cleanupTargetNotice = (name: string) =>
+  "Before creating another code for this window, check the lock in the " +
+  `Igloohome app over Bluetooth and remove “${name}” if it is there.`;
 
 const fillForm = (view: ReturnType<typeof render>) => {
   fireEvent.input(view.getByLabelText("Name"), {
@@ -242,7 +270,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
 
     act(() => {
       actionOptions?.onSuccess({
-        data: { status: "failed", outcome: "rejected" },
+        data: { status: "failed", outcome: { outcome: "rejected" } },
       });
     });
     await submitForm(view);
@@ -268,7 +296,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
 
     act(() => {
       actionOptions?.onSuccess({
-        data: { status: "failed", outcome: "unavailable" },
+        data: { status: "failed", outcome: { outcome: "unavailable" } },
       });
     });
     await submitForm(view);
@@ -335,7 +363,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
     act(() => {
       actionOptions?.onSuccess({
-        data: { status: "failed", outcome: "ambiguous" },
+        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
       });
     });
     expect(document.activeElement).toBe(
@@ -467,7 +495,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
 
     act(() => {
       actionOptions?.onSuccess({
-        data: { status: "failed", outcome: "rejected" },
+        data: { status: "failed", outcome: { outcome: "rejected" } },
       });
     });
 
@@ -492,7 +520,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
 
     act(() => {
       actionOptions?.onSuccess({
-        data: { status: "failed", outcome: "ambiguous" },
+        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
       });
     });
 
@@ -502,7 +530,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
       )
     ).not.toBeNull();
     expect(view.getByText(/will not be retried automatically/)).toBeDefined();
-    expect(view.getByText(/remove “Booth A”/)).toBeDefined();
+    expect(view.getByText(cleanupTargetNotice("Booth A"))).toBeDefined();
     expect(execute).toHaveBeenCalledTimes(1);
 
     fireEvent.click(view.getByRole("button", { name: "Start over" }));
@@ -513,15 +541,31 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  test("requires explicit confirmation before recreating an ambiguous window", async () => {
+  test("displays the prior cleanup target name instead of the requested name", async () => {
     withActionOptions();
     const view = await renderForm();
     fillForm(view);
     await submitForm(view);
 
     act(() => {
+      actionOptions?.onSuccess({ data: cleanupRequiredFailure(staleTarget) });
+    });
+
+    expect(view.getByText(cleanupTargetNotice("Stale Booth"))).toBeDefined();
+    expect(view.queryByText(cleanupTargetNotice("Booth A"))).toBeNull();
+  });
+
+  test("requires explicit confirmation before recreating an ambiguous window", async () => {
+    withActionOptions();
+    const view = await renderForm();
+    fillForm(view);
+    await submitForm(view);
+    const firstInput = execute.mock
+      .calls[0][0] as CreateStandaloneAccessCodeActionInput;
+
+    act(() => {
       actionOptions?.onSuccess({
-        data: { status: "failed", outcome: "ambiguous" },
+        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
       });
     });
 
@@ -554,12 +598,52 @@ describe("CreateStandaloneAccessCodeForm", () => {
 
     const confirmedInput = execute.mock
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
-    expect(confirmedInput.providerCredentialRemoved).toBe(true);
+    expect(confirmedInput.providerCredentialRemovedAttemptId).toBe(
+      priorAttemptId
+    );
+    expect(confirmedInput.providerCredentialRemovedAttemptId).not.toBe(
+      confirmedInput.attemptId
+    );
+    expect(confirmedInput.attemptId).not.toBe(firstInput.attemptId);
 
     await submitForm(view);
     const followUpInput = execute.mock
       .calls[2][0] as CreateStandaloneAccessCodeActionInput;
-    expect("providerCredentialRemoved" in followUpInput).toBe(false);
+    expect("providerCredentialRemovedAttemptId" in followUpInput).toBe(false);
+  });
+
+  test("keeps the attempted form values when returning from the confirmation panel", async () => {
+    withActionOptions();
+    const view = await renderForm();
+    fillForm(view);
+    await submitForm(view);
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
+      });
+    });
+    fireEvent.click(
+      view.getByRole("checkbox", {
+        name: standaloneAccessCodeCleanupConfirmationLabel,
+      })
+    );
+    await submitCleanupConfirmation(view);
+    await waitFor(() =>
+      expect(
+        view.getByRole("form", { name: "Create an access code" })
+      ).toBeDefined()
+    );
+
+    expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe(
+      "Booth A"
+    );
+    expect((view.getByLabelText("Starts") as HTMLInputElement).value).toBe(
+      "2026-09-10T10:00"
+    );
+    expect((view.getByLabelText("Ends") as HTMLInputElement).value).toBe(
+      "2026-09-10T12:00"
+    );
   });
 
   test("requires the confirmation again after a server-reported cleanup-required outcome", async () => {
@@ -569,9 +653,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
     await submitForm(view);
 
     act(() => {
-      actionOptions?.onSuccess({
-        data: { status: "failed", outcome: "cleanup-required" },
-      });
+      actionOptions?.onSuccess({ data: cleanupRequiredFailure(staleTarget) });
     });
 
     expect(
@@ -580,12 +662,85 @@ describe("CreateStandaloneAccessCodeForm", () => {
       )
     ).not.toBeNull();
     expect(view.getByText(/still ambiguous/)).toBeDefined();
+    expect(view.getByText(cleanupTargetNotice("Stale Booth"))).toBeDefined();
     expect(
       view.getByRole("checkbox", {
         name: standaloneAccessCodeCleanupConfirmationLabel,
       })
     ).toBeDefined();
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  test("requires a fresh confirmation when the server reports a new cleanup target", async () => {
+    withActionOptions();
+    const view = await renderForm();
+    fillForm(view);
+    await submitForm(view);
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: ambiguousFailure({
+          attemptId: priorAttemptId,
+          name: "Stale Booth",
+        }),
+      });
+    });
+    fireEvent.click(
+      view.getByRole("checkbox", {
+        name: standaloneAccessCodeCleanupConfirmationLabel,
+      })
+    );
+    await submitCleanupConfirmation(view);
+    await waitFor(() =>
+      expect(
+        view.getByRole("form", { name: "Create an access code" })
+      ).toBeDefined()
+    );
+    fillForm(view);
+    await submitForm(view);
+
+    const nextAttemptId = "01980000-0000-7000-8000-0000000000bb";
+    act(() => {
+      actionOptions?.onSuccess({
+        data: cleanupRequiredFailure({
+          attemptId: nextAttemptId,
+          name: "Fresh Booth",
+        }),
+      });
+    });
+
+    expect(view.getByText(cleanupTargetNotice("Fresh Booth"))).toBeDefined();
+    expect(view.queryByText(cleanupTargetNotice("Stale Booth"))).toBeNull();
+    expect(execute).toHaveBeenCalledTimes(2);
+
+    const freshCheckbox = view.getByRole("checkbox", {
+      name: standaloneAccessCodeCleanupConfirmationLabel,
+    });
+    expect(freshCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(
+      view
+        .getByRole("button", { name: "Create another access code" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+
+    fireEvent.click(freshCheckbox);
+    await submitCleanupConfirmation(view);
+    await waitFor(() =>
+      expect(
+        view.getByRole("form", { name: "Create an access code" })
+      ).toBeDefined()
+    );
+    fillForm(view);
+    await submitForm(view);
+
+    const reconfirmedInput = execute.mock
+      .calls[2][0] as CreateStandaloneAccessCodeActionInput;
+    expect(reconfirmedInput.providerCredentialRemovedAttemptId).toBe(
+      nextAttemptId
+    );
+    expect(reconfirmedInput.providerCredentialRemovedAttemptId).not.toBe(
+      priorAttemptId
+    );
   });
 
   test("does not resend the cleanup confirmation for a changed window", async () => {
@@ -596,7 +751,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
 
     act(() => {
       actionOptions?.onSuccess({
-        data: { status: "failed", outcome: "ambiguous" },
+        data: ambiguousFailure({ attemptId: priorAttemptId, name: "Booth A" }),
       });
     });
     fireEvent.click(
@@ -620,7 +775,7 @@ describe("CreateStandaloneAccessCodeForm", () => {
       .calls[1][0] as CreateStandaloneAccessCodeActionInput;
 
     expect(changedInput.name).toBe("Booth B");
-    expect("providerCredentialRemoved" in changedInput).toBe(false);
+    expect("providerCredentialRemovedAttemptId" in changedInput).toBe(false);
   });
 
   test("keeps the same attempt id when the transport fails", async () => {

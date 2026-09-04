@@ -1,7 +1,7 @@
 "use server";
 
 import { AdministrationStandaloneAccessCodeCreateInput } from "@deskohub/workspace-admin-api";
-import { Effect, Schema } from "effect";
+import { Effect, Result, Schema } from "effect";
 import { StandaloneAccessCodeAdministration } from "@/features/access-codes";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -9,6 +9,7 @@ import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
   createStandaloneAccessCodeInputSchema,
   encodeCreateStandaloneAccessCodeResult,
+  toStandaloneAccessCodeCreationFailure,
 } from "./create-access-code";
 
 const createStandaloneAccessCodeAction = defineWorkspaceAction(
@@ -44,19 +45,34 @@ const createStandaloneAccessCodeAction = defineWorkspaceAction(
         )
       );
       const administration = yield* StandaloneAccessCodeAdministration;
-      return yield* administration
+      const attempted = yield* administration
         .create({
           attemptId: input.attemptId,
           actor,
           source: "admin-ui",
           request,
-          providerCredentialRemoved: input.providerCredentialRemoved === true,
+          ...(input.providerCredentialRemovedAttemptId !== undefined && {
+            providerCredentialRemovedAttemptId:
+              input.providerCredentialRemovedAttemptId,
+          }),
         })
-        .pipe(
-          Effect.mapError((error) => error.outcome),
-          Effect.result,
-          Effect.map(encodeCreateStandaloneAccessCodeResult)
+        .pipe(Effect.result);
+      if (Result.isFailure(attempted)) {
+        const failure = toStandaloneAccessCodeCreationFailure(
+          attempted.failure
         );
+        if (failure === null) {
+          return yield* Effect.die(
+            new Error(
+              `The ${attempted.failure.outcome} outcome is missing its cleanup target.`
+            )
+          );
+        }
+        return encodeCreateStandaloneAccessCodeResult(Result.fail(failure));
+      }
+      return encodeCreateStandaloneAccessCodeResult(
+        Result.succeed(attempted.success)
+      );
     }).pipe(
       Effect.provide(StandaloneAccessCodeAdministration.Live),
       Effect.mapError(

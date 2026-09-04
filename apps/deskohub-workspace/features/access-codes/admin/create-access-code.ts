@@ -1,11 +1,12 @@
 import {
   AdministrationStandaloneAccessCodeAttemptId,
+  type AdministrationStandaloneAccessCodeCleanupTargetType,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreationOutcome,
 } from "@deskohub/workspace-admin-api";
 import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Result, Schema } from "effect";
+import { Match, Result, Schema } from "effect";
 import type { StandaloneAccessCodeCreationOutcome } from "../standalone-access-code";
 
 export const standaloneAccessCodeMinimumDurationHours = 1;
@@ -17,7 +18,9 @@ export const createStandaloneAccessCodeInputSchema = Schema.toStandardSchemaV1(
   Schema.Struct({
     attemptId: AdministrationStandaloneAccessCodeAttemptId,
     ...AdministrationStandaloneAccessCodeCreateInput.fields,
-    providerCredentialRemoved: Schema.optionalKey(Schema.Literal(true)),
+    providerCredentialRemovedAttemptId: Schema.optionalKey(
+      AdministrationStandaloneAccessCodeAttemptId
+    ),
   }),
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
@@ -26,9 +29,55 @@ export type CreateStandaloneAccessCodeInput = StandardSchemaV1.InferOutput<
   typeof createStandaloneAccessCodeInputSchema
 >;
 
+/**
+ * Plain-data failure of a standalone access-code creation attempt. Target
+ * bearing outcomes must name the exact earlier attempt the operator has to
+ * clean up at the lock; unrelated outcomes stay target-free.
+ */
+export type StandaloneAccessCodeCreationFailure =
+  | {
+      readonly outcome: "ambiguous";
+      readonly cleanupTarget: AdministrationStandaloneAccessCodeCleanupTargetType;
+    }
+  | {
+      readonly outcome: "cleanup-required";
+      readonly cleanupTarget: AdministrationStandaloneAccessCodeCleanupTargetType;
+    }
+  | { readonly outcome: "rejected" }
+  | { readonly outcome: "in-progress" }
+  | { readonly outcome: "unavailable" }
+  | { readonly outcome: "reconciled" };
+
+/**
+ * Maps a creation error into the transportable failure shape. A missing
+ * cleanup target for a target-bearing outcome returns `null`, which the
+ * action boundary must treat as a defect instead of inventing a target.
+ */
+export const toStandaloneAccessCodeCreationFailure = (error: {
+  readonly outcome: StandaloneAccessCodeCreationOutcome;
+  readonly cleanupTarget?: AdministrationStandaloneAccessCodeCleanupTargetType;
+}): StandaloneAccessCodeCreationFailure | null => {
+  const targetBearingFailure = (
+    outcome: "ambiguous" | "cleanup-required"
+  ): StandaloneAccessCodeCreationFailure | null =>
+    error.cleanupTarget === undefined
+      ? null
+      : { outcome, cleanupTarget: error.cleanupTarget };
+
+  return Match.value(error.outcome).pipe(
+    Match.when("ambiguous", targetBearingFailure),
+    Match.when("cleanup-required", targetBearingFailure),
+    Match.when("rejected", (outcome) => ({ outcome })),
+    Match.when("in-progress", (outcome) => ({ outcome })),
+    Match.when("unavailable", (outcome) => ({ outcome })),
+    Match.when("reconciled", (outcome) => ({ outcome })),
+    Match.exhaustive
+  );
+};
+
 export type CreateStandaloneAccessCodeResult = Result.Result<
   AdministrationStandaloneAccessCodeCreationOutcome,
-  StandaloneAccessCodeCreationOutcome
+  StandaloneAccessCodeCreationFailure
 >;
 
 /**
@@ -42,7 +91,7 @@ export type CreateStandaloneAccessCodeTransport =
     }
   | {
       readonly status: "failed";
-      readonly outcome: StandaloneAccessCodeCreationOutcome;
+      readonly outcome: StandaloneAccessCodeCreationFailure;
     };
 
 export const encodeCreateStandaloneAccessCodeResult = (

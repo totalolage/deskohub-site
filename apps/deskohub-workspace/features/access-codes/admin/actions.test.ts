@@ -10,6 +10,7 @@ import {
   AdministrationStandaloneAccessCodePin,
 } from "@deskohub/workspace-admin-api";
 import { Context, Effect, Layer, Schema } from "effect";
+import { DEFAULT_SERVER_ERROR_MESSAGE } from "next-safe-action";
 
 interface StubCreateCall {
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
@@ -20,6 +21,9 @@ interface StubCreateCall {
     readonly startsAt: string;
     readonly endsAt: string;
   };
+  readonly providerCredentialRemovedAttemptId?:
+    | AdministrationStandaloneAccessCodeAttemptId
+    | undefined;
 }
 
 let authorizationCalls = 0;
@@ -106,6 +110,28 @@ const validInput = {
   endsAt: "2026-09-10T12:00",
 };
 
+const cleanupTargetAttemptId = Schema.decodeSync(
+  AdministrationStandaloneAccessCodeAttemptId
+)("01980000-0000-7000-8000-0000000000aa");
+
+const cleanupTarget = {
+  attemptId: cleanupTargetAttemptId,
+  name: Schema.decodeSync(AdministrationStandaloneAccessCodeName)(
+    "Stale Booth"
+  ),
+};
+
+const creationError = (
+  outcome: string,
+  details: { readonly cleanupTarget?: typeof cleanupTarget } = {}
+) => ({
+  _tag: "StandaloneAccessCodeCreationError",
+  outcome,
+  ...(details.cleanupTarget !== undefined && {
+    cleanupTarget: details.cleanupTarget,
+  }),
+});
+
 describe("createStandaloneAccessCode action", () => {
   test("creates with the server-derived actor and the admin-ui source", async () => {
     authorizationCalls = 0;
@@ -131,6 +157,9 @@ describe("createStandaloneAccessCode action", () => {
         endsAt: "2026-09-10T12:00",
       },
     });
+    expect(
+      serviceCreateCalls[0]?.providerCredentialRemovedAttemptId
+    ).toBeUndefined();
   });
 
   test("passes the already-created replay outcome through untouched", async () => {
@@ -152,27 +181,67 @@ describe("createStandaloneAccessCode action", () => {
   });
 
   test("reports provider rejection as an editable failure, not an error", async () => {
-    serviceCreateResult = Effect.fail({
-      _tag: "StandaloneAccessCodeCreationError",
-      outcome: "rejected",
-    });
+    serviceCreateResult = Effect.fail(creationError("rejected"));
     const { createStandaloneAccessCode } = await import("./actions");
 
     await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      data: { status: "failed", outcome: "rejected" },
+      data: { status: "failed", outcome: { outcome: "rejected" } },
     });
   });
 
-  test("reports an ambiguous provider outcome as a terminal failure", async () => {
-    serviceCreateResult = Effect.fail({
-      _tag: "StandaloneAccessCodeCreationError",
-      outcome: "ambiguous",
-    });
+  test("carries the reported cleanup target for an ambiguous outcome", async () => {
+    serviceCreateResult = Effect.fail(
+      creationError("ambiguous", { cleanupTarget })
+    );
     const { createStandaloneAccessCode } = await import("./actions");
 
     await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
-      data: { status: "failed", outcome: "ambiguous" },
+      data: {
+        status: "failed",
+        outcome: { outcome: "ambiguous", cleanupTarget },
+      },
     });
+  });
+
+  test("carries the reported cleanup target for a cleanup-required outcome", async () => {
+    serviceCreateResult = Effect.fail(
+      creationError("cleanup-required", { cleanupTarget })
+    );
+    const { createStandaloneAccessCode } = await import("./actions");
+
+    await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
+      data: {
+        status: "failed",
+        outcome: { outcome: "cleanup-required", cleanupTarget },
+      },
+    });
+  });
+
+  test("treats a missing ambiguous cleanup target as a server defect", async () => {
+    serviceCreateResult = Effect.fail(creationError("ambiguous"));
+    const { createStandaloneAccessCode } = await import("./actions");
+
+    await expect(createStandaloneAccessCode(validInput)).resolves.toEqual({
+      serverError: DEFAULT_SERVER_ERROR_MESSAGE,
+    });
+  });
+
+  test("forwards the confirmed cleanup target attempt id to the service", async () => {
+    authorizationCalls = 0;
+    authorizationAllowed = true;
+    serviceCreateCalls.length = 0;
+    serviceCreateResult = Effect.succeed(createdOutcome);
+    const { createStandaloneAccessCode } = await import("./actions");
+
+    await createStandaloneAccessCode({
+      ...validInput,
+      providerCredentialRemovedAttemptId: cleanupTargetAttemptId,
+    });
+
+    expect(serviceCreateCalls).toHaveLength(1);
+    expect(serviceCreateCalls[0]?.providerCredentialRemovedAttemptId).toBe(
+      cleanupTargetAttemptId
+    );
   });
 
   test("enforces the shared contract window before calling the service", async () => {
