@@ -11,6 +11,7 @@ import {
   AdministrationInstant,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
+  type AdministrationStandaloneAccessCodeCleanupTargetType,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreationOutcomeType,
   AdministrationStandaloneAccessCodeName,
@@ -1182,6 +1183,15 @@ describe("standalone access-code CLI endpoint", () => {
   const attemptId = Schema.decodeUnknownSync(
     AdministrationStandaloneAccessCodeAttemptId
   )("01980000-0000-7000-8000-000000000042");
+  const priorAttemptId = Schema.decodeUnknownSync(
+    AdministrationStandaloneAccessCodeAttemptId
+  )("01980000-0000-7000-8000-000000000041");
+  const priorCleanupTarget = {
+    attemptId: priorAttemptId,
+    name: Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)(
+      "Old Booth"
+    ),
+  } satisfies AdministrationStandaloneAccessCodeCleanupTargetType;
   const payload = {
     attemptId,
     input: Schema.decodeUnknownSync(
@@ -1216,12 +1226,16 @@ describe("standalone access-code CLI endpoint", () => {
   } satisfies AdministrationStandaloneAccessCodeCreationOutcomeType;
   const creationFailure = (
     outcome: StandaloneAccessCodeCreationError["outcome"],
-    message: string
+    message: string,
+    details: {
+      readonly cleanupTarget?: AdministrationStandaloneAccessCodeCleanupTargetType;
+    } = {}
   ) =>
     new StandaloneAccessCodeCreationError({
       attemptId,
       outcome,
       message,
+      ...details,
     });
 
   const runAdministration = <A, E, R>(
@@ -1461,7 +1475,7 @@ describe("standalone access-code CLI endpoint", () => {
     expect(releases).toBe(1);
   });
 
-  test("keeps the claim and reports uncertainty without a replayable result", async () => {
+  test("keeps the claim and reports uncertainty naming the ambiguous target without a PIN", async () => {
     let releases = 0;
     let completions = 0;
     const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
@@ -1469,7 +1483,13 @@ describe("standalone access-code CLI endpoint", () => {
         Effect.fail(
           creationFailure(
             "ambiguous",
-            "The standalone access-code creation outcome is ambiguous."
+            "The standalone access-code creation outcome is ambiguous.",
+            {
+              cleanupTarget: {
+                attemptId,
+                name: payload.input.name,
+              },
+            }
           )
         ),
     });
@@ -1494,8 +1514,48 @@ describe("standalone access-code CLI endpoint", () => {
     ).pipe(Effect.runPromise);
 
     expect(error).toBeInstanceOf(CliMutationUncertain);
+    if (error instanceof CliMutationUncertain) {
+      expect(error.message).toContain("Booth A");
+      expect(error.message).toContain(attemptId);
+      expect(error.message).toContain(
+        `--provider-credential-removed ${attemptId}`
+      );
+    }
+    expect(JSON.stringify(error)).not.toContain("7654321");
     expect(releases).toBe(0);
     expect(completions).toBe(0);
+  });
+
+  test("reports unavailability when the ambiguous outcome carries no cleanup target", async () => {
+    let releases = 0;
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.fail(
+          creationFailure(
+            "ambiguous",
+            "The standalone access-code creation outcome is ambiguous."
+          )
+        ),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliServiceUnavailable);
+    expect(releases).toBe(1);
   });
 
   test("reports an unexpired in-progress claim without resuming", async () => {
@@ -1532,15 +1592,17 @@ describe("standalone access-code CLI endpoint", () => {
     expect(creations).toBe(0);
   });
 
-  test("reports required at-lock cleanup as a typed error and releases the ledger claim", async () => {
+  test("reports required at-lock cleanup with the stored prior target and releases the ledger claim", async () => {
     let releases = 0;
-    let creations = 0;
-    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+    const cleanupRequired = Layer.succeed(StandaloneAccessCodeAdministration, {
       create: () =>
-        Effect.sync(() => {
-          creations += 1;
-          return createdOutcome;
-        }),
+        Effect.fail(
+          creationFailure(
+            "cleanup-required",
+            "A previous attempt for this window is ambiguous.",
+            { cleanupTarget: priorCleanupTarget }
+          )
+        ),
     });
     const idempotency = Layer.succeed(CliMutationIdempotency, {
       claim: () => Effect.succeed({ kind: "claimed" as const }),
@@ -1552,16 +1614,6 @@ describe("standalone access-code CLI endpoint", () => {
         }),
     });
 
-    const cleanupRequired = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: () =>
-        Effect.fail(
-          creationFailure(
-            "cleanup-required",
-            "A previous attempt for this window is ambiguous."
-          )
-        ),
-    } as never);
-
     const error = await runAdministration(
       ActorAuthorizedCliRequest,
       cleanupRequired,
@@ -1570,10 +1622,52 @@ describe("standalone access-code CLI endpoint", () => {
     ).pipe(Effect.runPromise);
 
     expect(error).toBeInstanceOf(CliStandaloneAccessCodeCleanupRequired);
-    expect(error.message).toContain("Igloohome");
+    if (error instanceof CliStandaloneAccessCodeCleanupRequired) {
+      expect(error.cleanupTarget).toEqual(priorCleanupTarget);
+      expect(error.message).toContain("Old Booth");
+      expect(error.message).toContain(priorAttemptId);
+      expect(error.message).toContain(
+        `--provider-credential-removed ${priorAttemptId}`
+      );
+      expect(error.message).toContain("Igloohome");
+      expect(error.message).not.toContain("Booth A");
+      expect(error.message).not.toContain(attemptId);
+    }
+    expect(JSON.stringify(error)).not.toContain("7654321");
     expect(releases).toBe(1);
-    expect(creations).toBe(0);
-    expect(standalone).toBeDefined();
+  });
+
+  test("reports unavailability when the cleanup-required outcome carries no target", async () => {
+    let releases = 0;
+    const cleanupRequired = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.fail(
+          creationFailure(
+            "cleanup-required",
+            "A previous attempt for this window is ambiguous."
+          )
+        ),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      cleanupRequired,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliServiceUnavailable);
+    expect(JSON.stringify(error)).not.toContain("Booth A");
+    expect(releases).toBe(1);
   });
 
   test("reports a confirmed reconciled replay as a typed error and releases the ledger claim", async () => {
@@ -1609,11 +1703,12 @@ describe("standalone access-code CLI endpoint", () => {
     expect(releases).toBe(1);
   });
 
-  test("forwards the explicit cleanup confirmation to the service", async () => {
-    const creations: Array<{ readonly providerCredentialRemoved: boolean }> =
-      [];
+  test("forwards the exact cleanup-confirmation attempt identifier to the service", async () => {
+    const creations: Array<
+      Parameters<StandaloneAccessCodeAdministration["Service"]["create"]>[0]
+    > = [];
     const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
-      create: (input: { readonly providerCredentialRemoved: boolean }) =>
+      create: (input) =>
         Effect.sync(() => {
           creations.push(input);
           return createdOutcome;
@@ -1634,14 +1729,23 @@ describe("standalone access-code CLI endpoint", () => {
         const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
           "administration",
         ]);
-        return yield* client.administration.createStandaloneAccessCode({
-          payload: { ...payload, providerCredentialRemoved: true as const },
+        yield* client.administration.createStandaloneAccessCode({
+          payload: {
+            ...payload,
+            providerCredentialRemovedAttemptId: priorAttemptId,
+          },
         });
+        yield* client.administration.createStandaloneAccessCode({ payload });
       })
     ).pipe(Effect.runPromise);
 
-    expect(creations).toHaveLength(1);
-    expect(creations[0]?.providerCredentialRemoved).toBe(true);
+    expect(creations).toHaveLength(2);
+    expect(creations[0]?.providerCredentialRemovedAttemptId).toBe(
+      priorAttemptId
+    );
+    expect(creations[0]).not.toHaveProperty("providerCredentialRemoved");
+    expect(creations[1]?.providerCredentialRemovedAttemptId).toBeUndefined();
+    expect(creations[1]).not.toHaveProperty("providerCredentialRemoved");
   });
 
   test("resumes a stale claim through the standalone attempt log without another provider call", async () => {

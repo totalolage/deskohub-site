@@ -439,8 +439,8 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                 actor: session.approvedBy,
                 source: "dhw-cli",
                 request: payload.input,
-                providerCredentialRemoved:
-                  payload.providerCredentialRemoved === true,
+                providerCredentialRemovedAttemptId:
+                  payload.providerCredentialRemovedAttemptId,
               })
               .pipe(
                 Effect.mapError((cause) =>
@@ -691,23 +691,23 @@ const mapInvoiceMutationFailure = (cause: unknown) => {
 const mapStandaloneAccessCodeCreationFailure = (
   cause: StandaloneAccessCodeCreationError,
   requestId: CliMutationRequestIdType
-) =>
-  Match.value(cause.outcome).pipe(
-    Match.when(
-      "ambiguous",
-      () =>
-        new CliMutationUncertain({
-          message:
-            "The standalone access-code creation outcome is ambiguous. Do not retry automatically; reconcile the attempt in Igloohome.",
-        })
+) => {
+  const cleanupTarget = cause.cleanupTarget;
+  return Match.value(cause.outcome).pipe(
+    Match.when("ambiguous", () =>
+      cleanupTarget === undefined
+        ? makeServiceUnavailable()
+        : new CliMutationUncertain({
+            message: `The standalone access-code creation outcome is ambiguous. Do not retry automatically; inspect the access code "${cleanupTarget.name}" (attempt ${cleanupTarget.attemptId}) in the Igloohome app over Bluetooth, or verify it is absent, then rerun with --provider-credential-removed ${cleanupTarget.attemptId} to reconcile.`,
+          })
     ),
-    Match.when(
-      "cleanup-required",
-      () =>
-        new CliStandaloneAccessCodeCleanupRequired({
-          message:
-            "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then rerun with --provider-credential-removed to confirm the cleanup.",
-        })
+    Match.when("cleanup-required", () =>
+      cleanupTarget === undefined
+        ? makeServiceUnavailable()
+        : new CliStandaloneAccessCodeCleanupRequired({
+            message: `A previous attempt for this window is ambiguous. Inspect the access code "${cleanupTarget.name}" (attempt ${cleanupTarget.attemptId}) in the Igloohome app over Bluetooth, or verify it is absent, then rerun with --provider-credential-removed ${cleanupTarget.attemptId} to confirm the cleanup.`,
+            cleanupTarget,
+          })
     ),
     Match.when(
       "reconciled",
@@ -733,6 +733,7 @@ const mapStandaloneAccessCodeCreationFailure = (
     Match.when("unavailable", makeServiceUnavailable),
     Match.exhaustive
   );
+};
 
 const toStandaloneAccessCodeResult = (
   outcome: AdministrationStandaloneAccessCodeCreationOutcomeType
