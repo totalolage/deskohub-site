@@ -1,6 +1,6 @@
 import "server-only";
 
-import { loadInvoiceAdministrationBreadcrumbLabel } from "@/features/accounting/admin/page-data.server";
+import { loadInvoiceAdministrationBreadcrumbLabel } from "@/features/accounting/admin/invoice-breadcrumb.server";
 import { AdministrationBreadcrumbs } from "@/features/administration/admin-shell";
 import {
   loadAdministrationBookingBreadcrumbLabel,

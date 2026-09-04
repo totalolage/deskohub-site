@@ -8,7 +8,7 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { Cause, Effect, Layer } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { InvoiceAdministrationNotFoundError } from "./invoice-administration.service";
+import { InvoiceAdministrationNotFoundError } from "./invoice-administration-identifier";
 import { InvoiceBreadcrumbService } from "./invoice-breadcrumb.service";
 
 const invoiceId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb33";

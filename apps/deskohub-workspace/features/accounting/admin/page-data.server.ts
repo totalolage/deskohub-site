@@ -2,30 +2,18 @@ import "server-only";
 
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
-import { cache } from "react";
-import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { authorizeInvoiceAdministrationPage } from "./authorization.server";
 import {
   type InvoiceAdministrationListQuery,
   InvoiceAdministrationService,
 } from "./invoice-administration.service";
-import { InvoiceBreadcrumbService } from "./invoice-breadcrumb.service";
 
 export type InvoiceAdministrationSearchParams = Promise<{
   readonly sort?: string;
   readonly direction?: string;
   readonly page?: string;
 }>;
-
-const authorizeInvoiceAdministrationPage = cache(async () => {
-  await connection();
-  await requireDiscountAdminAuthorization().pipe(
-    runWorkspaceEffect("invoice-administration.authorize", {
-      boundary: "route",
-    })
-  );
-});
 
 export const loadInvoiceAdministrationList = async (
   searchParams: InvoiceAdministrationSearchParams
@@ -75,25 +63,6 @@ export const loadInvoiceAdministrationDetail = async (invoiceId: string) => {
   if (!detail) notFound();
   return detail;
 };
-
-export const loadInvoiceAdministrationBreadcrumbLabel = cache(
-  async (invoiceId: string) => {
-    await authorizeInvoiceAdministrationPage();
-    const label = await Effect.gen(function* () {
-      const breadcrumb = yield* InvoiceBreadcrumbService;
-      return yield* breadcrumb.getLabel(invoiceId);
-    }).pipe(
-      Effect.catchTag("InvoiceAdministrationNotFoundError", () =>
-        Effect.succeed(null)
-      ),
-      Effect.provide(InvoiceBreadcrumbService.Live),
-      runWorkspaceEffect("invoice-administration.breadcrumb", {
-        boundary: "route",
-      })
-    );
-    return label ?? undefined;
-  }
-);
 
 export const loadInvoiceAdministrationPdf = async (invoiceId: string) => {
   await authorizeInvoiceAdministrationPage();

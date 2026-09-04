@@ -5,6 +5,39 @@ const workspaceRoot = new URL("../../", import.meta.url).pathname;
 const readWorkspaceFile = (path: string) =>
   Bun.file(`${workspaceRoot}${path}`).text();
 
+const joinImportPath = (fromPath: string, specifier: string) => {
+  const segments =
+    `${fromPath.slice(0, fromPath.lastIndexOf("/") + 1)}${specifier}`
+      .split("/")
+      .filter((segment) => segment && segment !== ".");
+  const resolved: string[] = [];
+  for (const segment of segments) {
+    if (segment === "..") resolved.pop();
+    else resolved.push(segment);
+  }
+  return resolved.join("/");
+};
+
+const resolveWorkspaceImport = async (
+  fromPath: string,
+  specifier: string
+): Promise<string | null> => {
+  if (specifier.startsWith("@/")) return withResolvedSuffix(specifier.slice(2));
+  if (specifier.startsWith(".")) {
+    return withResolvedSuffix(joinImportPath(fromPath, specifier));
+  }
+  return null;
+
+  async function withResolvedSuffix(base: string): Promise<string | null> {
+    for (const suffix of ["", ".ts", ".tsx", "/index.ts", "/index.tsx"]) {
+      const resolved = `${base}${suffix}`;
+      if (await Bun.file(`${workspaceRoot}${resolved}`).exists())
+        return resolved;
+    }
+    return null;
+  }
+};
+
 describe("administration UI boundaries", () => {
   test("keeps the administration frame in the instant shell", async () => {
     const layout = await readWorkspaceFile("app/admin/layout.tsx");
@@ -16,7 +49,7 @@ describe("administration UI boundaries", () => {
 
   test("establishes the request boundary in shared page authorization", async () => {
     for (const path of [
-      "features/accounting/admin/page-data.server.ts",
+      "features/accounting/admin/authorization.server.ts",
       "features/administration/page-data.server.ts",
       "features/discounts/admin/page-data.server.ts",
     ]) {
@@ -26,12 +59,18 @@ describe("administration UI boundaries", () => {
       expect(source).toMatch(
         /(?:export )?const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\)/
       );
-      if (path === "features/accounting/admin/page-data.server.ts") {
+      if (path === "features/accounting/admin/authorization.server.ts") {
         expect(source.indexOf("await connection()")).toBeLessThan(
           source.indexOf("runWorkspaceEffect(")
         );
       }
     }
+
+    const accountingPageData = await readWorkspaceFile(
+      "features/accounting/admin/page-data.server.ts"
+    );
+    expect(accountingPageData).toContain('from "./authorization.server"');
+    expect(accountingPageData).not.toContain("connection(");
   });
 
   test("creates invoice request identities only after user interaction", async () => {
@@ -145,17 +184,80 @@ describe("administration UI boundaries", () => {
     expect(breadcrumbs).not.toContain("loadAdministrationReservation(");
     expect(breadcrumbs).not.toContain("loadInvoiceAdministrationDetail(");
     expect(breadcrumbs).not.toContain("InvoiceAdministrationService");
-
-    const pageData = await readWorkspaceFile(
-      "features/accounting/admin/page-data.server.ts"
+    expect(breadcrumbs).toContain(
+      "@/features/accounting/admin/invoice-breadcrumb.server"
     );
-    const breadcrumbLoader = pageData.slice(
-      pageData.indexOf("export const loadInvoiceAdministrationBreadcrumbLabel"),
-      pageData.indexOf("export const loadInvoiceAdministrationPdf")
+    expect(breadcrumbs).not.toContain("accounting/admin/page-data.server");
+
+    const breadcrumbLoader = await readWorkspaceFile(
+      "features/accounting/admin/invoice-breadcrumb.server.ts"
     );
     expect(breadcrumbLoader).toContain("InvoiceBreadcrumbService");
     expect(breadcrumbLoader).not.toContain("InvoiceAdministrationService");
     expect(breadcrumbLoader).not.toContain("loadInvoiceAdministrationDetail(");
+  });
+
+  test("keeps the invoice breadcrumb dependency closure light", async () => {
+    const forbiddenWorkspacePaths =
+      /page-data\.server|invoice-administration\.service|invoice-pdf|invoice-email-delivery\.service|snapshot-key|snapshot\.repository|dotypos/i;
+    const forbiddenPackages = /@deskohub\/dotypos/;
+    const forbiddenIdentifiers = [
+      "InvoiceAdministrationService",
+      "renderInvoicePdf",
+      "DotyposService",
+      "InvoiceEmailDeliveryService",
+    ];
+    const trustedDatabaseBoundaries = new Set([
+      "db/database.service.ts",
+      "db/schema/index.ts",
+    ]);
+
+    const entryPoints = [
+      "features/accounting/admin/invoice-breadcrumb.server.ts",
+      "features/accounting/admin/invoice-breadcrumb.service.ts",
+    ];
+    const visited = new Set<string>();
+    const packages = new Set<string>();
+    const queue = [...entryPoints];
+
+    while (queue.length > 0) {
+      const path = queue.shift()!;
+      if (visited.has(path)) continue;
+      visited.add(path);
+      const source = await readWorkspaceFile(path);
+      if (entryPoints.includes(path)) {
+        for (const identifier of forbiddenIdentifiers) {
+          expect(source).not.toContain(identifier);
+        }
+      }
+      if (trustedDatabaseBoundaries.has(path)) continue;
+      for (const specifier of [
+        ...source.matchAll(/(?:from|import)\s+"([^"]+)"/g),
+      ].map((match) => match[1]!)) {
+        const resolved = await resolveWorkspaceImport(path, specifier);
+        if (resolved) queue.push(resolved);
+        else packages.add(specifier);
+      }
+    }
+
+    expect(visited).toContain(
+      "features/accounting/admin/invoice-breadcrumb.server.ts"
+    );
+    expect(visited).toContain(
+      "features/accounting/admin/authorization.server.ts"
+    );
+    expect(visited).toContain(
+      "features/accounting/admin/invoice-administration-identifier.ts"
+    );
+    expect(visited).toContain("db/database.service.ts");
+    expect(visited).toContain("db/schema/index.ts");
+
+    for (const path of visited) {
+      expect(path).not.toMatch(forbiddenWorkspacePaths);
+    }
+    for (const specifier of packages) {
+      expect(specifier).not.toMatch(forbiddenPackages);
+    }
   });
 
   test("keeps empty and sorting chrome in their shared foundations", async () => {
