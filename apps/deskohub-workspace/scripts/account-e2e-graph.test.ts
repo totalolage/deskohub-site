@@ -96,7 +96,7 @@ describe("workspace account e2e graph", () => {
       1
     );
     expect(deliveryCase.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(
-      2
+      1
     );
     expect(deliveryCase).not.toContain("callbackFailedTitle");
     expect(deliveryCase).not.toContain("rejects the replayed link");
@@ -114,7 +114,7 @@ describe("workspace account e2e graph", () => {
     );
     expect(markerCase.match(/rateBudget\.reserve\("send"\)/g)).toHaveLength(1);
     expect(markerCase.match(/rateBudget\.reserve\("verify"\)/g)).toHaveLength(
-      1
+      2
     );
   });
 
@@ -159,7 +159,16 @@ describe("workspace account e2e graph", () => {
     expect(deletedAt).toBeGreaterThan(consumedAt);
     expect(anonymousAt).toBeGreaterThan(deletedAt);
     expect(replayAt).toBeGreaterThan(anonymousAt);
-    expect(markerCase.slice(replayAt)).toContain("callbackFailedTitle");
+    const replayStep = markerCase.slice(replayAt);
+    expect(replayStep).toContain("findAuthUserIdByEmail(recipient)");
+    expect(replayStep).toContain("authUserIds: [replayedUserId]");
+    const cleanupAt = replayStep.indexOf("findAuthUserIdByEmail");
+    const assertionAt = replayStep.indexOf(
+      "replayed reauthentication failure state"
+    );
+    expect(cleanupAt).toBeGreaterThan(-1);
+    expect(assertionAt).toBeGreaterThan(cleanupAt);
+    expect(replayStep).toContain("callbackFailedTitle");
   });
 
   test("hands the completed deletion through the worker-scoped lane fixture", async () => {

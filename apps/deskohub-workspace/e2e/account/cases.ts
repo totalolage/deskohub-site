@@ -454,7 +454,6 @@ export const makeWorkspaceE2EAccountCases = ({
         const startedAt = new Date();
         yield* rateBudget.reserve("send");
         yield* rateBudget.reserve("verify");
-        yield* rateBudget.reserve("verify");
         yield* runStep(
           step(
             "requests the synthetic magic link",
@@ -694,7 +693,10 @@ export const makeWorkspaceE2EAccountCases = ({
             datasourceTimeout
           )
         );
+        // One verification covers the reauthentication consume; the second
+        // covers replaying the already-consumed link after deletion.
         yield* rateBudget.reserve("send");
+        yield* rateBudget.reserve("verify");
         yield* rateBudget.reserve("verify");
         const startedAt = new Date();
         yield* runStep(
@@ -866,6 +868,12 @@ export const makeWorkspaceE2EAccountCases = ({
             "rejects the already-consumed reauthentication link",
             Effect.gen(function* () {
               yield* openPage(reauthenticationLink);
+              const replayedUserId = yield* findAuthUserIdByEmail(recipient);
+              if (replayedUserId) {
+                yield* recordFixtureIds(journalRef, {
+                  authUserIds: [replayedUserId],
+                });
+              }
               yield* waitText(
                 "replayed reauthentication failure state",
                 callbackFailedTitle
