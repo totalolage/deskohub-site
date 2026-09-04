@@ -164,7 +164,7 @@ describe("administration UI boundaries", () => {
     expect(breadcrumbLoader).not.toContain("loadInvoiceAdministrationDetail(");
 
     const forbiddenBreadcrumbDependencies =
-      /page-data\.server|invoice-administration\.service|invoice\.repository|snapshot|invoice-pdf|invoice-email-delivery\.service|@deskohub\/dotypos/;
+      /page-data\.server|invoice-administration\.service|invoice\.repository|snapshot|invoice-pdf|invoice-email-delivery|dotypos/i;
     for (const path of [
       "features/accounting/admin/invoice-breadcrumb.server.ts",
       "features/accounting/admin/invoice-breadcrumb.service.ts",
@@ -175,6 +175,17 @@ describe("administration UI boundaries", () => {
         forbiddenBreadcrumbDependencies
       );
     }
+    expect(forbiddenBreadcrumbDependencies.test("DotyposService")).toBe(true);
+    expect(
+      forbiddenBreadcrumbDependencies.test(
+        "@/shared/backend/config/dotypos.config"
+      )
+    ).toBe(true);
+    expect(
+      forbiddenBreadcrumbDependencies.test(
+        "@/features/accounting/backend/invoice-email-delivery.repository"
+      )
+    ).toBe(true);
   });
 
   test("keeps empty and sorting chrome in their shared foundations", async () => {
