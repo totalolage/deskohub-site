@@ -1,17 +1,22 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { AdministrationInvoiceId } from "@deskohub/workspace-admin-api";
 import type { SQL } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { PgDialect } from "drizzle-orm/pg-core";
-import { Cause, Effect, Layer } from "effect";
+import { Cause, Effect, Layer, Schema } from "effect";
 import { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { InvoiceAdministrationNotFoundError } from "./invoice-administration-identifier";
 import { InvoiceBreadcrumbService } from "./invoice-breadcrumb.service";
 
-const invoiceId = "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb33";
+const invoiceId = Schema.decodeUnknownSync(AdministrationInvoiceId)(
+  "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb33"
+);
+const missingInvoiceId = Schema.decodeUnknownSync(AdministrationInvoiceId)(
+  "018f47d2-8f7c-7c5e-9f9a-6ef21f90cb34"
+);
 
 type InvoiceNumberRow = { readonly invoiceNumber: string };
 
@@ -90,23 +95,11 @@ describe("InvoiceBreadcrumbService", () => {
 
     const label = await Effect.gen(function* () {
       const breadcrumb = yield* InvoiceBreadcrumbService;
-      return yield* breadcrumb.getLabel("018f47d2-8f7c-7c5e-9f9a-6ef21f90cb34");
+      return yield* breadcrumb.getLabel(missingInvoiceId);
     }).pipe(Effect.provide(provideDatabase(db)), Effect.runPromise);
 
     expect(label).toBeNull();
     expect(selects).toHaveLength(1);
-  });
-
-  test("maps a malformed invoice id to not found before querying", async () => {
-    const { db, selects } = makeDatabase(Effect.die("database read"));
-
-    const error = await Effect.gen(function* () {
-      const breadcrumb = yield* InvoiceBreadcrumbService;
-      return yield* Effect.flip(breadcrumb.getLabel("not-an-invoice-id"));
-    }).pipe(Effect.provide(provideDatabase(db)), Effect.runPromise);
-
-    expect(error).toBeInstanceOf(InvoiceAdministrationNotFoundError);
-    expect(selects).toHaveLength(0);
   });
 
   test("propagates invoice read failures", async () => {

@@ -4,14 +4,16 @@ import { Effect } from "effect";
 import { cache } from "react";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { authorizeInvoiceAdministrationPage } from "./authorization.server";
+import { decodeInvoiceAdministrationId } from "./invoice-administration-identifier";
 import { InvoiceBreadcrumbService } from "./invoice-breadcrumb.service";
 
 export const loadInvoiceAdministrationBreadcrumbLabel = cache(
   async (invoiceId: string) => {
     await authorizeInvoiceAdministrationPage();
     const label = await Effect.gen(function* () {
+      const id = yield* decodeInvoiceAdministrationId(invoiceId);
       const breadcrumb = yield* InvoiceBreadcrumbService;
-      return yield* breadcrumb.getLabel(invoiceId);
+      return yield* breadcrumb.getLabel(id);
     }).pipe(
       Effect.catchTag("InvoiceAdministrationNotFoundError", () =>
         Effect.succeed(null)

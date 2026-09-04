@@ -6,6 +6,6 @@ export class InvoiceAdministrationNotFoundError extends Data.TaggedError(
 )<{ readonly invoiceId: string }> {}
 
 export const decodeInvoiceAdministrationId = (invoiceId: string) =>
-  Schema.decodeUnknownEffect(AdministrationInvoiceId)(invoiceId).pipe(
+  Schema.decodeEffect(AdministrationInvoiceId)(invoiceId).pipe(
     Effect.mapError(() => new InvoiceAdministrationNotFoundError({ invoiceId }))
   );
