@@ -199,6 +199,18 @@ lost response is safe: a completed attempt returns `already-created` without
 the PIN. An uncertain provider outcome is terminal and is not retried
 automatically.
 
+`dhw` reserves the attempt identifier in its local state directory before
+sending the creation request, one reservation per CLI session and request
+window. Rerunning the same command on the same machine and session reuses its
+own reserved identifier, so an interrupted or unanswered creation cannot
+create a second code, and a different request cannot overwrite an unrelated
+reservation. The reservation is released once creation concludes — created,
+already created, rejected, or uncertain — so a later intentional creation
+requests a fresh identifier; if the concluded reservation cannot be deleted,
+it is marked concluded, which also forces a fresh identifier. When the local
+reservation cannot be written or read, the command refuses to create the
+access code instead of risking a duplicate.
+
 ## Development
 
 ```bash
@@ -233,7 +245,8 @@ version.
 - `DHW_REQUEST_HEADERS` is a JSON object of additional API request headers. It
   is intended for preview-protection bypass headers and its values are redacted
   by Effect. It is never sent to GitHub during update checks.
-- `DHW_STATE_DIR` overrides the local updater state directory.
+- `DHW_STATE_DIR` overrides the local state directory holding updater state
+  and the access-code attempt reservation.
 - `DHW_NO_UPDATE_CHECK=true` disables automatic checks.
 
 For a protected Vercel preview, configuration can be scoped to one invocation:

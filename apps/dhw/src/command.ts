@@ -25,7 +25,6 @@ import {
   type AdministrationReservationAccessMutationType,
   AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
-  AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreateInputType,
   type AdministrationStandaloneAccessCodeCreationOutcomeType,
@@ -38,7 +37,9 @@ import {
   AdministrationWorkspaceSiteLocalWholeHourDateTime,
   type CliAccessTokenType,
   CliClientName,
+  CliMutationRejected,
   CliMutationRequestId,
+  CliMutationUncertain,
   CliSessionId,
   type CliSessionType,
   CliSessionUnauthorized,
@@ -60,6 +61,7 @@ import {
   SchemaGetter,
 } from "effect";
 import { Argument, Command, Flag, Prompt } from "effect/unstable/cli";
+import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store.service";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
 import {
@@ -1892,15 +1894,27 @@ const accessCodesCreateCommand = Command.make(
           yield* reportCancellation(json);
           return;
         }
-        const crypto = yield* Crypto.Crypto;
-        const attemptId = AdministrationStandaloneAccessCodeAttemptId.make(
-          yield* crypto.randomUUIDv7
+        const attemptStore = yield* AccessCodeAttemptStore;
+        const identity = { sessionId: session.id, request };
+        const attemptId = yield* attemptStore.reserve(identity).pipe(
+          Effect.mapError(
+            () =>
+              new AccessCodeAttemptReservationError({
+                message:
+                  "The access-code attempt could not be reserved in the local state directory. No access code was created.",
+              })
+          )
         );
-        const outcome = yield* api.createStandaloneAccessCode(
-          accessToken,
-          attemptId,
-          request
-        );
+        const outcome = yield* api
+          .createStandaloneAccessCode(accessToken, attemptId, request)
+          .pipe(
+            Effect.catchIf(isConclusiveAccessCodeCreationError, (error) =>
+              attemptStore
+                .forget(identity, attemptId)
+                .pipe(Effect.andThen(Effect.fail(error)))
+            )
+          );
+        yield* attemptStore.forget(identity, attemptId);
         yield* Console.log(
           json
             ? JSON.stringify(outcome)
@@ -1913,6 +1927,15 @@ const accessCodesCreateCommand = Command.make(
     "Create a standalone door access code and show its one-time PIN"
   )
 );
+
+type AccessCodeCreationError = Effect.Error<
+  ReturnType<WorkspaceAdminApiClient["Service"]["createStandaloneAccessCode"]>
+>;
+
+const isConclusiveAccessCodeCreationError = (
+  error: AccessCodeCreationError
+): error is CliMutationRejected | CliMutationUncertain =>
+  error instanceof CliMutationRejected || error instanceof CliMutationUncertain;
 
 export const formatStandaloneAccessCodeOutcome = (
   outcome: AdministrationStandaloneAccessCodeCreationOutcomeType
@@ -2252,6 +2275,10 @@ class ConfirmationRequiredError extends Data.TaggedError(
 
 class InvalidMutationInputError extends Data.TaggedError(
   "InvalidMutationInputError"
+)<{ readonly message: string }> {}
+
+class AccessCodeAttemptReservationError extends Data.TaggedError(
+  "AccessCodeAttemptReservationError"
 )<{ readonly message: string }> {}
 
 const runCommand = <A, E, R>(
