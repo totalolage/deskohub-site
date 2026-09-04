@@ -94,7 +94,7 @@ describe.skipIf(!postgresDatabase)(
       readonly attempt: StandaloneAccessCodeAttempt;
       readonly claimedAt?: Temporal.Instant;
       readonly staleBefore?: Temporal.Instant;
-      readonly providerCredentialRemoved?: boolean;
+      readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
     }) => {
       const claimedAt = input.claimedAt ?? Temporal.Now.instant();
       return attempts.claim({
@@ -105,7 +105,8 @@ describe.skipIf(!postgresDatabase)(
           claimedAt.subtract({
             milliseconds: 60_000,
           }),
-        providerCredentialRemoved: input.providerCredentialRemoved ?? false,
+        providerCredentialRemovedAttemptId:
+          input.providerCredentialRemovedAttemptId,
       });
     };
 
@@ -301,7 +302,7 @@ describe.skipIf(!postgresDatabase)(
       const confirmed = await Effect.runPromise(
         claim({
           attempt: attemptFixture(),
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
         })
       );
       expect(confirmed).toMatchObject({ kind: "claimed", variance: 3 });
@@ -636,7 +637,7 @@ describe.skipIf(!postgresDatabase)(
       const confirmed = await Effect.runPromise(
         claim({
           attempt: attemptFixture(),
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: created.attemptId,
         })
       );
       expect(confirmed).toMatchObject({ kind: "claimed", variance: 3 });
@@ -705,6 +706,312 @@ describe.skipIf(!postgresDatabase)(
       expect(next).toMatchObject({ kind: "cleanup-required" });
     });
 
+    test("returns the stored prior name and attempt id as the cleanup target", async () => {
+      const ambiguous = attemptFixture({
+        name: AdministrationStandaloneAccessCodeName.make("Old Booth"),
+      });
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const blocked = await Effect.runPromise(
+        claim({ attempt: attemptFixture() })
+      );
+
+      expect(blocked).toEqual({
+        kind: "cleanup-required",
+        cleanupTarget: {
+          attemptId: ambiguous.attemptId,
+          name: "Old Booth",
+        },
+      });
+    });
+
+    test("reconciles only the exact confirmed target and reports the next cleanup target", async () => {
+      const first = attemptFixture({
+        name: AdministrationStandaloneAccessCodeName.make("First Booth"),
+      });
+      const second = attemptFixture({
+        name: AdministrationStandaloneAccessCodeName.make("Second Booth"),
+      });
+      const firstClaimedAt = Temporal.Now.instant().subtract({ seconds: 10 });
+      const secondClaimedAt = firstClaimedAt.add({ seconds: 5 });
+      await Effect.runPromise(
+        claim({ attempt: first, claimedAt: firstClaimedAt })
+      );
+      await Effect.runPromise(
+        claim({ attempt: second, claimedAt: secondClaimedAt })
+      );
+      for (const [attempt, claimedAt] of [
+        [first, firstClaimedAt],
+        [second, secondClaimedAt],
+      ] as const) {
+        await Effect.runPromise(
+          attempts.appendTerminal({
+            attempt,
+            variance: attempt === first ? 2 : 3,
+            eventKind: "ambiguous",
+            occurredAt: claimedAt,
+            failureCode: "standalone_provider_ambiguous",
+          })
+        );
+      }
+
+      const firstConfirmation = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemovedAttemptId: first.attemptId,
+        })
+      );
+      expect(firstConfirmation).toEqual({
+        kind: "cleanup-required",
+        cleanupTarget: {
+          attemptId: second.attemptId,
+          name: "Second Booth",
+        },
+      });
+      expect(await eventKindsOf(first.attemptId)).toEqual([
+        "ambiguous",
+        "reconciled",
+        "started",
+      ]);
+      expect(await eventKindsOf(second.attemptId)).toEqual([
+        "ambiguous",
+        "started",
+      ]);
+
+      const secondConfirmation = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemovedAttemptId: second.attemptId,
+        })
+      );
+      expect(secondConfirmation).toMatchObject({
+        kind: "claimed",
+        variance: 2,
+      });
+    });
+
+    test("reconciles nothing when the confirmation names a different or already-reconciled target", async () => {
+      const ambiguous = attemptFixture({
+        name: AdministrationStandaloneAccessCodeName.make("Original Booth"),
+      });
+      const firstClaimedAt = Temporal.Now.instant().subtract({ seconds: 10 });
+      await Effect.runPromise(
+        claim({ attempt: ambiguous, claimedAt: firstClaimedAt })
+      );
+      const second = attemptFixture();
+      const secondClaimedAt = firstClaimedAt.add({ seconds: 5 });
+      await Effect.runPromise(
+        claim({ attempt: second, claimedAt: secondClaimedAt })
+      );
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: firstClaimedAt,
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: second,
+          variance: 3,
+          eventKind: "ambiguous",
+          occurredAt: secondClaimedAt,
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const uninvolved = attemptFixture();
+      const differentEcho = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemovedAttemptId: uninvolved.attemptId,
+        })
+      );
+      expect(differentEcho).toEqual({
+        kind: "cleanup-required",
+        cleanupTarget: {
+          attemptId: ambiguous.attemptId,
+          name: "Original Booth",
+        },
+      });
+      expect(await eventKindsOf(ambiguous.attemptId)).toEqual([
+        "ambiguous",
+        "started",
+      ]);
+
+      const confirmed = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
+        })
+      );
+      expect(confirmed).toEqual({
+        kind: "cleanup-required",
+        cleanupTarget: {
+          attemptId: second.attemptId,
+          name: accessName,
+        },
+      });
+
+      const staleEcho = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
+        })
+      );
+      expect(staleEcho).toEqual({
+        kind: "cleanup-required",
+        cleanupTarget: {
+          attemptId: second.attemptId,
+          name: accessName,
+        },
+      });
+      const [ambiguousEvents, secondEvents] = await Promise.all([
+        loadEvents(ambiguous.attemptId),
+        loadEvents(second.attemptId),
+      ]);
+      expect(
+        ambiguousEvents.filter(({ eventKind }) => eventKind === "reconciled")
+      ).toHaveLength(1);
+      expect(
+        secondEvents.filter(({ eventKind }) => eventKind === "reconciled")
+      ).toHaveLength(0);
+    });
+
+    test("does not silently reconcile an attempt that became ambiguous after the warning", async () => {
+      const prior = attemptFixture({
+        name: AdministrationStandaloneAccessCodeName.make("Prior Booth"),
+      });
+      const priorClaimedAt = Temporal.Now.instant().subtract({ seconds: 30 });
+      await Effect.runPromise(
+        claim({ attempt: prior, claimedAt: priorClaimedAt })
+      );
+
+      const latecomer = attemptFixture({
+        name: AdministrationStandaloneAccessCodeName.make("Latecomer Booth"),
+      });
+      const latecomerClaimedAt = priorClaimedAt.add({ seconds: 5 });
+      await Effect.runPromise(
+        claim({ attempt: latecomer, claimedAt: latecomerClaimedAt })
+      );
+
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: prior,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: priorClaimedAt,
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const warned = await Effect.runPromise(
+        claim({ attempt: attemptFixture() })
+      );
+      expect(warned).toEqual({
+        kind: "cleanup-required",
+        cleanupTarget: {
+          attemptId: prior.attemptId,
+          name: "Prior Booth",
+        },
+      });
+
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: latecomer,
+          variance: 3,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const confirmed = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemovedAttemptId: prior.attemptId,
+        })
+      );
+      expect(confirmed).toEqual({
+        kind: "cleanup-required",
+        cleanupTarget: {
+          attemptId: latecomer.attemptId,
+          name: "Latecomer Booth",
+        },
+      });
+      expect(await eventKindsOf(prior.attemptId)).toEqual([
+        "ambiguous",
+        "reconciled",
+        "started",
+      ]);
+      expect(await eventKindsOf(latecomer.attemptId)).toEqual([
+        "ambiguous",
+        "started",
+      ]);
+    });
+
+    test("requires an exact matching target id to reconcile an ambiguous replay", async () => {
+      const ambiguous = attemptFixture();
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const unconfirmedReplay = await Effect.runPromise(
+        claim({ attempt: ambiguous })
+      );
+      expect(unconfirmedReplay).toMatchObject({
+        kind: "ambiguous",
+        failureCode: "standalone_provider_ambiguous",
+      });
+
+      const otherEcho = attemptFixture();
+      const mismatchedReplay = await Effect.runPromise(
+        claim({
+          attempt: ambiguous,
+          providerCredentialRemovedAttemptId: otherEcho.attemptId,
+        })
+      );
+      expect(mismatchedReplay).toMatchObject({
+        kind: "ambiguous",
+        failureCode: "standalone_provider_ambiguous",
+      });
+      expect(await eventKindsOf(ambiguous.attemptId)).toEqual([
+        "ambiguous",
+        "started",
+      ]);
+
+      const confirmedReplay = await Effect.runPromise(
+        claim({
+          attempt: ambiguous,
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
+        })
+      );
+      expect(confirmedReplay).toMatchObject({ kind: "reconciled" });
+      expect(await eventKindsOf(ambiguous.attemptId)).toEqual([
+        "ambiguous",
+        "reconciled",
+        "started",
+      ]);
+    });
+
     test("frees only the confirmed ambiguous variance after explicit reconciliation", async () => {
       const ambiguous = attemptFixture();
       const created = attemptFixture();
@@ -732,7 +1039,7 @@ describe.skipIf(!postgresDatabase)(
       const confirmed = await Effect.runPromise(
         claim({
           attempt: attemptFixture(),
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
         })
       );
 
@@ -757,7 +1064,7 @@ describe.skipIf(!postgresDatabase)(
       const confirmed = await Effect.runPromise(
         claim({
           attempt: attemptFixture(),
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: stale.attemptId,
           staleBefore: Temporal.Now.instant(),
         })
       );
@@ -788,7 +1095,7 @@ describe.skipIf(!postgresDatabase)(
       const confirmed = await Effect.runPromise(
         claim({
           attempt: attemptFixture(),
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
         })
       );
       expect(confirmed).toMatchObject({ kind: "claimed", variance: 2 });
@@ -816,7 +1123,7 @@ describe.skipIf(!postgresDatabase)(
       const reconciledReplay = await Effect.runPromise(
         claim({
           attempt: ambiguous,
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
         })
       );
       expect(reconciledReplay).toMatchObject({ kind: "reconciled" });
@@ -848,13 +1155,13 @@ describe.skipIf(!postgresDatabase)(
       const first = await Effect.runPromise(
         claim({
           attempt: attemptFixture(),
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
         })
       );
       const second = await Effect.runPromise(
         claim({
           attempt: attemptFixture(),
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: ambiguous.attemptId,
         })
       );
 
@@ -883,13 +1190,13 @@ describe.skipIf(!postgresDatabase)(
         Effect.runPromise(
           claim({
             attempt: attemptFixture(),
-            providerCredentialRemoved: true,
+            providerCredentialRemovedAttemptId: ambiguous.attemptId,
           })
         ),
         Effect.runPromise(
           claim({
             attempt: attemptFixture(),
-            providerCredentialRemoved: true,
+            providerCredentialRemovedAttemptId: ambiguous.attemptId,
           })
         ),
       ]);
@@ -1002,7 +1309,7 @@ describe.skipIf(!postgresDatabase)(
         const replay = Effect.runPromise(
           claim({
             attempt,
-            providerCredentialRemoved: true,
+            providerCredentialRemovedAttemptId: attempt.attemptId,
             staleBefore: Temporal.Now.instant(),
           })
         );
@@ -1056,7 +1363,7 @@ describe.skipIf(!postgresDatabase)(
         const confirmed = Effect.runPromise(
           claim({
             attempt: attemptFixture(),
-            providerCredentialRemoved: true,
+            providerCredentialRemovedAttemptId: stale.attemptId,
           })
         );
         void confirmed.catch(() => {});
@@ -1099,7 +1406,7 @@ describe.skipIf(!postgresDatabase)(
       const replay = await Effect.runPromise(
         claim({
           attempt,
-          providerCredentialRemoved: true,
+          providerCredentialRemovedAttemptId: attempt.attemptId,
           staleBefore: Temporal.Now.instant(),
         })
       );

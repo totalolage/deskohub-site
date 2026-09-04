@@ -3,6 +3,7 @@ import type {
   AdministrationActorUsername,
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
+  AdministrationStandaloneAccessCodeCleanupTarget,
   AdministrationStandaloneAccessCodeName,
   AdministrationWorkspaceSiteLocalWholeHourDateTime,
 } from "@deskohub/workspace-admin-api";
@@ -69,7 +70,10 @@ export type StandaloneAccessCodeAttemptClaim =
       readonly variance: StandaloneAccessCodeProviderVariance;
     }
   | { readonly kind: "in-progress" }
-  | { readonly kind: "cleanup-required" }
+  | {
+      readonly kind: "cleanup-required";
+      readonly cleanupTarget: AdministrationStandaloneAccessCodeCleanupTarget;
+    }
   | { readonly kind: "reconciled" }
   | { readonly kind: "mismatch" }
   | { readonly kind: "exhausted" };
@@ -95,7 +99,7 @@ export interface IStandaloneAccessCodeAttemptLogRepository {
     readonly attempt: StandaloneAccessCodeAttempt;
     readonly claimedAt: Temporal.Instant;
     readonly staleBefore: Temporal.Instant;
-    readonly providerCredentialRemoved: boolean;
+    readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
   }) => Effect.Effect<
     StandaloneAccessCodeAttemptClaim,
     StandaloneAccessCodeAttemptLogStorageError
@@ -373,7 +377,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
             reconciledEvents.map((event) => event.attemptId)
           );
 
-          return startedEvents.flatMap((event) => {
+          const unresolvedCandidates = startedEvents.flatMap((event) => {
             if (reconciledAttemptIds.has(event.attemptId)) return [];
             if (ambiguousAttemptIds.has(event.attemptId)) {
               return [{ prior: event, staleStarted: false }];
@@ -386,6 +390,19 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
             }
             return [];
           });
+          const byOccurrenceThenAttemptId = (
+            left: { readonly prior: StandaloneAccessCodeAttemptEventRow },
+            right: { readonly prior: StandaloneAccessCodeAttemptEventRow }
+          ) => {
+            const byOccurrence = Temporal.Instant.compare(
+              left.prior.occurredAt,
+              right.prior.occurredAt
+            );
+            if (byOccurrence !== 0) return byOccurrence;
+            if (left.prior.attemptId === right.prior.attemptId) return 0;
+            return left.prior.attemptId < right.prior.attemptId ? -1 : 1;
+          };
+          return unresolvedCandidates.sort(byOccurrenceThenAttemptId);
         });
 
       const insertReconciledEvent = (
@@ -502,6 +519,13 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           return terminal;
         });
 
+      const cleanupTargetOf = (
+        prior: StandaloneAccessCodeAttemptEventRow
+      ): AdministrationStandaloneAccessCodeCleanupTarget => ({
+        attemptId: prior.attemptId,
+        name: prior.name,
+      });
+
       const resolveReplay = (
         tx: Transaction,
         stored: StandaloneAccessCodeAttemptEventRow,
@@ -509,7 +533,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           readonly attempt: StandaloneAccessCodeAttempt;
           readonly claimedAt: Temporal.Instant;
           readonly staleBefore: Temporal.Instant;
-          readonly providerCredentialRemoved: boolean;
+          readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
         }
       ) =>
         Effect.gen(function* () {
@@ -537,7 +561,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
 
           if (
             resolution.kind === "ambiguous" &&
-            input.providerCredentialRemoved
+            input.providerCredentialRemovedAttemptId === input.attempt.attemptId
           ) {
             yield* insertReconciledEvent(tx, {
               attempt: input.attempt,
@@ -555,7 +579,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           readonly attempt: StandaloneAccessCodeAttempt;
           readonly claimedAt: Temporal.Instant;
           readonly staleBefore: Temporal.Instant;
-          readonly providerCredentialRemoved: boolean;
+          readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
         }
       ) =>
         Effect.gen(function* () {
@@ -565,28 +589,49 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           );
           if (existing) return yield* resolveReplay(tx, existing, input);
 
-          const unresolved = yield* unreconciledAmbiguousAttempts(tx, {
+          const [target] = yield* unreconciledAmbiguousAttempts(tx, {
             attempt: input.attempt,
             staleBefore: input.staleBefore,
           });
-          if (unresolved.length > 0) {
-            if (!input.providerCredentialRemoved) {
-              return { kind: "cleanup-required" } as const;
+          if (target) {
+            if (
+              input.providerCredentialRemovedAttemptId !==
+              target.prior.attemptId
+            ) {
+              return {
+                kind: "cleanup-required",
+                cleanupTarget: cleanupTargetOf(target.prior),
+              } as const;
             }
-            for (const candidate of unresolved) {
-              if (candidate.staleStarted) {
-                const terminal = yield* appendOrResolveStaleAmbiguous(tx, {
-                  prior: candidate.prior,
-                  occurredAt: input.claimedAt,
-                });
-                const resolution = resolveTerminalEvent(terminal);
-                if (resolution.kind !== "ambiguous") continue;
-              }
-              yield* insertReconciledEvent(tx, {
-                attempt: input.attempt,
-                prior: candidate.prior,
+            if (target.staleStarted) {
+              const terminal = yield* appendOrResolveStaleAmbiguous(tx, {
+                prior: target.prior,
                 occurredAt: input.claimedAt,
               });
+              if (resolveTerminalEvent(terminal).kind === "ambiguous") {
+                yield* insertReconciledEvent(tx, {
+                  attempt: input.attempt,
+                  prior: target.prior,
+                  occurredAt: input.claimedAt,
+                });
+              }
+            } else {
+              yield* insertReconciledEvent(tx, {
+                attempt: input.attempt,
+                prior: target.prior,
+                occurredAt: input.claimedAt,
+              });
+            }
+
+            const [next] = yield* unreconciledAmbiguousAttempts(tx, {
+              attempt: input.attempt,
+              staleBefore: input.staleBefore,
+            });
+            if (next) {
+              return {
+                kind: "cleanup-required",
+                cleanupTarget: cleanupTargetOf(next.prior),
+              } as const;
             }
           }
 

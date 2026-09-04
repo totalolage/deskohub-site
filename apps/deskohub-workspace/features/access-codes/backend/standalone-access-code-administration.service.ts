@@ -8,6 +8,7 @@ import {
   AdministrationInstant,
   AdministrationProviderCredentialId,
   type AdministrationStandaloneAccessCodeAttemptId,
+  type AdministrationStandaloneAccessCodeCleanupTarget,
   type AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreationOutcome,
   AdministrationStandaloneAccessCodePin,
@@ -37,6 +38,7 @@ export class StandaloneAccessCodeCreationError extends Data.TaggedError(
   readonly attemptId: AdministrationStandaloneAccessCodeAttemptId;
   readonly outcome: StandaloneAccessCodeCreationOutcome;
   readonly failureCode?: StandaloneAccessCodeFailureCode;
+  readonly cleanupTarget?: AdministrationStandaloneAccessCodeCleanupTarget;
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -47,7 +49,7 @@ interface IStandaloneAccessCodeAdministration {
     readonly actor: AdministrationActorUsername;
     readonly source: StandaloneAccessCodeSource;
     readonly request: AdministrationStandaloneAccessCodeCreateInput;
-    readonly providerCredentialRemoved: boolean;
+    readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
   }) => Effect.Effect<
     AdministrationStandaloneAccessCodeCreationOutcome,
     StandaloneAccessCodeCreationError
@@ -77,16 +79,30 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
         input: StandaloneAccessCodeCreationRequest,
         outcome: StandaloneAccessCodeCreationOutcome,
         message: string,
-        failureCode?: StandaloneAccessCodeFailureCode,
-        cause?: unknown
+        details: {
+          readonly failureCode?: StandaloneAccessCodeFailureCode;
+          readonly cleanupTarget?: AdministrationStandaloneAccessCodeCleanupTarget;
+          readonly cause?: unknown;
+        } = {}
       ) =>
         new StandaloneAccessCodeCreationError({
           attemptId: input.attemptId,
           outcome,
-          failureCode,
+          ...(details.failureCode !== undefined && {
+            failureCode: details.failureCode,
+          }),
+          ...(details.cleanupTarget !== undefined && {
+            cleanupTarget: details.cleanupTarget,
+          }),
           message,
-          cause,
+          ...(details.cause !== undefined && { cause: details.cause }),
         });
+
+      const ambiguousTargetOf = (input: StandaloneAccessCodeCreationRequest) =>
+        ({
+          attemptId: input.attemptId,
+          name: input.request.name,
+        }) as const;
 
       const createdOutcome = (input: {
         readonly request: StandaloneAccessCodeCreationRequest;
@@ -131,7 +147,10 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                   input,
                   "ambiguous",
                   "The standalone access-code creation outcome is ambiguous.",
-                  stored.failureCode
+                  {
+                    failureCode: stored.failureCode,
+                    cleanupTarget: ambiguousTargetOf(input),
+                  }
                 )
               ),
             rejected: (stored) =>
@@ -140,7 +159,7 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                   input,
                   "rejected",
                   "The standalone access-code request was rejected.",
-                  stored.failureCode
+                  { failureCode: stored.failureCode }
                 )
               ),
           })
@@ -187,6 +206,20 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
           eventKind === "rejected"
             ? "standalone_provider_rejected"
             : "standalone_provider_ambiguous";
+        const outcomeFailure = () =>
+          failCreation(
+            input.request,
+            eventKind,
+            eventKind === "rejected"
+              ? "The standalone access-code request was rejected."
+              : "The standalone access-code creation outcome is ambiguous.",
+            {
+              failureCode,
+              ...(eventKind === "ambiguous" && {
+                cleanupTarget: ambiguousTargetOf(input.request),
+              }),
+            }
+          );
         return Effect.gen(function* () {
           const appended = yield* Effect.result(
             attempts.appendTerminal({
@@ -204,28 +237,11 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
               eventKind,
               cause: appended.failure,
             });
-            return yield* failCreation(
-              input.request,
-              eventKind,
-              eventKind === "rejected"
-                ? "The standalone access-code request was rejected."
-                : "The standalone access-code creation outcome is ambiguous.",
-              failureCode
-            );
+            return yield* outcomeFailure();
           }
           return yield* Match.value(appended.success).pipe(
             Match.discriminatorsExhaustive("kind")({
-              appended: () =>
-                Effect.fail(
-                  failCreation(
-                    input.request,
-                    eventKind,
-                    eventKind === "rejected"
-                      ? "The standalone access-code request was rejected."
-                      : "The standalone access-code creation outcome is ambiguous.",
-                    failureCode
-                  )
-                ),
+              appended: () => Effect.fail(outcomeFailure()),
               "already-terminal": ({ terminal }) =>
                 storedTerminalOutcome(input.request, terminal),
             })
@@ -315,7 +331,8 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                   milliseconds:
                     standaloneAccessCodeAttemptStaleAfterMilliseconds,
                 }),
-                providerCredentialRemoved: input.providerCredentialRemoved,
+                providerCredentialRemovedAttemptId:
+                  input.providerCredentialRemovedAttemptId,
               })
               .pipe(
                 Effect.mapError((cause) =>
@@ -323,8 +340,7 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                     input,
                     "unavailable",
                     "Standalone access-code creation is temporarily unavailable.",
-                    undefined,
-                    cause
+                    { cause }
                   )
                 )
               );
@@ -364,7 +380,7 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                       input,
                       "rejected",
                       "The standalone access-code request was rejected.",
-                      failureCode
+                      { failureCode }
                     )
                   ),
                 ambiguous: ({ failureCode }) =>
@@ -373,7 +389,10 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                       input,
                       "ambiguous",
                       "The standalone access-code creation outcome is ambiguous.",
-                      failureCode
+                      {
+                        failureCode,
+                        cleanupTarget: ambiguousTargetOf(input),
+                      }
                     )
                   ),
                 "in-progress": () =>
@@ -384,12 +403,13 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                       "Standalone access-code creation is already in progress."
                     )
                   ),
-                "cleanup-required": () =>
+                "cleanup-required": ({ cleanupTarget }) =>
                   Effect.fail(
                     failCreation(
                       input,
                       "cleanup-required",
-                      "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then confirm the cleanup before creating another code."
+                      "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then confirm the cleanup before creating another code.",
+                      { cleanupTarget }
                     )
                   ),
                 reconciled: () =>

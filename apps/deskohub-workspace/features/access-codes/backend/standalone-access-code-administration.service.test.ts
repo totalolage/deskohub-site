@@ -13,6 +13,7 @@ import {
   AdministrationProviderCredentialId,
   AdministrationStandaloneAccessCodeAttemptId,
   AdministrationStandaloneAccessCodeCreateInput,
+  AdministrationStandaloneAccessCodeName,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Result, Schema } from "effect";
 import { StandaloneAccessCodeAdministration } from "./standalone-access-code-administration.service";
@@ -29,6 +30,11 @@ const decodeRequest = Schema.decodeUnknownSync(
 );
 const attemptId = decodeAttemptId("01980000-0000-7000-8000-000000000042");
 const otherAttemptId = decodeAttemptId("01980000-0000-7000-8000-000000000043");
+const priorAttemptId = decodeAttemptId("01980000-0000-7000-8000-000000000044");
+const priorCleanupTarget = {
+  attemptId: priorAttemptId,
+  name: AdministrationStandaloneAccessCodeName.make("Prior Booth"),
+};
 const actor = AdministrationActorUsername.make("Fixture Operator");
 const source = "dhw-cli";
 const request = decodeRequest({
@@ -226,19 +232,34 @@ describe("StandaloneAccessCodeAdministration.create", () => {
     if (Result.isFailure(result)) {
       expect(result.failure.outcome).toBe("ambiguous");
       expect(result.failure.failureCode).toBe("standalone_attempt_stale");
+      expect(result.failure.cleanupTarget).toEqual({
+        attemptId,
+        name: "Booth A",
+      });
     }
   });
 
-  test("reports cleanup-required without calling the provider", async () => {
+  test("reports cleanup-required with the repository target and without calling the provider", async () => {
+    const issueHourlyAlgoPin = mock(() =>
+      Effect.die("Igloohome must not be called")
+    );
     const result = await runCreate({
-      claim: mock(() => Effect.succeed({ kind: "cleanup-required" } as const)),
+      claim: mock(() =>
+        Effect.succeed({
+          kind: "cleanup-required",
+          cleanupTarget: priorCleanupTarget,
+        } as const)
+      ),
+      issueHourlyAlgoPin,
     });
 
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       expect(result.failure.outcome).toBe("cleanup-required");
       expect(result.failure.message).toContain("Igloohome");
+      expect(result.failure.cleanupTarget).toEqual(priorCleanupTarget);
     }
+    expect(issueHourlyAlgoPin).not.toHaveBeenCalled();
   });
 
   test("reports a confirmed reconciled replay without calling the provider", async () => {
@@ -253,15 +274,41 @@ describe("StandaloneAccessCodeAdministration.create", () => {
     }
   });
 
-  test("forwards the explicit cleanup confirmation to the attempt log", async () => {
+  test("forwards the exact cleanup target confirmation to the attempt log", async () => {
     const claim = mock(() =>
-      Effect.succeed({ kind: "cleanup-required" } as const)
+      Effect.succeed({
+        kind: "cleanup-required",
+        cleanupTarget: priorCleanupTarget,
+      } as const)
     );
-    await runCreate({ claim }, { ...input, providerCredentialRemoved: true });
+    await runCreate(
+      { claim },
+      { ...input, providerCredentialRemovedAttemptId: priorAttemptId }
+    );
 
     expect(claim).toHaveBeenCalledWith(
-      expect.objectContaining({ providerCredentialRemoved: true })
+      expect.objectContaining({
+        providerCredentialRemovedAttemptId: priorAttemptId,
+      })
     );
+  });
+
+  test("does not invent a cleanup target on outcomes without one", async () => {
+    for (const claimResult of [
+      { kind: "rejected", failureCode: "standalone_provider_rejected" },
+      { kind: "in-progress" },
+      { kind: "reconciled" },
+      { kind: "mismatch" },
+      { kind: "exhausted" },
+    ] as const) {
+      const result = await runCreate({
+        claim: mock(() => Effect.succeed(claimResult)),
+      });
+      expect(Result.isFailure(result)).toBe(true);
+      if (Result.isFailure(result)) {
+        expect("cleanupTarget" in result.failure).toBe(false);
+      }
+    }
   });
 
   test("reports a fresh started attempt as in progress", async () => {
@@ -360,6 +407,10 @@ describe("StandaloneAccessCodeAdministration.create", () => {
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
       expect(result.failure.outcome).toBe("ambiguous");
+      expect(result.failure.cleanupTarget).toEqual({
+        attemptId,
+        name: "Booth A",
+      });
     }
   });
 
@@ -398,6 +449,10 @@ describe("StandaloneAccessCodeAdministration.create", () => {
     if (Result.isFailure(result)) {
       expect(result.failure.outcome).toBe("ambiguous");
       expect(result.failure.failureCode).toBe("standalone_attempt_stale");
+      expect(result.failure.cleanupTarget).toEqual({
+        attemptId,
+        name: "Booth A",
+      });
       expect(JSON.stringify(result.failure)).not.toContain("7654321");
     }
   });
