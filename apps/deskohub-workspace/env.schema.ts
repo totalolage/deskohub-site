@@ -1,5 +1,6 @@
 import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
+import { parseBetterAuthSecrets } from "./features/account/backend/auth/auth-secrets";
 import {
   postHogFeatureFlagOverridesEnvironmentCheck,
   postHogFeatureFlagOverridesSchema,
@@ -75,6 +76,30 @@ const accountOperationsProductionEnvironmentCheck = Schema.makeFilter<{
   ).flatMap(([key, issue]) =>
     isBlank(environment[key]) ? [{ path: [key], issue }] : []
   );
+});
+
+/**
+ * Production must never serve a release whose account authentication cannot
+ * bootstrap. The account-owned secrets parser is the authority for the
+ * versioned, duplicate-free, strong-secret contract; environments outside
+ * production may omit the variable entirely.
+ */
+const betterAuthSecretsProductionEnvironmentCheck = Schema.makeFilter<{
+  readonly VERCEL_ENV: "production" | "preview" | "development";
+  readonly BETTER_AUTH_SECRETS?: string | undefined;
+}>((environment) => {
+  if (environment.VERCEL_ENV !== "production") return undefined;
+
+  return parseBetterAuthSecrets(environment.BETTER_AUTH_SECRETS).kind ===
+    "valid"
+    ? undefined
+    : [
+        {
+          path: ["BETTER_AUTH_SECRETS"],
+          issue:
+            "BETTER_AUTH_SECRETS must contain valid versioned secrets in production.",
+        },
+      ];
 });
 
 export const workspaceServerEnvSchema = Schema.Struct({
@@ -174,7 +199,8 @@ export const workspaceServerEnvSchema = Schema.Struct({
 }).check(
   postHogFeatureFlagOverridesEnvironmentCheck,
   igloohomeProductionEnvironmentCheck,
-  accountOperationsProductionEnvironmentCheck
+  accountOperationsProductionEnvironmentCheck,
+  betterAuthSecretsProductionEnvironmentCheck
 );
 
 export const workspaceClientEnvSchema = Schema.Struct({
@@ -206,7 +232,8 @@ export const createEnvironmentSchema = (
       ? schema.check(
           postHogFeatureFlagOverridesEnvironmentCheck,
           igloohomeProductionEnvironmentCheck,
-          accountOperationsProductionEnvironmentCheck
+          accountOperationsProductionEnvironmentCheck,
+          betterAuthSecretsProductionEnvironmentCheck
         )
       : schema
   );
