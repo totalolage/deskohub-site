@@ -61,7 +61,7 @@ describe("standalone access-code attempt event audit schema", () => {
     expect(failureCodeColumn?.notNull).toBe(false);
   });
 
-  test("allows at most one started and one terminal event per attempt", () => {
+  test("allows at most one started, terminal, and reconciled event per attempt", () => {
     const config = getTableConfig(standaloneAccessCodeAttemptEvents);
     const startedIndex = config.indexes.find(
       ({ config: index }) =>
@@ -73,17 +73,24 @@ describe("standalone access-code attempt event audit schema", () => {
         index.name ===
         "standalone_access_code_attempt_events_terminal_unique_idx"
     )?.config;
+    const reconciledIndex = config.indexes.find(
+      ({ config: index }) =>
+        index.name ===
+        "standalone_access_code_attempt_events_reconciled_unique_idx"
+    )?.config;
 
     expect(startedIndex).toMatchObject({ unique: true });
     expect(startedIndex?.where).toBeDefined();
     expect(terminalIndex).toMatchObject({ unique: true });
     expect(terminalIndex?.where).toBeDefined();
+    expect(reconciledIndex).toMatchObject({ unique: true });
+    expect(reconciledIndex?.where).toBeDefined();
   });
 
   test("creates the append-only event table in one migration", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260903205109_little_thunderbird/migration.sql",
+        "../migrations/20260904061533_outstanding_nico_minoru/migration.sql",
         import.meta.url
       )
     ).text();
@@ -98,7 +105,10 @@ describe("standalone access-code attempt event audit schema", () => {
       'CREATE UNIQUE INDEX "standalone_access_code_attempt_events_terminal_unique_idx" ON "standalone_access_code_attempt_events" ("attempt_id") WHERE "event_kind" in (\'created\', \'rejected\', \'ambiguous\')'
     );
     expect(migration).toContain(
-      "\"event_kind\" in ('started', 'created', 'rejected', 'ambiguous')"
+      'CREATE UNIQUE INDEX "standalone_access_code_attempt_events_reconciled_unique_idx" ON "standalone_access_code_attempt_events" ("attempt_id") WHERE "event_kind" = \'reconciled\''
+    );
+    expect(migration).toContain(
+      "\"event_kind\" in ('started', 'created', 'rejected', 'ambiguous', 'reconciled')"
     );
     expect(migration).toContain(
       "\"attempt_id\" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"

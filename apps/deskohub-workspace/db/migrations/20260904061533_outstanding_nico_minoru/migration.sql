@@ -17,7 +17,7 @@ CREATE TABLE "standalone_access_code_attempt_events" (
 	"occurred_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "standalone_access_code_attempt_events_attempt_id_check" CHECK ("attempt_id" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'),
-	CONSTRAINT "standalone_access_code_attempt_events_event_kind_check" CHECK ("event_kind" in ('started', 'created', 'rejected', 'ambiguous')),
+	CONSTRAINT "standalone_access_code_attempt_events_event_kind_check" CHECK ("event_kind" in ('started', 'created', 'rejected', 'ambiguous', 'reconciled')),
 	CONSTRAINT "standalone_access_code_attempt_events_source_check" CHECK ("source" in ('admin-ui', 'dhw-cli')),
 	CONSTRAINT "standalone_access_code_attempt_events_variance_check" CHECK ("variance" in (2, 3)),
 	CONSTRAINT "standalone_access_code_attempt_events_name_check" CHECK (char_length("name") between 1 and 60),
@@ -31,4 +31,5 @@ CREATE TABLE "standalone_access_code_attempt_events" (
 --> statement-breakpoint
 CREATE UNIQUE INDEX "standalone_access_code_attempt_events_started_unique_idx" ON "standalone_access_code_attempt_events" ("attempt_id") WHERE "event_kind" = 'started';--> statement-breakpoint
 CREATE UNIQUE INDEX "standalone_access_code_attempt_events_terminal_unique_idx" ON "standalone_access_code_attempt_events" ("attempt_id") WHERE "event_kind" in ('created', 'rejected', 'ambiguous');--> statement-breakpoint
+CREATE UNIQUE INDEX "standalone_access_code_attempt_events_reconciled_unique_idx" ON "standalone_access_code_attempt_events" ("attempt_id") WHERE "event_kind" = 'reconciled';--> statement-breakpoint
 CREATE INDEX "standalone_access_code_attempt_events_window_idx" ON "standalone_access_code_attempt_events" ("device_id","starts_at","ends_at");

@@ -228,6 +228,41 @@ describe("StandaloneAccessCodeAdministration.create", () => {
     }
   });
 
+  test("reports cleanup-required without calling the provider", async () => {
+    const result = await runCreate({
+      claim: mock(() => Effect.succeed({ kind: "cleanup-required" } as const)),
+    });
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure.outcome).toBe("cleanup-required");
+      expect(result.failure.message).toContain("Igloohome");
+    }
+  });
+
+  test("reports a confirmed reconciled replay without calling the provider", async () => {
+    const result = await runCreate({
+      claim: mock(() => Effect.succeed({ kind: "reconciled" } as const)),
+    });
+
+    expect(Result.isFailure(result)).toBe(true);
+    if (Result.isFailure(result)) {
+      expect(result.failure.outcome).toBe("reconciled");
+      expect(result.failure.message).toContain("Run the same command again");
+    }
+  });
+
+  test("forwards the explicit cleanup confirmation to the attempt log", async () => {
+    const claim = mock(() =>
+      Effect.succeed({ kind: "cleanup-required" } as const)
+    );
+    await runCreate({ claim }, { ...input, providerCredentialRemoved: true });
+
+    expect(claim).toHaveBeenCalledWith(
+      expect.objectContaining({ providerCredentialRemoved: true })
+    );
+  });
+
   test("reports a fresh started attempt as in progress", async () => {
     const result = await runCreate({
       claim: mock(() => Effect.succeed({ kind: "in-progress" } as const)),

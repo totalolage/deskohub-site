@@ -45,6 +45,8 @@ import {
   CliClientName,
   CliMutationUncertain,
   CliServiceUnavailable,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
   StartCliAuthentication,
 } from "./workspace-admin-api";
 
@@ -354,6 +356,67 @@ describe("standalone access-code CLI endpoint contract", () => {
         },
       })
     );
+  });
+
+  test("decodes the explicit at-lock cleanup confirmation for retries", () => {
+    const confirmed = decodeRequest({
+      attemptId,
+      input: {
+        name: "Booth A",
+        startsAt: "2026-09-10T10:00",
+        endsAt: "2026-09-10T12:00",
+      },
+      providerCredentialRemoved: true,
+    });
+    expect(confirmed.providerCredentialRemoved).toBe(true);
+
+    const unconfirmed = decodeRequest({
+      attemptId,
+      input: {
+        name: "Booth A",
+        startsAt: "2026-09-10T10:00",
+        endsAt: "2026-09-10T12:00",
+      },
+    });
+    expect("providerCredentialRemoved" in unconfirmed).toBe(false);
+
+    expect(() =>
+      decodeRequest({
+        attemptId,
+        input: {
+          name: "Booth A",
+          startsAt: "2026-09-10T10:00",
+          endsAt: "2026-09-10T12:00",
+        },
+        providerCredentialRemoved: false,
+      })
+    ).toThrow();
+  });
+
+  test("reports required at-lock cleanup as a typed conflict error", () => {
+    const error = new CliStandaloneAccessCodeCleanupRequired({
+      message:
+        "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then confirm the cleanup before creating another code.",
+    });
+    expect(error._tag).toBe("CliStandaloneAccessCodeCleanupRequired");
+    const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
+    expect(
+      httpApiStatusOf(CliStandaloneAccessCodeCleanupRequired.schema.ast)
+    ).toBe(409);
+    expect(JSON.stringify(error)).not.toContain("7654321");
+  });
+
+  test("reports a confirmed reconciled replay as a typed conflict error", () => {
+    const error = new CliStandaloneAccessCodeReconciled({
+      message:
+        "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Run the same command again to create the code.",
+    });
+    expect(error._tag).toBe("CliStandaloneAccessCodeReconciled");
+    const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
+    expect(httpApiStatusOf(CliStandaloneAccessCodeReconciled.schema.ast)).toBe(
+      409
+    );
+    expect(JSON.stringify(error)).not.toContain("7654321");
   });
 
   test("rejects excess properties and invalid windows before any handler runs", () => {

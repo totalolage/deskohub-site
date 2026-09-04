@@ -46,6 +46,7 @@ interface IStandaloneAccessCodeAdministration {
     readonly actor: AdministrationActorUsername;
     readonly source: StandaloneAccessCodeSource;
     readonly request: AdministrationStandaloneAccessCodeCreateInput;
+    readonly providerCredentialRemoved: boolean;
   }) => Effect.Effect<
     AdministrationStandaloneAccessCodeCreationOutcome,
     StandaloneAccessCodeCreationError
@@ -258,6 +259,7 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                   milliseconds:
                     standaloneAccessCodeAttemptStaleAfterMilliseconds,
                 }),
+                providerCredentialRemoved: input.providerCredentialRemoved,
               })
               .pipe(
                 Effect.mapError((cause) =>
@@ -325,6 +327,22 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
                       input,
                       "in-progress",
                       "Standalone access-code creation is already in progress."
+                    )
+                  ),
+                "cleanup-required": () =>
+                  Effect.fail(
+                    failCreation(
+                      input,
+                      "cleanup-required",
+                      "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then confirm the cleanup before creating another code."
+                    )
+                  ),
+                reconciled: () =>
+                  Effect.fail(
+                    failCreation(
+                      input,
+                      "reconciled",
+                      "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Run the same command again to create the code."
                     )
                   ),
                 mismatch: () =>

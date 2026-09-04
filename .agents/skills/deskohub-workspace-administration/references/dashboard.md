@@ -47,9 +47,10 @@ The claim resolution is the durable contract:
 
 - A claim older than 60 seconds (`standaloneAccessCodeAttemptStaleAfterMilliseconds`) is recovered as ambiguous with `standalone_attempt_stale`. A fresh claim reports `in-progress`.
 - The same attempt identity with different input, actor, or source is rejected as a mismatch.
-- Capacity is per exact device and window: provider variances 2 and 3 allow two live codes. A terminal `rejected` event frees its variance; `created` and `ambiguous` do not.
+- Capacity is per exact device and window: provider variances 2 and 3 allow two live codes. A terminal `rejected` event frees its variance, and a `reconciled` event frees the confirmed attempt; `created` and `ambiguous` do not.
 - The terminal `created`, `rejected`, and `ambiguous` events store safe metadata and outcomes only, never the PIN.
 - An `ambiguous` attempt never calls the provider again. End the attempt in the UI and direct the operator to the Igloohome app over Bluetooth, matching the at-lock reconciliation used for reservation access recovery.
+- While a window has an unreconciled `ambiguous` or stale attempt, a new attempt for that window is refused with `cleanup-required` under the device-and-window lock before any provider call, even when capacity remains. With the operator's explicit `providerCredentialRemoved` confirmation, the claim appends a `reconciled` event (at most one per attempt, idempotent under concurrency) that frees only the confirmed attempts, then claims the new attempt in the same transaction. Replaying a reconciled attempt's own identifier without confirmation still reports its ambiguous outcome; with confirmation, the replay records the reconciliation and reports a `reconciled` outcome so the client can safely issue a fresh attempt.
 
 ## Reservation lifecycle
 

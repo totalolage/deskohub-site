@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "5fd56466-d891-4e15-9d89-c194f8ddb5ba",
+  "id": "6324d168-f95c-4e96-a8c7-e581d79ea4fe",
   "prevIds": [
     "d4b2b7cb-557c-462b-8201-f56a27423e1b"
   ],
@@ -4587,6 +4587,27 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "attempt_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"event_kind\" = 'reconciled'",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "standalone_access_code_attempt_events_reconciled_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "standalone_access_code_attempt_events"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "device_id",
           "isExpression": false,
           "asc": true,
@@ -6251,7 +6272,7 @@
       "table": "standalone_access_code_attempt_events"
     },
     {
-      "value": "\"event_kind\" in ('started', 'created', 'rejected', 'ambiguous')",
+      "value": "\"event_kind\" in ('started', 'created', 'rejected', 'ambiguous', 'reconciled')",
       "name": "standalone_access_code_attempt_events_event_kind_check",
       "entityType": "checks",
       "schema": "public",

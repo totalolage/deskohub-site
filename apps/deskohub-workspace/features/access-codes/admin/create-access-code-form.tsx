@@ -24,6 +24,7 @@ import {
   type StandaloneAccessCodeFormFieldErrors,
   type StandaloneAccessCodeWindowValues,
   shiftStandaloneAccessCodeLocalEnd,
+  standaloneAccessCodeCleanupConfirmationLabel,
   standaloneAccessCodeEarliestLocalEnd,
   standaloneAccessCodeElapsedHours,
   standaloneAccessCodeFailureNotices,
@@ -41,7 +42,11 @@ type CreationState =
   | { readonly kind: "editing" }
   | { readonly kind: "created"; readonly outcome: CreatedOutcome }
   | { readonly kind: "already-created" }
-  | { readonly kind: "ambiguous"; readonly name: string };
+  | {
+      readonly kind: "cleanup-confirm";
+      readonly reason: "ambiguous" | "cleanup-required";
+      readonly name: string;
+    };
 
 interface WindowPreview {
   readonly startsAt: string;
@@ -61,6 +66,7 @@ const readStandaloneAccessCodeFormValues = (
 
 export function CreateStandaloneAccessCodeForm() {
   const [creation, setCreation] = useState<CreationState>({ kind: "editing" });
+  const [cleanupConfirmed, setCleanupConfirmed] = useState(false);
   const [fieldErrors, setFieldErrors] =
     useState<StandaloneAccessCodeFormFieldErrors>({});
   const [notice, setNotice] = useState<string | null>(null);
@@ -70,6 +76,8 @@ export function CreateStandaloneAccessCodeForm() {
   });
   const attemptIdRef = useRef(createStandaloneAccessCodeAttemptId());
   const attemptInputRef = useRef<StandaloneAccessCodeWindowValues | null>(null);
+  const cleanupConfirmedWindowRef =
+    useRef<StandaloneAccessCodeWindowValues | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const startsAtInputRef = useRef<HTMLInputElement>(null);
@@ -133,6 +141,7 @@ export function CreateStandaloneAccessCodeForm() {
     {
       actionName: "createStandaloneAccessCode",
       onSuccess: ({ data }) => {
+        cleanupConfirmedWindowRef.current = null;
         if (!data) return;
         if (data.outcome === "created") {
           setNotice(null);
@@ -149,24 +158,29 @@ export function CreateStandaloneAccessCodeForm() {
           setNotice(standaloneAccessCodeFailureNotices.rejected);
           return;
         }
-        if (data.kind === "ambiguous") {
+        if (data.kind === "ambiguous" || data.kind === "cleanup-required") {
           setCreation({
-            kind: "ambiguous",
+            kind: "cleanup-confirm",
+            reason: data.kind,
             name: attemptInputRef.current?.name ?? "",
           });
           return;
         }
         setNotice(standaloneAccessCodeFailureNotices[data.kind]);
       },
-      onError: ({ error }) =>
+      onError: ({ error }) => {
+        cleanupConfirmedWindowRef.current = null;
         setNotice(
           error.serverError ??
             "The access code could not be created. Try again."
-        ),
-      onTransportError: () =>
+        );
+      },
+      onTransportError: () => {
+        cleanupConfirmedWindowRef.current = null;
         setNotice(
           "The server could not be reached. This attempt is kept, so you can safely try again."
-        ),
+        );
+      },
     }
   );
 
@@ -226,8 +240,31 @@ export function CreateStandaloneAccessCodeForm() {
       // A changed window is a new intent: it must never reuse the attempt id.
       attemptIdRef.current = createStandaloneAccessCodeAttemptId();
       attemptInputRef.current = values;
+      cleanupConfirmedWindowRef.current = null;
     }
-    execute({ attemptId: attemptIdRef.current, ...values });
+    const cleanupConfirmed =
+      cleanupConfirmedWindowRef.current !== null &&
+      isSameStandaloneAccessCodeWindow(
+        cleanupConfirmedWindowRef.current,
+        values
+      );
+    cleanupConfirmedWindowRef.current = null;
+    execute({
+      attemptId: attemptIdRef.current,
+      ...values,
+      ...(cleanupConfirmed && { providerCredentialRemoved: true as const }),
+    });
+  };
+
+  const confirmLockCleanup = () => {
+    if (!attemptInputRef.current) return;
+    cleanupConfirmedWindowRef.current = attemptInputRef.current;
+    setWindowPreview({ startsAt: "", endsAt: "" });
+    setFieldErrors({});
+    setNotice(null);
+    attemptIdRef.current = createStandaloneAccessCodeAttemptId();
+    focusNameAfterEditRemountRef.current = true;
+    setCreation({ kind: "editing" });
   };
 
   const fieldError = (
@@ -331,31 +368,58 @@ export function CreateStandaloneAccessCodeForm() {
     );
   }
 
-  if (creation.kind === "ambiguous") {
+  if (creation.kind === "cleanup-confirm") {
     return (
       <div
-        data-standalone-access-code-creation="ambiguous"
+        data-standalone-access-code-creation={creation.reason}
         ref={resultRef}
         tabIndex={-1}
       >
         <AdministrationAlert role="alert" status="warning">
-          The provider did not confirm whether this access code exists. This
-          attempt is closed; it will not be retried automatically.
+          {creation.reason === "ambiguous"
+            ? "The provider did not confirm whether this access code exists. This attempt is closed; it will not be retried automatically."
+            : "A previous attempt for this window is still ambiguous. Its possible credential must be resolved at the lock before another code is created."}
         </AdministrationAlert>
         <p className="mt-5 text-sm leading-6 text-navy-blue/70">
           Before creating another code for this window, check the lock in the
           Igloohome app over Bluetooth and remove “{creation.name}” if it is
           there.
         </p>
-        <div className="mt-6 border-t border-navy-blue/10 pt-5">
-          <Button
-            className="w-full sm:w-auto"
-            onClick={resetForm}
-            type="button"
-          >
-            Start over
-          </Button>
-        </div>
+        <form
+          aria-label="Confirm the lock is clean"
+          className="mt-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!cleanupConfirmed) return;
+            confirmLockCleanup();
+          }}
+        >
+          <label className="flex items-start gap-3 text-sm leading-6 text-navy-blue">
+            <input
+              checked={cleanupConfirmed}
+              name="providerCredentialRemoved"
+              onChange={(event) => setCleanupConfirmed(event.target.checked)}
+              type="checkbox"
+            />
+            <span>{standaloneAccessCodeCleanupConfirmationLabel}</span>
+          </label>
+          <div className="mt-6 flex flex-wrap gap-3 border-t border-navy-blue/10 pt-5">
+            <Button disabled={!cleanupConfirmed} type="submit">
+              <Plus aria-hidden className="size-4" />
+              Create another access code
+            </Button>
+            <Button
+              onClick={() => {
+                setCleanupConfirmed(false);
+                resetForm();
+              }}
+              type="button"
+              variant="secondary"
+            >
+              Start over
+            </Button>
+          </div>
+        </form>
       </div>
     );
   }

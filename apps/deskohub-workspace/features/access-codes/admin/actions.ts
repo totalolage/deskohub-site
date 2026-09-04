@@ -50,6 +50,7 @@ const createStandaloneAccessCodeAction = defineWorkspaceAction(
           actor,
           source: "admin-ui",
           request,
+          providerCredentialRemoved: input.providerCredentialRemoved === true,
         })
         .pipe(Effect.result);
       return Result.match(outcome, {

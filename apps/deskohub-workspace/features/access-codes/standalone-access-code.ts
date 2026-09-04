@@ -16,6 +16,7 @@ export const standaloneAccessCodeAttemptEventKinds = [
   "created",
   "rejected",
   "ambiguous",
+  "reconciled",
 ] as const;
 export type StandaloneAccessCodeAttemptEventKind =
   (typeof standaloneAccessCodeAttemptEventKinds)[number];
@@ -52,4 +53,6 @@ export type StandaloneAccessCodeCreationOutcome =
   | "rejected"
   | "ambiguous"
   | "in-progress"
-  | "unavailable";
+  | "unavailable"
+  | "cleanup-required"
+  | "reconciled";

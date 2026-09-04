@@ -20,6 +20,7 @@ import {
   CliMutationRequestId,
   CliMutationUncertain,
   CliSessionId,
+  CliStandaloneAccessCodeReconciled,
 } from "@deskohub/workspace-admin-api";
 import { Clock, Duration, Effect, Layer, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -1067,20 +1068,23 @@ describe("WorkspaceAdminApiClient", () => {
         const created = yield* client.createStandaloneAccessCode(
           accessToken,
           accessCodeAttemptId,
-          accessCodeInput
+          accessCodeInput,
+          false
         );
         const uncertain = yield* client
           .createStandaloneAccessCode(
             accessToken,
             accessCodeAttemptId,
-            accessCodeInput
+            accessCodeInput,
+            false
           )
           .pipe(Effect.flip);
         const rejected = yield* client
           .createStandaloneAccessCode(
             accessToken,
             accessCodeAttemptId,
-            accessCodeInput
+            accessCodeInput,
+            true
           )
           .pipe(Effect.flip);
         return [created, uncertain, rejected] as const;
@@ -1134,7 +1138,11 @@ describe("WorkspaceAdminApiClient", () => {
         {
           method: "POST",
           path: "/api/v1/cli/access-codes",
-          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+          payload: {
+            attemptId: accessCodeAttemptId,
+            input: accessCodeInput,
+            providerCredentialRemoved: true,
+          },
         },
       ]);
     } finally {
@@ -1173,6 +1181,70 @@ describe("WorkspaceAdminApiClient", () => {
 
       expect(error).toBeInstanceOf(CliApiRequestError);
       expect(JSON.stringify(error)).not.toContain(code);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("passes a confirmed reconciled replay through as a typed error", async () => {
+    const requests: Array<unknown> = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        requests.push({
+          payload: await request.json(),
+          authorization: request.headers.get("authorization"),
+        });
+        return Response.json(
+          {
+            _tag: "CliStandaloneAccessCodeReconciled",
+            message:
+              "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Run the same command again to create the code.",
+          },
+          { status: 409 }
+        );
+      },
+    });
+
+    try {
+      const accessToken = Redacted.make(
+        Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+      );
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-reconciled-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const error = await WorkspaceAdminApiClient.pipe(
+        Effect.flatMap((client) =>
+          client.createStandaloneAccessCode(
+            accessToken,
+            accessCodeAttemptId,
+            accessCodeInput,
+            true
+          )
+        ),
+        Effect.flip,
+        Effect.provide(clientLayer),
+        Effect.runPromise
+      );
+
+      expect(error).toBeInstanceOf(CliStandaloneAccessCodeReconciled);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        payload: {
+          attemptId: accessCodeAttemptId,
+          input: accessCodeInput,
+          providerCredentialRemoved: true,
+        },
+      });
     } finally {
       server.stop(true);
     }

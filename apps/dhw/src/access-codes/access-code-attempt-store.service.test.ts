@@ -6,7 +6,7 @@ import {
   CliSessionId,
 } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
-import { Crypto, Effect, Layer, Schema } from "effect";
+import { Crypto, Effect, FileSystem, Layer, Path, Schema } from "effect";
 import { KeyValueStore } from "effect/unstable/persistence";
 import {
   type AccessCodeAttemptIdentity,
@@ -44,12 +44,18 @@ const makeMemoryKv = Effect.gen(function* () {
   return keyValueStore;
 }).pipe(Effect.provide(KeyValueStore.layerMemory));
 
-const makeStore = (keyValueStore: KeyValueStore.KeyValueStore) =>
+const makeStore = (
+  keyValueStore: KeyValueStore.KeyValueStore,
+  directory = `/tmp/dhw-store-mem-${crypto.randomUUID()}`
+) =>
   Effect.gen(function* () {
     const crypto = yield* Crypto.Crypto;
+    const fileSystem = yield* FileSystem.FileSystem;
     return yield* makeAccessCodeAttemptStore({
       storeLayer: Layer.succeed(KeyValueStore.KeyValueStore, keyValueStore),
       crypto,
+      fileSystem,
+      directory,
     });
   }).pipe(Effect.provide(BunServices.layer));
 
@@ -78,6 +84,27 @@ const withoutSet = (keyValueStore: KeyValueStore.KeyValueStore) =>
         })
       ),
   }) as KeyValueStore.KeyValueStore;
+
+const makeFileStore = (
+  directory: string,
+  lockOptions?: { readonly waitMilliseconds: number }
+) =>
+  Effect.gen(function* () {
+    const crypto = yield* Crypto.Crypto;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const storeLayer = KeyValueStore.layerFileSystem(directory).pipe(
+      Layer.provide(Layer.succeed(FileSystem.FileSystem, fileSystem)),
+      Layer.provide(Layer.succeed(Path.Path, path))
+    );
+    return yield* makeAccessCodeAttemptStore({
+      storeLayer,
+      crypto,
+      fileSystem,
+      directory,
+      ...(lockOptions && { lockOptions }),
+    });
+  }).pipe(Effect.provide(BunServices.layer));
 
 describe("AccessCodeAttemptStore", () => {
   test("keeps reservations independent per session and request identity", async () => {
@@ -166,5 +193,153 @@ describe("AccessCodeAttemptStore", () => {
     }).pipe(Effect.runPromise);
 
     expect(result).toBeInstanceOf(KeyValueStore.KeyValueStoreError);
+  });
+
+  test("reserves one attempt id across concurrent store instances", async () => {
+    const directory = `/tmp/dhw-store-race-${crypto.randomUUID()}`;
+    const attemptIds = await Effect.gen(function* () {
+      const stores = yield* Effect.all(
+        [
+          makeFileStore(directory),
+          makeFileStore(directory),
+          makeFileStore(directory),
+        ],
+        { concurrency: "unbounded" }
+      );
+      return yield* Effect.all(
+        stores.map((store) => store.reserve(identityA)),
+        { concurrency: "unbounded" }
+      );
+    }).pipe(Effect.runPromise);
+
+    try {
+      expect(new Set(attemptIds).size).toBe(1);
+    } finally {
+      await FileSystem.FileSystem.pipe(
+        Effect.flatMap((fileSystem) =>
+          fileSystem.remove(directory, { recursive: true })
+        ),
+        Effect.provide(BunServices.layer),
+        Effect.runPromise
+      ).catch(() => {});
+    }
+  });
+
+  test("fails closed while another live process holds the reservation lock", async () => {
+    const directory = `/tmp/dhw-store-race-${crypto.randomUUID()}`;
+    const error = await Effect.gen(function* () {
+      const crypto = yield* Crypto.Crypto;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const holder = yield* makeFileStore(directory);
+      yield* holder.reserve(identityA);
+      const reservationKey = yield* accessCodeAttemptReservationKey({
+        crypto,
+        identity: identityA,
+      });
+      const lockPath = `${directory}/${reservationKey}.lock`;
+      yield* fileSystem.writeFileString(lockPath, "another live process");
+      const contender = yield* makeFileStore(directory, {
+        waitMilliseconds: 300,
+      });
+      return yield* Effect.flip(contender.reserve(identityA));
+    })
+      .pipe(Effect.provide(BunServices.layer), Effect.runPromise)
+      .finally(() => {
+        void FileSystem.FileSystem.pipe(
+          Effect.flatMap((fileSystem) =>
+            fileSystem.remove(directory, { recursive: true })
+          ),
+          Effect.provide(BunServices.layer),
+          Effect.runPromise
+        ).catch(() => {});
+      });
+
+    expect(error.message).toContain("locked by another process");
+  });
+
+  test("never steals an aged lock and fails closed with manual recovery", async () => {
+    const directory = `/tmp/dhw-store-race-${crypto.randomUUID()}`;
+    const result = await Effect.gen(function* () {
+      const crypto = yield* Crypto.Crypto;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const holder = yield* makeFileStore(directory);
+      const firstAttemptId = yield* holder.reserve(identityA);
+      const reservationKey = yield* accessCodeAttemptReservationKey({
+        crypto,
+        identity: identityA,
+      });
+      const lockPath = `${directory}/${reservationKey}.lock`;
+      yield* fileSystem.writeFileString(lockPath, "dead process");
+      yield* fileSystem.utimes(
+        lockPath,
+        new Date(Date.now() - 60_000),
+        new Date(Date.now() - 60_000)
+      );
+
+      const contender = yield* makeFileStore(directory, {
+        waitMilliseconds: 200,
+      });
+      const error = yield* Effect.flip(contender.reserve(identityA));
+
+      const lockStillPresent = yield* fileSystem.readFileString(lockPath);
+      expect(lockStillPresent).toBe("dead process");
+      expect(error.message).toContain("locked by another process");
+      expect(error.message).toContain(lockPath);
+
+      yield* fileSystem.remove(lockPath);
+      const recoveredAttemptId = yield* contender.reserve(identityA);
+      return { firstAttemptId, recoveredAttemptId };
+    })
+      .pipe(Effect.provide(BunServices.layer), Effect.runPromise)
+      .finally(() => {
+        void FileSystem.FileSystem.pipe(
+          Effect.flatMap((fileSystem) =>
+            fileSystem.remove(directory, { recursive: true })
+          ),
+          Effect.provide(BunServices.layer),
+          Effect.runPromise
+        ).catch(() => {});
+      });
+
+    expect(result.recoveredAttemptId).toBe(result.firstAttemptId);
+  });
+
+  test("releases only its own lock and leaves a foreign lock untouched", async () => {
+    const directory = `/tmp/dhw-store-race-${crypto.randomUUID()}`;
+    await Effect.gen(function* () {
+      const crypto = yield* Crypto.Crypto;
+      const fileSystem = yield* FileSystem.FileSystem;
+      const store = yield* makeFileStore(directory);
+      const attemptId = yield* store.reserve(identityA);
+      const reservationKey = yield* accessCodeAttemptReservationKey({
+        crypto,
+        identity: identityA,
+      });
+      const lockPath = `${directory}/${reservationKey}.lock`;
+
+      expect(yield* fileSystem.exists(lockPath)).toBe(false);
+
+      yield* fileSystem.writeFileString(lockPath, "owned by someone else");
+      const contender = yield* makeFileStore(directory, {
+        waitMilliseconds: 200,
+      });
+      const error = yield* Effect.flip(contender.reserve(identityA));
+      expect(error.message).toContain("locked by another process");
+
+      expect(yield* fileSystem.readFileString(lockPath)).toBe(
+        "owned by someone else"
+      );
+      expect(attemptId).toBeDefined();
+    })
+      .pipe(Effect.provide(BunServices.layer), Effect.runPromise)
+      .finally(() => {
+        void FileSystem.FileSystem.pipe(
+          Effect.flatMap((fileSystem) =>
+            fileSystem.remove(directory, { recursive: true })
+          ),
+          Effect.provide(BunServices.layer),
+          Effect.runPromise
+        ).catch(() => {});
+      });
   });
 });

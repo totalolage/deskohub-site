@@ -25,6 +25,7 @@ import {
   type AdministrationReservationAccessMutationType,
   AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
+  type AdministrationStandaloneAccessCodeAttemptIdType,
   AdministrationStandaloneAccessCodeCreateInput,
   type AdministrationStandaloneAccessCodeCreateInputType,
   type AdministrationStandaloneAccessCodeCreationOutcomeType,
@@ -43,6 +44,8 @@ import {
   CliSessionId,
   type CliSessionType,
   CliSessionUnauthorized,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
   makeCliAuthenticationChallenge,
   makeCliAuthenticationVerifier,
   WORKSPACE_SITE_TIME_ZONE,
@@ -1863,9 +1866,14 @@ const accessCodesCreateCommand = Command.make(
       Flag.withSchema(AdministrationWorkspaceSiteLocalWholeHourDateTime),
       Flag.withDescription("Exclusive site-local end (YYYY-MM-DDTHH:mm)")
     ),
+    providerCredentialRemoved: Flag.boolean("provider-credential-removed").pipe(
+      Flag.withDescription(
+        "Confirm the possible AlgoPIN was removed or verified absent in Igloohome"
+      )
+    ),
     yes: confirmationFlag,
   },
-  ({ endsAt, name, startsAt, yes }) =>
+  ({ endsAt, name, providerCredentialRemoved, startsAt, yes }) =>
     runAuthenticatedCommand((api, accessToken, json, session) =>
       Effect.gen(function* () {
         if (session.approvedBy === null) {
@@ -1896,6 +1904,24 @@ const accessCodesCreateCommand = Command.make(
         }
         const attemptStore = yield* AccessCodeAttemptStore;
         const identity = { sessionId: session.id, request };
+        const issueCreation = (
+          currentAttemptId: AdministrationStandaloneAccessCodeAttemptIdType,
+          confirmedCleanup: boolean
+        ) =>
+          api
+            .createStandaloneAccessCode(
+              accessToken,
+              currentAttemptId,
+              request,
+              confirmedCleanup
+            )
+            .pipe(
+              Effect.catchIf(isConclusiveAccessCodeCreationError, (error) =>
+                attemptStore
+                  .forget(identity, currentAttemptId)
+                  .pipe(Effect.andThen(Effect.fail(error)))
+              )
+            );
         const attemptId = yield* attemptStore.reserve(identity).pipe(
           Effect.mapError(
             () =>
@@ -1905,16 +1931,21 @@ const accessCodesCreateCommand = Command.make(
               })
           )
         );
-        const outcome = yield* api
-          .createStandaloneAccessCode(accessToken, attemptId, request)
-          .pipe(
-            Effect.catchIf(isConclusiveAccessCodeCreationError, (error) =>
-              attemptStore
-                .forget(identity, attemptId)
-                .pipe(Effect.andThen(Effect.fail(error)))
+        let issuedAttemptId = attemptId;
+        const outcome = yield* issueCreation(
+          issuedAttemptId,
+          providerCredentialRemoved
+        ).pipe(
+          Effect.catchIf(isReconciledAccessCodeCreationError, () =>
+            attemptStore.reserve(identity).pipe(
+              Effect.flatMap((freshAttemptId) => {
+                issuedAttemptId = freshAttemptId;
+                return issueCreation(freshAttemptId, false);
+              })
             )
-          );
-        yield* attemptStore.forget(identity, attemptId);
+          )
+        );
+        yield* attemptStore.forget(identity, issuedAttemptId);
         yield* Console.log(
           json
             ? JSON.stringify(outcome)
@@ -1934,8 +1965,20 @@ type AccessCodeCreationError = Effect.Error<
 
 const isConclusiveAccessCodeCreationError = (
   error: AccessCodeCreationError
-): error is CliMutationRejected | CliMutationUncertain =>
-  error instanceof CliMutationRejected || error instanceof CliMutationUncertain;
+): error is
+  | CliMutationRejected
+  | CliMutationUncertain
+  | CliStandaloneAccessCodeCleanupRequired
+  | CliStandaloneAccessCodeReconciled =>
+  error instanceof CliMutationRejected ||
+  error instanceof CliMutationUncertain ||
+  error instanceof CliStandaloneAccessCodeCleanupRequired ||
+  error instanceof CliStandaloneAccessCodeReconciled;
+
+const isReconciledAccessCodeCreationError = (
+  error: AccessCodeCreationError
+): error is CliStandaloneAccessCodeReconciled =>
+  error instanceof CliStandaloneAccessCodeReconciled;
 
 export const formatStandaloneAccessCodeOutcome = (
   outcome: AdministrationStandaloneAccessCodeCreationOutcomeType

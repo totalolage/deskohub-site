@@ -288,6 +288,8 @@ export {
   CliSessionMutationResult,
   type CliSessionMutationResult as CliSessionMutationResultType,
   CliSessionUnauthorized,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
   CurrentCliSession,
   ExchangeCliGrant,
   type ExchangeCliGrant as ExchangeCliGrantType,

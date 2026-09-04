@@ -27,6 +27,8 @@ import {
   CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionId,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
   CurrentCliSession,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
@@ -1528,6 +1530,118 @@ describe("standalone access-code CLI endpoint", () => {
     expect(error.requestId).toBe(attemptId);
     expect(reclaims).toBe(1);
     expect(creations).toBe(0);
+  });
+
+  test("reports required at-lock cleanup as a typed error and releases the ledger claim", async () => {
+    let releases = 0;
+    let creations = 0;
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.sync(() => {
+          creations += 1;
+          return createdOutcome;
+        }),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+
+    const cleanupRequired = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.fail(
+          creationFailure(
+            "cleanup-required",
+            "A previous attempt for this window is ambiguous."
+          )
+        ),
+    } as never);
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      cleanupRequired,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliStandaloneAccessCodeCleanupRequired);
+    expect(error.message).toContain("Igloohome");
+    expect(releases).toBe(1);
+    expect(creations).toBe(0);
+    expect(standalone).toBeDefined();
+  });
+
+  test("reports a confirmed reconciled replay as a typed error and releases the ledger claim", async () => {
+    let releases = 0;
+    const reconciled = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: () =>
+        Effect.fail(
+          creationFailure(
+            "reconciled",
+            "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code."
+          )
+        ),
+    } as never);
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+
+    const error = await runAdministration(
+      ActorAuthorizedCliRequest,
+      reconciled,
+      idempotency,
+      createAccessCodeError
+    ).pipe(Effect.runPromise);
+
+    expect(error).toBeInstanceOf(CliStandaloneAccessCodeReconciled);
+    expect(error.message).toContain("Run the same command again");
+    expect(releases).toBe(1);
+  });
+
+  test("forwards the explicit cleanup confirmation to the service", async () => {
+    const creations: Array<{ readonly providerCredentialRemoved: boolean }> =
+      [];
+    const standalone = Layer.succeed(StandaloneAccessCodeAdministration, {
+      create: (input: { readonly providerCredentialRemoved: boolean }) =>
+        Effect.sync(() => {
+          creations.push(input);
+          return createdOutcome;
+        }),
+    });
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: () => Effect.succeed({ kind: "claimed" as const }),
+      complete: () => Effect.void,
+      reclaimStale: () => Effect.succeed(false),
+      release: () => Effect.die("not expected"),
+    });
+
+    await runAdministration(
+      ActorAuthorizedCliRequest,
+      standalone,
+      idempotency,
+      Effect.gen(function* () {
+        const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+          "administration",
+        ]);
+        return yield* client.administration.createStandaloneAccessCode({
+          payload: { ...payload, providerCredentialRemoved: true as const },
+        });
+      })
+    ).pipe(Effect.runPromise);
+
+    expect(creations).toHaveLength(1);
+    expect(creations[0]?.providerCredentialRemoved).toBe(true);
   });
 
   test("resumes a stale claim through the standalone attempt log without another provider call", async () => {

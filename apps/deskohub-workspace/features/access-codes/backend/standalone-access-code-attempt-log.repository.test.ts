@@ -86,6 +86,7 @@ describe.skipIf(!postgresDatabase)(
       readonly attempt: StandaloneAccessCodeAttempt;
       readonly claimedAt?: Temporal.Instant;
       readonly staleBefore?: Temporal.Instant;
+      readonly providerCredentialRemoved?: boolean;
     }) => {
       const claimedAt = input.claimedAt ?? Temporal.Now.instant();
       return attempts.claim({
@@ -96,6 +97,7 @@ describe.skipIf(!postgresDatabase)(
           claimedAt.subtract({
             milliseconds: 60_000,
           }),
+        providerCredentialRemoved: input.providerCredentialRemoved ?? false,
       });
     };
 
@@ -203,6 +205,19 @@ describe.skipIf(!postgresDatabase)(
           failureCode: "standalone_provider_ambiguous",
         })
       );
+
+      const unconfirmed = await Effect.runPromise(
+        claim({ attempt: attemptFixture() })
+      );
+      expect(unconfirmed).toMatchObject({ kind: "cleanup-required" });
+
+      const confirmed = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemoved: true,
+        })
+      );
+      expect(confirmed).toMatchObject({ kind: "claimed", variance: 3 });
 
       const next = await Effect.runPromise(
         claim({ attempt: attemptFixture() })
@@ -367,6 +382,357 @@ describe.skipIf(!postgresDatabase)(
       expect(
         results.filter((result) => result.kind === "exhausted")
       ).toHaveLength(1);
+    });
+
+    test("blocks an unconfirmed new attempt while an ambiguous attempt occupies the window", async () => {
+      const ambiguous = attemptFixture();
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const blockedAttempt = attemptFixture();
+      const blocked = await Effect.runPromise(
+        claim({ attempt: blockedAttempt })
+      );
+
+      expect(blocked).toMatchObject({ kind: "cleanup-required" });
+      expect(await eventKindsOf(blockedAttempt.attemptId)).toEqual([]);
+    });
+
+    test("treats a stale started attempt as ambiguous for the window until reconciled", async () => {
+      const stale = attemptFixture();
+      await Effect.runPromise(claim({ attempt: stale }));
+
+      const blockedAttempt = attemptFixture();
+      const blocked = await Effect.runPromise(
+        claim({
+          attempt: blockedAttempt,
+          staleBefore: Temporal.Now.instant(),
+        })
+      );
+
+      expect(blocked).toMatchObject({ kind: "cleanup-required" });
+      expect(await eventKindsOf(blockedAttempt.attemptId)).toEqual([]);
+    });
+
+    test("does not treat an old created attempt as unresolved ambiguity", async () => {
+      const created = attemptFixture();
+      const staleClaimedAt = Temporal.Now.instant().subtract({ minutes: 5 });
+      await Effect.runPromise(
+        claim({ attempt: created, claimedAt: staleClaimedAt })
+      );
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: created,
+          variance: 2,
+          eventKind: "created",
+          occurredAt: staleClaimedAt,
+          providerCredentialId,
+        })
+      );
+
+      const next = attemptFixture();
+      const unconfirmed = await Effect.runPromise(claim({ attempt: next }));
+      expect(unconfirmed).toMatchObject({ kind: "claimed", variance: 3 });
+
+      const reconciledRows = (await loadEvents(created.attemptId)).filter(
+        ({ eventKind }) => eventKind === "reconciled"
+      );
+      expect(reconciledRows).toHaveLength(0);
+    });
+
+    test("never reconciles a created attempt even with explicit confirmation", async () => {
+      const created = attemptFixture();
+      const staleClaimedAt = Temporal.Now.instant().subtract({ minutes: 5 });
+      await Effect.runPromise(
+        claim({ attempt: created, claimedAt: staleClaimedAt })
+      );
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: created,
+          variance: 2,
+          eventKind: "created",
+          occurredAt: staleClaimedAt,
+          providerCredentialId,
+        })
+      );
+
+      const confirmed = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemoved: true,
+        })
+      );
+      expect(confirmed).toMatchObject({ kind: "claimed", variance: 3 });
+
+      const reconciledRows = (await loadEvents(created.attemptId)).filter(
+        ({ eventKind }) => eventKind === "reconciled"
+      );
+      expect(reconciledRows).toHaveLength(0);
+    });
+
+    test("does not treat an old rejected attempt as unresolved ambiguity", async () => {
+      const rejected = attemptFixture();
+      const staleClaimedAt = Temporal.Now.instant().subtract({ minutes: 5 });
+      await Effect.runPromise(
+        claim({ attempt: rejected, claimedAt: staleClaimedAt })
+      );
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: rejected,
+          variance: 2,
+          eventKind: "rejected",
+          occurredAt: staleClaimedAt,
+          failureCode: "standalone_provider_rejected",
+          providerStatusCode: 422,
+        })
+      );
+
+      const next = attemptFixture();
+      const unconfirmed = await Effect.runPromise(claim({ attempt: next }));
+      expect(unconfirmed).toMatchObject({ kind: "claimed", variance: 2 });
+
+      const reconciledRows = (await loadEvents(rejected.attemptId)).filter(
+        ({ eventKind }) => eventKind === "reconciled"
+      );
+      expect(reconciledRows).toHaveLength(0);
+    });
+
+    test("reports cleanup-required before capacity exhaustion", async () => {
+      const ambiguous = attemptFixture();
+      const created = attemptFixture();
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(claim({ attempt: created }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: created,
+          variance: 3,
+          eventKind: "created",
+          occurredAt: Temporal.Now.instant(),
+          providerCredentialId,
+        })
+      );
+
+      const next = await Effect.runPromise(
+        claim({ attempt: attemptFixture() })
+      );
+
+      expect(next).toMatchObject({ kind: "cleanup-required" });
+    });
+
+    test("frees only the confirmed ambiguous variance after explicit reconciliation", async () => {
+      const ambiguous = attemptFixture();
+      const created = attemptFixture();
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(claim({ attempt: created }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: created,
+          variance: 3,
+          eventKind: "created",
+          occurredAt: Temporal.Now.instant(),
+          providerCredentialId,
+        })
+      );
+
+      const confirmed = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemoved: true,
+        })
+      );
+
+      expect(confirmed).toMatchObject({ kind: "claimed", variance: 2 });
+      expect(await eventKindsOf(ambiguous.attemptId)).toEqual([
+        "ambiguous",
+        "reconciled",
+        "started",
+      ]);
+      const reconciled = (await loadEvents(ambiguous.attemptId)).find(
+        ({ eventKind }) => eventKind === "reconciled"
+      );
+      expect(reconciled?.actor).toBe(actor);
+      expect(reconciled?.failureCode).toBeNull();
+      expect(reconciled?.providerCredentialId).toBeNull();
+    });
+
+    test("reconciles a stale started attempt and still replays it as ambiguous", async () => {
+      const stale = attemptFixture();
+      await Effect.runPromise(claim({ attempt: stale }));
+
+      const confirmed = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemoved: true,
+          staleBefore: Temporal.Now.instant(),
+        })
+      );
+      expect(confirmed).toMatchObject({ kind: "claimed", variance: 2 });
+
+      const staleReplay = await Effect.runPromise(
+        claim({ attempt: stale, staleBefore: Temporal.Now.instant() })
+      );
+      expect(staleReplay).toMatchObject({
+        kind: "ambiguous",
+        failureCode: "standalone_attempt_stale",
+      });
+    });
+
+    test("keeps replaying a reconciled ambiguous attempt as ambiguous", async () => {
+      const ambiguous = attemptFixture();
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const confirmed = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemoved: true,
+        })
+      );
+      expect(confirmed).toMatchObject({ kind: "claimed", variance: 2 });
+
+      const replay = await Effect.runPromise(claim({ attempt: ambiguous }));
+      expect(replay).toMatchObject({
+        kind: "ambiguous",
+        failureCode: "standalone_provider_ambiguous",
+      });
+    });
+
+    test("reports a reconciled replay without re-executing the attempt", async () => {
+      const ambiguous = attemptFixture();
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const reconciledReplay = await Effect.runPromise(
+        claim({
+          attempt: ambiguous,
+          providerCredentialRemoved: true,
+        })
+      );
+      expect(reconciledReplay).toMatchObject({ kind: "reconciled" });
+      expect(await eventKindsOf(ambiguous.attemptId)).toEqual([
+        "ambiguous",
+        "reconciled",
+        "started",
+      ]);
+
+      const unconfirmedReplay = await Effect.runPromise(
+        claim({ attempt: ambiguous })
+      );
+      expect(unconfirmedReplay).toMatchObject({ kind: "ambiguous" });
+    });
+
+    test("records reconciliation at most once per attempt across confirmed claims", async () => {
+      const ambiguous = attemptFixture();
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const first = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemoved: true,
+        })
+      );
+      const second = await Effect.runPromise(
+        claim({
+          attempt: attemptFixture(),
+          providerCredentialRemoved: true,
+        })
+      );
+
+      expect(first).toMatchObject({ kind: "claimed" });
+      expect(second).toMatchObject({ kind: "claimed" });
+      const reconciledRows = (await loadEvents(ambiguous.attemptId)).filter(
+        ({ eventKind }) => eventKind === "reconciled"
+      );
+      expect(reconciledRows).toHaveLength(1);
+    });
+
+    test("reconciles exactly once under concurrent confirmed claims", async () => {
+      const ambiguous = attemptFixture();
+      await Effect.runPromise(claim({ attempt: ambiguous }));
+      await Effect.runPromise(
+        attempts.appendTerminal({
+          attempt: ambiguous,
+          variance: 2,
+          eventKind: "ambiguous",
+          occurredAt: Temporal.Now.instant(),
+          failureCode: "standalone_provider_ambiguous",
+        })
+      );
+
+      const results = await Promise.all([
+        Effect.runPromise(
+          claim({
+            attempt: attemptFixture(),
+            providerCredentialRemoved: true,
+          })
+        ),
+        Effect.runPromise(
+          claim({
+            attempt: attemptFixture(),
+            providerCredentialRemoved: true,
+          })
+        ),
+      ]);
+
+      expect(results.map(({ kind }) => kind).sort()).toEqual([
+        "claimed",
+        "claimed",
+      ]);
+      const reconciledRows = (await loadEvents(ambiguous.attemptId)).filter(
+        ({ eventKind }) => eventKind === "reconciled"
+      );
+      expect(reconciledRows).toHaveLength(1);
     });
 
     test("keeps concurrent identical claims at most once", async () => {

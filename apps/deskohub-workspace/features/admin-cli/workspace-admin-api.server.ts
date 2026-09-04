@@ -15,6 +15,8 @@ import {
   CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionUnauthorized,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
   CurrentCliSession,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
@@ -437,6 +439,8 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                 actor: session.approvedBy,
                 source: "dhw-cli",
                 request: payload.input,
+                providerCredentialRemoved:
+                  payload.providerCredentialRemoved === true,
               })
               .pipe(
                 Effect.mapError((cause) =>
@@ -444,7 +448,9 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                 ),
                 Effect.tapError((cause) =>
                   cause instanceof CliMutationRejected ||
-                  cause instanceof CliServiceUnavailable
+                  cause instanceof CliServiceUnavailable ||
+                  cause instanceof CliStandaloneAccessCodeCleanupRequired ||
+                  cause instanceof CliStandaloneAccessCodeReconciled
                     ? mutationIdempotency
                         .release(request)
                         .pipe(Effect.catch(() => Effect.void))
@@ -693,6 +699,22 @@ const mapStandaloneAccessCodeCreationFailure = (
         new CliMutationUncertain({
           message:
             "The standalone access-code creation outcome is ambiguous. Do not retry automatically; reconcile the attempt in Igloohome.",
+        })
+    ),
+    Match.when(
+      "cleanup-required",
+      () =>
+        new CliStandaloneAccessCodeCleanupRequired({
+          message:
+            "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then rerun with --provider-credential-removed to confirm the cleanup.",
+        })
+    ),
+    Match.when(
+      "reconciled",
+      () =>
+        new CliStandaloneAccessCodeReconciled({
+          message:
+            "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Run the same command again to create the code.",
         })
     ),
     Match.when(

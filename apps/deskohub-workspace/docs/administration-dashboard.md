@@ -47,6 +47,8 @@ A definitively failed access issuance can be retried. An uncertain issuance can 
 
 A provisioning attempt that remains incomplete for one minute is treated as equally ambiguous and follows the same manual cleanup workflow. A current provisioning attempt cannot be reconciled while it may still be completing.
 
+When a window still has an unreconciled ambiguous or stale attempt, a new creation for that exact device and window is refused with an explicit cleanup-required outcome before any provider call, regardless of remaining capacity. The refusal is discovered server-side, so it also applies after a page reload or a new CLI process. The operator's explicit confirmation is recorded as an append-only reconciliation event under the same device-and-window lock, which frees only the confirmed attempt; replaying the old ambiguous attempt identifier without confirmation still reports its ambiguous outcome, while a confirmed replay records the reconciliation and reports a reconciled outcome that authorizes the CLI to issue a fresh attempt in the same invocation. The confirmation control appears in the administration form and as a `dhw` flag only after an ambiguous or cleanup-required result.
+
 ## Reservation presentation
 
 A reservation presents an actual-state journey through Started, Held, Paid, and Complete, or an exact cancellation condition such as Hold expired, Cancelling, Cancellation issue, or Cancelled.

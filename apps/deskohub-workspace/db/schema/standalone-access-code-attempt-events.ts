@@ -78,6 +78,9 @@ export const standaloneAccessCodeAttemptEvents = pgTable(
       .where(
         sql`${t.eventKind} in (${quotedSqlList(standaloneAccessCodeTerminalEventKinds)})`
       ),
+    uniqueIndex("standalone_access_code_attempt_events_reconciled_unique_idx")
+      .on(t.attemptId)
+      .where(sql`${t.eventKind} = 'reconciled'`),
     index("standalone_access_code_attempt_events_window_idx").on(
       t.deviceId,
       t.startsAt,

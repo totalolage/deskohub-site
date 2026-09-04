@@ -63,6 +63,8 @@ import {
   type CliSessionMutationResultType,
   type CliSessionType,
   CliSessionUnauthorized,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
   type ExchangeCliGrantType,
   type GrantedCliSessionType,
   type RenameCliSessionType,
@@ -324,13 +326,16 @@ interface IWorkspaceAdminApiClient {
   readonly createStandaloneAccessCode: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
     attemptId: AdministrationStandaloneAccessCodeAttemptIdType,
-    input: AdministrationStandaloneAccessCodeCreateInputType
+    input: AdministrationStandaloneAccessCodeCreateInputType,
+    providerCredentialRemoved: boolean
   ) => Effect.Effect<
     AdministrationStandaloneAccessCodeCreationOutcomeType,
     | CliApiRequestError
     | CliMutationInProgress
     | CliMutationRejected
     | CliMutationUncertain
+    | CliStandaloneAccessCodeCleanupRequired
+    | CliStandaloneAccessCodeReconciled
     | CliSessionUnauthorized
     | CliServiceUnavailable
   >;
@@ -757,12 +762,19 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
       (
         accessToken,
         attemptId: AdministrationStandaloneAccessCodeAttemptIdType,
-        input: AdministrationStandaloneAccessCodeCreateInputType
+        input: AdministrationStandaloneAccessCodeCreateInputType,
+        providerCredentialRemoved: boolean
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.createStandaloneAccessCode({
-              payload: { attemptId, input },
+              payload: {
+                attemptId,
+                input,
+                ...(providerCredentialRemoved && {
+                  providerCredentialRemoved: true as const,
+                }),
+              },
             })
           ),
           Effect.retry({
@@ -963,6 +975,8 @@ const sanitizeAccessCodeCreationError = (
     | CliMutationInProgress
     | CliMutationRejected
     | CliMutationUncertain
+    | CliStandaloneAccessCodeCleanupRequired
+    | CliStandaloneAccessCodeReconciled
     | CliServiceUnavailable
     | CliSessionUnauthorized
     | HttpClientError.HttpClientError
@@ -970,6 +984,8 @@ const sanitizeAccessCodeCreationError = (
 ) =>
   cause instanceof CliMutationInProgress ||
   cause instanceof CliMutationRejected ||
-  cause instanceof CliMutationUncertain
+  cause instanceof CliMutationUncertain ||
+  cause instanceof CliStandaloneAccessCodeCleanupRequired ||
+  cause instanceof CliStandaloneAccessCodeReconciled
     ? cause
     : sanitizeSessionError(cause);

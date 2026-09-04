@@ -201,15 +201,29 @@ automatically.
 
 `dhw` reserves the attempt identifier in its local state directory before
 sending the creation request, one reservation per CLI session and request
-window. Rerunning the same command on the same machine and session reuses its
-own reserved identifier, so an interrupted or unanswered creation cannot
+window, protected by a per-request lock file that carries an owner token: a
+contender never steals a lock, waits a bounded time, then fails closed with
+manual-recovery instructions, and release verifies ownership before removing
+the lock. Rerunning the same command on the same machine and session reuses
+its own reserved identifier, so an interrupted or unanswered creation cannot
 create a second code, and a different request cannot overwrite an unrelated
 reservation. The reservation is released once creation concludes — created,
-already created, rejected, or uncertain — so a later intentional creation
-requests a fresh identifier; if the concluded reservation cannot be deleted,
-it is marked concluded, which also forces a fresh identifier. When the local
-reservation cannot be written or read, the command refuses to create the
-access code instead of risking a duplicate.
+already created, rejected, uncertain, cleanup-required, or reconciled — so a
+later intentional creation requests a fresh identifier; if the concluded
+reservation cannot be deleted, it is marked concluded, which also forces a
+fresh identifier. When the local reservation cannot be written or read, the
+command refuses to create the access code instead of risking a duplicate.
+
+When the Workspace reports that a prior ambiguous or stale attempt still
+occupies the window, the command fails with a cleanup-required error without
+calling the provider. After removing the possible credential with the
+Igloohome app over Bluetooth, or verifying it is absent, rerun with
+`--provider-credential-removed` to confirm the cleanup; the server records the
+reconciliation and creates the new code in one transaction. If that rerun
+resumed an earlier attempt identifier whose server-side outcome was already
+terminal ambiguous, the server records the reconciliation and answers with a
+reconciled signal, and `dhw` automatically reissues the creation under a fresh
+identifier within the same invocation.
 
 ## Development
 

@@ -231,6 +231,20 @@ export class CliMutationUncertain extends Schema.TaggedErrorClass<CliMutationUnc
   static schema = this.pipe(HttpApiSchema.status("Conflict"));
 }
 
+export class CliStandaloneAccessCodeCleanupRequired extends Schema.TaggedErrorClass<CliStandaloneAccessCodeCleanupRequired>()(
+  "CliStandaloneAccessCodeCleanupRequired",
+  { message: Schema.String }
+) {
+  static schema = this.pipe(HttpApiSchema.status("Conflict"));
+}
+
+export class CliStandaloneAccessCodeReconciled extends Schema.TaggedErrorClass<CliStandaloneAccessCodeReconciled>()(
+  "CliStandaloneAccessCodeReconciled",
+  { message: Schema.String }
+) {
+  static schema = this.pipe(HttpApiSchema.status("Conflict"));
+}
+
 export class CliBearerAuthentication extends HttpApiMiddleware.Service<
   CliBearerAuthentication,
   { provides: CurrentCliSession }
@@ -1150,10 +1164,11 @@ export type AdministrationStandaloneAccessCodeCreateInput =
 export const AdministrationStandaloneAccessCodeCreateRequest = Schema.Struct({
   attemptId: AdministrationStandaloneAccessCodeAttemptId,
   input: AdministrationStandaloneAccessCodeCreateInput,
+  providerCredentialRemoved: Schema.optionalKey(Schema.Literal(true)),
 }).annotate({
   identifier: "AdministrationStandaloneAccessCodeCreateRequest",
   description:
-    "CLI standalone access-code creation request; the client-generated attempt identifier is also the CLI mutation-ledger request identifier.",
+    "CLI standalone access-code creation request; the client-generated attempt identifier is also the CLI mutation-ledger request identifier. The provider-credential confirmation is required when a prior ambiguous attempt occupies the window.",
   parseOptions: { errors: "all", onExcessProperty: "error" },
 });
 export type AdministrationStandaloneAccessCodeCreateRequest =
@@ -2068,6 +2083,8 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
         CliMutationRejected.schema,
         CliMutationUncertain.schema,
         CliServiceUnavailable.schema,
+        CliStandaloneAccessCodeCleanupRequired.schema,
+        CliStandaloneAccessCodeReconciled.schema,
       ],
     })
   )

@@ -17,6 +17,7 @@ export const createStandaloneAccessCodeInputSchema = Schema.toStandardSchemaV1(
   Schema.Struct({
     attemptId: AdministrationStandaloneAccessCodeAttemptId,
     ...AdministrationStandaloneAccessCodeCreateInput.fields,
+    providerCredentialRemoved: Schema.optionalKey(Schema.Literal(true)),
   }),
   { parseOptions: { errors: "all", onExcessProperty: "error" } }
 );
@@ -194,6 +195,9 @@ export const formatStandaloneAccessCodeLocalDateTime = (value: string) =>
 export const formatStandaloneAccessCodeDuration = (hours: number) =>
   `${hours} ${hours === 1 ? "hour" : "hours"}`;
 
+export const standaloneAccessCodeCleanupConfirmationLabel =
+  "I removed the named access code at the lock, or verified that it is absent.";
+
 export const standaloneAccessCodeFailureNotices = {
   rejected:
     "The provider rejected this access code. Adjust the details and try again.",
@@ -201,8 +205,13 @@ export const standaloneAccessCodeFailureNotices = {
     "This access code is already being created. Wait a moment and try again.",
   unavailable:
     "Access-code creation is temporarily unavailable. Try again in a few minutes.",
+  reconciled:
+    "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Submit again to create the access code.",
 } satisfies Record<
-  Exclude<StandaloneAccessCodeCreationOutcome, "ambiguous">,
+  Exclude<
+    StandaloneAccessCodeCreationOutcome,
+    "ambiguous" | "cleanup-required"
+  >,
   string
 >;
 

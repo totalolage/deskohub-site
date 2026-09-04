@@ -491,6 +491,110 @@ describe("CreateStandaloneAccessCodeForm", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
+  test("requires explicit confirmation before recreating an ambiguous window", async () => {
+    withActionOptions();
+    const view = await renderForm();
+    fillForm(view);
+    submitForm(view);
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: { outcome: "failed", kind: "ambiguous" },
+      });
+    });
+
+    const checkbox = view.getByLabelText(
+      "I removed the named access code at the lock, or verified that it is absent."
+    ) as HTMLInputElement;
+    expect(checkbox.type).toBe("checkbox");
+    expect(checkbox.checked).toBe(false);
+    expect(
+      view
+        .getByRole("button", { name: "Create another access code" })
+        .hasAttribute("disabled")
+    ).toBe(true);
+
+    fireEvent.click(checkbox);
+    expect(
+      view
+        .getByRole("button", { name: "Create another access code" })
+        .hasAttribute("disabled")
+    ).toBe(false);
+
+    fireEvent.submit(
+      view.getByRole("form", { name: "Confirm the lock is clean" })
+    );
+    fillForm(view);
+    submitForm(view);
+
+    const confirmedInput = execute.mock
+      .calls[1][0] as CreateStandaloneAccessCodeActionInput;
+    expect(confirmedInput.providerCredentialRemoved).toBe(true);
+
+    submitForm(view);
+    const followUpInput = execute.mock
+      .calls[2][0] as CreateStandaloneAccessCodeActionInput;
+    expect("providerCredentialRemoved" in followUpInput).toBe(false);
+  });
+
+  test("requires the confirmation again after a server-reported cleanup-required outcome", async () => {
+    withActionOptions();
+    const view = await renderForm();
+    fillForm(view);
+    submitForm(view);
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: { outcome: "failed", kind: "cleanup-required" },
+      });
+    });
+
+    expect(
+      view.container.querySelector(
+        '[data-standalone-access-code-creation="cleanup-required"]'
+      )
+    ).not.toBeNull();
+    expect(view.getByText(/still ambiguous/)).toBeDefined();
+    expect(
+      view.getByLabelText(
+        "I removed the named access code at the lock, or verified that it is absent."
+      )
+    ).toBeDefined();
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not resend the cleanup confirmation for a changed window", async () => {
+    withActionOptions();
+    const view = await renderForm();
+    fillForm(view);
+    submitForm(view);
+
+    act(() => {
+      actionOptions?.onSuccess({
+        data: { outcome: "failed", kind: "ambiguous" },
+      });
+    });
+    fireEvent.click(
+      view.getByLabelText(
+        "I removed the named access code at the lock, or verified that it is absent."
+      )
+    );
+    fireEvent.submit(
+      view.getByRole("form", { name: "Confirm the lock is clean" })
+    );
+
+    fillForm(view);
+    fireEvent.change(view.getByLabelText("Name"), {
+      target: { value: "Booth B" },
+    });
+    submitForm(view);
+    const changedInput = execute.mock
+      .calls[1][0] as CreateStandaloneAccessCodeActionInput;
+
+    expect(changedInput.name).toBe("Booth B");
+    expect("providerCredentialRemoved" in changedInput).toBe(false);
+  });
+
   test("keeps the same attempt id when the transport fails", async () => {
     withActionOptions();
     const view = await renderForm();
