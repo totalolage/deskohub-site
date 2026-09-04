@@ -15,6 +15,7 @@ export type OptionalAccountActivityFixture = {
     readonly deletionRequested?: boolean;
   } | null;
   readonly activityState?: "active" | "deletion-requested" | "missing";
+  /** Fails the session authority with the fail-closed `unavailable` reason. */
   readonly sessionUnavailable?: boolean;
   /** Mutated by the fake advisory lock so tests can sample lock state mid-section. */
   readonly lockProbe?: { held: boolean };
@@ -60,7 +61,7 @@ export const makeOptionalAccountActivityGuard = (
   > = (() => {
     if (fixture.sessionUnavailable === true) {
       return Effect.fail(
-        new CustomerAccountAccessError({ reason: "not-configured" })
+        new CustomerAccountAccessError({ reason: "unavailable" })
       );
     }
     if (session === null) return Effect.succeed(null);

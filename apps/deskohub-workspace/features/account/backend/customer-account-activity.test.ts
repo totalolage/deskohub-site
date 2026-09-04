@@ -25,7 +25,7 @@ const makeBackend = (options: {
   readonly sessionUnavailable?: boolean;
 }): GuardBackend => ({
   currentUser: options.sessionUnavailable
-    ? Effect.fail(new CustomerAccountAccessError({ reason: "not-configured" }))
+    ? Effect.fail(new CustomerAccountAccessError({ reason: "unavailable" }))
     : Effect.succeed({
         accountId,
         email: reservationCustomerEmailSchema.make("ada@example.test"),
@@ -214,6 +214,28 @@ describe("optional account activity guard", () => {
     expect(events).toEqual(["account-session", "state-creation"]);
   });
 
+  test("runs anonymous state creation unchanged when authentication is explicitly not configured", async () => {
+    const events: string[] = [];
+    const backend: GuardBackend = {
+      currentUser: Effect.fail(
+        new CustomerAccountAccessError({ reason: "not-configured" })
+      ),
+      findActivityState: () => Effect.die("activity must not be read"),
+      withAccountLock: () => Effect.die("lock must not be acquired"),
+    };
+    const stateCreation = Effect.sync(() => {
+      events.push("state-creation");
+      return "created" as const;
+    });
+
+    const outcome = await Effect.runPromise(
+      guardOptionalAccountStateCreation(backend, stateCreation)
+    );
+
+    expect(outcome).toBe("created");
+    expect(events).toEqual(["state-creation"]);
+  });
+
   test("fails closed when the session authority cannot be read", async () => {
     const events: string[] = [];
     const backend = makeBackend({
@@ -232,7 +254,7 @@ describe("optional account activity guard", () => {
 
     expect(error).toMatchObject({
       _tag: "CustomerAccountAccessError",
-      reason: "not-configured",
+      reason: "unavailable",
     });
     expect(events).toEqual([]);
   });

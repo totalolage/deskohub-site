@@ -58,15 +58,21 @@ export type AccountActivityGuardDependencies = {
  * section runs inside the account advisory lock: the authoritative activity
  * is re-read under that lock, and the same lock is held until the section
  * completes, so a concurrent deletion marker can only land before or after
- * the whole section — never inside it. A successfully read null session runs
- * the section unchanged without a lock; a session-authority failure fails
- * closed before any state is created.
+ * the whole section — never inside it. A successfully read null session and
+ * an explicit authentication-not-configured authority failure (Better Auth
+ * secrets are intentionally optional outside production) both run the
+ * section unchanged without a lock; any other session-authority failure
+ * fails closed before any state is created.
  */
+const isAuthenticationNotConfigured = (error: CustomerAccountAccessError) =>
+  error.reason === "not-configured";
+
 export const guardOptionalAccountStateCreation = <A, E, R>(
   dependencies: AccountActivityGuardDependencies,
   stateCreation: Effect.Effect<A, E, R>
 ): Effect.Effect<A, E | CustomerAccountAccessError | SqlError, R> =>
   dependencies.currentUser.pipe(
+    Effect.catchIf(isAuthenticationNotConfigured, () => Effect.succeed(null)),
     Effect.flatMap((session) =>
       session
         ? dependencies.withAccountLock(

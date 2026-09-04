@@ -1181,7 +1181,7 @@ describe("prepareWorkspacePayState", () => {
       message: m.reservationErrorMessage({}, { locale: "en-US" }),
       cause: {
         _tag: "CustomerAccountAccessError",
-        reason: "not-configured",
+        reason: "unavailable",
       },
     });
     expect(scenario.guardEvents).toEqual([]);
