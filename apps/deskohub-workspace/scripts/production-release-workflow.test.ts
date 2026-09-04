@@ -81,6 +81,23 @@ describe("deploy-workspace-production workflow", () => {
     );
   });
 
+  test("publishes the rollback target through GITHUB_OUTPUT for the rollback condition", async () => {
+    const workflow = await readWorkflow();
+    const script = await Bun.file(
+      resolve(import.meta.dir, "production-release.ts")
+    ).text();
+
+    expect(script).toContain("GITHUB_OUTPUT");
+    expect(script).toMatch(/previous_url=/);
+    expect(script).toContain("::add-mask::");
+    expect(workflow).toContain(
+      "steps.rollback-target.outputs.previous_url != ''"
+    );
+    expect(workflow).toContain(
+      "bun scripts/production-release.ts rollback --url"
+    );
+  });
+
   test("keeps GitHub free of Better Auth, Resend, and mail authority", async () => {
     const workflow = await readWorkflow();
 

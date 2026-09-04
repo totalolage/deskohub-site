@@ -1135,29 +1135,26 @@ describe("prepareWorkspacePayState", () => {
     ]);
   });
 
-  test("keeps preparation flowing when no account authority can be read", async () => {
+  test("stops preparation when the account session authority cannot be read", async () => {
+    const { m } = await import("@/features/i18n");
     const scenario = await runReusableReservationScenario({
       findByAttemptKey: mock(() => Effect.succeed(null)),
-      createDraft: mock((input) =>
-        Effect.succeed(
-          makeReusableReservation({
-            id: "fresh-reservation-id",
-            checkoutSessionKey: input.checkoutSessionKey,
-            checkoutAttemptKey: input.checkoutAttemptKey,
-            correlationId: "fresh-correlation-id",
-            dotyposCustomerId: input.dotyposCustomerId,
-            reservationDetails: input.reservationDetails,
-            locale: input.locale,
-            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-          })
-        )
-      ),
       accountAuthority: { sessionUnavailable: true },
     });
 
-    expect(scenario.result?.status).toBe("ready");
-    expect(scenario.createDraft).toHaveBeenCalledTimes(1);
+    expect(scenario.result).toBeUndefined();
+    expect(scenario.error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.reservationErrorMessage({}, { locale: "en-US" }),
+      cause: {
+        _tag: "CustomerAccountAccessError",
+        reason: "not-configured",
+      },
+    });
     expect(scenario.guardEvents).toEqual([]);
+    expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
+    expect(scenario.createDraft).not.toHaveBeenCalled();
+    expect(scenario.grantMarketingConsent).not.toHaveBeenCalled();
   });
 
   test("stops a deletion-marked authenticated preparation before any mutation", async () => {

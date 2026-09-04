@@ -28,6 +28,7 @@ export type CustomerAccountAccessFailure =
 export type CustomerAccountLinkFailure =
   | "not-found"
   | "ambiguous"
+  | "unusable"
   | "claimed"
   | "deletion-requested";
 

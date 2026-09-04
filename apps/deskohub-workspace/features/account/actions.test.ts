@@ -209,6 +209,22 @@ describe("account actions", () => {
     expect(profileCalls).toHaveLength(0);
   });
 
+  test("never creates or updates a profile when resolution reports an unusable exact-email profile", async () => {
+    resolve = Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "unusable",
+      })
+    );
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({ firstName: "Ada" });
+
+    expect(result.serverError).toBeTruthy();
+    expect(profileCalls).toHaveLength(0);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
   test("deletes through the Better Auth endpoint and revalidates account and deleted paths", async () => {
     const seen: { body: object; headers: Headers }[] = [];
     deleteUser = async (args) => {

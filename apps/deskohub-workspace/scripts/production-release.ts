@@ -1,3 +1,4 @@
+import { appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import { Schema } from "effect";
@@ -15,15 +16,11 @@ const requiredCronPaths = [
   "/api/cron/workspace/auth-cleanup",
 ] as const;
 
-const productionDeploymentsResponse = Schema.Struct({
-  deployments: Schema.Array(
-    Schema.Struct({
-      ready: Schema.NullOr(Schema.Finite),
-      target: Schema.NullOr(Schema.String),
-      url: Schema.NullOr(Schema.String),
-      readySubstate: Schema.optional(Schema.String),
-    })
-  ),
+const productionAliasResponse = Schema.Struct({
+  deployment: Schema.Struct({
+    id: Schema.NullOr(Schema.String),
+    url: Schema.NullOr(Schema.String),
+  }),
 });
 
 const projectCronsResponse = Schema.Struct({
@@ -101,37 +98,38 @@ export const assertCanonicalSignInReady = async (
   }
 };
 
+export type ProductionRollbackTarget = {
+  readonly id: string | null;
+  readonly url: string;
+};
+
 /**
- * Captures the deployment that currently serves production traffic: the
- * newest READY production deployment that Vercel marks as PROMOTED. Staged
- * or rolling deployments ahead of it never served traffic, so they are
- * excluded — an instant rollback must land on the actually promoted one.
+ * Resolves the deployment that currently serves production traffic through
+ * the canonical Workspace production alias. After a rollback several older
+ * deployments can have been promoted historically, so "newest promoted" is
+ * not authoritative — the alias is what production traffic actually points
+ * at, which makes it the only safe instant-rollback target.
  */
-export const resolvePreviousProductionDeployment = async (
-  projectId: string,
+export const resolveProductionRollbackTarget = async (
   token: string,
   teamId: string | undefined
-): Promise<string | undefined> => {
-  const query = new URLSearchParams({
-    limit: "20",
-    projectId,
-    state: "READY",
-    target: "production",
-  });
+): Promise<ProductionRollbackTarget> => {
+  const query = new URLSearchParams();
   if (teamId) query.set("teamId", teamId);
-  const payload = Schema.decodeUnknownSync(productionDeploymentsResponse)(
-    await vercelApiGet(`/v7/deployments?${query.toString()}`, token)
-  );
-  const promoted = payload.deployments
-    .filter(
-      (deployment) =>
-        deployment.target === "production" &&
-        deployment.url !== null &&
-        deployment.ready !== null &&
-        deployment.readySubstate === "PROMOTED"
+  const suffix = query.size > 0 ? `?${query.toString()}` : "";
+  const payload = Schema.decodeUnknownSync(productionAliasResponse)(
+    await vercelApiGet(
+      `/v4/aliases/${workspaceProductionDomain}${suffix}`,
+      token
     )
-    .toSorted((left, right) => (right.ready ?? 0) - (left.ready ?? 0));
-  return promoted[0]?.url ?? undefined;
+  );
+  const { id, url } = payload.deployment;
+  if (!url) {
+    throw new Error(
+      "The canonical production alias serves no deployment url to retain"
+    );
+  }
+  return { id, url };
 };
 
 export const assertRegisteredCrons = async (
@@ -176,6 +174,22 @@ const rollbackToDeployment = async (url: string) => {
   }
 };
 
+/**
+ * Emits the retained rollback target for the release workflow. The masked
+ * deployment url is the only stdout content, and the step output travels
+ * exclusively through the GITHUB_OUTPUT file that the rollback condition
+ * reads. An unresolvable alias fails closed before the release builds
+ * anything, so the workflow never promotes without a retained target.
+ */
+export const emitRollbackTarget = async (): Promise<void> => {
+  const target = await resolveProductionRollbackTarget(
+    requireEnv("VERCEL_TOKEN"),
+    process.env.VERCEL_ORG_ID
+  );
+  process.stdout.write(`::add-mask::${target.url}\n`);
+  await appendFile(requireEnv("GITHUB_OUTPUT"), `previous_url=${target.url}\n`);
+};
+
 const usage = (message?: string): never => {
   if (message) process.stderr.write(`${message}\n`);
   process.stderr.write(
@@ -199,17 +213,7 @@ const run = async () => {
 
   switch (command) {
     case "resolve-previous": {
-      const previous = await resolvePreviousProductionDeployment(
-        projectId,
-        vercelToken,
-        teamId
-      );
-      if (previous) {
-        process.stdout.write(`::add-mask::${previous}\n`);
-        process.stdout.write(`previous_url=${previous}\n`);
-      } else {
-        process.stdout.write("previous_url=\n");
-      }
+      await emitRollbackTarget();
       return;
     }
     case "probe": {

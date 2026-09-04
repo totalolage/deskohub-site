@@ -92,6 +92,9 @@ const matches = (
         readonly kind: "ambiguous";
       }
     | {
+        readonly kind: "unusable";
+      }
+    | {
         readonly kind: "matched";
         readonly state: "active" | "expired";
         readonly customerId: string;
@@ -240,6 +243,22 @@ describe("CustomerAccountResolver", () => {
     const outcome = await runResolution(dependencies);
 
     await expectAccessError(outcome, "link-required", "ambiguous");
+  });
+
+  test("returns the common support state for a deleted or unusable profile without claiming or reactivating", async () => {
+    const { dependencies, calls } = makeDependencies({
+      matches: matches({ kind: "unusable" }),
+    });
+
+    const outcome = await runResolution(dependencies);
+
+    await expectAccessError(outcome, "link-required", "unusable");
+    expect(calls).toEqual([
+      "lock-acquire",
+      "find-link",
+      "classify",
+      "lock-release",
+    ]);
   });
 
   test("rejects an already claimed profile", async () => {

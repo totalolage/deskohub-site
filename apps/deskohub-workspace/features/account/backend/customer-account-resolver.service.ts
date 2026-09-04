@@ -103,6 +103,9 @@ export const resolveCustomerAccount = (
           if (match.kind === "ambiguous") {
             return yield* accessError("link-required", "ambiguous");
           }
+          if (match.kind === "unusable") {
+            return yield* accessError("link-required", "unusable");
+          }
 
           if (match.state === "expired") {
             yield* dependencies

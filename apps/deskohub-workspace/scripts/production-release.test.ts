@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { appendFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   assertAuthSessionReady,
   assertCanonicalSignInReady,
   assertRegisteredCrons,
-  resolvePreviousProductionDeployment,
+  emitRollbackTarget,
+  resolveProductionRollbackTarget,
 } from "./production-release";
 
 type VercelApiPayload =
@@ -17,6 +22,12 @@ type VercelApiPayload =
     }
   | {
       readonly crons?: readonly { readonly path?: string }[];
+    }
+  | {
+      readonly deployment?: {
+        readonly id: string | null;
+        readonly url: string | null;
+      };
     };
 
 const jsonResponse = (payload: VercelApiPayload, status = 200) =>
@@ -141,65 +152,195 @@ describe("workspace production release checks", () => {
     ).rejects.toThrow("magic-link form");
   });
 
-  test("captures the promoted deployment and skips a newer staged deployment", async () => {
-    mockGlobalFetch(() =>
-      jsonResponse({
-        deployments: [
-          {
-            ready: 500,
-            target: "production",
-            url: "https://workspace-staged.vercel.app",
-            readySubstate: "STAGED",
-          },
-          {
-            ready: 300,
-            target: "production",
-            url: "https://workspace-promoted.vercel.app",
-            readySubstate: "PROMOTED",
-          },
-          {
-            ready: 100,
-            target: "production",
+  test("targets the deployment the canonical production alias serves, not the newest promoted deployment", async () => {
+    mockGlobalFetch((input) => {
+      const url = new URL(input.toString());
+      if (url.pathname === "/v4/aliases/deskohub-workspace-site.vercel.app") {
+        return jsonResponse({
+          deployment: {
+            id: "dpl_retained",
             url: "https://workspace-older.vercel.app",
-            readySubstate: "PROMOTED",
           },
-        ],
-      })
-    );
+        });
+      }
+      if (url.pathname === "/v7/deployments") {
+        return jsonResponse({
+          deployments: [
+            {
+              ready: 900,
+              target: "production",
+              url: "https://workspace-newest-promoted.vercel.app",
+              readySubstate: "PROMOTED",
+            },
+            {
+              ready: 950,
+              target: "production",
+              url: "https://workspace-staged.vercel.app",
+              readySubstate: "STAGED",
+            },
+          ],
+        });
+      }
+      return new Response("Not found", { status: 404 });
+    });
 
-    const previous = await resolvePreviousProductionDeployment(
-      "prj_test",
-      "token",
-      undefined
-    );
-    expect(previous).toBe("https://workspace-promoted.vercel.app");
+    const target = await resolveProductionRollbackTarget("token", "team_test");
+
+    expect(target).toEqual({
+      id: "dpl_retained",
+      url: "https://workspace-older.vercel.app",
+    });
   });
 
-  test("excludes production deployments without a promoted substate", async () => {
+  test("scopes the canonical alias lookup to the Vercel team", async () => {
+    const requested: URL[] = [];
+    mockGlobalFetch((input) => {
+      requested.push(new URL(input.toString()));
+      return jsonResponse({
+        deployment: {
+          id: "dpl_retained",
+          url: "https://workspace-retained.vercel.app",
+        },
+      });
+    });
+
+    const target = await resolveProductionRollbackTarget("token", "team_test");
+
+    expect(target?.url).toBe("https://workspace-retained.vercel.app");
+    expect(requested).toHaveLength(1);
+    expect(requested[0]?.pathname).toBe(
+      "/v4/aliases/deskohub-workspace-site.vercel.app"
+    );
+    expect(requested[0]?.searchParams.get("teamId")).toBe("team_test");
+  });
+
+  test("fails closed when the canonical production alias serves no deployment url", async () => {
+    mockGlobalFetch(() =>
+      jsonResponse({ deployment: { id: "dpl_retained", url: null } })
+    );
+
+    await expect(
+      resolveProductionRollbackTarget("token", undefined)
+    ).rejects.toThrow("canonical production alias");
+  });
+
+  test("fails closed when the canonical production alias is missing", async () => {
+    mockGlobalFetch(() => new Response("Not found", { status: 404 }));
+
+    await expect(
+      resolveProductionRollbackTarget("token", undefined)
+    ).rejects.toThrow("Vercel API");
+  });
+
+  test("publishes the masked rollback target only through the GitHub output file", async () => {
+    const outputFile = join(
+      mkdtempSync(join(tmpdir(), "rollback-target-")),
+      "github-output"
+    );
+    await appendFile(outputFile, "earlier_step_output=1\n");
+    const previousStdout = process.stdout.write;
+    const stdout: string[] = [];
+    process.stdout.write = ((chunk: string) => {
+      stdout.push(chunk);
+      return true;
+    }) as typeof process.stdout.write;
+    const previousEnv = {
+      VERCEL_TOKEN: process.env.VERCEL_TOKEN,
+      VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID,
+      VERCEL_ORG_ID: process.env.VERCEL_ORG_ID,
+      GITHUB_OUTPUT: process.env.GITHUB_OUTPUT,
+    };
+    process.env.VERCEL_TOKEN = "test-token";
+    process.env.VERCEL_PROJECT_ID = "prj_test";
+    delete process.env.VERCEL_ORG_ID;
+    process.env.GITHUB_OUTPUT = outputFile;
     mockGlobalFetch(() =>
       jsonResponse({
-        deployments: [
-          {
-            ready: 500,
-            target: "production",
-            url: "https://workspace-unknown.vercel.app",
-          },
-          {
-            ready: 300,
-            target: "production",
-            url: "https://workspace-rolling.vercel.app",
-            readySubstate: "ROLLING",
-          },
-        ],
+        deployment: {
+          id: "dpl_retained",
+          url: "https://workspace-older.vercel.app",
+        },
       })
     );
 
-    const previous = await resolvePreviousProductionDeployment(
-      "prj_test",
-      "token",
-      undefined
+    try {
+      await emitRollbackTarget();
+    } finally {
+      process.stdout.write = previousStdout;
+      if (previousEnv.VERCEL_TOKEN === undefined) {
+        delete process.env.VERCEL_TOKEN;
+      } else {
+        process.env.VERCEL_TOKEN = previousEnv.VERCEL_TOKEN;
+      }
+      if (previousEnv.VERCEL_PROJECT_ID === undefined) {
+        delete process.env.VERCEL_PROJECT_ID;
+      } else {
+        process.env.VERCEL_PROJECT_ID = previousEnv.VERCEL_PROJECT_ID;
+      }
+      if (previousEnv.VERCEL_ORG_ID === undefined) {
+        delete process.env.VERCEL_ORG_ID;
+      } else {
+        process.env.VERCEL_ORG_ID = previousEnv.VERCEL_ORG_ID;
+      }
+      if (previousEnv.GITHUB_OUTPUT === undefined) {
+        delete process.env.GITHUB_OUTPUT;
+      } else {
+        process.env.GITHUB_OUTPUT = previousEnv.GITHUB_OUTPUT;
+      }
+    }
+
+    expect(stdout.join("")).toBe(
+      "::add-mask::https://workspace-older.vercel.app\n"
     );
-    expect(previous).toBeUndefined();
+    expect(await Bun.file(outputFile).text()).toBe(
+      "earlier_step_output=1\nprevious_url=https://workspace-older.vercel.app\n"
+    );
+  });
+
+  test("fails closed without publishing an output when the rollback target cannot be resolved", async () => {
+    const outputFile = join(
+      mkdtempSync(join(tmpdir(), "rollback-target-")),
+      "github-output"
+    );
+    await appendFile(outputFile, "");
+    const previousEnv = {
+      VERCEL_TOKEN: process.env.VERCEL_TOKEN,
+      VERCEL_PROJECT_ID: process.env.VERCEL_PROJECT_ID,
+      VERCEL_ORG_ID: process.env.VERCEL_ORG_ID,
+      GITHUB_OUTPUT: process.env.GITHUB_OUTPUT,
+    };
+    process.env.VERCEL_TOKEN = "test-token";
+    process.env.VERCEL_PROJECT_ID = "prj_test";
+    delete process.env.VERCEL_ORG_ID;
+    process.env.GITHUB_OUTPUT = outputFile;
+    mockGlobalFetch(() => new Response("Not found", { status: 404 }));
+
+    try {
+      await expect(emitRollbackTarget()).rejects.toThrow("Vercel API");
+    } finally {
+      if (previousEnv.VERCEL_TOKEN === undefined) {
+        delete process.env.VERCEL_TOKEN;
+      } else {
+        process.env.VERCEL_TOKEN = previousEnv.VERCEL_TOKEN;
+      }
+      if (previousEnv.VERCEL_PROJECT_ID === undefined) {
+        delete process.env.VERCEL_PROJECT_ID;
+      } else {
+        process.env.VERCEL_PROJECT_ID = previousEnv.VERCEL_PROJECT_ID;
+      }
+      if (previousEnv.VERCEL_ORG_ID === undefined) {
+        delete process.env.VERCEL_ORG_ID;
+      } else {
+        process.env.VERCEL_ORG_ID = previousEnv.VERCEL_ORG_ID;
+      }
+      if (previousEnv.GITHUB_OUTPUT === undefined) {
+        delete process.env.GITHUB_OUTPUT;
+      } else {
+        process.env.GITHUB_OUTPUT = previousEnv.GITHUB_OUTPUT;
+      }
+    }
+
+    expect(await Bun.file(outputFile).text()).toBe("");
   });
 
   test("rolls back with the Vercel rollback operation instead of promoting", async () => {

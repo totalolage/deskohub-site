@@ -263,6 +263,9 @@ export type FindCustomerResult = Data.TaggedEnum<{
       ...DotyposCustomer[],
     ];
   };
+  Deleted: {
+    readonly matches: readonly DotyposCustomer[];
+  };
 }>;
 
 export const FindCustomerResult = Data.taggedEnum<FindCustomerResult>();
@@ -878,7 +881,10 @@ const makeDotyposService = Effect.gen(function* () {
       const searchByField = (fieldName: "email" | "phone", value: string) =>
         Effect.gen(function* () {
           const valueSanitized = value.replace("|", encodeURIComponent("|"));
-          const filter = `${fieldName}|like|${valueSanitized}`;
+          const filter = [
+            `${fieldName}|like|${valueSanitized}`,
+            "deleted|in|0,1",
+          ].join(";");
 
           const customers = yield* runDotyposRequest(
             client
@@ -935,11 +941,17 @@ const makeDotyposService = Effect.gen(function* () {
       );
 
       if (activeMatchingCustomers.length === 0) {
-        return {
-          _tag: "NotFound" as const,
-          matches: [],
-          normalizedCustomerData,
-        };
+        return matchingCustomers.length > 0
+          ? {
+              _tag: "Deleted" as const,
+              matches: matchingCustomers,
+              normalizedCustomerData,
+            }
+          : {
+              _tag: "NotFound" as const,
+              matches: [],
+              normalizedCustomerData,
+            };
       }
 
       if (hasAtLeastTwoCustomers(activeMatchingCustomers)) {
@@ -980,6 +992,9 @@ const makeDotyposService = Effect.gen(function* () {
         ),
         Match.tag("Ambiguous", (ambiguous) =>
           FindCustomerResult.Ambiguous({ matches: ambiguous.matches })
+        ),
+        Match.tag("Deleted", (deleted) =>
+          FindCustomerResult.Deleted({ matches: deleted.matches })
         ),
         Match.tag("NotFound", () =>
           FindCustomerResult.NotFound({ matches: [] })
@@ -1080,6 +1095,9 @@ const makeDotyposService = Effect.gen(function* () {
           Effect.succeed(matchedLookup.matches[0])
         ),
         Match.tag("NotFound", () => Effect.as(Effect.void, undefined)),
+        // Deleted profiles never served active lookups before; keep creating
+        // a fresh customer so existing findOrCreate callers stay compatible.
+        Match.tag("Deleted", () => Effect.as(Effect.void, undefined)),
         Match.exhaustive
       );
 

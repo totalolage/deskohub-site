@@ -43,6 +43,7 @@ export type CustomerProfile = {
 export type ExactEmailCustomerMatch =
   | { readonly kind: "not-found" }
   | { readonly kind: "ambiguous" }
+  | { readonly kind: "unusable" }
   | {
       readonly kind: "matched";
       readonly state: "active" | "expired";
@@ -73,29 +74,54 @@ const nonEmpty = (value: string | null | undefined): string | null => {
   return trimmed ? trimmed : null;
 };
 
+const hasInputBillingData = (
+  billing: NonNullable<CustomerProfileInput["billing"]>
+): boolean =>
+  billing.kind === "business" ||
+  billing.addressLine1 != null ||
+  billing.addressLine2 != null ||
+  billing.city != null ||
+  billing.zip != null ||
+  billing.country != null;
+
 export const toCustomerProfile = (
   customer: DotyposCustomer
 ): CustomerProfile => {
   const companyName = nonEmpty(customer.companyName);
   const companyId = nonEmpty(customer.companyId);
   const vatId = nonEmpty(customer.vatId);
-  const billing: CustomerProfileBilling = {
-    kind: companyName || companyId || vatId ? "business" : "personal",
-    addressLine1: nonEmpty(customer.addressLine1),
-    addressLine2: nonEmpty(customer.addressLine2),
-    city: nonEmpty(customer.city),
-    zip: nonEmpty(customer.zip),
-    country: nonEmpty(customer.country),
-    companyName,
-    companyId,
-    vatId,
-  };
+  const addressLine1 = nonEmpty(customer.addressLine1);
+  const addressLine2 = nonEmpty(customer.addressLine2);
+  const city = nonEmpty(customer.city);
+  const zip = nonEmpty(customer.zip);
+  const country = nonEmpty(customer.country);
+  const hasBillingData =
+    addressLine1 !== null ||
+    addressLine2 !== null ||
+    city !== null ||
+    zip !== null ||
+    country !== null ||
+    companyName !== null ||
+    companyId !== null ||
+    vatId !== null;
 
   return {
     firstName: customer.firstName?.trim() || "",
     lastName: nonEmpty(customer.lastName),
     phone: nonEmpty(customer.phone),
-    billing,
+    billing: hasBillingData
+      ? {
+          kind: companyName || companyId || vatId ? "business" : "personal",
+          addressLine1,
+          addressLine2,
+          city,
+          zip,
+          country,
+          companyName,
+          companyId,
+          vatId,
+        }
+      : null,
   };
 };
 
@@ -131,7 +157,8 @@ const toUpdateRequest = (
  * Decides whether a provider profile reflects every requested editable
  * field, including optional-only changes. Used after uncertain provider
  * responses, where a partial comparison would report a dropped field as
- * applied.
+ * applied. Clearing to no billing counts as applied once the stored profile
+ * carries no billing data either.
  */
 export const customerProfileAppliesInput = (
   customer: DotyposCustomer,
@@ -147,22 +174,12 @@ export const customerProfileAppliesInput = (
   }
 
   const storedBilling = stored.billing;
-  if (storedBilling == null) return false;
-
   const billing = input.billing;
-  if (!billing) {
-    return (
-      storedBilling.kind === "personal" &&
-      storedBilling.addressLine1 == null &&
-      storedBilling.addressLine2 == null &&
-      storedBilling.city == null &&
-      storedBilling.zip == null &&
-      storedBilling.country == null &&
-      storedBilling.companyName == null &&
-      storedBilling.companyId == null &&
-      storedBilling.vatId == null
-    );
+
+  if (!billing || !hasInputBillingData(billing)) {
+    return storedBilling == null;
   }
+  if (storedBilling == null) return false;
   if (storedBilling.kind !== billing.kind) return false;
 
   const addressMatches =
@@ -267,6 +284,7 @@ export class CustomerDotyposAdapter extends Context.Service<
             Effect.map((result): ExactEmailCustomerMatch => {
               if (result._tag === "NotFound") return { kind: "not-found" };
               if (result._tag === "Ambiguous") return { kind: "ambiguous" };
+              if (result._tag === "Deleted") return { kind: "unusable" };
 
               const customer = result.customer;
               if (!customer.id) return { kind: "ambiguous" };

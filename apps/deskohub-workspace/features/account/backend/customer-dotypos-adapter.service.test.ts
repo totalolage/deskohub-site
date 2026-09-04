@@ -7,7 +7,10 @@ import {
   NetworkError,
 } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import { CustomerDotyposAdapter } from "./customer-dotypos-adapter.service";
+import {
+  CustomerDotyposAdapter,
+  customerProfileAppliesInput,
+} from "./customer-dotypos-adapter.service";
 
 const makeCustomer = (
   overrides: Partial<DotyposCustomer> = {}
@@ -121,6 +124,20 @@ describe("CustomerDotyposAdapter", () => {
       );
       expect(notFound).toEqual({ kind: "not-found" });
     });
+
+    test("reports a deleted exact-email profile as unusable instead of not-found", async () => {
+      const deleted = makeCustomer({ id: "60333", deleted: true });
+
+      const result = await runWithDotypos(
+        {
+          findCustomer: () =>
+            Effect.succeed(FindCustomerResult.Deleted({ matches: [deleted] })),
+        },
+        (adapter) => adapter.classifyExactEmailCustomers("ada@example.test")
+      );
+
+      expect(result).toEqual({ kind: "unusable" });
+    });
   });
 
   describe("profile mapping", () => {
@@ -157,6 +174,73 @@ describe("CustomerDotyposAdapter", () => {
           companyId: "12345678",
           vatId: "CZ12345678",
         },
+      });
+    });
+
+    test("maps a provider profile without any billing data to billing null", async () => {
+      const profile = await runWithDotypos(
+        {
+          getCustomer: () =>
+            Effect.succeed(
+              makeCustomer({
+                lastName: "Lovelace",
+                companyName: "   ",
+                addressLine1: "",
+              })
+            ),
+        },
+        (adapter) => adapter.readCustomerProfile("60111")
+      );
+
+      expect(profile).toEqual({
+        firstName: "Ada",
+        lastName: "Lovelace",
+        phone: null,
+        billing: null,
+      });
+    });
+
+    test("preserves personal billing when address data exists", async () => {
+      const profile = await runWithDotypos(
+        {
+          getCustomer: () =>
+            Effect.succeed(makeCustomer({ addressLine1: "Pražská 1" })),
+        },
+        (adapter) => adapter.readCustomerProfile("60111")
+      );
+
+      expect(profile?.billing).toEqual({
+        kind: "personal",
+        addressLine1: "Pražská 1",
+        addressLine2: null,
+        city: null,
+        zip: null,
+        country: null,
+        companyName: null,
+        companyId: null,
+        vatId: null,
+      });
+    });
+
+    test("preserves business billing when only company data exists", async () => {
+      const profile = await runWithDotypos(
+        {
+          getCustomer: () =>
+            Effect.succeed(makeCustomer({ companyName: "Analytical Engines" })),
+        },
+        (adapter) => adapter.readCustomerProfile("60111")
+      );
+
+      expect(profile?.billing).toEqual({
+        kind: "business",
+        addressLine1: null,
+        addressLine2: null,
+        city: null,
+        zip: null,
+        country: null,
+        companyName: "Analytical Engines",
+        companyId: null,
+        vatId: null,
       });
     });
 
@@ -326,6 +410,44 @@ describe("CustomerDotyposAdapter", () => {
 
       expect(calls).toEqual(["patch", "patch"]);
       expect(outcome._tag).toBe("Failure");
+    });
+  });
+
+  describe("uncertain-response comparison", () => {
+    test("treats clearing to no billing as applied", () => {
+      expect(
+        customerProfileAppliesInput(makeCustomer(), {
+          firstName: "Ada",
+          billing: undefined,
+        })
+      ).toBe(true);
+      expect(
+        customerProfileAppliesInput(
+          makeCustomer({ lastName: "   ", phone: "  " }),
+          { firstName: "Ada", billing: undefined }
+        )
+      ).toBe(true);
+    });
+
+    test("reports unapplied when billing data remains while the input clears billing", () => {
+      expect(
+        customerProfileAppliesInput(
+          makeCustomer({ addressLine1: "Pražská 1" }),
+          { firstName: "Ada", billing: undefined }
+        )
+      ).toBe(false);
+    });
+
+    test("reports unapplied when the input adds billing to a profile without billing data", () => {
+      expect(
+        customerProfileAppliesInput(makeCustomer(), {
+          firstName: "Ada",
+          billing: {
+            kind: "personal",
+            addressLine1: "Pražská 1",
+          },
+        })
+      ).toBe(false);
     });
   });
 

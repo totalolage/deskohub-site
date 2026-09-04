@@ -41,18 +41,19 @@ export const requireAccountActivity = (
 
 /**
  * Activity guard for requests that may or may not carry an authoritative
- * account session. A session that cannot be read leaves the anonymous
- * behavior untouched; a successfully read identity must still be an active,
- * unmarked account, so the request fails before the caller creates provider
- * or database state when the deletion marker is present or the auth account
- * row disappeared after the identity was read.
+ * account session. Only a successfully read null session stays anonymous; a
+ * session-authority failure propagates as the closed public access error so
+ * the request can never fall back to anonymous behavior. A successfully read
+ * identity must still be an active, unmarked account, so the request fails
+ * before the caller creates provider or database state when the deletion
+ * marker is present or the auth account row disappeared after the identity
+ * was read.
  */
 export const requireOptionalAccountActivity = (
   authentication: Pick<CustomerAuthentication["Service"], "currentUser">,
   links: Pick<CustomerAccountLinkRepository["Service"], "findActivityState">
 ): Effect.Effect<void, CustomerAccountAccessError> =>
   authentication.currentUser.pipe(
-    Effect.orElseSucceed(() => null),
     Effect.flatMap((session) =>
       session ? requireAccountActivity(links, session.accountId) : Effect.void
     )

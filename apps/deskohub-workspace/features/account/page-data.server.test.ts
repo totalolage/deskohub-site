@@ -202,11 +202,20 @@ describe("loadCustomerAccountPage", () => {
     });
   });
 
-  test("renders the support state for ambiguous, claimed, and unverified outcomes", async () => {
+  test("renders the support state for ambiguous, unusable, claimed, and unverified outcomes", async () => {
     resolveEffect = resolverOutcome({
       kind: "failure",
       reason: "link-required",
       linkReason: "ambiguous",
+    });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "support-required",
+    });
+
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "link-required",
+      linkReason: "unusable",
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
