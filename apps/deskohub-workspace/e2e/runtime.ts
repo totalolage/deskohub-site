@@ -1,4 +1,4 @@
-import { copyFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -614,3 +614,13 @@ export function assert(condition: unknown, message: string): asserts condition {
 
 export const log = (message: string) =>
   process.stdout.write(`${redact(message)}\n`);
+
+export const writeJsonAtomically = async (path: string, value: unknown) => {
+  await mkdir(dirname(path), { recursive: true });
+  const temporaryPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  await rename(temporaryPath, path);
+};

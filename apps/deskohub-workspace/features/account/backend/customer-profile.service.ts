@@ -97,6 +97,9 @@ export class CustomerProfileService extends Context.Service<
             .withAccountLock(
               accountId,
               Effect.gen(function* () {
+                yield* Effect.logDebug(
+                  "Account profile create lock scope entered"
+                );
                 yield* requireAccountActivity(links, accountId);
 
                 const linkedCustomerId = yield* links
@@ -143,7 +146,10 @@ export class CustomerProfileService extends Context.Service<
               })
             )
             .pipe(
-              Effect.mapError(mapCustomerAccountFailure("account-link.lock"))
+              Effect.mapError(mapCustomerAccountFailure("account-link.lock")),
+              Effect.tap(() =>
+                Effect.logDebug("Account profile create lock scope passed")
+              )
             )
       );
 

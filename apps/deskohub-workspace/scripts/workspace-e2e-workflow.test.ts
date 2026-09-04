@@ -123,6 +123,51 @@ test("waives exact-SHA E2E only when Vercel marks Workspace unaffected", async (
   expect(skippedStatusJob).not.toContain("vercel deploy");
 });
 
+test("classifies the synthetic main account only after a failed E2E run", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const packageJson = await Bun.file(
+    resolve(import.meta.dir, "../package.json")
+  ).json();
+
+  expect(packageJson.scripts["e2e:account-state"]).toBe(
+    "bun scripts/workspace-e2e-account-state.ts"
+  );
+
+  const uploadIndex = workflow.indexOf("- uses: actions/upload-artifact@v4");
+  const diagnosticIndex = workflow.indexOf(
+    "- name: Classify synthetic main account state"
+  );
+  const releaseIndex = workflow.indexOf("- name: Release date shard");
+  expect(diagnosticIndex).toBeGreaterThan(uploadIndex);
+  expect(diagnosticIndex).toBeLessThan(releaseIndex);
+
+  const diagnosticStep = workflow.slice(diagnosticIndex, releaseIndex);
+  expect(diagnosticStep).toContain("if: failure()");
+  expect(diagnosticStep).toContain("continue-on-error: true");
+  expect(diagnosticStep).toContain(
+    "run: bun --cwd apps/deskohub-workspace e2e:account-state"
+  );
+  expect(diagnosticStep).toContain(
+    `DATABASE_URL: \${{ steps.preview-database.outputs.direct_url }}`
+  );
+  expect(diagnosticStep).toContain(
+    `WORKSPACE_E2E_DATABASE_URL_UNPOOLED: \${{ steps.preview-database.outputs.direct_url }}`
+  );
+  expect(diagnosticStep).toContain(
+    `WORKSPACE_E2E_DATABASE_ALLOWLIST: \${{ steps.preview-database.outputs.direct_url }}`
+  );
+  expect(diagnosticStep).toContain(
+    "secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET"
+  );
+  expect(diagnosticStep).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
+  expect(diagnosticStep).not.toContain("WORKSPACE_E2E_PROVIDER_PERMIT");
+  expect(diagnosticStep).not.toContain(
+    "WORKSPACE_E2E_COORDINATOR_DATABASE_URL"
+  );
+});
+
 test("uses the allocator without a global provider lock", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")

@@ -1,13 +1,22 @@
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import { validE2ERuntimeEnvironment } from "../e2e-env.test-fixture";
+import {
+  type WorkspaceE2ERunId,
+  workspaceE2ERunIdSchema,
+} from "../run-identifiers";
 import { redact } from "../runtime";
 import {
   getAccountE2EConfig,
   makeWorkspaceE2EAccountRecipient,
-  makeWorkspaceE2EAccountRunId,
+  makeWorkspaceE2EAccountRecipientForRunId,
+  workspaceE2EAccountMainRecipientLabel,
   workspaceE2EAuthCorrelationTags,
 } from "./config";
+
+const runId = (value: string): WorkspaceE2ERunId =>
+  Schema.decodeUnknownSync(workspaceE2ERunIdSchema)(value);
 
 const makeAccountEnvironment = (
   overrides: Readonly<Record<string, string | undefined>> = {}
@@ -19,8 +28,11 @@ const makeAccountEnvironment = (
   });
 
 describe("workspace account e2e configuration", () => {
-  test("derives the exact immutable preview origin and an opaque run id", () => {
-    const config = getAccountE2EConfig(makeAccountEnvironment());
+  test("derives the exact immutable preview origin and keeps the validated run id", () => {
+    const config = getAccountE2EConfig(
+      makeAccountEnvironment(),
+      runId("1234567890-2")
+    );
 
     expect(config.baseUrl).toBe(
       "https://deskohub-workspace-abc123xyz-deskohub.vercel.app"
@@ -29,7 +41,7 @@ describe("workspace account e2e configuration", () => {
       "deskohub-workspace-abc123xyz-deskohub.vercel.app"
     );
     expect(config.locale).toBe("en-US");
-    expect(config.runId).toMatch(/^[a-z0-9]{12}$/);
+    expect(config.runId).toBe("1234567890-2");
   });
 
   test("fails closed before account cases when the retrieval key is absent", () => {
@@ -82,8 +94,14 @@ describe("workspace account e2e configuration", () => {
   });
 
   test("derives unique synthetic recipients and registers them for redaction", () => {
-    const config = getAccountE2EConfig(makeAccountEnvironment());
-    const recipient = makeWorkspaceE2EAccountRecipient(config, "main");
+    const config = getAccountE2EConfig(
+      makeAccountEnvironment(),
+      runId("1234567890-2")
+    );
+    const recipient = makeWorkspaceE2EAccountRecipient(
+      config,
+      workspaceE2EAccountMainRecipientLabel
+    );
     const other = makeWorkspaceE2EAccountRecipient(config, "active-linking");
 
     expect(recipient).toBe(`delivered+${config.runId}-main@resend.dev`);
@@ -92,17 +110,52 @@ describe("workspace account e2e configuration", () => {
     expect(redact(other)).toBe("[redacted]");
   });
 
+  test("derives the same recipient from the validated run id alone", () => {
+    const config = getAccountE2EConfig(
+      makeAccountEnvironment(),
+      runId("manual-018f3ca2-0000-7000-8000-000000000000")
+    );
+
+    expect(
+      makeWorkspaceE2EAccountRecipientForRunId(
+        config.runId,
+        workspaceE2EAccountMainRecipientLabel
+      )
+    ).toBe(
+      "delivered+manual-018f3ca2-0000-7000-8000-000000000000-main@resend.dev"
+    );
+    expect(
+      makeWorkspaceE2EAccountRecipientForRunId(
+        runId("1234567890-2"),
+        workspaceE2EAccountMainRecipientLabel
+      )
+    ).toBe("delivered+1234567890-2-main@resend.dev");
+  });
+
+  test("rejects run ids that could encode data beyond the run identity", () => {
+    expect(() =>
+      makeWorkspaceE2EAccountRecipientForRunId(
+        runId("user@mail"),
+        workspaceE2EAccountMainRecipientLabel
+      )
+    ).toThrow("must stay opaque");
+    expect(() =>
+      makeWorkspaceE2EAccountRecipientForRunId(
+        runId("two words"),
+        workspaceE2EAccountMainRecipientLabel
+      )
+    ).toThrow("must stay opaque");
+  });
+
   test("rejects recipient labels that could encode data beyond the run identity", () => {
-    const config = getAccountE2EConfig(makeAccountEnvironment());
+    const config = getAccountE2EConfig(
+      makeAccountEnvironment(),
+      runId("1234567890-2")
+    );
 
     expect(() => makeWorkspaceE2EAccountRecipient(config, "user@mail")).toThrow(
       "must stay opaque"
     );
-  });
-
-  test("keeps the run id deterministic per derivation without personal data", () => {
-    expect(makeWorkspaceE2EAccountRunId(() => 0)).toBe("aaaaaaaaaaaa");
-    expect(makeWorkspaceE2EAccountRunId(() => 0.999)).toBe("999999999999");
   });
 
   test("exposes the fixed correlation tags shared with the deployed sender", () => {

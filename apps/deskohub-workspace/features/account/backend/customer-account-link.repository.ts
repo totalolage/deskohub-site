@@ -73,30 +73,40 @@ export class CustomerAccountLinkRepository extends Context.Service<
         return link?.customerId ?? null;
       });
 
-      const claim = Effect.fn("CustomerAccountLinkRepository.claim")(function* (
-        accountId: CustomerAccountId,
-        customerId: DotyposCustomerId
-      ) {
-        const [inserted] = yield* db
-          .insert(customerAccountLinks)
-          .values({
-            customerAccountId: accountId,
-            dotyposCustomerId: customerId,
-          })
-          .onConflictDoNothing()
-          .returning({ customerId: customerAccountLinks.dotyposCustomerId });
-        if (inserted) {
-          return {
-            kind: "linked",
-            customerId: inserted.customerId,
-          } as const;
-        }
+      const performClaim = Effect.fn("CustomerAccountLinkRepository.claim")(
+        function* (
+          accountId: CustomerAccountId,
+          customerId: DotyposCustomerId
+        ) {
+          const [inserted] = yield* db
+            .insert(customerAccountLinks)
+            .values({
+              customerAccountId: accountId,
+              dotyposCustomerId: customerId,
+            })
+            .onConflictDoNothing()
+            .returning({ customerId: customerAccountLinks.dotyposCustomerId });
+          if (inserted) {
+            return {
+              kind: "linked",
+              customerId: inserted.customerId,
+            } as const;
+          }
 
-        const racedLink = yield* find(accountId);
-        return racedLink
-          ? ({ kind: "linked", customerId: racedLink } as const)
-          : ({ kind: "claimed" } as const);
-      });
+          const racedLink = yield* find(accountId);
+          return racedLink
+            ? ({ kind: "linked", customerId: racedLink } as const)
+            : ({ kind: "claimed" } as const);
+        }
+      );
+
+      const claim: ICustomerAccountLinkRepository["claim"] = (
+        accountId,
+        customerId
+      ) =>
+        performClaim(accountId, customerId).pipe(
+          Effect.tap(() => Effect.logDebug("Account link claim completed"))
+        );
 
       const findActivityState = Effect.fn(
         "CustomerAccountLinkRepository.findActivityState"

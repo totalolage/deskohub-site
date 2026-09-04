@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
 import { validE2ERuntimeEnvironment } from "../e2e-env.test-fixture";
+import { workspaceE2ERunIdSchema } from "../run-identifiers";
 import { redact } from "../runtime";
 import {
   getAccountE2EConfig,
@@ -15,7 +16,8 @@ const config = getAccountE2EConfig(
   makeWorkspaceE2EEnvironment({
     ...validE2ERuntimeEnvironment,
     WORKSPACE_E2E_RESEND_API_KEY: "re_full-access-retrieval-key",
-  })
+  }),
+  Schema.decodeUnknownSync(workspaceE2ERunIdSchema)("1234567890-2")
 );
 
 const recipient = makeWorkspaceE2EAccountRecipient(config, "retrieval");

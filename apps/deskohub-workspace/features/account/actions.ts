@@ -111,7 +111,10 @@ const completeCustomerProfileAction = defineWorkspaceAction(
     Effect.as(
       Effect.andThen(
         saveCustomerProfile(input, locale),
-        Effect.sync(() => revalidatePath(`/${locale}/account`))
+        Effect.andThen(
+          Effect.sync(() => revalidatePath(`/${locale}/account`)),
+          Effect.logDebug("Account profile revalidation completed")
+        )
       ),
       { status: "completed" as const }
     )
@@ -127,7 +130,10 @@ const updateCustomerProfileAction = defineWorkspaceAction(
     Effect.as(
       Effect.andThen(
         saveCustomerProfile(input, locale),
-        Effect.sync(() => revalidatePath(`/${locale}/account`))
+        Effect.andThen(
+          Effect.sync(() => revalidatePath(`/${locale}/account`)),
+          Effect.logDebug("Account profile revalidation completed")
+        )
       ),
       { status: "updated" as const }
     )

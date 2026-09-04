@@ -2,10 +2,14 @@ import { eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { authSession, authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import type { WorkspaceE2EError } from "../errors";
 import { workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
-import { runDatabaseOperation } from "../integrations/database-operation";
+import {
+  runDatabaseOperation,
+  runRetrySafeDatabaseOperation,
+} from "../integrations/database-operation";
 
 /**
  * Exact-ID database helpers for synthetic account fixtures. Every read and
@@ -123,4 +127,52 @@ export const assertNoAuthRows = (
         }
       );
     }
+  });
+
+/**
+ * Closed low-cardinality state of one synthetic account: whether the Better
+ * Auth identity exists and whether profile completion committed its
+ * customer-account link. These values are the diagnostic's only output.
+ */
+export type WorkspaceE2EAccountState = "linked" | "missing" | "unlinked";
+
+export const classifyWorkspaceE2EAccountState = (input: {
+  readonly authUserId: string | undefined;
+  readonly linkedDotyposCustomerId: string | undefined;
+}): WorkspaceE2EAccountState =>
+  !input.authUserId
+    ? "missing"
+    : input.linkedDotyposCustomerId
+      ? "linked"
+      : "unlinked";
+
+/**
+ * Classifies the exact synthetic account for one recipient. The read is
+ * keyed by that recipient's unique email and joins only its own link row;
+ * it never scans or returns broader production-derived rows.
+ */
+export const readSyntheticAccountState = (
+  email: string
+): Effect.Effect<WorkspaceE2EAccountState, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runRetrySafeDatabaseOperation(
+      "read synthetic account state",
+      db
+        .select({
+          authUserId: authUser.id,
+          dotyposCustomerId: customerAccountLinks.dotyposCustomerId,
+        })
+        .from(authUser)
+        .leftJoin(
+          customerAccountLinks,
+          eq(customerAccountLinks.customerAccountId, authUser.id)
+        )
+        .where(eq(authUser.email, sensitiveDatabaseParameter(email)))
+    );
+    const row = rows[0];
+    return classifyWorkspaceE2EAccountState({
+      authUserId: row?.authUserId,
+      linkedDotyposCustomerId: row?.dotyposCustomerId ?? undefined,
+    });
   });

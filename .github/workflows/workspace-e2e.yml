@@ -543,6 +543,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Classify synthetic main account state
+        if: failure()
+        continue-on-error: true
+        env:
+          DATABASE_URL: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}
+          DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
+          DOTYPOS_CLIENT_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_ID }}
+          DOTYPOS_CLIENT_SECRET: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET }}
+          DOTYPOS_REFRESH_TOKEN: ${{ secrets.WORKSPACE_E2E_DOTYPOS_REFRESH_TOKEN }}
+          DOTYPOS_CLOUD_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLOUD_ID }}
+          DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
+          DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
+        run: bun --cwd apps/deskohub-workspace e2e:account-state
+
       - name: Release date shard
         id: release
         if: always() && steps.lease.outputs.shard != ''

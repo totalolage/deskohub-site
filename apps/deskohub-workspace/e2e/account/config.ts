@@ -2,6 +2,7 @@ import type { WorkspaceE2EConfig } from "../config";
 import { parseWorkspaceE2EBaseUrl } from "../config";
 import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import { workspaceE2EError } from "../errors";
+import type { WorkspaceE2ERunId } from "../run-identifiers";
 import { addRedaction } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 
@@ -18,7 +19,8 @@ export const workspaceE2EAuthCorrelationTags = [
 /** Resend synthetic test recipients ignore local parts; this host stays fixed. */
 const resendSyntheticRecipientHost = "resend.dev";
 
-const runIdCharacters = "abcdefghijklmnopqrstuvwxyz0123456789";
+/** The lane's primary synthetic identity, shared with the failure diagnostic. */
+export const workspaceE2EAccountMainRecipientLabel = "main";
 
 export type WorkspaceE2EAccountConfig = {
   readonly baseUrl: string;
@@ -27,17 +29,20 @@ export type WorkspaceE2EAccountConfig = {
   readonly expectedHost: string;
   readonly locale: "en-US";
   readonly resendApiKey: string;
-  readonly runId: string;
+  /** Validated run-context run id; every synthetic recipient derives from it. */
+  readonly runId: WorkspaceE2ERunId;
   readonly timeouts: WorkspaceE2EConfig["timeouts"];
 };
 
 /**
- * Builds the account E2E configuration. The GitHub-only Resend retrieval key
- * never enters Vercel or application configuration, so account cases fail
- * closed when it is absent: they block before executing and never skip.
+ * Builds the account E2E configuration from the validated run context. The
+ * GitHub-only Resend retrieval key never enters Vercel or application
+ * configuration, so account cases fail closed when it is absent: they block
+ * before executing and never skip.
  */
 export const getAccountE2EConfig = (
-  environment: WorkspaceE2EEnvironment
+  environment: WorkspaceE2EEnvironment,
+  runId: WorkspaceE2ERunId
 ): WorkspaceE2EAccountConfig => {
   const resendApiKey = environment.WORKSPACE_E2E_RESEND_API_KEY;
   if (!resendApiKey) {
@@ -60,40 +65,33 @@ export const getAccountE2EConfig = (
     expectedHost,
     locale: "en-US",
     resendApiKey,
-    runId: makeWorkspaceE2EAccountRunId(),
+    runId,
     timeouts: workspaceE2ETimeouts,
   };
 };
 
 /**
- * Opaque per-run identifier used only to derive unique synthetic recipients
- * and to correlate fixed tags; it carries no secret and no personal data.
+ * Derives the exact synthetic recipient for one account fixture from the
+ * validated run-context run id. Because the derivation is deterministic, the
+ * failure-only account-state diagnostic reconstructs the exact synthetic main
+ * account without reading any broader rows. The recipient is registered with
+ * the process redactor before it can reach any log line or artifact.
  */
-export const makeWorkspaceE2EAccountRunId = (
-  random: () => number = Math.random
-) => {
-  let value = "";
-  for (let index = 0; index < 12; index += 1) {
-    value += runIdCharacters[Math.floor(random() * runIdCharacters.length)];
-  }
-  return value;
-};
-
-/**
- * Derives the exact synthetic recipient for one account fixture. The
- * recipient is registered with the process redactor before it can reach any
- * log line or artifact.
- */
-export const makeWorkspaceE2EAccountRecipient = (
-  config: WorkspaceE2EAccountConfig,
+export const makeWorkspaceE2EAccountRecipientForRunId = (
+  runId: WorkspaceE2ERunId,
   label: string
 ) => {
-  const localPart = `${config.runId}-${label}`;
+  const localPart = `${runId}-${label}`;
   assertSyntheticRecipientLabel(localPart);
   const recipient = `delivered+${localPart}@${resendSyntheticRecipientHost}`;
   addRedaction(recipient);
   return recipient;
 };
+
+export const makeWorkspaceE2EAccountRecipient = (
+  config: WorkspaceE2EAccountConfig,
+  label: string
+) => makeWorkspaceE2EAccountRecipientForRunId(config.runId, label);
 
 const assertSyntheticRecipientLabel = (localPart: string) => {
   if (!/^[a-z0-9-]+$/.test(localPart)) {

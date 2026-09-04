@@ -33,7 +33,10 @@ import {
 } from "./auth-rows";
 import type { WorkspaceE2EAccountCaseId } from "./catalog";
 import type { WorkspaceE2EAccountConfig } from "./config";
-import { makeWorkspaceE2EAccountRecipient } from "./config";
+import {
+  makeWorkspaceE2EAccountRecipient,
+  workspaceE2EAccountMainRecipientLabel,
+} from "./config";
 import {
   assertNoSyntheticCustomerProfile,
   cancelSyntheticReservation,
@@ -138,7 +141,10 @@ export const makeWorkspaceE2EAccountCases = ({
   run,
   session,
 }: WorkspaceE2EAccountCaseInputs): readonly WorkspaceE2EAccountCase[] => {
-  const recipient = makeWorkspaceE2EAccountRecipient(config, "main");
+  const recipient = makeWorkspaceE2EAccountRecipient(
+    config,
+    workspaceE2EAccountMainRecipientLabel
+  );
   const acceptedRecipientOne = makeWorkspaceE2EAccountRecipient(
     config,
     "accepted-a"

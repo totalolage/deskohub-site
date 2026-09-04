@@ -50,7 +50,7 @@ const accountTest = runtimeTest.extend<
 >({
   accountLane: [
     async ({ browser, environment, runContext }, use) => {
-      const config = getAccountE2EConfig(environment);
+      const config = getAccountE2EConfig(environment, runContext.runId);
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
       const deletionHandoff: WorkspaceE2EAccountDeletionHandoff = {};
       let journal = emptyWorkspaceE2EAccountJournal();
