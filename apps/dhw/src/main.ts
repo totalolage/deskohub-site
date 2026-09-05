@@ -2,6 +2,7 @@ import { BunRuntime, BunServices } from "@effect/platform-bun";
 import { Effect, Layer } from "effect";
 import { Command } from "effect/unstable/cli";
 import { FetchHttpClient, Headers } from "effect/unstable/http";
+import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store.service";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
 import { ClientIdentity } from "./authentication/client-identity.service";
@@ -21,6 +22,7 @@ const UpdateLive = UpdateService.Default.pipe(
 
 const ApplicationLive = Layer.mergeAll(
   WorkspaceAdminApiClient.Default,
+  AccessCodeAttemptStore.Default,
   AuthenticationService.Live,
   ClientIdentity.Default,
   UpdateLive

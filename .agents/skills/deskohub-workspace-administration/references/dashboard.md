@@ -2,7 +2,7 @@
 
 The Workspace administration dashboard is an operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Loading reservation and customer pages does not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records; reservation cancellation and access recovery are explicit operator actions.
 
-The visible navigation includes Overview, Reservations, Customers, Invoices, Codes, Vouchers, Sales, and CLI sessions. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
+The visible navigation includes Overview, Reservations, Customers, Invoices, Codes, Access codes, Vouchers, Sales, and CLI sessions. Codes manages discount codes; Access codes creates standalone door access codes. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
 
 Invoice administration composes the encrypted accounting-document repository, delivery status, and Dotypos customers. Keep customer resolution and invoice issuance in the shared invoice administration service so the UI and administration API enforce the same exact-email reuse, billing update, currency, idempotency, provenance, and delivery rules. The default list ordering groups delivery attention first and then uses issuance time descending; an explicit operator sort must not retain the attention grouping.
 
@@ -38,6 +38,21 @@ The administration projection deliberately excludes secret Workspace access code
 Retry access automatically only from `failed`, which represents a definitive provider rejection. For `uncertain`, tell the operator to use the Igloohome app over Bluetooth at the lock, find `Deskohub <reservation-id>`, and remove it or verify it is absent. Require explicit confirmation before conditionally changing `uncertain` to `failed` and retrying. If the operator cannot confirm provider cleanup, do not retry; wait for the possible credential to expire. Igloohome does not provide an AlgoPIN lookup or revocation operation for this integration.
 
 Treat a `provisioning` claim older than one minute as ambiguous and expose the same confirmed provider-cleanup workflow. Do not offer recovery for a fresh provisioning claim.
+
+## Standalone access codes
+
+`/admin/access-codes` is creation-only: the page renders the creation form and its result. Reuse `StandaloneAccessCodeAdministration` for every surface so the UI, administration API, and CLI share one creation path with the same validation.
+
+Give each creation intent one client-generated attempt identity. The form keeps that identity across retries of an unchanged window and generates a new one when the operator changes any field. The server claims the attempt in the append-only attempt log before calling the provider, so one intent can never reach the provider twice.
+
+The claim resolution is the durable contract:
+
+- A claim older than 60 seconds (`standaloneAccessCodeAttemptStaleAfterMilliseconds`) is recovered as ambiguous with `standalone_attempt_stale`. A fresh claim reports `in-progress`.
+- The same attempt identity with different input, actor, or source is rejected as a mismatch.
+- Capacity is per exact device and window: provider variances 2 and 3 allow two live codes. A terminal `rejected` event frees its variance, and a `reconciled` event frees the confirmed attempt; `created` and `ambiguous` do not.
+- The terminal `created`, `rejected`, and `ambiguous` events store safe metadata and outcomes only, never the PIN.
+- An `ambiguous` attempt never calls the provider again. End the attempt in the UI and direct the operator to the Igloohome app over Bluetooth, matching the at-lock reconciliation used for reservation access recovery.
+- While a window has an unreconciled `ambiguous` or stale attempt, a new attempt for that window is refused with `cleanup-required` under the device-and-window lock before any provider call, even when capacity remains. The outcome supplies the exact cleanup target. With the operator's explicit `providerCredentialRemovedAttemptId` confirmation, the claim appends a `reconciled` event for that target (at most one per attempt, idempotent under concurrency), then claims the new attempt in the same transaction. Another unresolved target produces another `cleanup-required` outcome. Replaying a reconciled attempt's own identifier without confirmation still reports its ambiguous outcome; with confirmation, the replay records the reconciliation and reports a `reconciled` outcome so the client can safely issue a fresh attempt.
 
 ## Reservation lifecycle
 

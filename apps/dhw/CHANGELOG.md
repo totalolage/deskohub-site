@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.11.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.10.0...dhw-v1.11.0) (2026-09-04)
+
+
+### Features
+
+* **workspace:** administer standalone access codes ([d0caa15](https://github.com/totalolage/deskohub-site/commit/d0caa15f31dc6393187ef08f1c49598c4ee5eb1c))
+* **workspace:** administer standalone access codes ([4aab08d](https://github.com/totalolage/deskohub-site/commit/4aab08d5b96152356f44fbfce4aa104068a89d3f))
+
+
+### Bug Fixes
+
+* **dhw:** confirm access code cleanup target ([74a005a](https://github.com/totalolage/deskohub-site/commit/74a005a37356859a376f9d7caae6dec6b947591a))
+* **dhw:** preserve access code attempts ([637f83e](https://github.com/totalolage/deskohub-site/commit/637f83e6fa7bc39afdf1f4b130791150988fc2a9))
+* **workspace:** protect one-time access code delivery ([76b7f70](https://github.com/totalolage/deskohub-site/commit/76b7f708952167a6ab5cbbc7528e20c0e1ec23ab))
+* **workspace:** require safe access code retries ([8399463](https://github.com/totalolage/deskohub-site/commit/8399463c182494eb2b58c728981bafae1bdf3735))
+
 ## [1.10.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.9.1...dhw-v1.10.0) (2026-08-27)
 
 

@@ -9,6 +9,10 @@ mock.module("server-only", () => ({}));
 mock.module("next/headers", () => ({
   headers: async () => requestHeaders,
 }));
+mock.module("next/server", () => ({
+  after: () => {},
+  connection: () => Promise.resolve(),
+}));
 
 const toAuthorization = (username: string, password: string) =>
   `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
@@ -107,17 +111,22 @@ describe("administrator server authorization", () => {
   test("rejects direct invocations of every exported admin page-data loader", async () => {
     requestHeaders = new Headers();
     const authorization = await import("./administrator-authorization.server");
-    const adminCli = await import("@/features/admin-cli/page-data.server");
     const administration = await import(
       "@/features/administration/page-data.server"
     );
     const discounts = await import(
       "@/features/discounts/admin/page-data.server"
     );
+    const accounting = await import(
+      "@/features/accounting/admin/page-data.server"
+    );
+    const invoiceBreadcrumb = await import(
+      "@/features/accounting/admin/invoice-breadcrumb.server"
+    );
+    const adminCli = await import("@/features/admin-cli/page-data.server");
     const searchParams = Promise.resolve({});
     const operations = [
       authorization.authorizeAdministratorPage,
-      administration.authorizeAdministrationPage,
       administration.loadAdministrationOverview,
       () => administration.loadAdministrationReservations(searchParams),
       () =>
@@ -143,8 +152,6 @@ describe("administrator server authorization", () => {
       () => administration.loadAdministrationOperations(searchParams),
       () =>
         administration.loadAdministrationOperationsPage(searchParams).result,
-      () => adminCli.loadCliAuthenticationApproval("attacker-controlled-code"),
-      () => adminCli.loadCliSessions(),
       () => discounts.loadDiscountAdminPageData(searchParams),
       () => discounts.loadDiscountAdminCodesPageData(searchParams),
       () => discounts.loadDiscountAdminSalesPageData(searchParams),
@@ -167,6 +174,16 @@ describe("administrator server authorization", () => {
           searchParams
         ),
       () => discounts.loadDiscountAdminCustomerBreadcrumbLabel("customer-id"),
+      () => accounting.loadInvoiceAdministrationList(searchParams),
+      () => accounting.loadInvoiceCreationPage(),
+      () => accounting.loadInvoiceAdministrationDetail("invoice-id"),
+      () => accounting.loadInvoiceAdministrationPdf("invoice-id"),
+      () =>
+        invoiceBreadcrumb.loadInvoiceAdministrationBreadcrumbLabel(
+          "invoice-id"
+        ),
+      () => adminCli.loadCliAuthenticationApproval("code"),
+      () => adminCli.loadCliSessions(),
     ] as const;
 
     for (const operation of operations) {

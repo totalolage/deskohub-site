@@ -27,8 +27,11 @@ export const AlgoPinSchema = Schema.String.check(
   });
 export type AlgoPin = typeof AlgoPinSchema.Type;
 
+export type AlgoPinVariance = 1 | 2 | 3;
+
 export interface IssueHourlyAlgoPinInput {
   readonly deviceId: IgloohomeDeviceId;
+  readonly variance: AlgoPinVariance;
   readonly startsAt: string;
   readonly endsAt: string;
   readonly accessName: string;

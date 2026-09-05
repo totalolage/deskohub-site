@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Schema, SchemaAST } from "effect";
+import { WORKSPACE_SITE_TIME_ZONE } from "./site-time-zone";
 import {
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS,
+  ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS,
   AdminCliAdministrationApi,
   AdministrationBookingQuery,
   AdministrationCustomerProfile,
@@ -24,16 +27,31 @@ import {
   AdministrationOrderQuery,
   AdministrationPaymentAttempt,
   AdministrationPaymentAttemptId,
+  AdministrationProviderCredentialId,
   AdministrationReservationAccessGrant,
   AdministrationReservationAccessMutation,
   AdministrationReservationCancellationInput,
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
+  AdministrationStandaloneAccessCodeAttemptId,
+  AdministrationStandaloneAccessCodeCleanupTarget,
+  AdministrationStandaloneAccessCodeCreateInput,
+  AdministrationStandaloneAccessCodeCreateRequest,
+  AdministrationStandaloneAccessCodeCreationOutcome,
+  AdministrationStandaloneAccessCodeName,
+  AdministrationStandaloneAccessCodePin,
+  AdministrationStandaloneAccessCodeResult,
   AdministrationVoucher,
   AdministrationWorkspaceProductTarget,
   AdministrationWorkspaceReservationId,
+  AdministrationWorkspaceSiteLocalWholeHourDateTime,
   CliClientName,
+  CliMutationUncertain,
+  CliServiceUnavailable,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
+  isStandaloneAccessCodeWindowWithinContractDuration,
   StartCliAuthentication,
 } from "./workspace-admin-api";
 
@@ -59,6 +77,474 @@ describe("StartCliAuthentication", () => {
         clientName: "   ",
         cliVersion: "1.0.0",
         buildTarget: "development",
+      })
+    ).toThrow();
+  });
+});
+
+describe("standalone access-code contract", () => {
+  const attemptId = "01980000-0000-7000-8000-000000000042";
+  const validInput = {
+    name: "  Booth A  ",
+    startsAt: "2026-09-10T10:00",
+    endsAt: "2026-09-10T12:00",
+  };
+  const decodeCreateInput = Schema.decodeUnknownSync(
+    AdministrationStandaloneAccessCodeCreateInput
+  );
+  const decodeSiteLocal = Schema.decodeUnknownSync(
+    AdministrationWorkspaceSiteLocalWholeHourDateTime
+  );
+
+  test("keeps the authoritative site time zone sourced from this package", () => {
+    expect(WORKSPACE_SITE_TIME_ZONE).toBe("Europe/Prague");
+  });
+
+  test("decodes trimmed names and offset-free site-local times", () => {
+    expect(decodeCreateInput(validInput)).toMatchObject({
+      name: "Booth A",
+      startsAt: "2026-09-10T10:00",
+      endsAt: "2026-09-10T12:00",
+    });
+    expect(String(decodeSiteLocal("2026-03-29T03:00"))).toBe(
+      "2026-03-29T03:00"
+    );
+    expect(String(decodeSiteLocal("2026-10-25T02:00"))).toBe(
+      "2026-10-25T02:00"
+    );
+  });
+
+  test("rejects excess creation properties", () => {
+    expect(() =>
+      decodeCreateInput({ ...validInput, deviceId: "EK1X" })
+    ).toThrow();
+    expect(() =>
+      decodeCreateInput({ ...validInput, description: "Back booth" })
+    ).toThrow();
+  });
+
+  test("enforces trimmed name bounds up to 60 characters", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)("")
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)("   ")
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)(
+        "a".repeat(61)
+      )
+    ).toThrow();
+    expect(
+      String(
+        Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)(
+          ` ${"a".repeat(60)} `
+        )
+      )
+    ).toBe("a".repeat(60));
+  });
+
+  test("rejects malformed, non-canonical, and non-whole-hour local times", () => {
+    for (const value of [
+      "not-a-date",
+      "2026-13-01T10:00",
+      "2026-02-30T10:00",
+      "2026-09-10",
+      "2026-09-10T10:30",
+      "2026-09-10T10:00:00",
+    ]) {
+      expect(() => decodeSiteLocal(value)).toThrow();
+    }
+  });
+
+  test("rejects nonexistent spring-forward local times", () => {
+    expect(() => decodeSiteLocal("2026-03-29T02:00")).toThrow();
+  });
+
+  test("accepts windows that span Prague DST transitions on instants", () => {
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        startsAt: "2026-03-29T01:00",
+        endsAt: "2026-03-29T04:00",
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        startsAt: "2026-10-25T00:00",
+        endsAt: "2026-10-25T04:00",
+      })
+    ).not.toThrow();
+  });
+
+  test("accepts exactly 1 and 672 elapsed hours", () => {
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        endsAt: "2026-09-10T11:00",
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        endsAt: "2026-10-08T10:00",
+      })
+    ).not.toThrow();
+  });
+
+  test("counts elapsed hours across the fall-back transition", () => {
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        startsAt: "2026-10-24T01:00",
+        endsAt: "2026-11-21T00:00",
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        startsAt: "2026-10-24T00:00",
+        endsAt: "2026-11-21T00:00",
+      })
+    ).toThrow();
+  });
+
+  test("rejects empty, reversed, and overshooting windows", () => {
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        startsAt: "2026-09-10T12:00",
+        endsAt: "2026-09-10T12:00",
+      })
+    ).toThrow();
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        startsAt: "2026-09-10T12:00",
+        endsAt: "2026-09-10T10:00",
+      })
+    ).toThrow();
+    expect(() =>
+      decodeCreateInput({
+        ...validInput,
+        endsAt: "2026-10-08T11:00",
+      })
+    ).toThrow();
+  });
+
+  test("discloses the PIN only through the created outcome", () => {
+    const decodeOutcome = Schema.decodeUnknownSync(
+      AdministrationStandaloneAccessCodeCreationOutcome
+    );
+    const metadata = {
+      attemptId,
+      providerCredentialId: "provider-credential-id",
+      name: "Booth A",
+      startsAt: "2026-09-10T10:00",
+      endsAt: "2026-09-10T12:00",
+      issuedAt: "2026-09-10T08:00:00Z",
+    };
+
+    const created = decodeOutcome({
+      ...metadata,
+      outcome: "created",
+      pin: "1234567",
+    });
+    if (created.outcome === "created") {
+      expect(
+        Schema.encodeSync(AdministrationStandaloneAccessCodePin)(created.pin)
+      ).toBe("1234567");
+    }
+
+    expect(() => decodeOutcome({ ...metadata, outcome: "created" })).toThrow();
+
+    const alreadyCreated = decodeOutcome({
+      ...metadata,
+      outcome: "already-created",
+    });
+    expect(alreadyCreated).toMatchObject({
+      outcome: "already-created",
+      attemptId,
+      providerCredentialId: "provider-credential-id",
+      name: "Booth A",
+      issuedAt: "2026-09-10T08:00:00Z",
+    });
+    expect("pin" in alreadyCreated).toBe(false);
+    expect(
+      Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeResult)(
+        metadata
+      )
+    ).toMatchObject(metadata);
+    expect(() =>
+      decodeOutcome({
+        ...metadata,
+        outcome: "already-created",
+        pin: "1234567",
+      })
+    ).toThrow();
+
+    expect(() =>
+      decodeOutcome({
+        ...metadata,
+        attemptId: "not-a-uuid",
+        outcome: "created",
+        pin: "1234567",
+      })
+    ).toThrow();
+    expect(() =>
+      decodeOutcome({ ...metadata, outcome: "created", pin: "1234567890" })
+    ).toThrow();
+    expect(() =>
+      decodeOutcome({ ...metadata, outcome: "created", pin: "123456" })
+    ).toThrow();
+    expect(() => decodeOutcome({ ...metadata, outcome: "expired" })).toThrow();
+  });
+
+  test("requires a non-empty provider credential identifier", () => {
+    const decode = Schema.decodeUnknownSync(AdministrationProviderCredentialId);
+    expect(() => decode("")).toThrow();
+    expect(
+      Schema.encodeSync(AdministrationProviderCredentialId)(
+        decode("provider-credential-id")
+      )
+    ).toBe("provider-credential-id");
+  });
+
+  test("reports uncertain provider outcomes as terminal errors", () => {
+    const error = new CliMutationUncertain({
+      message: "The access-code creation outcome is uncertain.",
+    });
+    expect(error._tag).toBe("CliMutationUncertain");
+    expect(error.message).toBe(
+      "The access-code creation outcome is uncertain."
+    );
+    const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
+    expect(httpApiStatusOf(CliMutationUncertain.schema.ast)).toBe(409);
+    expect(httpApiStatusOf(CliServiceUnavailable.schema.ast)).toBe(503);
+    expect(JSON.stringify(error)).not.toContain("1234567");
+  });
+});
+
+describe("standalone access-code duration contract", () => {
+  const decodeSiteLocal = Schema.decodeUnknownSync(
+    AdministrationWorkspaceSiteLocalWholeHourDateTime
+  );
+  const contractWindow = (startsAt: string, endsAt: string) => ({
+    startsAt: decodeSiteLocal(startsAt),
+    endsAt: decodeSiteLocal(endsAt),
+  });
+
+  test("exposes the authoritative duration bounds", () => {
+    expect(ADMINISTRATION_STANDALONE_ACCESS_CODE_MINIMUM_DURATION_HOURS).toBe(
+      1
+    );
+    expect(ADMINISTRATION_STANDALONE_ACCESS_CODE_MAXIMUM_DURATION_HOURS).toBe(
+      672
+    );
+  });
+
+  test("accepts the bounds and counts the repeated fall-back hour on instants", () => {
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T10:00", "2026-09-10T11:00")
+      )
+    ).toBe(true);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T10:00", "2026-10-08T10:00")
+      )
+    ).toBe(true);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-10-24T01:00", "2026-11-21T00:00")
+      )
+    ).toBe(true);
+  });
+
+  test("rejects empty, reversed, and overshooting windows", () => {
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T10:00", "2026-09-10T10:00")
+      )
+    ).toBe(false);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T11:00", "2026-09-10T10:00")
+      )
+    ).toBe(false);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-09-10T10:00", "2026-10-08T11:00")
+      )
+    ).toBe(false);
+    expect(
+      isStandaloneAccessCodeWindowWithinContractDuration(
+        contractWindow("2026-10-24T00:00", "2026-11-21T00:00")
+      )
+    ).toBe(false);
+  });
+});
+
+describe("standalone access-code CLI endpoint contract", () => {
+  const attemptId = "01980000-0000-7000-8000-000000000042";
+  const confirmedAttemptId = Schema.decodeUnknownSync(
+    AdministrationStandaloneAccessCodeAttemptId
+  )(attemptId);
+  const storedAccessName = Schema.decodeUnknownSync(
+    AdministrationStandaloneAccessCodeName
+  )("Booth A");
+  const decodeRequest = Schema.decodeUnknownSync(
+    AdministrationStandaloneAccessCodeCreateRequest
+  );
+
+  test("exposes one authenticated mutation endpoint for access codes", () => {
+    const endpoint =
+      AdminCliAdministrationApi.endpoints.createStandaloneAccessCode;
+    expect(endpoint?.method).toBe("POST");
+    expect(endpoint?.path).toBe("/api/v1/cli/access-codes");
+  });
+
+  test("decodes one client-generated attempt identifier with the authoritative input", () => {
+    expect(
+      JSON.stringify(
+        decodeRequest({
+          attemptId,
+          input: {
+            name: "  Booth A  ",
+            startsAt: "2026-09-10T10:00",
+            endsAt: "2026-09-10T12:00",
+          },
+        })
+      )
+    ).toBe(
+      JSON.stringify({
+        attemptId,
+        input: {
+          name: "Booth A",
+          startsAt: "2026-09-10T10:00",
+          endsAt: "2026-09-10T12:00",
+        },
+      })
+    );
+  });
+
+  test("decodes the explicit at-lock cleanup confirmation for retries", () => {
+    const confirmed = decodeRequest({
+      attemptId,
+      input: {
+        name: "Booth A",
+        startsAt: "2026-09-10T10:00",
+        endsAt: "2026-09-10T12:00",
+      },
+      providerCredentialRemovedAttemptId: attemptId,
+    });
+    expect(confirmed.providerCredentialRemovedAttemptId).toBe(
+      confirmedAttemptId
+    );
+
+    const unconfirmed = decodeRequest({
+      attemptId,
+      input: {
+        name: "Booth A",
+        startsAt: "2026-09-10T10:00",
+        endsAt: "2026-09-10T12:00",
+      },
+    });
+    expect("providerCredentialRemovedAttemptId" in unconfirmed).toBe(false);
+
+    expect(() =>
+      decodeRequest({
+        attemptId,
+        input: {
+          name: "Booth A",
+          startsAt: "2026-09-10T10:00",
+          endsAt: "2026-09-10T12:00",
+        },
+        providerCredentialRemoved: true,
+      })
+    ).toThrow();
+    expect(() =>
+      decodeRequest({
+        attemptId,
+        input: {
+          name: "Booth A",
+          startsAt: "2026-09-10T10:00",
+          endsAt: "2026-09-10T12:00",
+        },
+        providerCredentialRemovedAttemptId: "not-a-uuid",
+      })
+    ).toThrow();
+  });
+
+  test("reports required at-lock cleanup as a typed conflict error", () => {
+    const cleanupTarget = Schema.decodeUnknownSync(
+      AdministrationStandaloneAccessCodeCleanupTarget
+    )({
+      attemptId,
+      name: "Booth A",
+    });
+    const error = new CliStandaloneAccessCodeCleanupRequired({
+      message:
+        "A previous attempt for this window is ambiguous. Remove the access code in the Igloohome app over Bluetooth, or verify it is absent, then confirm the cleanup before creating another code.",
+      cleanupTarget,
+    });
+    expect(error._tag).toBe("CliStandaloneAccessCodeCleanupRequired");
+    expect(error.cleanupTarget.attemptId).toBe(confirmedAttemptId);
+    expect(error.cleanupTarget.name).toBe(storedAccessName);
+    const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
+    expect(
+      httpApiStatusOf(CliStandaloneAccessCodeCleanupRequired.schema.ast)
+    ).toBe(409);
+    const encoded = Schema.encodeSync(
+      CliStandaloneAccessCodeCleanupRequired.schema
+    )(error);
+    expect(encoded.cleanupTarget).toEqual({
+      attemptId,
+      name: "Booth A",
+    });
+    expect(JSON.stringify(error)).not.toContain("7654321");
+  });
+
+  test("reports a confirmed reconciled replay as a typed conflict error", () => {
+    const error = new CliStandaloneAccessCodeReconciled({
+      message:
+        "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Run the same command again to create the code.",
+    });
+    expect(error._tag).toBe("CliStandaloneAccessCodeReconciled");
+    const httpApiStatusOf = SchemaAST.resolveAt<number>("httpApiStatus");
+    expect(httpApiStatusOf(CliStandaloneAccessCodeReconciled.schema.ast)).toBe(
+      409
+    );
+    expect(JSON.stringify(error)).not.toContain("7654321");
+  });
+
+  test("rejects excess properties and invalid windows before any handler runs", () => {
+    const validInput = {
+      name: "Booth A",
+      startsAt: "2026-09-10T10:00",
+      endsAt: "2026-09-10T12:00",
+    };
+    expect(() =>
+      decodeRequest({ attemptId, input: validInput, source: "dhw-cli" })
+    ).toThrow();
+    expect(() =>
+      decodeRequest({ attemptId: "not-a-uuid", input: validInput })
+    ).toThrow();
+    expect(() =>
+      decodeRequest({
+        attemptId,
+        input: { ...validInput, endsAt: "2026-09-10T09:00" },
+      })
+    ).toThrow();
+    expect(() =>
+      decodeRequest({
+        attemptId,
+        input: {
+          name: "Booth A",
+          startsAt: "2026-09-10T10:00",
+          endsAt: "2026-09-10T10:30",
+        },
       })
     ).toThrow();
   });

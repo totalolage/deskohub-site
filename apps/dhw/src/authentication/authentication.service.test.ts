@@ -49,6 +49,7 @@ describe("AuthenticationService", () => {
       getInvoicePdf: () => Effect.die("not used"),
       createInvoice: () => Effect.die("not used"),
       resendInvoice: () => Effect.die("not used"),
+      createStandaloneAccessCode: () => Effect.die("not used"),
       listSessions: () => Effect.die("not used"),
       mutateDiscounts: () => Effect.die("not used"),
       renameSession: () => Effect.die("not used"),

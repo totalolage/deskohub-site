@@ -1,9 +1,9 @@
-import { Context, Effect, Layer, Predicate, Ref, Schema } from "effect";
+import { Context, Effect, Layer, Predicate, Ref, Schema, Stream } from "effect";
 import {
   HttpClient,
   HttpClientError,
   HttpClientRequest,
-  HttpClientResponse,
+  type HttpClientResponse,
 } from "effect/unstable/http";
 import {
   IgloohomeRuntimeConfig,
@@ -21,6 +21,42 @@ const accessTokenResponseSchema = Schema.Struct({
     Schema.Finite.check(Schema.isInt()).check(Schema.isGreaterThan(0))
   ),
 });
+
+const rejectFailedAuthentication = (
+  response: HttpClientResponse.HttpClientResponse
+) =>
+  response.status < 200 || response.status >= 300
+    ? Effect.fail(
+        new IgloohomeRequestError({
+          operation: "authenticate",
+          outcome: "rejected",
+          statusCode: response.status,
+          message: "Igloohome rejected authentication.",
+        })
+      )
+    : Effect.succeed(response);
+
+const decodeAccessTokenResponse = (
+  response: HttpClientResponse.HttpClientResponse
+) =>
+  response.stream.pipe(
+    Stream.decodeText(),
+    Stream.mkString,
+    Effect.flatMap((body) =>
+      Schema.decodeUnknownEffect(
+        Schema.fromJsonString(accessTokenResponseSchema)
+      )(body)
+    ),
+    Effect.mapError(
+      () =>
+        new IgloohomeRequestError({
+          operation: "authenticate",
+          outcome: "rejected",
+          statusCode: response.status,
+          message: "Igloohome returned an invalid access token.",
+        })
+    )
+  );
 
 type AccessTokenCache = {
   readonly token: string;
@@ -61,7 +97,9 @@ export class IgloohomeAccessToken extends Context.Service<
           })
         );
 
-        const response = yield* httpClient.execute(request).pipe(
+        const decoded = yield* httpClient.execute(request).pipe(
+          Effect.flatMap(rejectFailedAuthentication),
+          Effect.flatMap(decodeAccessTokenResponse),
           Effect.timeoutOrElse({
             duration: config.apiTimeout,
             orElse: () =>
@@ -84,28 +122,6 @@ export class IgloohomeAccessToken extends Context.Service<
           )
         );
 
-        if (response.status < 200 || response.status >= 300) {
-          return yield* new IgloohomeRequestError({
-            operation: "authenticate",
-            outcome: "rejected",
-            statusCode: response.status,
-            message: "Igloohome rejected authentication.",
-          });
-        }
-
-        const decoded = yield* HttpClientResponse.schemaBodyJson(
-          accessTokenResponseSchema
-        )(response).pipe(
-          Effect.mapError(
-            () =>
-              new IgloohomeRequestError({
-                operation: "authenticate",
-                outcome: "rejected",
-                statusCode: response.status,
-                message: "Igloohome returned an invalid access token.",
-              })
-          )
-        );
         const now = Date.now();
         if (decoded.expires_in !== undefined) {
           const expiresInMs = decoded.expires_in * 1000;

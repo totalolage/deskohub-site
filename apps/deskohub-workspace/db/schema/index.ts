@@ -11,5 +11,6 @@ export * from "./legal-evidence-events";
 export * from "./manual-invoice-creation-requests";
 export * from "./payment-attempts";
 export * from "./reservation-access-grants";
+export * from "./standalone-access-code-attempt-events";
 export * from "./webhook-events";
 export * from "./workspace-reservations";

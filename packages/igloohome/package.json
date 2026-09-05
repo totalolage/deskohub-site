@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./config": "./src/config.ts",
     "./backend/service.mock": "./src/backend/service.mock.ts"
   },
   "scripts": {

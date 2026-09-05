@@ -2,10 +2,9 @@ import "server-only";
 
 import { Effect, Predicate } from "effect";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
 import { cache } from "react";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
-import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
+import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type AdministrationBookingListInput,
@@ -92,20 +91,8 @@ const runAdministration =
       runWorkspaceEffect(operation, { boundary: "route" })
     );
 
-export const authorizeAdministrationPage = cache(async () => {
-  const authorized = await requireAdministratorAuthorization().pipe(
-    Effect.as(true),
-    Effect.catchTag("AdministratorUnauthorizedError", () =>
-      Effect.succeed(false)
-    ),
-    runWorkspaceEffect("administration.authorize", { boundary: "route" })
-  );
-  if (!authorized) notFound();
-  await connection();
-});
-
 export const loadAdministrationOverview = async () => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.loadOverview();
@@ -113,7 +100,7 @@ export const loadAdministrationOverview = async () => {
 };
 
 export const loadAdministrationReservationOverview = async () => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.loadReservationOverview();
@@ -123,7 +110,7 @@ export const loadAdministrationReservationOverview = async () => {
 const getAdministrationReservationListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
   const dateRange = getAdministrationReservationDateRange({
@@ -151,7 +138,7 @@ const loadAdministrationReservationList = async (
   input: Promise<AdministrationReservationListInput>
 ) => {
   const [, resolvedInput] = await Promise.all([
-    authorizeAdministrationPage(),
+    authorizeAdministratorPage(),
     input,
   ]);
   return Effect.gen(function* () {
@@ -176,7 +163,7 @@ export const loadAdministrationReservations = async (
 };
 
 export const loadAdministrationReservation = cache(async (id: string) => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   const reservationId = requireWorkspaceReservationRouteId(id);
   const detail = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
@@ -188,7 +175,7 @@ export const loadAdministrationReservation = cache(async (id: string) => {
 
 export const loadAdministrationReservationBreadcrumbLabel = cache(
   async (id: string) => {
-    await authorizeAdministrationPage();
+    await authorizeAdministratorPage();
     const reservationId = requireWorkspaceReservationRouteId(id);
     return Effect.gen(function* () {
       const administration = yield* AdministrationService;
@@ -215,7 +202,7 @@ const loadAdministrationBookingList = async (
   input: ReturnType<typeof getAdministrationBookingListInput>
 ) => {
   const [, resolvedInput] = await Promise.all([
-    authorizeAdministrationPage(),
+    authorizeAdministratorPage(),
     input,
   ]);
   return Effect.gen(function* () {
@@ -240,7 +227,7 @@ export const loadAdministrationBookings = async (
 };
 
 export const loadAdministrationBooking = cache(async (id: string) => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   const bookingId = requireDotyposReservationRouteId(id);
   const detail = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
@@ -252,7 +239,7 @@ export const loadAdministrationBooking = cache(async (id: string) => {
 
 export const loadAdministrationBookingBreadcrumbLabel = cache(
   async (id: string) => {
-    await authorizeAdministrationPage();
+    await authorizeAdministratorPage();
     const bookingId = requireDotyposReservationRouteId(id);
     const breadcrumb = await Effect.gen(function* () {
       const administration = yield* AdministrationService;
@@ -280,7 +267,7 @@ const loadAdministrationCustomerList = async (
   input: ReturnType<typeof getAdministrationCustomerListInput>
 ) => {
   const [, resolvedInput] = await Promise.all([
-    authorizeAdministrationPage(),
+    authorizeAdministratorPage(),
     input,
   ]);
   return Effect.gen(function* () {
@@ -308,7 +295,7 @@ export const loadAdministrationCustomerReservations = async (
   customerId: string,
   searchParams: AdministrationSearchParams
 ) => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
   const params = await searchParams;
   const page = parsePage(firstParam(params.reservationsPage));
@@ -323,7 +310,7 @@ export const loadAdministrationCustomerReservations = async (
 
 export const loadAdministrationCustomerActivity = cache(
   async (customerId: string) => {
-    await authorizeAdministrationPage();
+    await authorizeAdministratorPage();
     const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
     return Effect.gen(function* () {
       const administration = yield* AdministrationService;
@@ -334,7 +321,7 @@ export const loadAdministrationCustomerActivity = cache(
 
 export const loadAdministrationCustomerReservationActivity = cache(
   async (customerId: string) => {
-    await authorizeAdministrationPage();
+    await authorizeAdministratorPage();
     const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
     return Effect.gen(function* () {
       const administration = yield* AdministrationService;
@@ -359,7 +346,7 @@ const loadAdministrationOrderList = async (
   range: ReturnType<typeof getAdministrationOrderRange>
 ) => {
   const [, resolvedRange] = await Promise.all([
-    authorizeAdministrationPage(),
+    authorizeAdministratorPage(),
     range,
   ]);
   return Effect.gen(function* () {
@@ -388,7 +375,7 @@ export const loadAdministrationOrders = async (
 };
 
 export const loadAdministrationOrder = cache(async (orderId: string) => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   const decodedOrderId = requireNexiOrderRouteId(orderId);
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
@@ -415,7 +402,7 @@ const loadAdministrationOperationList = async (
   criteria: ReturnType<typeof getAdministrationOperationListInput>
 ) => {
   const [, resolvedCriteria] = await Promise.all([
-    authorizeAdministrationPage(),
+    authorizeAdministratorPage(),
     criteria,
   ]);
   const { input, range } = resolvedCriteria;
@@ -451,7 +438,7 @@ export const loadAdministrationOperations = async (
 
 export const loadAdministrationOperation = cache(
   async (operationId: string) => {
-    await authorizeAdministrationPage();
+    await authorizeAdministratorPage();
     const decodedOperationId = requireNexiOperationRouteId(operationId);
     return Effect.gen(function* () {
       const administration = yield* AdministrationService;

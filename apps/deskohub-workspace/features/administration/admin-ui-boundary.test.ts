@@ -22,37 +22,25 @@ describe("administration UI boundaries", () => {
     expect(sharedGate).toMatch(
       /const authorizeAdministratorPage = cache\([\s\S]*await connection\(\)/
     );
+    expect(sharedGate.match(/connection\(/g)).toHaveLength(1);
 
     for (const path of [
-      "features/accounting/admin/page-data.server.ts",
       "features/administration/page-data.server.ts",
-    ]) {
-      const source = await readWorkspaceFile(path);
-
-      expect(source.match(/await connection\(\)/g)).toHaveLength(1);
-      expect(source).toMatch(
-        /(?:export )?const authorize[A-Za-z]+Page = cache\([\s\S]*await connection\(\)/
-      );
-      if (path === "features/accounting/admin/page-data.server.ts") {
-        expect(source.indexOf("await connection()")).toBeLessThan(
-          source.indexOf("runWorkspaceEffect(")
-        );
-      }
-    }
-
-    for (const path of [
       "features/discounts/admin/page-data.server.ts",
+      "features/accounting/admin/page-data.server.ts",
+      "features/accounting/admin/invoice-breadcrumb.server.ts",
       "features/admin-cli/page-data.server.ts",
+      "app/admin/access-codes/page.tsx",
     ]) {
       const source = await readWorkspaceFile(path);
 
-      expect(source).toContain("await authorizeAdministratorPage()");
+      expect(source).toContain("authorizeAdministratorPage");
       expect(source).toContain(
         'from "@/shared/administrator/administrator-authorization.server"'
       );
-      expect(source).not.toContain("authorizeDiscountAdminPage");
-      expect(source).not.toMatch(/const authorize[A-Za-z]+Page = cache\(/);
-      expect(source).not.toContain("await connection()");
+      expect(source).not.toContain("page-authorization.server");
+      expect(source).not.toContain("connection(");
+      expect(source).not.toMatch(/authorize[A-Za-z]+Page = cache/);
     }
   });
 
@@ -162,8 +150,46 @@ describe("administration UI boundaries", () => {
       "loadAdministrationReservationBreadcrumbLabel"
     );
     expect(breadcrumbs).toContain("loadDiscountAdminCustomerBreadcrumbLabel");
+    expect(breadcrumbs).toContain("loadInvoiceAdministrationBreadcrumbLabel");
     expect(breadcrumbs).not.toContain("loadAdministrationBooking(");
     expect(breadcrumbs).not.toContain("loadAdministrationReservation(");
+    expect(breadcrumbs).not.toContain("loadInvoiceAdministrationDetail(");
+    expect(breadcrumbs).not.toContain("InvoiceAdministrationService");
+    expect(breadcrumbs).toContain(
+      "@/features/accounting/admin/invoice-breadcrumb.server"
+    );
+    expect(breadcrumbs).not.toContain("accounting/admin/page-data.server");
+
+    const breadcrumbLoader = await readWorkspaceFile(
+      "features/accounting/admin/invoice-breadcrumb.server.ts"
+    );
+    expect(breadcrumbLoader).toContain("InvoiceBreadcrumbService");
+    expect(breadcrumbLoader).not.toContain("InvoiceAdministrationService");
+    expect(breadcrumbLoader).not.toContain("loadInvoiceAdministrationDetail(");
+
+    const forbiddenBreadcrumbDependencies =
+      /page-data\.server|invoice-administration\.service|invoice\.repository|snapshot|invoice-pdf|invoice-email-delivery|dotypos/i;
+    for (const path of [
+      "features/accounting/admin/invoice-breadcrumb.server.ts",
+      "features/accounting/admin/invoice-breadcrumb.service.ts",
+      "features/accounting/admin/invoice-administration-identifier.ts",
+      "shared/administrator/administrator-authorization.server.ts",
+    ]) {
+      expect(await readWorkspaceFile(path)).not.toMatch(
+        forbiddenBreadcrumbDependencies
+      );
+    }
+    expect(forbiddenBreadcrumbDependencies.test("DotyposService")).toBe(true);
+    expect(
+      forbiddenBreadcrumbDependencies.test(
+        "@/shared/backend/config/dotypos.config"
+      )
+    ).toBe(true);
+    expect(
+      forbiddenBreadcrumbDependencies.test(
+        "@/features/accounting/backend/invoice-email-delivery.repository"
+      )
+    ).toBe(true);
   });
 
   test("keeps empty and sorting chrome in their shared foundations", async () => {

@@ -28,7 +28,7 @@ const makeIgloohomeService = Effect.gen(function* () {
       const response = yield* client
         .createHourlyAlgoPin(encodeURIComponent(input.deviceId), {
           payload: {
-            variance: 1,
+            variance: input.variance,
             startDate: input.startsAt,
             endDate: input.endsAt,
             accessName: input.accessName,

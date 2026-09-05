@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./site-time-zone": "./src/site-time-zone.ts"
   },
   "scripts": {
     "lint": "cd ../.. && biome check packages/workspace-admin-api/src --config-path biome.json --vcs-root .",

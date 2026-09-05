@@ -114,6 +114,7 @@ function PostHogClient({
         session_recording: {
           maskAllInputs: true,
           maskTextSelector: "body",
+          recordBody: false,
         },
         tracing_headers: [window.location.hostname],
       });
