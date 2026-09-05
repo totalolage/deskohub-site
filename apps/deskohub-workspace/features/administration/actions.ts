@@ -23,15 +23,12 @@ import {
 } from "./reservation-administration.service";
 
 const findReservation = Effect.fn("AdministrationService.findReservation")(
-  (input: ReservationLookupInput) =>
-    Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return {
-        reservationId: yield* administration.findReservationId(
-          input.identifier
-        ),
-      };
-    })
+  function* (input: ReservationLookupInput) {
+    const administration = yield* AdministrationService;
+    return {
+      reservationId: yield* administration.findReservationId(input.identifier),
+    };
+  }
 );
 
 const getAdministrationReservationAction = defineWorkspaceAction(
