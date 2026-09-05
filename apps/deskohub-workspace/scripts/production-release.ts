@@ -16,6 +16,8 @@ const signInPath = "/en-US/auth/sign-in";
 const authSessionPath = "/api/auth/get-session";
 const authSessionCacheControl = "private, no-store";
 const signInFormMarker = 'id="account-sign-in-form"';
+const immutableWorkspaceDeploymentHost =
+  /^deskohub-workspace(?:-site)?-[a-z0-9]{9}-[a-z0-9-]+\.vercel\.app$/;
 
 const defaultPollDeadlineMilliseconds = 10 * 60_000;
 const defaultPollIntervalMilliseconds = 15_000;
@@ -156,16 +158,69 @@ const aliasServesDeployment = (
   return urlHostName(alias.deploymentUrl) === urlHostName(deployment.url);
 };
 
+export type AuthSessionReadyOptions = {
+  /** Explicit Vercel protection bypass for a validated staged deployment. */
+  readonly deploymentProtectionBypassSecret?: string;
+};
+
+const validateStagedDeploymentUrl = (baseUrl: string): URL => {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new Error("Staged deployment URL must be a valid URL");
+  }
+  if (url.protocol !== "https:") {
+    throw new Error("Staged deployment URL must use HTTPS");
+  }
+  if (!url.hostname.endsWith(".vercel.app")) {
+    throw new Error("Staged deployment URL must use a Vercel deployment host");
+  }
+  if (!immutableWorkspaceDeploymentHost.test(url.hostname)) {
+    throw new Error(
+      "Staged deployment URL must be an immutable Vercel deployment URL"
+    );
+  }
+  if (
+    url.username ||
+    url.password ||
+    url.port ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(
+      "Staged deployment URL must be an origin without credentials, a port, a path, a query, or a hash"
+    );
+  }
+  return url;
+};
+
 /**
  * Anonymous Better Auth readiness probe: the deployment must answer an
  * unauthenticated session request with a healthy null session marked
- * private/no-store. Never sends a magic link and never reads a token.
+ * private/no-store. An explicit bypass is accepted only for a validated
+ * immutable staged deployment, never from ambient environment state. Never
+ * sends a magic link and never reads a token.
  */
 export const assertAuthSessionReady = async (
   baseUrl: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  options: AuthSessionReadyOptions = {}
 ) => {
-  const response = await fetchImpl(new URL(authSessionPath, baseUrl));
+  const bypassSecret = options.deploymentProtectionBypassSecret;
+  const base =
+    bypassSecret === undefined
+      ? new URL(baseUrl)
+      : validateStagedDeploymentUrl(baseUrl);
+  const sessionUrl = new URL(authSessionPath, base);
+  const response =
+    bypassSecret === undefined
+      ? await fetchImpl(sessionUrl)
+      : await fetchImpl(sessionUrl, {
+          headers: { "x-vercel-protection-bypass": bypassSecret },
+          redirect: "error",
+        });
   if (response.status !== 200) {
     throw new Error(
       `Auth session probe failed with ${response.status} on the deployed runtime`
@@ -643,7 +698,11 @@ const run = async () => {
       return;
     }
     case "probe": {
-      await assertAuthSessionReady(readUrlOption());
+      await assertAuthSessionReady(readUrlOption(), fetch, {
+        deploymentProtectionBypassSecret: requireEnv(
+          "VERCEL_AUTOMATION_BYPASS_SECRET"
+        ),
+      });
       return;
     }
     case "verify-canonical": {

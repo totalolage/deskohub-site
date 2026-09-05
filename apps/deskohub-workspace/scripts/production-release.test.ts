@@ -59,6 +59,9 @@ const nullSessionResponse = () =>
     headers: { "cache-control": "private, no-store" },
   });
 
+const stagedDeploymentUrl =
+  "https://deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app";
+
 const restoreFetch = {
   original: undefined as typeof globalThis.fetch | undefined,
 };
@@ -86,6 +89,110 @@ describe("workspace production release checks", () => {
     expect(requests[0]?.toString()).toBe(
       "https://staged.vercel.app/api/auth/get-session"
     );
+  });
+
+  test("passes the protection bypass only to a validated staged probe", async () => {
+    const bypassSecret = "test-protection-bypass";
+    const requests: Array<{ readonly init?: RequestInit; readonly url: URL }> =
+      [];
+
+    await assertAuthSessionReady(
+      stagedDeploymentUrl,
+      async (input, init) => {
+        requests.push({ init, url: new URL(input.toString()) });
+        return nullSessionResponse();
+      },
+      { deploymentProtectionBypassSecret: bypassSecret }
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url.toString()).toBe(
+      `${stagedDeploymentUrl}/api/auth/get-session`
+    );
+    expect(requests[0]?.init?.headers).toEqual({
+      "x-vercel-protection-bypass": bypassSecret,
+    });
+    expect(requests[0]?.init?.redirect).toBe("error");
+  });
+
+  test("keeps canonical probes free of a configured protection bypass", async () => {
+    const bypassSecret = "test-canonical-protection-bypass";
+    const previousBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    const requests: RequestInit[] = [];
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET = bypassSecret;
+
+    try {
+      await assertCanonicalSignInReady(async (input, init) => {
+        requests.push(init ?? {});
+        const url = new URL(input.toString());
+        if (url.pathname === "/api/auth/get-session") {
+          return nullSessionResponse();
+        }
+        return new Response('<form id="account-sign-in-form"></form>', {
+          status: 200,
+        });
+      });
+    } finally {
+      if (previousBypassSecret === undefined) {
+        delete process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+      } else {
+        process.env.VERCEL_AUTOMATION_BYPASS_SECRET = previousBypassSecret;
+      }
+    }
+
+    expect(requests).toHaveLength(2);
+    for (const init of requests) {
+      const headers = new Headers(init.headers);
+      expect(headers.get("x-vercel-protection-bypass")).toBeNull();
+      expect(headers.get("cookie")).toBeNull();
+    }
+  });
+
+  test("rejects unsupported protected staged targets before making a request", async () => {
+    const fetchImpl = mock(async () => nullSessionResponse());
+    const targets = [
+      "http://deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+      "https://workspace.example.com",
+      "https://deskohub-workspace-git-main-deskohub-bar.vercel.app",
+      `${stagedDeploymentUrl}/path`,
+      `${stagedDeploymentUrl}?redirect=https%3A%2F%2Fevil.example.com`,
+    ];
+
+    for (const target of targets) {
+      await expect(
+        assertAuthSessionReady(target, fetchImpl, {
+          deploymentProtectionBypassSecret: "test-protection-bypass",
+        })
+      ).rejects.toThrow();
+    }
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("rejects a staged redirect response without following its target or exposing the secret", async () => {
+    const bypassSecret = "test-redirect-protection-bypass";
+    const redirectTarget = "https://evil.example.com/collect";
+    const requests: Array<{ readonly init?: RequestInit; readonly url: URL }> =
+      [];
+
+    const failure = await assertAuthSessionReady(
+      stagedDeploymentUrl,
+      async (input, init) => {
+        requests.push({ init, url: new URL(input.toString()) });
+        return new Response(null, {
+          status: 302,
+          headers: { location: redirectTarget },
+        });
+      },
+      { deploymentProtectionBypassSecret: bypassSecret }
+    ).catch((error) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain("failed with 302");
+    expect((failure as Error).message).not.toContain(bypassSecret);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.init?.redirect).toBe("error");
+    expect(requests[0]?.url.toString()).not.toBe(redirectTarget);
   });
 
   test("rejects a session response without private/no-store", async () => {

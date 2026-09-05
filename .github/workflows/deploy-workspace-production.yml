@@ -72,6 +72,8 @@ jobs:
             bun run db:migrate
 
       - name: Probe staged deployment auth readiness
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         working-directory: apps/deskohub-workspace
         run: bun scripts/production-release.ts probe --url "${{ steps.deploy.outputs.url }}"
 

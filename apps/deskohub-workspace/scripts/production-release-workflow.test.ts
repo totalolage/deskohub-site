@@ -48,6 +48,36 @@ describe("deploy-workspace-production workflow", () => {
     );
   });
 
+  test("exposes the protection secret only to the staged probe", async () => {
+    const workflow = await readWorkflow();
+    const script = await readScript();
+    const probeIndex = workflow.indexOf(
+      "Probe staged deployment auth readiness"
+    );
+    const cronsIndex = workflow.indexOf("Verify registered workspace crons");
+    const canonicalIndex = workflow.indexOf(
+      "Probe canonical production after promotion"
+    );
+    const jobEnvIndex = workflow.indexOf("\n    env:");
+    const stepsIndex = workflow.indexOf("\n    steps:");
+    const jobEnvironment = workflow.slice(jobEnvIndex, stepsIndex);
+    const probeStep = workflow.slice(probeIndex, cronsIndex);
+    const canonicalSteps = workflow.slice(canonicalIndex);
+
+    expect(probeStep).toContain(
+      `VERCEL_AUTOMATION_BYPASS_SECRET: \${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}`
+    );
+    expect(jobEnvironment).not.toContain("VERCEL_AUTOMATION_BYPASS_SECRET");
+    expect(canonicalSteps).not.toContain("VERCEL_AUTOMATION_BYPASS_SECRET");
+
+    const probeCommandIndex = script.indexOf('case "probe"');
+    const probeEndIndex = script.indexOf('case "verify-canonical"');
+    const probeCommand = script.slice(probeCommandIndex, probeEndIndex);
+    expect(probeCommand).toMatch(
+      /requireEnv\(\s*"VERCEL_AUTOMATION_BYPASS_SECRET"\s*\)/
+    );
+  });
+
   test("promotes through the script so a failed promotion request cannot skip recovery", async () => {
     const workflow = await readWorkflow();
     const promoteStep = workflow.indexOf("Promote production deployment");
