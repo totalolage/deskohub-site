@@ -37,6 +37,17 @@ type ProfileFormProps = {
 
 type BillingKind = "hidden" | "personal" | "business";
 
+type BillingValues = {
+  readonly companyName: string;
+  readonly companyId: string;
+  readonly vatId: string;
+  readonly addressLine1: string;
+  readonly addressLine2: string;
+  readonly city: string;
+  readonly zip: string;
+  readonly country: string;
+};
+
 const readBilling = (
   formData: FormData,
   kind: BillingKind
@@ -86,6 +97,16 @@ export function ProfileForm({
   const [billingKind, setBillingKind] = useState<BillingKind>(
     profile?.billing?.kind ?? "hidden"
   );
+  const [billingValues, setBillingValues] = useState<BillingValues>(() => ({
+    companyName: profile?.billing?.companyName ?? "",
+    companyId: profile?.billing?.companyId ?? "",
+    vatId: profile?.billing?.vatId ?? "",
+    addressLine1: profile?.billing?.addressLine1 ?? "",
+    addressLine2: profile?.billing?.addressLine2 ?? "",
+    city: profile?.billing?.city ?? "",
+    zip: profile?.billing?.zip ?? "",
+    country: profile?.billing?.country ?? "",
+  }));
   const formRef = useRef<HTMLFormElement>(null);
   const baselineSnapshotRef = useRef<string | undefined>(undefined);
   const submittedSnapshotRef = useRef<string | undefined>(undefined);
@@ -97,6 +118,10 @@ export function ProfileForm({
 
   const isComplete = mode === "complete";
   const isInitialCompletion = isComplete && !hasCompletedInitialProfile;
+
+  const updateBillingValue = (field: keyof BillingValues, value: string) => {
+    setBillingValues((current) => ({ ...current, [field]: value }));
+  };
 
   const action = (
     isInitialCompletion ? completeCustomerProfile : updateCustomerProfile
@@ -329,8 +354,9 @@ export function ProfileForm({
                       <Input
                         id="account-profile-billing-company-name"
                         name="billingCompanyName"
-                        defaultValue={
-                          profile?.billing?.companyName ?? undefined
+                        value={billingValues.companyName}
+                        onChange={(event) =>
+                          updateBillingValue("companyName", event.target.value)
                         }
                         maxLength={200}
                       />
@@ -342,7 +368,10 @@ export function ProfileForm({
                       <Input
                         id="account-profile-billing-company-id"
                         name="billingCompanyId"
-                        defaultValue={profile?.billing?.companyId ?? undefined}
+                        value={billingValues.companyId}
+                        onChange={(event) =>
+                          updateBillingValue("companyId", event.target.value)
+                        }
                         maxLength={32}
                       />
                     </div>
@@ -353,7 +382,10 @@ export function ProfileForm({
                       <Input
                         id="account-profile-billing-vat-id"
                         name="billingVatId"
-                        defaultValue={profile?.billing?.vatId ?? undefined}
+                        value={billingValues.vatId}
+                        onChange={(event) =>
+                          updateBillingValue("vatId", event.target.value)
+                        }
                         maxLength={32}
                       />
                     </div>
@@ -366,7 +398,10 @@ export function ProfileForm({
                   <Input
                     id="account-profile-billing-address-line1"
                     name="billingAddressLine1"
-                    defaultValue={profile?.billing?.addressLine1 ?? undefined}
+                    value={billingValues.addressLine1}
+                    onChange={(event) =>
+                      updateBillingValue("addressLine1", event.target.value)
+                    }
                     maxLength={200}
                   />
                 </div>
@@ -377,7 +412,10 @@ export function ProfileForm({
                   <Input
                     id="account-profile-billing-address-line2"
                     name="billingAddressLine2"
-                    defaultValue={profile?.billing?.addressLine2 ?? undefined}
+                    value={billingValues.addressLine2}
+                    onChange={(event) =>
+                      updateBillingValue("addressLine2", event.target.value)
+                    }
                     maxLength={200}
                   />
                 </div>
@@ -388,7 +426,10 @@ export function ProfileForm({
                   <Input
                     id="account-profile-billing-city"
                     name="billingCity"
-                    defaultValue={profile?.billing?.city ?? undefined}
+                    value={billingValues.city}
+                    onChange={(event) =>
+                      updateBillingValue("city", event.target.value)
+                    }
                     maxLength={100}
                   />
                 </div>
@@ -399,7 +440,10 @@ export function ProfileForm({
                   <Input
                     id="account-profile-billing-zip"
                     name="billingZip"
-                    defaultValue={profile?.billing?.zip ?? undefined}
+                    value={billingValues.zip}
+                    onChange={(event) =>
+                      updateBillingValue("zip", event.target.value)
+                    }
                     maxLength={20}
                   />
                 </div>
@@ -410,7 +454,10 @@ export function ProfileForm({
                   <Input
                     id="account-profile-billing-country"
                     name="billingCountry"
-                    defaultValue={profile?.billing?.country ?? undefined}
+                    value={billingValues.country}
+                    onChange={(event) =>
+                      updateBillingValue("country", event.target.value)
+                    }
                     maxLength={2}
                     autoComplete="country"
                   />

@@ -7,13 +7,18 @@ import {
   mock,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import React, { Activity } from "react";
+import type { CustomerProfileInput } from "@/features/account/contracts";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+
+registerWorkspaceComponentTestEnv();
+const { act, cleanup, fireEvent, render } = await import(
+  "@testing-library/react"
+);
 
 type ProfileInput = { firstName?: string; lastName?: string; phone?: string };
 
@@ -74,6 +79,36 @@ const editProfile = {
   lastName: "Lovelace",
   phone: "+420601111222",
   billing: null,
+};
+
+const businessProfile = {
+  ...editProfile,
+  billing: {
+    kind: "business" as const,
+    addressLine1: "Original Street 1",
+    addressLine2: null,
+    city: "Prague",
+    zip: "11000",
+    country: "CZ",
+    companyName: "Original Company",
+    companyId: "12345678",
+    vatId: null,
+  },
+};
+
+const personalProfile = {
+  ...editProfile,
+  billing: {
+    kind: "personal" as const,
+    addressLine1: "Original Street 1",
+    addressLine2: null,
+    city: "Prague",
+    zip: "11000",
+    country: "CZ",
+    companyName: null,
+    companyId: null,
+    vatId: null,
+  },
 };
 
 describe("ProfileForm", () => {
@@ -855,6 +890,184 @@ describe("ProfileForm", () => {
 
       expect(event.cancelBubble).toBe(false);
       expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("retains billing drafts when switching between business and personal", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm
+        mode="edit"
+        locale="en-US"
+        email="ada@example.test"
+        profile={businessProfile}
+      />
+    );
+    const companyName = view.getByLabelText("Company name") as HTMLInputElement;
+    const addressLine1 = view.getByLabelText(
+      "Street and number"
+    ) as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.input(companyName, { target: { value: "Draft Company" } });
+      fireEvent.input(addressLine1, { target: { value: "Draft Street 2" } });
+    });
+    expect(companyName.value).toBe("Draft Company");
+    expect(addressLine1.value).toBe("Draft Street 2");
+    await act(async () => {
+      fireEvent.change(view.getByLabelText("Billing profile"), {
+        target: { value: "personal" },
+      });
+    });
+    expect(
+      (view.getByLabelText("Street and number") as HTMLInputElement).value
+    ).toBe("Draft Street 2");
+    await act(async () => {
+      fireEvent.change(view.getByLabelText("Billing profile"), {
+        target: { value: "business" },
+      });
+    });
+
+    expect(
+      (view.getByLabelText("Company name") as HTMLInputElement).value
+    ).toBe("Draft Company");
+    expect(
+      (view.getByLabelText("Street and number") as HTMLInputElement).value
+    ).toBe("Draft Street 2");
+  });
+
+  test("retains a personal billing draft after hiding billing and stays dirty", async () => {
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={personalProfile}
+          />
+        </UnsavedChangesProvider>
+      );
+      const addressLine1 = view.getByLabelText(
+        "Street and number"
+      ) as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.input(addressLine1, { target: { value: "Draft Street 3" } });
+        fireEvent.change(view.getByLabelText("Billing profile"), {
+          target: { value: "hidden" },
+        });
+      });
+      await act(async () => {
+        fireEvent.change(view.getByLabelText("Billing profile"), {
+          target: { value: "personal" },
+        });
+      });
+
+      expect(
+        (view.getByLabelText("Street and number") as HTMLInputElement).value
+      ).toBe("Draft Street 3");
+      const link = document.createElement("a");
+      link.href = "/next";
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledWith(
+        "You have unsaved profile changes. Leave this page?"
+      );
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("submits only the active billing kind and keeps the saved baseline", async () => {
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={businessProfile}
+          />
+        </UnsavedChangesProvider>
+      );
+      const companyName = view.getByLabelText(
+        "Company name"
+      ) as HTMLInputElement;
+      const addressLine1 = view.getByLabelText(
+        "Street and number"
+      ) as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.input(companyName, { target: { value: "Draft Company" } });
+        fireEvent.input(addressLine1, { target: { value: "Draft Street 4" } });
+        fireEvent.change(view.getByLabelText("Billing profile"), {
+          target: { value: "personal" },
+        });
+      });
+      await act(async () => {
+        fireEvent.submit(
+          view.container.querySelector("#account-profile-form")!
+        );
+      });
+
+      const input = updateCustomerProfile.mock
+        .calls[0]![0] as CustomerProfileInput;
+      expect(input.billing?.kind).toBe("personal");
+      expect(input.billing?.addressLine1).toBe("Draft Street 4");
+      expect(input.billing && "companyName" in input.billing).toBe(false);
+
+      await act(async () => {
+        fireEvent.change(view.getByLabelText("Billing profile"), {
+          target: { value: "business" },
+        });
+      });
+      expect(
+        (view.getByLabelText("Company name") as HTMLInputElement).value
+      ).toBe("Draft Company");
+
+      const link = document.createElement("a");
+      link.href = "/next";
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledWith(
+        "You have unsaved profile changes. Leave this page?"
+      );
     } finally {
       window.confirm = originalConfirm;
     }
