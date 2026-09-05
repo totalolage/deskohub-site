@@ -1,6 +1,7 @@
 import { expect, mock, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Effect, Exit, Fiber, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -202,14 +203,22 @@ test("waits briefly for the provider session row to converge after redirect", as
   let reads = 0;
 
   const result = await Effect.runPromise(
-    waitForProviderSessionRowAfterRedirect(
-      Effect.sync(() => rows[reads++]),
-      {
-        intervalMs: 1,
-        onRow: (row) => observedRows.push(row),
-        timeoutMs: 50,
-      }
-    )
+    Effect.gen(function* () {
+      const waited = yield* Effect.forkChild(
+        waitForProviderSessionRowAfterRedirect(
+          Effect.sync(() => rows[reads++]),
+          {
+            intervalMs: 1,
+            onRow: (row) => observedRows.push(row),
+            timeoutMs: 50,
+          }
+        )
+      );
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 millis");
+      yield* TestClock.adjust("1 millis");
+      return yield* Fiber.join(waited);
+    }).pipe(Effect.provide(TestClock.layer()))
   );
 
   expect(result).toBe(completeRow);
@@ -219,10 +228,17 @@ test("waits briefly for the provider session row to converge after redirect", as
 
 test("retains the last provider session diagnostic after convergence times out", async () => {
   const exit = await Effect.runPromiseExit(
-    waitForProviderSessionRowAfterRedirect(
-      Effect.succeed({ reservation_id: "reservation-1" } as CheckoutRow),
-      { intervalMs: 1, timeoutMs: 5 }
-    )
+    Effect.gen(function* () {
+      const waited = yield* Effect.forkChild(
+        waitForProviderSessionRowAfterRedirect(
+          Effect.succeed({ reservation_id: "reservation-1" } as CheckoutRow),
+          { intervalMs: 1, timeoutMs: 5 }
+        )
+      );
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("5 millis");
+      return yield* Fiber.join(waited);
+    }).pipe(Effect.provide(TestClock.layer()))
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
