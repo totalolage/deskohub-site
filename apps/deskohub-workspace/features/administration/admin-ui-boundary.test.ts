@@ -19,9 +19,21 @@ describe("administration UI boundaries", () => {
       "shared/administrator/administrator-authorization.server.ts"
     );
 
-    expect(sharedGate).toMatch(
-      /const authorizeAdministratorPage = cache\([\s\S]*await connection\(\)/
+    const pageGateStart = sharedGate.indexOf(
+      "export const authorizeAdministratorPage"
     );
+    const connectionCall = sharedGate.indexOf(
+      "await connection()",
+      pageGateStart
+    );
+    const requestHeaderCall = sharedGate.indexOf(
+      "requireAdministratorAuthorization()",
+      pageGateStart
+    );
+
+    expect(pageGateStart).toBeGreaterThanOrEqual(0);
+    expect(connectionCall).toBeGreaterThan(pageGateStart);
+    expect(requestHeaderCall).toBeGreaterThan(connectionCall);
     expect(sharedGate.match(/connection\(/g)).toHaveLength(1);
 
     for (const path of [
