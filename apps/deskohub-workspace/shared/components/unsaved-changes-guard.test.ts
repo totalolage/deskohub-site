@@ -8,8 +8,12 @@ import {
 
 registerWorkspaceComponentTestEnv();
 
-const { UnsavedChangesProvider, useConfirmDiscardChanges, useUnsavedChanges } =
-  await import("./unsaved-changes-guard");
+const {
+  UnsavedChangesProvider,
+  useCancelNavigationApproval,
+  useConfirmDiscardChanges,
+  useUnsavedChanges,
+} = await import("./unsaved-changes-guard");
 
 const originalConfirm = window.confirm;
 const originalNavigationDescriptor = Object.getOwnPropertyDescriptor(
@@ -63,6 +67,15 @@ function ConfirmationController({
   readonly onReady: (confirm: ConfirmDiscardChanges) => void;
 }) {
   onReady(useConfirmDiscardChanges());
+  return null;
+}
+
+function CancellationController({
+  onReady,
+}: {
+  readonly onReady: (cancel: () => void) => void;
+}) {
+  onReady(useCancelNavigationApproval());
   return null;
 }
 
@@ -567,6 +580,41 @@ test("a rejected explicit confirmation leaves no destination approval", () => {
   });
 
   expect(confirmMock).toHaveBeenCalledTimes(3);
+});
+
+test("cancels an accepted explicit destination approval", () => {
+  const navigation = installNavigation();
+  let cancelApproval: (() => void) | undefined;
+  const view = render(
+    createElement(
+      UnsavedChangesProvider,
+      null,
+      createElement(Guard, { dirty: true }),
+      createElement(ConfirmationButton, {
+        destination: "/next",
+        onResult: () => {},
+      }),
+      createElement(CancellationController, {
+        onReady: (cancel) => {
+          cancelApproval = cancel;
+        },
+      })
+    )
+  );
+  confirmMock.mockReturnValue(true);
+
+  view.getByRole("button", { name: "Confirm discard" }).click();
+  if (!cancelApproval) throw new Error("Cancellation hook not ready");
+  cancelApproval();
+
+  confirmMock.mockReturnValue(false);
+  const navigate = dispatchNavigate(navigation, {
+    navigationType: "traverse",
+    url: new URL("/next", window.location.href).href,
+  });
+
+  expect(navigate.defaultPrevented).toBe(true);
+  expect(confirmMock).toHaveBeenCalledTimes(2);
 });
 
 test("reinstalls the guard listeners correctly under StrictMode", () => {
