@@ -14,6 +14,10 @@ Reservation invoices are shown as paid. An operator can also mark an ad-hoc invo
 
 An operator can issue an ad-hoc service invoice to an existing Dotypos customer or a new customer reused by exact email. Each invoice records either a due date or an already-paid date. The reviewed billing identity and delivery email are saved to Dotypos before issuance. Creation requires at least one description and signed decimal price, uses a single configured invoice currency, and records the authenticated Basic-auth username and whether the operation came from the administration UI or `dhw`. The final confirmation shows the generated PDF preview and explicitly warns that creation is immutable and immediately emails both recipients; the final invoice number and issue time are assigned only after confirmation.
 
+## CLI sessions
+
+CLI sessions are owner-scoped. Each administrator sees only the sessions they approved, identified by their authenticated username, and can rename or revoke only those sessions. Revoking a session invalidates its bearer credential on the session's next request. The pending approval page names the approving administrator, and the sessions page names the current administrator and shows an `Approved by` column so each row displays its own approver.
+
 ## Access code creation
 
 Access codes creates standalone Igloohome door access codes that are independent of reservations. Operators create them at `/admin/access-codes`, through the administration API, or with `dhw access-codes create`. Each code requires a name of at most 60 characters and a window of 1 to 672 elapsed whole hours between an inclusive site-local start and an exclusive site-local end. Both times sit on the whole hour. Workspace interprets them in `Europe/Prague`. Creation targets one configured lock device and allows at most two live codes for the same device and identical window.

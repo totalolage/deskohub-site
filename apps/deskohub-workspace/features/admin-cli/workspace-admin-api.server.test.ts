@@ -546,7 +546,8 @@ describe("Workspace Admin API", () => {
     });
     const authentication = Layer.succeed(CliAuthentication, {
       ...({} as CliAuthentication["Service"]),
-      listSessions: () => Effect.succeed([{ ...session, revokedAt: null }]),
+      listSessions: (owner) =>
+        Effect.succeed([{ ...session, approvedBy: owner, revokedAt: null }]),
     });
     const reservationAdministration = Layer.succeed(
       ReservationAdministrationService,
@@ -650,7 +651,7 @@ describe("Workspace Admin API", () => {
       };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
-      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(ActorAuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
       Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
@@ -812,8 +813,7 @@ describe("Workspace Admin API", () => {
       ...({} as CliAuthentication["Service"]),
       renameSession: (input) =>
         record("renameSession", input).pipe(Effect.as(true)),
-      revoke: (sessionId) =>
-        record("revokeSession", sessionId).pipe(Effect.as(true)),
+      revoke: (input) => record("revokeSession", input).pipe(Effect.as(true)),
     });
 
     const result = await Effect.gen(function* () {
@@ -838,7 +838,7 @@ describe("Workspace Admin API", () => {
       return { mutationResults, renamed, revoked };
     }).pipe(
       Effect.provide(AdminCliAdministrationApiHandlers),
-      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(ActorAuthorizedCliRequest),
       Effect.provide(ClaimEveryCliMutation),
       Effect.provide(UnusedInvoiceAdministration),
       Effect.provide(UnusedStandaloneAccessCodeAdministration),
@@ -862,6 +862,19 @@ describe("Workspace Admin API", () => {
     expect(result.mutationResults[3]?.createdCodeId).toBe(codeId);
     expect(result.renamed).toEqual({ changed: true });
     expect(result.revoked).toEqual({ changed: true });
+    expect(calls.filter(([name]) => name === "renameSession")).toEqual([
+      [
+        "renameSession",
+        {
+          owner: "admin",
+          sessionId,
+          clientName: "Office Mac",
+        },
+      ],
+    ]);
+    expect(calls.filter(([name]) => name === "revokeSession")).toEqual([
+      ["revokeSession", { owner: "admin", sessionId }],
+    ]);
     expect(calls.map(([name]) => name)).toEqual([
       "createDiscount",
       "updateDiscount",
@@ -1079,6 +1092,206 @@ describe("Workspace Admin API", () => {
     expect(result.reclaimed.state).toBe("issued");
     expect(staleExecutions).toBe(1);
     expect(result.current).toBeInstanceOf(CliMutationInProgress);
+  });
+
+  test("scopes every session control operation to the authenticated session owner", async () => {
+    const ownedSessionId = Schema.decodeUnknownSync(CliSessionId)(
+      "01980000-0000-7000-8000-000000000001"
+    );
+    const foreignSessionId = Schema.decodeUnknownSync(CliSessionId)(
+      "01980000-0000-7000-8000-000000000002"
+    );
+    const unknownSessionId = Schema.decodeUnknownSync(CliSessionId)(
+      "01980000-0000-7000-8000-000000000003"
+    );
+    const calls: Array<readonly [string, unknown]> = [];
+    const record = <A>(name: string, input: A) =>
+      Effect.sync(() => {
+        calls.push([name, input]);
+      });
+    const authentication = Layer.succeed(CliAuthentication, {
+      ...({} as CliAuthentication["Service"]),
+      listSessions: (owner) =>
+        record("listSessions", owner).pipe(
+          Effect.as([
+            {
+              ...session,
+              approvedBy: owner,
+              revokedAt: null,
+            },
+          ])
+        ),
+      renameSession: (input) =>
+        record("renameSession", input).pipe(
+          Effect.as(input.sessionId === ownedSessionId)
+        ),
+      revoke: (input) =>
+        record("revokeSession", input).pipe(
+          Effect.as(input.sessionId === ownedSessionId)
+        ),
+    });
+
+    const result = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      const sessions = yield* client.administration.listSessions({});
+      const renamed = yield* client.administration.renameSession({
+        params: { sessionId: ownedSessionId },
+        payload: { clientName: "Alice laptop" },
+      });
+      const foreignRename = yield* client.administration
+        .renameSession({
+          params: { sessionId: foreignSessionId },
+          payload: { clientName: "Stolen label" },
+        })
+        .pipe(Effect.flip);
+      const unknownRename = yield* client.administration
+        .renameSession({
+          params: { sessionId: unknownSessionId },
+          payload: { clientName: "Nobody" },
+        })
+        .pipe(Effect.flip);
+      const revoked = yield* client.administration.revokeSession({
+        params: { sessionId: ownedSessionId },
+      });
+      const foreignRevoke = yield* client.administration.revokeSession({
+        params: { sessionId: foreignSessionId },
+      });
+      const unknownRevoke = yield* client.administration.revokeSession({
+        params: { sessionId: unknownSessionId },
+      });
+      return {
+        foreignRename,
+        foreignRevoke,
+        renamed,
+        revoked,
+        sessions,
+        unknownRename,
+        unknownRevoke,
+      };
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(ActorAuthorizedCliRequest),
+      Effect.provide(authentication),
+      Effect.provide(
+        Layer.succeed(
+          AdministrationService,
+          {} as AdministrationService["Service"]
+        )
+      ),
+      Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedInvoiceAdministration),
+      Effect.provide(UnusedStandaloneAccessCodeAdministration),
+      Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.runPromise
+    );
+
+    expect(result.sessions).toEqual([
+      { ...session, approvedBy: "admin", revokedAt: null },
+    ]);
+    expect(result.renamed).toEqual({ changed: true });
+    expect(result.revoked).toEqual({ changed: true });
+    expect(result.foreignRename).toBeInstanceOf(CliResourceNotFound);
+    expect(result.unknownRename).toBeInstanceOf(CliResourceNotFound);
+    expect(result.foreignRevoke).toEqual({ changed: false });
+    expect(result.unknownRevoke).toEqual({ changed: false });
+    expect(calls).toEqual([
+      ["listSessions", "admin"],
+      [
+        "renameSession",
+        {
+          owner: "admin",
+          sessionId: ownedSessionId,
+          clientName: "Alice laptop",
+        },
+      ],
+      [
+        "renameSession",
+        {
+          owner: "admin",
+          sessionId: foreignSessionId,
+          clientName: "Stolen label",
+        },
+      ],
+      [
+        "renameSession",
+        { owner: "admin", sessionId: unknownSessionId, clientName: "Nobody" },
+      ],
+      ["revokeSession", { owner: "admin", sessionId: ownedSessionId }],
+      ["revokeSession", { owner: "admin", sessionId: foreignSessionId }],
+      ["revokeSession", { owner: "admin", sessionId: unknownSessionId }],
+    ]);
+  });
+
+  test("denies session control to ownerless legacy sessions without touching the service", async () => {
+    let serviceCalls = 0;
+    const authentication = Layer.succeed(CliAuthentication, {
+      ...({} as CliAuthentication["Service"]),
+      listSessions: () =>
+        Effect.sync(() => {
+          serviceCalls += 1;
+          return [];
+        }),
+      renameSession: () =>
+        Effect.sync(() => {
+          serviceCalls += 1;
+          return true;
+        }),
+      revoke: () =>
+        Effect.sync(() => {
+          serviceCalls += 1;
+          return true;
+        }),
+    });
+    const sessionId = Schema.decodeUnknownSync(CliSessionId)(
+      "01980000-0000-7000-8000-000000000004"
+    );
+
+    const result = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      const sessions = yield* client.administration.listSessions({});
+      const renamed = yield* client.administration
+        .renameSession({
+          params: { sessionId },
+          payload: { clientName: "Legacy" },
+        })
+        .pipe(Effect.flip);
+      const revoked = yield* client.administration.revokeSession({
+        params: { sessionId },
+      });
+      return { renamed, revoked, sessions };
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(authentication),
+      Effect.provide(
+        Layer.succeed(
+          AdministrationService,
+          {} as AdministrationService["Service"]
+        )
+      ),
+      Effect.provide(UnusedReservationAdministration),
+      Effect.provide(UnusedReservationAccessAdministration),
+      Effect.provide(UnusedDiscountAdministration),
+      Effect.provide(UnusedInvoiceAdministration),
+      Effect.provide(UnusedStandaloneAccessCodeAdministration),
+      Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.runPromise
+    );
+
+    expect(result.sessions).toEqual([]);
+    expect(result.renamed).toBeInstanceOf(CliResourceNotFound);
+    expect(result.revoked).toEqual({ changed: false });
+    expect(serviceCalls).toBe(0);
   });
 
   test("replays completed mutations and preserves deterministic conflicts", async () => {

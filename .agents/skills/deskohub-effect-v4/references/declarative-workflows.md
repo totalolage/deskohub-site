@@ -17,6 +17,15 @@ the domain. Keep custom syntax rules under `lint/` and register them as Biome
 plugins in `biome.json`; do not add them ad hoc to an application's ESLint
 configuration.
 
+For a parameterless wrapper around a lazy `Effect.tryPromise`, `Effect.promise`,
+`Effect.sync`, `Effect.try`, or `Effect.suspend` constructor, define the direct
+Effect value instead of `Effect.fn("...")(() => ...)`. Preserve its trace with
+`Effect.withSpan`, and keep reads deferred until each run. The bounded
+`lint/prefer-effect-value.grit` rule enforces this case in Workspace production
+modules. It does not treat every no-argument factory as redundant, so
+parameterized callbacks, generator callbacks, database or query factories, and
+composition such as `Effect.all` remain outside the automated rule.
+
 Do not add a pass-through `Effect.fn` whose only behavior is renaming or reshaping arguments for an existing named Effect operation. Call the existing operation directly unless the wrapper adds real domain policy, composition, or behavior.
 
 Do not wrap a pure, non-throwing calculation in `Effect.sync` merely because it appears inside an Effect workflow. Compute it directly. Keep `Effect.sync` for synchronous work whose throws or evaluation timing must be represented by the Effect.

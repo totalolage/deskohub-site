@@ -59,16 +59,18 @@ mock.module("@/features/access-codes", () => ({
   ),
 }));
 
-mock.module("@/features/administration/basic-auth.server", () => ({
-  requireAdministrationAuthorization: () =>
-    Effect.gen(function* () {
+mock.module(
+  "@/shared/administrator/administrator-authorization.server",
+  () => ({
+    requireAdministratorAuthorization: Effect.gen(function* () {
       authorizationCalls += 1;
       if (!authorizationAllowed) {
         return yield* Effect.fail(new Error("unauthorized"));
       }
       return actor;
     }),
-}));
+  })
+);
 
 mock.module("next/server", () => ({
   after: () => undefined,

@@ -15,16 +15,14 @@ describe("administration UI boundaries", () => {
   });
 
   test("establishes the request boundary in shared page authorization", async () => {
-    const sharedAuthorizer = await readWorkspaceFile(
-      "features/administration/page-authorization.server.ts"
+    const sharedGate = await readWorkspaceFile(
+      "shared/administrator/administrator-authorization.server.ts"
     );
 
-    expect(sharedAuthorizer.match(/connection\(/g)).toHaveLength(1);
-    expect(sharedAuthorizer.indexOf("await connection()")).toBeLessThan(
-      sharedAuthorizer.indexOf(
-        'runWorkspaceEffect("administration.authorize-page"'
-      )
+    expect(sharedGate).toMatch(
+      /const authorizeAdministratorPage = cache\([\s\S]*await connection\(\)/
     );
+    expect(sharedGate.match(/connection\(/g)).toHaveLength(1);
 
     for (const path of [
       "features/administration/page-data.server.ts",
@@ -32,10 +30,15 @@ describe("administration UI boundaries", () => {
       "features/accounting/admin/page-data.server.ts",
       "features/accounting/admin/invoice-breadcrumb.server.ts",
       "features/admin-cli/page-data.server.ts",
+      "app/admin/access-codes/page.tsx",
     ]) {
       const source = await readWorkspaceFile(path);
 
-      expect(source).toContain("page-authorization.server");
+      expect(source).toContain("authorizeAdministratorPage");
+      expect(source).toContain(
+        'from "@/shared/administrator/administrator-authorization.server"'
+      );
+      expect(source).not.toContain("page-authorization.server");
       expect(source).not.toContain("connection(");
       expect(source).not.toMatch(/authorize[A-Za-z]+Page = cache/);
     }
@@ -171,7 +174,7 @@ describe("administration UI boundaries", () => {
       "features/accounting/admin/invoice-breadcrumb.server.ts",
       "features/accounting/admin/invoice-breadcrumb.service.ts",
       "features/accounting/admin/invoice-administration-identifier.ts",
-      "features/administration/page-authorization.server.ts",
+      "shared/administrator/administrator-authorization.server.ts",
     ]) {
       expect(await readWorkspaceFile(path)).not.toMatch(
         forbiddenBreadcrumbDependencies

@@ -1,4 +1,5 @@
 import {
+  AdministrationActorUsername,
   type AdministrationActorUsernameType,
   CliAccessToken,
   type CliAccessTokenType,
@@ -41,6 +42,7 @@ import {
 } from "@/db/schema";
 import "@/shared/polyfills/temporal";
 import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
+import { ConfiguredAdministrators } from "@/shared/administrator/configured-administrators.service";
 
 const authenticationLifetimeMinutes = 5;
 const grantLifetimeMinutes = 5;
@@ -108,14 +110,18 @@ interface ICliAuthentication {
     | PlatformError.PlatformError
     | CliApprovalUnavailableError
   >;
-  readonly listSessions: () => Effect.Effect<
+  readonly listSessions: (
+    owner: AdministrationActorUsernameType
+  ) => Effect.Effect<
     ReadonlyArray<CliSessionAdministrationItem>,
     EffectDrizzleQueryError
   >;
-  readonly revoke: (
-    sessionId: CliSessionIdType
-  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
+  readonly revoke: (input: {
+    readonly owner: AdministrationActorUsernameType;
+    readonly sessionId: CliSessionIdType;
+  }) => Effect.Effect<boolean, EffectDrizzleQueryError>;
   readonly renameSession: (input: {
+    readonly owner: AdministrationActorUsernameType;
     readonly sessionId: CliSessionIdType;
     readonly clientName: CliClientNameType;
   }) => Effect.Effect<boolean, EffectDrizzleQueryError>;
@@ -130,6 +136,7 @@ export class CliAuthentication extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
       const crypto = yield* Crypto.Crypto;
+      const administrators = yield* ConfiguredAdministrators;
       const makeSecret = () =>
         makeCliAuthenticationSecret().pipe(
           Effect.provideService(Crypto.Crypto, crypto)
@@ -305,6 +312,19 @@ export class CliAuthentication extends Context.Service<
           .limit(1);
         if (!request) return yield* rejectedGrant;
 
+        const approvedBy = Option.getOrUndefined(
+          Schema.decodeUnknownOption(AdministrationActorUsername)(
+            request.approvedBy
+          )
+        );
+        if (
+          !approvedBy ||
+          approvedBy !== request.approvedBy ||
+          !(yield* administrators.hasUsername(approvedBy))
+        ) {
+          return yield* rejectedGrant;
+        }
+
         const accessToken = CliAccessToken.make(yield* makeSecret());
         const tokenHash = yield* digestSecret(accessToken);
         const sessionId = CliSessionId.make(yield* crypto.randomUUIDv7);
@@ -313,7 +333,7 @@ export class CliAuthentication extends Context.Service<
           Effect.gen(function* () {
             yield* tx.insert(cliSessions).values({
               id: sessionId,
-              approvedBy: request.approvedBy,
+              approvedBy,
               tokenHash,
               clientName: request.clientName,
               cliVersion: request.cliVersion,
@@ -344,7 +364,7 @@ export class CliAuthentication extends Context.Service<
             if (consumed.length === 0) return yield* rejectedGrant;
             return {
               id: sessionId,
-              approvedBy: request.approvedBy,
+              approvedBy,
               tokenHash,
               clientName: request.clientName,
               cliVersion: request.cliVersion,
@@ -378,6 +398,11 @@ export class CliAuthentication extends Context.Service<
           .limit(1);
         if (!session) return yield* unauthorizedSession;
 
+        const ownerConfigured = yield* administrators.hasUsername(
+          session.approvedBy
+        );
+        if (!ownerConfigured) return yield* unauthorizedSession;
+
         const now = yield* nowInstant;
         const writeBefore = now.subtract({
           minutes: lastUsedWriteIntervalMinutes,
@@ -398,10 +423,11 @@ export class CliAuthentication extends Context.Service<
       });
 
       const listSessions = Effect.fn("CliAuthentication.listSessions")(
-        function* () {
+        function* (owner: AdministrationActorUsernameType) {
           const rows = yield* db
             .select()
             .from(cliSessions)
+            .where(eq(cliSessions.approvedBy, owner))
             .orderBy(desc(cliSessions.createdAt));
           return rows.map((row) => ({
             ...toCliSession(row),
@@ -410,15 +436,20 @@ export class CliAuthentication extends Context.Service<
         }
       );
 
-      const revoke = Effect.fn("CliAuthentication.revoke")(function* (
-        sessionId: CliSessionIdType
-      ) {
+      const revoke = Effect.fn("CliAuthentication.revoke")(function* (input: {
+        readonly owner: AdministrationActorUsernameType;
+        readonly sessionId: CliSessionIdType;
+      }) {
         const now = yield* nowInstant;
         const revoked = yield* db
           .update(cliSessions)
           .set({ revokedAt: now })
           .where(
-            and(eq(cliSessions.id, sessionId), isNull(cliSessions.revokedAt))
+            and(
+              eq(cliSessions.id, input.sessionId),
+              eq(cliSessions.approvedBy, input.owner),
+              isNull(cliSessions.revokedAt)
+            )
           )
           .returning({ id: cliSessions.id });
         return revoked.length > 0;
@@ -426,13 +457,19 @@ export class CliAuthentication extends Context.Service<
 
       const renameSession = Effect.fn("CliAuthentication.renameSession")(
         function* (input: {
+          readonly owner: AdministrationActorUsernameType;
           readonly sessionId: CliSessionIdType;
           readonly clientName: CliClientNameType;
         }) {
           const renamed = yield* db
             .update(cliSessions)
             .set({ clientName: input.clientName })
-            .where(eq(cliSessions.id, input.sessionId))
+            .where(
+              and(
+                eq(cliSessions.id, input.sessionId),
+                eq(cliSessions.approvedBy, input.owner)
+              )
+            )
             .returning({ id: cliSessions.id });
           return renamed.length > 0;
         }
@@ -453,8 +490,13 @@ export class CliAuthentication extends Context.Service<
   );
 
   static Live = this.Default.pipe(
-    Layer.provide(WorkspaceDatabase.Default),
-    Layer.provide(NodeCrypto.layer)
+    Layer.provide(
+      Layer.mergeAll(
+        WorkspaceDatabase.Default,
+        NodeCrypto.layer,
+        ConfiguredAdministrators.Default
+      )
+    )
   );
 }
 

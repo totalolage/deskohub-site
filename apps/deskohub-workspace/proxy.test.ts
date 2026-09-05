@@ -3,9 +3,22 @@ import { createHash } from "node:crypto";
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
 import { localeCookieName } from "@/features/i18n/routing";
+import { workspaceTestAdministrators } from "@/shared/testing/workspace-test-environment";
 import { config, proxy } from "./proxy";
 
-const adminAuthorization = `Basic ${Buffer.from("admin:test-password").toString("base64")}`;
+const toAuthorization = (username: string, password: string) =>
+  `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+
+const [primaryAdministrator, secondaryAdministrator] =
+  workspaceTestAdministrators;
+const primaryAdminAuthorization = toAuthorization(
+  primaryAdministrator.username,
+  primaryAdministrator.password
+);
+const secondaryAdminAuthorization = toAuthorization(
+  secondaryAdministrator.username,
+  secondaryAdministrator.password
+);
 
 const administrationPaths = [
   "/admin",
@@ -152,15 +165,37 @@ test("challenges unauthenticated administration requests", () => {
 });
 
 test("passes authenticated administration requests without localization", () => {
-  const response = proxy(
-    new NextRequest("https://workspace.example/admin/discounts", {
-      headers: { authorization: adminAuthorization },
-    })
-  );
+  for (const authorization of [
+    primaryAdminAuthorization,
+    secondaryAdminAuthorization,
+  ]) {
+    const response = proxy(
+      new NextRequest("https://workspace.example/admin/discounts", {
+        headers: { authorization },
+      })
+    );
 
-  expect(response.headers.get("x-middleware-next")).toBe("1");
-  expect(response.headers.get("cache-control")).toBe("private, no-store");
-  expect(response.headers.get("vary")).toBe("Authorization");
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("vary")).toBe("Authorization");
+  }
+});
+
+test("fails closed for wrong, crossed, and unknown administrator credentials", () => {
+  for (const authorization of [
+    toAuthorization("admin", "operator-test-password"),
+    toAuthorization("operator", "test-password"),
+    toAuthorization("admin", "definitely-not-the-password"),
+    toAuthorization("unknown", "test-password"),
+  ]) {
+    const response = proxy(
+      new NextRequest("https://workspace.example/admin/discounts", {
+        headers: { authorization },
+      })
+    );
+
+    expect(response.status).toBe(401);
+  }
 });
 
 test("checks administration Server Action posts before the general pass-through", () => {
@@ -174,7 +209,7 @@ test("checks administration Server Action posts before the general pass-through"
     new NextRequest("https://workspace.example/admin/discounts", {
       method: "POST",
       headers: {
-        authorization: adminAuthorization,
+        authorization: primaryAdminAuthorization,
         "next-action": "action-id",
       },
     })
@@ -184,8 +219,19 @@ test("checks administration Server Action posts before the general pass-through"
   expect(authorized.headers.get("x-middleware-next")).toBe("1");
 });
 
-test("test authentication fixture matches the configured hash contract", () => {
-  expect(createHash("sha256").update("admin:test-password").digest("hex")).toBe(
-    process.env.ADMIN_BASIC_AUTH_SHA256
+test("test authentication fixtures match the configured credential registry contract", () => {
+  const configuredCredentials = (
+    process.env.ADMIN_BASIC_AUTH_CREDENTIALS ?? ""
+  ).split(/\r?\n/);
+
+  expect(configuredCredentials).toHaveLength(
+    workspaceTestAdministrators.length
   );
+  for (const { username, password } of workspaceTestAdministrators) {
+    expect(configuredCredentials).toContain(
+      `${username}:${createHash("sha256")
+        .update(`${username}:${password}`)
+        .digest("hex")}`
+    );
+  }
 });

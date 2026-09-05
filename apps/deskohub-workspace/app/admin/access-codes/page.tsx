@@ -5,7 +5,7 @@ import {
   AdministrationPageHeader,
 } from "@/features/administration/components";
 import { AdministrationPanelLoading } from "@/features/administration/loading";
-import { authorizeAdministrationPage } from "@/features/administration/page-authorization.server";
+import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 
 export default function AccessCodesAdminPage() {
   return (
@@ -25,7 +25,7 @@ export default function AccessCodesAdminPage() {
 }
 
 export async function AuthorizedAccessCodeCard() {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   return (
     <div className="max-w-3xl rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
       <CreateStandaloneAccessCodeForm />

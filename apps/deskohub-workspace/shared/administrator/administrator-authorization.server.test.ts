@@ -14,40 +14,62 @@ mock.module("next/server", () => ({
   connection: () => Promise.resolve(),
 }));
 
-const loadAuthorization = async () =>
-  await import("./basic-auth.server").then(
-    ({ requireAdministrationAuthorization }) =>
-      requireAdministrationAuthorization()
-  );
+const toAuthorization = (username: string, password: string) =>
+  `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 
-describe("administration server authorization", () => {
-  test("authorizes the configured Basic credentials at the operation boundary", async () => {
+describe("administrator server authorization", () => {
+  test("authorizes every configured administrator independently at the operation boundary", async () => {
+    const { requireAdministratorAuthorization } = await import(
+      "./administrator-authorization.server"
+    );
+
     requestHeaders = new Headers({
-      authorization: `Basic ${Buffer.from("admin:test-password").toString("base64")}`,
+      authorization: toAuthorization("admin", "test-password"),
     });
+    const adminExit = await Effect.runPromiseExit(
+      requireAdministratorAuthorization
+    );
+    expect(adminExit).toEqual(Exit.succeed("admin"));
 
-    const exit = await Effect.runPromiseExit(await loadAuthorization());
+    requestHeaders = new Headers({
+      authorization: toAuthorization("operator", "operator-test-password"),
+    });
+    const operatorExit = await Effect.runPromiseExit(
+      requireAdministratorAuthorization
+    );
+    expect(operatorExit).toEqual(Exit.succeed("operator"));
 
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (Exit.isSuccess(exit)) expect(exit.value).toBe("admin");
+    requestHeaders = new Headers();
+    const unauthorizedExit = await Effect.runPromiseExit(
+      requireAdministratorAuthorization
+    );
+    expect(Exit.isFailure(unauthorizedExit)).toBe(true);
   });
 
-  test("rejects direct operation calls without valid Basic credentials", async () => {
+  test("rejects direct operation calls with wrong, crossed, or malformed credentials", async () => {
     for (const authorization of [
       undefined,
       "Basic malformed",
-      `Basic ${Buffer.from("admin:wrong-password").toString("base64")}`,
+      toAuthorization("admin", "operator-test-password"),
+      toAuthorization("operator", "test-password"),
+      toAuthorization("admin", "wrong-password"),
+      toAuthorization("unknown", "test-password"),
     ]) {
       requestHeaders = new Headers(
         authorization ? { authorization } : undefined
       );
 
-      const exit = await Effect.runPromiseExit(await loadAuthorization());
+      const { requireAdministratorAuthorization } = await import(
+        "./administrator-authorization.server"
+      );
+      const exit = await Effect.runPromiseExit(
+        requireAdministratorAuthorization
+      );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         expect(exit.cause.toString()).toContain(
-          "AdministrationUnauthorizedError"
+          "AdministratorUnauthorizedError"
         );
       }
     }
@@ -55,7 +77,7 @@ describe("administration server authorization", () => {
 
   test("rejects direct invocations of every exported admin action", async () => {
     requestHeaders = new Headers({
-      referer: "https://deskohub.test/admin/discounts",
+      referer: "https://deskohub.test/admin/reservations",
     });
     const { mutateDiscountAdmin, searchDiscountAdminCustomers } = await import(
       "@/features/discounts/admin/actions"
@@ -83,11 +105,23 @@ describe("administration server authorization", () => {
     expect(reservation).not.toHaveProperty("data");
   });
 
+  test("rejects direct invocations of the shared administrator page gate", async () => {
+    requestHeaders = new Headers();
+    const { authorizeAdministratorPage } = await import(
+      "./administrator-authorization.server"
+    );
+
+    const error = await authorizeAdministratorPage().then(
+      () => null,
+      (cause: unknown) => cause
+    );
+
+    expect(error).toHaveProperty("digest", "NEXT_HTTP_ERROR_FALLBACK;404");
+  });
+
   test("rejects direct invocations of every exported admin page-data loader", async () => {
     requestHeaders = new Headers();
-    const pageAuthorization = await import(
-      "@/features/administration/page-authorization.server"
-    );
+    const authorization = await import("./administrator-authorization.server");
     const administration = await import(
       "@/features/administration/page-data.server"
     );
@@ -103,7 +137,7 @@ describe("administration server authorization", () => {
     const adminCli = await import("@/features/admin-cli/page-data.server");
     const searchParams = Promise.resolve({});
     const operations = [
-      pageAuthorization.authorizeAdministrationPage,
+      authorization.authorizeAdministratorPage,
       administration.loadAdministrationOverview,
       () => administration.loadAdministrationReservations(searchParams),
       () =>

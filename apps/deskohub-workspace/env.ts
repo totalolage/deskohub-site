@@ -25,7 +25,7 @@ export const env = createEnv({
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
-    ADMIN_BASIC_AUTH_SHA256: process.env.ADMIN_BASIC_AUTH_SHA256,
+    ADMIN_BASIC_AUTH_CREDENTIALS: process.env.ADMIN_BASIC_AUTH_CREDENTIALS,
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_API_URL: process.env.DOTYPOS_API_URL,
     DOTYPOS_BRANCH_ID: process.env.DOTYPOS_BRANCH_ID,
@@ -101,10 +101,10 @@ export const env = createEnv({
         };
       }
 
-      if (hasPath("ADMIN_BASIC_AUTH_SHA256")) {
+      if (hasPath("ADMIN_BASIC_AUTH_CREDENTIALS")) {
         return {
           ...issue,
-          message: "Invalid administration authentication hash.",
+          message: "Invalid administrator credential registry configuration.",
         };
       }
 

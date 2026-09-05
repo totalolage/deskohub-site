@@ -1,9 +1,10 @@
+import { Schema } from "effect";
+import { AdministratorUsername } from "../shared/administrator/administrator-credentials";
 import { workspaceE2EError } from "./errors";
 import { addRedaction } from "./runtime";
 
 const basicAuthorizationCredentialSeparator = ":";
 const basicAuthorizationPrefix = "Basic ";
-const maximumAdminUsernameLength = 80;
 
 export interface WorkspaceE2EAdminCredential {
   readonly authorization: string;
@@ -16,7 +17,7 @@ export const isAdminBasicAuthCredentialPair = (value: string): boolean => {
   if (separatorIndex <= 0 || separatorIndex === value.length - 1) return false;
   const username = value.slice(0, separatorIndex);
   return (
-    username.trim() === username && username.length <= maximumAdminUsernameLength
+    username.trim() === username && Schema.is(AdministratorUsername)(username)
   );
 };
 
@@ -25,7 +26,7 @@ export const makeWorkspaceE2EAdminCredential = (
 ): WorkspaceE2EAdminCredential => {
   if (!credentialPair || !isAdminBasicAuthCredentialPair(credentialPair)) {
     throw workspaceE2EError(
-      "WORKSPACE_E2E_ADMIN_BASIC_AUTH must be a username:password pair. Provision the workspace-checkout-e2e GitHub Actions environment secret WORKSPACE_E2E_ADMIN_BASIC_AUTH and the matching Preview-only Vercel environment variable ADMIN_BASIC_AUTH_SHA256 for the deskohub-workspace project (the SHA-256 hex digest of the same pair) before running the access-code creation case.",
+      "WORKSPACE_E2E_ADMIN_BASIC_AUTH must be a username:password pair. Provision the workspace-checkout-e2e GitHub Actions environment secret WORKSPACE_E2E_ADMIN_BASIC_AUTH and the matching Preview-only Vercel environment variable ADMIN_BASIC_AUTH_CREDENTIALS for the deskohub-workspace project (a username:<sha-256 hex digest of the pair> line) before running the access-code creation case.",
       { operation: "decode the workspace E2E admin Basic auth credential" }
     );
   }
