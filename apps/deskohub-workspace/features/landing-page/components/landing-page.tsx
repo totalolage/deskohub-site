@@ -39,13 +39,6 @@ export function LandingPage({ locale }: LandingPageProps) {
         foundersSectionId={siteHeaderSectionIds.founders}
       />
 
-      {/* <LandingPageExperiencesSection */}
-      {/*   locale={locale} */}
-      {/*   ttrpgSectionId={siteHeaderSectionIds.ttrpg} */}
-      {/*   eventsSectionId={siteHeaderSectionIds.events} */}
-      {/*   contactHref={contactHref} */}
-      {/* /> */}
-
       <LandingPageTeambuildingsSection
         locale={locale}
         teambuildingsSectionId={siteHeaderSectionIds.teambuildings}
