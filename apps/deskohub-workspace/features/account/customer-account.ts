@@ -48,12 +48,26 @@ export class CustomerAccountFailureCause extends Data.TaggedError(
   readonly code: CustomerAccountFailureCode;
 }> {}
 
+/**
+ * The closed classification of an authoritative session-read rejection.
+ * Each value names one recognized failure mechanism — a Better Auth rate
+ * limit, a lost Next.js request scope, or a Better Auth API rejection —
+ * so a fail-closed read stays diagnosable from telemetry without ever
+ * carrying the raw failure. Values are low-cardinality and safe to log.
+ */
+export type CustomerSessionReadDiagnostic =
+  | "authentication.session.rate-limited"
+  | "authentication.session.request-context"
+  | "authentication.session.api-error"
+  | "authentication.session.unclassified";
+
 export class CustomerAccountAccessError extends Data.TaggedError(
   "CustomerAccountAccessError"
 )<{
   readonly reason: CustomerAccountAccessFailure;
   readonly linkReason?: CustomerAccountLinkFailure;
   readonly cause?: CustomerAccountFailureCause;
+  readonly diagnostic?: CustomerSessionReadDiagnostic;
 }> {}
 
 export const customerAccountUnavailable = (code: CustomerAccountFailureCode) =>

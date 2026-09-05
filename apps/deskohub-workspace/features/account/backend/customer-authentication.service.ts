@@ -5,7 +5,9 @@ import { env } from "@/env";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
   CustomerAccountAccessError,
+  CustomerAccountFailureCause,
   type CustomerAccountId,
+  type CustomerSessionReadDiagnostic,
   customerAccountIdSchema,
   customerAccountUnavailable,
 } from "../customer-account";
@@ -78,6 +80,60 @@ const authenticationUnconfiguredSecretsMessage: BetterAuthSecretsMessage =
   "BETTER_AUTH_SECRETS is not configured.";
 
 /**
+ * The request-scope failure Next.js raises for `headers()` and `cookies()`
+ * outside a live request. The message ends with the fixed docs URL and the
+ * error carries the non-enumerable `__NEXT_ERROR_CODE` E251, so the
+ * classifier accepts either fixed identifier and never depends on trailing
+ * message text staying stable.
+ */
+const nextRequestScopePattern =
+  /^`(headers|cookies)` was called outside a request scope\. Read more: https:\/\/nextjs\.org\/docs\/messages\/next-dynamic-api-wrong-context/;
+
+const isNextRequestScopeError = (cause: Error): boolean => {
+  const errorCode = (cause as { readonly __NEXT_ERROR_CODE?: unknown })
+    .__NEXT_ERROR_CODE;
+  return errorCode === "E251" || nextRequestScopePattern.test(cause.message);
+};
+
+/**
+ * Better Auth rejections surface as errors named `APIError` carrying a
+ * fixed `status`; the adapter recognizes that boundary shape without
+ * importing the provider.
+ */
+const isBetterAuthApiError = (
+  cause: unknown
+): cause is Error & { readonly status?: unknown } =>
+  cause instanceof Error && cause.name === "APIError";
+
+/**
+ * Maps a rejected session read onto the closed diagnostic taxonomy without
+ * retaining any part of the raw failure. The mapped error stays the fixed
+ * fail-closed `authentication.session` unavailability, so callers keep
+ * their existing contract while telemetry gains one low-cardinality code
+ * naming the recognized mechanism — rate limit, request-scope loss, a
+ * Better Auth API rejection, or an unclassified failure.
+ */
+const classifySessionReadFailure = (
+  cause: unknown
+): CustomerAccountAccessError => {
+  let diagnostic: CustomerSessionReadDiagnostic =
+    "authentication.session.unclassified";
+  if (isBetterAuthApiError(cause)) {
+    diagnostic =
+      cause.status === "TOO_MANY_REQUESTS"
+        ? "authentication.session.rate-limited"
+        : "authentication.session.api-error";
+  } else if (cause instanceof Error && isNextRequestScopeError(cause)) {
+    diagnostic = "authentication.session.request-context";
+  }
+  return new CustomerAccountAccessError({
+    reason: "unavailable",
+    cause: new CustomerAccountFailureCause({ code: "authentication.session" }),
+    diagnostic,
+  });
+};
+
+/**
  * Reads the authoritative session and classifies failures for the closed
  * account error contract. Only genuinely absent Better Auth secrets yield
  * `not-configured`; once configured, bootstrap, provider, and database
@@ -97,8 +153,14 @@ const readAuthoritativeSession = (
     if (secrets.kind === "valid") {
       return yield* Effect.tryPromise({
         try: environment.readCurrentSession,
-        catch: () => customerAccountUnavailable("authentication.session"),
-      });
+        catch: classifySessionReadFailure,
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.logWarning("Customer session read failed closed.", {
+            diagnostic: error.diagnostic,
+          })
+        )
+      );
     }
     return yield* secrets.message === authenticationUnconfiguredSecretsMessage
       ? accessError("not-configured")
