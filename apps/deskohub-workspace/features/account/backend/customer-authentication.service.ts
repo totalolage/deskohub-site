@@ -3,6 +3,7 @@ import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { headers } from "next/headers";
 import { env } from "@/env";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
+import { CurrentWorkspaceRequestHeaders } from "@/shared/backend/workspace-request-context";
 import {
   CustomerAccountAccessError,
   CustomerAccountFailureCause,
@@ -342,11 +343,18 @@ export class CustomerAuthentication extends Context.Service<
       ),
     });
 
-  static Default = this.fromEnvironment({
-    readBetterAuthSecretsRaw: () => env.BETTER_AUTH_SECRETS,
-    readCurrentSession: makeAuthoritySessionRead({
-      readRequestHeaders: () => headers(),
-      loadAuthority: () => import("@/features/account/server/auth.server"),
-    }),
+  static Default = Layer.succeed(this, {
+    currentUser: Effect.flatMap(CurrentWorkspaceRequestHeaders, (captured) =>
+      readAuthoritativeSession({
+        readBetterAuthSecretsRaw: () => env.BETTER_AUTH_SECRETS,
+        readCurrentSession: makeAuthoritySessionRead({
+          // Actions and routes capture headers at their request boundary.
+          // RSC callers without that boundary still use Next's request store.
+          readRequestHeaders: () =>
+            captured ? Promise.resolve(captured) : headers(),
+          loadAuthority: () => import("@/features/account/server/auth.server"),
+        }),
+      }).pipe(Effect.flatMap(decodeCustomerAccountSession))
+    ),
   });
 }
