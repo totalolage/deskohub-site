@@ -15,6 +15,7 @@
   },
   "scripts": {
     "generate": "bun scripts/generate.ts",
+    "lint": "biome check src scripts --config-path ../../biome.json --vcs-root ../..",
     "test": "bun test",
     "typecheck": "tsc --project tsconfig.json"
   },

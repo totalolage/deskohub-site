@@ -69,9 +69,21 @@ const reservation = {
 
 const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
 
+const meetingRoomReservationInput = {
+  kind: "meeting-room" as const,
+  duration: { unit: "hour" as const, amount: 4 as const },
+  reservationDate: "2099-06-10",
+  startsAt: "2099-06-10T08:00:00Z",
+  endsAt: "2099-06-10T12:00:00Z",
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420 777 777 777",
+};
+
 const buildAdvertisedPriceToken = async (
   quote: CoworkReservationQuote = buildCoworkReservationQuote(reservation),
-  ttlMilliseconds?: number
+  ttlMilliseconds?: number,
+  locale: "en-US" | "cs-CZ" = "en-US"
 ) => {
   const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
     "@/features/checkout/backend/checkout"
@@ -79,7 +91,7 @@ const buildAdvertisedPriceToken = async (
   return Effect.gen(function* () {
     const state = yield* buildAdvertisedPriceState({
       kind: "cowork",
-      locale: "en-US",
+      locale,
       reservation: {
         kind: "cowork",
         details: {
@@ -96,12 +108,15 @@ const buildAdvertisedPriceToken = async (
   }).pipe(Effect.runPromise);
 };
 
-const buildMeetingRoomAdvertisedPriceToken = async (input: {
-  readonly duration:
-    | { readonly unit: "hour"; readonly amount: 1 | 4 }
-    | { readonly unit: "day"; readonly amount: 1 };
-  readonly reservationDate: string;
-}) => {
+const buildMeetingRoomAdvertisedPriceToken = async (
+  input: {
+    readonly duration:
+      | { readonly unit: "hour"; readonly amount: 1 | 4 }
+      | { readonly unit: "day"; readonly amount: 1 };
+    readonly reservationDate: string;
+  },
+  locale: "en-US" | "cs-CZ" = "en-US"
+) => {
   const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
     "@/features/checkout/backend/checkout"
   );
@@ -129,7 +144,7 @@ const buildMeetingRoomAdvertisedPriceToken = async (input: {
   return Effect.gen(function* () {
     const state = yield* buildAdvertisedPriceState({
       kind: "meeting-room",
-      locale: "en-US",
+      locale,
       reservation: advertisedReservation,
       quote,
     });
@@ -1356,70 +1371,65 @@ describe("prepareWorkspacePayState", () => {
     });
   });
 
-  test("rejects a tampered advertised-price snapshot before downstream work", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
-    const { BotProtectionServiceMock } = await import(
-      "@/shared/backend/bot-protection/bot-protection.service.mock"
-    );
-    const token = await buildAdvertisedPriceToken();
-    const effect = prepareWorkspacePayState({
-      locale: "en-US",
-      checkoutSessionId: "session-id",
-      checkoutAttemptId: "attempt-id",
-      advertisedPriceToken: tamperToken(token),
+  test.each([
+    {
+      label: "tampered token",
+      token: async () => tamperToken(await buildAdvertisedPriceToken()),
       reservation,
-    }).pipe(
-      Effect.provide(
-        Layer.merge(
-          BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
-          CheckoutPricingServiceMock({})
-        )
-      )
-    ) as Effect.Effect<never, unknown, never>;
-
-    const error = await Effect.runPromise(Effect.flip(effect));
-
-    expect(error).toMatchObject({
-      _tag: "PublicSafeActionError",
-      cause: {
-        _tag: "AdvertisedPriceMismatchError",
-        reason: "invalid_token",
-      },
-    });
-  });
-
-  test("rejects a snapshot for different reservation inputs", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
-    const { BotProtectionServiceMock } = await import(
-      "@/shared/backend/bot-protection/bot-protection.service.mock"
-    );
-    const effect = prepareWorkspacePayState({
-      locale: "en-US",
-      checkoutSessionId: "session-id",
-      checkoutAttemptId: "attempt-id",
-      advertisedPriceToken: await buildAdvertisedPriceToken(),
+      reason: "invalid_token",
+    },
+    {
+      label: "expired token",
+      token: () =>
+        buildAdvertisedPriceToken(
+          buildCoworkReservationQuote(reservation),
+          -1000
+        ),
+      reservation,
+      reason: "invalid_token",
+    },
+    {
+      label: "cowork snapshot for different reservation inputs",
+      token: () => buildAdvertisedPriceToken(),
       reservation: { ...reservation, coffee: true },
-    }).pipe(
-      Effect.provide(
-        Layer.merge(
-          BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
-          CheckoutPricingServiceMock({})
-        )
-      )
-    ) as Effect.Effect<never, unknown, never>;
-
-    const error = await Effect.runPromise(Effect.flip(effect));
-
-    expect(error).toMatchObject({
-      _tag: "PublicSafeActionError",
-      cause: {
-        _tag: "AdvertisedPriceMismatchError",
-        reason: "input_mismatch",
-      },
-    });
-  });
-
-  test("rejects an expired advertised-price snapshot", async () => {
+      reason: "input_mismatch",
+    },
+    {
+      label: "cowork snapshot for a meeting-room submission",
+      token: () => buildAdvertisedPriceToken(),
+      reservation: meetingRoomReservationInput,
+      reason: "input_mismatch",
+    },
+    {
+      label: "meeting-room snapshot for a cowork submission",
+      token: () =>
+        buildMeetingRoomAdvertisedPriceToken({
+          duration: { unit: "hour", amount: 4 },
+          reservationDate: "2099-06-10",
+        }),
+      reservation,
+      reason: "input_mismatch",
+    },
+    {
+      label: "cowork snapshot sealed for another locale",
+      token: () => buildAdvertisedPriceToken(undefined, undefined, "cs-CZ"),
+      reservation,
+      reason: "input_mismatch",
+    },
+    {
+      label: "meeting-room snapshot sealed for another locale",
+      token: () =>
+        buildMeetingRoomAdvertisedPriceToken(
+          {
+            duration: { unit: "hour", amount: 4 },
+            reservationDate: "2099-06-10",
+          },
+          "cs-CZ"
+        ),
+      reservation: meetingRoomReservationInput,
+      reason: "input_mismatch",
+    },
+  ])("rejects a $label before downstream work", async (row) => {
     const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
@@ -1428,11 +1438,8 @@ describe("prepareWorkspacePayState", () => {
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
-      advertisedPriceToken: await buildAdvertisedPriceToken(
-        buildCoworkReservationQuote(reservation),
-        -1000
-      ),
-      reservation,
+      advertisedPriceToken: await row.token(),
+      reservation: row.reservation,
     }).pipe(
       Effect.provide(
         Layer.merge(
@@ -1448,7 +1455,7 @@ describe("prepareWorkspacePayState", () => {
       _tag: "PublicSafeActionError",
       cause: {
         _tag: "AdvertisedPriceMismatchError",
-        reason: "invalid_token",
+        reason: row.reason,
       },
     });
   });

@@ -7,6 +7,7 @@ import { isLocale, m } from "@/features/i18n";
 import { useFormField } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
+import { formatPlainDate } from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { localDateTimeSchema, localTimeSchema } from "@/shared/utils/temporal";
 import { ReservationDatePicker } from "./reservation-date-picker";
@@ -62,9 +63,6 @@ const formatDateTimeValue = ({
   readonly date: Temporal.PlainDate;
   readonly time: string;
 }) => `${date.toString()}T${time}`;
-
-const getFormatterDate = (date: Temporal.PlainDate) =>
-  new Date(Date.UTC(date.year, date.month - 1, date.day, 12));
 
 const getAcceptedTime = ({
   minimum,
@@ -124,18 +122,8 @@ export function ReservationDateTimePicker({
     selectedDate,
     minimumDateTime
   );
-  const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        day: "numeric",
-        month: "long",
-        timeZone: "UTC",
-        year: "numeric",
-      }),
-    [locale]
-  );
   const displayValue = selectedDate
-    ? dateFormatter.format(getFormatterDate(selectedDate))
+    ? formatPlainDate({ date: selectedDate, dateStyle: "long", locale })
     : placeholder;
 
   const handleDateChange = (date: string) => {

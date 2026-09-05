@@ -2,7 +2,7 @@
 
 import { Predicate } from "effect";
 import { CalendarIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { isLocale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
@@ -13,6 +13,7 @@ import {
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/utils";
+import { formatPlainDate } from "@/shared/utils/date-time-format";
 
 export type ReservationDatePickerProps = {
   readonly ariaDescribedBy?: string;
@@ -45,9 +46,6 @@ const parsePlainDate = (value: string | undefined) => {
 
 const getCalendarDate = (date: Temporal.PlainDate) =>
   new Date(date.year, date.month - 1, date.day, 12);
-
-const getFormatterDate = (date: Temporal.PlainDate) =>
-  new Date(Date.UTC(date.year, date.month - 1, date.day, 12));
 
 const getPlainDateFromCalendar = (date: Date) =>
   Temporal.PlainDate.from({
@@ -88,16 +86,6 @@ export function ReservationDatePicker({
   const minimumDate = parsePlainDate(
     Predicate.isFunction(minimum) ? minimum() : minimum
   );
-  const dateFormatter = useMemo(
-    () =>
-      new Intl.DateTimeFormat(locale, {
-        day: "numeric",
-        month: "long",
-        timeZone: "UTC",
-        year: "numeric",
-      }),
-    [locale]
-  );
 
   return (
     <>
@@ -121,7 +109,11 @@ export function ReservationDatePicker({
             <CalendarIcon className="h-5 w-5 text-burned-orange" />
             {selectedDate
               ? (displayValue ??
-                dateFormatter.format(getFormatterDate(selectedDate)))
+                formatPlainDate({
+                  date: selectedDate,
+                  dateStyle: "long",
+                  locale,
+                }))
               : placeholder}
           </Button>
         </PopoverTrigger>

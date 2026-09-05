@@ -380,70 +380,69 @@ describe("GoogleCalendarService", () => {
     }
   });
 
-  test.each([
-    "id",
-    "iCalUID",
-    "recurringEventId",
-  ] as const)("rejects an empty provider event %s", async (field) => {
-    listEvents = mock<ListEventsImplementation>(async () => ({
-      data: { items: [{ [field]: "" }] },
-    }));
+  test.each(["id", "iCalUID", "recurringEventId"] as const)(
+    "rejects an empty provider event %s",
+    async (field) => {
+      listEvents = mock<ListEventsImplementation>(async () => ({
+        data: { items: [{ [field]: "" }] },
+      }));
 
-    const result = await runWithCalendar(
-      Effect.gen(function* () {
-        const googleCalendar = yield* GoogleCalendarService;
-        return yield* googleCalendar
-          .listEvents({
-            calendarId,
-            from: "2026-06-20",
-            to: "2026-06-21",
-          })
-          .pipe(Effect.result);
-      })
-    );
+      const result = await runWithCalendar(
+        Effect.gen(function* () {
+          const googleCalendar = yield* GoogleCalendarService;
+          return yield* googleCalendar
+            .listEvents({
+              calendarId,
+              from: "2026-06-20",
+              to: "2026-06-21",
+            })
+            .pipe(Effect.result);
+        })
+      );
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        _tag: "GoogleCalendarAPIError",
-        operation: "events.list",
-        message: "Google Calendar returned a malformed identifier.",
-      },
-    });
-  });
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "GoogleCalendarAPIError",
+          operation: "events.list",
+          message: "Google Calendar returned a malformed identifier.",
+        },
+      });
+    }
+  );
 
-  test.each([
-    "id",
-    "resourceId",
-  ] as const)("rejects an empty provider watch-channel %s", async (field) => {
-    watchEvents = mock<WatchEventsImplementation>(async () => ({
-      data: { [field]: "" },
-    }));
+  test.each(["id", "resourceId"] as const)(
+    "rejects an empty provider watch-channel %s",
+    async (field) => {
+      watchEvents = mock<WatchEventsImplementation>(async () => ({
+        data: { [field]: "" },
+      }));
 
-    const result = await runWithCalendar(
-      Effect.gen(function* () {
-        const googleCalendar = yield* GoogleCalendarService;
-        return yield* googleCalendar
-          .watchEvents({
-            calendarId,
-            channelId: requestedChannelId,
-            webhookUrl: "https://bar.example.test/webhook",
-            webhookToken: "derived-webhook-token",
-            ttlSeconds: 259_200,
-          })
-          .pipe(Effect.result);
-      })
-    );
+      const result = await runWithCalendar(
+        Effect.gen(function* () {
+          const googleCalendar = yield* GoogleCalendarService;
+          return yield* googleCalendar
+            .watchEvents({
+              calendarId,
+              channelId: requestedChannelId,
+              webhookUrl: "https://bar.example.test/webhook",
+              webhookToken: "derived-webhook-token",
+              ttlSeconds: 259_200,
+            })
+            .pipe(Effect.result);
+        })
+      );
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        _tag: "GoogleCalendarAPIError",
-        operation: "events.watch",
-        message: "Google Calendar returned a malformed identifier.",
-      },
-    });
-  });
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
+          _tag: "GoogleCalendarAPIError",
+          operation: "events.watch",
+          message: "Google Calendar returned a malformed identifier.",
+        },
+      });
+    }
+  );
 
   test("fails empty config", async () => {
     const result = await Effect.runPromise(

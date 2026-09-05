@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Result, Schema } from "effect";
 import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
-import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   coworkReservationProductSchema,
   getStoredCoworkReservationDetails,
@@ -12,14 +11,22 @@ import {
   workspaceCoworkProductKeySchema,
 } from "./cowork-reservation-product";
 
-const productParser = makeSchemaParser(coworkReservationProductSchema, {
+const parseProduct = Schema.decodeUnknownSync(coworkReservationProductSchema, {
   onExcessProperty: "error",
 });
-const normalizedProductParser = makeSchemaParser(
+const safeParseProduct = Schema.decodeUnknownResult(
+  coworkReservationProductSchema,
+  { onExcessProperty: "error" }
+);
+const safeParseNormalizedProduct = Schema.decodeUnknownResult(
   normalizedCoworkReservationProductSchema,
   { onExcessProperty: "error" }
 );
-const storedDetailsParser = makeSchemaParser(
+const parseStoredDetails = Schema.decodeUnknownSync(
+  storedCoworkReservationDetailsSchema,
+  { onExcessProperty: "error" }
+);
+const safeParseStoredDetails = Schema.decodeUnknownResult(
   storedCoworkReservationDetailsSchema,
   { onExcessProperty: "error" }
 );
@@ -44,7 +51,7 @@ describe("cowork reservation product", () => {
 
   test("normalizes courtesy coffee once at the product boundary", () => {
     expect(
-      productParser.parse({
+      parseProduct({
         entryTier: "plus",
         coffee: false,
       })
@@ -55,13 +62,13 @@ describe("cowork reservation product", () => {
   });
 
   test("keeps Basic coffee optional and rejects monitor options", () => {
-    expect(productParser.parse({ entryTier: "basic", coffee: true })).toEqual({
+    expect(parseProduct({ entryTier: "basic", coffee: true })).toEqual({
       entryTier: "basic",
       coffee: true,
     });
     expect(
       Result.isFailure(
-        productParser.safeParse({
+        safeParseProduct({
           entryTier: "basic",
           coffee: true,
           monitorOption: "2x27-qhd",
@@ -72,12 +79,10 @@ describe("cowork reservation product", () => {
 
   test("requires a Profi monitor option", () => {
     expect(
-      Result.isFailure(
-        productParser.safeParse({ entryTier: "profi", coffee: true })
-      )
+      Result.isFailure(safeParseProduct({ entryTier: "profi", coffee: true }))
     ).toBe(true);
     expect(
-      productParser.parse({
+      parseProduct({
         entryTier: "profi",
         coffee: false,
         monitorOption: "2x27-qhd",
@@ -92,7 +97,7 @@ describe("cowork reservation product", () => {
   test("rejects noncanonical normalized product data", () => {
     expect(
       Result.isFailure(
-        normalizedProductParser.safeParse({
+        safeParseNormalizedProduct({
           entryTier: "plus",
           coffee: false,
         })
@@ -100,7 +105,7 @@ describe("cowork reservation product", () => {
     ).toBe(true);
     expect(
       Result.isFailure(
-        normalizedProductParser.safeParse({
+        safeParseNormalizedProduct({
           entryTier: "profi",
           coffee: true,
         })
@@ -219,7 +224,7 @@ describe("cowork reservation product", () => {
   test("accepts every canonical Profi monitor option in stored details", () => {
     for (const monitorOption of workspaceProductMonitorOptions) {
       expect(
-        storedDetailsParser.parse({
+        parseStoredDetails({
           kind: "cowork",
           entryTier: "profi",
           coffee: true,
@@ -237,7 +242,7 @@ describe("cowork reservation product", () => {
   test("rejects noncanonical or unrelated stored details", () => {
     expect(
       Result.isFailure(
-        storedDetailsParser.safeParse({
+        safeParseStoredDetails({
           kind: "cowork",
           entryTier: "plus",
           coffee: false,
@@ -246,7 +251,7 @@ describe("cowork reservation product", () => {
     ).toBe(true);
     expect(
       Result.isFailure(
-        storedDetailsParser.safeParse({
+        safeParseStoredDetails({
           kind: "cowork",
           entryTier: "profi",
           coffee: true,
@@ -255,7 +260,7 @@ describe("cowork reservation product", () => {
     ).toBe(true);
     expect(
       Result.isFailure(
-        storedDetailsParser.safeParse({
+        safeParseStoredDetails({
           kind: "cowork",
           entryTier: "basic",
           coffee: true,

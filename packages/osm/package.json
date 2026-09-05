@@ -7,12 +7,13 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "lint": "biome check src --config-path ../../biome.json --vcs-root ../..",
     "test": "bun test",
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
     "effect": "4.0.0-beta.85",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "typescript": "^5"

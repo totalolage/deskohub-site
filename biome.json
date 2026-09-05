@@ -39,6 +39,7 @@
     "./lint/no-unknown-type-aliases.grit",
     "./lint/no-unsafe-dictionary-type.grit",
     "./lint/no-widen-then-assert.grit",
+    "./lint/no-wildcard-reexport.grit",
     "./lint/prefer-effect-when.grit",
     "./lint/prefer-effect-fn.grit"
   ],
