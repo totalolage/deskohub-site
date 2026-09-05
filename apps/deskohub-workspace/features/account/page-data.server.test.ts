@@ -280,14 +280,29 @@ describe("loadCustomerAccountPage", () => {
     });
   });
 
-  test("renders the unavailable state when the profile read fails after a successful link", async () => {
+  test("renders the authenticated unavailable state when the profile read fails after a successful link", async () => {
     const failingProfileLayer = Layer.succeed(Profile, {
       load: () => Effect.fail(new Error("profile gone")),
     });
     Object.assign(Profile, { Live: failingProfileLayer });
 
-    await expect(loadPageState()).resolves.toEqual({ kind: "unavailable" });
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "authenticated-unavailable",
+      email: "ada@example.test",
+    });
 
     Object.assign(Profile, { Live: ProfileLayer });
+  });
+
+  test("renders the authenticated unavailable state for an unexpected resolver failure", async () => {
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "unexpected",
+    });
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "authenticated-unavailable",
+      email: "ada@example.test",
+    });
   });
 });

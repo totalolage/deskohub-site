@@ -42,6 +42,21 @@ function renderState(
   switch (state.kind) {
     case "unavailable":
       return <UnavailableCard locale={locale} />;
+    case "authenticated-unavailable":
+      return (
+        <div className="grid items-start gap-6">
+          <LinkedAccountHeader
+            locale={locale}
+            title={m.accountTitle({}, { locale })}
+          />
+          <UnavailableCard locale={locale} headingLevel="h2" />
+          <DeleteAccountCard
+            email={state.email}
+            locale={locale}
+            deletionPending={false}
+          />
+        </div>
+      );
     case "completion-required":
       return <CompletionCard email={state.email} locale={locale} />;
     case "support-required":
@@ -113,12 +128,20 @@ function LinkedAccountHeader({
   );
 }
 
-function UnavailableCard({ locale }: { readonly locale: Locale }) {
+function UnavailableCard({
+  headingLevel = "h1",
+  locale,
+}: {
+  readonly headingLevel?: "h1" | "h2";
+  readonly locale: Locale;
+}) {
+  const Heading = headingLevel;
+
   return (
     <Card className="mx-auto max-w-xl p-8 text-center">
-      <h1 className="text-3xl text-navy-blue">
+      <Heading className="text-3xl text-navy-blue">
         {m.accountUnavailableTitle({}, { locale })}
-      </h1>
+      </Heading>
       <p className="mt-4 leading-7 text-navy-blue/68">
         {m.accountUnavailableDescription({}, { locale })}
       </p>
@@ -137,13 +160,18 @@ function CompletionCard({
     <div className="grid items-start gap-6">
       <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
         <CardContent className="p-6 sm:p-10">
-          <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
-            <UserRound aria-hidden className="size-4" />
-            {m.accountTitle({}, { locale })}
-          </p>
-          <h1 className="mt-3 text-3xl text-navy-blue sm:text-4xl">
-            {m.accountCompletionTitle({}, { locale })}
-          </h1>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
+                <UserRound aria-hidden className="size-4" />
+                {m.accountTitle({}, { locale })}
+              </p>
+              <h1 className="mt-3 text-3xl text-navy-blue sm:text-4xl">
+                {m.accountCompletionTitle({}, { locale })}
+              </h1>
+            </div>
+            <SignOutButton locale={locale} />
+          </div>
           <p className="mt-3 text-sm leading-6 text-navy-blue/68">
             {m.accountCompletionBody({}, { locale })}
           </p>

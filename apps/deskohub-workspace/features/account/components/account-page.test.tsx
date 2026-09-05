@@ -88,6 +88,7 @@ describe("AccountPage states", () => {
     expect(email.value).toBe("ada@example.test");
     expect(email.readOnly).toBe(true);
     expect(view.getByLabelText("First name")).toBeTruthy();
+    expect(view.getByText("Sign out")).toBeTruthy();
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Delete my account" }));
     });
@@ -151,6 +152,29 @@ describe("AccountPage states", () => {
       view.getByText("Customer accounts are temporarily unavailable")
     ).toBeTruthy();
     expect(view.queryByText("My Workspace")).toBeNull();
+    expect(view.queryByText("Sign out")).toBeNull();
+    expect(view.queryByText("Delete my account")).toBeNull();
+  });
+
+  test("renders the authenticated unavailable state with account controls", async () => {
+    const view = await renderState({
+      kind: "authenticated-unavailable",
+      email: "ada@example.test",
+    });
+
+    expect(
+      view.getByText("Customer accounts are temporarily unavailable")
+    ).toBeTruthy();
+    expect(view.getByText("My Workspace")).toBeTruthy();
+    expect(view.getByText("Sign out")).toBeTruthy();
+    expect(view.getByText("Delete my account")).toBeTruthy();
+    expect(view.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: "Customer accounts are temporarily unavailable",
+      })
+    ).toBeTruthy();
   });
 
   test("asks the get-session route handler to roll the browser cookie once per authenticated view", async () => {

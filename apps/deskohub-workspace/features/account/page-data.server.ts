@@ -19,6 +19,7 @@ import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
  */
 export type CustomerAccountPageState =
   | { readonly kind: "unavailable" }
+  | { readonly kind: "authenticated-unavailable"; readonly email: string }
   | { readonly kind: "completion-required"; readonly email: string }
   | {
       readonly kind: "linked";
@@ -72,7 +73,9 @@ export const loadCustomerAccountPage = cache(
         Effect.result,
         runWorkspaceEffect("account.profile.read", { boundary: "page" })
       );
-      if (Result.isFailure(profile)) return unavailable();
+      if (Result.isFailure(profile)) {
+        return { kind: "authenticated-unavailable", email: user.email };
+      }
 
       const history = await Effect.flatMap(
         CustomerReservationHistoryService,
@@ -112,6 +115,6 @@ export const loadCustomerAccountPage = cache(
     ) {
       return { kind: "support-required", email: user.email };
     }
-    return unavailable();
+    return { kind: "authenticated-unavailable", email: user.email };
   }
 );
