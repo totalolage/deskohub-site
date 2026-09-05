@@ -7,7 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -88,6 +88,12 @@ describe("AccountPage states", () => {
     expect(email.value).toBe("ada@example.test");
     expect(email.readOnly).toBe(true);
     expect(view.getByLabelText("First name")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Delete my account" }));
+    });
+    expect(
+      view.getByRole("button", { name: "Delete permanently" })
+    ).toBeTruthy();
   });
 
   test("renders the linked account with profile, reservations, sign out, and deletion", async () => {
@@ -106,7 +112,10 @@ describe("AccountPage states", () => {
   });
 
   test("renders the support state with the contact destination and no profile data", async () => {
-    const view = await renderState({ kind: "support-required" });
+    const view = await renderState({
+      kind: "support-required",
+      email: "ada@example.test",
+    });
 
     expect(view.getByText("We need to verify your profile")).toBeTruthy();
     const contact = view.getByRole("link", {
@@ -115,6 +124,12 @@ describe("AccountPage states", () => {
     expect(contact.getAttribute("href")).toBe("/en-US/contact");
     expect(view.queryByText("Save profile")).toBeNull();
     expect(view.queryByText("Reservations")).toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Delete my account" }));
+    });
+    expect(
+      view.getByRole("button", { name: "Delete permanently" })
+    ).toBeTruthy();
   });
 
   test("renders the pending deletion state with retry and sign out", async () => {

@@ -26,7 +26,7 @@ export type CustomerAccountPageState =
       readonly profile: CustomerProfile;
       readonly history: CustomerReservationHistory;
     }
-  | { readonly kind: "support-required" }
+  | { readonly kind: "support-required"; readonly email: string }
   | { readonly kind: "deletion-pending"; readonly email: string };
 
 const unavailable = (): CustomerAccountPageState => ({ kind: "unavailable" });
@@ -110,7 +110,7 @@ export const loadCustomerAccountPage = cache(
       failure.reason === "link-required" ||
       failure.reason === "unverified-email"
     ) {
-      return { kind: "support-required" };
+      return { kind: "support-required", email: user.email };
     }
     return unavailable();
   }

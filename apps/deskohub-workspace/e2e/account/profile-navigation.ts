@@ -7,6 +7,12 @@ const profileFormSelector = "#account-profile-form";
 const profileFirstNameSelector = "#account-profile-first-name";
 const unavailableHeading = "Customer accounts are temporarily unavailable";
 
+export function triggerProfileHistoryBack(page: Page): Promise<void> {
+  return page.evaluate(() => {
+    window.history.back();
+  });
+}
+
 export async function verifyProfileNavigation(
   page: Page,
   baseUrl: string
@@ -84,22 +90,11 @@ export async function verifyProfileNavigation(
   const backDialogPromise = page.waitForEvent("dialog", {
     timeout: workspaceE2ETimeouts.browserAction,
   });
-  const backPromise = page.goBack({
-    timeout: workspaceE2ETimeouts.browserNavigation,
-  });
+  const backTriggerPromise = triggerProfileHistoryBack(page);
   const backDialog = await backDialogPromise;
   expect(backDialog.type()).toBe("confirm");
   await backDialog.dismiss();
-  try {
-    await backPromise;
-  } catch (error) {
-    if (
-      !(error instanceof Error) ||
-      !error.message.includes("net::ERR_ABORTED")
-    ) {
-      throw error;
-    }
-  }
+  await backTriggerPromise;
   await expect(page).toHaveURL(accountUrl, {
     timeout: workspaceE2ETimeouts.browserAction,
   });

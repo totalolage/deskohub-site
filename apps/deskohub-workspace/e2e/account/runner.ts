@@ -8,7 +8,7 @@ import { log } from "../runtime";
 import { E2ETelemetryService } from "../services/telemetry";
 import type { WorkspaceE2EFailureReporter } from "../suite";
 import { formatWorkspaceE2EDuration } from "../timeouts";
-import type { WorkspaceE2EStepRunner } from "../types";
+import type { WorkspaceE2EStep, WorkspaceE2EStepRunner } from "../types";
 import { writeWorkspaceE2EAccountJournal } from "./journal";
 import type {
   WorkspaceE2EAccountCase,
@@ -31,11 +31,13 @@ export const runWorkspaceE2EAccountCase = ({
   reportFailure,
   session,
   testCase,
+  verifyPage,
 }: {
   readonly journalRef: WorkspaceE2EAccountJournalRef;
   readonly reportFailure?: WorkspaceE2EFailureReporter;
   readonly session: string;
   readonly testCase: WorkspaceE2EAccountCase;
+  readonly verifyPage?: WorkspaceE2EStep<void>;
 }): Effect.Effect<void, WorkspaceE2EError, WorkspaceE2EAccountRequirement> =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -73,12 +75,17 @@ export const runWorkspaceE2EAccountCase = ({
         });
       };
 
+      const executeCase = Effect.gen(function* () {
+        yield* testCase.execute({ journalRef, runStep, session });
+        if (verifyPage) yield* runStep(verifyPage);
+      });
+
       const traced = telemetry.traceCase({
         caseId: testCase.id,
         effect: Effect.acquireUseRelease(
           Effect.sync(() => log(`CASE START ${testCase.id}`)),
           () =>
-            testCase.execute({ journalRef, runStep, session }).pipe(
+            executeCase.pipe(
               Effect.timeoutOrElse({
                 duration: `${testCase.timeoutMs} millis`,
                 orElse: () =>

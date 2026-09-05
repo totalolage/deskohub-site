@@ -13,6 +13,7 @@ type SignOutButtonProps = {
 
 export function SignOutButton({ locale }: SignOutButtonProps) {
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutFailed, setSignOutFailed] = useState(false);
   const confirmDiscardChanges = useConfirmDiscardChanges();
 
   const signOut = async () => {
@@ -20,20 +21,39 @@ export function SignOutButton({ locale }: SignOutButtonProps) {
     if (!confirmDiscardChanges(target)) return;
 
     setSigningOut(true);
-    await authClient.signOut();
-    window.location.assign(target);
+    setSignOutFailed(false);
+
+    try {
+      const result = await authClient.signOut();
+      if (result.error) {
+        setSigningOut(false);
+        setSignOutFailed(true);
+        return;
+      }
+      window.location.assign(target);
+    } catch {
+      setSigningOut(false);
+      setSignOutFailed(true);
+    }
   };
 
   return (
-    <Button
-      id="account-sign-out"
-      type="button"
-      disabled={signingOut}
-      className="bg-red-800 hover:bg-red-900"
-      onClick={signOut}
-    >
-      <LogOut aria-hidden className="size-4" />
-      {m.accountSignOut({}, { locale })}
-    </Button>
+    <div className="flex flex-col items-end gap-2">
+      <Button
+        id="account-sign-out"
+        type="button"
+        disabled={signingOut}
+        className="bg-red-800 hover:bg-red-900"
+        onClick={signOut}
+      >
+        <LogOut aria-hidden className="size-4" />
+        {m.accountSignOut({}, { locale })}
+      </Button>
+      {signOutFailed && (
+        <div role="alert" aria-live="polite" className="text-sm text-red-700">
+          {m.accountSignOutFailed({}, { locale })}
+        </div>
+      )}
+    </div>
   );
 }

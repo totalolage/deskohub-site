@@ -210,6 +210,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      email: "ada@example.test",
     });
 
     resolveEffect = resolverOutcome({
@@ -219,6 +220,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      email: "ada@example.test",
     });
 
     resolveEffect = resolverOutcome({
@@ -228,6 +230,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      email: "ada@example.test",
     });
 
     resolveEffect = resolverOutcome({
@@ -236,6 +239,7 @@ describe("loadCustomerAccountPage", () => {
     });
     await expect(loadPageState()).resolves.toEqual({
       kind: "support-required",
+      email: "ada@example.test",
     });
   });
 

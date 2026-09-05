@@ -1,9 +1,12 @@
 import "../../shared/polyfills/temporal";
 
+import { Effect } from "effect";
+import { workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
+import type { WorkspaceE2EStep } from "../types";
 import {
   type WorkspaceE2EAccountCaseId,
   workspaceE2EAccountCaseIds,
@@ -143,12 +146,44 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       if (!selected) {
         throw new Error(`Workspace account E2E case ${caseId} was not built`);
       }
+      const verifyPage: WorkspaceE2EStep<void> | undefined =
+        caseId === "account-profile-completion"
+          ? {
+              execute: Effect.tryPromise({
+                catch: () =>
+                  workspaceE2EError(
+                    "verify profile navigation and unsaved changes failed",
+                    {
+                      operation:
+                        "verify profile navigation and unsaved changes",
+                    }
+                  ),
+                try: async () => {
+                  const pages = browser
+                    .contexts()
+                    .flatMap((context) => context.pages());
+                  if (pages.length !== 1)
+                    throw new Error(accountReviewCaptureFailureMessage);
+                  const page = pages[0];
+                  if (!page)
+                    throw new Error(accountReviewCaptureFailureMessage);
+                  await verifyProfileNavigation(
+                    page,
+                    accountLane.config.baseUrl
+                  );
+                },
+              }),
+              id: "checks profile re-entry and unsaved navigation",
+              timeoutMs: workspaceE2ETimeouts.providerTransition,
+            }
+          : undefined;
       await runEffect(
         runWorkspaceE2EAccountCase({
           journalRef: accountLane.journalRef,
           reportFailure: writeWorkspaceE2EFailureAnnotation,
           session: accountLane.session,
           testCase: selected,
+          ...(verifyPage ? { verifyPage } : {}),
         })
       );
 
@@ -160,13 +195,6 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         throw new Error(accountReviewCaptureFailureMessage);
       const page = pages[0];
       if (!page) throw new Error(accountReviewCaptureFailureMessage);
-
-      if (caseId === "account-profile-completion") {
-        await accountTest.step(
-          "verifies profile navigation and unsaved changes",
-          () => verifyProfileNavigation(page, accountLane.config.baseUrl)
-        );
-      }
 
       await accountTest.step(`capture account review: ${target}`, async () => {
         await captureAccountReview(page, accountLane.config.baseUrl, target);

@@ -45,7 +45,7 @@ function renderState(
     case "completion-required":
       return <CompletionCard email={state.email} locale={locale} />;
     case "support-required":
-      return <SupportRequiredCard locale={locale} />;
+      return <SupportRequiredCard email={state.email} locale={locale} />;
     case "deletion-pending":
       return (
         <div className="grid items-start gap-6">
@@ -134,52 +134,72 @@ function CompletionCard({
   readonly locale: Locale;
 }) {
   return (
-    <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
-      <CardContent className="p-6 sm:p-10">
-        <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
-          <UserRound aria-hidden className="size-4" />
-          {m.accountTitle({}, { locale })}
-        </p>
-        <h1 className="mt-3 text-3xl text-navy-blue sm:text-4xl">
-          {m.accountCompletionTitle({}, { locale })}
-        </h1>
-        <p className="mt-3 text-sm leading-6 text-navy-blue/68">
-          {m.accountCompletionBody({}, { locale })}
-        </p>
-        <div className="mt-8">
-          <ProfileForm mode="complete" locale={locale} email={email} />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="grid items-start gap-6">
+      <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
+        <CardContent className="p-6 sm:p-10">
+          <p className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
+            <UserRound aria-hidden className="size-4" />
+            {m.accountTitle({}, { locale })}
+          </p>
+          <h1 className="mt-3 text-3xl text-navy-blue sm:text-4xl">
+            {m.accountCompletionTitle({}, { locale })}
+          </h1>
+          <p className="mt-3 text-sm leading-6 text-navy-blue/68">
+            {m.accountCompletionBody({}, { locale })}
+          </p>
+          <div className="mt-8">
+            <ProfileForm mode="complete" locale={locale} email={email} />
+          </div>
+        </CardContent>
+      </Card>
+      <DeleteAccountCard
+        email={email}
+        locale={locale}
+        deletionPending={false}
+      />
+    </div>
   );
 }
 
-function SupportRequiredCard({ locale }: { readonly locale: Locale }) {
+function SupportRequiredCard({
+  email,
+  locale,
+}: {
+  readonly email: string;
+  readonly locale: Locale;
+}) {
   return (
-    <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
-      <CardContent className="p-6 text-center sm:p-10">
-        <h1 className="text-3xl text-navy-blue sm:text-4xl">
-          {m.accountSupportTitle({}, { locale })}
-        </h1>
-        <p className="mt-4 leading-7 text-navy-blue/68">
-          <Interpolate
-            string={m.accountSupportContact({}, { locale })}
-            mapping={{
-              contact: (label) => (
-                <Link
-                  href={`/${locale}/contact`}
-                  className="text-burned-orange underline underline-offset-4"
-                >
-                  {label}
-                </Link>
-              ),
-            }}
-          />
-        </p>
-        <div className="mt-8 flex justify-center">
-          <SignOutButton locale={locale} />
-        </div>
-      </CardContent>
-    </Card>
+    <div className="grid items-start gap-6">
+      <Card className={`mx-auto max-w-2xl ${cardClassName}`}>
+        <CardContent className="p-6 text-center sm:p-10">
+          <h1 className="text-3xl text-navy-blue sm:text-4xl">
+            {m.accountSupportTitle({}, { locale })}
+          </h1>
+          <p className="mt-4 leading-7 text-navy-blue/68">
+            <Interpolate
+              string={m.accountSupportContact({}, { locale })}
+              mapping={{
+                contact: (label) => (
+                  <Link
+                    href={`/${locale}/contact`}
+                    className="text-burned-orange underline underline-offset-4"
+                  >
+                    {label}
+                  </Link>
+                ),
+              }}
+            />
+          </p>
+          <div className="mt-8 flex justify-center">
+            <SignOutButton locale={locale} />
+          </div>
+        </CardContent>
+      </Card>
+      <DeleteAccountCard
+        email={email}
+        locale={locale}
+        deletionPending={false}
+      />
+    </div>
   );
 }

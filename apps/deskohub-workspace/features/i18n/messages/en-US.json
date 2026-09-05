@@ -684,6 +684,7 @@
   "accountMetadataDescription": "Manage your customer profile and view current and past Workspace reservations.",
   "accountTitle": "My Workspace",
   "accountSignOut": "Sign out",
+  "accountSignOutFailed": "We could not sign you out. Please try again.",
   "accountUnavailableTitle": "Customer accounts are temporarily unavailable",
   "accountUnavailableDescription": "We cannot reach your account right now. Reservations can still be made without an account.",
   "accountProfileTitle": "Profile",

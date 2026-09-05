@@ -691,6 +691,7 @@
   "accountMetadataDescription": "Spravujte svůj zákaznický profil a prohlížejte aktuální i minulé rezervace ve Workspace.",
   "accountTitle": "Můj Workspace",
   "accountSignOut": "Odhlásit se",
+  "accountSignOutFailed": "Odhlášení se nepodařilo. Zkuste to prosím znovu.",
   "accountUnavailableTitle": "Zákaznické účty jsou dočasně nedostupné",
   "accountUnavailableDescription": "Váš účet teď nemůžeme zobrazit. Rezervace je stále možné vytvářet i bez účtu.",
   "accountProfileTitle": "Profil",
