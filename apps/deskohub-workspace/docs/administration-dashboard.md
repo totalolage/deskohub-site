@@ -14,6 +14,10 @@ Reservation invoices are shown as paid. An operator can also mark an ad-hoc invo
 
 An operator can issue an ad-hoc service invoice to an existing Dotypos customer or a new customer reused by exact email. Each invoice records either a due date or an already-paid date. The reviewed billing identity and delivery email are saved to Dotypos before issuance. Creation requires at least one description and signed decimal price, uses a single configured invoice currency, and records the authenticated Basic-auth username and whether the operation came from the administration UI or `dhw`. The final confirmation shows the generated PDF preview and explicitly warns that creation is immutable and immediately emails both recipients; the final invoice number and issue time are assigned only after confirmation.
 
+## CLI sessions
+
+CLI sessions are owner-scoped. Each administrator sees only the sessions they approved, identified by their authenticated username, and can rename or revoke only those sessions. Revoking a session invalidates its bearer credential on the session's next request. The pending approval page names the approving administrator, and the sessions page names the current administrator and shows an `Approved by` column so each row displays its own approver.
+
 ## Operator responsibilities
 
 Reading reservation and customer views does not refresh payment state, retry fulfillment, cancel a reservation, or repair an external record. Mutations belong to explicit operator workflows such as cancelling an eligible reservation, recovering reservation access, maintaining discounts, codes, sales, customer discount groups, or administration sessions. Cancellation may send the customer a localized email, preserves successful settlement facts, and atomically marks a paid Nexi attempt as needing a refund without issuing one; zero-total internal payments do not require a refund.

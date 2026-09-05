@@ -4,8 +4,8 @@ import { Effect, Predicate } from "effect";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
-import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
+import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type AdministrationBookingListInput,
@@ -93,9 +93,9 @@ const runAdministration =
     );
 
 export const authorizeAdministrationPage = cache(async () => {
-  const authorized = await requireDiscountAdminAuthorization().pipe(
+  const authorized = await requireAdministratorAuthorization().pipe(
     Effect.as(true),
-    Effect.catchTag("DiscountAdminUnauthorizedError", () =>
+    Effect.catchTag("AdministratorUnauthorizedError", () =>
       Effect.succeed(false)
     ),
     runWorkspaceEffect("administration.authorize", { boundary: "route" })

@@ -4,6 +4,7 @@ import { loadCliSessions } from "@/features/admin-cli/page-data.server";
 import {
   AdministrationNoticeBanner,
   AdministrationPage,
+  AdministrationTableCount,
   AdministrationTableToolbar,
 } from "@/features/administration/components";
 import { AdministrationCollectionLoading } from "@/features/administration/loading";
@@ -18,7 +19,7 @@ export default function CliSessionsPage({
       <h1 className="sr-only">CLI sessions</h1>
       <Suspense
         fallback={
-          <AdministrationCollectionLoading label="CLI sessions" columns={6} />
+          <AdministrationCollectionLoading label="CLI sessions" columns={7} />
         }
       >
         <CliSessionsContent searchParams={searchParams} />
@@ -27,12 +28,12 @@ export default function CliSessionsPage({
   );
 }
 
-async function CliSessionsContent({
+export async function CliSessionsContent({
   searchParams,
 }: {
   readonly searchParams: Promise<{ readonly result?: string }>;
 }) {
-  const [sessions, params] = await Promise.all([
+  const [{ sessions, username }, params] = await Promise.all([
     loadCliSessions(),
     searchParams,
   ]);
@@ -41,7 +42,18 @@ async function CliSessionsContent({
   return (
     <>
       <AdministrationTableToolbar
-        count={sessions.length}
+        count={
+          <>
+            <AdministrationTableCount
+              count={sessions.length}
+              itemLabel="CLI session"
+            />
+            <p className="text-sm text-navy-blue/60">
+              Sessions approved by{" "}
+              <span className="font-medium">{username}</span>
+            </p>
+          </>
+        }
         itemLabel="CLI session"
       />
       <AdministrationNoticeBanner notice={notice} />

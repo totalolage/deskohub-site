@@ -15,10 +15,17 @@ describe("administration UI boundaries", () => {
   });
 
   test("establishes the request boundary in shared page authorization", async () => {
+    const sharedGate = await readWorkspaceFile(
+      "shared/administrator/administrator-authorization.server.ts"
+    );
+
+    expect(sharedGate).toMatch(
+      /const authorizeAdministratorPage = cache\([\s\S]*await connection\(\)/
+    );
+
     for (const path of [
       "features/accounting/admin/page-data.server.ts",
       "features/administration/page-data.server.ts",
-      "features/discounts/admin/page-data.server.ts",
     ]) {
       const source = await readWorkspaceFile(path);
 
@@ -31,6 +38,21 @@ describe("administration UI boundaries", () => {
           source.indexOf("runWorkspaceEffect(")
         );
       }
+    }
+
+    for (const path of [
+      "features/discounts/admin/page-data.server.ts",
+      "features/admin-cli/page-data.server.ts",
+    ]) {
+      const source = await readWorkspaceFile(path);
+
+      expect(source).toContain("await authorizeAdministratorPage()");
+      expect(source).toContain(
+        'from "@/shared/administrator/administrator-authorization.server"'
+      );
+      expect(source).not.toContain("authorizeDiscountAdminPage");
+      expect(source).not.toMatch(/const authorize[A-Za-z]+Page = cache\(/);
+      expect(source).not.toContain("await connection()");
     }
   });
 

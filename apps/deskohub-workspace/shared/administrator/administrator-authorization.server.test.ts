@@ -10,29 +10,40 @@ mock.module("next/headers", () => ({
   headers: async () => requestHeaders,
 }));
 
+const toAuthorization = (username: string, password: string) =>
+  `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
+
 const loadAuthorization = async () =>
-  await import("./basic-auth.server").then(
-    ({ requireDiscountAdminAuthorization }) =>
-      requireDiscountAdminAuthorization()
+  await import("./administrator-authorization.server").then(
+    ({ requireAdministratorAuthorization }) =>
+      requireAdministratorAuthorization()
   );
 
-describe("discount administration server authorization", () => {
-  test("authorizes the configured Basic credentials at the operation boundary", async () => {
-    requestHeaders = new Headers({
-      authorization: `Basic ${Buffer.from("admin:test-password").toString("base64")}`,
-    });
+describe("administrator server authorization", () => {
+  test("authorizes every configured administrator independently at the operation boundary", async () => {
+    for (const [username, password] of [
+      ["admin", "test-password"],
+      ["operator", "operator-test-password"],
+    ] as const) {
+      requestHeaders = new Headers({
+        authorization: toAuthorization(username, password),
+      });
 
-    const exit = await Effect.runPromiseExit(await loadAuthorization());
+      const exit = await Effect.runPromiseExit(await loadAuthorization());
 
-    expect(Exit.isSuccess(exit)).toBe(true);
-    if (Exit.isSuccess(exit)) expect(exit.value).toBe("admin");
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) expect(exit.value).toBe(username);
+    }
   });
 
-  test("rejects direct operation calls without valid Basic credentials", async () => {
+  test("rejects direct operation calls with wrong, crossed, or malformed credentials", async () => {
     for (const authorization of [
       undefined,
       "Basic malformed",
-      `Basic ${Buffer.from("admin:wrong-password").toString("base64")}`,
+      toAuthorization("admin", "operator-test-password"),
+      toAuthorization("operator", "test-password"),
+      toAuthorization("admin", "wrong-password"),
+      toAuthorization("unknown", "test-password"),
     ]) {
       requestHeaders = new Headers(
         authorization ? { authorization } : undefined
@@ -43,7 +54,7 @@ describe("discount administration server authorization", () => {
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {
         expect(exit.cause.toString()).toContain(
-          "DiscountAdminUnauthorizedError"
+          "AdministratorUnauthorizedError"
         );
       }
     }
@@ -51,10 +62,10 @@ describe("discount administration server authorization", () => {
 
   test("rejects direct invocations of every exported admin action", async () => {
     requestHeaders = new Headers({
-      referer: "https://deskohub.test/admin/discounts",
+      referer: "https://deskohub.test/admin/reservations",
     });
     const { mutateDiscountAdmin, searchDiscountAdminCustomers } = await import(
-      "./actions"
+      "@/features/discounts/admin/actions"
     );
     const { getAdministrationReservation } = await import(
       "@/features/administration/actions"
@@ -79,14 +90,33 @@ describe("discount administration server authorization", () => {
     expect(reservation).not.toHaveProperty("data");
   });
 
+  test("rejects direct invocations of the shared administrator page gate", async () => {
+    requestHeaders = new Headers();
+    const { authorizeAdministratorPage } = await import(
+      "./administrator-authorization.server"
+    );
+
+    const error = await authorizeAdministratorPage().then(
+      () => null,
+      (cause: unknown) => cause
+    );
+
+    expect(error).toHaveProperty("digest", "NEXT_HTTP_ERROR_FALLBACK;404");
+  });
+
   test("rejects direct invocations of every exported admin page-data loader", async () => {
     requestHeaders = new Headers();
+    const authorization = await import("./administrator-authorization.server");
+    const adminCli = await import("@/features/admin-cli/page-data.server");
     const administration = await import(
       "@/features/administration/page-data.server"
     );
-    const discounts = await import("./page-data.server");
+    const discounts = await import(
+      "@/features/discounts/admin/page-data.server"
+    );
     const searchParams = Promise.resolve({});
     const operations = [
+      authorization.authorizeAdministratorPage,
       administration.authorizeAdministrationPage,
       administration.loadAdministrationOverview,
       () => administration.loadAdministrationReservations(searchParams),
@@ -113,7 +143,8 @@ describe("discount administration server authorization", () => {
       () => administration.loadAdministrationOperations(searchParams),
       () =>
         administration.loadAdministrationOperationsPage(searchParams).result,
-      discounts.authorizeDiscountAdminPage,
+      () => adminCli.loadCliAuthenticationApproval("attacker-controlled-code"),
+      () => adminCli.loadCliSessions(),
       () => discounts.loadDiscountAdminPageData(searchParams),
       () => discounts.loadDiscountAdminCodesPageData(searchParams),
       () => discounts.loadDiscountAdminSalesPageData(searchParams),

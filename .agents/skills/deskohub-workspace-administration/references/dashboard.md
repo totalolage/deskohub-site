@@ -20,6 +20,8 @@ Administration pages should start data promises without awaiting them, render st
 
 Authorize every protected data loader, and wrap the authorization operation in React `cache()` so independently streamed leaves deduplicate it within a request. Parallelize independent database and provider reads, but do not persistently cache live operator data. A page must load only the projection it displays: for example, Codes must not wait for Calendar sales, Sales must not load discount codes, and breadcrumbs must use static labels or narrow label projections rather than full entity-detail loaders.
 
+Keep the global administration shell and layout request-independent: do not add identity controls such as logout or an avatar there. Request-derived identity stays inside each page's existing authorization and Suspense boundaries. The CLI session views are owner-scoped: the pending approval page names the approving administrator, the sessions page names the current administrator beside the session count, and the table renders each row's own `approvedBy` value with a safe fallback so a future owner-scoped projection that returns other administrators' sessions still displays distinct approvers.
+
 ## Data ownership
 
 The dashboard composes three sources without creating a second customer or reservation store:

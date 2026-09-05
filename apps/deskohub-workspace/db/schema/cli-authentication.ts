@@ -32,7 +32,9 @@ export const cliSessions = pgTable(
       .primaryKey()
       .default(postgresUuidV7)
       .$type<CliSessionIdType>(),
-    approvedBy: text("approved_by").$type<AdministrationActorUsernameType>(),
+    approvedBy: text("approved_by")
+      .notNull()
+      .$type<AdministrationActorUsernameType>(),
     tokenHash: text("token_hash").notNull(),
     clientName: text("client_name").notNull(),
     cliVersion: text("cli_version").notNull(),
@@ -70,7 +72,7 @@ export const cliSessions = pgTable(
     ),
     check(
       "cli_sessions_approved_by_check",
-      sql`${t.approvedBy} is null or char_length(btrim(${t.approvedBy})) between 1 and 80`
+      sql`${t.approvedBy} ~ '^[a-z0-9][a-z0-9._-]{0,79}$'`
     ),
   ]
 );

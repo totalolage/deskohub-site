@@ -1,3 +1,4 @@
+import type { AdministrationActorUsernameType } from "@deskohub/workspace-admin-api";
 import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { Suspense } from "react";
 import { approveCliAuthentication } from "@/features/admin-cli/actions";
@@ -37,7 +38,7 @@ export default function CliAuthenticationApprovalPage({
   );
 }
 
-async function CliAuthenticationRequest({
+export async function CliAuthenticationRequest({
   searchParams,
 }: {
   readonly searchParams: Promise<{
@@ -46,42 +47,52 @@ async function CliAuthenticationRequest({
   }>;
 }) {
   const params = await searchParams;
-  const request = await loadCliAuthenticationApproval(params.code);
+  const approval = await loadCliAuthenticationApproval(params.code);
+
+  if (!approval?.request) {
+    return (
+      <AuthenticationMessage
+        description="Return to the CLI and run dhw auth again to create a fresh request."
+        icon={ShieldAlert}
+        title="This authentication request is invalid or has expired"
+      />
+    );
+  }
+
+  const { request, username } = approval;
 
   return (
-    <>
-      {!request ? (
-        <AuthenticationMessage
-          description="Return to the CLI and run dhw auth again to create a fresh request."
-          icon={ShieldAlert}
-          title="This authentication request is invalid or has expired"
+    <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+      <dl className="grid divide-y divide-navy-blue/10 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <AuthenticationDetail label="Client" value={request.clientName} />
+        <AuthenticationDetail
+          label="CLI build"
+          value={`${request.cliVersion} · ${request.buildTarget}`}
         />
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-          <dl className="grid divide-y divide-navy-blue/10 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-            <AuthenticationDetail label="Client" value={request.clientName} />
-            <AuthenticationDetail
-              label="CLI build"
-              value={`${request.cliVersion} · ${request.buildTarget}`}
-            />
-          </dl>
-          <div className="border-t border-navy-blue/10 px-5 py-5 sm:px-6">
-            <AuthenticationRequestState code={params.code} request={request} />
-          </div>
-        </div>
-      )}
-    </>
+      </dl>
+      <div className="border-t border-navy-blue/10 px-5 py-5 sm:px-6">
+        <AuthenticationRequestState
+          code={params.code}
+          request={request}
+          username={username}
+        />
+      </div>
+    </div>
   );
 }
 
 function AuthenticationRequestState({
   code,
   request,
+  username,
 }: {
   readonly code?: string;
   readonly request: NonNullable<
-    Awaited<ReturnType<typeof loadCliAuthenticationApproval>>
+    NonNullable<
+      Awaited<ReturnType<typeof loadCliAuthenticationApproval>>
+    >["request"]
   >;
+  readonly username: AdministrationActorUsernameType;
 }) {
   if (request.state === "pending") {
     return (
@@ -91,6 +102,7 @@ function AuthenticationRequestState({
             This request expires at{" "}
             <strong>{formatAdministrationDateTime(request.expiresAt)}</strong>.
             Approve it only if you initiated the request in your terminal.
+            Approving as <strong>{username}</strong>.
           </p>
         </AdministrationAlert>
         <form action={approveCliAuthentication}>

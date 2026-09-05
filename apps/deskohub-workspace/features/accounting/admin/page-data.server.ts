@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
-import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
+import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type InvoiceAdministrationListQuery,
@@ -19,7 +19,7 @@ export type InvoiceAdministrationSearchParams = Promise<{
 
 const authorizeInvoiceAdministrationPage = cache(async () => {
   await connection();
-  await requireDiscountAdminAuthorization().pipe(
+  await requireAdministratorAuthorization().pipe(
     Effect.provide(InvoiceAdministrationService.Live),
     runWorkspaceEffect("invoice-administration.authorize", {
       boundary: "route",
