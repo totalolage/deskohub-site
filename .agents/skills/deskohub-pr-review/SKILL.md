@@ -5,14 +5,16 @@ description: Pull request review feedback, regression fixes, thread resolution, 
 
 # Deskohub PR review
 
-Before invoking the Codex CLI for a branch review, commit the complete intended
-change and review that commit against the target base branch. Use `codex review
---base <base-ref>`; do not use `codex review --uncommitted` for the PR review
-loop, and do not depend on GitHub `@codex review` comments, bot reactions, or
-their delivery as the completion signal. Commit each subsequent actionable
-reviewer fix before rerunning the review against the same base so the reviewer
-always evaluates the publishable branch. Iterate until a fresh Codex CLI review
-reports no findings.
+In OpenCode, use the native read-only `review` subagent, following the active
+`orchestrator` and `review` agent instructions. Supply a fixed base/artifact
+revision or diff hash, the actual diff, acceptance criteria, changed files, test
+evidence, known risks, and applicable child review coverage because the reviewer
+cannot run shell commands. Route accepted findings to their implementation
+owners, reverify, and resume the same reviewer until it returns `APPROVED`, then
+perform final verification. A fixed uncommitted diff is valid. Treat commits as
+separate publishing steps subject to user authorization, not prerequisites for
+each review. Review units may contain multiple execution contributions; impose
+neither a root-only rule nor a per-worker review requirement.
 
 When fixing a bug raised by review, first add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
 
