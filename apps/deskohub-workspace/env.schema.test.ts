@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { Schema } from "effect";
 import {
   workspaceClientEnvSchema,
@@ -77,6 +78,28 @@ const validateMissingBrowserPostHogHost = () =>
     env: {
       ...process.env,
       NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: "phc_test",
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
+const validateAdministratorCredentialEnvironment = (
+  administratorCredentials: string | undefined
+) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      administratorCredentials === undefined
+        ? 'delete process.env.ADMIN_BASIC_AUTH_CREDENTIALS; await import("./env.ts");'
+        : 'await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      ADMIN_BASIC_AUTH_CREDENTIALS: administratorCredentials,
     },
     stderr: "pipe",
     stdout: "pipe",
@@ -199,15 +222,50 @@ describe("workspace environment schemas", () => {
     expect(() => decodeE2EBaseUrl("not a URL")).toThrow();
   });
 
-  test("accepts an absent or lowercase SHA-256 administration hash", () => {
-    const decodeHash = Schema.decodeUnknownSync(
-      workspaceServerEnvSchema.fields.ADMIN_BASIC_AUTH_SHA256
+  test("requires a registry of well-formed newline-separated administrator credentials", () => {
+    const decodeRegistry = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.ADMIN_BASIC_AUTH_CREDENTIALS
+    );
+    const digest = (credential: string) =>
+      createHash("sha256").update(credential).digest("hex");
+    const primary = `admin:${digest("admin:synthetic-password")}`;
+    const secondary = `operator:${digest("operator:synthetic-password")}`;
+
+    expect(decodeRegistry(`${primary}\n${secondary}`)).toHaveLength(2);
+    expect(decodeRegistry(`${primary}\r\n${secondary}`)).toHaveLength(2);
+    expect(decodeRegistry(secondary)).toHaveLength(1);
+    expect(() => decodeRegistry(undefined)).toThrow();
+    expect(() => decodeRegistry("")).toThrow();
+    expect(() => decodeRegistry(`${primary}\n`)).toThrow();
+    expect(() => decodeRegistry(`\n${primary}`)).toThrow();
+    expect(() => decodeRegistry(`${primary}\n\n${secondary}`)).toThrow();
+    expect(() => decodeRegistry(`${primary}\n   \n${secondary}`)).toThrow();
+    expect(() => decodeRegistry(`${primary}\nadmin`)).toThrow();
+    expect(() =>
+      decodeRegistry(`${primary}\nadmin:${digest("admin:another-password")}`)
+    ).toThrow();
+  });
+
+  test("fails closed for missing, empty, and malformed administrator registries without exposing values", () => {
+    const secretDigest = createHash("sha256")
+      .update("hushhush:quiet-synthetic-password")
+      .digest("hex");
+    const missing = validateAdministratorCredentialEnvironment(undefined);
+    const empty = validateAdministratorCredentialEnvironment("");
+    const malformed = validateAdministratorCredentialEnvironment(
+      `hushhush:${secretDigest}\nnonsense`
     );
 
-    expect(decodeHash(undefined)).toBeUndefined();
-    expect(decodeHash("7".repeat(64))).toBe("7".repeat(64));
-    expect(() => decodeHash("7".repeat(63))).toThrow();
-    expect(() => decodeHash("G".repeat(64))).toThrow();
+    for (const validation of [missing, empty, malformed]) {
+      expect(validation.exitCode).toBe(1);
+      const error = validation.stderr.toString();
+      expect(error).toContain(
+        "Invalid administrator credential registry configuration."
+      );
+      expect(error).not.toContain("hushhush");
+      expect(error).not.toContain(secretDigest);
+      expect(error).not.toContain("quiet-synthetic-password");
+    }
   });
 
   test("accepts an optional Playwright Chromium executable", () => {

@@ -13,6 +13,22 @@ export const workspaceTestAdminCredentials = {
   username: "admin",
 } as const;
 
+export const workspaceTestAdministrators = [
+  workspaceTestAdminCredentials,
+  {
+    password: "operator-test-password",
+    username: "operator",
+  },
+] as const;
+
+const toAdministratorCredential = ({
+  username,
+  password,
+}: (typeof workspaceTestAdministrators)[number]) =>
+  `${username}:${createHash("sha256")
+    .update(`${username}:${password}`)
+    .digest("hex")}`;
+
 process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID ??= "K202608";
 process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608 ??= accountingSnapshotKey;
 process.env.BETTER_AUTH_SECRETS ??= `1:${betterAuthSecret}`;
@@ -26,11 +42,9 @@ if (process.env.WORKSPACE_TEST_DATABASE_URL) {
 } else {
   process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";
 }
-process.env.ADMIN_BASIC_AUTH_SHA256 ??= createHash("sha256")
-  .update(
-    `${workspaceTestAdminCredentials.username}:${workspaceTestAdminCredentials.password}`
-  )
-  .digest("hex");
+process.env.ADMIN_BASIC_AUTH_CREDENTIALS ??= workspaceTestAdministrators
+  .map(toAdministratorCredential)
+  .join("\n");
 process.env.DOTYPOS_API_URL ??= "https://dotypos.example";
 process.env.DOTYPOS_BRANCH_ID ??= "branch";
 process.env.DOTYPOS_CLIENT_ID ??= "client";

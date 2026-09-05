@@ -246,12 +246,12 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Admin Basic auth for E2E comes from the runner-owned
   `WORKSPACE_E2E_ADMIN_BASIC_AUTH` secret (a `username:password` pair) in the
   `workspace-checkout-e2e` GitHub environment, paired with the Preview-only
-  Vercel `ADMIN_BASIC_AUTH_SHA256` (SHA-256 hex of the same pair) on the
-  Workspace project. Validate the pair in `e2e-env.ts`, register the pair and
-  password as process redactions, and fail closed with provisioning guidance
-  when absent. Never weaken Basic auth/BotID or add an application bypass;
-  authenticate the browser context with `httpCredentials { send: "always" }`
-  scoped to the preview origin.
+  Vercel `ADMIN_BASIC_AUTH_CREDENTIALS` registry on the Workspace project. Each
+  registry line is `username:<sha256(username:password)>`. Validate the pair
+  in `e2e-env.ts`, register the pair and password as process redactions, and
+  fail closed with provisioning guidance when absent. Never weaken Basic
+  auth/BotID or add an application bypass; authenticate the browser context
+  with `httpCredentials { send: "always" }` scoped to the preview origin.
 - A client-generated attempt id (access codes, checkout) can only be proven
   idempotent by replaying the first submission's exact request. Clicking
   reset/"Create another" intentionally mints a new attempt id and proves

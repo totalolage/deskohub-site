@@ -7,7 +7,7 @@ describe("access codes admin route boundary", () => {
   test("renders the form through the cached administration page boundary", async () => {
     const page = await readWorkspaceFile("./page.tsx");
 
-    expect(page).toContain("await authorizeAdministrationPage()");
+    expect(page).toContain("await authorizeAdministratorPage()");
     expect(page).toContain("<Suspense");
     expect(page).not.toContain("requireDiscountAdminAuthorization");
     expect(page).not.toContain("basic-auth");

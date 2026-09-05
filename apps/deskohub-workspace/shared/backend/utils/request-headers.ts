@@ -11,15 +11,13 @@ export class RequestHeadersError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
-export const getRequestHeaders = Effect.fn("getRequestHeaders")(() =>
-  Effect.tryPromise({
-    try: () => headers(),
-    catch: (cause) => {
-      unstable_rethrow(cause);
-      return new RequestHeadersError({
-        message: "Could not load the current request headers.",
-        cause,
-      });
-    },
-  })
-);
+export const getRequestHeaders = Effect.tryPromise({
+  try: () => headers(),
+  catch: (cause) => {
+    unstable_rethrow(cause);
+    return new RequestHeadersError({
+      message: "Could not load the current request headers.",
+      cause,
+    });
+  },
+}).pipe(Effect.withSpan("getRequestHeaders"));

@@ -2,7 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
-import { authorizeAdministrationPage } from "@/features/administration/page-authorization.server";
+import { authorizeAdministratorPage } from "@/shared/administrator/administrator-authorization.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type InvoiceAdministrationListQuery,
@@ -18,7 +18,7 @@ export type InvoiceAdministrationSearchParams = Promise<{
 export const loadInvoiceAdministrationList = async (
   searchParams: InvoiceAdministrationSearchParams
 ) => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   const params = await searchParams;
   const query: InvoiceAdministrationListQuery = {
     ...(isSort(params.sort) && { sort: params.sort }),
@@ -36,7 +36,7 @@ export const loadInvoiceAdministrationList = async (
 };
 
 export const loadInvoiceCreationPage = async () => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   return Effect.gen(function* () {
     const administration = yield* InvoiceAdministrationService;
     return yield* administration.getCreationDefaults();
@@ -49,7 +49,7 @@ export const loadInvoiceCreationPage = async () => {
 };
 
 export const loadInvoiceAdministrationDetail = async (invoiceId: string) => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   const detail = await Effect.gen(function* () {
     const administration = yield* InvoiceAdministrationService;
     return yield* administration.get(invoiceId);
@@ -65,7 +65,7 @@ export const loadInvoiceAdministrationDetail = async (invoiceId: string) => {
 };
 
 export const loadInvoiceAdministrationPdf = async (invoiceId: string) => {
-  await authorizeAdministrationPage();
+  await authorizeAdministratorPage();
   const pdf = await Effect.gen(function* () {
     const administration = yield* InvoiceAdministrationService;
     return yield* administration.getPdf(invoiceId);

@@ -15,7 +15,7 @@ import {
   locales,
 } from "@/features/i18n/routing";
 import { env } from "./env";
-import { isAdministrationAuthorizationValid } from "./features/administration/basic-auth";
+import { isAdministratorAuthorizationValid } from "./shared/administrator/administrator-basic-auth";
 
 const isAdministrationPath = (pathname: string) =>
   pathname === "/admin" || pathname.startsWith("/admin/");
@@ -31,9 +31,9 @@ const isPrivateAccountPath = (pathname: string) =>
 export function proxy(request: NextRequest) {
   if (isAdministrationPath(request.nextUrl.pathname)) {
     if (
-      !isAdministrationAuthorizationValid(
+      !isAdministratorAuthorizationValid(
         request.headers.get("authorization"),
-        env.ADMIN_BASIC_AUTH_SHA256
+        env.ADMIN_BASIC_AUTH_CREDENTIALS
       )
     ) {
       return new NextResponse(null, {

@@ -42,6 +42,16 @@ export function CliSessionsTable({
         ),
       },
       {
+        accessorFn: (session) => session.approvedBy ?? "",
+        id: "approvedBy",
+        header: "Approved by",
+        cell: ({ row }) => (
+          <p className="font-medium">
+            {row.original.approvedBy ?? "Unavailable"}
+          </p>
+        ),
+      },
+      {
         accessorKey: "createdAt",
         header: "Created",
         cell: ({ getValue }) =>
@@ -95,7 +105,7 @@ export function CliSessionsTable({
           />
         </div>
       )}
-      tableClassName="min-w-[880px]"
+      tableClassName="min-w-[1000px]"
     />
   );
 }

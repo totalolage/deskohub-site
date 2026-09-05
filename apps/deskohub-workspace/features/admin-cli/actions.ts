@@ -4,7 +4,7 @@ import { CliSessionId } from "@deskohub/workspace-admin-api";
 import { Effect, Predicate, Schema } from "effect";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAdministrationAuthorization } from "@/features/administration/basic-auth.server";
+import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -17,7 +17,7 @@ export async function approveCliAuthentication(formData: FormData) {
   const codeForRedirect = Predicate.isString(rawCode) ? rawCode : "";
 
   const approved = await Effect.gen(function* () {
-    const approvedBy = yield* requireAdministrationAuthorization();
+    const approvedBy = yield* requireAdministratorAuthorization;
     const code = yield* decodeCliAuthenticationCode(rawCode);
     const authentication = yield* CliAuthentication;
     return yield* authentication.approve({ approvedBy, code });
@@ -37,12 +37,12 @@ export async function approveCliAuthentication(formData: FormData) {
 
 export async function revokeCliSession(formData: FormData) {
   const revoked = await Effect.gen(function* () {
-    yield* requireAdministrationAuthorization();
+    const owner = yield* requireAdministratorAuthorization;
     const sessionId = yield* Schema.decodeUnknownEffect(CliSessionId)(
       formData.get("sessionId")
     );
     const authentication = yield* CliAuthentication;
-    return yield* authentication.revoke(sessionId);
+    return yield* authentication.revoke({ owner, sessionId });
   }).pipe(
     Effect.catch(() => Effect.succeed(false)),
     Effect.provide(CliAuthentication.Live),
@@ -63,9 +63,13 @@ const renameCliSessionAction = defineWorkspaceAction(
   },
   (input) =>
     Effect.gen(function* () {
-      yield* requireAdministrationAuthorization();
+      const owner = yield* requireAdministratorAuthorization;
       const authentication = yield* CliAuthentication;
-      const renamed = yield* authentication.renameSession(input);
+      const renamed = yield* authentication.renameSession({
+        owner,
+        sessionId: input.sessionId,
+        clientName: input.clientName,
+      });
       if (!renamed) {
         return yield* new PublicSafeActionError({
           message: "That CLI session no longer exists.",

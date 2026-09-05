@@ -133,7 +133,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       const mutationIdempotency = yield* CliMutationIdempotency;
       return handlers
         .handle("getOverview", () =>
-          administration.loadOverview().pipe(mapServiceFailure)
+          administration.loadOverviewSource().pipe(
+            Effect.flatMap((source) => administration.loadOverview(source)),
+            mapServiceFailure
+          )
         )
         .handle("listReservations", ({ query }) =>
           administration.listReservations(query).pipe(mapServiceFailure)
@@ -549,7 +552,13 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           )
         )
         .handle("listSessions", () =>
-          authentication.listSessions().pipe(mapServiceFailure)
+          Effect.gen(function* () {
+            const session = yield* CurrentCliSession;
+            if (session.approvedBy === null) return [];
+            return yield* authentication
+              .listSessions(session.approvedBy)
+              .pipe(mapServiceFailure);
+          })
         )
         .handle("mutateDiscounts", ({ payload }) =>
           Effect.gen(function* () {
@@ -615,27 +624,40 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
           })
         )
         .handle("renameSession", ({ params, payload }) =>
-          authentication
-            .renameSession({
-              sessionId: params.sessionId,
-              clientName: payload.clientName,
-            })
-            .pipe(
-              mapServiceFailure,
-              Effect.flatMap((changed) =>
-                changed
-                  ? Effect.succeed({ changed })
-                  : new CliResourceNotFound({
-                      message: "The CLI session was not found.",
-                    })
-              )
-            )
+          Effect.gen(function* () {
+            const session = yield* CurrentCliSession;
+            if (session.approvedBy === null) {
+              return yield* new CliResourceNotFound({
+                message: "The CLI session was not found.",
+              });
+            }
+            const changed = yield* authentication
+              .renameSession({
+                owner: session.approvedBy,
+                sessionId: params.sessionId,
+                clientName: payload.clientName,
+              })
+              .pipe(mapServiceFailure);
+            if (!changed) {
+              return yield* new CliResourceNotFound({
+                message: "The CLI session was not found.",
+              });
+            }
+            return { changed };
+          })
         )
         .handle("revokeSession", ({ params }) =>
-          authentication.revoke(params.sessionId).pipe(
-            Effect.map((changed) => ({ changed })),
-            mapServiceFailure
-          )
+          Effect.gen(function* () {
+            const session = yield* CurrentCliSession;
+            if (session.approvedBy === null) return { changed: false };
+            const changed = yield* authentication
+              .revoke({
+                owner: session.approvedBy,
+                sessionId: params.sessionId,
+              })
+              .pipe(mapServiceFailure);
+            return { changed };
+          })
         );
     })
 );

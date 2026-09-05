@@ -16,6 +16,7 @@ writeFileSync(config, JSON.stringify({
   plugins: [
     join(repositoryRoot, "lint", "no-wildcard-reexport.grit"),
     join(repositoryRoot, "lint", "prefer-effect-fn.grit"),
+    join(repositoryRoot, "lint", "prefer-effect-value.grit"),
   ],
 }));
 
@@ -56,6 +57,9 @@ const applyDiscountCodeOriginal = `export const applyDiscountCodeToPayState = Ef
   (effect) => effect.pipe(Effect.catchTags({ PromotionCodeUnavailableError: () => Effect.succeed("unavailable") }))
 );
 `;
+
+const tracedLazyValue = (effectConstructor: string, suffix = "") =>
+  `export const loadValue = Effect.fn("Workspace.loadValue")(() => Effect.${effectConstructor}${suffix});\n`;
 
 const reservations = "apps/deskohub-workspace/features/reservations";
 const booking = `${reservations}/book-seat.ts`;
@@ -102,6 +106,26 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
     name: "prefer-effect-fn-analytics", diagnostic: "Define Effect generator functions with Effect.fn",
     module: "apps/deskohub-workspace/features/checkout/backend/analytics/publish-analytics.ts",
     cases: [["retains the bare arrow restriction", untracedGen, true]],
+  },
+  {
+    name: "prefer-effect-value", diagnostic: "Define a lazy Effect value",
+    module: "apps/deskohub-workspace/features/reservation/load-value.ts",
+    cases: [
+      ["rejects Effect.tryPromise", tracedLazyValue('tryPromise({ try: () => headers(), catch: (cause) => cause })'), true],
+      ["rejects Effect.promise", tracedLazyValue("promise(() => headers())"), true],
+      ["rejects Effect.sync", tracedLazyValue("sync(() => headers())"), true],
+      ["rejects Effect.try", tracedLazyValue("try({ try: () => headers(), catch: (cause) => cause })"), true],
+      ["rejects Effect.suspend", tracedLazyValue("suspend(() => headers())"), true],
+      ["rejects a lazy Effect with a pipe chain", tracedLazyValue("sync(() => headers())", ".pipe(Effect.withSpan(\"loadValue\"))"), true],
+      ["permits a direct Effect value", 'export const loadValue = Effect.fn("Workspace.loadValue")(() => Effect.succeed("value"));\n', false],
+      ["permits a parameterized lazy callback", 'export const loadValue = Effect.fn("Workspace.loadValue")((input: string) => Effect.sync(() => input));\n', false],
+      ["permits a zero-argument generator callback", 'export const loadValue = Effect.fn("Workspace.loadValue")(function* () { return yield* Effect.sync(() => headers()); });\n', false],
+      ["permits an unrelated factory", 'export const loadValue = Effect.fn("Workspace.loadValue")(() => database.query("headers"));\n', false],
+      ["permits an Effect.all composition factory", 'export const loadValue = Effect.fn("Workspace.loadValue")(() => Effect.all([Effect.sync(() => headers()), Effect.sync(() => headers())]));\n', false],
+      ["permits test modules", tracedLazyValue("sync(() => headers())"), false, "apps/deskohub-workspace/features/reservation/load-value.test.ts"],
+      ["permits generated modules", tracedLazyValue("sync(() => headers())"), false, generated],
+      ["permits modules outside Workspace", tracedLazyValue("sync(() => headers())"), false, "apps/dhw/src/load-value.ts"],
+    ],
   },
 ];
 

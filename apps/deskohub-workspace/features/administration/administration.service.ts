@@ -427,7 +427,7 @@ type AdministrationOverviewRow = Pick<
   readonly customerId: DotyposCustomerId;
 };
 
-type AdministrationOverviewSource = {
+export type AdministrationOverviewSource = {
   readonly currentDate: Temporal.PlainDate;
   readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
   readonly reservations:
@@ -1252,11 +1252,13 @@ const getOrderTimeline = (
 export class AdministrationService extends Context.Service<
   AdministrationService,
   {
-    readonly loadOverview: () => Effect.Effect<AdministrationOverview, unknown>;
-    readonly loadReservationOverview: () => Effect.Effect<
-      AdministrationReservationOverview,
+    readonly loadOverviewSource: () => Effect.Effect<
+      AdministrationOverviewSource,
       unknown
     >;
+    readonly loadOverview: (
+      source: AdministrationOverviewSource
+    ) => Effect.Effect<AdministrationOverview, unknown>;
     readonly listReservations: (
       input: AdministrationReservationListInput
     ) => Effect.Effect<
@@ -1363,6 +1365,9 @@ export class AdministrationService extends Context.Service<
       const loadCustomers = Effect.fn("AdministrationService.loadCustomers")(
         function* (ids: readonly DotyposCustomerId[]) {
           const uniqueIds = [...new Set(ids)];
+          yield* Effect.annotateCurrentSpan({
+            uniqueCustomerCount: uniqueIds.length,
+          });
           const batches = yield* Effect.all(
             EffectArray.chunksOf(uniqueIds, providerIdBatchSize).map(
               (batchIds) =>
@@ -2802,7 +2807,17 @@ export class AdministrationService extends Context.Service<
                 cause,
                 ...overviewRange,
               }).pipe(Effect.as({ kind: "unavailable" as const }));
-            })
+            }),
+            Effect.tap((result) =>
+              Effect.annotateCurrentSpan({
+                reservationCount:
+                  result.kind === "available" ? result.items.length : 0,
+                unavailable: result.kind === "unavailable",
+              })
+            ),
+            Effect.withSpan(
+              "AdministrationService.loadOverviewSource.reservationProvider"
+            )
           );
         const reservationIds =
           reservations.kind === "available"
@@ -2813,38 +2828,42 @@ export class AdministrationService extends Context.Service<
                 return id ? [id] : [];
               })
             : [];
-        const rows =
-          reservationIds.length === 0
-            ? []
-            : yield* db
-                .select({
-                  id: workspaceReservations.dotyposReservationId,
-                  customerId: workspaceReservations.dotyposCustomerId,
-                  failureCode: workspaceReservations.failureCode,
-                  fulfillmentState: workspaceReservations.fulfillmentState,
-                  paymentState: workspaceReservations.paymentState,
-                  reservationState: workspaceReservations.reservationState,
-                })
-                .from(workspaceReservations)
-                .where(
-                  inArray(
-                    workspaceReservations.dotyposReservationId,
-                    reservationIds
-                  )
-                );
+        const rows = yield* Effect.gen(function* () {
+          if (reservationIds.length === 0)
+            return [] as readonly AdministrationOverviewRow[];
+          return yield* db
+            .select({
+              id: workspaceReservations.dotyposReservationId,
+              customerId: workspaceReservations.dotyposCustomerId,
+              failureCode: workspaceReservations.failureCode,
+              fulfillmentState: workspaceReservations.fulfillmentState,
+              paymentState: workspaceReservations.paymentState,
+              reservationState: workspaceReservations.reservationState,
+            })
+            .from(workspaceReservations)
+            .where(
+              inArray(
+                workspaceReservations.dotyposReservationId,
+                reservationIds
+              )
+            );
+        }).pipe(
+          Effect.tap((linkedRows) =>
+            Effect.annotateCurrentSpan({
+              linkedRowCount: linkedRows.length,
+              linkageQueried: reservationIds.length > 0,
+            })
+          ),
+          Effect.withSpan(
+            "AdministrationService.loadOverviewSource.databaseLinkage"
+          )
+        );
         return { currentDate, ranges, reservations, rows };
       });
 
-      const loadReservationOverview = Effect.fn(
-        "AdministrationService.loadReservationOverview"
-      )(function* () {
-        return getReservationOverview(yield* loadOverviewSource());
-      });
-
       const loadOverview = Effect.fn("AdministrationService.loadOverview")(
-        function* () {
-          const { currentDate, ranges, reservations, rows } =
-            yield* loadOverviewSource();
+        function* (source: AdministrationOverviewSource) {
+          const { currentDate, ranges, reservations, rows } = source;
           const customerIdsByReservationId = new Map(
             rows.flatMap(({ customerId, id }) =>
               id ? ([[id, customerId]] as const) : []
@@ -2909,7 +2928,7 @@ export class AdministrationService extends Context.Service<
           );
           const newCustomers = toCustomerMetric(newCustomerIds, customersById);
           return {
-            ...getReservationOverview({ ranges, reservations, rows }),
+            ...getAdministrationReservationOverview(source),
             uniqueCustomers,
             newCustomers,
           };
@@ -2917,8 +2936,8 @@ export class AdministrationService extends Context.Service<
       );
 
       return {
+        loadOverviewSource,
         loadOverview,
-        loadReservationOverview,
         listReservations,
         loadReservation,
         loadReservationBreadcrumbLabel,
@@ -2950,11 +2969,11 @@ export class AdministrationService extends Context.Service<
   );
 }
 
-function getReservationOverview({
+export function getAdministrationReservationOverview({
   ranges,
   reservations,
   rows,
-}: Pick<AdministrationOverviewSource, "ranges" | "reservations" | "rows">) {
+}: AdministrationOverviewSource) {
   if (reservations.kind === "unavailable") {
     const unavailable = {
       completed: 0,

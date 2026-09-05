@@ -2,7 +2,7 @@
 
 import { Effect, Match, Option } from "effect";
 import { revalidatePath } from "next/cache";
-import { requireAdministrationAuthorization } from "@/features/administration/basic-auth.server";
+import { requireAdministratorAuthorization } from "@/shared/administrator/administrator-authorization.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { refreshCalendarDiscountSourceAfterMutation } from "./calendar-discount-source-maintenance.server";
@@ -91,7 +91,7 @@ const discountAdminMutationAction = defineWorkspaceAction(
     schema: discountAdminMutationStandardSchema,
   },
   (input) =>
-    requireAdministrationAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(executeDiscountAdminActionMutation(input)),
       Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
@@ -126,7 +126,7 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
     logInput: false,
   },
   (input) =>
-    requireAdministrationAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(executeCustomerSearch(input)),
       Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
