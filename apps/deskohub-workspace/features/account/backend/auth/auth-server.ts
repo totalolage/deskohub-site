@@ -2,7 +2,7 @@ import "server-only";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import { APIError, type BetterAuthOptions, betterAuth } from "better-auth";
-import { createAuthMiddleware } from "better-auth/api";
+import { createAuthMiddleware, isAPIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { Effect, Option, Schema } from "effect";
@@ -74,6 +74,24 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     secrets: config.secrets,
     baseURL,
     database: config.database,
+    logger: { disabled: true },
+    onAPIError: {
+      onError: (error) => {
+        if (isAPIError(error) && error.statusCode < 500) return;
+
+        void runWorkspaceEffect("account.auth.handler", { boundary: "route" })(
+          Effect.logError("Better Auth request failed.", {
+            code: "account.auth.handler",
+          })
+        ).catch(() => undefined);
+
+        // Keep better-call from falling through to its raw error logger.
+        // biome-ignore lint: This synchronous third-party callback must return a fixed APIError.
+        throw new APIError("INTERNAL_SERVER_ERROR", {
+          message: "Internal Server Error",
+        });
+      },
+    },
     disabledPaths: ["/update-user"],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {

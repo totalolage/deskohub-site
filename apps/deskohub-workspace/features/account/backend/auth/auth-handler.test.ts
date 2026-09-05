@@ -1,8 +1,9 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import { NetworkError } from "@deskohub/dotypos";
+import { memoryAdapter } from "better-auth/adapters/memory";
 import { Deferred, Effect, Fiber, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { makeNodePostgresDatabase } from "@/db/database-client";
@@ -22,7 +23,18 @@ import type { CustomerAccountId } from "../customer-account";
 import { CustomerAccountDeletionService } from "../customer-account-deletion";
 import { CustomerAccountLinkRepository } from "../customer-account-link.repository";
 import { CustomerDotyposAdapter } from "../customer-dotypos-adapter.service";
-import { type MagicLinkSendFunction, makeWorkspaceAuth } from "./auth-server";
+import type { MagicLinkSendFunction, WorkspaceAuthConfig } from "./auth-server";
+
+const emitWorkspaceLog = mock(() => undefined);
+
+mock.module("@/instrumentation", () => ({
+  postHogLoggerProvider: {
+    forceFlush: () => Promise.resolve(),
+    getLogger: () => ({ emit: emitWorkspaceLog }),
+  },
+}));
+
+const { makeWorkspaceAuth } = await import("./auth-server");
 
 const testDatabase = await connectWorkspacePostgresTestDatabase();
 
@@ -53,6 +65,7 @@ const buildDatabaseAdapter = () =>
 
 const makeTestAuth = (
   options: {
+    readonly database?: WorkspaceAuthConfig["database"];
     readonly secrets?: { readonly version: number; readonly value: string }[];
     readonly sentLinks?: CapturedMagicLink[];
     readonly beforeDeleteUser?: (accountId: CustomerAccountId) => Promise<void>;
@@ -62,7 +75,7 @@ const makeTestAuth = (
     options.sentLinks?.push(data);
   };
   return makeWorkspaceAuth({
-    database: buildDatabaseAdapter(),
+    database: options.database ?? buildDatabaseAdapter(),
     secrets: options.secrets ?? [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
     httpsOnly: true,
@@ -99,6 +112,39 @@ const uniqueDotyposCustomerId = () => {
 
 const uniqueEmail = (label: string) =>
   `${label}-${crypto.randomUUID()}@deskohub.test`;
+
+const makeFailingVerificationDatabase = (
+  email: string,
+  sessionToken: string
+) => {
+  const baseDatabase = memoryAdapter({
+    user: [],
+    session: [],
+    account: [],
+    verification: [],
+    rateLimit: [],
+  });
+
+  return (options: Parameters<typeof baseDatabase>[0]) => {
+    const adapter = baseDatabase(options);
+    return {
+      ...adapter,
+      create: async (input: Parameters<typeof adapter.create>[0]) => {
+        if (input.model === "verification") {
+          throw Object.assign(
+            new Error("synthetic verification insert failure"),
+            {
+              query:
+                "insert into auth.verification (email, token) values ($1, $2)",
+              params: [email, sessionToken],
+            }
+          );
+        }
+        return adapter.create(input);
+      },
+    };
+  };
+};
 
 const signInForMagicLink = (
   auth: TestAuth,
@@ -181,6 +227,71 @@ const runTestDeletion = (
     ).pipe(Effect.provide(layers))
   );
 
+test("reports auth handler failures without logging provider data", async () => {
+  const email = uniqueEmail("verification-failure");
+  const sessionToken = `synthetic-session-token-${crypto.randomUUID()}`;
+  const auth = makeTestAuth({
+    database: makeFailingVerificationDatabase(email, sessionToken),
+  });
+  const consoleError = spyOn(console, "error").mockImplementation(
+    () => undefined
+  );
+  const consoleLog = spyOn(console, "log").mockImplementation(() => undefined);
+  const consoleWarn = spyOn(console, "warn").mockImplementation(
+    () => undefined
+  );
+
+  emitWorkspaceLog.mockClear();
+
+  try {
+    const authContext = await auth.$context;
+    authContext.logger.error("synthetic internal provider failure", {
+      email,
+      sessionToken,
+    });
+
+    const response = await signInForMagicLink(auth, email);
+    const body = await response.text();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    const captured = JSON.stringify(
+      [
+        ...consoleError.mock.calls,
+        ...consoleLog.mock.calls,
+        ...consoleWarn.mock.calls,
+        ...emitWorkspaceLog.mock.calls,
+      ],
+      (_key, value) =>
+        value instanceof Error
+          ? { ...value, message: value.message, name: value.name }
+          : value
+    );
+
+    expect(response.status).toBe(500);
+    expect(body).toBe(JSON.stringify({ message: "Internal Server Error" }));
+    expect(captured).not.toContain(email);
+    expect(captured).not.toContain(sessionToken);
+    expect(captured).not.toContain("synthetic verification insert failure");
+    expect(captured).not.toContain("synthetic internal provider failure");
+    expect(captured).not.toContain("/api/auth/sign-in/magic-link");
+    expect(captured).not.toContain("insert into auth.verification");
+    expect(captured).not.toContain("query");
+    expect(captured).not.toContain("params");
+    expect(emitWorkspaceLog).toHaveBeenCalledTimes(1);
+    expect(emitWorkspaceLog.mock.calls[0]?.[0]).toMatchObject({
+      attributes: {
+        boundary: "route",
+        operation: "account.auth.handler",
+      },
+      body: ["Better Auth request failed.", '{"code":"account.auth.handler"}'],
+    });
+  } finally {
+    consoleError.mockRestore();
+    consoleLog.mockRestore();
+    consoleWarn.mockRestore();
+  }
+});
+
 describe.skipIf(!testDatabase)(
   "Better Auth handler on the migrated disposable Postgres",
   () => {
@@ -205,6 +316,7 @@ describe.skipIf(!testDatabase)(
       const email = uniqueEmail("profile-fields");
       const rawProfileSecret = `profile-secret-${crypto.randomUUID()}`;
 
+      emitWorkspaceLog.mockClear();
       const response = await callHandler(auth, "/sign-in/magic-link", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -218,6 +330,7 @@ describe.skipIf(!testDatabase)(
       expect(response.status).toBe(400);
       expect(await response.text()).not.toContain(rawProfileSecret);
       expect(sentLinks).toHaveLength(0);
+      expect(emitWorkspaceLog).not.toHaveBeenCalled();
 
       const verification = await testDatabase!.pool.query(
         `select id from auth.verification where value like $1`,
@@ -415,6 +528,7 @@ describe.skipIf(!testDatabase)(
       const verifyResponse = await verifyMagicLink(auth, sentLinks[0]!);
       const cookie = cookieJar(getSessionCookie(verifyResponse)!);
 
+      emitWorkspaceLog.mockClear();
       const evilOrigin = await auth.handler(
         new Request(`https://${HOST}/api/auth/sign-out`, {
           method: "POST",
@@ -441,6 +555,7 @@ describe.skipIf(!testDatabase)(
         `/magic-link/verify?token=${sentLinks[0]!.token}&callbackURL=${encodeURIComponent("https://evil.example/steal")}`
       );
       expect(evilCallbackVerify.status).toBe(403);
+      expect(emitWorkspaceLog).not.toHaveBeenCalled();
     });
 
     test("sets secure host-only cookies with lax same-site", async () => {
