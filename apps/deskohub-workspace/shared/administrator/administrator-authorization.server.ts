@@ -35,8 +35,6 @@ export const requireAdministratorAuthorization = Effect.fn(
 );
 
 export const authorizeAdministratorPage = cache(async () => {
-  // Opt out of prerendering before reading request headers in a cached leaf.
-  await connection();
   const username = await requireAdministratorAuthorization().pipe(
     Effect.catchTag("AdministratorUnauthorizedError", () =>
       Effect.succeed(null)
@@ -47,6 +45,7 @@ export const authorizeAdministratorPage = cache(async () => {
   if (username === null) {
     notFound();
   }
+  await connection();
   return username;
 });
 
