@@ -23,94 +23,93 @@ export type ApplyDiscountCodeResult =
 export const applyDiscountCodeToPayState = Effect.fn(
   "checkout.applyDiscountCodeToPayState"
 )(
-  (input: ApplyDiscountCodeInput) =>
-    Effect.gen(function* () {
-      const botProtection = yield* BotProtectionService;
-      const pricing = yield* CheckoutPricingService;
-      const payableReservations = yield* PayableReservationService;
+  function* (input: ApplyDiscountCodeInput) {
+    const botProtection = yield* BotProtectionService;
+    const pricing = yield* CheckoutPricingService;
+    const payableReservations = yield* PayableReservationService;
 
-      yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
+    yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
 
-      const state = yield* openPayState(input.payStateToken);
-      if (state.locale !== input.locale) {
-        return yield* new PayStateTokenError({
-          code: "invalid-token",
-          message: "Pay state locale does not match the request locale.",
-        });
-      }
-
-      if (state.changedKeys || state.submittedCode) {
-        return { status: "unavailable" as const };
-      }
-
-      const submittedCode = yield* normalizeSubmittedPromotionCode({
-        submittedCode: input.submittedCode,
-      }).pipe(
-        Effect.flatMap(Effect.fromOption),
-        Effect.mapError(
-          () =>
-            new PromotionCodeUnavailableError({
-              reason: "invalid_syntax",
-              message: "A discount code is required.",
-            })
-        )
-      );
-      const reservation = yield* payableReservations.requireCurrent({
-        orderId: state.orderId,
-        checkoutSessionId: state.checkoutSessionId,
+    const state = yield* openPayState(input.payStateToken);
+    if (state.locale !== input.locale) {
+      return yield* new PayStateTokenError({
+        code: "invalid-token",
+        message: "Pay state locale does not match the request locale.",
       });
-      if (reservation.activePaymentAttemptId) {
-        return { status: "unavailable" as const };
-      }
+    }
 
-      const dotyposCustomerId = yield* Schema.decodeUnknownEffect(
-        dotyposCustomerIdSchema
-      )(reservation.dotyposCustomerId).pipe(
-        Effect.mapError(
-          DiscountProviderError.fromCause({
-            reason: "provider_failure",
-            message: "Stored customer identity is invalid.",
+    if (state.changedKeys || state.submittedCode) {
+      return { status: "unavailable" as const };
+    }
+
+    const submittedCode = yield* normalizeSubmittedPromotionCode({
+      submittedCode: input.submittedCode,
+    }).pipe(
+      Effect.flatMap(Effect.fromOption),
+      Effect.mapError(
+        () =>
+          new PromotionCodeUnavailableError({
+            reason: "invalid_syntax",
+            message: "A discount code is required.",
           })
-        )
-      );
-      const result = yield* pricing.applyDiscountCode({
-        ...state,
-        dotyposCustomerId,
-        locale: input.locale,
-        submittedCode,
-      });
-      const currentReservation = yield* payableReservations.requireCurrent({
-        orderId: state.orderId,
-        checkoutSessionId: state.checkoutSessionId,
-      });
-      if (currentReservation.activePaymentAttemptId) {
-        return { status: "unavailable" as const };
-      }
+      )
+    );
+    const reservation = yield* payableReservations.requireCurrent({
+      orderId: state.orderId,
+      checkoutSessionId: state.checkoutSessionId,
+    });
+    if (reservation.activePaymentAttemptId) {
+      return { status: "unavailable" as const };
+    }
 
-      const freshPayUrl = yield* Match.value(result).pipe(
-        Match.discriminatorsExhaustive("status")({
-          applied: (applied) =>
-            buildFreshCheckoutPayPath({
-              ...applied,
-              locale: input.locale,
-              orderId: state.orderId,
-              checkoutSessionId: state.checkoutSessionId,
-              submittedCode,
-              submittedCodeDiscountId: applied.submittedCodeDiscountId,
-            }),
-          pricing_changed: (changed) =>
-            buildFreshCheckoutPayPath({
-              ...changed,
-              locale: input.locale,
-              orderId: state.orderId,
-              checkoutSessionId: state.checkoutSessionId,
-              changedKeys: changed.changedKeys,
-            }),
+    const dotyposCustomerId = yield* Schema.decodeUnknownEffect(
+      dotyposCustomerIdSchema
+    )(reservation.dotyposCustomerId).pipe(
+      Effect.mapError(
+        DiscountProviderError.fromCause({
+          reason: "provider_failure",
+          message: "Stored customer identity is invalid.",
         })
-      );
+      )
+    );
+    const result = yield* pricing.applyDiscountCode({
+      ...state,
+      dotyposCustomerId,
+      locale: input.locale,
+      submittedCode,
+    });
+    const currentReservation = yield* payableReservations.requireCurrent({
+      orderId: state.orderId,
+      checkoutSessionId: state.checkoutSessionId,
+    });
+    if (currentReservation.activePaymentAttemptId) {
+      return { status: "unavailable" as const };
+    }
 
-      return { status: result.status, freshPayUrl };
-    }),
+    const freshPayUrl = yield* Match.value(result).pipe(
+      Match.discriminatorsExhaustive("status")({
+        applied: (applied) =>
+          buildFreshCheckoutPayPath({
+            ...applied,
+            locale: input.locale,
+            orderId: state.orderId,
+            checkoutSessionId: state.checkoutSessionId,
+            submittedCode,
+            submittedCodeDiscountId: applied.submittedCodeDiscountId,
+          }),
+        pricing_changed: (changed) =>
+          buildFreshCheckoutPayPath({
+            ...changed,
+            locale: input.locale,
+            orderId: state.orderId,
+            checkoutSessionId: state.checkoutSessionId,
+            changedKeys: changed.changedKeys,
+          }),
+      })
+    );
+
+    return { status: result.status, freshPayUrl };
+  },
   (effect) =>
     effect.pipe(
       Effect.catchTags({

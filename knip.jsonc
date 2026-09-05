@@ -1,0 +1,24 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // Report dependency-level issues only (dependencies, unlisted, binaries).
+  "include": ["dependencies", "unlisted", "binaries"],
+  "workspaces": {
+    "apps/deskohub-workspace": {
+      "entry": [
+        "app/**/*.{ts,tsx}",
+        "**/*.test.{ts,tsx}",
+        "**/*.pw.ts",
+        "**/drizzle.config.ts",
+        "env.ts",
+        "scripts/*.ts",
+        "types/*.d.ts"
+      ],
+      // drizzle.config.ts decodes DATABASE_URL at module load, so the plugin cannot
+      // load it; drizzle-kit stays verified via binaries from the db:* scripts.
+      "drizzle": false,
+      // Registry name served by the @effect/tsgo-patched native TypeScript
+      // (`prepare` script), not an installable module.
+      "ignoreDependencies": ["@effect/language-service"]
+    }
+  }
+}

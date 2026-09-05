@@ -1,5 +1,1 @@
-export * from "./late-payment-recovery.repository";
-export * from "./legal-evidence-event.repository";
-export * from "./payment-attempt.repository";
-export * from "./payment-lifecycle.repository";
-export * from "./webhook-event.repository";
+export { LatePaymentRecoveryRepository } from "./late-payment-recovery.repository";

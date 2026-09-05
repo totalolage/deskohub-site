@@ -98,11 +98,12 @@ describe("administration UI boundaries", () => {
     const collectionSurfaces = [
       "app/admin/bookings/page.tsx",
       "app/admin/cli/sessions/page.tsx",
+      "app/admin/codes/page.tsx",
       "app/admin/customers/page.tsx",
       "app/admin/operations/page.tsx",
       "app/admin/orders/page.tsx",
       "app/admin/reservations/page.tsx",
-      "features/discounts/admin/components.tsx",
+      "app/admin/sales/page.tsx",
     ];
 
     for (const surface of collectionSurfaces) {

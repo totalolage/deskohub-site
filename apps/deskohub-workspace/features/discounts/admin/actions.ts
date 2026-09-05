@@ -114,12 +114,10 @@ const discountAdminMutationAction = defineWorkspaceAction(
 
 const executeCustomerSearch = Effect.fn(
   "DiscountAdministration.executeCustomerSearch"
-)((input: DiscountAdminCustomerSearch) =>
-  Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.searchCustomers(input);
-  })
-);
+)(function* (input: DiscountAdminCustomerSearch) {
+  const administration = yield* DiscountAdministration;
+  return yield* administration.searchCustomers(input);
+});
 
 const discountAdminCustomerSearchAction = defineWorkspaceAction(
   {

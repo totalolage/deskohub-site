@@ -58,16 +58,6 @@ export type AdvertisementQuote =
   | MeetingRoomAdvertisementQuote
   | OfficeAdvertisementQuote;
 
-export type AdvertisementAffirmationInput =
-  | CoworkAdvertisementAffirmationInput
-  | MeetingRoomAdvertisementAffirmationInput
-  | OfficeAdvertisementAffirmationInput;
-
-export type AdvertisementAffirmation =
-  | CoworkAdvertisementAffirmation
-  | MeetingRoomAdvertisementAffirmation
-  | OfficeAdvertisementAffirmation;
-
 export type CustomerQuoteInput =
   | CoworkCustomerQuoteInput
   | MeetingRoomCustomerQuoteInput
@@ -102,9 +92,6 @@ export interface ICheckoutPricingService {
   readonly quoteAdvertisement: (
     input: AdvertisementQuoteInput
   ) => Effect.Effect<AdvertisementQuote, CheckoutPricingError>;
-  readonly affirmAdvertisement: (
-    input: AdvertisementAffirmationInput
-  ) => Effect.Effect<AdvertisementAffirmation, CheckoutPricingError>;
   readonly affirmCoworkAdvertisement: (
     input: CoworkAdvertisementAffirmationInput
   ) => Effect.Effect<
@@ -159,25 +146,6 @@ export class CheckoutPricingService extends Context.Service<
           ),
           Match.when({ reservation: { kind: "office" } }, (officeInput) =>
             office.quoteAdvertisement(officeInput)
-          ),
-          Match.exhaustive
-        )
-      );
-
-      const affirmAdvertisement = Effect.fn(
-        "CheckoutPricingService.affirmAdvertisement"
-      )((input: AdvertisementAffirmationInput) =>
-        Match.value(input).pipe(
-          Match.when({ reservation: { kind: "cowork" } }, (coworkInput) =>
-            cowork.affirmAdvertisement(coworkInput)
-          ),
-          Match.when(
-            { reservation: { kind: "meeting-room" } },
-            (meetingRoomInput) =>
-              meetingRoom.affirmAdvertisement(meetingRoomInput)
-          ),
-          Match.when({ reservation: { kind: "office" } }, (officeInput) =>
-            office.affirmAdvertisement(officeInput)
           ),
           Match.exhaustive
         )
@@ -240,7 +208,6 @@ export class CheckoutPricingService extends Context.Service<
 
       return {
         quoteAdvertisement,
-        affirmAdvertisement,
         affirmCoworkAdvertisement: cowork.affirmAdvertisement,
         affirmMeetingRoomAdvertisement: meetingRoom.affirmAdvertisement,
         affirmOfficeAdvertisement: office.affirmAdvertisement,
