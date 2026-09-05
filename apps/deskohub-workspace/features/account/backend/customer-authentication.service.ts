@@ -1,5 +1,5 @@
 import type { User as BetterAuthUser } from "better-auth";
-import { Context, Effect, Layer, Option, Schema } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { headers } from "next/headers";
 import { env } from "@/env";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
@@ -84,16 +84,23 @@ const authenticationUnconfiguredSecretsMessage: BetterAuthSecretsMessage =
  * outside a live request. The message ends with the fixed docs URL and the
  * error carries the non-enumerable `__NEXT_ERROR_CODE` E251, so the
  * classifier accepts either fixed identifier and never depends on trailing
- * message text staying stable.
+ * message text staying stable. E1378 is the sibling after()-phase code.
  */
 const nextRequestScopePattern =
   /^`(headers|cookies)` was called outside a request scope\. Read more: https:\/\/nextjs\.org\/docs\/messages\/next-dynamic-api-wrong-context/;
 
-const isNextRequestScopeError = (cause: Error): boolean => {
-  const errorCode = (cause as { readonly __NEXT_ERROR_CODE?: unknown })
+type NextRequestCode = "E251" | "E1378";
+
+const nextRequestCodeOf = (cause: unknown): NextRequestCode | undefined => {
+  if (!(cause instanceof Error)) return undefined;
+  const code = (cause as { readonly __NEXT_ERROR_CODE?: unknown })
     .__NEXT_ERROR_CODE;
-  return errorCode === "E251" || nextRequestScopePattern.test(cause.message);
+  if (code === "E251" || code === "E1378") return code;
+  return nextRequestScopePattern.test(cause.message) ? "E251" : undefined;
 };
+
+const isNextRequestContextError = (cause: Error): boolean =>
+  nextRequestCodeOf(cause) !== undefined;
 
 /**
  * Better Auth rejections surface as errors named `APIError` carrying a
@@ -113,32 +120,152 @@ const isBetterAuthApiError = (
  * naming the recognized mechanism — rate limit, request-scope loss, a
  * Better Auth API rejection, or an unclassified failure.
  */
-const classifySessionReadFailure = (
-  cause: unknown
-): CustomerAccountAccessError => {
-  let diagnostic: CustomerSessionReadDiagnostic =
-    "authentication.session.unclassified";
+const diagnosticOf = (cause: unknown): CustomerSessionReadDiagnostic => {
   if (isBetterAuthApiError(cause)) {
-    diagnostic =
-      cause.status === "TOO_MANY_REQUESTS"
-        ? "authentication.session.rate-limited"
-        : "authentication.session.api-error";
-  } else if (cause instanceof Error && isNextRequestScopeError(cause)) {
-    diagnostic = "authentication.session.request-context";
+    return cause.status === "TOO_MANY_REQUESTS"
+      ? "authentication.session.rate-limited"
+      : "authentication.session.api-error";
   }
-  return new CustomerAccountAccessError({
+  if (cause instanceof Error && isNextRequestContextError(cause)) {
+    return "authentication.session.request-context";
+  }
+  return "authentication.session.unclassified";
+};
+
+const unavailableWith = (diagnostic: CustomerSessionReadDiagnostic) =>
+  new CustomerAccountAccessError({
     reason: "unavailable",
     cause: new CustomerAccountFailureCause({ code: "authentication.session" }),
     diagnostic,
   });
+
+const classifySessionReadFailure = (
+  cause: unknown
+): CustomerAccountAccessError => unavailableWith(diagnosticOf(cause));
+
+// ---------------------------------------------------------------------------
+// Internal authority-read phase instrumentation. These types and the wrapper
+// errors never leave this module: the exported domain contract stays the
+// closed `CustomerAccountAccessError` diagnostic. Foreign causes are only
+// ever read — never mutated, frozen-or-not — and are dropped the moment the
+// closed facts are computed.
+// ---------------------------------------------------------------------------
+
+type AuthorityReadStage =
+  | "auth-import"
+  | "request-headers"
+  | "get-session"
+  | "unattributed";
+
+type FailureCategory = "Error" | "TypeError" | "AbortError" | "Unknown";
+
+interface AuthorityReadFacts {
+  readonly stage: AuthorityReadStage;
+  readonly category: FailureCategory;
+  readonly nextCode: NextRequestCode | undefined;
+}
+
+const failureFactsOf = (
+  stage: Exclude<AuthorityReadStage, "unattributed">,
+  cause: unknown
+): AuthorityReadFacts => ({
+  stage,
+  category: failureCategoryOf(cause),
+  nextCode: nextRequestCodeOf(cause),
+});
+
+/**
+ * Internal sanitized stage failure computed at the phase boundary: the
+ * mapped diagnostic plus the closed facts, and nothing else. Rejecting with
+ * this instead of tagging the foreign cause keeps frozen and primitive
+ * rejections intact.
+ */
+class AuthorityStageFailure extends Data.TaggedError("AuthorityStageFailure")<{
+  readonly diagnostic: CustomerSessionReadDiagnostic;
+  readonly facts: AuthorityReadFacts;
+}> {}
+
+const stageFailureOf = (
+  stage: Exclude<AuthorityReadStage, "unattributed">,
+  cause: unknown
+): AuthorityStageFailure =>
+  new AuthorityStageFailure({
+    diagnostic: diagnosticOf(cause),
+    facts: failureFactsOf(stage, cause),
+  });
+
+const failureCategoryOf = (cause: unknown): FailureCategory => {
+  if (!(cause instanceof Error)) return "Unknown";
+  if (cause.name === "TypeError") return "TypeError";
+  if (cause.name === "AbortError") return "AbortError";
+  if (cause.name === "Error") return "Error";
+  return "Unknown";
 };
+
+/**
+ * The production authority read, split into the boundaries a rejection can
+ * come from. The phase order preserves the original read exactly — the
+ * authority module loads first, then the request headers are read as the
+ * get-session argument, then the call is issued — so the diagnostics change
+ * no semantics.
+ */
+interface AuthoritySessionModule {
+  readonly auth: {
+    readonly api: {
+      readonly getSession: (input: {
+        readonly query: { readonly disableRefresh: true };
+        readonly headers: Headers;
+      }) => Promise<{ readonly user: BetterAuthUser } | null>;
+    };
+  };
+}
+
+export const makeAuthoritySessionRead =
+  (phases: {
+    readonly readRequestHeaders: () => Promise<Headers>;
+    readonly loadAuthority: () => Promise<AuthoritySessionModule>;
+  }) =>
+  async (): Promise<{ readonly user: BetterAuthUser } | null> => {
+    const authority = await phases
+      .loadAuthority()
+      .catch((cause: unknown) =>
+        Promise.reject(stageFailureOf("auth-import", cause))
+      );
+    let requestHeaders: Headers;
+    try {
+      requestHeaders = await phases.readRequestHeaders();
+    } catch (cause) {
+      return Promise.reject(stageFailureOf("request-headers", cause));
+    }
+    try {
+      return await authority.auth.api.getSession({
+        query: { disableRefresh: true },
+        headers: requestHeaders,
+      });
+    } catch (cause) {
+      return Promise.reject(stageFailureOf("get-session", cause));
+    }
+  };
+
+/**
+ * Internal wrapper pairing the fail-closed mapped error with the fixed
+ * phase/category facts for the single censored log line. Never exported.
+ */
+class AuthorityReadFailure extends Data.TaggedError("AuthorityReadFailure")<{
+  readonly failure: CustomerAccountAccessError;
+  readonly stage: AuthorityReadStage;
+  readonly category: FailureCategory;
+  readonly nextCode: NextRequestCode | undefined;
+}> {}
 
 /**
  * Reads the authoritative session and classifies failures for the closed
  * account error contract. Only genuinely absent Better Auth secrets yield
  * `not-configured`; once configured, bootstrap, provider, and database
  * session-read failures fail closed as `unavailable` under the fixed
- * `authentication.session` code without the raw failure.
+ * `authentication.session` code without the raw failure. The single censored
+ * log line carries the closed diagnostic plus the internal phase, a
+ * constructor-category, and a Next.js fixed code when one exists.
  */
 const readAuthoritativeSession = (
   environment: CustomerAuthenticationEnvironment
@@ -153,13 +280,38 @@ const readAuthoritativeSession = (
     if (secrets.kind === "valid") {
       return yield* Effect.tryPromise({
         try: environment.readCurrentSession,
-        catch: classifySessionReadFailure,
+        catch: (cause) => {
+          if (cause instanceof AuthorityStageFailure) {
+            return new AuthorityReadFailure({
+              failure: unavailableWith(cause.diagnostic),
+              stage: cause.facts.stage,
+              category: cause.facts.category,
+              nextCode: cause.facts.nextCode,
+            });
+          }
+          return new AuthorityReadFailure({
+            failure: classifySessionReadFailure(cause),
+            stage: "unattributed",
+            category: failureCategoryOf(cause),
+            nextCode: nextRequestCodeOf(cause),
+          });
+        },
       }).pipe(
-        Effect.tapError((error) =>
-          Effect.logWarning("Customer session read failed closed.", {
-            diagnostic: error.diagnostic,
-          })
-        )
+        Effect.tapError((failure) =>
+          failure.nextCode === undefined
+            ? Effect.logWarning("Customer session read failed closed.", {
+                diagnostic: failure.failure.diagnostic,
+                stage: failure.stage,
+                category: failure.category,
+              })
+            : Effect.logWarning("Customer session read failed closed.", {
+                diagnostic: failure.failure.diagnostic,
+                stage: failure.stage,
+                category: failure.category,
+                nextCode: failure.nextCode,
+              })
+        ),
+        Effect.catch((failure) => Effect.fail(failure.failure))
       );
     }
     return yield* secrets.message === authenticationUnconfiguredSecretsMessage
@@ -192,18 +344,9 @@ export class CustomerAuthentication extends Context.Service<
 
   static Default = this.fromEnvironment({
     readBetterAuthSecretsRaw: () => env.BETTER_AUTH_SECRETS,
-    readCurrentSession: async () => {
-      const { auth } = await import("@/features/account/server/auth.server");
-      return auth.api.getSession({
-        // Every server-side read through this service is refresh-free. Reads
-        // run in RSC renders, hard reloads without an `RSC` header, and
-        // Server Actions alike, so this read must never roll the database
-        // session ahead of a cookie the server cannot rewrite; the mounted
-        // get-session route handler, reached by the browser, is the only
-        // path that refreshes the session expiry and cookie together.
-        query: { disableRefresh: true },
-        headers: await headers(),
-      });
-    },
+    readCurrentSession: makeAuthoritySessionRead({
+      readRequestHeaders: () => headers(),
+      loadAuthority: () => import("@/features/account/server/auth.server"),
+    }),
   });
 }
