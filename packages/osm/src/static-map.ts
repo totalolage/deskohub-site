@@ -1,6 +1,6 @@
 import { Effect, Predicate } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 import { ImageRenderingError, OsmTileRequestError } from "./errors";
 
 const defaultTileSize = 256;
@@ -77,7 +77,7 @@ const renderTiledMap = ({
   baseWidth,
   composites,
 }: StaticMapInput & {
-  readonly composites: readonly sharp.OverlayOptions[];
+  readonly composites: readonly OverlayOptions[];
 }) =>
   Effect.tryPromise({
     try: () =>

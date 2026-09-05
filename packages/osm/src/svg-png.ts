@@ -1,5 +1,5 @@
 import { Effect, Option } from "effect";
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 import { ImageRenderingError } from "./errors";
 
 export interface SvgPngTextOverlay {
@@ -52,7 +52,7 @@ const renderSvg = (svg: string | Buffer) =>
 
 const renderTextOverlay = (overlay: SvgPngTextOverlay) =>
   Effect.tryPromise({
-    try: async (): Promise<sharp.OverlayOptions> => {
+    try: async (): Promise<OverlayOptions> => {
       const renderedText = await sharp({
         text: {
           text: overlay.color
@@ -84,7 +84,7 @@ const renderTextOverlay = (overlay: SvgPngTextOverlay) =>
 
 const compositeTextOverlays = (
   base: Buffer,
-  textOverlays: readonly sharp.OverlayOptions[]
+  textOverlays: readonly OverlayOptions[]
 ) =>
   Effect.tryPromise({
     try: () =>
