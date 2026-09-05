@@ -29,6 +29,7 @@ mock.module("@/features/account/auth.client", () => ({
 }));
 
 mock.module("@/shared/components/unsaved-changes-guard", () => ({
+  useCancelNavigationApproval: () => {},
   useConfirmDiscardChanges: () => confirmDiscardChanges,
 }));
 

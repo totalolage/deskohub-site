@@ -23,6 +23,7 @@ type GuardRegistration = {
 };
 
 type UnsavedChangesContextValue = {
+  readonly cancelApproval: () => void;
   readonly confirm: (destination?: string) => boolean;
   readonly register: (registration: GuardRegistration) => () => void;
   readonly sync: () => void;
@@ -44,6 +45,7 @@ type ProviderState = {
 };
 
 const defaultContext: UnsavedChangesContextValue = {
+  cancelApproval: () => {},
   confirm: () => true,
   register: () => () => {},
   sync: () => {},
@@ -302,6 +304,7 @@ export function UnsavedChangesProvider({
 
     return {
       context: {
+        cancelApproval: clearApproval,
         confirm: confirmDiscardChanges,
         register,
         sync,
@@ -346,4 +349,8 @@ export function useUnsavedChanges({
 
 export function useConfirmDiscardChanges() {
   return useContext(UnsavedChangesContext).confirm;
+}
+
+export function useCancelNavigationApproval() {
+  return useContext(UnsavedChangesContext).cancelApproval;
 }

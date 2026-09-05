@@ -5,7 +5,10 @@ import { useState } from "react";
 import { authClient } from "@/features/account/auth.client";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
-import { useConfirmDiscardChanges } from "@/shared/components/unsaved-changes-guard";
+import {
+  useCancelNavigationApproval,
+  useConfirmDiscardChanges,
+} from "@/shared/components/unsaved-changes-guard";
 
 type SignOutButtonProps = {
   readonly locale: Locale;
@@ -14,6 +17,7 @@ type SignOutButtonProps = {
 export function SignOutButton({ locale }: SignOutButtonProps) {
   const [signingOut, setSigningOut] = useState(false);
   const [signOutFailed, setSignOutFailed] = useState(false);
+  const cancelNavigationApproval = useCancelNavigationApproval();
   const confirmDiscardChanges = useConfirmDiscardChanges();
 
   const signOut = async () => {
@@ -26,12 +30,14 @@ export function SignOutButton({ locale }: SignOutButtonProps) {
     try {
       const result = await authClient.signOut();
       if (result.error) {
+        cancelNavigationApproval();
         setSigningOut(false);
         setSignOutFailed(true);
         return;
       }
       window.location.assign(target);
     } catch {
+      cancelNavigationApproval();
       setSigningOut(false);
       setSignOutFailed(true);
     }

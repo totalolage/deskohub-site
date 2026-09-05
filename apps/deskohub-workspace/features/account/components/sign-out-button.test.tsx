@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeEach, expect, mock, test } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { useState } from "react";
 import {
   UnsavedChangesProvider,
   useUnsavedChanges,
@@ -34,12 +35,20 @@ const originalNavigationDescriptor = Object.getOwnPropertyDescriptor(
 );
 
 function DirtyForm() {
+  const [draft, setDraft] = useState("initial draft");
+
   useUnsavedChanges({
     enabled: true,
-    isDirty: () => true,
+    isDirty: () => draft.length > 0,
     message: "Leave this form?",
   });
-  return <input aria-label="Dirty form" />;
+  return (
+    <input
+      aria-label="Dirty form"
+      value={draft}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+    />
+  );
 }
 
 function installNavigation() {
@@ -54,7 +63,8 @@ function installNavigation() {
 function dispatchNavigate(
   navigation: EventTarget,
   url: string,
-  sameDocument = false
+  sameDocument = false,
+  navigationType: "push" | "traverse" = "push"
 ) {
   const event = new Event("navigate", { cancelable: true });
   Object.defineProperties(event, {
@@ -63,7 +73,7 @@ function dispatchNavigate(
     downloadRequest: { value: null },
     formData: { value: null },
     hashChange: { value: false },
-    navigationType: { value: "push" },
+    navigationType: { value: navigationType },
     signal: { value: new AbortController().signal },
     sourceElement: { value: null },
     userInitiated: { value: false },
@@ -171,6 +181,7 @@ test("keeps an accepted sign-out approval through deferred auth and navigation",
 });
 
 test("does not navigate when sign-out resolves with a 503 error", async () => {
+  const navigation = installNavigation();
   const confirm = mock(() => true);
   window.confirm = confirm;
   signOut.mockImplementationOnce(() =>
@@ -203,9 +214,26 @@ test("does not navigate when sign-out resolves with a 503 error", async () => {
   expect(view.getByRole("alert").textContent).toBe(
     "We could not sign you out. Please try again."
   );
+
+  const draft = view.getByLabelText("Dirty form") as HTMLInputElement;
+  await act(async () => {
+    fireEvent.change(draft, { target: { value: "later draft" } });
+  });
+  confirm.mockReturnValue(false);
+  const navigate = dispatchNavigate(
+    navigation,
+    new URL("/en-US", window.location.href).href,
+    true,
+    "traverse"
+  );
+
+  expect(navigate.defaultPrevented).toBe(true);
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(draft.value).toBe("later draft");
 });
 
 test("restores the button after a rejected sign-out without exposing the error", async () => {
+  const navigation = installNavigation();
   const confirm = mock(() => true);
   window.confirm = confirm;
   let rejectSignOut!: (error: Error) => void;
@@ -242,6 +270,22 @@ test("restores the button after a rejected sign-out without exposing the error",
   expect(view.getByRole("alert").textContent).not.toContain(
     "raw provider failure"
   );
+
+  const draft = view.getByLabelText("Dirty form") as HTMLInputElement;
+  await act(async () => {
+    fireEvent.change(draft, { target: { value: "later draft" } });
+  });
+  confirm.mockReturnValue(false);
+  const navigate = dispatchNavigate(
+    navigation,
+    new URL("/cs-CZ", window.location.href).href,
+    true,
+    "traverse"
+  );
+
+  expect(navigate.defaultPrevented).toBe(true);
+  expect(confirm).toHaveBeenCalledTimes(2);
+  expect(draft.value).toBe("later draft");
 });
 
 test("retries a failed sign-out and navigates after the next success", async () => {
