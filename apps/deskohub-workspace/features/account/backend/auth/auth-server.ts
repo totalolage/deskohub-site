@@ -1,7 +1,8 @@
 import "server-only";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
-import { type BetterAuthOptions, betterAuth } from "better-auth";
+import { APIError, type BetterAuthOptions, betterAuth } from "better-auth";
+import { createAuthMiddleware } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { Effect, Option, Schema } from "effect";
@@ -73,6 +74,22 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     secrets: config.secrets,
     baseURL,
     database: config.database,
+    disabledPaths: ["/update-user"],
+    hooks: {
+      before: createAuthMiddleware(async (ctx) => {
+        const hasProfileFields =
+          ctx.path === "/sign-in/magic-link" &&
+          (Object.hasOwn(ctx.body, "name") || Object.hasOwn(ctx.body, "image"));
+
+        if (ctx.path === "/update-user" || hasProfileFields) {
+          return Promise.reject(
+            new APIError("BAD_REQUEST", {
+              message: "Profile fields are not accepted.",
+            })
+          );
+        }
+      }),
+    },
     plugins: [
       magicLink({
         ...betterAuthMagicLinkOptions,

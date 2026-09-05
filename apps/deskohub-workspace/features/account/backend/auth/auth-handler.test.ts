@@ -199,6 +199,96 @@ describe.skipIf(!testDatabase)(
       expect(notFound.status).toBe(404);
     });
 
+    test("rejects magic-link profile fields before creating verification or sending email", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+      const email = uniqueEmail("profile-fields");
+      const rawProfileSecret = `profile-secret-${crypto.randomUUID()}`;
+
+      const response = await callHandler(auth, "/sign-in/magic-link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          email,
+          name: rawProfileSecret,
+          image: rawProfileSecret,
+        }),
+      });
+
+      expect(response.status).toBe(400);
+      expect(await response.text()).not.toContain(rawProfileSecret);
+      expect(sentLinks).toHaveLength(0);
+
+      const verification = await testDatabase!.pool.query(
+        `select id from auth.verification where value like $1`,
+        [`%${email}%`]
+      );
+      expect(verification.rows).toHaveLength(0);
+
+      const user = await testDatabase!.pool.query(
+        `select id from auth."user" where email = $1`,
+        [email]
+      );
+      expect(user.rows).toHaveLength(0);
+    });
+
+    test("keeps normal magic-link users at the auth placeholders", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+      const email = uniqueEmail("placeholders");
+
+      const requested = await signInForMagicLink(auth, email, "/en-US/account");
+      expect(requested.status).toBe(200);
+
+      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+      expect(verified.status).toBe(302);
+
+      const user = await testDatabase!.pool.query(
+        `select name, image from auth."user" where email = $1`,
+        [email]
+      );
+      expect(user.rows).toEqual([{ name: "", image: null }]);
+    });
+
+    test("disables public user updates and rejects direct profile writes", async () => {
+      const sentLinks: CapturedMagicLink[] = [];
+      const auth = makeTestAuth({ sentLinks });
+      const email = uniqueEmail("update-user");
+      const rawProfileSecret = `update-secret-${crypto.randomUUID()}`;
+
+      await signInForMagicLink(auth, email);
+      const verified = await verifyMagicLink(auth, sentLinks[0]!);
+      const cookie = cookieJar(getSessionCookie(verified)!);
+
+      const publicUpdate = await callHandler(auth, "/update-user", {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify({
+          name: rawProfileSecret,
+          image: rawProfileSecret,
+        }),
+      });
+      expect(publicUpdate.status).toBe(404);
+
+      await expect(
+        auth.api.updateUser({
+          body: { name: rawProfileSecret, image: rawProfileSecret },
+          headers: new Headers({
+            origin: `https://${HOST}`,
+            host: HOST,
+            "content-type": "application/json",
+            cookie,
+          }),
+        })
+      ).rejects.toMatchObject({ status: "BAD_REQUEST", statusCode: 400 });
+
+      const user = await testDatabase!.pool.query(
+        `select name, image from auth."user" where email = $1`,
+        [email]
+      );
+      expect(user.rows).toEqual([{ name: "", image: null }]);
+    });
+
     test("stores only hashed verification identifiers", async () => {
       const sentLinks: CapturedMagicLink[] = [];
       const auth = makeTestAuth({ sentLinks });
