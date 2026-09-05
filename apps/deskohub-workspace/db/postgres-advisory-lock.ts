@@ -1,5 +1,5 @@
-import { Context, Effect, Layer, Result } from "effect";
-import { SqlError, UnknownError } from "effect/unstable/sql/SqlError";
+import { Context, Effect, Layer, Result, Semaphore } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import type { Pool } from "pg";
 
 export type PostgresAdvisoryLockKey = readonly [string, string];
@@ -18,7 +18,7 @@ const lockSql = "select pg_advisory_xact_lock(hashtext($1), hashtext($2))";
 const rollbackSql = "rollback";
 
 const toSqlError = (cause: unknown) =>
-  new SqlError({ reason: new UnknownError({ cause }) });
+  new SqlError.SqlError({ reason: new SqlError.UnknownError({ cause }) });
 
 const acquireTransactionLock = (
   pool: PostgresAdvisoryLockPool,
@@ -52,6 +52,28 @@ const releaseTransactionLock = (client: PostgresAdvisoryLockClient) =>
     );
   });
 
+const advisoryLockSemaphores = new WeakMap<Pool, Semaphore.Semaphore>();
+const advisoryLockPoolCapacityError = new SqlError.SqlError({
+  reason: new SqlError.UnknownError({
+    cause: new Error(
+      "Postgres advisory lock pool requires at least two connections"
+    ),
+    message: "Postgres advisory lock pool capacity is too small",
+    operation: "withLock",
+  }),
+});
+
+const makeAdvisoryLockSemaphore = (pool: Pool) => {
+  if (pool.options.max < 2) return undefined;
+
+  const existing = advisoryLockSemaphores.get(pool);
+  if (existing) return existing;
+
+  const semaphore = Semaphore.makeUnsafe(Math.floor(pool.options.max / 2));
+  advisoryLockSemaphores.set(pool, semaphore);
+  return semaphore;
+};
+
 /**
  * Holds a transaction-scoped PostgreSQL advisory lock inside one explicit
  * write-free transaction on one dedicated pool client while `effect` runs.
@@ -63,7 +85,7 @@ export const withPostgresAdvisoryLock = <A, E, R>(
   pool: PostgresAdvisoryLockPool,
   key: PostgresAdvisoryLockKey,
   effect: Effect.Effect<A, E, R>
-): Effect.Effect<A, E | SqlError, R> =>
+): Effect.Effect<A, E | SqlError.SqlError, R> =>
   Effect.acquireUseRelease(
     acquireTransactionLock(pool, key),
     () => effect,
@@ -74,17 +96,28 @@ interface IWorkspaceDatabaseAdvisoryLock {
   readonly withLock: <A, E, R>(
     key: PostgresAdvisoryLockKey,
     effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E | SqlError, R>;
+  ) => Effect.Effect<A, E | SqlError.SqlError, R>;
 }
 
 export class WorkspaceDatabaseAdvisoryLock extends Context.Service<
   WorkspaceDatabaseAdvisoryLock,
   IWorkspaceDatabaseAdvisoryLock
 >()("@deskohub-workspace/db/WorkspaceDatabaseAdvisoryLock") {
-  static makeLayer = (pool: Pool) =>
-    Layer.succeed(this, {
-      withLock: (key, effect) => withPostgresAdvisoryLock(pool, key, effect),
+  static makeLayer = (pool: Pool) => {
+    const semaphore = makeAdvisoryLockSemaphore(pool);
+
+    return Layer.succeed(this, {
+      withLock: (key, effect) => {
+        if (semaphore === undefined) {
+          return Effect.fail(advisoryLockPoolCapacityError);
+        }
+
+        return semaphore.withPermits(1)(
+          withPostgresAdvisoryLock(pool, key, effect)
+        );
+      },
     });
+  };
 
   static Default = Layer.unwrap(
     Effect.promise(async () => {
