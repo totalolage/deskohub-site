@@ -216,8 +216,8 @@ const getCheckoutPayReturnUrl: (
   outcome?: "cancelled"
 ) => Effect.Effect<string, CheckoutError> = Effect.fn(
   "getCheckoutPayReturnUrl"
-)((locale, workspaceReservationId, outcome) =>
-  Effect.gen(function* () {
+)(
+  function* (locale, workspaceReservationId, outcome) {
     const origin = yield* getWorkspaceRuntimeCallbackOrigin;
 
     return yield* Effect.try({
@@ -237,7 +237,9 @@ const getCheckoutPayReturnUrl: (
           cause,
         }),
     });
-  }).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError))
+  },
+  (effect) =>
+    effect.pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError))
 );
 
 const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(

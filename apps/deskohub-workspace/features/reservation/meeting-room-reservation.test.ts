@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Effect, Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
-import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getMeetingRoomReservationDefaultValues,
   getMeetingRoomReservationIssues,
@@ -15,11 +14,11 @@ import {
   workspaceMeetingRoomProductKeySchema,
 } from "./meeting-room-reservation";
 
-const schema = makeSchemaParser(meetingRoomReservationSchema);
+const safeParseForm = Schema.decodeUnknownResult(meetingRoomReservationSchema);
 const decodeOrder = Schema.decodeUnknownSync(
   meetingRoomReservationOrderInputSchema
 );
-const storedDetailsParser = makeSchemaParser(
+const safeParseStoredDetails = Schema.decodeUnknownResult(
   storedMeetingRoomReservationDetailsSchema,
   { onExcessProperty: "error" }
 );
@@ -60,7 +59,7 @@ describe("meetingRoomReservationSchema", () => {
   });
 
   test("rejects an empty meeting-room start without throwing", () => {
-    const result = schema.safeParse({
+    const result = safeParseForm({
       startDateTime: "",
       duration: "hour:1",
       ...customer,
@@ -72,7 +71,7 @@ describe("meetingRoomReservationSchema", () => {
   });
 
   test("reuses contact normalization for a valid meeting-room form", () => {
-    const result = schema.safeParse({
+    const result = safeParseForm({
       startDateTime: "2099-06-10T10:00",
       duration: "hour:4",
       name: "  Ada Lovelace  ",
@@ -96,7 +95,7 @@ describe("meetingRoomReservationSchema", () => {
   test("allows a reservation that has started but not ended", () => {
     setSystemTime(new Date("2099-06-10T10:30:00Z"));
 
-    const formResult = schema.safeParse({
+    const formResult = safeParseForm({
       startDateTime: "2099-06-10T12:00",
       duration: "hour:1",
       ...customer,
@@ -148,7 +147,7 @@ describe("meetingRoomReservationSchema", () => {
 
     expect(
       Result.isFailure(
-        storedDetailsParser.safeParse({
+        safeParseStoredDetails({
           kind: "meeting-room",
           duration: { unit: "day", amount: 1 },
         })
@@ -160,7 +159,7 @@ describe("meetingRoomReservationSchema", () => {
     setSystemTime(new Date("2026-01-01T00:00:00Z"));
 
     for (const startDateTime of ["2026-03-29T02:00", "2026-10-25T02:00"]) {
-      const result = schema.safeParse({
+      const result = safeParseForm({
         startDateTime,
         duration: "hour:1",
         ...customer,
@@ -252,7 +251,7 @@ describe("meetingRoomReservationSchema", () => {
   });
 
   test("creates a day interval from the selected date, not its hidden clock", () => {
-    const result = schema.safeParse({
+    const result = safeParseForm({
       startDateTime: "2099-06-10T15:00",
       duration: "day:1",
       ...customer,

@@ -134,6 +134,6 @@ const extractPdfText = async (buffer: Buffer) => {
 
     return { pageCount: pdf.numPages, text: pages.join(" ") };
   } finally {
-    await pdf.destroy();
+    await loadingTask.destroy();
   }
 };

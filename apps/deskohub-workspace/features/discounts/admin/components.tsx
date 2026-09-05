@@ -1,9 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 import {
   AdministrationAlert,
-  AdministrationNoticeBanner,
-  AdministrationPage,
-  AdministrationTableToolbar,
   EmptyState,
 } from "@/features/administration/components";
 import { Button } from "@/shared/components/ui/button";
@@ -24,32 +21,6 @@ import type {
   DiscountAdminSalesPage,
   DiscountAdminVouchersPage,
 } from "./discount-administration.service";
-
-type DiscountAdministrationProps<Dashboard> = {
-  readonly dashboard: Dashboard;
-  readonly notice?: {
-    readonly message: string;
-    readonly status: "error" | "success";
-  };
-};
-
-export function CodesAdministrationPage({
-  dashboard,
-  notice,
-}: DiscountAdministrationProps<DiscountAdminCodesPage>) {
-  return (
-    <AdministrationPage>
-      <h1 className="sr-only">Codes</h1>
-      <AdministrationNoticeBanner notice={notice} />
-      <AdministrationTableToolbar
-        actions={<CodesAdministrationActions dashboard={dashboard} />}
-        count={dashboard.codes.length}
-        itemLabel="discount code"
-      />
-      <CodesAdministrationCollection dashboard={dashboard} />
-    </AdministrationPage>
-  );
-}
 
 export function CodesAdministrationActions({
   dashboard,
@@ -109,24 +80,6 @@ export function VouchersAdministrationCollection({
         />
       )}
     </section>
-  );
-}
-
-export function SalesAdministrationPage({
-  dashboard,
-  notice,
-}: DiscountAdministrationProps<DiscountAdminSalesPage>) {
-  return (
-    <AdministrationPage>
-      <h1 className="sr-only">Sales</h1>
-      <AdministrationNoticeBanner notice={notice} />
-      <AdministrationTableToolbar
-        actions={<SalesAdministrationActions />}
-        count={dashboard.calendar.events.length}
-        itemLabel="sale"
-      />
-      <SalesAdministrationCollection dashboard={dashboard} />
-    </AdministrationPage>
   );
 }
 

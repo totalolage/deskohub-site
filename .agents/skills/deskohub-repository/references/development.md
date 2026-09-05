@@ -4,7 +4,7 @@
 
 - Use Bun from the repository's pinned version.
 - Run workspace orchestration through Turborepo from the repository root when task dependencies or generated outputs matter.
-- Declare generated prerequisites with Turbo `dependsOn`; do not call generation from inside a package's typecheck or build script.
+- Declare task dependencies with Turbo `dependsOn`. Keep package scripts as leaf commands; compose lint checks and generation prerequisites in the Turbo graph rather than shell chains or script-to-script calls.
 - Every package containing checked-in source must expose a lint task so the root lint graph covers it.
 - Inspect the target package's `package.json` before assuming it exposes a command.
 
@@ -27,6 +27,10 @@ The Next.js applications use the same default development port. Set `PORT` when 
 ## Patched dependencies
 
 `@effect/sql-pg` is pinned through `patchedDependencies` in the root `package.json` (`patches/@effect%2Fsql-pg@4.0.0-beta.85.patch`). The patch eliminates pooled `pg_cancel_backend` entirely: an interrupted statement, or one that fails without a server SQLSTATE code (for example pg's `Query read timeout`), destroys its connection lease, so the pool removes and ends the connection, the backend terminates by session teardown (bounded by `statement_timeout`), and the connection can never be handed to another fiber or leak an open transaction. Server-classified SQLSTATE failures keep the connection. The `Database pool cancellation against real Postgres` seam in `apps/deskohub-workspace/db/database-pool-cancellation.test.ts` guards the behavior against a production-style external pool with `query_timeout` shorter than `statement_timeout`; rerun it (and re-apply or drop the patch) whenever `@effect/sql-pg` is upgraded, since a version change invalidates the patch key.
+
+## Branch integration
+
+Before delegating a merge, the orchestrator inspects each conflict and decides the exact combined behavior. Assign each worker one file or tightly coupled production-and-test pair, the prescribed resolution, and one focused check. Keep lockfile reconciliation and generated-file cleanup separate. The orchestrator verifies the combined result and requests its review; a worker assignment is not "integrate main" or "resolve all conflicts".
 
 ## Checks
 

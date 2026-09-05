@@ -608,7 +608,10 @@ describe("DotyposService customer lookup", () => {
       email: "ada@example.com",
       deleted: true,
     });
-    const created = customer({ id: "freshly-created", email: "ada@example.com" });
+    const created = customer({
+      id: "freshly-created",
+      email: "ada@example.com",
+    });
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
       if (url.pathname === "/signin/token") return tokenResponse();

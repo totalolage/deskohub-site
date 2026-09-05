@@ -1,5 +1,5 @@
+import { describe, expect, it } from "bun:test";
 import { Schema } from "effect";
-import { describe, expect, it } from "vitest";
 import {
   getMeetingRoomReservationDuration,
   getMeetingRoomReservationDurationKey,

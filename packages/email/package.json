@@ -2,6 +2,9 @@
   "name": "@deskohub/email",
   "private": true,
   "type": "module",
+  "scripts": {
+    "lint": "biome check backend types index.ts --config-path ../../biome.json --vcs-root ../.."
+  },
   "exports": {
     ".": "./index.ts",
     "./backend/escaping": "./backend/escaping.ts",

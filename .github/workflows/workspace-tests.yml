@@ -63,6 +63,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Lint Workspace
+        run: bun turbo lint --filter=deskohub-workspace
+
       - name: Validate Workspace schema migration
         env:
           DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace

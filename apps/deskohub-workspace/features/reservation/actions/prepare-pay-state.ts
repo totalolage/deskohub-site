@@ -725,6 +725,16 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         const reservations = yield* WorkspaceReservationRepository;
         const dotypos = yield* DotyposService;
 
+        const releaseHoldCreation = (reservationId: WorkspaceReservationId) =>
+          reservations.releaseHoldCreation(reservationId).pipe(
+            Effect.tapError((releaseCause) =>
+              Effect.logError("Reservation hold creation release failed", {
+                cause: releaseCause,
+              })
+            ),
+            Effect.ignore
+          );
+
         const customerName = splitCustomerName(reservation.name);
         const customer = yield* dotypos.findOrCreateCustomer(
           {
@@ -916,14 +926,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
                 }
               );
 
-              yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
-                Effect.tapError((releaseCause) =>
-                  Effect.logError("Reservation hold creation release failed", {
-                    cause: releaseCause,
-                  })
-                ),
-                Effect.ignore
-              );
+              yield* releaseHoldCreation(reservationDraft.id);
             })
           )
         );
@@ -942,14 +945,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
                 }
               );
 
-              yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
-                Effect.tapError((releaseCause) =>
-                  Effect.logError("Reservation hold creation release failed", {
-                    cause: releaseCause,
-                  })
-                ),
-                Effect.ignore
-              );
+              yield* releaseHoldCreation(reservationDraft.id);
             })
           )
         );
@@ -1018,19 +1014,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
                     })
                   )
                 );
-                yield* reservations
-                  .releaseHoldCreation(reservationDraft.id)
-                  .pipe(
-                    Effect.tapError((releaseCause) =>
-                      Effect.logError(
-                        "Reservation hold creation release failed",
-                        {
-                          cause: releaseCause,
-                        }
-                      )
-                    ),
-                    Effect.ignore
-                  );
+                yield* releaseHoldCreation(reservationDraft.id);
 
                 return yield* cause;
               })

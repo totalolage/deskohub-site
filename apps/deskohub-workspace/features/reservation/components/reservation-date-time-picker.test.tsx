@@ -98,6 +98,19 @@ describe("ReservationDateTimePicker", () => {
     const dateButton = view.getByRole("button", { name: "Start date" });
     expect(dateButton.textContent).toContain("June 10, 2099");
     expect(dateButton.textContent).not.toContain("16:00");
+
+    cleanup();
+    const czechView = render(
+      <ReservationDateTimePicker
+        dateLabel="Datum začátku"
+        locale="cs-CZ"
+        timeLabel="Čas začátku"
+        value="2099-06-10T16:00"
+      />
+    );
+    expect(
+      czechView.getByRole("button", { name: "Datum začátku" }).textContent
+    ).toContain("10. června 2099");
   });
 
   test("accepts a time before the date and keeps it pending", () => {
