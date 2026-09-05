@@ -99,6 +99,12 @@ description: Workspace customer account, Better Auth, magic link, auth persisten
 - Run account E2E against the immutable protected Vercel preview for the exact
   SHA and its matching Neon branch. Never use a separate auth database, a
   static preview URL, or a runtime bypass.
+- Keep browser diagnostics opt-in: the account runner requests no automatic
+  screenshots, traces, videos, HARs, or console/network diagnostics. The lane
+  may capture only explicit allowlisted stable-page PNGs from its synthetic
+  browser context for PR review; keep magic links, cookies, storage state, HTML,
+  and traces out of artifacts, validate fixed page paths and URLs before
+  capture, and upload PNGs only.
 - Deliver Preview magic links through the existing Resend team/domain: the
   preview runtime keeps the existing send-only `EMAIL_API_KEY`, and
   `WORKSPACE_E2E_RESEND_API_KEY` is a full-access retrieval key on the same

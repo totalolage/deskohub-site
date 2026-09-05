@@ -18,11 +18,13 @@ import type {
 
 /**
  * Runs one account case against the shared protected-preview lane. The lane
- * keeps one browser session for the whole serial project, records no
- * screenshots, traces, videos, HARs, or console/network diagnostics, and
- * flushes the exact-ID lane journal after every case so interrupted runs
- * leave a complete ownership record for the suite cleanup. Only fixed step
- * and failure codes leave the boundary.
+ * keeps one browser session for the whole serial project. It requests no
+ * automatic browser screenshots, traces, videos, HARs, or console/network
+ * diagnostics; the lane may explicitly capture only allowlisted stable-page
+ * PNGs from its synthetic browser context for PR review only. It flushes the
+ * exact-ID lane journal after every case so interrupted runs leave a complete
+ * ownership record for the suite cleanup. Only fixed step and failure codes
+ * leave the boundary.
  */
 export const runWorkspaceE2EAccountCase = ({
   journalRef,

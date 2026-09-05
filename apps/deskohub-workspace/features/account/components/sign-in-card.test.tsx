@@ -16,6 +16,7 @@ import {
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
 const signOut = mock(() => Promise.resolve({ error: null }));
 const getSession = mock(() => Promise.resolve({ data: null, error: null }));
+const confirmDiscardChanges = mock((_destination?: string) => true);
 
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
@@ -27,6 +28,10 @@ mock.module("@/features/account/auth.client", () => ({
   },
 }));
 
+mock.module("@/shared/components/unsaved-changes-guard", () => ({
+  useConfirmDiscardChanges: () => confirmDiscardChanges,
+}));
+
 describe("account components", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -34,6 +39,10 @@ describe("account components", () => {
 
   afterEach(() => {
     cleanup();
+    signInMagicLink.mockClear();
+    signOut.mockClear();
+    confirmDiscardChanges.mockClear();
+    confirmDiscardChanges.mockImplementation(() => true);
   });
 
   afterAll(() => {
@@ -87,6 +96,69 @@ describe("account components", () => {
     expect(view.getByLabelText("Email")).toBeTruthy();
   });
 
+  test("sign-in card shows a visible pending submit and sends only once", async () => {
+    let resolveRequest!: (result: { error: null }) => void;
+    const request = new Promise<{ error: null }>((resolve) => {
+      resolveRequest = resolve;
+    });
+    signInMagicLink.mockImplementationOnce(() => request);
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(<SignInCard locale="en-US" />);
+    fireEvent.change(view.getByLabelText("Email"), {
+      target: { value: "ada@example.test" },
+    });
+    const form = view.container.querySelector("#account-sign-in-form")!;
+
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    const submit = view.getByRole("button", {
+      name: "Sending…",
+    }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    expect(submit.getAttribute("aria-busy")).toBe("true");
+    expect(submit.querySelector("svg")).toBeTruthy();
+
+    fireEvent.click(submit);
+    expect(signInMagicLink).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRequest({ error: null });
+      await request;
+    });
+
+    expect(view.getByText("Check your inbox")).toBeTruthy();
+  });
+
+  test("sign-in card reports rejected requests and exits the pending state", async () => {
+    const request = Promise.reject(new Error("network failure"));
+    signInMagicLink.mockImplementationOnce(() => request);
+    const { SignInCard } = await import("./sign-in-card");
+
+    const view = render(<SignInCard locale="en-US" />);
+    fireEvent.change(view.getByLabelText("Email"), {
+      target: { value: "ada@example.test" },
+    });
+    const form = view.container.querySelector("#account-sign-in-form")!;
+
+    await act(async () => {
+      fireEvent.submit(form);
+      await request.catch(() => undefined);
+    });
+
+    expect(
+      view.getByText("We could not send the link. Please try again.")
+    ).toBeTruthy();
+    const submit = view.getByRole("button", {
+      name: "Email me a sign-in link",
+    }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(false);
+    expect(submit.getAttribute("aria-busy")).toBe("false");
+  });
+
   test("sign-in card reports request failures in the live region", async () => {
     signInMagicLink.mockImplementationOnce(() =>
       Promise.resolve({ error: { message: "rate limited" } })
@@ -106,7 +178,32 @@ describe("account components", () => {
     ).toBeTruthy();
   });
 
-  test("sign-out button signs out the current device and leaves the locale", async () => {
+  test("sign-out button rejects discard before changing auth or navigation", async () => {
+    confirmDiscardChanges.mockImplementationOnce(() => false);
+
+    let assigned: string | null = null;
+    const originalAssign = window.location.assign;
+    window.location.assign = ((href: string) => {
+      assigned = href;
+    }) as typeof window.location.assign;
+
+    try {
+      const { SignOutButton } = await import("./sign-out-button");
+      const view = render(<SignOutButton locale="cs-CZ" />);
+
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Odhlásit se" }));
+      });
+
+      expect(confirmDiscardChanges).toHaveBeenCalledWith("/cs-CZ");
+      expect(signOut).not.toHaveBeenCalled();
+      expect(assigned).toBeNull();
+    } finally {
+      window.location.assign = originalAssign;
+    }
+  });
+
+  test("sign-out button signs out once and redirects to the localized root", async () => {
     const { SignOutButton } = await import("./sign-out-button");
 
     let assigned: string | null = null;
@@ -115,15 +212,21 @@ describe("account components", () => {
       assigned = href;
     }) as typeof window.location.assign;
 
-    const view = render(<SignOutButton locale="cs-CZ" />);
-    await act(async () => {
-      view.getByText("Odhlásit se").click();
-    });
-    await Promise.resolve();
-    await Promise.resolve();
+    try {
+      const view = render(<SignOutButton locale="cs-CZ" />);
+      const signOutButton = view.getByRole("button", { name: "Odhlásit se" });
+      expect(signOutButton.className).toContain("bg-red-800");
+      await act(async () => {
+        fireEvent.click(signOutButton);
+      });
+      await Promise.resolve();
+      await Promise.resolve();
 
-    expect(signOut).toHaveBeenCalledTimes(1);
-    expect(assigned).toBe("/cs-CZ");
-    window.location.assign = originalAssign;
+      expect(confirmDiscardChanges).toHaveBeenCalledWith("/cs-CZ");
+      expect(signOut).toHaveBeenCalledTimes(1);
+      expect(assigned).toBe("/cs-CZ");
+    } finally {
+      window.location.assign = originalAssign;
+    }
   });
 });

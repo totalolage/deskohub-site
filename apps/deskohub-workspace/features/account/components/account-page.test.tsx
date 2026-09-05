@@ -87,13 +87,18 @@ describe("AccountPage states", () => {
     ) as HTMLInputElement;
     expect(email.value).toBe("ada@example.test");
     expect(email.readOnly).toBe(true);
-    expect(view.getByLabelText("First name, required")).toBeTruthy();
+    expect(view.getByLabelText("First name")).toBeTruthy();
   });
 
   test("renders the linked account with profile, reservations, sign out, and deletion", async () => {
     const view = await renderState(linkedState);
 
     expect(view.getByText("My Workspace")).toBeTruthy();
+    expect(
+      view.queryByText(
+        "Your customer profile and reservations in one place, protected by your verified email."
+      )
+    ).toBeNull();
     expect(view.getByText("Reservations")).toBeTruthy();
     expect(view.getByText("Delete my account")).toBeTruthy();
     expect(view.getByText("Sign out")).toBeTruthy();

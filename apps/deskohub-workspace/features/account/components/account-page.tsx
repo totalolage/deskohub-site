@@ -104,12 +104,9 @@ function LinkedAccountHeader({
   readonly title: string;
 }) {
   return (
-    <header className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
+    <header className="flex flex-wrap items-center justify-between gap-6">
       <div className="max-w-2xl">
         <h1 className="text-4xl text-navy-blue sm:text-5xl">{title}</h1>
-        <p className="mt-4 text-base leading-7 text-navy-blue/68">
-          {m.accountDescription({}, { locale })}
-        </p>
       </div>
       <SignOutButton locale={locale} />
     </header>

@@ -1,6 +1,8 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import { useState } from "react";
+import { useFormStatus } from "react-dom";
 import { authClient } from "@/features/account/auth.client";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -14,25 +16,26 @@ type SignInCardProps = {
 
 export function SignInCard({ locale }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
-  const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
 
   const requestLink = async (formData: FormData) => {
     const email = String(formData.get("email") ?? "").trim();
     if (!email) return;
-    setSending(true);
     setFailed(false);
-    const result = await authClient.signIn.magicLink({
-      email,
-      callbackURL: `/${locale}/auth/callback`,
-      metadata: { locale },
-    });
-    setSending(false);
-    if (result.error) {
+    try {
+      const result = await authClient.signIn.magicLink({
+        email,
+        callbackURL: `/${locale}/auth/callback`,
+        metadata: { locale },
+      });
+      if (result.error) {
+        setFailed(true);
+        return;
+      }
+      setRequested(true);
+    } catch {
       setFailed(true);
-      return;
     }
-    setRequested(true);
   };
 
   if (requested) {
@@ -88,16 +91,34 @@ export function SignInCard({ locale }: SignInCardProps) {
               placeholder={m.accountSignInEmailPlaceholder({}, { locale })}
             />
           </div>
-          <Button id="account-sign-in-submit" type="submit" disabled={sending}>
-            {sending
-              ? m.accountSignInSubmitting({}, { locale })
-              : m.accountSignInSubmit({}, { locale })}
-          </Button>
+          <SignInSubmitButton locale={locale} />
         </form>
         <div aria-live="polite" className="mt-4 min-h-5 text-sm text-red-700">
           {failed ? m.accountSignInRequestFailed({}, { locale }) : null}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function SignInSubmitButton({ locale }: SignInCardProps) {
+  const { pending } = useFormStatus();
+
+  return (
+    <Button
+      id="account-sign-in-submit"
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+    >
+      {pending ? (
+        <>
+          <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+          {m.accountSignInSubmitting({}, { locale })}
+        </>
+      ) : (
+        m.accountSignInSubmit({}, { locale })
+      )}
+    </Button>
   );
 }

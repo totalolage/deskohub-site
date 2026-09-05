@@ -3,15 +3,38 @@ import "../../shared/polyfills/temporal";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
-import { workspaceE2EAccountCaseIds } from "./catalog";
+import { workspaceE2ETimeouts } from "../timeouts";
+import {
+  type WorkspaceE2EAccountCaseId,
+  workspaceE2EAccountCaseIds,
+} from "./catalog";
 import { getAccountE2EConfig } from "./config";
 import {
   emptyWorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournal,
   writeWorkspaceE2EAccountJournal,
 } from "./journal";
+import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
+import {
+  type AccountReviewTarget,
+  captureAccountReview,
+} from "./review-screenshots";
 import type { WorkspaceE2EAccountDeletionHandoff } from "./types";
+
+const accountReviewTargetByCaseId: Partial<
+  Record<WorkspaceE2EAccountCaseId, AccountReviewTarget>
+> = {
+  "account-anonymous-redirect": "sign-in-desktop",
+  "account-sign-in-form": "sign-in-accepted-desktop",
+  "account-magic-link-delivery": "completion-mobile375x900",
+  "account-profile-completion": "linked-desktop1440x1000",
+  "account-reservation-transitions": "linked-history-desktop",
+  "account-deletion-marker-reauth": "callback-failed-desktop",
+  "account-linking-variants": "support-desktop",
+};
+const accountReviewCaptureFailureMessage =
+  "Account review screenshot capture failed";
 
 type WorkspaceE2EAccountLane = {
   readonly config: ReturnType<typeof getAccountE2EConfig>;
@@ -102,29 +125,84 @@ const accountTest = runtimeTest.extend<
 accountTest.describe.configure({ mode: "serial" });
 
 for (const caseId of workspaceE2EAccountCaseIds) {
-  accountTest(caseId, async ({ accountLane, environment, runEffect }) => {
-    const { makeWorkspaceE2EAccountCases } = await import("./cases");
-    const { getDatasourceConfig } = await import("../config");
-    const { runWorkspaceE2EAccountCase } = await import("./runner");
-    const cases = makeWorkspaceE2EAccountCases({
-      config: accountLane.config,
-      datasourceConfig: getDatasourceConfig(environment),
-      deletionHandoff: accountLane.deletionHandoff,
-      rateBudget: accountLane.rateBudget,
-      run: accountLane.run,
-      session: accountLane.session,
-    });
-    const selected = cases.find((testCase) => testCase.id === caseId);
-    if (!selected) {
-      throw new Error(`Workspace account E2E case ${caseId} was not built`);
-    }
-    await runEffect(
-      runWorkspaceE2EAccountCase({
-        journalRef: accountLane.journalRef,
-        reportFailure: writeWorkspaceE2EFailureAnnotation,
+  accountTest(
+    caseId,
+    async ({ accountLane, browser, environment, runEffect }) => {
+      const { makeWorkspaceE2EAccountCases } = await import("./cases");
+      const { getDatasourceConfig } = await import("../config");
+      const { runWorkspaceE2EAccountCase } = await import("./runner");
+      const cases = makeWorkspaceE2EAccountCases({
+        config: accountLane.config,
+        datasourceConfig: getDatasourceConfig(environment),
+        deletionHandoff: accountLane.deletionHandoff,
+        rateBudget: accountLane.rateBudget,
+        run: accountLane.run,
         session: accountLane.session,
-        testCase: selected,
-      })
-    );
-  });
+      });
+      const selected = cases.find((testCase) => testCase.id === caseId);
+      if (!selected) {
+        throw new Error(`Workspace account E2E case ${caseId} was not built`);
+      }
+      await runEffect(
+        runWorkspaceE2EAccountCase({
+          journalRef: accountLane.journalRef,
+          reportFailure: writeWorkspaceE2EFailureAnnotation,
+          session: accountLane.session,
+          testCase: selected,
+        })
+      );
+
+      const target = accountReviewTargetByCaseId[caseId];
+      if (!target) return;
+
+      const pages = browser.contexts().flatMap((context) => context.pages());
+      if (pages.length !== 1)
+        throw new Error(accountReviewCaptureFailureMessage);
+      const page = pages[0];
+      if (!page) throw new Error(accountReviewCaptureFailureMessage);
+
+      if (caseId === "account-profile-completion") {
+        await accountTest.step(
+          "verifies profile navigation and unsaved changes",
+          () => verifyProfileNavigation(page, accountLane.config.baseUrl)
+        );
+      }
+
+      await accountTest.step(`capture account review: ${target}`, async () => {
+        await captureAccountReview(page, accountLane.config.baseUrl, target);
+      });
+
+      if (caseId !== "account-linking-variants") return;
+
+      await accountTest.step(
+        "capture deleted account review after sign out",
+        async () => {
+          const baseUrl = accountLane.config.baseUrl;
+          await Promise.all([
+            page.waitForURL(new URL("/en-US", baseUrl).toString(), {
+              timeout: workspaceE2ETimeouts.browserNavigation,
+            }),
+            page
+              .getByRole("button", { name: "Sign out", exact: true })
+              .click({ timeout: workspaceE2ETimeouts.browserAction }),
+          ]);
+          await page.goto(
+            new URL("/en-US/account/deleted", baseUrl).toString(),
+            { timeout: workspaceE2ETimeouts.browserNavigation }
+          );
+          await page
+            .getByRole("heading", {
+              exact: true,
+              level: 1,
+              name: "Your account was deleted",
+            })
+            .waitFor({
+              state: "visible",
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
+          await captureAccountReview(page, baseUrl, "deleted-desktop");
+        }
+      );
+    }
+  );
 }

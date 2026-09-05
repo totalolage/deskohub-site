@@ -19,7 +19,17 @@ type CapturedLink = {
   readonly prefetch: boolean | null | undefined;
 };
 
+type CapturedLogo = {
+  readonly alt: string | undefined;
+  readonly height: number | undefined;
+  readonly styling: {
+    readonly color: string;
+    readonly variant: string;
+  };
+};
+
 const capturedLinks: CapturedLink[] = [];
+const capturedLogos: CapturedLogo[] = [];
 let currentPathname = "/en-US";
 
 mock.module("next/link", () => ({
@@ -52,7 +62,21 @@ mock.module("next/navigation", () => ({
 }));
 
 mock.module("@/shared/components/logo", () => ({
-  HorizontalLogo: () => <span>Deskohub Workspace</span>,
+  HorizontalLogo: () => (
+    <span data-testid="horizontal-logo">Deskohub Workspace</span>
+  ),
+  Logo: ({
+    alt,
+    height,
+    styling,
+  }: {
+    readonly alt?: string;
+    readonly height?: number;
+    readonly styling: CapturedLogo["styling"];
+  }) => {
+    capturedLogos.push({ alt, height, styling });
+    return <span data-testid="small-logo" />;
+  },
 }));
 
 beforeAll(() => {
@@ -61,6 +85,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   capturedLinks.length = 0;
+  capturedLogos.length = 0;
   currentPathname = "/en-US";
 });
 
@@ -167,6 +192,63 @@ test("renders only the configured full-header items without reserved slots", asy
       ?.querySelector(`a[href="${galleryHref}"]`)
       ?.getAttribute("class")
   ).not.toContain("col-start");
+});
+
+test("keeps the full-header home link compact and controls usable on mobile", async () => {
+  const { SiteHeader } = await import("./site-header");
+  const view = render(
+    <SiteHeader
+      accountHref="/en-US/account"
+      accountLabel="Account"
+      closeNavigationMenuLabel="Close navigation menu"
+      contactHref="/en-US/reservation/cowork"
+      contactLabel="Get access"
+      currentLocale="en-US"
+      languageSwitcherLabel="Language switcher"
+      languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
+      links={[]}
+      mobilePrimaryNavigationLabel="Mobile primary navigation"
+      openNavigationMenuLabel="Open navigation menu"
+      primaryNavigationLabel="Primary navigation"
+    />
+  );
+
+  const header = view.container.querySelector("header");
+  const headerInner = header?.firstElementChild;
+  const homeLink = view.getByRole("link", { name: "Deskohub Workspace" });
+  const smallLogo = homeLink.querySelector('[data-testid="small-logo"]');
+  const horizontalLogo = homeLink.querySelector(
+    '[data-testid="horizontal-logo"]'
+  );
+  const accountLink = view.container.querySelector('a[href="/en-US/account"]');
+  const actionGroup = accountLink?.parentElement;
+  const contactLink = view.getByRole("link", { name: "Get access" });
+  const menuButton = view.getByRole("button", {
+    name: "Open navigation menu",
+  });
+
+  expect(header?.className).toContain("h-(--site-header-height)");
+  expect(headerInner?.className).toContain("gap-3");
+  expect(headerInner?.className).toContain("sm:gap-4");
+  expect(headerInner?.className).toContain("px-3");
+  expect(headerInner?.className).toContain("sm:px-6");
+  expect(headerInner?.className).toContain("lg:px-8");
+  expect(homeLink.getAttribute("aria-label")).toBe("Deskohub Workspace");
+  expect(smallLogo?.parentElement?.className).toBe("block sm:hidden");
+  expect(horizontalLogo?.parentElement?.className).toBe("hidden sm:block");
+  expect(capturedLogos).toEqual([
+    {
+      alt: "",
+      height: 48,
+      styling: { color: "dark", variant: "color" },
+    },
+  ]);
+  expect(actionGroup?.className).toContain("shrink-0");
+  expect(accountLink?.className).toContain("size-10");
+  expect(contactLink.className).toContain("whitespace-nowrap");
+  expect(contactLink.className).toContain("shrink-0");
+  expect(menuButton.className).toContain("h-10");
+  expect(menuButton.className).toContain("w-10");
 });
 
 test("uses document navigation for the alternate-locale minimal-header link", async () => {

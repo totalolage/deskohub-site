@@ -67,6 +67,7 @@ The independent `i18n:compile` task may exclude `NEXT_PUBLIC_VERCEL_*` because i
 
 ## CI boundaries
 
+- Monitor an active GitHub run with `timeout <seconds> gh run watch <run-id> --exit-status --interval <seconds>`. Use `gh run view` for a one-time status inspection, not a `sleep`-then-inspect polling loop. A local watch timeout does not cancel the remote workflow.
 - Workspace tests cover changes to Workspace, shared packages, and root build inputs.
 - Workspace E2E starts from the successful immutable protected preview for the exact commit.
 - The `dhw` CLI and its shared administration contract have a release-producing commit requirement. Read the Workspace administration reference before changing that boundary.

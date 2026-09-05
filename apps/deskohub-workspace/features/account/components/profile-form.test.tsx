@@ -8,7 +8,7 @@ import {
   test,
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import React from "react";
+import React, { Activity } from "react";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -92,7 +92,7 @@ describe("ProfileForm", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("labels the required and optional fields in both locales", async () => {
+  test("labels the profile fields without required or optional suffixes", async () => {
     const { ProfileForm } = await import("./profile-form");
 
     const en = render(
@@ -103,9 +103,9 @@ describe("ProfileForm", () => {
         profile={editProfile}
       />
     );
-    expect(en.getByLabelText("First name, required")).toBeTruthy();
-    expect(en.getByLabelText("Last name, optional")).toBeTruthy();
-    expect(en.getByLabelText("Phone, optional")).toBeTruthy();
+    expect(en.getByLabelText("First name")).toBeTruthy();
+    expect(en.getByLabelText("Last name")).toBeTruthy();
+    expect(en.getByLabelText("Phone")).toBeTruthy();
     expect(en.getByText("Billing details, optional")).toBeTruthy();
     en.unmount();
 
@@ -117,9 +117,9 @@ describe("ProfileForm", () => {
         profile={editProfile}
       />
     );
-    expect(cs.getByLabelText("Jméno, povinné")).toBeTruthy();
-    expect(cs.getByLabelText("Příjmení, nepovinné")).toBeTruthy();
-    expect(cs.getByLabelText("Telefon, nepovinný")).toBeTruthy();
+    expect(cs.getByLabelText("Jméno")).toBeTruthy();
+    expect(cs.getByLabelText("Příjmení")).toBeTruthy();
+    expect(cs.getByLabelText("Telefon")).toBeTruthy();
   });
 
   test("keeps the verified login email read-only", async () => {
@@ -138,7 +138,13 @@ describe("ProfileForm", () => {
     ) as HTMLInputElement;
     expect(email.value).toBe("ada@example.test");
     expect(email.readOnly).toBe(true);
+    expect(email.getAttribute("aria-readonly")).toBe("true");
     expect(email.hasAttribute("required")).toBe(false);
+    expect(
+      view.queryByText(
+        "To protect your reservation history, the login email cannot be changed."
+      )
+    ).toBeNull();
   });
 
   test("submits the profile without any email field for the completion mode", async () => {
@@ -147,7 +153,7 @@ describe("ProfileForm", () => {
     const view = render(
       <ProfileForm mode="complete" locale="en-US" email="ada@example.test" />
     );
-    fireEvent.change(view.getByLabelText("First name, required"), {
+    fireEvent.change(view.getByLabelText("First name"), {
       target: { value: "Ada" },
     });
 
@@ -161,6 +167,172 @@ describe("ProfileForm", () => {
     expect(JSON.stringify(input)).not.toContain("email");
     expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
     await view.findByText("Your customer profile was created and linked.");
+  });
+
+  test("keeps a deferred completion draft for the next update save", async () => {
+    let resolveCompletion!: (result: ActionResult) => void;
+    const pendingCompletion = new Promise<ActionResult>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    completeCustomerProfile.mockImplementationOnce(() => pendingCompletion);
+
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="complete"
+            locale="en-US"
+            email="ada@example.test"
+          />
+        </UnsavedChangesProvider>
+      );
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+      const form = view.container.querySelector("#account-profile-form")!;
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Ada" } });
+        fireEvent.submit(form);
+      });
+      expect(
+        (view.container.querySelector("fieldset") as HTMLFieldSetElement)
+          .disabled
+      ).toBe(false);
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+      });
+
+      await act(async () => {
+        resolveCompletion({ data: { status: "completed" } });
+        await pendingCompletion;
+      });
+
+      expect(firstName.value).toBe("Grace");
+      expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+      const link = document.createElement("a");
+      link.href = "/next";
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledWith(
+        "You have unsaved profile changes. Leave this page?"
+      );
+
+      await act(async () => {
+        fireEvent.submit(form);
+      });
+
+      expect(completeCustomerProfile).toHaveBeenCalledTimes(1);
+      expect(updateCustomerProfile).toHaveBeenCalledTimes(1);
+      expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("disables the form during a delayed completion refresh", async () => {
+    let refreshReleased = false;
+    let releaseRefresh!: () => void;
+    const refreshPromise = new Promise<void>((resolve) => {
+      releaseRefresh = () => {
+        refreshReleased = true;
+        resolve();
+      };
+    });
+    let requestRefresh!: () => void;
+    workspaceRouterRefresh.mockImplementationOnce(() => requestRefresh());
+
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+
+    function DelayedRefresh({ requested }: { readonly requested: boolean }) {
+      if (requested && !refreshReleased) throw refreshPromise;
+      return null;
+    }
+
+    function RefreshFixture() {
+      const [requested, setRequested] = React.useState(false);
+      requestRefresh = () => setRequested(true);
+      return (
+        <UnsavedChangesProvider>
+          <React.Suspense fallback={<p>Waiting for refresh</p>}>
+            <DelayedRefresh requested={requested} />
+            <ProfileForm
+              mode="complete"
+              locale="en-US"
+              email="ada@example.test"
+            />
+          </React.Suspense>
+        </UnsavedChangesProvider>
+      );
+    }
+
+    const view = render(<RefreshFixture />);
+    const firstName = view.getByLabelText("First name") as HTMLInputElement;
+    const form = view.container.querySelector(
+      "#account-profile-form"
+    ) as HTMLFormElement;
+
+    await act(async () => {
+      fireEvent.input(firstName, { target: { value: "Ada" } });
+      fireEvent.submit(form);
+    });
+
+    const fieldset = view.container.querySelector("fieldset")!;
+    const submitButton = view.container.querySelector(
+      "#account-profile-submit"
+    )!;
+    expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
+    expect(form.getAttribute("aria-busy")).toBe("true");
+    expect((fieldset as HTMLFieldSetElement).disabled).toBe(true);
+    expect((submitButton as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      releaseRefresh();
+      await refreshPromise;
+    });
+
+    expect((view.getByLabelText("First name") as HTMLInputElement).value).toBe(
+      "Ada"
+    );
+    expect(form.getAttribute("aria-busy")).toBe("false");
+    expect((fieldset as HTMLFieldSetElement).disabled).toBe(false);
+    expect((submitButton as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("keeps native required validation before executing", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm mode="complete" locale="en-US" email="ada@example.test" />
+    );
+    const form = view.container.querySelector("#account-profile-form")!;
+    expect(
+      (view.getByLabelText("First name") as HTMLInputElement).required
+    ).toBe(true);
+    expect((form as HTMLFormElement).noValidate).toBe(false);
+
+    await act(async () => {
+      fireEvent.submit(form);
+    });
+
+    expect(completeCustomerProfile).not.toHaveBeenCalled();
   });
 
   test("keeps the update success feedback without refreshing the page", async () => {
@@ -237,7 +409,7 @@ describe("ProfileForm", () => {
       fireEvent.submit(view.container.querySelector("#account-profile-form")!);
     });
 
-    const firstName = view.getByLabelText("First name, required");
+    const firstName = view.getByLabelText("First name");
     expect(firstName.getAttribute("aria-invalid")).toBe("true");
     expect(firstName.getAttribute("aria-describedby")).toBe(
       "account-profile-first-name-error"
@@ -259,7 +431,7 @@ describe("ProfileForm", () => {
       />
     );
 
-    const phone = view.getByLabelText("Phone, optional") as HTMLInputElement;
+    const phone = view.getByLabelText("Phone") as HTMLInputElement;
     expect(phone.value).toBe("555-ALPHA");
   });
 
@@ -289,7 +461,7 @@ describe("ProfileForm", () => {
       fireEvent.submit(view.container.querySelector("#account-profile-form")!);
     });
 
-    const phone = view.getByLabelText("Phone, optional");
+    const phone = view.getByLabelText("Phone");
     expect(phone.getAttribute("aria-invalid")).toBe("true");
     expect(phone.getAttribute("aria-describedby")).toBe(
       "account-profile-phone-error"
@@ -326,6 +498,368 @@ describe("ProfileForm", () => {
     ).toBeTruthy();
   });
 
+  test("keeps a later edit guarded when a deferred save succeeds", async () => {
+    let resolveUpdate!: (result: ActionResult) => void;
+    const pendingUpdate = new Promise<ActionResult>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    updateCustomerProfile.mockImplementationOnce(() => pendingUpdate);
+
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={editProfile}
+          />
+        </UnsavedChangesProvider>
+      );
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+        fireEvent.submit(
+          view.container.querySelector("#account-profile-form")!
+        );
+      });
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Augusta" } });
+      });
+
+      await act(async () => {
+        resolveUpdate({ data: { status: "updated" } });
+        await pendingUpdate;
+      });
+
+      expect(firstName.value).toBe("Augusta");
+      const link = document.createElement("a");
+      link.href = "/next";
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledWith(
+        "You have unsaved profile changes. Leave this page?"
+      );
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("preserves typed values and the guard after a rejected save", async () => {
+    updateCustomerProfile.mockImplementationOnce(() =>
+      Promise.resolve({
+        serverError: "We could not update your profile. Please try again.",
+      })
+    );
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={editProfile}
+          />
+        </UnsavedChangesProvider>
+      );
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+      const lastName = view.getByLabelText("Last name") as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+        fireEvent.input(lastName, { target: { value: "Byron" } });
+        fireEvent.submit(
+          view.container.querySelector("#account-profile-form")!
+        );
+      });
+
+      expect(firstName.value).toBe("Grace");
+      expect(lastName.value).toBe("Byron");
+      expect(
+        view.getByText("We could not update your profile. Please try again.")
+      ).toBeTruthy();
+
+      const link = document.createElement("a");
+      link.href = "/next";
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledWith(
+        "You have unsaved profile changes. Leave this page?"
+      );
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("preserves typed values and the guard after validation errors", async () => {
+    updateCustomerProfile.mockImplementationOnce(() =>
+      Promise.resolve({
+        validationErrors: {
+          formErrors: [],
+          fieldErrors: { firstName: ["Enter your first name."] },
+        },
+      })
+    );
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={editProfile}
+          />
+        </UnsavedChangesProvider>
+      );
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+        fireEvent.submit(
+          view.container.querySelector("#account-profile-form")!
+        );
+      });
+
+      expect(firstName.value).toBe("Grace");
+      expect(firstName.getAttribute("aria-invalid")).toBe("true");
+      expect(
+        view.getByText("Please review the highlighted fields and try again.")
+      ).toBeTruthy();
+
+      const link = document.createElement("a");
+      link.href = "/next";
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledWith(
+        "You have unsaved profile changes. Leave this page?"
+      );
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("clears the guard after a successful save without extra edits", async () => {
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={editProfile}
+          />
+        </UnsavedChangesProvider>
+      );
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+        const form = view.container.querySelector("#account-profile-form")!;
+        fireEvent.submit(form);
+        fireEvent.submit(form);
+      });
+
+      expect(updateCustomerProfile).toHaveBeenCalledTimes(1);
+      const link = document.createElement("a");
+      link.href = "/next";
+      link.addEventListener("click", (event) => event.preventDefault());
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.cancelBubble).toBe(false);
+      expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("clears the guard when a changed value returns to its original value", async () => {
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={editProfile}
+          />
+        </UnsavedChangesProvider>
+      );
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+        fireEvent.input(firstName, { target: { value: "Ada" } });
+      });
+
+      const link = document.createElement("a");
+      link.href = "/next";
+      link.addEventListener("click", (event) => event.preventDefault());
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.cancelBubble).toBe(false);
+      expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("preserves the original baseline across Activity hide and show", async () => {
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      function ActivityHarness() {
+        const [mode, setMode] = React.useState<"visible" | "hidden">("visible");
+        return (
+          <UnsavedChangesProvider>
+            <button
+              type="button"
+              onClick={() =>
+                setMode((currentMode) =>
+                  currentMode === "visible" ? "hidden" : "visible"
+                )
+              }
+            >
+              Toggle activity
+            </button>
+            <Activity mode={mode}>
+              <ProfileForm
+                mode="edit"
+                locale="en-US"
+                email="ada@example.test"
+                profile={editProfile}
+              />
+            </Activity>
+          </UnsavedChangesProvider>
+        );
+      }
+
+      const view = render(<ActivityHarness />);
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+      const toggle = view.getByRole("button", { name: "Toggle activity" });
+
+      await act(async () => {
+        fireEvent.input(firstName, { target: { value: "Grace" } });
+      });
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+
+      expect(
+        (view.getByLabelText("First name") as HTMLInputElement).value
+      ).toBe("Grace");
+      await act(async () => {
+        fireEvent.input(view.getByLabelText("First name"), {
+          target: { value: "Ada" },
+        });
+      });
+
+      const link = document.createElement("a");
+      link.href = "/next";
+      link.addEventListener("click", (event) => event.preventDefault());
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.cancelBubble).toBe(false);
+      expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
   test("reveals business billing fields only after choosing business billing", async () => {
     const { ProfileForm } = await import("./profile-form");
 
@@ -347,12 +881,10 @@ describe("ProfileForm", () => {
       });
     });
 
-    expect(
-      view.getByLabelText("Company name, required for business billing")
-    ).toBeTruthy();
-    expect(view.getByLabelText("Company ID, optional")).toBeTruthy();
-    expect(view.getByLabelText("VAT ID, optional")).toBeTruthy();
-    expect(view.getByLabelText("Street and number, optional")).toBeTruthy();
+    expect(view.getByLabelText("Company name")).toBeTruthy();
+    expect(view.getByLabelText("Company ID")).toBeTruthy();
+    expect(view.getByLabelText("VAT ID")).toBeTruthy();
+    expect(view.getByLabelText("Street and number")).toBeTruthy();
 
     fireEvent.change(view.getByLabelText("Billing profile"), {
       target: { value: "personal" },
@@ -360,6 +892,54 @@ describe("ProfileForm", () => {
     expect(
       view.container.querySelector("#account-profile-billing-company-name")
     ).toBeNull();
-    expect(view.getByLabelText("City, optional")).toBeTruthy();
+    expect(view.getByLabelText("City")).toBeTruthy();
+  });
+
+  test("blocks internal navigation after changing the profile", async () => {
+    const { ProfileForm } = await import("./profile-form");
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.location.href = "http://localhost/account";
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <ProfileForm
+            mode="edit"
+            locale="en-US"
+            email="ada@example.test"
+            profile={editProfile}
+          />
+        </UnsavedChangesProvider>
+      );
+      await act(async () => {
+        fireEvent.input(view.getByLabelText("First name"), {
+          target: { value: "Grace" },
+        });
+        await Promise.resolve();
+      });
+
+      const link = document.createElement("a");
+      link.href = "/next";
+      link.textContent = "Next";
+      document.body.append(link);
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+      link.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledWith(
+        "You have unsaved profile changes. Leave this page?"
+      );
+    } finally {
+      window.confirm = originalConfirm;
+    }
   });
 });

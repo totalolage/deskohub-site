@@ -5,6 +5,7 @@ import { useState } from "react";
 import { authClient } from "@/features/account/auth.client";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
+import { useConfirmDiscardChanges } from "@/shared/components/unsaved-changes-guard";
 
 type SignOutButtonProps = {
   readonly locale: Locale;
@@ -12,19 +13,23 @@ type SignOutButtonProps = {
 
 export function SignOutButton({ locale }: SignOutButtonProps) {
   const [signingOut, setSigningOut] = useState(false);
+  const confirmDiscardChanges = useConfirmDiscardChanges();
 
   const signOut = async () => {
+    const target = `/${locale}`;
+    if (!confirmDiscardChanges(target)) return;
+
     setSigningOut(true);
     await authClient.signOut();
-    window.location.assign(`/${locale}`);
+    window.location.assign(target);
   };
 
   return (
     <Button
       id="account-sign-out"
       type="button"
-      variant="secondary"
       disabled={signingOut}
+      className="bg-red-800 hover:bg-red-900"
       onClick={signOut}
     >
       <LogOut aria-hidden className="size-4" />

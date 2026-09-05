@@ -8,7 +8,7 @@ import {
   LocaleSwitcherLabels,
   LocaleSwitcherLinks,
 } from "@/shared/components/locale-switcher-links";
-import { HorizontalLogo } from "@/shared/components/logo";
+import { HorizontalLogo, Logo } from "@/shared/components/logo";
 import type { SiteHeaderMenuItem } from "@/shared/components/site-header-config";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
@@ -48,16 +48,26 @@ export function SiteHeader({
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-(--site-header-height) border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
-      <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-3 px-3 sm:gap-4 sm:px-6 lg:px-8">
         <Link
           href={`/${currentLocale}`}
+          aria-label="Deskohub Workspace"
           className="shrink-0"
           onClick={closeMenu}
         >
-          <HorizontalLogo
-            styling={{ color: "dark", variant: "color" }}
-            className="scale-80"
-          />
+          <span className="block sm:hidden">
+            <Logo
+              styling={{ color: "dark", variant: "color" }}
+              alt=""
+              height={48}
+            />
+          </span>
+          <span className="hidden sm:block">
+            <HorizontalLogo
+              styling={{ color: "dark", variant: "color" }}
+              className="scale-80"
+            />
+          </span>
         </Link>
 
         <nav
@@ -75,7 +85,7 @@ export function SiteHeader({
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3 xl:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:gap-3">
           <Link
             href={accountHref}
             className="inline-flex size-10 items-center justify-center rounded-full border border-white/12 bg-white/6 text-white/82 transition-colors hover:border-sunset-yellow/55 hover:text-sunset-yellow"
@@ -88,7 +98,7 @@ export function SiteHeader({
 
           <Link
             href={contactHref}
-            className="rounded-full border border-white/12 bg-white px-3 py-2 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-navy-blue transition-colors hover:bg-sunset-yellow sm:px-4 sm:text-xs sm:tracking-[0.14em]"
+            className="shrink-0 whitespace-nowrap rounded-full border border-white/12 bg-white px-3 py-2 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-navy-blue transition-colors hover:bg-sunset-yellow sm:px-4 sm:text-xs sm:tracking-[0.14em]"
             onClick={closeMenu}
           >
             {contactLabel}
