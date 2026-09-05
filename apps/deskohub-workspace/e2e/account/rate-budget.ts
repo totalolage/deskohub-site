@@ -86,7 +86,9 @@ export const makeMagicLinkRateBudget = (
   ): Effect.Effect<A, E, R> =>
     Effect.suspend(() => {
       const admission = admit(operation);
-      if (!admission) {
+      // Wait before issuing a link, not while its expiry clock is running.
+      // The serial lane consumes no verification capacity between send and use.
+      if (!admission || (operation === "send" && !admit("verify"))) {
         return Effect.andThen(retryAfterNotReady(), () =>
           run(operation, effect)
         );

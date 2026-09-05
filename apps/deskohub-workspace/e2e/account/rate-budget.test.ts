@@ -92,6 +92,23 @@ const makeReservationTimedBudget = (options: BudgetOptions = {}) => {
 };
 
 describe("magic-link rate budget", () => {
+  test("waits for verification capacity before issuing an expiring link", async () => {
+    const clock = makeClock();
+    const sent: number[] = [];
+    const verified: number[] = [];
+    const budget = makeMagicLinkRateBudget({
+      maxPerWindow: 1,
+      now: clock.now,
+      windowMs: 600_000,
+      retryAfterNotReady: retryByAdvancingTo(clock, [600_000]),
+    });
+    await Effect.runPromise(budget.run("verify", Effect.void));
+    clock.advanceTo(1);
+    await Effect.runPromise(budget.run("send", probeEffect(clock, sent)));
+    await Effect.runPromise(budget.run("verify", probeEffect(clock, verified)));
+    expect(sent).toEqual([600_000]);
+    expect(verified).toEqual(sent);
+  });
   test("derives the window from the production rate-limit window", () => {
     expect(magicLinkOperationWindowMs).toBe(
       betterAuthMagicLinkOptions.rateLimit.window * 1000
