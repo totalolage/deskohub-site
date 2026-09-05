@@ -12,11 +12,12 @@ import type {
   Response,
 } from "@playwright/test";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
+import { escapeRegExp } from "../shared/utils/escape-regexp";
 
 export const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const workspaceDir = resolve(scriptDir, "..");
 export const repoRoot = resolve(workspaceDir, "../..");
-const redactions = new Set<string>();
+const redactions = new Map<string, "substring" | "token">();
 
 export type RunBrowserOptions = {
   allowFailure?: boolean;
@@ -595,11 +596,20 @@ export const parseUrl = (value: string) => {
 
 export const addRedaction = (value: string | undefined, force = false) => {
   if (!value || (!force && value.length <= 6)) return;
-  redactions.add(value);
-  redactions.add(encodeURIComponent(value));
-  redactions.add(
-    new URLSearchParams({ value }).toString().slice("value=".length)
-  );
+  const mode = force && value.length <= 6 ? "token" : "substring";
+  for (const variant of [
+    value,
+    encodeURIComponent(value),
+    new URLSearchParams({ value }).toString().slice("value=".length),
+  ]) {
+    const existingMode = redactions.get(variant);
+    redactions.set(
+      variant,
+      existingMode === "substring" || mode === "substring"
+        ? "substring"
+        : "token"
+    );
+  }
 };
 
 export const addDatabaseUrlRedactions = (value: string | undefined) => {
@@ -622,8 +632,18 @@ export const addDatabaseUrlRedactions = (value: string | undefined) => {
 
 export const redact = (text: string) => {
   let output = text;
-  for (const secret of redactions)
-    output = output.replaceAll(secret, "[redacted]");
+  for (const [secret, mode] of redactions) {
+    output =
+      mode === "token"
+        ? output.replace(
+            new RegExp(
+              `(?<![A-Za-z0-9])${escapeRegExp(secret)}(?![A-Za-z0-9])`,
+              "g"
+            ),
+            "[redacted]"
+          )
+        : output.replaceAll(secret, "[redacted]");
+  }
   return output;
 };
 

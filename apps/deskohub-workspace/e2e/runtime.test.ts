@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { Browser } from "@playwright/test";
 import {
   addDatabaseUrlRedactions,
+  addRedaction,
   makePlaywrightBrowserRunner,
   redact,
 } from "./runtime";
@@ -52,6 +53,56 @@ test("redacts database connection identity fragments", () => {
   expect(output).not.toContain("private-database");
   expect(output).not.toContain("permit-user");
   expect(output).not.toContain("permit-password");
+});
+
+test("redacts forced short values only as complete ASCII tokens", () => {
+  const cvv = "741";
+  const orderId = "550e8400-e29b-41d4-a741-446655440000";
+  addRedaction(cvv, true);
+
+  expect(
+    redact(
+      `${orderId} {"cvv":"${cvv}"} --cvv ${cvv} https://payments.example.test/verify?cvv=${cvv}&orderId=${orderId}`
+    )
+  ).toBe(
+    `${orderId} {"cvv":"[redacted]"} --cvv [redacted] https://payments.example.test/verify?cvv=[redacted]&orderId=${orderId}`
+  );
+});
+
+test("escapes punctuation in forced short values and encoded variants", () => {
+  addRedaction("a.b", true);
+  addRedaction("a+b", true);
+
+  expect(redact("dot=a.b near=aXb plus=a+b encoded=a%2Bb nearPlus=ab")).toBe(
+    "dot=[redacted] near=aXb plus=[redacted] encoded=[redacted] nearPlus=ab"
+  );
+});
+
+test("keeps browser result IDs parseable while redacting forced short values", async () => {
+  const cvv = "741";
+  const orderId = "550e8400-e29b-41d4-a741-446655440000";
+  addRedaction(cvv, true);
+
+  const run = makePlaywrightBrowserRunner(
+    browserWithFrame({
+      evaluate: () => Promise.resolve({ orderId, cvv }),
+    })
+  );
+
+  try {
+    const result = await run(
+      "playwright",
+      ["--session", "redaction-result-test", "eval", "--stdin"],
+      { input: "document.body.innerText" }
+    );
+
+    expect(JSON.parse(result.stdout)).toEqual({
+      orderId,
+      cvv: "[redacted]",
+    });
+  } finally {
+    await run.close?.();
+  }
 });
 
 test("targets the visible match for selector-based browser actions", async () => {
