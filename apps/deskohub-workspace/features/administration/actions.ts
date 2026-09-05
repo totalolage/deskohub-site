@@ -23,15 +23,12 @@ import {
 } from "./reservation-administration.service";
 
 const findReservation = Effect.fn("AdministrationService.findReservation")(
-  (input: ReservationLookupInput) =>
-    Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      return {
-        reservationId: yield* administration.findReservationId(
-          input.identifier
-        ),
-      };
-    })
+  function* (input: ReservationLookupInput) {
+    const administration = yield* AdministrationService;
+    return {
+      reservationId: yield* administration.findReservationId(input.identifier),
+    };
+  }
 );
 
 const getAdministrationReservationAction = defineWorkspaceAction(
@@ -41,7 +38,7 @@ const getAdministrationReservationAction = defineWorkspaceAction(
     logInput: false,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(findReservation(input)),
       Effect.provide(AdministrationService.Live),
       Effect.mapError(
@@ -66,7 +63,7 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
     schema: reservationCancellationStandardSchema,
   },
   (input: ReservationCancellationInput) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* ReservationAdministrationService;
@@ -117,7 +114,7 @@ const mutateReservationAccessAction = defineWorkspaceAction(
     schema: reservationAccessMutationSchema,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* ReservationAccessAdministration;

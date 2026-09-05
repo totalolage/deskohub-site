@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import {
+  isAdminBasicAuthCredentialPair,
+  makeWorkspaceE2EAdminCredential,
+} from "./admin-basic-auth";
 import { makeE2EEnvironment } from "./e2e-env";
 import {
   makeTestE2EEnvironment,
   validE2ERuntimeEnvironment,
 } from "./e2e-env.test-fixture";
-import {
-  isAdminBasicAuthCredentialPair,
-  makeWorkspaceE2EAdminCredential,
-} from "./admin-basic-auth";
 import { redact } from "./runtime";
 
 const syntheticPair = "e2e-admin:s3cret-value-with:colons";
@@ -34,6 +34,9 @@ describe("Workspace E2E admin Basic auth credential", () => {
     { WORKSPACE_E2E_ADMIN_BASIC_AUTH: "admin:" },
     { WORKSPACE_E2E_ADMIN_BASIC_AUTH: " admin:secret" },
     { WORKSPACE_E2E_ADMIN_BASIC_AUTH: "admin :secret" },
+    { WORKSPACE_E2E_ADMIN_BASIC_AUTH: "Admin:password" },
+    { WORKSPACE_E2E_ADMIN_BASIC_AUTH: ".admin:password" },
+    { WORKSPACE_E2E_ADMIN_BASIC_AUTH: "admin!:password" },
     { WORKSPACE_E2E_ADMIN_BASIC_AUTH: `${"a".repeat(81)}:secret` },
   ])("rejects an invalid credential pair", (runtimeEnvironment) => {
     expect(() =>

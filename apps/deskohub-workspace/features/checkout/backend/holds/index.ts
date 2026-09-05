@@ -1,2 +1,5 @@
-export * from "./reservation-hold-cleanup.service";
-export * from "./reservation-hold-cleanup-queue.service";
+export { ReservationHoldCleanupService } from "./reservation-hold-cleanup.service";
+export {
+  processReservationHoldCleanupScheduleMessage,
+  ReservationHoldCleanupScheduleService,
+} from "./reservation-hold-cleanup-queue.service";

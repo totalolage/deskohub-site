@@ -6,12 +6,18 @@ import { DiscountAdministration } from "./discount-administration.service";
 export const executeDiscountAdminMutation = Effect.fn(
   "DiscountAdministration.executeMutation"
 )(function* (input: DiscountAdminMutation) {
-  const administration = yield* DiscountAdministration;
+  const admin = yield* DiscountAdministration;
+  const noCreatedIdResult: AdministrationDiscountMutationResultType = {
+    kind: input.kind,
+    createdDiscountId: null,
+    createdCodeId: null,
+    createdVoucherId: null,
+  };
 
   return yield* Match.value(input).pipe(
     Match.discriminatorsExhaustive("kind")({
       "create-discount": ({ discount, kind }) =>
-        administration.createDiscount(discount).pipe(
+        admin.createDiscount(discount).pipe(
           Effect.map(
             (createdDiscountId): AdministrationDiscountMutationResultType => ({
               kind,
@@ -21,26 +27,12 @@ export const executeDiscountAdminMutation = Effect.fn(
             })
           )
         ),
-      "update-discount": ({ discount, kind }) =>
-        administration.updateDiscount(discount).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
-        ),
-      "delete-discount": ({ id, kind }) =>
-        administration.deleteDiscount({ id }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
-        ),
+      "update-discount": ({ discount }) =>
+        Effect.as(admin.updateDiscount(discount), noCreatedIdResult),
+      "delete-discount": ({ id }) =>
+        Effect.as(admin.deleteDiscount({ id }), noCreatedIdResult),
       "create-code": ({ code, discount, kind }) =>
-        administration.createCode({ code, discount }).pipe(
+        admin.createCode({ code, discount }).pipe(
           Effect.map(
             (createdCodeId): AdministrationDiscountMutationResultType => ({
               kind,
@@ -51,7 +43,7 @@ export const executeDiscountAdminMutation = Effect.fn(
           )
         ),
       "create-customer-code": ({ code, customerId, discount, kind }) =>
-        administration.createCustomerCode({ code, customerId, discount }).pipe(
+        admin.createCustomerCode({ code, customerId, discount }).pipe(
           Effect.map(
             (createdCodeId): AdministrationDiscountMutationResultType => ({
               kind,
@@ -61,64 +53,29 @@ export const executeDiscountAdminMutation = Effect.fn(
             })
           )
         ),
-      "update-code": ({ code, kind }) =>
-        administration.updateCode(code).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
+      "update-code": ({ code }) =>
+        Effect.as(admin.updateCode(code), noCreatedIdResult),
+      "delete-code": ({ id }) =>
+        Effect.as(admin.deleteCode({ id }), noCreatedIdResult),
+      "add-code-customer": ({ codeId, customerId }) =>
+        Effect.as(
+          admin.addCodeCustomer({ codeId, customerId }),
+          noCreatedIdResult
         ),
-      "delete-code": ({ id, kind }) =>
-        administration.deleteCode({ id }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
+      "remove-code-customer": ({ codeId, customerId }) =>
+        Effect.as(
+          admin.removeCodeCustomer({ codeId, customerId }),
+          noCreatedIdResult
         ),
-      "add-code-customer": ({ codeId, customerId, kind }) =>
-        administration.addCodeCustomer({ codeId, customerId }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
+      "make-code-unrestricted": ({ codeId }) =>
+        Effect.as(admin.makeCodeUnrestricted({ codeId }), noCreatedIdResult),
+      "set-customer-discount-group": ({ customerId, discountGroupId }) =>
+        Effect.as(
+          admin.setCustomerDiscountGroup({ customerId, discountGroupId }),
+          noCreatedIdResult
         ),
-      "remove-code-customer": ({ codeId, customerId, kind }) =>
-        administration.removeCodeCustomer({ codeId, customerId }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
-        ),
-      "make-code-unrestricted": ({ codeId, kind }) =>
-        administration.makeCodeUnrestricted({ codeId }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
-        ),
-      "set-customer-discount-group": ({ customerId, discountGroupId, kind }) =>
-        administration
-          .setCustomerDiscountGroup({ customerId, discountGroupId })
-          .pipe(
-            Effect.as({
-              kind,
-              createdDiscountId: null,
-              createdCodeId: null,
-              createdVoucherId: null,
-            } satisfies AdministrationDiscountMutationResultType)
-          ),
       "create-voucher": ({ kind, voucher }) =>
-        administration.createVoucher(voucher).pipe(
+        admin.createVoucher(voucher).pipe(
           Effect.map(
             (createdVoucherId): AdministrationDiscountMutationResultType => ({
               kind,
@@ -129,7 +86,7 @@ export const executeDiscountAdminMutation = Effect.fn(
           )
         ),
       "create-customer-voucher": ({ kind, voucher }) =>
-        administration.createCustomerVoucher(voucher).pipe(
+        admin.createCustomerVoucher(voucher).pipe(
           Effect.map(
             (createdVoucherId): AdministrationDiscountMutationResultType => ({
               kind,
@@ -139,50 +96,24 @@ export const executeDiscountAdminMutation = Effect.fn(
             })
           )
         ),
-      "update-voucher": ({ kind, voucher }) =>
-        administration.updateVoucher(voucher).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
+      "update-voucher": ({ voucher }) =>
+        Effect.as(admin.updateVoucher(voucher), noCreatedIdResult),
+      "delete-voucher": ({ id }) =>
+        Effect.as(admin.deleteVoucher({ id }), noCreatedIdResult),
+      "add-voucher-customer": ({ customerId, voucherId }) =>
+        Effect.as(
+          admin.addVoucherCustomer({ customerId, voucherId }),
+          noCreatedIdResult
         ),
-      "delete-voucher": ({ id, kind }) =>
-        administration.deleteVoucher({ id }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
+      "remove-voucher-customer": ({ customerId, voucherId }) =>
+        Effect.as(
+          admin.removeVoucherCustomer({ customerId, voucherId }),
+          noCreatedIdResult
         ),
-      "add-voucher-customer": ({ customerId, kind, voucherId }) =>
-        administration.addVoucherCustomer({ customerId, voucherId }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
-        ),
-      "remove-voucher-customer": ({ customerId, kind, voucherId }) =>
-        administration.removeVoucherCustomer({ customerId, voucherId }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
-        ),
-      "make-voucher-unrestricted": ({ kind, voucherId }) =>
-        administration.makeVoucherUnrestricted({ voucherId }).pipe(
-          Effect.as({
-            kind,
-            createdDiscountId: null,
-            createdCodeId: null,
-            createdVoucherId: null,
-          } satisfies AdministrationDiscountMutationResultType)
+      "make-voucher-unrestricted": ({ voucherId }) =>
+        Effect.as(
+          admin.makeVoucherUnrestricted({ voucherId }),
+          noCreatedIdResult
         ),
     })
   );

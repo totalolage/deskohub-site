@@ -17,27 +17,33 @@ mock.module("next/server", () => ({
 const toAuthorization = (username: string, password: string) =>
   `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 
-const loadAuthorization = async () =>
-  await import("./administrator-authorization.server").then(
-    ({ requireAdministratorAuthorization }) =>
-      requireAdministratorAuthorization()
-  );
-
 describe("administrator server authorization", () => {
   test("authorizes every configured administrator independently at the operation boundary", async () => {
-    for (const [username, password] of [
-      ["admin", "test-password"],
-      ["operator", "operator-test-password"],
-    ] as const) {
-      requestHeaders = new Headers({
-        authorization: toAuthorization(username, password),
-      });
+    const { requireAdministratorAuthorization } = await import(
+      "./administrator-authorization.server"
+    );
 
-      const exit = await Effect.runPromiseExit(await loadAuthorization());
+    requestHeaders = new Headers({
+      authorization: toAuthorization("admin", "test-password"),
+    });
+    const adminExit = await Effect.runPromiseExit(
+      requireAdministratorAuthorization
+    );
+    expect(adminExit).toEqual(Exit.succeed("admin"));
 
-      expect(Exit.isSuccess(exit)).toBe(true);
-      if (Exit.isSuccess(exit)) expect(exit.value).toBe(username);
-    }
+    requestHeaders = new Headers({
+      authorization: toAuthorization("operator", "operator-test-password"),
+    });
+    const operatorExit = await Effect.runPromiseExit(
+      requireAdministratorAuthorization
+    );
+    expect(operatorExit).toEqual(Exit.succeed("operator"));
+
+    requestHeaders = new Headers();
+    const unauthorizedExit = await Effect.runPromiseExit(
+      requireAdministratorAuthorization
+    );
+    expect(Exit.isFailure(unauthorizedExit)).toBe(true);
   });
 
   test("rejects direct operation calls with wrong, crossed, or malformed credentials", async () => {
@@ -53,7 +59,12 @@ describe("administrator server authorization", () => {
         authorization ? { authorization } : undefined
       );
 
-      const exit = await Effect.runPromiseExit(await loadAuthorization());
+      const { requireAdministratorAuthorization } = await import(
+        "./administrator-authorization.server"
+      );
+      const exit = await Effect.runPromiseExit(
+        requireAdministratorAuthorization
+      );
 
       expect(Exit.isFailure(exit)).toBe(true);
       if (Exit.isFailure(exit)) {

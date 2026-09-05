@@ -21,7 +21,7 @@ export const AdministratorCredentialDigest = Schema.String.check(
 export type AdministratorCredentialDigest =
   typeof AdministratorCredentialDigest.Type;
 
-const configuredAdministratorUsername = AdministrationActorUsername.check(
+export const AdministratorUsername = AdministrationActorUsername.check(
   Schema.isPattern(administratorUsernamePattern, {
     message:
       "Administrator usernames must start with a lowercase letter or digit and contain only lowercase letters, digits, dots, underscores, and hyphens.",
@@ -29,7 +29,7 @@ const configuredAdministratorUsername = AdministrationActorUsername.check(
 );
 
 export const ConfiguredAdministratorCredential = Schema.Struct({
-  username: configuredAdministratorUsername,
+  username: AdministratorUsername,
   credentialDigest: AdministratorCredentialDigest,
 }).annotate({
   identifier: "ConfiguredAdministratorCredential",

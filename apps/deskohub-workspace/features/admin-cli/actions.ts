@@ -17,7 +17,7 @@ export async function approveCliAuthentication(formData: FormData) {
   const codeForRedirect = Predicate.isString(rawCode) ? rawCode : "";
 
   const approved = await Effect.gen(function* () {
-    const approvedBy = yield* requireAdministratorAuthorization();
+    const approvedBy = yield* requireAdministratorAuthorization;
     const code = yield* decodeCliAuthenticationCode(rawCode);
     const authentication = yield* CliAuthentication;
     return yield* authentication.approve({ approvedBy, code });
@@ -37,7 +37,7 @@ export async function approveCliAuthentication(formData: FormData) {
 
 export async function revokeCliSession(formData: FormData) {
   const revoked = await Effect.gen(function* () {
-    const owner = yield* requireAdministratorAuthorization();
+    const owner = yield* requireAdministratorAuthorization;
     const sessionId = yield* Schema.decodeUnknownEffect(CliSessionId)(
       formData.get("sessionId")
     );
@@ -63,7 +63,7 @@ const renameCliSessionAction = defineWorkspaceAction(
   },
   (input) =>
     Effect.gen(function* () {
-      const owner = yield* requireAdministratorAuthorization();
+      const owner = yield* requireAdministratorAuthorization;
       const authentication = yield* CliAuthentication;
       const renamed = yield* authentication.renameSession({
         owner,

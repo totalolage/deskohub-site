@@ -2,7 +2,6 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { Result, Schema } from "effect";
-import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getOfficeReservationDayCount,
   getOfficeReservationDefaultValues,
@@ -23,10 +22,12 @@ import {
 } from "./office-reservation";
 import { getCurrentWorkspaceDate } from "./reservation-date";
 
-const formParser = makeSchemaParser(officeReservationSchema);
-const orderParser = makeSchemaParser(officeReservationOrderSchema);
-const detailsParser = makeSchemaParser(officeReservationDetailsSchema);
-const storedDetailsParser = makeSchemaParser(
+const safeParseForm = Schema.decodeUnknownResult(officeReservationSchema);
+const safeParseOrder = Schema.decodeUnknownResult(officeReservationOrderSchema);
+const safeParseDetails = Schema.decodeUnknownResult(
+  officeReservationDetailsSchema
+);
+const safeParseStoredDetails = Schema.decodeUnknownResult(
   storedOfficeReservationDetailsSchema,
   { onExcessProperty: "error" }
 );
@@ -56,7 +57,7 @@ describe("office reservation", () => {
 
   test("accepts an inclusive multi-day range and total seats", () => {
     const startsOn = Temporal.Now.plainDateISO().add({ days: 1 }).toString();
-    const result = formParser.safeParse({
+    const result = safeParseForm({
       ...validCustomer,
       startsOn,
       dayCount: 3,
@@ -132,7 +133,7 @@ describe("office reservation", () => {
 
   test("keeps marketing consent in form state and resets it on restoration", () => {
     const startsOn = Temporal.Now.plainDateISO().add({ days: 1 }).toString();
-    const result = formParser.safeParse({
+    const result = safeParseForm({
       ...validCustomer,
       marketingConsent: true,
       startsOn,
@@ -159,7 +160,7 @@ describe("office reservation", () => {
 
     expect(
       Result.isFailure(
-        formParser.safeParse({
+        safeParseForm({
           ...validCustomer,
           marketingConsent: undefined,
           startsOn,
@@ -179,7 +180,7 @@ describe("office reservation", () => {
       { startsOn, dayCount: 3, seats: 0 },
     ]) {
       expect(
-        Result.isFailure(formParser.safeParse({ ...validCustomer, ...input }))
+        Result.isFailure(safeParseForm({ ...validCustomer, ...input }))
       ).toBe(true);
     }
   });
@@ -193,7 +194,7 @@ describe("office reservation", () => {
 
     expect(
       Result.isFailure(
-        formParser.safeParse({
+        safeParseForm({
           ...validCustomer,
           startsOn: today.toString(),
           dayCount,
@@ -210,7 +211,7 @@ describe("office reservation", () => {
 
     expect(
       Result.isFailure(
-        formParser.safeParse({
+        safeParseForm({
           ...validCustomer,
           startsOn,
           dayCount: 29,
@@ -220,7 +221,7 @@ describe("office reservation", () => {
     ).toBe(true);
     expect(
       Result.isFailure(
-        orderParser.safeParse({
+        safeParseOrder({
           kind: "office",
           name: validCustomer.name,
           email: validCustomer.email,
@@ -239,7 +240,7 @@ describe("office reservation", () => {
 
     expect(
       Result.isFailure(
-        orderParser.safeParse({
+        safeParseOrder({
           kind: "office",
           name: validCustomer.name,
           email: validCustomer.email,
@@ -254,7 +255,7 @@ describe("office reservation", () => {
   });
 
   test("keeps historical persisted details decodable while validating order", () => {
-    const result = detailsParser.safeParse({
+    const result = safeParseDetails({
       kind: "office",
       startsOn: "2020-06-10",
       endsOn: "2020-06-12",
@@ -264,7 +265,7 @@ describe("office reservation", () => {
     expect(Result.isSuccess(result)).toBe(true);
     expect(
       Result.isSuccess(
-        detailsParser.safeParse({
+        safeParseDetails({
           kind: "office",
           startsOn: "2020-06-01",
           endsOn: "2020-07-01",
@@ -274,7 +275,7 @@ describe("office reservation", () => {
     ).toBe(true);
     expect(
       Result.isFailure(
-        detailsParser.safeParse({
+        safeParseDetails({
           kind: "office",
           startsOn: "2020-06-12",
           endsOn: "2020-06-10",
@@ -302,7 +303,7 @@ describe("office reservation", () => {
     });
     expect(
       Result.isFailure(
-        storedDetailsParser.safeParse({
+        safeParseStoredDetails({
           kind: "office",
           startsOn: "2099-06-10",
           seats: 3,

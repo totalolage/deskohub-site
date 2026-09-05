@@ -62,14 +62,13 @@ mock.module("@/features/access-codes", () => ({
 mock.module(
   "@/shared/administrator/administrator-authorization.server",
   () => ({
-    requireAdministratorAuthorization: () =>
-      Effect.gen(function* () {
-        authorizationCalls += 1;
-        if (!authorizationAllowed) {
-          return yield* Effect.fail(new Error("unauthorized"));
-        }
-        return actor;
-      }),
+    requireAdministratorAuthorization: Effect.gen(function* () {
+      authorizationCalls += 1;
+      if (!authorizationAllowed) {
+        return yield* Effect.fail(new Error("unauthorized"));
+      }
+      return actor;
+    }),
   })
 );
 

@@ -2,10 +2,9 @@ import { describe, expect, mock, test } from "bun:test";
 import { Context, Effect } from "effect";
 import { createParaglideLocaleBridge } from "./effect";
 
-class TestLocale extends Context.Service<
-  TestLocale,
-  "en" | "cs"
->()("TestLocale") {}
+class TestLocale extends Context.Service<TestLocale, "en" | "cs">()(
+  "TestLocale"
+) {}
 
 describe("createParaglideLocaleBridge", () => {
   test("runWithLocale sets locale, provides it, and exposes async local storage", async () => {

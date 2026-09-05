@@ -4,7 +4,7 @@
 
 - Use Bun from the repository's pinned version.
 - Run workspace orchestration through Turborepo from the repository root when task dependencies or generated outputs matter.
-- Declare generated prerequisites with Turbo `dependsOn`; do not call generation from inside a package's typecheck or build script.
+- Declare task dependencies with Turbo `dependsOn`. Keep package scripts as leaf commands; compose lint checks and generation prerequisites in the Turbo graph rather than shell chains or script-to-script calls.
 - Every package containing checked-in source must expose a lint task so the root lint graph covers it.
 - Inspect the target package's `package.json` before assuming it exposes a command.
 

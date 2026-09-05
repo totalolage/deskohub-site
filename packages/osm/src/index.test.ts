@@ -174,6 +174,36 @@ describe("generateSvgPngBuffer", () => {
     });
   });
 
+  test("composites centered text overlays without changing output dimensions", async () => {
+    const svg =
+      '<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg"><rect width="128" height="128" fill="#006b55"/></svg>';
+    const base = await Effect.runPromise(generateSvgPngBuffer(svg));
+    const overlaid = await Effect.runPromise(
+      generateSvgPngBuffer(svg, {
+        textOverlays: [
+          { text: "Brno", x: 64, y: 64, font: "sans-serif", color: "#f4f1ea" },
+        ],
+      })
+    );
+
+    await expect(sharp(overlaid).metadata()).resolves.toMatchObject({
+      format: "png",
+      width: 128,
+      height: 128,
+    });
+
+    const [basePixels, overlaidPixels] = await Promise.all([
+      sharp(base).raw().toBuffer(),
+      sharp(overlaid).raw().toBuffer(),
+    ]);
+    expect(basePixels.length).toBe(overlaidPixels.length);
+    let differingBytes = 0;
+    for (let index = 0; index < basePixels.length; index += 1) {
+      differingBytes += basePixels[index] === overlaidPixels[index] ? 0 : 1;
+    }
+    expect(differingBytes).toBeGreaterThan(64);
+  });
+
   test("reports native rendering failures through the typed error channel", async () => {
     const error = await Effect.runPromise(
       generateSvgPngBuffer("<not-svg>").pipe(Effect.flip)

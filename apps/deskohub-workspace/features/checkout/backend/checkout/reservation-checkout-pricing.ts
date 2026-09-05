@@ -421,59 +421,59 @@ export const reservationCheckoutPricing = <
 
     const applyDiscountCode = Effect.fn(
       "ReservationCheckoutPricing.applyDiscountCode"
-    )((input: ReservationDiscountCodePriceInput<CustomerReservation, Quote>) =>
-      Effect.gen(function* () {
-        const { affirmation, pricing, quote } = yield* affirmDisplayedPrice({
-          reservation: input.reservation,
-          dotyposCustomerId: input.dotyposCustomerId,
-          locale: input.locale,
-          quote: input.quote,
-        });
-        const displayedSummary = domain.getCheckoutSummary({
-          reservation: input.reservation,
-          quote: input.quote,
-        });
-        const affirmedSummary = domain.getCheckoutSummary({
-          reservation: input.reservation,
-          quote,
-        });
-        const displayedPriceIsCurrent =
-          quote.fingerprint === input.quote.fingerprint &&
-          workspaceMoneyEquals(affirmedSummary.total, displayedSummary.total);
+    )(function* (
+      input: ReservationDiscountCodePriceInput<CustomerReservation, Quote>
+    ) {
+      const { affirmation, pricing, quote } = yield* affirmDisplayedPrice({
+        reservation: input.reservation,
+        dotyposCustomerId: input.dotyposCustomerId,
+        locale: input.locale,
+        quote: input.quote,
+      });
+      const displayedSummary = domain.getCheckoutSummary({
+        reservation: input.reservation,
+        quote: input.quote,
+      });
+      const affirmedSummary = domain.getCheckoutSummary({
+        reservation: input.reservation,
+        quote,
+      });
+      const displayedPriceIsCurrent =
+        quote.fingerprint === input.quote.fingerprint &&
+        workspaceMoneyEquals(affirmedSummary.total, displayedSummary.total);
 
-        if (!displayedPriceIsCurrent) {
-          return {
-            kind: input.reservation.kind,
-            reservation: input.reservation,
-            quote,
-            status: "pricing_changed" as const,
-            changedKeys: getCheckoutSummaryChangedKeys(
-              displayedSummary,
-              affirmedSummary
-            ),
-          };
-        }
-
-        const appliedCode = yield* discounts.applyDiscountCode({
-          baseQuote: affirmation.quote,
-          dotyposCustomerId: input.dotyposCustomerId,
-          locale: input.locale,
-          submittedCode: input.submittedCode,
-        });
-        const appliedQuote = yield* domain.buildQuote({
-          pricing,
-          discountQuote: appliedCode.quote,
-        });
-
+      if (!displayedPriceIsCurrent) {
         return {
           kind: input.reservation.kind,
           reservation: input.reservation,
-          quote: appliedQuote,
-          status: "applied" as const,
-          submittedCodeDiscountId: appliedCode.application.discount.id,
+          quote,
+          status: "pricing_changed" as const,
+          changedKeys: getCheckoutSummaryChangedKeys(
+            displayedSummary,
+            affirmedSummary
+          ),
         };
-      })
-    );
+      }
+
+      const appliedCode = yield* discounts.applyDiscountCode({
+        baseQuote: affirmation.quote,
+        dotyposCustomerId: input.dotyposCustomerId,
+        locale: input.locale,
+        submittedCode: input.submittedCode,
+      });
+      const appliedQuote = yield* domain.buildQuote({
+        pricing,
+        discountQuote: appliedCode.quote,
+      });
+
+      return {
+        kind: input.reservation.kind,
+        reservation: input.reservation,
+        quote: appliedQuote,
+        status: "applied" as const,
+        submittedCodeDiscountId: appliedCode.application.discount.id,
+      };
+    });
 
     return {
       quoteAdvertisement,

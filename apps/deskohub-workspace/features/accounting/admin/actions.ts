@@ -28,7 +28,7 @@ const createInvoiceAction = defineWorkspaceAction(
   },
   (input) =>
     Effect.gen(function* () {
-      const actor = yield* requireAdministratorAuthorization();
+      const actor = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const result = yield* administration.create(input, {
         source: "admin-ui",
@@ -58,7 +58,7 @@ const previewInvoiceAction = defineWorkspaceAction(
   },
   (input) =>
     Effect.gen(function* () {
-      const actor = yield* requireAdministratorAuthorization();
+      const actor = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const pdf = yield* administration.preview(input, {
         source: "admin-ui",
@@ -88,7 +88,7 @@ const searchCustomersAction = defineWorkspaceAction(
     logInput: false,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* InvoiceAdministrationService;
@@ -115,7 +115,7 @@ const retryInvoiceAction = defineWorkspaceAction(
     ),
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* InvoiceAdministrationService;

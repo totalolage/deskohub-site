@@ -28,9 +28,10 @@ bearer in macOS Keychain or the Linux Secret Service.
 
 The server records the Basic-auth username that approved each new session. That
 server-derived actor is used for invoice provenance; it is never accepted from
-CLI input. Sessions issued before approver tracking was added remain valid for
-reads, but must run `dhw auth` again before creating an invoice or a standalone
-access code.
+CLI input. The migration backfills the legacy `NULL` session owner as `admin`,
+so those sessions remain valid while `admin` is configured. Removing `admin`
+from the Basic-auth registry rejects the session's next request; authenticate
+again with a currently configured administrator.
 
 With `--json`, browser approval instructions are written to stderr while stdout
 is reserved for the single final JSON result.

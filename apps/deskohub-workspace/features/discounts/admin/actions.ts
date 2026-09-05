@@ -91,7 +91,7 @@ const discountAdminMutationAction = defineWorkspaceAction(
     schema: discountAdminMutationStandardSchema,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(executeDiscountAdminActionMutation(input)),
       Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
@@ -114,12 +114,10 @@ const discountAdminMutationAction = defineWorkspaceAction(
 
 const executeCustomerSearch = Effect.fn(
   "DiscountAdministration.executeCustomerSearch"
-)((input: DiscountAdminCustomerSearch) =>
-  Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.searchCustomers(input);
-  })
-);
+)(function* (input: DiscountAdminCustomerSearch) {
+  const administration = yield* DiscountAdministration;
+  return yield* administration.searchCustomers(input);
+});
 
 const discountAdminCustomerSearchAction = defineWorkspaceAction(
   {
@@ -128,7 +126,7 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
     logInput: false,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(executeCustomerSearch(input)),
       Effect.provide(DiscountAdministration.Live),
       Effect.mapError(

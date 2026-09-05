@@ -1,0 +1,20 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  not $name <: r".*/generated/.*",
+  $body <: contains bubble {
+    or {
+      `export * from $source` as $statement,
+      `export type * from $source` as $statement
+    } where {
+      register_diagnostic(
+        span = $statement,
+        message = "Workspace re-exports must be explicit: list the named exports instead of `export *`, or expose an explicit namespace with `export * as Name`.",
+        severity = "error"
+      )
+    }
+  }
+}
