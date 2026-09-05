@@ -390,19 +390,28 @@ test("every workspace shared package dependency defines a lint task", () => {
   expect(packagesWithoutLint).toEqual([]);
 });
 
-test("Workspace lint owns dependency linting", () => {
-  const rootManifest = JSON.parse(
-    readFileSync(join(repositoryRoot, "package.json"), "utf8")
-  );
-  const workspaceManifest = JSON.parse(
-    readFileSync(
-      join(repositoryRoot, "apps/deskohub-workspace/package.json"),
-      "utf8"
-    )
-  );
+test("Workspace lint is a Turbo dependency graph", () => {
+  const readJson = (path: string) =>
+    JSON.parse(readFileSync(join(repositoryRoot, path), "utf8"));
+  const rootTurbo = readJson("turbo.json");
+  const workspaceManifest = readJson("apps/deskohub-workspace/package.json");
+  const workspaceTurbo = readJson("apps/deskohub-workspace/turbo.json");
 
-  expect(rootManifest.scripts?.["lint:dependencies"]).toBeUndefined();
-  expect(workspaceManifest.scripts?.lint).toContain(
-    "knip --directory ../.. --workspace apps/deskohub-workspace"
+  expect(workspaceManifest.scripts?.lint).toBeUndefined();
+  for (const [script, tool] of Object.entries({
+    "lint:biome": "biome",
+    "lint:eslint": "eslint",
+    "lint:dependencies": "knip",
+  })) {
+    expect(workspaceManifest.scripts?.[script]).toContain(tool);
+  }
+  expect(workspaceTurbo.tasks?.lint?.dependsOn).toEqual(
+    expect.arrayContaining([
+      "$TURBO_EXTENDS$",
+      "lint:biome",
+      "lint:eslint",
+      "lint:dependencies",
+    ])
   );
+  expect(rootTurbo.tasks?.lint?.dependsOn).toContain("^lint");
 });

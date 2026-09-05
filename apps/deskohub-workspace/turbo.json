@@ -3,7 +3,26 @@
   "extends": ["//"],
   "tasks": {
     "lint": {
-      "inputs": ["$TURBO_DEFAULT$", "../../knip.jsonc"]
+      "dependsOn": [
+        "$TURBO_EXTENDS$",
+        "lint:biome",
+        "lint:eslint",
+        "lint:dependencies"
+      ]
+    },
+    "lint:biome": {
+      "inputs": ["$TURBO_DEFAULT$", "../../biome.json", "../../lint/*.grit"]
+    },
+    "lint:eslint": {
+      "inputs": ["$TURBO_DEFAULT$"]
+    },
+    "lint:dependencies": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../knip.jsonc",
+        "../../package.json",
+        "package.json"
+      ]
     },
     "build": {
       "dependsOn": [
