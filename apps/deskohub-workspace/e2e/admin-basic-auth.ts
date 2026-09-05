@@ -1,9 +1,10 @@
+import { Schema } from "effect";
+import { AdministratorUsername } from "../shared/administrator/administrator-credentials";
 import { workspaceE2EError } from "./errors";
 import { addRedaction } from "./runtime";
 
 const basicAuthorizationCredentialSeparator = ":";
 const basicAuthorizationPrefix = "Basic ";
-const maximumAdminUsernameLength = 80;
 
 export interface WorkspaceE2EAdminCredential {
   readonly authorization: string;
@@ -16,7 +17,7 @@ export const isAdminBasicAuthCredentialPair = (value: string): boolean => {
   if (separatorIndex <= 0 || separatorIndex === value.length - 1) return false;
   const username = value.slice(0, separatorIndex);
   return (
-    username.trim() === username && username.length <= maximumAdminUsernameLength
+    username.trim() === username && Schema.is(AdministratorUsername)(username)
   );
 };
 

@@ -15,27 +15,24 @@ export class AdministratorUnauthorizedError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
-export const requireAdministratorAuthorization = Effect.fn(
-  "Administrator.requireAuthorization"
-)(() =>
-  Effect.tryPromise({
-    try: () => headers(),
-    catch: () => unauthorized(),
-  }).pipe(
-    Effect.flatMap((requestHeaders) => {
-      const username = getConfiguredAdministratorAuthorizationUsername(
-        requestHeaders.get("authorization"),
-        env.ADMIN_BASIC_AUTH_CREDENTIALS
-      );
-      return username === null
-        ? Effect.fail(unauthorized())
-        : Effect.succeed(username);
-    })
-  )
+export const requireAdministratorAuthorization = Effect.tryPromise({
+  try: () => headers(),
+  catch: () => unauthorized(),
+}).pipe(
+  Effect.flatMap((requestHeaders) => {
+    const username = getConfiguredAdministratorAuthorizationUsername(
+      requestHeaders.get("authorization"),
+      env.ADMIN_BASIC_AUTH_CREDENTIALS
+    );
+    return username === null
+      ? Effect.fail(unauthorized())
+      : Effect.succeed(username);
+  }),
+  Effect.withSpan("Administrator.requireAuthorization")
 );
 
 export const authorizeAdministratorPage = cache(async () => {
-  const username = await requireAdministratorAuthorization().pipe(
+  const username = await requireAdministratorAuthorization.pipe(
     Effect.catchTag("AdministratorUnauthorizedError", () =>
       Effect.succeed(null)
     ),

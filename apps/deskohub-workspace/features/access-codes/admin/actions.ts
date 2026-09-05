@@ -16,7 +16,7 @@ const createStandaloneAccessCodeWorkflow = Effect.fn(
   "access-codes.createStandaloneAccessCode"
 )(
   function* (input: CreateStandaloneAccessCodeInput) {
-    const actor = yield* requireAdministratorAuthorization().pipe(
+    const actor = yield* requireAdministratorAuthorization.pipe(
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({

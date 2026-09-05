@@ -19,7 +19,7 @@ export const getCurrentPostHogFeatureFlagSubject = Effect.fn(
   "getCurrentPostHogFeatureFlagSubject"
 )(() =>
   Effect.Do.pipe(
-    Effect.bind("headers", getRequestHeaders),
+    Effect.bind("headers", () => getRequestHeaders),
     Effect.let("requestContext", ({ headers }) =>
       getPostHogRequestContextFromRequestHeadersWithDiagnostics(headers)
     ),

@@ -3,18 +3,20 @@ import "@/shared/testing/workspace-test-env";
 import { expect, mock, test } from "bun:test";
 import { Effect } from "effect";
 
-const getNextHeaders = mock(() =>
-  Promise.resolve(new Headers({ referer: "https://deskohub.test/en-US" }))
-);
+let requestHeaders = new Headers({ referer: "https://deskohub.test/en-US" });
+const getNextHeaders = mock(() => Promise.resolve(requestHeaders));
 
 mock.module("next/headers", () => ({ headers: getNextHeaders }));
 
 test("loads the current request headers through the Effect error channel", async () => {
   const { getRequestHeaders } = await import("./request-headers");
 
-  const requestHeaders = await Effect.runPromise(getRequestHeaders());
+  const englishHeaders = await Effect.runPromise(getRequestHeaders);
+  requestHeaders = new Headers({ referer: "https://deskohub.test/cs-CZ" });
+  const czechHeaders = await Effect.runPromise(getRequestHeaders);
 
-  expect(requestHeaders.get("referer")).toBe("https://deskohub.test/en-US");
+  expect(englishHeaders.get("referer")).toBe("https://deskohub.test/en-US");
+  expect(czechHeaders.get("referer")).toBe("https://deskohub.test/cs-CZ");
 });
 
 test("preserves request header failures as the error cause", async () => {
@@ -24,7 +26,7 @@ test("preserves request header failures as the error cause", async () => {
     "./request-headers"
   );
 
-  const error = await Effect.runPromise(getRequestHeaders().pipe(Effect.flip));
+  const error = await Effect.runPromise(getRequestHeaders.pipe(Effect.flip));
 
   expect(error).toBeInstanceOf(RequestHeadersError);
   expect(error.cause).toBe(cause);

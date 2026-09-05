@@ -38,7 +38,7 @@ const getAdministrationReservationAction = defineWorkspaceAction(
     logInput: false,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(findReservation(input)),
       Effect.provide(AdministrationService.Live),
       Effect.mapError(
@@ -63,7 +63,7 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
     schema: reservationCancellationStandardSchema,
   },
   (input: ReservationCancellationInput) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* ReservationAdministrationService;
@@ -114,7 +114,7 @@ const mutateReservationAccessAction = defineWorkspaceAction(
     schema: reservationAccessMutationSchema,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* ReservationAccessAdministration;

@@ -91,7 +91,7 @@ const discountAdminMutationAction = defineWorkspaceAction(
     schema: discountAdminMutationStandardSchema,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(executeDiscountAdminActionMutation(input)),
       Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
@@ -126,7 +126,7 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
     logInput: false,
   },
   (input) =>
-    requireAdministratorAuthorization().pipe(
+    requireAdministratorAuthorization.pipe(
       Effect.andThen(executeCustomerSearch(input)),
       Effect.provide(DiscountAdministration.Live),
       Effect.mapError(
