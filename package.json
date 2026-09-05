@@ -24,5 +24,8 @@
   "overrides": {
     "effect": "4.0.0-beta.85"
   },
-  "packageManager": "bun@1.3.14"
+  "packageManager": "bun@1.3.14",
+  "patchedDependencies": {
+    "@effect/sql-pg@4.0.0-beta.85": "patches/@effect%2Fsql-pg@4.0.0-beta.85.patch"
+  }
 }
