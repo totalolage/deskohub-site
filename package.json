@@ -8,7 +8,6 @@
   ],
   "type": "module",
   "scripts": {
-    "lint:dependencies": "knip --workspace apps/deskohub-workspace",
     "prepare": "effect-tsgo patch --typescript --no-oxlint"
   },
   "devDependencies": {

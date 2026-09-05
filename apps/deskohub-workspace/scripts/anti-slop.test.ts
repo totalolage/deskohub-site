@@ -389,3 +389,20 @@ test("every workspace shared package dependency defines a lint task", () => {
 
   expect(packagesWithoutLint).toEqual([]);
 });
+
+test("Workspace lint owns dependency linting", () => {
+  const rootManifest = JSON.parse(
+    readFileSync(join(repositoryRoot, "package.json"), "utf8")
+  );
+  const workspaceManifest = JSON.parse(
+    readFileSync(
+      join(repositoryRoot, "apps/deskohub-workspace/package.json"),
+      "utf8"
+    )
+  );
+
+  expect(rootManifest.scripts?.["lint:dependencies"]).toBeUndefined();
+  expect(workspaceManifest.scripts?.lint).toContain(
+    "knip --directory ../.. --workspace apps/deskohub-workspace"
+  );
+});

@@ -2,6 +2,9 @@
   "$schema": "https://v2-9-14.turborepo.dev/schema.json",
   "extends": ["//"],
   "tasks": {
+    "lint": {
+      "inputs": ["$TURBO_DEFAULT$", "../../knip.jsonc"]
+    },
     "build": {
       "dependsOn": [
         "@deskohub/dotypos#generate",

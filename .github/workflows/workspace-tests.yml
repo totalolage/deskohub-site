@@ -64,9 +64,6 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - name: Check Workspace dependencies
-        run: bun run lint:dependencies
-
       - name: Lint Workspace
         run: bun turbo lint --filter=deskohub-workspace
 
