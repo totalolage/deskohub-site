@@ -118,10 +118,7 @@ describe("listPostHogFeatureFlagDefinitions", () => {
               filters: {
                 groups: [{ properties: [], rollout_percentage: 100 }],
                 multivariate: {
-                  variants: [
-                    { key: "control" },
-                    { key: "treatment" },
-                  ],
+                  variants: [{ key: "control" }, { key: "treatment" }],
                 },
               },
             },

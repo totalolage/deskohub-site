@@ -28,9 +28,12 @@ const postHogFeatureFlags = {
   ) => {},
 };
 
-workspaceFlags.applyFeatureFlagOverrides({ featureFlags: postHogFeatureFlags }, {
-  meeting_room_page: false,
-});
+workspaceFlags.applyFeatureFlagOverrides(
+  { featureFlags: postHogFeatureFlags },
+  {
+    meeting_room_page: false,
+  }
+);
 barFlags.applyFeatureFlagOverrides(
   { featureFlags: postHogFeatureFlags },
   { seasonal_menu: "summer" }
