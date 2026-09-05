@@ -4,15 +4,17 @@ import { ExternalAPIError } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
-import { Cause, Effect, Layer } from "effect";
+import { Cause, Deferred, Effect, Fiber, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
   type AdministrationCustomerListInput,
   AdministrationService,
+  getAdministrationReservationOverview,
 } from "./administration.service";
 import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
 import { PostHogReservationHistory } from "./posthog-reservation-history";
+import { getAdministrationOverviewDateRanges } from "./reservation-date-range";
 
 const makeQuery = <A>(rows: readonly A[]) => {
   const query = Effect.succeed(rows) as Effect.Effect<readonly A[]> & {
@@ -1075,7 +1077,8 @@ describe("AdministrationService", () => {
     const loadOverview = () =>
       Effect.gen(function* () {
         const administration = yield* AdministrationService;
-        return yield* administration.loadOverview();
+        const source = yield* administration.loadOverviewSource();
+        return yield* administration.loadOverview(source);
       }).pipe(
         Effect.provide(
           AdministrationService.Default.pipe(
@@ -1243,6 +1246,166 @@ describe("AdministrationService", () => {
       unavailable: true,
       value: 0,
     });
+  });
+
+  test("projects one loaded overview source without reloading its inputs", async () => {
+    const reservations = [
+      {
+        _branchId: "branch",
+        _cloudId: "cloud",
+        _customerId: "customer-1",
+        id: "reservation-1",
+        startDate: "2026-08-12T10:00:00Z",
+        endDate: "2026-08-12T11:00:00Z",
+        seats: "1",
+        status: "CONFIRMED" as const,
+      },
+    ];
+    let listReservationsCalls = 0;
+    let linkageQueries = 0;
+    const administrationLayer = AdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(
+            WorkspaceDatabase,
+            WorkspaceDatabase.of({
+              db: {
+                select: () => {
+                  linkageQueries += 1;
+                  return makeQuery([
+                    {
+                      customerId: "customer-1",
+                      failureCode: null,
+                      fulfillmentState: "fulfilled",
+                      id: "reservation-1",
+                      paymentState: "paid",
+                      reservationState: "confirmed",
+                    },
+                  ]);
+                },
+              } as never,
+            })
+          ),
+          DotyposServiceMock({
+            getCustomers: () => Effect.succeed([]),
+            listReservations: () =>
+              Effect.sync(() => {
+                listReservationsCalls += 1;
+                return reservations;
+              }),
+          }),
+          Layer.succeed(
+            PostHogReservationHistory,
+            PostHogReservationHistory.of({
+              load: () => Effect.succeed({ kind: "unavailable" } as const),
+            })
+          ),
+          PaymentAdministrationServiceMock({})
+        )
+      )
+    );
+    const run = <A>(effect: Effect.Effect<A, unknown, AdministrationService>) =>
+      effect.pipe(Effect.provide(administrationLayer), Effect.runPromise);
+
+    const source = await run(
+      Effect.gen(function* () {
+        const administration = yield* AdministrationService;
+        return yield* administration.loadOverviewSource();
+      })
+    );
+    const reservationOverview = getAdministrationReservationOverview(source);
+    const overview = await run(
+      Effect.gen(function* () {
+        const administration = yield* AdministrationService;
+        return yield* administration.loadOverview(source);
+      })
+    );
+
+    expect(listReservationsCalls).toBe(1);
+    expect(linkageQueries).toBe(1);
+    expect(overview.today).toEqual(reservationOverview.today);
+    expect(overview.upcoming).toEqual(reservationOverview.upcoming);
+    expect(overview.lastSevenDays).toEqual(reservationOverview.lastSevenDays);
+  });
+
+  test("projects reservation metrics while customer enrichment is blocked", async () => {
+    const currentDate = Temporal.PlainDate.from("2026-08-12");
+    const ranges = getAdministrationOverviewDateRanges(currentDate);
+    const source = {
+      currentDate,
+      ranges,
+      reservations: {
+        kind: "available" as const,
+        items: [
+          {
+            _branchId: "branch",
+            _cloudId: "cloud",
+            _customerId: "customer-1",
+            id: "reservation-1",
+            startDate: "2026-08-12T10:00:00Z",
+            endDate: "2026-08-12T11:00:00Z",
+            seats: "1",
+            status: "CONFIRMED" as const,
+          },
+        ],
+      },
+      rows: [
+        {
+          customerId: "customer-1",
+          failureCode: null,
+          fulfillmentState: "fulfilled",
+          id: "reservation-1",
+          paymentState: "paid",
+          reservationState: "confirmed",
+        },
+      ],
+    };
+    const customersStarted = Deferred.makeUnsafe<void>();
+    const releaseCustomers = Deferred.makeUnsafe<void>();
+    const administrationLayer = AdministrationService.Default.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(
+            WorkspaceDatabase,
+            WorkspaceDatabase.of({
+              db: { select: () => makeQuery([]) } as never,
+            })
+          ),
+          DotyposServiceMock({
+            getCustomers: () =>
+              Effect.void.pipe(
+                Effect.andThen(Deferred.succeed(customersStarted, undefined)),
+                Effect.andThen(Deferred.await(releaseCustomers)),
+                Effect.as([
+                  {
+                    created: "2026-08-12T08:00:00Z",
+                    firstName: "one",
+                    id: "customer-1",
+                  },
+                ])
+              ),
+          }),
+          Layer.succeed(
+            PostHogReservationHistory,
+            PostHogReservationHistory.of({
+              load: () => Effect.succeed({ kind: "unavailable" } as const),
+            })
+          ),
+          PaymentAdministrationServiceMock({})
+        )
+      )
+    );
+    const overviewFiber = Effect.runFork(
+      Effect.gen(function* () {
+        const administration = yield* AdministrationService;
+        return yield* administration.loadOverview(source);
+      }).pipe(Effect.provide(administrationLayer))
+    );
+
+    await Effect.runPromise(Deferred.await(customersStarted));
+    expect(getAdministrationReservationOverview(source).today.value).toBe(1);
+    await Effect.runPromise(Deferred.succeed(releaseCustomers, undefined));
+    await Effect.runPromise(Fiber.join(overviewFiber));
   });
 
   test("returns no booking when Dotypos reports it missing", async () => {

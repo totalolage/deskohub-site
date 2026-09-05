@@ -11,6 +11,7 @@ import {
   type AdministrationCustomerListInput,
   type AdministrationReservationListInput,
   AdministrationService,
+  getAdministrationReservationOverview,
 } from "./administration.service";
 import { formatAdministrationDateTime } from "./formatters";
 import {
@@ -91,20 +92,26 @@ const runAdministration =
       runWorkspaceEffect(operation, { boundary: "route" })
     );
 
-export const loadAdministrationOverview = async () => {
+const loadAdministrationOverviewSource = cache(async () => {
   await authorizeAdministratorPage();
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.loadOverview();
+    return yield* administration.loadOverviewSource();
+  }).pipe(runAdministration("administration.overview-source"));
+});
+
+export const loadAdministrationOverview = async () => {
+  const source = await loadAdministrationOverviewSource();
+  return Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.loadOverview(source);
   }).pipe(runAdministration("administration.overview"));
 };
 
 export const loadAdministrationReservationOverview = async () => {
-  await authorizeAdministratorPage();
-  return Effect.gen(function* () {
-    const administration = yield* AdministrationService;
-    return yield* administration.loadReservationOverview();
-  }).pipe(runAdministration("administration.reservation-overview"));
+  return getAdministrationReservationOverview(
+    await loadAdministrationOverviewSource()
+  );
 };
 
 const getAdministrationReservationListInput = async (
