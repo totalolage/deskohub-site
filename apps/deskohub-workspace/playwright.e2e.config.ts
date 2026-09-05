@@ -67,7 +67,7 @@ export default defineConfig({
       },
     },
     {
-      dependencies: ["checkout-setup"],
+      dependencies: ["checkout-setup", "checkout-seed"],
       name: "checkout-availability",
       testMatch: "availability.pw.ts",
     },

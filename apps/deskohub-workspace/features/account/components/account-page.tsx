@@ -4,6 +4,7 @@ import Link from "next/link";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReservationHistory } from "@/features/account/components/reservation-history";
+import { SessionRefresh } from "@/features/account/components/session-refresh";
 import { SignOutButton } from "@/features/account/components/sign-out-button";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { type Locale, m } from "@/features/i18n";
@@ -27,6 +28,7 @@ export function AccountPage({
     <main className={pageShellClassName}>
       <div className={pageBackdropClassName} />
       <div className="relative mx-auto max-w-6xl">
+        {state.kind !== "unavailable" && <SessionRefresh />}
         {renderState(locale, state)}
       </div>
     </main>

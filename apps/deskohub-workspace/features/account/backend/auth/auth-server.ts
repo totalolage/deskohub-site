@@ -2,6 +2,7 @@ import "server-only";
 
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
 import { type BetterAuthOptions, betterAuth } from "better-auth";
+import { nextCookies } from "better-auth/next-js";
 import { magicLink } from "better-auth/plugins";
 import { Effect, Option, Schema } from "effect";
 import { after } from "next/server";
@@ -77,6 +78,10 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
         ...betterAuthMagicLinkOptions,
         sendMagicLink: config.sendMagicLink,
       }),
+      // Better Auth requires `nextCookies` to be the last plugin: it forwards
+      // Set-Cookie headers into the Next.js cookie store for Server Action
+      // `auth.api` calls and defers RSC-only session refreshes.
+      nextCookies(),
     ],
     databaseHooks: {
       session: {

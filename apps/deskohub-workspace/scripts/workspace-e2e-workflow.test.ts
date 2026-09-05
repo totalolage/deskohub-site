@@ -357,6 +357,25 @@ test("lets Playwright own checkout preparation, scheduling, and parallelism", as
   expect(cleanupRuntime).not.toContain("makeWorkspaceE2ECaseRuntimeLive");
 });
 
+test("admits availability preparation only after discount fixture seeding commits", async () => {
+  const config = await Bun.file(
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
+  ).text();
+
+  expect(config).toContain(
+    'dependencies: ["checkout-setup", "checkout-seed"],\n      name: "checkout-availability",'
+  );
+  expect(config).toContain(
+    'dependencies: ["checkout-setup"],\n      name: "account-auth",'
+  );
+  expect(config).toContain(
+    'dependencies: ["checkout-setup"],\n      name: "checkout-provider-preparation",'
+  );
+  expect(config).toContain(
+    'dependencies: ["checkout-setup"],\n      name: "checkout-invoice-persistence",'
+  );
+});
+
 test("lets Playwright schedule read-only navigation beside checkout cases", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")

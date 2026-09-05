@@ -7,7 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -16,6 +16,7 @@ import {
 import type { CustomerAccountPageState } from "../page-data.server";
 
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
+const getSession = mock(() => Promise.resolve({ data: null, error: null }));
 mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: () => ({
     execute: () => undefined,
@@ -35,7 +36,7 @@ mock.module("@/features/account/auth.client", () => ({
   authClient: {
     signIn: { magicLink: signInMagicLink },
     signOut: () => Promise.resolve({ error: null }),
-    getSession: () => Promise.resolve({ data: null, error: null }),
+    getSession,
   },
 }));
 
@@ -62,6 +63,7 @@ describe("AccountPage states", () => {
   afterEach(() => {
     cleanup();
     workspaceRouterRefresh.mockClear();
+    getSession.mockClear();
   });
 
   afterAll(() => {
@@ -129,5 +131,26 @@ describe("AccountPage states", () => {
       view.getByText("Customer accounts are temporarily unavailable")
     ).toBeTruthy();
     expect(view.queryByText("My Workspace")).toBeNull();
+  });
+
+  test("asks the get-session route handler to roll the browser cookie once per authenticated view", async () => {
+    await renderState(linkedState);
+    expect(getSession).toHaveBeenCalledTimes(1);
+
+    await renderState({ kind: "unavailable" });
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  test("swallows a failed get-session request instead of leaving an unhandled rejection", async () => {
+    getSession.mockImplementationOnce(() =>
+      Promise.reject(new Error("get-session unavailable"))
+    );
+
+    const view = await renderState(linkedState);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(view.container).toBeTruthy();
   });
 });

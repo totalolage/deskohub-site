@@ -132,7 +132,16 @@ export class CustomerAuthentication extends Context.Service<
     readBetterAuthSecretsRaw: () => env.BETTER_AUTH_SECRETS,
     readCurrentSession: async () => {
       const { auth } = await import("@/features/account/server/auth.server");
-      return auth.api.getSession({ headers: await headers() });
+      return auth.api.getSession({
+        // Every server-side read through this service is refresh-free. Reads
+        // run in RSC renders, hard reloads without an `RSC` header, and
+        // Server Actions alike, so this read must never roll the database
+        // session ahead of a cookie the server cannot rewrite; the mounted
+        // get-session route handler, reached by the browser, is the only
+        // path that refreshes the session expiry and cookie together.
+        query: { disableRefresh: true },
+        headers: await headers(),
+      });
     },
   });
 }

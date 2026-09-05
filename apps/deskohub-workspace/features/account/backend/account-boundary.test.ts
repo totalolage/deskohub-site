@@ -69,6 +69,12 @@ describe("Customer-account boundary", () => {
     );
   });
 
+  test("keeps every authoritative server session read refresh-free so the browser route owns the rolling cookie", async () => {
+    const source = await readFile("backend/customer-authentication.service.ts");
+
+    expect(source).toContain("query: { disableRefresh: true }");
+  });
+
   test("confines Better Auth imports to the auth boundary, the session adapter, and the browser client", async () => {
     const files = await listAccountFiles();
     const offenders: string[] = [];
