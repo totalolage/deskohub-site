@@ -45,6 +45,7 @@ export function DeleteAccountCard({
   const [reauthRequired, setReauthRequired] = useState(false);
   const [reauthLinkSent, setReauthLinkSent] = useState(false);
   const [reauthSending, setReauthSending] = useState(false);
+  const [reauthFailed, setReauthFailed] = useState(false);
 
   const { execute, isExecuting, result, reset } = useWorkspaceAction(
     deleteCustomerAccount,
@@ -65,14 +66,24 @@ export function DeleteAccountCard({
   );
 
   const requestReauthLink = async () => {
+    setReauthFailed(false);
     setReauthSending(true);
-    const linkResult = await authClient.signIn.magicLink({
-      email,
-      callbackURL: `/${locale}/auth/callback`,
-      metadata: { locale },
-    });
-    setReauthSending(false);
-    if (!linkResult.error) setReauthLinkSent(true);
+    try {
+      const linkResult = await authClient.signIn.magicLink({
+        email,
+        callbackURL: `/${locale}/auth/callback`,
+        metadata: { locale },
+      });
+      if (linkResult.error) {
+        setReauthFailed(true);
+        return;
+      }
+      setReauthLinkSent(true);
+    } catch {
+      setReauthFailed(true);
+    } finally {
+      setReauthSending(false);
+    }
   };
 
   const closeDialog = (nextOpen: boolean) => {
@@ -81,6 +92,7 @@ export function DeleteAccountCard({
       setConfirmed(false);
       setReauthRequired(false);
       setReauthLinkSent(false);
+      setReauthFailed(false);
       reset();
       router.refresh();
     }
@@ -134,12 +146,14 @@ export function DeleteAccountCard({
                   </DialogDescription>
                 </DialogHeader>
                 <div
-                  aria-live="polite"
+                  aria-live={reauthFailed ? "assertive" : "polite"}
                   className="mt-4 min-h-5 text-sm text-navy-blue/78"
+                  role={reauthFailed ? "alert" : undefined}
                 >
-                  {reauthLinkSent
-                    ? m.accountDeletionReauthLinkSent({}, { locale })
-                    : null}
+                  {reauthFailed && m.accountSignInRequestFailed({}, { locale })}
+                  {!reauthFailed &&
+                    reauthLinkSent &&
+                    m.accountDeletionReauthLinkSent({}, { locale })}
                 </div>
                 <DialogFooter>
                   <Button

@@ -192,6 +192,165 @@ describe("DeleteAccountCard", () => {
     expect(view.getByText(/a new link is on its way/)).toBeTruthy();
   });
 
+  test("keeps the reauthentication request disabled until the link request resolves", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "reauthentication-required" } })
+    );
+    let resolveLink!: (result: { error: null }) => void;
+    const pendingLink = new Promise<{ error: null }>((resolve) => {
+      resolveLink = resolve;
+    });
+    signInMagicLink.mockImplementationOnce(() => pendingLink);
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          "I understand that my account and every session will be permanently deleted."
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+
+    const send = view.getByRole("button", {
+      name: "Email me a new link",
+    }) as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(send);
+      await Promise.resolve();
+    });
+
+    expect(send.disabled).toBe(true);
+    expect(signInMagicLink).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveLink({ error: null });
+      await pendingLink;
+    });
+
+    expect(view.getByText(/a new link is on its way/)).toBeTruthy();
+  });
+
+  test("reports a resolved reauthentication error and re-enables the button", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "reauthentication-required" } })
+    );
+    signInMagicLink.mockImplementationOnce(() =>
+      Promise.resolve({ error: { message: "rate limited" } })
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          "I understand that my account and every session will be permanently deleted."
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", { name: "Email me a new link" })
+      );
+    });
+
+    expect(view.getByRole("alert").textContent).toBe(
+      "We could not send the link. Please try again."
+    );
+    expect(
+      (
+        view.getByRole("button", {
+          name: "Email me a new link",
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+    expect(view.queryByText(/a new link is on its way/)).toBeNull();
+  });
+
+  test("reports rejected reauthentication and succeeds on retry", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ data: { status: "reauthentication-required" } })
+    );
+    let rejectLink!: (reason: Error) => void;
+    const rejectedLink = new Promise<{ error: null }>((_, reject) => {
+      rejectLink = reject;
+    });
+    signInMagicLink
+      .mockImplementationOnce(() => rejectedLink)
+      .mockImplementationOnce(() => Promise.resolve({ error: null }));
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          "I understand that my account and every session will be permanently deleted."
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Delete permanently"));
+    });
+
+    const send = view.getByRole("button", {
+      name: "Email me a new link",
+    }) as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(send);
+      await Promise.resolve();
+    });
+    expect(send.disabled).toBe(true);
+
+    await act(async () => {
+      rejectLink(new Error("provider failure"));
+      await rejectedLink.catch(() => undefined);
+    });
+
+    expect(view.getByRole("alert").textContent).toBe(
+      "We could not send the link. Please try again."
+    );
+    expect(send.disabled).toBe(false);
+    expect(view.getByRole("alert").textContent).not.toContain(
+      "provider failure"
+    );
+
+    await act(async () => {
+      fireEvent.click(send);
+    });
+
+    expect(signInMagicLink).toHaveBeenCalledTimes(2);
+    expect(view.getByText(/a new link is on its way/)).toBeTruthy();
+    expect(send.disabled).toBe(true);
+  });
+
   test("shows the retryable error when the deletion endpoint fails", async () => {
     deleteCustomerAccount.mockImplementationOnce(() =>
       Promise.resolve({ data: { status: "failed" } })
