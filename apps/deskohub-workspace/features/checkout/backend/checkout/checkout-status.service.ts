@@ -521,39 +521,24 @@ const implementation = Effect.gen(function* () {
         yield* Effect.logInfo("Checkout status refresh finalization completed");
 
         if (result !== "terminal") {
-          if (
-            result === "not_verifiable" ||
-            result === "verification_mismatch"
-          ) {
-            yield* Effect.logWarning(
-              "Checkout status refresh finalization returned non-terminal",
-              { result }
-            );
-          } else {
-            yield* Effect.logInfo(
-              "Checkout status refresh finalization returned non-terminal",
-              { result }
-            );
-          }
+          const level =
+            result === "not_verifiable" || result === "verification_mismatch"
+              ? "Warn"
+              : "Info";
+          yield* Effect.logWithLevel(level)(
+            "Checkout status refresh finalization returned non-terminal",
+            { result }
+          );
         }
 
         const status = yield* getStatus(input);
         yield* Effect.annotateLogsScoped(
           Match.value(status).pipe(
             Match.when({ status: "not_found" }, ({ status }) => ({ status })),
-            Match.when({ kind: "cowork" }, ({ kind, status }) => ({
+            Match.orElse(({ kind, status }) => ({
               status,
               reservationKind: kind,
-            })),
-            Match.when({ kind: "meeting-room" }, ({ kind, status }) => ({
-              status,
-              reservationKind: kind,
-            })),
-            Match.when({ kind: "office" }, ({ kind, status }) => ({
-              status,
-              reservationKind: kind,
-            })),
-            Match.exhaustive
+            }))
           )
         );
         yield* Effect.logInfo("Checkout status refresh completed");
