@@ -1,18 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
-import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
-  coworkReservationSchema as coworkReservationDefinition,
-  coworkReservationOrderSchema as coworkReservationOrderDefinition,
+  coworkReservationOrderSchema,
+  coworkReservationSchema,
   getCoworkReservationDetails,
   getCoworkReservationIntervalInput,
   getCoworkReservationOrder,
 } from "./cowork-reservation";
 
-const coworkReservationSchema = makeSchemaParser(coworkReservationDefinition);
-const coworkReservationOrderSchema = makeSchemaParser(
-  coworkReservationOrderDefinition
+const safeParseCoworkReservation = Schema.decodeUnknownResult(
+  coworkReservationSchema
+);
+const safeParseCoworkReservationOrder = Schema.decodeUnknownResult(
+  coworkReservationOrderSchema
 );
 
 describe("cowork reservation schema", () => {
@@ -24,7 +25,7 @@ describe("cowork reservation schema", () => {
   });
 
   test("represents cowork reservations by date without an interval", () => {
-    const result = coworkReservationSchema.safeParse({
+    const result = safeParseCoworkReservation({
       entryTier: "plus",
       date: "2099-06-10",
       coffee: false,
@@ -62,7 +63,7 @@ describe("cowork reservation schema", () => {
   });
 
   test("decodes cowork orders with the domain discriminator", () => {
-    const result = coworkReservationOrderSchema.safeParse({
+    const result = safeParseCoworkReservationOrder({
       kind: "cowork",
       entryTier: "basic",
       date: "2099-06-10",
@@ -83,7 +84,7 @@ describe("cowork reservation schema", () => {
   });
 
   test("rejects monitor setup for non-profi cowork tiers", () => {
-    const result = coworkReservationSchema.safeParse({
+    const result = safeParseCoworkReservation({
       entryTier: "basic",
       date: "2099-06-10",
       startsAt: "00:00",
@@ -104,7 +105,7 @@ describe("cowork reservation schema", () => {
   });
 
   test("requires a monitor setup for profi cowork reservations", () => {
-    const result = coworkReservationSchema.safeParse({
+    const result = safeParseCoworkReservation({
       entryTier: "profi",
       date: "2099-06-10",
       startsAt: "00:00",

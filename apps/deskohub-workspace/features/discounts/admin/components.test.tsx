@@ -17,6 +17,7 @@ import {
   within,
 } from "@testing-library/react";
 import { Profiler, StrictMode } from "react";
+import { AdministrationTableToolbar } from "@/features/administration/components";
 import { loadFixtureReservations } from "@/features/administration/fixtures";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -153,22 +154,43 @@ describe("discount administration pages", () => {
   });
 
   test("uses the shared compact list count on codes and sales", async () => {
-    const { CodesAdministrationPage, SalesAdministrationPage } = await import(
-      "./components"
+    const { CodesAdministrationActions, CodesAdministrationCollection } =
+      await import("./components");
+    const codes = render(
+      <>
+        <AdministrationTableToolbar
+          actions={<CodesAdministrationActions dashboard={dashboard} />}
+          count={dashboard.codes.length}
+          itemLabel="discount code"
+        />
+        <CodesAdministrationCollection dashboard={dashboard} />
+      </>
     );
-    const codes = render(<CodesAdministrationPage dashboard={dashboard} />);
 
     expect(codes.getByLabelText("1 discount code").textContent).toBe("1");
     cleanup();
 
-    const sales = render(<SalesAdministrationPage dashboard={dashboard} />);
+    const { SalesAdministrationActions, SalesAdministrationCollection } =
+      await import("./components");
+    const sales = render(
+      <>
+        <AdministrationTableToolbar
+          actions={<SalesAdministrationActions />}
+          count={dashboard.calendar.events.length}
+          itemLabel="sale"
+        />
+        <SalesAdministrationCollection dashboard={dashboard} />
+      </>
+    );
 
     expect(sales.getByLabelText("1 sale").textContent).toBe("1");
   });
 
   test("uses a sortable table and a percentage editor with a dirty save state", async () => {
-    const { CodesAdministrationPage } = await import("./components");
-    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
 
     expect(view.getByRole("table", { name: "Discount codes" })).toBeDefined();
     fireEvent.click(
@@ -217,7 +239,7 @@ describe("discount administration pages", () => {
         },
       ],
     };
-    const { CodesAdministrationPage } = await import("./components");
+    const { CodesAdministrationCollection } = await import("./components");
     let renderCount = 0;
     const view = render(
       <StrictMode>
@@ -230,7 +252,7 @@ describe("discount administration pages", () => {
             }
           }}
         >
-          <CodesAdministrationPage dashboard={sortableDashboard} />
+          <CodesAdministrationCollection dashboard={sortableDashboard} />
         </Profiler>
       </StrictMode>
     );
@@ -278,8 +300,10 @@ describe("discount administration pages", () => {
       };
     });
 
-    const { CodesAdministrationPage } = await import("./components");
-    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
 
     expect(view.getByRole("table", { name: "Discount codes" })).toBeDefined();
     expect(view.queryByRole("table", { name: "Discounts" })).toBeNull();
@@ -410,8 +434,10 @@ describe("discount administration pages", () => {
   });
 
   test("links codes to audience management and shows live capacity", async () => {
-    const { CodesAdministrationPage } = await import("./components");
-    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
     const table = view.getByRole("table", { name: "Discount codes" });
 
     expect(
@@ -425,8 +451,10 @@ describe("discount administration pages", () => {
   });
 
   test("expands a code from its row while preserving nested actions", async () => {
-    const { CodesAdministrationPage } = await import("./components");
-    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
     const table = view.getByRole("table", { name: "Discount codes" });
     const codeLink = within(table).getByRole("link", { name: "SUMMER10" });
     const codeRow = codeLink.closest("tr");
@@ -454,8 +482,10 @@ describe("discount administration pages", () => {
   });
 
   test("expands a code row from the keyboard", async () => {
-    const { CodesAdministrationPage } = await import("./components");
-    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
     const table = view.getByRole("table", { name: "Discount codes" });
     const codeRow = within(table)
       .getByRole("link", { name: "SUMMER10" })
@@ -472,9 +502,9 @@ describe("discount administration pages", () => {
   });
 
   test("creates a code and its discount together when no definitions exist", async () => {
-    const { CodesAdministrationPage } = await import("./components");
+    const { CodesAdministrationActions } = await import("./components");
     const view = render(
-      <CodesAdministrationPage
+      <CodesAdministrationActions
         dashboard={{ ...dashboard, codes: [], discounts: [] }}
       />
     );
@@ -496,8 +526,9 @@ describe("discount administration pages", () => {
   });
 
   test("generates a valid code only while creating a discount code", async () => {
-    const { CodesAdministrationPage } = await import("./components");
-    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const { CodesAdministrationActions, CodesAdministrationCollection } =
+      await import("./components");
+    const view = render(<CodesAdministrationActions dashboard={dashboard} />);
 
     fireEvent.click(view.getByText("Create a discount code"));
     const creationForm = view.getByRole("form", {
@@ -515,7 +546,7 @@ describe("discount administration pages", () => {
 
     cleanup();
     const editorView = render(
-      <CodesAdministrationPage dashboard={dashboard} />
+      <CodesAdministrationCollection dashboard={dashboard} />
     );
     fireEvent.click(editorView.getByText("2 customers"));
     expect(
@@ -541,8 +572,8 @@ describe("discount administration pages", () => {
         result: {},
       };
     });
-    const { CodesAdministrationPage } = await import("./components");
-    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const { CodesAdministrationActions } = await import("./components");
+    const view = render(<CodesAdministrationActions dashboard={dashboard} />);
 
     fireEvent.click(view.getByText("Create a discount code"));
     expect(
@@ -1230,8 +1261,18 @@ describe("discount administration pages", () => {
   });
 
   test("shows calendar sales in a table with readable status badges", async () => {
-    const { SalesAdministrationPage } = await import("./components");
-    const view = render(<SalesAdministrationPage dashboard={dashboard} />);
+    const { SalesAdministrationActions, SalesAdministrationCollection } =
+      await import("./components");
+    const view = render(
+      <>
+        <AdministrationTableToolbar
+          actions={<SalesAdministrationActions />}
+          count={dashboard.calendar.events.length}
+          itemLabel="sale"
+        />
+        <SalesAdministrationCollection dashboard={dashboard} />
+      </>
+    );
 
     expect(view.queryByRole("dialog")).toBeNull();
     fireEvent.click(
@@ -1320,8 +1361,8 @@ describe("discount administration pages", () => {
         result: {},
       };
     });
-    const { SalesAdministrationPage } = await import("./components");
-    const view = render(<SalesAdministrationPage dashboard={dashboard} />);
+    const { SalesAdministrationActions } = await import("./components");
+    const view = render(<SalesAdministrationActions />);
 
     fireEvent.click(
       view.getByRole("button", { name: "Create a sale discount" })
