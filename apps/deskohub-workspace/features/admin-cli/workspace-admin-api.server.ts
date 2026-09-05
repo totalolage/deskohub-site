@@ -133,7 +133,10 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
       const mutationIdempotency = yield* CliMutationIdempotency;
       return handlers
         .handle("getOverview", () =>
-          administration.loadOverview().pipe(mapServiceFailure)
+          administration.loadOverviewSource().pipe(
+            Effect.flatMap((source) => administration.loadOverview(source)),
+            mapServiceFailure
+          )
         )
         .handle("listReservations", ({ query }) =>
           administration.listReservations(query).pipe(mapServiceFailure)

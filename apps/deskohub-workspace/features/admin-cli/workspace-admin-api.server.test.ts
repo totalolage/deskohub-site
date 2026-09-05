@@ -299,6 +299,18 @@ describe("Workspace Admin API", () => {
     const reservationCancellations: unknown[] = [];
     const reservationLookups: string[] = [];
     const timestamp = "2026-08-10T10:00:00.000Z";
+    const overviewSource = {
+      currentDate: Temporal.PlainDate.from("2026-08-10"),
+      ranges: {
+        today: { from: "2026-08-10", to: "2026-08-10" },
+        upcoming: { from: "2026-08-11", to: "2026-09-09" },
+        lastSevenDays: { from: "2026-08-04", to: "2026-08-10" },
+      },
+      reservations: { kind: "unavailable" as const },
+      rows: [],
+    } as const;
+    let overviewSourceLoads = 0;
+    const overviewSources: unknown[] = [];
     const booking = {
       id: "booking-1",
       customerId: "customer-1",
@@ -394,11 +406,19 @@ describe("Workspace Admin API", () => {
       claims: [],
     } satisfies AdminDiscountCodeDetail;
     const administration = Layer.succeed(AdministrationService, {
-      loadOverview: () =>
-        Effect.succeed({
-          today: { completed: 2, unavailable: false, value: 3 },
-          upcoming: { completed: 7, unavailable: false, value: 8 },
-          lastSevenDays: { completed: 4, unavailable: false, value: 5 },
+      loadOverviewSource: () =>
+        Effect.sync(() => {
+          overviewSourceLoads += 1;
+          return overviewSource;
+        }),
+      loadOverview: (source) =>
+        Effect.sync(() => {
+          overviewSources.push(source);
+          return {
+            today: { completed: 2, unavailable: false, value: 3 },
+            upcoming: { completed: 7, unavailable: false, value: 8 },
+            lastSevenDays: { completed: 4, unavailable: false, value: 5 },
+          };
         }),
       listReservations: (input) =>
         Effect.sync(() => {
@@ -670,6 +690,9 @@ describe("Workspace Admin API", () => {
       unavailable: false,
       value: 3,
     });
+    expect(overviewSourceLoads).toBe(1);
+    expect(overviewSources).toHaveLength(1);
+    expect(overviewSources[0]).toBe(overviewSource);
     expect(result.reservations.page).toBe(2);
     expect(result.reservationDetail.reservation.id).toBe(reservation.id);
     expect(result.cancellation).toEqual({
