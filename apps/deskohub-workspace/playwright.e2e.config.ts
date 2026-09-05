@@ -3,6 +3,7 @@ import "./shared/testing/workspace-test-environment";
 import { defineConfig } from "@playwright/test";
 import { parseWorkspaceE2EBaseUrl } from "./e2e/config";
 import {
+  workspaceE2EAccessCodePlaywrightTimeout,
   workspaceE2EPlaywrightCheckoutTimeout,
   workspaceE2ETimeouts,
 } from "./e2e/timeouts";
@@ -36,6 +37,13 @@ export default defineConfig({
       testDir: "./e2e/instant-navigation",
       testMatch: "**/*.pw.ts",
       timeout: workspaceE2ETimeouts.browserNavigation,
+    },
+    {
+      dependencies: ["checkout-setup"],
+      name: "access-code-creation",
+      testDir: "./e2e/access-codes",
+      testMatch: "**/*.pw.ts",
+      timeout: workspaceE2EAccessCodePlaywrightTimeout,
     },
     {
       name: "checkout-setup",

@@ -238,6 +238,29 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   reservation, active-attempt, token, or redirect state. Reject malformed
   provider-session responses at the checked-in OpenAPI contract and never
   retry payment creation after response decoding fails.
+- The standalone access-code case lives in its own `access-code-creation`
+  Playwright project outside the checkout case catalog and planner; never add
+  its case id to `workspaceE2ECaseIds` or the checkout case machinery. It
+  combines Playwright-native `page`/`context` fixtures with the shared
+  `runtimeTest` runner fixtures (`runEffect`, `E2EDatabase`).
+- Admin Basic auth for E2E comes from the runner-owned
+  `WORKSPACE_E2E_ADMIN_BASIC_AUTH` secret (a `username:password` pair) in the
+  `workspace-checkout-e2e` GitHub environment, paired with the Preview-only
+  Vercel `ADMIN_BASIC_AUTH_SHA256` (SHA-256 hex of the same pair) on the
+  Workspace project. Validate the pair in `e2e-env.ts`, register the pair and
+  password as process redactions, and fail closed with provisioning guidance
+  when absent. Never weaken Basic auth/BotID or add an application bypass;
+  authenticate the browser context with `httpCredentials { send: "always" }`
+  scoped to the preview origin.
+- A client-generated attempt id (access codes, checkout) can only be proven
+  idempotent by replaying the first submission's exact request. Clicking
+  reset/"Create another" intentionally mints a new attempt id and proves
+  nothing. Replay the captured Server Action POST byte-exact (same
+  `Next-Action` id, content type, origin, and payload) through the context
+  API request, assert the `already-created` outcome plus that the one-time
+  PIN is not re-disclosed, and assert attempt-event counts in the preview
+  database. Clean only exact synthetic rows, pre-clean for reruns, and prove
+  zero matching rows remain in an interruption-safe finalizer.
 
 Before inspecting production or provider logs, read `../deskohub-workspace-operations/references/diagnostics.md` and apply its redaction and summarization rules.
 

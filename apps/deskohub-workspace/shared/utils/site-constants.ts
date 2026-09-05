@@ -1,3 +1,4 @@
+import { WORKSPACE_SITE_TIME_ZONE } from "@deskohub/workspace-admin-api/site-time-zone";
 import type { WorkspaceCurrencyCode } from "@/shared/money/currencies";
 
 export interface WorkspacePaymentAccount {
@@ -27,7 +28,7 @@ export const workspaceSiteConstants = {
       lat: 50.103277,
       lng: 14.479023,
     },
-    timeZone: "Europe/Prague",
+    timeZone: WORKSPACE_SITE_TIME_ZONE,
   },
   reservation: {
     defaultStartTime: "10:00",

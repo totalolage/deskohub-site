@@ -3,10 +3,10 @@
 import { AdministrationWorkspaceReservationId } from "@deskohub/workspace-admin-api";
 import { Effect, Schema } from "effect";
 import { revalidatePath } from "next/cache";
-import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { AdministrationService } from "./administration.service";
+import { requireAdministrationAuthorization } from "./basic-auth.server";
 import {
   type ReservationCancellationInput,
   type ReservationLookupInput,
@@ -41,7 +41,7 @@ const getAdministrationReservationAction = defineWorkspaceAction(
     logInput: false,
   },
   (input) =>
-    requireDiscountAdminAuthorization().pipe(
+    requireAdministrationAuthorization().pipe(
       Effect.andThen(findReservation(input)),
       Effect.provide(AdministrationService.Live),
       Effect.mapError(
@@ -66,7 +66,7 @@ const cancelAdministrationReservationAction = defineWorkspaceAction(
     schema: reservationCancellationStandardSchema,
   },
   (input: ReservationCancellationInput) =>
-    requireDiscountAdminAuthorization().pipe(
+    requireAdministrationAuthorization().pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* ReservationAdministrationService;
@@ -117,7 +117,7 @@ const mutateReservationAccessAction = defineWorkspaceAction(
     schema: reservationAccessMutationSchema,
   },
   (input) =>
-    requireDiscountAdminAuthorization().pipe(
+    requireAdministrationAuthorization().pipe(
       Effect.andThen(
         Effect.gen(function* () {
           const administration = yield* ReservationAccessAdministration;

@@ -2,12 +2,11 @@ import "server-only";
 
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
 import { cache } from "react";
+import { authorizeAdministrationPage } from "@/features/administration/page-authorization.server";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { DiscountCodeId, VoucherId } from "../persistence-contracts";
-import { requireDiscountAdminAuthorization } from "./basic-auth.server";
 import { DiscountAdministration } from "./discount-administration.service";
 
 export type DiscountAdminSearchParams = Promise<{
@@ -18,7 +17,7 @@ export type DiscountAdminSearchParams = Promise<{
 export const loadDiscountAdminPageData = async (
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
 
   const dashboard = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
@@ -40,7 +39,7 @@ export const loadDiscountAdminPageData = async (
 export const loadDiscountAdminCodesPageData = async (
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   const dashboard = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadCodesPage();
@@ -60,7 +59,7 @@ export const loadDiscountAdminCodesPageData = async (
 export const loadDiscountAdminSalesPageData = async (
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   const dashboard = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadSalesPage();
@@ -80,7 +79,7 @@ export const loadDiscountAdminSalesPageData = async (
 export const loadDiscountAdminVouchersPageData = async (
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   const dashboard = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadVouchersPage();
@@ -100,7 +99,7 @@ export const loadDiscountAdminVouchersPageData = async (
 export const loadDiscountAdminShellPageData = async (
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   return { notice: await loadNotice(searchParams) };
 };
 
@@ -108,7 +107,7 @@ export const loadDiscountAdminCodePageData = async (
   codeId: DiscountCodeId,
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
 
   const detail = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
@@ -136,7 +135,7 @@ export const loadDiscountAdminCustomerPageData = async (
   customerId: DotyposCustomerId,
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
 
   const profile = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
@@ -164,7 +163,7 @@ export const loadDiscountAdminVoucherPageData = async (
   voucherId: VoucherId,
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   const detail = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadVoucherDetail({ voucherId });
@@ -186,7 +185,7 @@ export const loadDiscountAdminVoucherPageData = async (
 export const loadDiscountAdminCustomerCodeCreationPageData = async (
   customerId: DotyposCustomerId
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
 
   const data = await Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
@@ -226,7 +225,7 @@ export const loadOptionalDiscountAdminCustomerPageData = async (
   customerId: DotyposCustomerId,
   searchParams: DiscountAdminSearchParams
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   const [profile, notice] = await Promise.all([
     loadOptionalDiscountAdminCustomerProfile(customerId),
     loadNotice(searchParams),
@@ -241,7 +240,7 @@ export const loadOptionalDiscountAdminCustomerPageData = async (
 export const loadDiscountAdminCustomerBreadcrumbLabel = async (
   customerId: DotyposCustomerId
 ) => {
-  await authorizeDiscountAdminPage();
+  await authorizeAdministrationPage();
   return Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadCustomerBreadcrumbLabel({ customerId });
@@ -258,23 +257,6 @@ export const loadDiscountAdminCustomerBreadcrumbLabel = async (
     })
   );
 };
-
-export const authorizeDiscountAdminPage = cache(async () => {
-  const authorized = await requireDiscountAdminAuthorization().pipe(
-    Effect.as(true),
-    Effect.catchTag("DiscountAdminUnauthorizedError", () =>
-      Effect.succeed(false)
-    ),
-    runWorkspaceEffect("discount-administration.authorize", {
-      boundary: "route",
-    })
-  );
-
-  if (!authorized) {
-    notFound();
-  }
-  await connection();
-});
 
 const loadNotice = async (searchParams: DiscountAdminSearchParams) => {
   const params = await searchParams;

@@ -19,6 +19,7 @@ import {
   workspaceE2ETimeoutError,
 } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
+import { pollUntil, withinWorkspaceE2EDeadline } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import {
@@ -202,38 +203,32 @@ const runCase = (
     providerVerificationPermit
   );
 
-  return Effect.gen(function* () {
-    log(`CASE START ${runtime.testCase.id}`);
-    runtime.browserHarStarted = yield* startBrowserDiagnostics(
-      run,
-      runtime.session
-    ).pipe(
-      Effect.timeoutOrElse({
-        duration: `${timeouts.browserAction} millis`,
-        orElse: () =>
-          Effect.fail(
-            workspaceE2ETimeoutError(
-              `Timed out starting browser diagnostics for ${runtime.testCase.id}`,
-              { operation: `${runtime.testCase.id} browser diagnostics` }
-            )
-          ),
-      })
-    );
-    yield* runtime.testCase.execute({
-      runStep,
-      session: runtime.session,
-    });
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration: `${runtime.testCase.timeoutMs} millis`,
-      orElse: () =>
-        Effect.fail(
-          workspaceE2ETimeoutError(
-            `Timed out running ${runtime.testCase.id} e2e case after ${formatWorkspaceE2EDuration(runtime.testCase.timeoutMs)}`,
-            { operation: `${runtime.testCase.id} e2e case` }
-          )
-        ),
+  return withinWorkspaceE2EDeadline(
+    Effect.gen(function* () {
+      log(`CASE START ${runtime.testCase.id}`);
+      runtime.browserHarStarted = yield* startBrowserDiagnostics(
+        run,
+        runtime.session
+      ).pipe(
+        Effect.timeoutOrElse({
+          duration: `${timeouts.browserAction} millis`,
+          orElse: () =>
+            Effect.fail(
+              workspaceE2ETimeoutError(
+                `Timed out starting browser diagnostics for ${runtime.testCase.id}`,
+                { operation: `${runtime.testCase.id} browser diagnostics` }
+              )
+            ),
+        })
+      );
+      yield* runtime.testCase.execute({
+        runStep,
+        session: runtime.session,
+      });
     }),
+    `${runtime.testCase.id} e2e case`,
+    runtime.testCase.timeoutMs
+  ).pipe(
     Effect.tapCause((cause) =>
       Effect.sync(() => {
         if (!Cause.hasInterruptsOnly(cause)) runtime.failureCause = cause;
@@ -257,17 +252,10 @@ const makeStepRunner =
   <A, R>({ capacity, execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
     const caseId = runtime.testCase.id;
     const operation = `${caseId}/${id}`;
-    const timedExecution = execute.pipe(
-      Effect.timeoutOrElse({
-        duration: `${timeoutMs} millis`,
-        orElse: () =>
-          Effect.fail(
-            workspaceE2ETimeoutError(
-              `Timed out running ${operation} after ${formatWorkspaceE2EDuration(timeoutMs)}`,
-              { operation }
-            )
-          ),
-      })
+    const timedExecution = withinWorkspaceE2EDeadline(
+      execute,
+      operation,
+      timeoutMs
     );
     const capacityLimitedExecution =
       capacity === "provider-verification"

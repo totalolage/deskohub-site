@@ -2,18 +2,35 @@ import { describe, expect, test } from "bun:test";
 import {
   AdministrationActorUsername,
   AdministrationDiscountCodeId,
+  AdministrationStandaloneAccessCodeAttemptId,
+  type AdministrationStandaloneAccessCodeAttemptIdType,
+  type AdministrationStandaloneAccessCodeCreateInputType,
+  AdministrationStandaloneAccessCodeCreationOutcome,
+  type AdministrationStandaloneAccessCodeCreationOutcomeType,
+  AdministrationStandaloneAccessCodeName,
   AdministrationVoucherId,
   AdministrationWorkspaceReservationId,
   CliAccessToken,
+  type CliAccessTokenType,
+  CliMutationRejected,
+  CliMutationUncertain,
+  CliServiceUnavailable,
   CliSessionId,
   type CliSessionType,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
 } from "@deskohub/workspace-admin-api";
 import { BunServices } from "@effect/platform-bun";
-import { Effect, Layer, Option, Redacted, Schema } from "effect";
+import { Console, Effect, Exit, Layer, Option, Redacted, Schema } from "effect";
 import { Command } from "effect/unstable/cli";
+import { AccessCodeAttemptStore } from "./access-codes/access-code-attempt-store.service";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
-import { dhwCommand, formatInvoiceCreationOutput } from "./command";
+import {
+  dhwCommand,
+  formatInvoiceCreationOutput,
+  formatStandaloneAccessCodeOutcome,
+} from "./command";
 import { DhwConfig } from "./config/dhw-config.service";
 
 const accessToken = Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43));
@@ -29,6 +46,15 @@ const voucherId = Schema.decodeUnknownSync(AdministrationVoucherId)(
 const reservationId = Schema.decodeUnknownSync(
   AdministrationWorkspaceReservationId
 )("reservation-test");
+const cleanupTargetAttemptId = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeAttemptId
+)("01980000-0000-7000-8000-000000000043");
+const cleanupTarget = {
+  attemptId: cleanupTargetAttemptId,
+  name: Schema.decodeUnknownSync(AdministrationStandaloneAccessCodeName)(
+    "Booth A"
+  ),
+};
 const session = {
   id: sessionId,
   approvedBy: null,
@@ -38,6 +64,29 @@ const session = {
   createdAt: "2026-08-10T10:00:00.000Z",
   lastUsedAt: "2026-08-10T10:00:00.000Z",
 };
+const createdAccessCodeOutcome = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeCreationOutcome
+)({
+  outcome: "created",
+  attemptId: "01980000-0000-7000-8000-000000000042",
+  providerCredentialId: "pin-1",
+  name: "Booth A",
+  startsAt: "2026-09-10T10:00",
+  endsAt: "2026-09-10T12:00",
+  issuedAt: "2026-09-10T08:00:00Z",
+  pin: "7654321",
+}) satisfies AdministrationStandaloneAccessCodeCreationOutcomeType;
+const alreadyCreatedAccessCodeOutcome = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeCreationOutcome
+)({
+  outcome: "already-created",
+  attemptId: "01980000-0000-7000-8000-000000000042",
+  providerCredentialId: "pin-1",
+  name: "Booth A",
+  startsAt: "2026-09-10T10:00",
+  endsAt: "2026-09-10T12:00",
+  issuedAt: "2026-09-10T08:00:00Z",
+}) satisfies AdministrationStandaloneAccessCodeCreationOutcomeType;
 
 describe("dhw mutation commands", () => {
   test("does not call a partially delivered invoice sent", () => {
@@ -206,6 +255,780 @@ describe("dhw mutation commands", () => {
     ).pipe(Effect.runPromise);
 
     expect(clears).toBe(1);
+  });
+
+  test("requires reauthentication before a legacy session can create access codes", async () => {
+    const { accessCodeCreations, layer } = makeCommandLayer();
+
+    const error = await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(error).toMatchObject({
+      _tag: "AuthenticationRequiredError",
+      message: expect.stringContaining("dhw auth"),
+    });
+    expect(accessCodeCreations).toHaveLength(0);
+  });
+
+  test("requires explicit confirmation before requesting an access code", async () => {
+    const { accessCodeCreations, layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+    });
+
+    const jsonError = await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+    const plainError = await runCommand(
+      [
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(jsonError).toMatchObject({ _tag: "ConfirmationRequiredError" });
+    expect(plainError).toMatchObject({ _tag: "ConfirmationRequiredError" });
+    expect(accessCodeCreations).toHaveLength(0);
+  });
+
+  test("rejects an invalid access window before any API call", async () => {
+    const { accessCodeCreations, layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+    });
+
+    const reversedError = await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T12:00",
+        "--ends-at",
+        "2026-09-10T10:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+    const parseError = await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:30",
+        "--ends-at",
+        "2026-09-10T12:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(reversedError).toMatchObject({ _tag: "InvalidMutationInputError" });
+    expect(parseError).toBeDefined();
+    expect(accessCodeCreations).toHaveLength(0);
+  });
+
+  test("generates one valid attempt id per invocation and forwards the decoded request", async () => {
+    const { accessCodeCreations, layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: () =>
+        Effect.succeed(createdAccessCodeOutcome),
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "  Booth A  ",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.runPromise);
+    await runCommand(args, layer).pipe(Effect.runPromise);
+
+    expect(accessCodeCreations).toHaveLength(2);
+    for (const creation of accessCodeCreations) {
+      expect(
+        Schema.is(AdministrationStandaloneAccessCodeAttemptId)(
+          creation.attemptId
+        )
+      ).toBe(true);
+      expect(JSON.stringify(creation.input)).toBe(
+        JSON.stringify({
+          name: "Booth A",
+          startsAt: "2026-09-10T10:00",
+          endsAt: "2026-09-10T12:00",
+        })
+      );
+    }
+    expect(accessCodeCreations[0]?.attemptId).not.toBe(
+      accessCodeCreations[1]?.attemptId
+    );
+  });
+
+  test("resumes a lost access-code creation with the reserved attempt id", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    let responseLost = true;
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return responseLost
+          ? Effect.fail(
+              new CliServiceUnavailable({ message: "The response was lost." })
+            )
+          : Effect.succeed(createdAccessCodeOutcome);
+      },
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
+    responseLost = false;
+    await runCommand(args, layer).pipe(Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).toBe(attemptIds[0]);
+  });
+
+  test("keeps the reserved attempt id recoverable when the PIN output is interrupted", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return attemptIds.length === 1
+          ? Effect.succeed(createdAccessCodeOutcome)
+          : Effect.succeed(alreadyCreatedAccessCodeOutcome);
+      },
+    });
+    const interruptedOutput = Layer.succeed(Console.Console, {
+      ...globalThis.console,
+      log: (...args: ReadonlyArray<unknown>) => {
+        if (args.join(" ").includes("7654321")) {
+          throw new Error(
+            "The output was interrupted before the PIN was shown."
+          );
+        }
+      },
+    } satisfies Console.Console);
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--yes",
+    ];
+
+    const interrupted = await runCommand(
+      args,
+      Layer.mergeAll(layer, interruptedOutput)
+    ).pipe(Effect.exit, Effect.runPromise);
+    expect(Exit.isFailure(interrupted)).toBe(true);
+    await runCommand(args, layer).pipe(Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).toBe(attemptIds[0]);
+  });
+
+  test("reserves a fresh attempt id once an access-code creation concludes", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return Effect.succeed(createdAccessCodeOutcome);
+      },
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.runPromise);
+    await runCommand(args, layer).pipe(Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).not.toBe(attemptIds[0]);
+  });
+
+  test("does not reuse a reserved attempt id for a changed access window", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return Effect.fail(
+          new CliServiceUnavailable({ message: "The response was lost." })
+        );
+      },
+    });
+
+    await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+    await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T13:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).not.toBe(attemptIds[0]);
+  });
+
+  test("reserves a fresh attempt id after a terminally rejected access-code creation", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return Effect.fail(
+          new CliMutationRejected({ message: "The request was rejected." })
+        );
+      },
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
+    await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).not.toBe(attemptIds[0]);
+  });
+
+  test("reserves a fresh attempt id after an uncertain provider outcome", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return Effect.fail(
+          new CliMutationUncertain({
+            message: "The creation outcome is ambiguous.",
+          })
+        );
+      },
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
+    await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).not.toBe(attemptIds[0]);
+  });
+
+  test("refuses to create an access code when the attempt cannot be reserved locally", async () => {
+    const blockedPath = `/tmp/dhw-state-blocked-${crypto.randomUUID()}`;
+    await Bun.write(blockedPath, "a regular file, not a state directory");
+    const { accessCodeCreations, layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      stateDirectory: blockedPath,
+    });
+
+    try {
+      const error = await runCommand(
+        [
+          "--json",
+          "access-codes",
+          "create",
+          "Booth A",
+          "--starts-at",
+          "2026-09-10T10:00",
+          "--ends-at",
+          "2026-09-10T12:00",
+          "--yes",
+        ],
+        layer
+      ).pipe(Effect.flip, Effect.runPromise);
+
+      expect(error).toMatchObject({
+        _tag: "AccessCodeAttemptReservationError",
+      });
+      expect(accessCodeCreations).toHaveLength(0);
+    } finally {
+      await Bun.file(blockedPath).delete();
+    }
+  });
+
+  test("keeps each unresolved access-code reservation independent of later requests", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return Effect.fail(
+          new CliServiceUnavailable({ message: "The response was lost." })
+        );
+      },
+    });
+
+    await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+    await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth B",
+        "--starts-at",
+        "2026-09-10T14:00",
+        "--ends-at",
+        "2026-09-10T16:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+    await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(3);
+    expect(attemptIds[1]).not.toBe(attemptIds[0]);
+    expect(attemptIds[2]).toBe(attemptIds[0]);
+  });
+
+  test("forwards the confirmed cleanup target for access-code recreation", async () => {
+    const { accessCodeCreations, layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: () =>
+        Effect.succeed(createdAccessCodeOutcome),
+    });
+
+    await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+        "--provider-credential-removed",
+        cleanupTargetAttemptId,
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(accessCodeCreations).toHaveLength(1);
+    expect(accessCodeCreations[0]?.providerCredentialRemovedAttemptId).toBe(
+      cleanupTargetAttemptId
+    );
+    expect(accessCodeCreations[0]?.attemptId).not.toBe(cleanupTargetAttemptId);
+    expect("providerCredentialRemoved" in (accessCodeCreations[0] ?? {})).toBe(
+      false
+    );
+  });
+
+  test("requires a valid attempt id for the cleanup confirmation flag", async () => {
+    const { accessCodeCreations, layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+    });
+
+    const parseError = await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+        "--provider-credential-removed",
+        "not-a-uuid",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.flip, Effect.runPromise);
+
+    expect(parseError).toBeDefined();
+    expect(accessCodeCreations).toHaveLength(0);
+  });
+
+  test("omits the cleanup confirmation when the operator does not pass it", async () => {
+    const { accessCodeCreations, layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: () =>
+        Effect.succeed(createdAccessCodeOutcome),
+    });
+
+    await runCommand(
+      [
+        "--json",
+        "access-codes",
+        "create",
+        "Booth A",
+        "--starts-at",
+        "2026-09-10T10:00",
+        "--ends-at",
+        "2026-09-10T12:00",
+        "--yes",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+
+    expect(accessCodeCreations).toHaveLength(1);
+    expect(
+      accessCodeCreations[0]?.providerCredentialRemovedAttemptId
+    ).toBeUndefined();
+  });
+
+  test("reserves a fresh attempt id after required at-lock cleanup", async () => {
+    const attemptIds: AdministrationStandaloneAccessCodeAttemptIdType[] = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        attemptIds.push(attemptId);
+        return Effect.fail(
+          new CliStandaloneAccessCodeCleanupRequired({
+            message: "A previous attempt for this window is ambiguous.",
+            cleanupTarget,
+          })
+        );
+      },
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
+    await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).not.toBe(attemptIds[0]);
+  });
+
+  test("completes a confirmed reconciliation in one invocation after a lost response", async () => {
+    const calls: Array<{
+      readonly attemptId: AdministrationStandaloneAccessCodeAttemptIdType;
+      readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType;
+    }> = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (
+        _accessToken,
+        attemptId,
+        _input,
+        providerCredentialRemovedAttemptId
+      ) => {
+        calls.push({ attemptId, providerCredentialRemovedAttemptId });
+        if (calls.length === 1) {
+          return Effect.fail(
+            new CliStandaloneAccessCodeReconciled({
+              message:
+                "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code.",
+            })
+          );
+        }
+        return Effect.succeed(createdAccessCodeOutcome);
+      },
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--provider-credential-removed",
+      cleanupTargetAttemptId,
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.runPromise);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.providerCredentialRemovedAttemptId).toBe(
+      cleanupTargetAttemptId
+    );
+    expect(calls[1]?.providerCredentialRemovedAttemptId).toBeUndefined();
+    expect(calls[1]?.attemptId).not.toBe(calls[0]?.attemptId);
+    expect(calls[0]?.attemptId).not.toBe(cleanupTargetAttemptId);
+    expect(calls[1]?.attemptId).not.toBe(cleanupTargetAttemptId);
+  });
+
+  test("forgets the rotated attempt so the next intentional command reserves a fresh id", async () => {
+    const calls: Array<{
+      readonly attemptId: AdministrationStandaloneAccessCodeAttemptIdType;
+    }> = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (_accessToken, attemptId) => {
+        calls.push({ attemptId });
+        if (calls.length === 1) {
+          return Effect.fail(
+            new CliStandaloneAccessCodeReconciled({
+              message:
+                "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code.",
+            })
+          );
+        }
+        return Effect.succeed(createdAccessCodeOutcome);
+      },
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--provider-credential-removed",
+      cleanupTargetAttemptId,
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.runPromise);
+    await runCommand(args, layer).pipe(Effect.runPromise);
+
+    expect(calls).toHaveLength(3);
+    expect(calls[1]?.attemptId).not.toBe(calls[0]?.attemptId);
+    expect(calls[2]?.attemptId).not.toBe(calls[1]?.attemptId);
+    expect(calls[2]?.attemptId).not.toBe(calls[0]?.attemptId);
+  });
+
+  test("never rotates on a plain uncertain outcome", async () => {
+    const calls: Array<{
+      readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType;
+    }> = [];
+    const { layer } = makeCommandLayer({
+      authenticatedSession: {
+        ...session,
+        approvedBy: AdministrationActorUsername.make("admin"),
+      },
+      createStandaloneAccessCode: (
+        _accessToken,
+        _attemptId,
+        _input,
+        providerCredentialRemovedAttemptId
+      ) => {
+        calls.push({ providerCredentialRemovedAttemptId });
+        return Effect.fail(
+          new CliMutationUncertain({
+            message: "The creation outcome is ambiguous.",
+          })
+        );
+      },
+    });
+    const args = [
+      "--json",
+      "access-codes",
+      "create",
+      "Booth A",
+      "--starts-at",
+      "2026-09-10T10:00",
+      "--ends-at",
+      "2026-09-10T12:00",
+      "--provider-credential-removed",
+      cleanupTargetAttemptId,
+      "--yes",
+    ];
+
+    await runCommand(args, layer).pipe(Effect.flip, Effect.runPromise);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.providerCredentialRemovedAttemptId).toBe(
+      cleanupTargetAttemptId
+    );
+  });
+
+  test("formats the one-time PIN disclosure and the PIN-free replay", () => {
+    const created = formatStandaloneAccessCodeOutcome(createdAccessCodeOutcome);
+    expect(created).toContain("7654321");
+    expect(created).toContain("Booth A");
+    expect(created).toContain("2026-09-10T10:00");
+    expect(created).toContain("2026-09-10T12:00");
+    expect(created).toContain("Europe/Prague");
+    expect(created.toLowerCase()).toContain("only once");
+
+    const alreadyCreated = formatStandaloneAccessCodeOutcome(
+      alreadyCreatedAccessCodeOutcome
+    );
+    expect(alreadyCreated).toContain("Booth A");
+    expect(alreadyCreated).toContain("cannot be shown again");
+    expect(alreadyCreated).not.toContain("7654321");
   });
 
   test("requires confirmation and provider cleanup before reconciling access", async () => {
@@ -495,21 +1318,51 @@ const makeCommandLayer = ({
     Effect.succeed({ outcome: "already_cancelled", email: "not_requested" }),
   clear = Effect.succeed(true),
   createInvoice = () => Effect.die("not used"),
+  createStandaloneAccessCode = () => Effect.die("not used"),
   authenticatedSession = session,
   revokeSession = () => Effect.succeed({ changed: false }),
+  stateDirectory = `/tmp/dhw-command-test-${crypto.randomUUID()}`,
 }: {
   readonly cancelReservation?: WorkspaceAdminApiClient["Service"]["cancelReservation"];
   readonly clear?: AuthenticationService["Service"]["clear"];
   readonly createInvoice?: WorkspaceAdminApiClient["Service"]["createInvoice"];
+  readonly createStandaloneAccessCode?: WorkspaceAdminApiClient["Service"]["createStandaloneAccessCode"];
   readonly authenticatedSession?: CliSessionType;
   readonly revokeSession?: WorkspaceAdminApiClient["Service"]["revokeSession"];
+  readonly stateDirectory?: string;
 } = {}) => {
   const mutations: unknown[] = [];
   const accessMutations: unknown[] = [];
+  const accessCodeCreations: Array<{
+    readonly accessToken: Redacted.Redacted<CliAccessTokenType>;
+    readonly attemptId: AdministrationStandaloneAccessCodeAttemptIdType;
+    readonly input: AdministrationStandaloneAccessCodeCreateInputType;
+    readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType;
+  }> = [];
   const api = Layer.succeed(WorkspaceAdminApiClient, {
     ...({} as WorkspaceAdminApiClient["Service"]),
     cancelReservation,
     createInvoice,
+    createStandaloneAccessCode: (
+      accessToken: Redacted.Redacted<CliAccessTokenType>,
+      attemptId: AdministrationStandaloneAccessCodeAttemptIdType,
+      input: AdministrationStandaloneAccessCodeCreateInputType,
+      providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptIdType
+    ) =>
+      Effect.suspend(() => {
+        accessCodeCreations.push({
+          accessToken,
+          attemptId,
+          input,
+          providerCredentialRemovedAttemptId,
+        });
+        return createStandaloneAccessCode(
+          accessToken,
+          attemptId,
+          input,
+          providerCredentialRemovedAttemptId
+        );
+      }),
     getReservation: () =>
       Effect.succeed({
         accessGrant: { updatedAt: "2026-08-10T10:00:00.000Z" },
@@ -576,13 +1429,18 @@ const makeCommandLayer = ({
     baseUrl: new URL("https://workspace.example.test"),
     requestHeaders: {},
     isCi: true,
-    stateDirectory: "/tmp/dhw-command-test",
+    stateDirectory,
     updateChecksDisabled: true,
   });
 
   return {
+    accessCodeCreations,
     accessMutations,
     mutations,
-    layer: Layer.mergeAll(BunServices.layer, api, authentication, config),
+    layer: Layer.mergeAll(
+      api,
+      authentication,
+      AccessCodeAttemptStore.Default
+    ).pipe(Layer.provideMerge(config), Layer.provideMerge(BunServices.layer)),
   };
 };

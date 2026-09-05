@@ -4,26 +4,26 @@ import { AdministrationActorUsername } from "@deskohub/workspace-admin-api";
 import { Data, Effect, Schema } from "effect";
 import { headers } from "next/headers";
 import { env } from "@/env";
-import { getDiscountAdminAuthorizationUsername } from "./basic-auth";
+import { getAdministrationAuthorizationUsername } from "./basic-auth";
 
-export class DiscountAdminUnauthorizedError extends Data.TaggedError(
-  "DiscountAdminUnauthorizedError"
+export class AdministrationUnauthorizedError extends Data.TaggedError(
+  "AdministrationUnauthorizedError"
 )<{
   readonly message: string;
 }> {}
 
-export const requireDiscountAdminAuthorization = Effect.fn(
-  "DiscountAdmin.requireAuthorization"
+export const requireAdministrationAuthorization = Effect.fn(
+  "Administration.requireAuthorization"
 )(() =>
   Effect.tryPromise({
     try: () => headers(),
     catch: () =>
-      new DiscountAdminUnauthorizedError({
+      new AdministrationUnauthorizedError({
         message: "Administrator authentication is required.",
       }),
   }).pipe(
     Effect.flatMap((requestHeaders) => {
-      const username = getDiscountAdminAuthorizationUsername(
+      const username = getAdministrationAuthorizationUsername(
         requestHeaders.get("authorization"),
         env.ADMIN_BASIC_AUTH_SHA256
       );
@@ -37,6 +37,6 @@ export const requireDiscountAdminAuthorization = Effect.fn(
 );
 
 const unauthorized = () =>
-  new DiscountAdminUnauthorizedError({
+  new AdministrationUnauthorizedError({
     message: "Administrator authentication is required.",
   });

@@ -8,14 +8,21 @@ import {
   AdministrationOperation,
   AdministrationOrder,
   AdministrationReservationSummary,
+  AdministrationStandaloneAccessCodeAttemptId,
+  AdministrationStandaloneAccessCodeCreateInput,
+  AdministrationStandaloneAccessCodeName,
   AdministrationStoredDiscountId,
   CliAccessToken,
   CliAuthenticationChallenge,
   CliAuthenticationCode,
   CliAuthenticationVerifier,
   CliGrantToken,
+  CliMutationRejected,
   CliMutationRequestId,
+  CliMutationUncertain,
   CliSessionId,
+  CliStandaloneAccessCodeCleanupRequired,
+  CliStandaloneAccessCodeReconciled,
 } from "@deskohub/workspace-admin-api";
 import { Clock, Duration, Effect, Layer, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -24,6 +31,33 @@ import {
   CliApiRequestError,
   WorkspaceAdminApiClient,
 } from "./workspace-admin-api-client.service";
+
+const accessCodeAttemptId = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeAttemptId
+)("01980000-0000-7000-8000-000000000042");
+const cleanupTargetAttemptId = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeAttemptId
+)("01980000-0000-7000-8000-000000000043");
+const cleanupTargetName = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeName
+)("Booth A");
+const accessCodeInput = Schema.decodeUnknownSync(
+  AdministrationStandaloneAccessCodeCreateInput
+)({
+  name: "Booth A",
+  startsAt: "2026-09-10T10:00",
+  endsAt: "2026-09-10T12:00",
+});
+const createdAccessCodeOutcome = {
+  outcome: "created",
+  attemptId: accessCodeAttemptId,
+  providerCredentialId: "pin-1",
+  name: "Booth A",
+  startsAt: "2026-09-10T10:00",
+  endsAt: "2026-09-10T12:00",
+  issuedAt: "2026-09-10T08:00:00Z",
+  pin: "7654321",
+};
 
 describe("WorkspaceAdminApiClient", () => {
   test("uses the shared contract and configured preview headers", async () => {
@@ -954,6 +988,248 @@ describe("WorkspaceAdminApiClient", () => {
     }
   });
 
+  test("retries access-code creation with one captured attempt id and never on terminal outcomes", async () => {
+    const accessToken = Redacted.make(
+      Schema.decodeUnknownSync(CliAccessToken)("i".repeat(43))
+    );
+    const requests: Array<{
+      readonly method: string;
+      readonly path: string;
+      readonly payload: unknown;
+    }> = [];
+    let retryableAttempts = 0;
+    let terminalAttempts = 0;
+    let elapsedRetryMilliseconds = 0;
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const url = new URL(request.url);
+        requests.push({
+          method: request.method,
+          path: url.pathname,
+          payload: await request.json(),
+        });
+        if (
+          request.headers.get("authorization") !==
+          `Bearer ${Redacted.value(accessToken)}`
+        ) {
+          return new Response(null, { status: 401 });
+        }
+        if (requests.length === 1) {
+          return Response.json(
+            {
+              _tag: "CliMutationInProgress",
+              message: "The access-code creation is still being applied.",
+              requestId: accessCodeAttemptId,
+            },
+            { status: 409 }
+          );
+        }
+        if (requests.length === 2) {
+          retryableAttempts += 1;
+          return Response.json(
+            {
+              _tag: "CliServiceUnavailable",
+              message: "The administration API is temporarily unavailable.",
+            },
+            { status: 503 }
+          );
+        }
+        if (requests.length === 3) {
+          return Response.json(createdAccessCodeOutcome);
+        }
+        terminalAttempts += 1;
+        if (terminalAttempts === 1) {
+          return Response.json(
+            {
+              _tag: "CliMutationUncertain",
+              message: "The access-code creation outcome is uncertain.",
+            },
+            { status: 409 }
+          );
+        }
+        return Response.json(
+          {
+            _tag: "CliMutationRejected",
+            message: "The standalone access-code request was rejected.",
+          },
+          { status: 409 }
+        );
+      },
+    });
+
+    try {
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-access-code-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const [created, uncertain, rejected] = await Effect.gen(function* () {
+        const client = yield* WorkspaceAdminApiClient;
+        const created = yield* client.createStandaloneAccessCode(
+          accessToken,
+          accessCodeAttemptId,
+          accessCodeInput
+        );
+        const uncertain = yield* client
+          .createStandaloneAccessCode(
+            accessToken,
+            accessCodeAttemptId,
+            accessCodeInput
+          )
+          .pipe(Effect.flip);
+        const rejected = yield* client
+          .createStandaloneAccessCode(
+            accessToken,
+            accessCodeAttemptId,
+            accessCodeInput,
+            cleanupTargetAttemptId
+          )
+          .pipe(Effect.flip);
+        return [created, uncertain, rejected] as const;
+      }).pipe(
+        Effect.provide(clientLayer),
+        Effect.provideService(Clock.Clock, {
+          currentTimeMillisUnsafe: () => elapsedRetryMilliseconds,
+          currentTimeMillis: Effect.sync(() => elapsedRetryMilliseconds),
+          currentTimeNanosUnsafe: () =>
+            BigInt(elapsedRetryMilliseconds) * 1_000_000n,
+          currentTimeNanos: Effect.sync(
+            () => BigInt(elapsedRetryMilliseconds) * 1_000_000n
+          ),
+          sleep: (duration) =>
+            Effect.sync(() => {
+              elapsedRetryMilliseconds += Duration.toMillis(duration);
+            }),
+        }),
+        Effect.runPromise
+      );
+
+      expect(created).toMatchObject({ outcome: "created", pin: "7654321" });
+      expect(uncertain).toBeInstanceOf(CliMutationUncertain);
+      expect(rejected).toBeInstanceOf(CliMutationRejected);
+      expect(retryableAttempts).toBe(1);
+      expect(elapsedRetryMilliseconds).toBeGreaterThanOrEqual(500);
+      expect(requests).toHaveLength(5);
+      expect(cleanupTargetAttemptId).not.toBe(accessCodeAttemptId);
+      expect(
+        requests.map(({ method, path, payload }) => ({ method, path, payload }))
+      ).toEqual([
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: { attemptId: accessCodeAttemptId, input: accessCodeInput },
+        },
+        {
+          method: "POST",
+          path: "/api/v1/cli/access-codes",
+          payload: {
+            attemptId: accessCodeAttemptId,
+            input: accessCodeInput,
+            providerCredentialRemovedAttemptId: cleanupTargetAttemptId,
+          },
+        },
+      ]);
+      expect(
+        requests.some(({ payload }) =>
+          Object.hasOwn(payload as object, "providerCredentialRemoved")
+        )
+      ).toBe(false);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("decodes the cleanup-required target and forwards the exact attempt id", async () => {
+    const payloads: Array<Record<string, unknown>> = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        payloads.push(await request.json());
+        return Response.json(
+          {
+            _tag: "CliStandaloneAccessCodeCleanupRequired",
+            message:
+              "A previous ambiguous attempt still occupies this window. Remove the possible credential at the lock or verify it is absent, then confirm the cleanup.",
+            cleanupTarget: {
+              attemptId: cleanupTargetAttemptId,
+              name: "Booth A",
+            },
+          },
+          { status: 409 }
+        );
+      },
+    });
+
+    try {
+      const accessToken = Redacted.make(
+        Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+      );
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-cleanup-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const error = await WorkspaceAdminApiClient.pipe(
+        Effect.flatMap((client) =>
+          client.createStandaloneAccessCode(
+            accessToken,
+            accessCodeAttemptId,
+            accessCodeInput,
+            cleanupTargetAttemptId
+          )
+        ),
+        Effect.flip,
+        Effect.provide(clientLayer),
+        Effect.runPromise
+      );
+
+      expect(error instanceof CliStandaloneAccessCodeCleanupRequired).toBe(
+        true
+      );
+      if (!(error instanceof CliStandaloneAccessCodeCleanupRequired)) return;
+      expect(error.cleanupTarget.attemptId).toBe(cleanupTargetAttemptId);
+      expect(error.cleanupTarget.name).toBe(cleanupTargetName);
+      expect(payloads).toHaveLength(1);
+      expect(payloads[0]?.attemptId).toBe(accessCodeAttemptId);
+      expect(payloads[0]?.providerCredentialRemovedAttemptId).toBe(
+        cleanupTargetAttemptId
+      );
+      expect("providerCredentialRemoved" in (payloads[0] ?? {})).toBe(false);
+    } finally {
+      server.stop(true);
+    }
+  });
+
   test("sanitizes transport errors that could contain authentication secrets", async () => {
     const code = Schema.decodeUnknownSync(CliAuthenticationCode)(
       "s".repeat(43)
@@ -985,6 +1261,70 @@ describe("WorkspaceAdminApiClient", () => {
 
       expect(error).toBeInstanceOf(CliApiRequestError);
       expect(JSON.stringify(error)).not.toContain(code);
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("passes a confirmed reconciled replay through as a typed error", async () => {
+    const requests: Array<unknown> = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        requests.push({
+          payload: await request.json(),
+          authorization: request.headers.get("authorization"),
+        });
+        return Response.json(
+          {
+            _tag: "CliStandaloneAccessCodeReconciled",
+            message:
+              "Your confirmed cleanup was recorded for the earlier ambiguous attempt, which created no access code. Run the same command again to create the code.",
+          },
+          { status: 409 }
+        );
+      },
+    });
+
+    try {
+      const accessToken = Redacted.make(
+        Schema.decodeUnknownSync(CliAccessToken)("a".repeat(43))
+      );
+      const clientLayer = WorkspaceAdminApiClient.Default.pipe(
+        Layer.provide(FetchHttpClient.layer),
+        Layer.provide(
+          Layer.succeed(DhwConfig, {
+            baseUrl: new URL(`http://127.0.0.1:${server.port}`),
+            requestHeaders: {},
+            isCi: true,
+            stateDirectory: "/tmp/dhw-reconciled-client-test",
+            updateChecksDisabled: true,
+          })
+        )
+      );
+      const error = await WorkspaceAdminApiClient.pipe(
+        Effect.flatMap((client) =>
+          client.createStandaloneAccessCode(
+            accessToken,
+            accessCodeAttemptId,
+            accessCodeInput,
+            cleanupTargetAttemptId
+          )
+        ),
+        Effect.flip,
+        Effect.provide(clientLayer),
+        Effect.runPromise
+      );
+
+      expect(error).toBeInstanceOf(CliStandaloneAccessCodeReconciled);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        payload: {
+          attemptId: accessCodeAttemptId,
+          input: accessCodeInput,
+          providerCredentialRemovedAttemptId: cleanupTargetAttemptId,
+        },
+      });
     } finally {
       server.stop(true);
     }
