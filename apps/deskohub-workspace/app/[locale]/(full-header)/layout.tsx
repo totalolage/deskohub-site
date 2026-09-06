@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
+import { PageNavigationBoundary } from "@/shared/components/page-navigation-boundary";
 import { PublicSiteFooter } from "@/shared/components/public-site-footer";
 import { SiteHeader } from "@/shared/components/site-header";
 import { getSiteHeaderConfig } from "@/shared/components/site-header-config";
@@ -23,7 +24,7 @@ export default async function FullHeaderLayout({
       <SkipLink label={m.skipToMainContent({}, { locale })} />
       <SiteHeader currentLocale={locale} {...siteHeaderConfig} />
       <div id="main-content" tabIndex={-1}>
-        {children}
+        <PageNavigationBoundary>{children}</PageNavigationBoundary>
       </div>
       <PublicSiteFooter />
     </>

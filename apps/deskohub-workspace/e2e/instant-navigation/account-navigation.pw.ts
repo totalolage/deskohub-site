@@ -1,5 +1,6 @@
 import { instant } from "@next/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import { captureAccountReview } from "../account/review-screenshots";
 import {
   enablePreviewAccess,
   expectPublicSiteShell,
@@ -72,6 +73,11 @@ async function navigateToAccount(page: Page, baseURL: string | undefined) {
       await expect(
         status.locator('[data-slot="skeleton"]').first()
       ).toBeVisible();
+      await captureAccountReview(
+        page,
+        requireBaseUrl(baseURL),
+        "account-loading-desktop"
+      );
       await expect(
         page.getByRole("heading", { name: signInHeading })
       ).toHaveCount(0);

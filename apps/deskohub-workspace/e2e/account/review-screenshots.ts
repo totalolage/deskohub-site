@@ -6,10 +6,12 @@ import { workspaceE2ETimeouts } from "../timeouts";
 
 export type AccountReviewTarget =
   | "completion-mobile375x900"
+  | "account-loading-desktop"
   | "linked-desktop1440x1000"
   | "linked-history-desktop"
   | "support-desktop"
   | "sign-in-accepted-desktop"
+  | "sign-in-pending-desktop"
   | "sign-in-desktop"
   | "callback-failed-desktop"
   | "deleted-desktop";
@@ -25,6 +27,11 @@ const accountReviewTargetMetadata = {
     filename: "completion-mobile375x900.png",
     path: "/en-US/account",
     viewport: { height: 900, width: 375 },
+  },
+  "account-loading-desktop": {
+    filename: "account-loading-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
   },
   "linked-desktop1440x1000": {
     filename: "linked-desktop1440x1000.png",
@@ -43,6 +50,11 @@ const accountReviewTargetMetadata = {
   },
   "sign-in-accepted-desktop": {
     filename: "sign-in-accepted-desktop.png",
+    path: "/en-US/auth/sign-in",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "sign-in-pending-desktop": {
+    filename: "sign-in-pending-desktop.png",
     path: "/en-US/auth/sign-in",
     viewport: { height: 1000, width: 1440 },
   },
@@ -71,26 +83,29 @@ const accountReviewArtifactDirectory = resolve(
 const accountReviewCaptureFailureMessage =
   "Account review screenshot capture failed";
 
-/**
- * Callers own the synthetic browser context and account state. This helper only
- * emits the explicitly requested PNG; it creates no browser, auth, database,
- * cookie, trace, HAR, or logging state.
- */
-export const captureAccountReview = async (
+const accountReviewCaptureFailure = () =>
+  new Error(accountReviewCaptureFailureMessage);
+
+const remainingAccountReviewBudget = (deadline: number): number => {
+  const remaining = deadline - Date.now();
+  if (!Number.isFinite(remaining) || remaining <= 0)
+    throw accountReviewCaptureFailure();
+  return remaining;
+};
+
+const validateAccountReviewPage = (
   page: Playwright.Page,
   baseUrl: string,
-  target: AccountReviewTarget
-): Promise<void> => {
-  const metadata = accountReviewTargetMetadata[target];
-  if (!metadata) throw new Error(accountReviewCaptureFailureMessage);
-
+  target: AccountReviewTarget,
+  metadata: AccountReviewTargetMetadata
+): void => {
   let pageUrl: URL;
   let base: URL;
   try {
     pageUrl = new URL(page.url());
     base = new URL(baseUrl);
   } catch {
-    throw new Error(accountReviewCaptureFailureMessage);
+    throw accountReviewCaptureFailure();
   }
 
   const queryIsAllowed =
@@ -103,29 +118,65 @@ export const captureAccountReview = async (
     !queryIsAllowed ||
     pageUrl.hash !== ""
   ) {
-    throw new Error(accountReviewCaptureFailureMessage);
+    throw accountReviewCaptureFailure();
   }
+};
+
+const captureAccountReviewPixels = async (
+  page: Playwright.Page,
+  baseUrl: string,
+  target: AccountReviewTarget,
+  deadline: number
+): Promise<void> => {
+  const metadata = accountReviewTargetMetadata[target];
+  if (!metadata) throw accountReviewCaptureFailure();
+
+  validateAccountReviewPage(page, baseUrl, target, metadata);
+  await waitForDocumentFonts(page, deadline);
+  remainingAccountReviewBudget(deadline);
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path: resolve(accountReviewArtifactDirectory, metadata.filename),
+    timeout: remainingAccountReviewBudget(deadline),
+  });
+  remainingAccountReviewBudget(deadline);
+};
+
+/**
+ * Callers own the synthetic browser context and account state. This helper only
+ * emits the explicitly requested PNG; it creates no browser, auth, database,
+ * cookie, trace, HAR, or logging state.
+ */
+export const captureAccountReview = async (
+  page: Playwright.Page,
+  baseUrl: string,
+  target: AccountReviewTarget,
+  options: { readonly deadline?: number } = {}
+): Promise<void> => {
+  const deadline =
+    options.deadline ?? Date.now() + workspaceE2ETimeouts.browserAction;
+  const metadata = accountReviewTargetMetadata[target];
+  if (!metadata) throw accountReviewCaptureFailure();
+
+  validateAccountReviewPage(page, baseUrl, target, metadata);
 
   let previousViewport: Playwright.ViewportSize | null;
   try {
     previousViewport = page.viewportSize();
   } catch {
-    throw new Error(accountReviewCaptureFailureMessage);
+    throw accountReviewCaptureFailure();
   }
-  if (previousViewport === null)
-    throw new Error(accountReviewCaptureFailureMessage);
+  if (previousViewport === null) throw accountReviewCaptureFailure();
 
   let captureFailed = false;
   try {
+    remainingAccountReviewBudget(deadline);
     await mkdir(accountReviewArtifactDirectory, { recursive: true });
+    remainingAccountReviewBudget(deadline);
     await page.setViewportSize(metadata.viewport);
-    await waitForDocumentFonts(page);
-    await page.screenshot({
-      animations: "disabled",
-      fullPage: true,
-      path: resolve(accountReviewArtifactDirectory, metadata.filename),
-      timeout: workspaceE2ETimeouts.browserAction,
-    });
+    remainingAccountReviewBudget(deadline);
+    await captureAccountReviewPixels(page, baseUrl, target, deadline);
   } catch {
     captureFailed = true;
   } finally {
@@ -136,22 +187,127 @@ export const captureAccountReview = async (
     }
   }
 
-  if (captureFailed) throw new Error(accountReviewCaptureFailureMessage);
+  if (captureFailed) throw accountReviewCaptureFailure();
 };
 
-const waitForDocumentFonts = async (page: Playwright.Page): Promise<void> => {
+const waitForDocumentFonts = async (
+  page: Playwright.Page,
+  deadline: number
+): Promise<void> => {
+  const timeout = remainingAccountReviewBudget(deadline);
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
       page.evaluate(() => document.fonts.ready.then(() => undefined)),
       new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
-          () => reject(new Error(accountReviewCaptureFailureMessage)),
-          workspaceE2ETimeouts.browserAction
+          () => reject(accountReviewCaptureFailure()),
+          timeout
         );
       }),
     ]);
+    remainingAccountReviewBudget(deadline);
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
+};
+
+export const withSignInPendingReview = async (
+  page: Playwright.Page,
+  baseUrl: string,
+  runCase: () => Promise<void>
+): Promise<void> => {
+  const pendingMetadata =
+    accountReviewTargetMetadata["sign-in-pending-desktop"];
+  let fullHandlerPromise: Promise<void> | undefined;
+  let reviewFailed = false;
+  let runCaseFailed = false;
+  let runCaseFailure: unknown;
+  let wrapperFailed = false;
+  let previousViewport: Playwright.ViewportSize | null = null;
+  let routeInstalled = false;
+  const handleMagicLinkRoute: Parameters<Playwright.Page["route"]>[1] = (
+    route,
+    request
+  ) => {
+    const deadline = Date.now() + workspaceE2ETimeouts.browserAction;
+    const handlerPromise = (async () => {
+      try {
+        if (request.method() !== "POST") {
+          reviewFailed = true;
+          return;
+        }
+        await page.locator("#account-sign-in-submit[aria-busy=true]").waitFor({
+          state: "visible",
+          timeout: remainingAccountReviewBudget(deadline),
+        });
+        remainingAccountReviewBudget(deadline);
+        await captureAccountReviewPixels(
+          page,
+          baseUrl,
+          "sign-in-pending-desktop",
+          deadline
+        );
+      } catch {
+        reviewFailed = true;
+      } finally {
+        try {
+          await route.continue();
+        } catch {
+          reviewFailed = true;
+        }
+      }
+    })();
+    fullHandlerPromise = handlerPromise;
+    return handlerPromise;
+  };
+
+  try {
+    previousViewport = page.viewportSize();
+    if (previousViewport === null) throw accountReviewCaptureFailure();
+    await mkdir(accountReviewArtifactDirectory, { recursive: true });
+    await page.setViewportSize(pendingMetadata.viewport);
+    const magicLinkUrl = new URL(
+      "/api/auth/sign-in/magic-link",
+      baseUrl
+    ).toString();
+    await page.route(magicLinkUrl, handleMagicLinkRoute, { times: 1 });
+    routeInstalled = true;
+    try {
+      await runCase();
+    } catch (cause) {
+      runCaseFailed = true;
+      runCaseFailure = cause;
+    }
+    if (routeInstalled) {
+      try {
+        await page.unroute(magicLinkUrl, handleMagicLinkRoute);
+      } catch {
+        wrapperFailed = true;
+      }
+      if (fullHandlerPromise) {
+        try {
+          await fullHandlerPromise;
+        } catch {
+          wrapperFailed = true;
+        }
+      } else {
+        reviewFailed = true;
+      }
+    }
+  } catch {
+    wrapperFailed = true;
+  } finally {
+    if (previousViewport !== null) {
+      try {
+        await page.setViewportSize(previousViewport);
+      } catch {
+        wrapperFailed = true;
+      }
+    }
+  }
+
+  if (runCaseFailed) throw runCaseFailure;
+  if (wrapperFailed || reviewFailed || !fullHandlerPromise)
+    throw accountReviewCaptureFailure();
 };

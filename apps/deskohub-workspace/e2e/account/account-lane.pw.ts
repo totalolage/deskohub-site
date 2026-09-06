@@ -22,6 +22,7 @@ import { makeMagicLinkRateBudget } from "./rate-budget";
 import {
   type AccountReviewTarget,
   captureAccountReview,
+  withSignInPendingReview,
 } from "./review-screenshots";
 import type { WorkspaceE2EAccountDeletionHandoff } from "./types";
 
@@ -177,15 +178,31 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               timeoutMs: workspaceE2ETimeouts.providerTransition,
             }
           : undefined;
-      await runEffect(
-        runWorkspaceE2EAccountCase({
-          journalRef: accountLane.journalRef,
-          reportFailure: writeWorkspaceE2EFailureAnnotation,
-          session: accountLane.session,
-          testCase: selected,
-          ...(verifyPage ? { verifyPage } : {}),
-        })
-      );
+      const runCase = () =>
+        runEffect(
+          runWorkspaceE2EAccountCase({
+            journalRef: accountLane.journalRef,
+            reportFailure: writeWorkspaceE2EFailureAnnotation,
+            session: accountLane.session,
+            testCase: selected,
+            ...(verifyPage ? { verifyPage } : {}),
+          })
+        );
+
+      if (caseId === "account-sign-in-form") {
+        const pages = browser.contexts().flatMap((context) => context.pages());
+        if (pages.length !== 1)
+          throw new Error(accountReviewCaptureFailureMessage);
+        const page = pages[0];
+        if (!page) throw new Error(accountReviewCaptureFailureMessage);
+        await withSignInPendingReview(
+          page,
+          accountLane.config.baseUrl,
+          runCase
+        );
+      } else {
+        await runCase();
+      }
 
       const target = accountReviewTargetByCaseId[caseId];
       if (!target) return;
