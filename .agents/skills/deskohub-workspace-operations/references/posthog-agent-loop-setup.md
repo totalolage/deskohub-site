@@ -15,6 +15,9 @@ install -Dm755 \
   .agents/skills/deskohub-workspace-operations/scripts/posthog-configure-dispatcher \
   /home/dev/.local/libexec/deskohub-posthog-configure-dispatcher
 install -Dm755 \
+  .agents/skills/deskohub-workspace-operations/scripts/posthog-worker-model \
+  /home/dev/.local/libexec/deskohub-posthog-worker-model
+install -Dm755 \
   .agents/skills/deskohub-workspace-operations/scripts/posthog-create-worker \
   /home/dev/.local/libexec/deskohub-posthog-create-worker
 install -Dm644 \
