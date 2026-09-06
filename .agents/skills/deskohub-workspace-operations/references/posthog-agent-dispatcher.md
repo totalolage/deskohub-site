@@ -16,6 +16,8 @@ Posted by: PostHog dispatcher agent (posthog-agent-dispatcher.md)
 
 ## Resume answered questions
 
+Before every worker resume, run `/home/dev/.local/libexec/deskohub-posthog-worker-model <thread-id>`. Continue with `t3 send` only after it succeeds. This refreshes the thread from OpenCode's current `orchestrator` model and variant, including when reconciling stopped workers below.
+
 1. Find open issues containing both `<!-- posthog-agent:human-needed -->` and `<!-- t3-worker-thread:`.
 2. Anchor the search to the latest comment containing `<!-- posthog-agent:human-needed -->`. Find the first later comment from the exact GitHub login `totalolage` that contains none of the automation markers `<!-- posthog-agent:` or `<!-- t3-worker-thread:` and has no matching `<!-- posthog-agent:consumed-comment:<comment-id> -->` marker. The response needs no codeword.
 3. Send that comment to the recorded worker thread with `/home/dev/.local/bin/t3 send`, `--base-dir /home/dev/.t3`, `--yes`, and idempotency key `github-comment-<comment-id>`.
@@ -62,7 +64,7 @@ The Workspace logging pipeline censors production annotations. Keep credentials,
 
 ## Start unattended workers
 
-List every open issue with its full body; title-and-label-only listings do not expose hidden source markers. Find every issue containing `<!-- posthog-log-uuid:`, `<!-- posthog-error-issue:`, `<!-- posthog-error-event:`, or `<!-- posthog-manual-issue:` that has no `<!-- t3-worker-thread:` marker and no linked open pull request. Start one worker per issue. The helper selects the OpenCode `orchestrator` agent:
+List every open issue with its full body; title-and-label-only listings do not expose hidden source markers. Find every issue containing `<!-- posthog-log-uuid:`, `<!-- posthog-error-issue:`, `<!-- posthog-error-event:`, or `<!-- posthog-manual-issue:` that has no `<!-- t3-worker-thread:` marker and no linked open pull request. Start one worker per issue. The helper selects the OpenCode `orchestrator` agent and resolves its current model and variant through `opencode debug agent orchestrator` in the project directory:
 
 ```bash
 /home/dev/.local/libexec/deskohub-posthog-create-worker <number>

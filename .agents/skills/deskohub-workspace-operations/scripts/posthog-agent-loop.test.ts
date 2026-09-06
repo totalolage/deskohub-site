@@ -9,6 +9,7 @@ const dispatcherConfigurer = join(
   "posthog-configure-dispatcher"
 );
 const workerCreator = join(import.meta.dir, "posthog-create-worker");
+const workerModel = join(import.meta.dir, "posthog-worker-model");
 const dispatcherInstructions = join(
   import.meta.dir,
   "../references/posthog-agent-dispatcher.md"
@@ -113,13 +114,26 @@ printf '%s' "$1" > "$POSTHOG_FAKE_CONFIGURED_THREAD"
   };
 }
 
-async function runApiScript(script: string, args: string[]) {
+async function runApiScript(
+  script: string,
+  args: string[],
+  variant: string | null = "medium"
+) {
   const directory = await mkdtemp(join(tmpdir(), "posthog-api-script-"));
   temporaryDirectories.push(directory);
   const curlArguments = join(directory, "curl-arguments");
   const payloadPath = join(directory, "payload");
   const fakeT3 = join(directory, "t3");
   const fakeCurl = join(directory, "curl");
+  const fakeOpenCode = join(directory, "opencode");
+  await Bun.write(
+    fakeOpenCode,
+    `#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == "debug agent orchestrator" ]]
+printf '%s\\n' '{"model":{"providerID":"test-provider","modelID":"configured-model"},"variant":${JSON.stringify(variant)}}'
+`
+  );
 
   await Bun.write(
     fakeT3,
@@ -149,7 +163,11 @@ cat >/dev/null
 printf '{"sequence":42}\n'
 `
   );
-  await Promise.all([chmod(fakeT3, 0o755), chmod(fakeCurl, 0o755)]);
+  await Promise.all([
+    chmod(fakeT3, 0o755),
+    chmod(fakeCurl, 0o755),
+    chmod(fakeOpenCode, 0o755),
+  ]);
 
   const process = Bun.spawn([script, ...args], {
     env: {
@@ -159,6 +177,9 @@ printf '{"sequence":42}\n'
       CURL_FAKE_PAYLOAD: payloadPath,
       T3_BASE_DIR: directory,
       T3_BIN: fakeT3,
+      OPENCODE_BIN: fakeOpenCode,
+      POSTHOG_PROJECT_CWD: directory,
+      POSTHOG_WORKER_MODEL: workerModel,
     },
     stderr: "pipe",
     stdout: "pipe",
@@ -286,15 +307,35 @@ describe("posthog-agent-loop", () => {
     });
     expect(payload.modelSelection).toEqual({
       instanceId: "opencode",
-      model: "openai/gpt-5.6-sol",
+      model: "test-provider/configured-model",
       options: [
-        { id: "variant", value: "high" },
         { id: "agent", value: "orchestrator" },
+        { id: "variant", value: "medium" },
       ],
     });
     expect(payload.bootstrap.createThread.modelSelection).toEqual(
       payload.modelSelection
     );
+    expect(curlArguments).not.toContain("fake-token");
+  });
+
+  test("refreshes an existing worker from agent config without forcing a variant", async () => {
+    const { exitCode, payload, stderr, curlArguments } = await runApiScript(
+      workerModel,
+      ["posthog-worker-issue-303"],
+      null
+    );
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(payload).toMatchObject({
+      type: "thread.meta.update",
+      threadId: "posthog-worker-issue-303",
+      modelSelection: {
+        instanceId: "opencode",
+        model: "test-provider/configured-model",
+        options: [{ id: "agent", value: "orchestrator" }],
+      },
+    });
     expect(curlArguments).not.toContain("fake-token");
   });
 });

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# T3 requires an explicit model, so resolve it through OpenCode's config loader.
+cd "${POSTHOG_PROJECT_CWD:-/home/dev/Projects/deskohub}"
+selection="$("${OPENCODE_BIN:-/home/dev/.local/bin/opencode}" debug agent orchestrator | jq -ce '
+  if (.model.providerID | type == "string" and length > 0)
+    and (.model.modelID | type == "string" and length > 0)
+  then {
+    instanceId: "opencode",
+    model: (.model.providerID + "/" + .model.modelID),
+    options: ([{id: "agent", value: "orchestrator"}] +
+      if (.variant | type == "string" and length > 0)
+      then [{id: "variant", value: .variant}] else [] end)
+  } else error("orchestrator must define a model") end
+')"
+
+if [[ $# == 0 ]]; then
+  printf '%s\n' "$selection"
+  exit 0
+fi
+
+thread_id="$1"
+t3_bin="${T3_BIN:-/home/dev/.local/bin/t3}"
+t3_base_dir="${T3_BASE_DIR:-/home/dev/.t3}"
+origin="$("$t3_bin" session --base-dir "$t3_base_dir" | jq -er '.target.httpBaseUrl')"
+token="$("$t3_bin" auth session issue --base-dir "$t3_base_dir" \
+  --ttl 10m --label "PostHog worker model" --subject posthog-cron --token-only)"
+payload="$(jq -cn --arg thread "$thread_id" --arg command "$(cat /proc/sys/kernel/random/uuid)" \
+  --argjson selection "$selection" '{
+    type: "thread.meta.update", commandId: $command,
+    threadId: $thread, modelSelection: $selection
+  }')"
+response="$("${CURL_BIN:-curl}" --fail-with-body --silent --show-error \
+  --config - --header "Content-Type: application/json" --data-binary "$payload" \
+  "$origin/api/orchestration/dispatch" <<EOF
+header = "Authorization: Bearer $token"
+EOF
+)"
+unset token
+jq -e '.sequence | numbers' <<<"$response" >/dev/null
