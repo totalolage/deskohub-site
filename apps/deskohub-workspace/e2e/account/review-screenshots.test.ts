@@ -36,6 +36,13 @@ const validTargets = [
     viewport: { height: 1000, width: 1440 },
   },
   {
+    filename: "sign-in-handoff-desktop.png",
+    path: ["/en-US/account", "/en-US/auth/sign-in"],
+    query: "",
+    target: "sign-in-handoff-desktop",
+    viewport: { height: 1000, width: 1440 },
+  },
+  {
     filename: "linked-desktop1440x1000.png",
     path: "/en-US/account",
     query: "",
@@ -93,7 +100,7 @@ const validTargets = [
   },
 ] as const satisfies ReadonlyArray<{
   readonly filename: `${string}.png`;
-  readonly path: string;
+  readonly path: string | readonly string[];
   readonly query: string;
   readonly target: AccountReviewTarget;
   readonly viewport: Playwright.ViewportSize;
@@ -348,9 +355,19 @@ describe("account review screenshot capture", () => {
       url: `${baseUrl}/en-US/auth/sign-in`,
     },
     {
+      name: "a sign-in handoff at a foreign origin",
+      target: "sign-in-handoff-desktop",
+      url: `https://other.example.test/en-US/auth/sign-in`,
+    },
+    {
       name: "a token query",
       target: "completion-mobile375x900",
       url: `${baseUrl}/en-US/account?token=synthetic-secret-token`,
+    },
+    {
+      name: "a sign-in handoff with a query",
+      target: "sign-in-handoff-desktop",
+      url: `${baseUrl}/en-US/auth/sign-in?token=synthetic-secret-token`,
     },
     {
       name: "a callback query with another parameter",
@@ -399,31 +416,36 @@ describe("account review screenshot capture", () => {
   });
 
   for (const expected of validTargets) {
-    test(`captures fixed metadata for ${expected.target}`, async () => {
-      const fakePage = makeFakePage(
-        `${baseUrl}${expected.path}${expected.query}`
-      );
+    const expectedPaths = Array.isArray(expected.path)
+      ? expected.path
+      : [expected.path];
+    for (const expectedPath of expectedPaths) {
+      test(`captures fixed metadata for ${expected.target} at ${expectedPath}`, async () => {
+        const fakePage = makeFakePage(
+          `${baseUrl}${expectedPath}${expected.query}`
+        );
 
-      await captureAccountReview(fakePage.page, baseUrl, expected.target);
+        await captureAccountReview(fakePage.page, baseUrl, expected.target);
 
-      expect(fakePage.screenshotCalls).toHaveLength(1);
-      expect(fakePage.screenshotCalls[0]).toEqual({
-        animations: "disabled",
-        fullPage: true,
-        path: resolve(accountReviewArtifactDirectory, expected.filename),
-        timeout: expect.any(Number),
+        expect(fakePage.screenshotCalls).toHaveLength(1);
+        expect(fakePage.screenshotCalls[0]).toEqual({
+          animations: "disabled",
+          fullPage: true,
+          path: resolve(accountReviewArtifactDirectory, expected.filename),
+          timeout: expect.any(Number),
+        });
+        expect(fakePage.screenshotCalls[0]?.timeout).toBeGreaterThan(0);
+        expect(fakePage.screenshotCalls[0]?.timeout).toBeLessThanOrEqual(
+          workspaceE2ETimeouts.browserAction
+        );
+        expect(fakePage.viewportChanges).toEqual([
+          expected.viewport,
+          initialViewport,
+        ]);
+        expect(fakePage.currentViewport()).toEqual(initialViewport);
+        expect(fakePage.fontReadyCalls()).toBe(1);
       });
-      expect(fakePage.screenshotCalls[0]?.timeout).toBeGreaterThan(0);
-      expect(fakePage.screenshotCalls[0]?.timeout).toBeLessThanOrEqual(
-        workspaceE2ETimeouts.browserAction
-      );
-      expect(fakePage.viewportChanges).toEqual([
-        expected.viewport,
-        initialViewport,
-      ]);
-      expect(fakePage.currentViewport()).toEqual(initialViewport);
-      expect(fakePage.fontReadyCalls()).toBe(1);
-    });
+    }
   }
 
   test("allows the closed invalid-token callback query", async () => {

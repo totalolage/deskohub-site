@@ -1,7 +1,6 @@
 import "server-only";
 
 import { Effect, Result } from "effect";
-import { redirect } from "next/navigation";
 import { cache } from "react";
 import { resolveCurrentCustomerAccount } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
@@ -19,6 +18,7 @@ import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
  */
 export type CustomerAccountPageState =
   | { readonly kind: "unavailable" }
+  | { readonly kind: "unauthenticated" }
   | { readonly kind: "authenticated-unavailable"; readonly email: string }
   | { readonly kind: "completion-required"; readonly email: string }
   | {
@@ -33,7 +33,7 @@ export type CustomerAccountPageState =
 const unavailable = (): CustomerAccountPageState => ({ kind: "unavailable" });
 
 export const loadCustomerAccountPage = cache(
-  async (locale: Locale): Promise<CustomerAccountPageState> => {
+  async (_locale: Locale): Promise<CustomerAccountPageState> => {
     const session = await Effect.flatMap(
       CustomerAuthentication,
       (authentication) => authentication.currentUser
@@ -48,9 +48,7 @@ export const loadCustomerAccountPage = cache(
     if (Result.isFailure(session)) return unavailable();
 
     const user = session.success;
-    if (!user) {
-      redirect(`/${locale}/auth/sign-in`);
-    }
+    if (!user) return { kind: "unauthenticated" };
     if (user.deletionRequested) {
       return { kind: "deletion-pending", email: user.email };
     }
@@ -101,7 +99,7 @@ export const loadCustomerAccountPage = cache(
 
     const failure = account.failure;
     if (failure.reason === "unauthenticated") {
-      redirect(`/${locale}/auth/sign-in`);
+      return { kind: "unauthenticated" };
     }
     if (
       failure.reason === "link-required" &&

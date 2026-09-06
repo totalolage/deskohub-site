@@ -1,6 +1,7 @@
 import Interpolate from "@doist/react-interpolate";
 import { UserRound } from "lucide-react";
 import Link from "next/link";
+import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
 import { ProfileForm } from "@/features/account/components/profile-form";
 import { ReservationHistory } from "@/features/account/components/reservation-history";
@@ -8,10 +9,11 @@ import { SessionRefresh } from "@/features/account/components/session-refresh";
 import { SignOutButton } from "@/features/account/components/sign-out-button";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { type Locale, m } from "@/features/i18n";
+import { StickySection } from "@/shared/components/sticky-section";
 import { Card, CardContent } from "@/shared/components/ui/card";
 
 const pageShellClassName =
-  "relative min-h-screen overflow-hidden bg-[#f4f3ef] px-4 pb-24 pt-[calc(var(--site-header-height)+3rem)] sm:px-6 lg:pt-[calc(var(--site-header-height)+4.5rem)]";
+  "relative min-h-screen overflow-clip bg-[#f4f3ef] px-4 pb-24 pt-[calc(var(--site-header-height)+3rem)] sm:px-6 lg:pt-[calc(var(--site-header-height)+4.5rem)]";
 const pageBackdropClassName =
   "pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_8%,rgba(236,164,35,0.19),transparent_31%),radial-gradient(circle_at_92%_40%,rgba(0,223,153,0.11),transparent_28%)]";
 const cardClassName =
@@ -24,6 +26,10 @@ export function AccountPage({
   readonly locale: Locale;
   readonly state: CustomerAccountPageState;
 }) {
+  if (state.kind === "unauthenticated") {
+    return <AccountSignInRedirect locale={locale} />;
+  }
+
   return (
     <main className={pageShellClassName}>
       <div className={pageBackdropClassName} />
@@ -37,7 +43,7 @@ export function AccountPage({
 
 function renderState(
   locale: Locale,
-  state: CustomerAccountPageState
+  state: Exclude<CustomerAccountPageState, { readonly kind: "unauthenticated" }>
 ): React.ReactNode {
   switch (state.kind) {
     case "unavailable":
@@ -83,20 +89,24 @@ function renderState(
             title={m.accountTitle({}, { locale })}
           />
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(17rem,0.72fr)_minmax(0,1.28fr)]">
-            <Card className={cardClassName}>
-              <CardContent className="p-6 sm:p-8">
-                <h2 className="mb-6 text-2xl text-navy-blue">
-                  {m.accountProfileTitle({}, { locale })}
-                </h2>
-                <ProfileForm
-                  mode="edit"
-                  locale={locale}
-                  email={state.email}
-                  profile={state.profile}
-                />
-              </CardContent>
-            </Card>
-            <ReservationHistory locale={locale} history={state.history} />
+            <StickySection>
+              <Card className={cardClassName}>
+                <CardContent className="p-6 sm:p-8">
+                  <h2 className="mb-6 text-2xl text-navy-blue">
+                    {m.accountProfileTitle({}, { locale })}
+                  </h2>
+                  <ProfileForm
+                    mode="edit"
+                    locale={locale}
+                    email={state.email}
+                    profile={state.profile}
+                  />
+                </CardContent>
+              </Card>
+            </StickySection>
+            <StickySection>
+              <ReservationHistory locale={locale} history={state.history} />
+            </StickySection>
           </div>
           <DeleteAccountCard
             email={state.email}

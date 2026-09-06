@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
 import type { CustomerAccountId } from "@/features/account/customer-account";
 
 let currentUserEffect: Effect.Effect<
@@ -44,6 +44,9 @@ let resolveEffect: Effect.Effect<
   { readonly accountId: CustomerAccountId; readonly dotyposCustomerId: string },
   { readonly reason: string; readonly linkReason?: string }
 >;
+let resolverCalls = 0;
+let profileLoadCalls = 0;
+let historyLoadCalls = 0;
 
 const Resolver = Context.Service<
   Resolver,
@@ -91,7 +94,10 @@ const profileLoadEffect = Effect.succeed({
 });
 
 const ProfileLayer = Layer.succeed(Profile, {
-  load: () => profileLoadEffect,
+  load: () => {
+    profileLoadCalls += 1;
+    return profileLoadEffect;
+  },
 });
 Object.assign(Profile, { Live: ProfileLayer });
 
@@ -114,13 +120,12 @@ const History = Context.Service<
 >()("@test/AccountReservationHistory");
 
 const HistoryLayer = Layer.succeed(History, {
-  load: () => historyEffect,
+  load: () => {
+    historyLoadCalls += 1;
+    return historyEffect;
+  },
 });
 Object.assign(History, { Live: HistoryLayer });
-
-class RedirectError extends Data.TaggedError("RedirectError")<{
-  readonly to: string;
-}> {}
 
 mock.module(
   "@/features/account/backend/customer-authentication.service",
@@ -131,7 +136,10 @@ mock.module(
 mock.module(
   "@/features/account/backend/customer-account-resolver.service",
   () => ({
-    resolveCurrentCustomerAccount: Effect.suspend(() => resolveEffect),
+    resolveCurrentCustomerAccount: Effect.suspend(() => {
+      resolverCalls += 1;
+      return resolveEffect;
+    }),
     CustomerAccountResolver: Resolver,
   })
 );
@@ -144,14 +152,6 @@ mock.module(
     CustomerReservationHistoryService: History,
   })
 );
-mock.module("next/navigation", () => ({
-  redirect: (to: string) => {
-    throw new RedirectError({ to });
-  },
-  unstable_rethrow: (cause: unknown) => {
-    throw cause;
-  },
-}));
 mock.module("@/shared/backend/workspace-effect", () => ({
   runWorkspaceEffect:
     (_operation: string, _options: { readonly boundary: string }) =>
@@ -163,6 +163,9 @@ describe("loadCustomerAccountPage", () => {
   beforeEach(() => {
     currentUserEffect = Effect.succeed(activeSession);
     resolveEffect = resolverOutcome({ kind: "success", customerId: "60111" });
+    resolverCalls = 0;
+    profileLoadCalls = 0;
+    historyLoadCalls = 0;
     historyEffect = Effect.succeed({
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
@@ -174,13 +177,29 @@ describe("loadCustomerAccountPage", () => {
     return loadCustomerAccountPage("en-US");
   };
 
-  test("redirects anonymous visitors to the localized sign-in page", async () => {
+  test("returns unauthenticated without customer data or downstream work when no session exists", async () => {
     currentUserEffect = Effect.succeed(null);
 
-    await expect(loadPageState()).rejects.toMatchObject({
-      _tag: "RedirectError",
-      to: "/en-US/auth/sign-in",
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "unauthenticated",
     });
+    expect(resolverCalls).toBe(0);
+    expect(profileLoadCalls).toBe(0);
+    expect(historyLoadCalls).toBe(0);
+  });
+
+  test("returns unauthenticated without customer data when resolution reports no session", async () => {
+    resolveEffect = resolverOutcome({
+      kind: "failure",
+      reason: "unauthenticated",
+    });
+
+    await expect(loadPageState()).resolves.toEqual({
+      kind: "unauthenticated",
+    });
+    expect(resolverCalls).toBe(1);
+    expect(profileLoadCalls).toBe(0);
+    expect(historyLoadCalls).toBe(0);
   });
 
   test("renders the unavailable state when the authoritative session read fails", async () => {

@@ -682,6 +682,7 @@
   "accountSignInAcceptedBody": "Pokud lze na adresu doručit zprávu, brzy přijde jednorázový odkaz. Odkaz platí jednou a vyprší po 10 minutách.",
   "accountSignInAcceptedAgain": "Poslat další odkaz",
   "accountSignInRequestFailed": "Odkaz se nepodařilo poslat. Zkuste to prosím znovu.",
+  "accountSignInLoading": "Načítání přihlášení…",
   "accountCallbackMetadataTitle": "Přihlašovací odkaz | Deskohub Workspace",
   "accountCallbackMetadataDescription": "Otevřete svůj jednorázový přihlašovací odkaz k zákaznickému účtu Deskohub Workspace.",
   "accountCallbackFailedTitle": "Tento odkaz nelze použít",

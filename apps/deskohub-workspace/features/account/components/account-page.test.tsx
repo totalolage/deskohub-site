@@ -8,7 +8,11 @@ import {
   test,
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
+import type { ReactNode } from "react";
+import {
+  workspaceRouterRefresh,
+  workspaceRouterReplace,
+} from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -39,6 +43,11 @@ mock.module("@/features/account/auth.client", () => ({
     getSession,
   },
 }));
+mock.module("@/shared/components/sticky-section", () => ({
+  StickySection: ({ children }: { readonly children: ReactNode }) => (
+    <div data-testid="sticky-section">{children}</div>
+  ),
+}));
 
 const linkedState = {
   kind: "linked",
@@ -63,6 +72,7 @@ describe("AccountPage states", () => {
   afterEach(() => {
     cleanup();
     workspaceRouterRefresh.mockClear();
+    workspaceRouterReplace.mockClear();
     getSession.mockClear();
   });
 
@@ -115,6 +125,14 @@ describe("AccountPage states", () => {
     expect(view.getByText("Delete my account")).toBeTruthy();
     expect(view.getByText("Sign out")).toBeTruthy();
     expect(view.getByText("Save profile")).toBeTruthy();
+    const stickySections = view.getAllByTestId("sticky-section");
+    expect(stickySections).toHaveLength(2);
+    expect(stickySections[0]?.textContent).toContain("Profile");
+    expect(stickySections[1]?.textContent).toContain("Reservations");
+    const pageShell = view.container.querySelector("main");
+    if (!pageShell) throw new Error("Account page shell was not rendered");
+    expect(pageShell.className).toContain("overflow-clip");
+    expect(pageShell.className).not.toContain("overflow-hidden");
 
     view.unmount();
     const czechView = await renderState(linkedState, "cs-CZ");
@@ -164,6 +182,19 @@ describe("AccountPage states", () => {
     expect(view.queryByText("My Workspace")).toBeNull();
     expect(view.queryByText("Sign out")).toBeNull();
     expect(view.queryByText("Delete my account")).toBeNull();
+  });
+
+  test("redirects unauthenticated visitors without loading session or account data", async () => {
+    const view = await renderState({ kind: "unauthenticated" });
+
+    expect(view.getByRole("status", { name: "Loading sign-in…" })).toBeTruthy();
+    expect(workspaceRouterReplace).toHaveBeenCalledWith("/en-US/auth/sign-in");
+    expect(getSession).not.toHaveBeenCalled();
+    expect(view.queryByText("My Workspace")).toBeNull();
+    expect(view.queryByText("Reservations")).toBeNull();
+    expect(view.queryByText("Delete my account")).toBeNull();
+    expect(view.queryByLabelText("Verified login email")).toBeNull();
+    expect(view.container.textContent).not.toContain("ada@example.test");
   });
 
   test("renders the authenticated unavailable state with account controls", async () => {

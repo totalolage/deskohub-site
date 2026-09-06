@@ -7,6 +7,7 @@ import { workspaceE2ETimeouts } from "../timeouts";
 export type AccountReviewTarget =
   | "completion-mobile375x900"
   | "account-loading-desktop"
+  | "sign-in-handoff-desktop"
   | "linked-desktop1440x1000"
   | "linked-history-desktop"
   | "support-desktop"
@@ -18,7 +19,7 @@ export type AccountReviewTarget =
 
 type AccountReviewTargetMetadata = {
   readonly filename: `${string}.png`;
-  readonly path: string;
+  readonly path: string | readonly string[];
   readonly viewport: Playwright.ViewportSize;
 };
 
@@ -31,6 +32,11 @@ const accountReviewTargetMetadata = {
   "account-loading-desktop": {
     filename: "account-loading-desktop.png",
     path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "sign-in-handoff-desktop": {
+    filename: "sign-in-handoff-desktop.png",
+    path: ["/en-US/account", "/en-US/auth/sign-in"],
     viewport: { height: 1000, width: 1440 },
   },
   "linked-desktop1440x1000": {
@@ -112,9 +118,11 @@ const validateAccountReviewPage = (
     pageUrl.search === "" ||
     (target === "callback-failed-desktop" &&
       pageUrl.search === "?error=INVALID_TOKEN");
+  const allowedPaths =
+    typeof metadata.path === "string" ? [metadata.path] : metadata.path;
   if (
     pageUrl.origin !== base.origin ||
-    pageUrl.pathname !== metadata.path ||
+    !allowedPaths.includes(pageUrl.pathname) ||
     !queryIsAllowed ||
     pageUrl.hash !== ""
   ) {
