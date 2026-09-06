@@ -1,9 +1,9 @@
 "use client";
 
 import { Menu, UserRound, X } from "lucide-react";
-import Link from "next/link";
 import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
+import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import {
   LocaleSwitcherLabels,
   LocaleSwitcherLinks,

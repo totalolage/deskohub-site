@@ -29,6 +29,7 @@ type CapturedLogo = {
 };
 
 const capturedLinks: CapturedLink[] = [];
+const capturedGuardedLinkHrefs: string[] = [];
 const capturedLogos: CapturedLogo[] = [];
 let currentPathname = "/en-US";
 
@@ -47,6 +48,27 @@ mock.module("next/link", () => ({
   }) => {
     const stringHref = href.toString();
     capturedLinks.push({ href: stringHref, prefetch });
+
+    return (
+      <a href={stringHref} {...props}>
+        {children}
+      </a>
+    );
+  },
+}));
+
+mock.module("@/shared/components/guarded-link", () => ({
+  GuardedLink: ({
+    children,
+    href,
+    prefetch: _prefetch,
+    ...props
+  }: Omit<ComponentProps<"a">, "href"> & {
+    readonly href: string | URL;
+    readonly prefetch?: boolean | "auto" | null;
+  }) => {
+    const stringHref = href.toString();
+    capturedGuardedLinkHrefs.push(stringHref);
 
     return (
       <a href={stringHref} {...props}>
@@ -85,6 +107,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   capturedLinks.length = 0;
+  capturedGuardedLinkHrefs.length = 0;
   capturedLogos.length = 0;
   currentPathname = "/en-US";
 });
@@ -192,6 +215,14 @@ test("renders only the configured full-header items without reserved slots", asy
       ?.querySelector(`a[href="${galleryHref}"]`)
       ?.getAttribute("class")
   ).not.toContain("col-start");
+  expect(capturedGuardedLinkHrefs).toEqual([
+    "/en-US",
+    galleryHref,
+    "/en-US/account",
+    "/en-US/reservation/cowork",
+    "/en-US/account",
+    galleryHref,
+  ]);
 });
 
 test("keeps the full-header home link compact and controls usable on mobile", async () => {

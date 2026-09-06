@@ -7,7 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import React, { Activity } from "react";
+import React, { Activity, type ComponentPropsWithoutRef } from "react";
 import type { CustomerProfileInput } from "@/features/account/contracts";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -73,6 +73,57 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
     };
   },
 }));
+
+type NavigateEvent = {
+  readonly preventDefault: () => void;
+};
+
+type MockNextLinkProps = ComponentPropsWithoutRef<"a"> & {
+  readonly href: string;
+  readonly onNavigate?: (event: NavigateEvent) => void;
+};
+
+const MockNextLink = React.forwardRef<HTMLAnchorElement, MockNextLinkProps>(
+  function MockNextLink(
+    { children, href, onClick, onNavigate, ...props },
+    ref
+  ) {
+    return (
+      <a
+        ref={ref}
+        href={href}
+        {...props}
+        onClick={(event) => {
+          onClick?.(event);
+          const destination = new URL(href, window.location.href);
+          if (
+            event.defaultPrevented ||
+            event.button !== 0 ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey ||
+            (event.currentTarget.target !== "" &&
+              event.currentTarget.target !== "_self") ||
+            event.currentTarget.hasAttribute("download") ||
+            destination.origin !== window.location.origin
+          ) {
+            return;
+          }
+          onNavigate?.({
+            preventDefault: () => event.preventDefault(),
+          });
+        }}
+      >
+        {children}
+      </a>
+    );
+  }
+);
+
+mock.module("next/link", () => ({ default: MockNextLink }));
+
+const { GuardedLink } = await import("@/shared/components/guarded-link");
 
 const editProfile = {
   firstName: "Ada",
@@ -229,6 +280,7 @@ describe("ProfileForm", () => {
             locale="en-US"
             email="ada@example.test"
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       const firstName = view.getByLabelText("First name") as HTMLInputElement;
@@ -253,9 +305,7 @@ describe("ProfileForm", () => {
 
       expect(firstName.value).toBe("Grace");
       expect(workspaceRouterRefresh).not.toHaveBeenCalled();
-      const link = document.createElement("a");
-      link.href = "/next";
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -559,6 +609,7 @@ describe("ProfileForm", () => {
             email="ada@example.test"
             profile={editProfile}
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       const firstName = view.getByLabelText("First name") as HTMLInputElement;
@@ -579,9 +630,7 @@ describe("ProfileForm", () => {
       });
 
       expect(firstName.value).toBe("Augusta");
-      const link = document.createElement("a");
-      link.href = "/next";
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -622,6 +671,7 @@ describe("ProfileForm", () => {
             email="ada@example.test"
             profile={editProfile}
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       const firstName = view.getByLabelText("First name") as HTMLInputElement;
@@ -641,9 +691,7 @@ describe("ProfileForm", () => {
         view.getByText("We could not update your profile. Please try again.")
       ).toBeTruthy();
 
-      const link = document.createElement("a");
-      link.href = "/next";
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -687,6 +735,7 @@ describe("ProfileForm", () => {
             email="ada@example.test"
             profile={editProfile}
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       const firstName = view.getByLabelText("First name") as HTMLInputElement;
@@ -704,9 +753,7 @@ describe("ProfileForm", () => {
         view.getByText("Please review the highlighted fields and try again.")
       ).toBeTruthy();
 
-      const link = document.createElement("a");
-      link.href = "/next";
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -742,6 +789,7 @@ describe("ProfileForm", () => {
             email="ada@example.test"
             profile={editProfile}
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       const firstName = view.getByLabelText("First name") as HTMLInputElement;
@@ -754,10 +802,7 @@ describe("ProfileForm", () => {
       });
 
       expect(updateCustomerProfile).toHaveBeenCalledTimes(1);
-      const link = document.createElement("a");
-      link.href = "/next";
-      link.addEventListener("click", (event) => event.preventDefault());
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -765,6 +810,7 @@ describe("ProfileForm", () => {
       });
       link.dispatchEvent(event);
 
+      expect(event.defaultPrevented).toBe(false);
       expect(event.cancelBubble).toBe(false);
       expect(confirm).not.toHaveBeenCalled();
     } finally {
@@ -791,6 +837,7 @@ describe("ProfileForm", () => {
             email="ada@example.test"
             profile={editProfile}
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       const firstName = view.getByLabelText("First name") as HTMLInputElement;
@@ -800,10 +847,7 @@ describe("ProfileForm", () => {
         fireEvent.input(firstName, { target: { value: "Ada" } });
       });
 
-      const link = document.createElement("a");
-      link.href = "/next";
-      link.addEventListener("click", (event) => event.preventDefault());
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -811,6 +855,7 @@ describe("ProfileForm", () => {
       });
       link.dispatchEvent(event);
 
+      expect(event.defaultPrevented).toBe(false);
       expect(event.cancelBubble).toBe(false);
       expect(confirm).not.toHaveBeenCalled();
     } finally {
@@ -851,6 +896,7 @@ describe("ProfileForm", () => {
                 profile={editProfile}
               />
             </Activity>
+            <GuardedLink href="/next">Next</GuardedLink>
           </UnsavedChangesProvider>
         );
       }
@@ -878,10 +924,7 @@ describe("ProfileForm", () => {
         });
       });
 
-      const link = document.createElement("a");
-      link.href = "/next";
-      link.addEventListener("click", (event) => event.preventDefault());
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -889,6 +932,7 @@ describe("ProfileForm", () => {
       });
       link.dispatchEvent(event);
 
+      expect(event.defaultPrevented).toBe(false);
       expect(event.cancelBubble).toBe(false);
       expect(confirm).not.toHaveBeenCalled();
     } finally {
@@ -959,6 +1003,7 @@ describe("ProfileForm", () => {
             email="ada@example.test"
             profile={personalProfile}
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       const addressLine1 = view.getByLabelText(
@@ -980,9 +1025,7 @@ describe("ProfileForm", () => {
       expect(
         (view.getByLabelText("Street and number") as HTMLInputElement).value
       ).toBe("Draft Street 3");
-      const link = document.createElement("a");
-      link.href = "/next";
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -1018,6 +1061,7 @@ describe("ProfileForm", () => {
             email="ada@example.test"
             profile={businessProfile}
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       const companyName = view.getByLabelText(
@@ -1055,9 +1099,7 @@ describe("ProfileForm", () => {
         (view.getByLabelText("Company name") as HTMLInputElement).value
       ).toBe("Draft Company");
 
-      const link = document.createElement("a");
-      link.href = "/next";
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,
@@ -1128,6 +1170,7 @@ describe("ProfileForm", () => {
             email="ada@example.test"
             profile={editProfile}
           />
+          <GuardedLink href="/next">Next</GuardedLink>
         </UnsavedChangesProvider>
       );
       await act(async () => {
@@ -1137,10 +1180,7 @@ describe("ProfileForm", () => {
         await Promise.resolve();
       });
 
-      const link = document.createElement("a");
-      link.href = "/next";
-      link.textContent = "Next";
-      document.body.append(link);
+      const link = view.getByRole("link", { name: "Next" });
       const event = new MouseEvent("click", {
         bubbles: true,
         cancelable: true,

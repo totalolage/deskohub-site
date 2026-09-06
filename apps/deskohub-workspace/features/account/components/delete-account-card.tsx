@@ -25,6 +25,7 @@ import {
   DialogTrigger,
 } from "@/shared/components/ui/dialog";
 import { Label } from "@/shared/components/ui/label";
+import { useAllowNextUnload } from "@/shared/components/unsaved-changes-guard";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type DeleteAccountCardProps = {
@@ -46,6 +47,7 @@ export function DeleteAccountCard({
   const [reauthLinkSent, setReauthLinkSent] = useState(false);
   const [reauthSending, setReauthSending] = useState(false);
   const [reauthFailed, setReauthFailed] = useState(false);
+  const allowNextUnload = useAllowNextUnload();
 
   const { execute, isExecuting, result, reset } = useWorkspaceAction(
     deleteCustomerAccount,
@@ -53,6 +55,7 @@ export function DeleteAccountCard({
       actionName: "account.delete",
       onSuccess: ({ data }) => {
         if (data?.status === "deleted") {
+          allowNextUnload();
           window.location.assign(`/${locale}/account/deleted`);
           return;
         }

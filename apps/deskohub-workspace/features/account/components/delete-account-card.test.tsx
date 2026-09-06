@@ -9,6 +9,10 @@ import {
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import React from "react";
+import {
+  UnsavedChangesProvider,
+  useUnsavedChanges,
+} from "@/shared/components/unsaved-changes-guard";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -86,6 +90,26 @@ describe("DeleteAccountCard", () => {
     });
   };
 
+  function DirtyForm() {
+    useUnsavedChanges({
+      enabled: true,
+      isDirty: () => true,
+      message: "Leave this form?",
+    });
+    return null;
+  }
+
+  function dispatchBeforeUnload(): Event {
+    const event = new Event("beforeunload", { cancelable: true });
+    Object.defineProperty(event, "returnValue", {
+      configurable: true,
+      value: "",
+      writable: true,
+    });
+    window.dispatchEvent(event);
+    return event;
+  }
+
   test("keeps the destructive confirmation disabled until the checkbox is checked", async () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
@@ -147,6 +171,74 @@ describe("DeleteAccountCard", () => {
     window.location.assign = originalAssign;
   });
 
+  test("allows one unload after explicit deletion succeeds", async () => {
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    let assigned: string | null = null;
+    const originalAssign = window.location.assign;
+    window.location.assign = ((href: string) => {
+      assigned = href;
+    }) as typeof window.location.assign;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <DirtyForm />
+          <DeleteAccountCard
+            email="ada@example.test"
+            locale="en-US"
+            deletionPending={false}
+          />
+        </UnsavedChangesProvider>
+      );
+      await openDialog(view);
+      await act(async () => {
+        fireEvent.click(
+          view.getByLabelText(
+            "I understand that my account and every session will be permanently deleted."
+          )
+        );
+      });
+      await act(async () => {
+        fireEvent.click(view.getByText("Delete permanently"));
+      });
+
+      expect(assigned).toBe("/en-US/account/deleted");
+      expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
+      expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
+    } finally {
+      window.location.assign = originalAssign;
+    }
+  });
+
+  test("does not allow an unload when deletion is cancelled", async () => {
+    const { DeleteAccountCard } = await import("./delete-account-card");
+    const view = render(
+      <UnsavedChangesProvider>
+        <DirtyForm />
+        <DeleteAccountCard
+          email="ada@example.test"
+          locale="en-US"
+          deletionPending={false}
+        />
+      </UnsavedChangesProvider>
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          "I understand that my account and every session will be permanently deleted."
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(view.getByText("Keep account"));
+    });
+
+    expect(deleteCustomerAccount).not.toHaveBeenCalled();
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
+  });
+
   test("switches to the reauthentication state on a stale session and sends a new link", async () => {
     deleteCustomerAccount.mockImplementationOnce(() =>
       Promise.resolve({ data: { status: "reauthentication-required" } })
@@ -154,11 +246,14 @@ describe("DeleteAccountCard", () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
     const view = render(
-      <DeleteAccountCard
-        email="ada@example.test"
-        locale="en-US"
-        deletionPending={false}
-      />
+      <UnsavedChangesProvider>
+        <DirtyForm />
+        <DeleteAccountCard
+          email="ada@example.test"
+          locale="en-US"
+          deletionPending={false}
+        />
+      </UnsavedChangesProvider>
     );
     await openDialog(view);
     await act(async () => {
@@ -172,6 +267,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     expect(view.getByText("Sign in again to delete")).toBeTruthy();
     expect(
       view.getByText(
@@ -204,11 +300,14 @@ describe("DeleteAccountCard", () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
     const view = render(
-      <DeleteAccountCard
-        email="ada@example.test"
-        locale="en-US"
-        deletionPending={false}
-      />
+      <UnsavedChangesProvider>
+        <DirtyForm />
+        <DeleteAccountCard
+          email="ada@example.test"
+          locale="en-US"
+          deletionPending={false}
+        />
+      </UnsavedChangesProvider>
     );
     await openDialog(view);
     await act(async () => {
@@ -222,6 +321,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
       name: "Email me a new link",
     }) as HTMLButtonElement;
@@ -251,11 +351,14 @@ describe("DeleteAccountCard", () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
     const view = render(
-      <DeleteAccountCard
-        email="ada@example.test"
-        locale="en-US"
-        deletionPending={false}
-      />
+      <UnsavedChangesProvider>
+        <DirtyForm />
+        <DeleteAccountCard
+          email="ada@example.test"
+          locale="en-US"
+          deletionPending={false}
+        />
+      </UnsavedChangesProvider>
     );
     await openDialog(view);
     await act(async () => {
@@ -269,6 +372,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     await act(async () => {
       fireEvent.click(
         view.getByRole("button", { name: "Email me a new link" })
@@ -302,11 +406,14 @@ describe("DeleteAccountCard", () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
     const view = render(
-      <DeleteAccountCard
-        email="ada@example.test"
-        locale="en-US"
-        deletionPending={false}
-      />
+      <UnsavedChangesProvider>
+        <DirtyForm />
+        <DeleteAccountCard
+          email="ada@example.test"
+          locale="en-US"
+          deletionPending={false}
+        />
+      </UnsavedChangesProvider>
     );
     await openDialog(view);
     await act(async () => {
@@ -320,6 +427,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
       name: "Email me a new link",
     }) as HTMLButtonElement;
@@ -358,11 +466,14 @@ describe("DeleteAccountCard", () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
     const view = render(
-      <DeleteAccountCard
-        email="ada@example.test"
-        locale="en-US"
-        deletionPending={false}
-      />
+      <UnsavedChangesProvider>
+        <DirtyForm />
+        <DeleteAccountCard
+          email="ada@example.test"
+          locale="en-US"
+          deletionPending={false}
+        />
+      </UnsavedChangesProvider>
     );
     await openDialog(view);
     await act(async () => {
@@ -376,6 +487,7 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     expect(
       view.getByText(
         "We could not expire your customer profile, so your account was not deleted. Please try again when our reservation system recovers."

@@ -544,7 +544,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload synthetic PR review screenshots
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: workspace-account-review-${{ github.run_id }}-${{ github.run_attempt }}

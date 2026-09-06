@@ -1,9 +1,9 @@
 import { cacheLife } from "next/cache";
-import Link from "next/link";
 import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
+import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 export async function PublicSiteFooter() {

@@ -82,6 +82,17 @@ function dispatchNavigate(
   return event;
 }
 
+function dispatchBeforeUnload(): Event {
+  const event = new Event("beforeunload", { cancelable: true });
+  Object.defineProperty(event, "returnValue", {
+    configurable: true,
+    value: "",
+    writable: true,
+  });
+  window.dispatchEvent(event);
+  return event;
+}
+
 function restoreNavigation() {
   if (originalNavigationDescriptor) {
     Object.defineProperty(window, "navigation", originalNavigationDescriptor);
@@ -132,8 +143,7 @@ test("rejects a dirty sign-out before auth mutation or navigation", async () => 
   expect(assigned).toBeNull();
 });
 
-test("keeps an accepted sign-out approval through deferred auth and navigation", async () => {
-  const navigation = installNavigation();
+test("allows one unload after deferred sign-out succeeds", async () => {
   const confirm = mock(() => true);
   window.confirm = confirm;
   let resolveSignOut!: (result: { error: null }) => void;
@@ -164,6 +174,7 @@ test("keeps an accepted sign-out approval through deferred auth and navigation",
   expect(signOut).toHaveBeenCalledTimes(1);
   expect((button as HTMLButtonElement).disabled).toBe(true);
   expect(assigned).toBeNull();
+  expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
 
   await act(async () => {
     resolveSignOut({ error: null });
@@ -171,12 +182,8 @@ test("keeps an accepted sign-out approval through deferred auth and navigation",
   });
 
   expect(assigned).toBe("/cs-CZ");
-  const navigate = dispatchNavigate(
-    navigation,
-    new URL("/cs-CZ", window.location.href).href
-  );
-
-  expect(navigate.defaultPrevented).toBe(false);
+  expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
+  expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
   expect(confirm).toHaveBeenCalledTimes(1);
 });
 
@@ -214,6 +221,7 @@ test("does not navigate when sign-out resolves with a 503 error", async () => {
   expect(view.getByRole("alert").textContent).toBe(
     "We could not sign you out. Please try again."
   );
+  expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
 
   const draft = view.getByLabelText("Dirty form") as HTMLInputElement;
   await act(async () => {
@@ -270,6 +278,7 @@ test("restores the button after a rejected sign-out without exposing the error",
   expect(view.getByRole("alert").textContent).not.toContain(
     "raw provider failure"
   );
+  expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
 
   const draft = view.getByLabelText("Dirty form") as HTMLInputElement;
   await act(async () => {

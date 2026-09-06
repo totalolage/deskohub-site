@@ -16,7 +16,8 @@ import {
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
 const signOut = mock(() => Promise.resolve({ error: null }));
 const getSession = mock(() => Promise.resolve({ data: null, error: null }));
-const confirmDiscardChanges = mock((_destination?: string) => true);
+const confirmDiscardChanges = mock(() => true);
+const allowNextUnload = mock(() => {});
 
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
@@ -29,7 +30,7 @@ mock.module("@/features/account/auth.client", () => ({
 }));
 
 mock.module("@/shared/components/unsaved-changes-guard", () => ({
-  useCancelNavigationApproval: () => {},
+  useAllowNextUnload: () => allowNextUnload,
   useConfirmDiscardChanges: () => confirmDiscardChanges,
 }));
 
@@ -43,6 +44,7 @@ describe("account components", () => {
     signInMagicLink.mockClear();
     signOut.mockClear();
     confirmDiscardChanges.mockClear();
+    allowNextUnload.mockClear();
     confirmDiscardChanges.mockImplementation(() => true);
   });
 
@@ -196,7 +198,7 @@ describe("account components", () => {
         fireEvent.click(view.getByRole("button", { name: "Odhlásit se" }));
       });
 
-      expect(confirmDiscardChanges).toHaveBeenCalledWith("/cs-CZ");
+      expect(confirmDiscardChanges).toHaveBeenCalledWith();
       expect(signOut).not.toHaveBeenCalled();
       expect(assigned).toBeNull();
     } finally {
@@ -223,8 +225,9 @@ describe("account components", () => {
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(confirmDiscardChanges).toHaveBeenCalledWith("/cs-CZ");
+      expect(confirmDiscardChanges).toHaveBeenCalledWith();
       expect(signOut).toHaveBeenCalledTimes(1);
+      expect(allowNextUnload).toHaveBeenCalledTimes(1);
       expect(assigned).toBe("/cs-CZ");
     } finally {
       window.location.assign = originalAssign;
