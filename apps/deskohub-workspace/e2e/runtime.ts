@@ -1,4 +1,4 @@
-import { copyFile, rm } from "node:fs/promises";
+import { copyFile, mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,11 +12,12 @@ import type {
   Response,
 } from "@playwright/test";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
+import { escapeRegExp } from "../shared/utils/escape-regexp";
 
 export const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const workspaceDir = resolve(scriptDir, "..");
 export const repoRoot = resolve(workspaceDir, "../..");
-const redactions = new Set<string>();
+const redactions = new Map<string, "substring" | "token">();
 
 export type RunBrowserOptions = {
   allowFailure?: boolean;
@@ -53,13 +54,16 @@ type PlaywrightSession = {
   readonly networkRequests: string[];
   readonly pageIds: Map<Page, string>;
   readonly primedOrigins: Set<string>;
-  readonly rawHarPath: string;
+  rawHarPath?: string;
 };
 
 const maximumDiagnosticEntries = 500;
 
-export const makePlaywrightBrowserRunner = (browser: Browser): Runner =>
-  makePlaywrightRuntimeRunner(new PlaywrightRuntime(browser));
+export const makePlaywrightBrowserRunner = (
+  browser: Browser,
+  options: { readonly recordHar?: boolean } = {}
+): Runner =>
+  makePlaywrightRuntimeRunner(new PlaywrightRuntime(browser, options));
 
 const makePlaywrightRuntimeRunner = (runtime: PlaywrightRuntime): Runner => {
   const run = (async (
@@ -109,7 +113,10 @@ class PlaywrightRuntime {
     Promise<PlaywrightSession>
   >();
 
-  constructor(private readonly browser: Browser) {}
+  constructor(
+    private readonly browser: Browser,
+    private readonly options: { readonly recordHar?: boolean } = {}
+  ) {}
 
   async execute(
     args: string[],
@@ -171,7 +178,11 @@ class PlaywrightRuntime {
       case "eval": {
         if (commandArgs[0] !== "--stdin" || input === undefined)
           throw new Error("Playwright evaluation input is required");
-        const value = await frame().evaluate(input);
+        const value = await withinCommandTimeout(
+          frame().evaluate(input),
+          timeoutMs,
+          "frame.evaluate"
+        );
         return serializeBrowserValue(value);
       }
       case "fill":
@@ -283,9 +294,11 @@ class PlaywrightRuntime {
         if (commandArgs[0] === "har" && commandArgs[1] === "stop") {
           await this.closeSession(session);
           const destination = commandArgs[2];
-          if (destination && destination !== devNull)
-            await copyFile(session.rawHarPath, destination);
-          await rm(session.rawHarPath, { force: true });
+          if (session.rawHarPath) {
+            if (destination && destination !== devNull)
+              await copyFile(session.rawHarPath, destination);
+            await rm(session.rawHarPath, { force: true });
+          }
           return "";
         }
         throw new Error(
@@ -293,7 +306,7 @@ class PlaywrightRuntime {
         );
       case "close":
         await this.closeSession(session);
-        await rm(session.rawHarPath, { force: true });
+        if (session.rawHarPath) await rm(session.rawHarPath, { force: true });
         return "";
       default:
         throw new Error(
@@ -312,14 +325,19 @@ class PlaywrightRuntime {
   }
 
   private async createSession(sessionId: string): Promise<PlaywrightSession> {
-    const rawHarPath = resolve(
-      tmpdir(),
-      `${sessionId.replaceAll(/[^a-zA-Z0-9_-]/g, "-")}-${crypto.randomUUID()}.har`
-    );
+    const recordHar = this.options.recordHar !== false;
+    const rawHarPath = recordHar
+      ? resolve(
+          tmpdir(),
+          `${sessionId.replaceAll(/[^a-zA-Z0-9_-]/g, "-")}-${crypto.randomUUID()}.har`
+        )
+      : undefined;
     let context: BrowserContext | undefined;
     try {
       context = await this.browser.newContext({
-        recordHar: { content: "embed", mode: "full", path: rawHarPath },
+        recordHar: rawHarPath
+          ? { content: "embed", mode: "full", path: rawHarPath }
+          : undefined,
         viewport: { height: 900, width: 1440 },
       });
       const initialPage = await context.newPage();
@@ -341,7 +359,7 @@ class PlaywrightRuntime {
       return session;
     } catch (cause) {
       await context?.close().catch(() => undefined);
-      await rm(rawHarPath, { force: true });
+      if (rawHarPath) await rm(rawHarPath, { force: true });
       throw cause;
     }
   }
@@ -350,7 +368,7 @@ class PlaywrightRuntime {
     try {
       await this.closeSession(session);
     } finally {
-      await rm(session.rawHarPath, { force: true });
+      if (session.rawHarPath) await rm(session.rawHarPath, { force: true });
     }
   }
 
@@ -501,6 +519,21 @@ const formatResponse = (response: Response) =>
 const toPlaywrightSelector = (selector: string) =>
   selector.startsWith("@") ? `aria-ref=${selector.slice(1)}` : selector;
 
+const withinCommandTimeout = <A>(
+  operation: Promise<A>,
+  timeoutMs: number,
+  label: string
+): Promise<A> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label}: Timeout ${timeoutMs}ms exceeded.`)),
+      timeoutMs
+    );
+  });
+  return Promise.race([operation, budget]).finally(() => clearTimeout(timer));
+};
+
 const serializeBrowserValue = (value: unknown) => {
   if (typeof value === "string") return value;
   if (value === undefined) return "";
@@ -563,11 +596,20 @@ export const parseUrl = (value: string) => {
 
 export const addRedaction = (value: string | undefined, force = false) => {
   if (!value || (!force && value.length <= 6)) return;
-  redactions.add(value);
-  redactions.add(encodeURIComponent(value));
-  redactions.add(
-    new URLSearchParams({ value }).toString().slice("value=".length)
-  );
+  const mode = force && value.length <= 6 ? "token" : "substring";
+  for (const variant of [
+    value,
+    encodeURIComponent(value),
+    new URLSearchParams({ value }).toString().slice("value=".length),
+  ]) {
+    const existingMode = redactions.get(variant);
+    redactions.set(
+      variant,
+      existingMode === "substring" || mode === "substring"
+        ? "substring"
+        : "token"
+    );
+  }
 };
 
 export const addDatabaseUrlRedactions = (value: string | undefined) => {
@@ -590,8 +632,18 @@ export const addDatabaseUrlRedactions = (value: string | undefined) => {
 
 export const redact = (text: string) => {
   let output = text;
-  for (const secret of redactions)
-    output = output.replaceAll(secret, "[redacted]");
+  for (const [secret, mode] of redactions) {
+    output =
+      mode === "token"
+        ? output.replace(
+            new RegExp(
+              `(?<![A-Za-z0-9])${escapeRegExp(secret)}(?![A-Za-z0-9])`,
+              "g"
+            ),
+            "[redacted]"
+          )
+        : output.replaceAll(secret, "[redacted]");
+  }
   return output;
 };
 
@@ -601,3 +653,13 @@ export function assert(condition: unknown, message: string): asserts condition {
 
 export const log = (message: string) =>
   process.stdout.write(`${redact(message)}\n`);
+
+export const writeJsonAtomically = async (path: string, value: unknown) => {
+  await mkdir(dirname(path), { recursive: true });
+  const temporaryPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  await rename(temporaryPath, path);
+};

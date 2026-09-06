@@ -32,6 +32,7 @@
         "i18n:compile"
       ],
       "env": [
+        "BETTER_AUTH_SECRETS",
         "EMAIL_PROVIDER",
         "DOTYPOS_API_TIMEOUT",
         "IGLOOHOME_API_TIMEOUT",

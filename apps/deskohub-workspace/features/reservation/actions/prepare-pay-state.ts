@@ -16,6 +16,7 @@ import {
   Schema,
 } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { OptionalAccountActivityGuard } from "@/features/account";
 import {
   captureAvailabilityResult,
   capturePrePaymentOutcome,
@@ -685,343 +686,364 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
-    yield* Match.value(input.reservation).pipe(
-      Match.discriminatorsExhaustive("kind")({
-        cowork: () => Effect.void,
-        "meeting-room": () => Effect.void,
-        office: () => ensureOfficeReservationsEnabled,
-      })
-    );
+    const accountActivity = yield* OptionalAccountActivityGuard;
 
-    const advertisement = yield* prepareAdvertisement(input);
-    const reservation = advertisement.reservation;
-
-    const checkoutSessionKey = deriveCheckoutSessionKey(
-      input.checkoutSessionId
-    );
-    const checkoutAttemptKey = deriveCheckoutAttemptKey({
-      checkoutSessionId: input.checkoutSessionId,
-      checkoutAttemptId: input.checkoutAttemptId,
-      reservation,
-    });
-    yield* Effect.annotateLogsScoped({
-      locale: input.locale,
-      reservationKind: reservation.kind,
-      checkoutSessionKey,
-      checkoutAttemptKey,
-    });
-    yield* Effect.logInfo("Workspace reservation submit started");
-
-    const reservations = yield* WorkspaceReservationRepository;
-    const dotypos = yield* DotyposService;
-
-    const releaseHoldCreation = (reservationId: WorkspaceReservationId) =>
-      reservations.releaseHoldCreation(reservationId).pipe(
-        Effect.tapError((releaseCause) =>
-          Effect.logError("Reservation hold creation release failed", {
-            cause: releaseCause,
+    // The full state-creating section runs inside the account advisory
+    // lock: authority is re-checked under the lock and the same lock is
+    // held until the section completes, so deletion cannot interleave
+    // between the check and the created state. Anonymous sessions run
+    // unchanged; a session-authority failure fails closed.
+    return yield* accountActivity.guardStateCreation(
+      Effect.gen(function* () {
+        yield* Match.value(input.reservation).pipe(
+          Match.discriminatorsExhaustive("kind")({
+            cowork: () => Effect.void,
+            "meeting-room": () => Effect.void,
+            office: () => ensureOfficeReservationsEnabled,
           })
-        ),
-        Effect.ignore
-      );
+        );
 
-    const customerName = splitCustomerName(reservation.name);
-    const customer = yield* dotypos.findOrCreateCustomer(
-      {
-        ...customerName,
-        email: reservation.email,
-        phone: reservation.phone,
-      },
-      { lookupFields: ["email"] }
-    );
-    const dotyposCustomerId = yield* getDotyposCustomerId(customer.id);
-    yield* Effect.annotateLogsScoped({ dotyposCustomerId });
-    yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
+        const advertisement = yield* prepareAdvertisement(input);
+        const reservation = advertisement.reservation;
 
-    const billing = reservation.billing ?? defaultReservationBillingSelection;
-    if (input.marketingConsent === true) {
-      yield* Effect.gen(function* () {
-        const documents = yield* getLegalAcceptanceSnapshot(input.locale);
-        const consents = yield* CustomerMarketingConsentRepository;
-        yield* consents.grant({
-          dotyposCustomerId,
-          documentHash: documents.marketingCommunications.hash,
-          locale: input.locale,
-          grantedAt: Temporal.Now.instant(),
-        });
-      }).pipe(
-        Effect.tapError((cause) =>
-          Effect.logError("Customer marketing consent recording failed", {
-            cause,
-          })
-        )
-      );
-    }
-
-    const prepared = yield* quotePreparedReservation({
-      advertisement,
-      dotyposCustomerId,
-      locale: input.locale,
-    });
-    yield* Effect.annotateLogsScoped({ quote: prepared.quote });
-    yield* Effect.logDebug("Workspace reservation quote built");
-
-    const holdExpiresAt = getReservationHoldExpiresAt(Temporal.Now.instant());
-
-    const preparedDraft = yield* prepareReservationDraft({
-      checkoutSessionId: input.checkoutSessionId,
-      checkoutAttemptId: input.checkoutAttemptId,
-      reservation,
-      draft: {
-        dotyposCustomerId,
-        reservationPurpose: billing.purpose,
-        reservationDetails: getStoredWorkspaceReservationDetails(reservation),
-        locale: input.locale,
-        reservationHoldExpiresAt: holdExpiresAt,
-      },
-    }).pipe(
-      Effect.tap(() =>
-        captureAvailabilityResult({
+        const checkoutSessionKey = deriveCheckoutSessionKey(
+          input.checkoutSessionId
+        );
+        const checkoutAttemptKey = deriveCheckoutAttemptKey({
+          checkoutSessionId: input.checkoutSessionId,
           checkoutAttemptId: input.checkoutAttemptId,
-          result: "available",
-          timestamp: Temporal.Now.instant(),
-        })
-      ),
-      Effect.tapError((error) =>
-        Match.value(error).pipe(
-          Match.tag("WorkspaceTableUnavailableError", () =>
+          reservation,
+        });
+        yield* Effect.annotateLogsScoped({
+          locale: input.locale,
+          reservationKind: reservation.kind,
+          checkoutSessionKey,
+          checkoutAttemptKey,
+        });
+        yield* Effect.logInfo("Workspace reservation submit started");
+
+        const reservations = yield* WorkspaceReservationRepository;
+        const dotypos = yield* DotyposService;
+
+        const releaseHoldCreation = (reservationId: WorkspaceReservationId) =>
+          reservations.releaseHoldCreation(reservationId).pipe(
+            Effect.tapError((releaseCause) =>
+              Effect.logError("Reservation hold creation release failed", {
+                cause: releaseCause,
+              })
+            ),
+            Effect.ignore
+          );
+
+        const customerName = splitCustomerName(reservation.name);
+        const customer = yield* dotypos.findOrCreateCustomer(
+          {
+            ...customerName,
+            email: reservation.email,
+            phone: reservation.phone,
+          },
+          { lookupFields: ["email"] }
+        );
+        const dotyposCustomerId = yield* getDotyposCustomerId(customer.id);
+        yield* Effect.annotateLogsScoped({ dotyposCustomerId });
+        yield* Effect.logDebug(
+          "Workspace reservation Dotypos customer resolved"
+        );
+
+        const billing =
+          reservation.billing ?? defaultReservationBillingSelection;
+        if (input.marketingConsent === true) {
+          yield* Effect.gen(function* () {
+            const documents = yield* getLegalAcceptanceSnapshot(input.locale);
+            const consents = yield* CustomerMarketingConsentRepository;
+            yield* consents.grant({
+              dotyposCustomerId,
+              documentHash: documents.marketingCommunications.hash,
+              locale: input.locale,
+              grantedAt: Temporal.Now.instant(),
+            });
+          }).pipe(
+            Effect.tapError((cause) =>
+              Effect.logError("Customer marketing consent recording failed", {
+                cause,
+              })
+            )
+          );
+        }
+
+        const prepared = yield* quotePreparedReservation({
+          advertisement,
+          dotyposCustomerId,
+          locale: input.locale,
+        });
+        yield* Effect.annotateLogsScoped({ quote: prepared.quote });
+        yield* Effect.logDebug("Workspace reservation quote built");
+
+        const holdExpiresAt = getReservationHoldExpiresAt(
+          Temporal.Now.instant()
+        );
+
+        const preparedDraft = yield* prepareReservationDraft({
+          checkoutSessionId: input.checkoutSessionId,
+          checkoutAttemptId: input.checkoutAttemptId,
+          reservation,
+          draft: {
+            dotyposCustomerId,
+            reservationPurpose: billing.purpose,
+            reservationDetails:
+              getStoredWorkspaceReservationDetails(reservation),
+            locale: input.locale,
+            reservationHoldExpiresAt: holdExpiresAt,
+          },
+        }).pipe(
+          Effect.tap(() =>
             captureAvailabilityResult({
               checkoutAttemptId: input.checkoutAttemptId,
-              result: "unavailable",
+              result: "available",
               timestamp: Temporal.Now.instant(),
             })
           ),
-          Match.orElse(() => Effect.void)
-        )
-      )
-    );
-    const { checkoutSessionId, reservationDraft } = preparedDraft;
-    yield* Effect.annotateLogsScoped({ reservationDraft });
-    yield* Effect.logInfo("Workspace reservation draft ready");
-
-    if (isReusableSubmissionReservation(reservationDraft)) {
-      yield* Effect.logInfo(
-        "Existing workspace reservation hold reused for an immediate retry"
-      );
-      yield* reservations.updateReservationDetails({
-        id: reservationDraft.id,
-        reservationDetails: getStoredWorkspaceReservationDetails(reservation),
-        locale: input.locale,
-      });
-      yield* captureReservationStarted({
-        reservation: reservationDraft,
-        timestamp: reservationDraft.createdAt,
-      });
-      yield* Effect.logInfo("Workspace reservation checkout prep ready");
-
-      return yield* toReadyResult({
-        locale: input.locale,
-        prepared,
-        reservationId: reservationDraft.id,
-        checkoutSessionId,
-        changedKeys: prepared.changedKeys,
-      });
-    }
-
-    const claimed = yield* reservations.claimHoldCreation(reservationDraft.id);
-    if (!claimed) {
-      const claimConflictReservation =
-        yield* waitForPendingReservationTransition({
-          reservations,
-          reservationId: reservationDraft.id,
-        });
-      yield* Effect.annotateLogsScoped({ claimConflictReservation });
-
-      if (
-        claimConflictReservation &&
-        isReusableSubmissionReservation(claimConflictReservation)
-      ) {
-        yield* Effect.logInfo(
-          "Existing workspace reservation hold reused for an immediate retry"
+          Effect.tapError((error) =>
+            Match.value(error).pipe(
+              Match.tag("WorkspaceTableUnavailableError", () =>
+                captureAvailabilityResult({
+                  checkoutAttemptId: input.checkoutAttemptId,
+                  result: "unavailable",
+                  timestamp: Temporal.Now.instant(),
+                })
+              ),
+              Match.orElse(() => Effect.void)
+            )
+          )
         );
+        const { checkoutSessionId, reservationDraft } = preparedDraft;
+        yield* Effect.annotateLogsScoped({ reservationDraft });
+        yield* Effect.logInfo("Workspace reservation draft ready");
 
-        const reusedPrepared = yield* quotePreparedReservation({
-          advertisement,
-          dotyposCustomerId: yield* getDotyposCustomerId(
-            claimConflictReservation.dotyposCustomerId
-          ),
+        if (isReusableSubmissionReservation(reservationDraft)) {
+          yield* Effect.logInfo(
+            "Existing workspace reservation hold reused for an immediate retry"
+          );
+          yield* reservations.updateReservationDetails({
+            id: reservationDraft.id,
+            reservationDetails:
+              getStoredWorkspaceReservationDetails(reservation),
+            locale: input.locale,
+          });
+          yield* captureReservationStarted({
+            reservation: reservationDraft,
+            timestamp: reservationDraft.createdAt,
+          });
+          yield* Effect.logInfo("Workspace reservation checkout prep ready");
+
+          return yield* toReadyResult({
+            locale: input.locale,
+            prepared,
+            reservationId: reservationDraft.id,
+            checkoutSessionId,
+            changedKeys: prepared.changedKeys,
+          });
+        }
+
+        const claimed = yield* reservations.claimHoldCreation(
+          reservationDraft.id
+        );
+        if (!claimed) {
+          const claimConflictReservation =
+            yield* waitForPendingReservationTransition({
+              reservations,
+              reservationId: reservationDraft.id,
+            });
+          yield* Effect.annotateLogsScoped({ claimConflictReservation });
+
+          if (
+            claimConflictReservation &&
+            isReusableSubmissionReservation(claimConflictReservation)
+          ) {
+            yield* Effect.logInfo(
+              "Existing workspace reservation hold reused for an immediate retry"
+            );
+
+            const reusedPrepared = yield* quotePreparedReservation({
+              advertisement,
+              dotyposCustomerId: yield* getDotyposCustomerId(
+                claimConflictReservation.dotyposCustomerId
+              ),
+              locale: input.locale,
+            });
+
+            yield* reservations.updateReservationDetails({
+              id: claimConflictReservation.id,
+              reservationDetails:
+                getStoredWorkspaceReservationDetails(reservation),
+              locale: input.locale,
+            });
+            yield* captureReservationStarted({
+              reservation: claimConflictReservation,
+              timestamp: claimConflictReservation.createdAt,
+            });
+            yield* Effect.logInfo("Workspace reservation checkout prep ready");
+
+            return yield* toReadyResult({
+              locale: input.locale,
+              prepared: reusedPrepared,
+              reservationId: claimConflictReservation.id,
+              checkoutSessionId,
+              changedKeys: reusedPrepared.changedKeys,
+            });
+          }
+
+          yield* Effect.logError(
+            "Workspace reservation hold creation claim failed"
+          );
+
+          return {
+            status: "error" as const,
+            message: m.reservationErrorMessage({}, { locale: input.locale }),
+          };
+        }
+        yield* Effect.logDebug("Workspace reservation hold creation claimed");
+
+        const checkoutDetails = getReservationCheckoutDetails({
           locale: input.locale,
+          prepared,
+          legalEvidence: emptyLegalEvidence,
         });
+        yield* Effect.annotateLogsScoped({ checkoutDetails });
+        const dotyposReservation = yield* createWorkspaceDotyposReservation({
+          paymentOrderId: reservationDraft.id,
+          dotyposCustomerId,
+          checkoutDetails,
+          reservation: checkoutDetails.reservation,
+          status: "NEW",
+        }).pipe(
+          Effect.tapError(
+            Effect.fn(function* (cause) {
+              yield* Effect.logError(
+                "Workspace Dotypos reservation hold creation failed",
+                {
+                  cause,
+                }
+              );
 
-        yield* reservations.updateReservationDetails({
-          id: claimConflictReservation.id,
-          reservationDetails: getStoredWorkspaceReservationDetails(reservation),
-          locale: input.locale,
+              yield* releaseHoldCreation(reservationDraft.id);
+            })
+          )
+        );
+        yield* Effect.annotateLogsScoped({ dotyposReservation });
+
+        const dotyposReservationId = yield* decodeDotyposEntityId({
+          value: dotyposReservation,
+          missingIdMessage: "Dotypos reservation was created without an ID",
+        }).pipe(
+          Effect.tapError(
+            Effect.fn(function* (cause) {
+              yield* Effect.logError(
+                "Workspace Dotypos reservation hold was created without an ID",
+                {
+                  cause,
+                }
+              );
+
+              yield* releaseHoldCreation(reservationDraft.id);
+            })
+          )
+        );
+        yield* Effect.annotateLogsScoped({ dotyposReservationId });
+        yield* Effect.logInfo("Workspace Dotypos reservation hold created");
+
+        const reservationCreatedAt = Temporal.Now.instant();
+
+        yield* reservations
+          .attachHold({
+            id: reservationDraft.id,
+            dotyposReservationId,
+            reservationCreatedAt,
+            reservationHoldExpiresAt: holdExpiresAt,
+          })
+          .pipe(
+            Effect.catch(
+              Effect.fn(function* (cause) {
+                yield* Effect.logError(
+                  "Workspace reservation hold attach failed; cancelling Dotypos hold",
+                  {
+                    cause,
+                  }
+                );
+
+                yield* dotypos.cancelReservation(dotyposReservationId).pipe(
+                  Effect.catch((cancelCause) =>
+                    Effect.gen(function* () {
+                      yield* Effect.logFatal(
+                        "Workspace reservation hold attach cleanup failed",
+                        {
+                          reservationDraftId: reservationDraft.id,
+                          dotyposReservationId,
+                          cause: cancelCause,
+                        }
+                      );
+
+                      yield* reservations
+                        .markAttachFailedCancellationRequired({
+                          id: reservationDraft.id,
+                          dotyposReservationId,
+                          reservationCreatedAt: Temporal.Now.instant(),
+                          failureCode: "attach_failed_cancel_failed",
+                        })
+                        .pipe(
+                          Effect.tapError((markerCause) =>
+                            Effect.logFatal(
+                              "Workspace reservation hold attach cleanup marker failed",
+                              {
+                                reservationDraftId: reservationDraft.id,
+                                dotyposReservationId,
+                                cause: markerCause,
+                              }
+                            )
+                          )
+                        );
+
+                      yield* Effect.logWarning(
+                        "Workspace reservation hold cancellation marked for retry",
+                        {
+                          reservationDraftId: reservationDraft.id,
+                          dotyposReservationId,
+                        }
+                      );
+                      return yield* cancelCause;
+                    })
+                  )
+                );
+                yield* releaseHoldCreation(reservationDraft.id);
+
+                return yield* cause;
+              })
+            )
+          );
+        yield* Effect.logInfo("Workspace reservation hold attached");
+        yield* enqueueReservationHoldCleanup({
+          orderId: reservationDraft.id,
+          reservationHoldExpiresAt: holdExpiresAt,
         });
         yield* captureReservationStarted({
-          reservation: claimConflictReservation,
-          timestamp: claimConflictReservation.createdAt,
+          reservation: {
+            id: reservationDraft.id,
+            dotyposReservationId,
+          },
+          timestamp: reservationCreatedAt,
         });
+
         yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
         return yield* toReadyResult({
           locale: input.locale,
-          prepared: reusedPrepared,
-          reservationId: claimConflictReservation.id,
+          prepared,
+          reservationId: reservationDraft.id,
           checkoutSessionId,
-          changedKeys: reusedPrepared.changedKeys,
+          changedKeys: prepared.changedKeys,
         });
-      }
-
-      yield* Effect.logError(
-        "Workspace reservation hold creation claim failed"
-      );
-
-      return {
-        status: "error" as const,
-        message: m.reservationErrorMessage({}, { locale: input.locale }),
-      };
-    }
-    yield* Effect.logDebug("Workspace reservation hold creation claimed");
-
-    const checkoutDetails = getReservationCheckoutDetails({
-      locale: input.locale,
-      prepared,
-      legalEvidence: emptyLegalEvidence,
-    });
-    yield* Effect.annotateLogsScoped({ checkoutDetails });
-    const dotyposReservation = yield* createWorkspaceDotyposReservation({
-      paymentOrderId: reservationDraft.id,
-      dotyposCustomerId,
-      checkoutDetails,
-      reservation: checkoutDetails.reservation,
-      status: "NEW",
-    }).pipe(
-      Effect.tapError(
-        Effect.fn(function* (cause) {
-          yield* Effect.logError(
-            "Workspace Dotypos reservation hold creation failed",
-            {
-              cause,
-            }
-          );
-
-          yield* releaseHoldCreation(reservationDraft.id);
-        })
-      )
-    );
-    yield* Effect.annotateLogsScoped({ dotyposReservation });
-
-    const dotyposReservationId = yield* decodeDotyposEntityId({
-      value: dotyposReservation,
-      missingIdMessage: "Dotypos reservation was created without an ID",
-    }).pipe(
-      Effect.tapError(
-        Effect.fn(function* (cause) {
-          yield* Effect.logError(
-            "Workspace Dotypos reservation hold was created without an ID",
-            {
-              cause,
-            }
-          );
-
-          yield* releaseHoldCreation(reservationDraft.id);
-        })
-      )
-    );
-    yield* Effect.annotateLogsScoped({ dotyposReservationId });
-    yield* Effect.logInfo("Workspace Dotypos reservation hold created");
-
-    const reservationCreatedAt = Temporal.Now.instant();
-
-    yield* reservations
-      .attachHold({
-        id: reservationDraft.id,
-        dotyposReservationId,
-        reservationCreatedAt,
-        reservationHoldExpiresAt: holdExpiresAt,
       })
-      .pipe(
-        Effect.catch(
-          Effect.fn(function* (cause) {
-            yield* Effect.logError(
-              "Workspace reservation hold attach failed; cancelling Dotypos hold",
-              {
-                cause,
-              }
-            );
-
-            yield* dotypos.cancelReservation(dotyposReservationId).pipe(
-              Effect.catch((cancelCause) =>
-                Effect.gen(function* () {
-                  yield* Effect.logFatal(
-                    "Workspace reservation hold attach cleanup failed",
-                    {
-                      reservationDraftId: reservationDraft.id,
-                      dotyposReservationId,
-                      cause: cancelCause,
-                    }
-                  );
-
-                  yield* reservations
-                    .markAttachFailedCancellationRequired({
-                      id: reservationDraft.id,
-                      dotyposReservationId,
-                      reservationCreatedAt: Temporal.Now.instant(),
-                      failureCode: "attach_failed_cancel_failed",
-                    })
-                    .pipe(
-                      Effect.tapError((markerCause) =>
-                        Effect.logFatal(
-                          "Workspace reservation hold attach cleanup marker failed",
-                          {
-                            reservationDraftId: reservationDraft.id,
-                            dotyposReservationId,
-                            cause: markerCause,
-                          }
-                        )
-                      )
-                    );
-
-                  yield* Effect.logWarning(
-                    "Workspace reservation hold cancellation marked for retry",
-                    {
-                      reservationDraftId: reservationDraft.id,
-                      dotyposReservationId,
-                    }
-                  );
-                  return yield* cancelCause;
-                })
-              )
-            );
-            yield* releaseHoldCreation(reservationDraft.id);
-
-            return yield* cause;
-          })
-        )
-      );
-    yield* Effect.logInfo("Workspace reservation hold attached");
-    yield* enqueueReservationHoldCleanup({
-      orderId: reservationDraft.id,
-      reservationHoldExpiresAt: holdExpiresAt,
-    });
-    yield* captureReservationStarted({
-      reservation: {
-        id: reservationDraft.id,
-        dotyposReservationId,
-      },
-      timestamp: reservationCreatedAt,
-    });
-
-    yield* Effect.logInfo("Workspace reservation checkout prep ready");
-
-    return yield* toReadyResult({
-      locale: input.locale,
-      prepared,
-      reservationId: reservationDraft.id,
-      checkoutSessionId,
-      changedKeys: prepared.changedKeys,
-    });
+    );
   },
   (effect, input) => {
     const captureOutcome = (outcome: ReservationPrePaymentOutcome) =>
@@ -1068,6 +1090,21 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
               Match.tag("BotDetectedError", () =>
                 m.reservationRateLimitMessage({}, { locale: input.locale })
               ),
+              Match.tag("CustomerAccountAccessError", (cause) => {
+                if (
+                  cause.reason === "link-required" &&
+                  cause.linkReason === "deletion-requested"
+                ) {
+                  return m.accountDeletionPendingError(
+                    {},
+                    { locale: input.locale }
+                  );
+                }
+                if (cause.reason === "unauthenticated") {
+                  return m.accountSessionExpired({}, { locale: input.locale });
+                }
+                return m.reservationErrorMessage({}, { locale: input.locale });
+              }),
               Match.orElse(() =>
                 m.reservationErrorMessage({}, { locale: input.locale })
               )
@@ -1080,6 +1117,9 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 );
 
 const PreparePayStateLive = Layer.mergeAll(
+  OptionalAccountActivityGuard.Live.pipe(
+    Layer.provide(WorkspaceDatabase.Default)
+  ),
   Layer.mergeAll(
     WorkspaceReservationRepository.Default,
     CustomerMarketingConsentRepository.Default

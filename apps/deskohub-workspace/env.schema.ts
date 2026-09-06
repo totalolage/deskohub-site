@@ -1,6 +1,7 @@
 import { igloohomeApiTimeoutMaximumMilliseconds } from "@deskohub/igloohome/config";
 import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
+import { parseBetterAuthSecrets } from "./features/account/backend/auth/auth-secrets";
 import {
   postHogFeatureFlagOverridesEnvironmentCheck,
   postHogFeatureFlagOverridesSchema,
@@ -53,6 +54,56 @@ const igloohomeProductionEnvironmentCheck = Schema.makeFilter<{
   );
 });
 
+const isBlank = (value: string | undefined): boolean =>
+  value === undefined || value.trim() === "";
+
+/**
+ * Production must never serve a release whose account email delivery or
+ * cron authentication is unconfigured: magic links would silently fail to
+ * send and cleanup jobs would be publicly invokable. Preview, development,
+ * and test environments stay usable without these secrets.
+ */
+const accountOperationsProductionEnvironmentCheck = Schema.makeFilter<{
+  readonly VERCEL_ENV: "production" | "preview" | "development";
+  readonly EMAIL_API_KEY?: string | undefined;
+  readonly CRON_SECRET?: string | undefined;
+}>((environment) => {
+  if (environment.VERCEL_ENV !== "production") return undefined;
+
+  return (
+    [
+      ["EMAIL_API_KEY", "EMAIL_API_KEY is required in production."],
+      ["CRON_SECRET", "CRON_SECRET is required in production."],
+    ] as const
+  ).flatMap(([key, issue]) =>
+    isBlank(environment[key]) ? [{ path: [key], issue }] : []
+  );
+});
+
+/**
+ * Production must never serve a release whose account authentication cannot
+ * bootstrap. The account-owned secrets parser is the authority for the
+ * versioned, duplicate-free, strong-secret contract; environments outside
+ * production may omit the variable entirely.
+ */
+const betterAuthSecretsProductionEnvironmentCheck = Schema.makeFilter<{
+  readonly VERCEL_ENV: "production" | "preview" | "development";
+  readonly BETTER_AUTH_SECRETS?: string | undefined;
+}>((environment) => {
+  if (environment.VERCEL_ENV !== "production") return undefined;
+
+  return parseBetterAuthSecrets(environment.BETTER_AUTH_SECRETS).kind ===
+    "valid"
+    ? undefined
+    : [
+        {
+          path: ["BETTER_AUTH_SECRETS"],
+          issue:
+            "BETTER_AUTH_SECRETS must contain valid versioned secrets in production.",
+        },
+      ];
+});
+
 export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
     Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/))
@@ -64,6 +115,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   ADMIN_BASIC_AUTH_CREDENTIALS: toEnvSchema(
     administratorCredentialRegistrySchema
   ),
+  BETTER_AUTH_SECRETS: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
   DOTYPOS_API_TIMEOUT: toEnvSchema(
     Schema.FiniteFromString.check(Schema.isInt())
       .check(Schema.isGreaterThan(0))
@@ -140,6 +192,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   POSTHOG_INGEST_HOST: urlEnvSchema,
   POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(PostHogProjectId)),
   PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalStringSchema,
+  VERCEL_BRANCH_URL: optionalStringSchema,
   VERCEL_ENV: toEnvSchema(vercelEnvironmentSchema),
   VERCEL_GIT_COMMIT_SHA: optionalStringSchema,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
@@ -148,7 +201,9 @@ export const workspaceServerEnvSchema = Schema.Struct({
   WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
 }).check(
   postHogFeatureFlagOverridesEnvironmentCheck,
-  igloohomeProductionEnvironmentCheck
+  igloohomeProductionEnvironmentCheck,
+  accountOperationsProductionEnvironmentCheck,
+  betterAuthSecretsProductionEnvironmentCheck
 );
 
 export const workspaceClientEnvSchema = Schema.Struct({
@@ -179,7 +234,9 @@ export const createEnvironmentSchema = (
     isServer
       ? schema.check(
           postHogFeatureFlagOverridesEnvironmentCheck,
-          igloohomeProductionEnvironmentCheck
+          igloohomeProductionEnvironmentCheck,
+          accountOperationsProductionEnvironmentCheck,
+          betterAuthSecretsProductionEnvironmentCheck
         )
       : schema
   );

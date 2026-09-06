@@ -1,16 +1,10 @@
 import { Effect } from "effect";
 import { NextResponse } from "next/server";
-import { env } from "@/env";
 import { ReservationHoldCleanupService } from "@/features/checkout/backend/holds";
+import { isAuthorizedCronRequest } from "@/shared/backend/cron-request";
 import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 
 const cronBatchLimit = 25;
-
-const isAuthorizedCronRequest = (request: Request) => {
-  if (!env.CRON_SECRET) return env.VERCEL_ENV === "development";
-
-  return request.headers.get("authorization") === `Bearer ${env.CRON_SECRET}`;
-};
 
 const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
   function* () {

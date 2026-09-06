@@ -401,25 +401,38 @@ describe("ReservationAccessService", () => {
     const reconcileUncertain = mock(() =>
       Effect.succeed({ ...grant, state: "failed" as const })
     );
+    const reconciledAt = Temporal.Instant.from("2099-07-01T07:00:00.0005Z");
+    let clock = reconciledAt;
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => {
+      const readAt = clock;
+      clock = clock.add({ nanoseconds: 600_000 });
+      return readAt;
+    };
 
-    const reconciled = await Effect.gen(function* () {
-      const service = yield* ReservationAccessService;
-      return yield* service.confirmProviderCredentialRemoved(reservationId);
-    }).pipe(
-      Effect.provide(
-        ReservationAccessService.Default.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.mock(ReservationAccessRepository, { reconcileUncertain }),
-              Layer.mock(IgloohomeService, {})
+    try {
+      const reconciled = await Effect.gen(function* () {
+        const service = yield* ReservationAccessService;
+        return yield* service.confirmProviderCredentialRemoved(reservationId);
+      }).pipe(
+        Effect.provide(
+          ReservationAccessService.Default.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.mock(ReservationAccessRepository, { reconcileUncertain }),
+                Layer.mock(IgloohomeService, {})
+              )
             )
           )
-        )
-      ),
-      Effect.runPromise
-    );
+        ),
+        Effect.runPromise
+      );
 
-    expect(reconciled.state).toBe("failed");
+      expect(reconciled.state).toBe("failed");
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+
     const input = reconcileUncertain.mock.calls[0]?.[0];
     expect(input?.reservationId).toBe(reservationId);
     expect(
@@ -427,5 +440,11 @@ describe("ReservationAccessService", () => {
         input.reconciledAt.epochMilliseconds -
           input.provisioningStaleBefore.epochMilliseconds
     ).toBe(60_000);
+    expect(input?.reconciledAt.equals(reconciledAt)).toBe(true);
+    expect(
+      input?.provisioningStaleBefore.equals(
+        reconciledAt.subtract({ milliseconds: 60_000 })
+      )
+    ).toBe(true);
   });
 });

@@ -10,7 +10,7 @@ import {
   E2ETelemetryService,
 } from "../services/telemetry";
 import { makeE2ETelemetryRuntime, runE2EEffect } from "../telemetry-runtime";
-import { readWorkspaceE2ERunContext } from "./run-plan";
+import { readWorkspaceE2ERunContext } from "./run-context";
 import { readExternalParentSpan } from "./trace-parent";
 
 type CleanupRuntimeFixtures = {

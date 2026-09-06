@@ -27,6 +27,24 @@ const validateFeatureFlagOverrideEnvironment = (
     stdout: "pipe",
   });
 
+const validateServerEnvironment = (
+  mutation: string,
+  vercelEnvironment: "production" | "preview" | "development"
+) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      `${mutation}; await import("./env.ts");`,
+    ],
+    cwd: import.meta.dir,
+    env: { ...process.env, VERCEL_ENV: vercelEnvironment },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 const validateMissingIgloohomeEnvironment = (
   missing: "credentials" | "target-device",
   vercelEnvironment: "production" | "preview"
@@ -160,6 +178,16 @@ describe("workspace environment schemas", () => {
     );
   });
 
+  test("validates the Better Auth secrets without making them browser-visible", () => {
+    const decodeSecrets = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.BETTER_AUTH_SECRETS
+    );
+
+    expect(decodeSecrets(undefined)).toBeUndefined();
+    expect(decodeSecrets("1:synthetic-secret")).toBe("1:synthetic-secret");
+    expect(() => decodeSecrets("")).toThrow();
+  });
+
   test("validates URLs without changing their string representation", () => {
     const decodeDatabaseUrl = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.DATABASE_URL
@@ -291,6 +319,107 @@ describe("workspace environment schemas", () => {
     expect(decodeVercelEnvironment("preview")).toBe("preview");
     expect(decodeVercelEnvironment("production")).toBe("production");
     expect(() => decodeVercelEnvironment("staging")).toThrow();
+  });
+
+  test("fails production closed when delivery or cron authentication is unconfigured", () => {
+    const cases: readonly {
+      readonly mutation: string;
+      readonly expected: string;
+    }[] = [
+      {
+        mutation: "delete process.env.EMAIL_API_KEY",
+        expected: "Invalid production email delivery configuration.",
+      },
+      {
+        mutation: 'process.env.EMAIL_API_KEY = "   "',
+        expected: "Invalid production email delivery configuration.",
+      },
+      {
+        mutation: "delete process.env.CRON_SECRET",
+        expected: "Invalid production cron authentication configuration.",
+      },
+      {
+        mutation: 'process.env.CRON_SECRET = ""',
+        expected: "Invalid production cron authentication configuration.",
+      },
+    ];
+
+    for (const { mutation, expected } of cases) {
+      const validation = validateServerEnvironment(mutation, "production");
+      const error = validation.stderr.toString();
+
+      expect(validation.exitCode).toBe(1);
+      expect(error).toContain(expected);
+      expect(error).not.toContain("re_");
+    }
+  });
+
+  test("keeps local development and preview usable without delivery or cron secrets", () => {
+    const mutation =
+      "delete process.env.EMAIL_API_KEY; delete process.env.CRON_SECRET;";
+
+    for (const vercelEnvironment of ["development", "preview"] as const) {
+      const validation = validateServerEnvironment(mutation, vercelEnvironment);
+      expect(validation.exitCode).toBe(0);
+    }
+  });
+
+  test("fails production closed when Better Auth secrets are absent or invalid", () => {
+    const strongSecret = "9tEWbGQfP2vXcK7mRz4sLh6yUnAoJd1e";
+    const cases: readonly {
+      readonly mutation: string;
+      readonly neverEcho?: string;
+    }[] = [
+      { mutation: "delete process.env.BETTER_AUTH_SECRETS" },
+      {
+        mutation:
+          'process.env.BETTER_AUTH_SECRETS = "leaked-malformed-secret-token";',
+        neverEcho: "leaked-malformed-secret-token",
+      },
+      {
+        mutation:
+          'process.env.BETTER_AUTH_SECRETS = "1:leaked-weak-secret-value";',
+        neverEcho: "leaked-weak-secret-value",
+      },
+      {
+        mutation: `process.env.BETTER_AUTH_SECRETS = "1:${strongSecret},1:${strongSecret}";`,
+        neverEcho: strongSecret,
+      },
+      {
+        mutation: 'process.env.BETTER_AUTH_SECRETS = "1:" + "a".repeat(48);',
+      },
+    ];
+
+    for (const { mutation, neverEcho } of cases) {
+      const validation = validateServerEnvironment(mutation, "production");
+      const error = validation.stderr.toString();
+
+      expect(validation.exitCode).toBe(1);
+      expect(error).toContain("Invalid Better Auth secret configuration.");
+      if (neverEcho !== undefined) {
+        expect(error).not.toContain(neverEcho);
+      }
+    }
+  });
+
+  test("accepts valid rotating Better Auth secrets in production", () => {
+    const rotatedSecret = "Qw7eNb2mVzYr8sKx4tLp6hUcJoAd5gRf";
+    const validation = validateServerEnvironment(
+      `process.env.BETTER_AUTH_SECRETS = "3:${rotatedSecret},1:9tEWbGQfP2vXcK7mRz4sLh6yUnAoJd1e";`,
+      "production"
+    );
+
+    expect(validation.exitCode).toBe(0);
+  });
+
+  test("keeps local development and preview usable without Better Auth secrets", () => {
+    for (const vercelEnvironment of ["development", "preview"] as const) {
+      const validation = validateServerEnvironment(
+        "delete process.env.BETTER_AUTH_SECRETS;",
+        vercelEnvironment
+      );
+      expect(validation.exitCode).toBe(0);
+    }
   });
 
   test("requires the browser PostHog proxy when browser analytics is enabled", () => {

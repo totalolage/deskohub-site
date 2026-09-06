@@ -123,6 +123,51 @@ test("waives exact-SHA E2E only when Vercel marks Workspace unaffected", async (
   expect(skippedStatusJob).not.toContain("vercel deploy");
 });
 
+test("classifies the synthetic main account only after a failed E2E run", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const packageJson = await Bun.file(
+    resolve(import.meta.dir, "../package.json")
+  ).json();
+
+  expect(packageJson.scripts["e2e:account-state"]).toBe(
+    "bun scripts/workspace-e2e-account-state.ts"
+  );
+
+  const uploadIndex = workflow.indexOf("- uses: actions/upload-artifact@v4");
+  const diagnosticIndex = workflow.indexOf(
+    "- name: Classify synthetic main account state"
+  );
+  const releaseIndex = workflow.indexOf("- name: Release date shard");
+  expect(diagnosticIndex).toBeGreaterThan(uploadIndex);
+  expect(diagnosticIndex).toBeLessThan(releaseIndex);
+
+  const diagnosticStep = workflow.slice(diagnosticIndex, releaseIndex);
+  expect(diagnosticStep).toContain("if: failure()");
+  expect(diagnosticStep).toContain("continue-on-error: true");
+  expect(diagnosticStep).toContain(
+    "run: bun --cwd apps/deskohub-workspace e2e:account-state"
+  );
+  expect(diagnosticStep).toContain(
+    `DATABASE_URL: \${{ steps.preview-database.outputs.direct_url }}`
+  );
+  expect(diagnosticStep).toContain(
+    `WORKSPACE_E2E_DATABASE_URL_UNPOOLED: \${{ steps.preview-database.outputs.direct_url }}`
+  );
+  expect(diagnosticStep).toContain(
+    `WORKSPACE_E2E_DATABASE_ALLOWLIST: \${{ steps.preview-database.outputs.direct_url }}`
+  );
+  expect(diagnosticStep).toContain(
+    "secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET"
+  );
+  expect(diagnosticStep).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
+  expect(diagnosticStep).not.toContain("WORKSPACE_E2E_PROVIDER_PERMIT");
+  expect(diagnosticStep).not.toContain(
+    "WORKSPACE_E2E_COORDINATOR_DATABASE_URL"
+  );
+});
+
 test("uses the allocator without a global provider lock", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
@@ -158,6 +203,44 @@ test("passes allocated shard and provider coordination through Turborepo", async
   expect(environment).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
+  expect(environment).toContain("WORKSPACE_E2E_RESEND_API_KEY");
+});
+
+test("keeps the Resend retrieval key inside the account Playwright execution only", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const turbo = await Bun.file(
+    resolve(import.meta.dir, "../../../turbo.json")
+  ).json();
+  const productionWorkflow = await Bun.file(
+    resolve(
+      import.meta.dir,
+      "../../../.github/workflows/deploy-workspace-production.yml"
+    )
+  ).text();
+
+  const runE2EIndex = workflow.indexOf("- name: Run checkout E2E");
+  const runE2EStep = workflow.slice(
+    runE2EIndex,
+    workflow.indexOf("- uses: actions/upload-artifact@v4", runE2EIndex)
+  );
+  expect(runE2EStep).toContain(
+    `WORKSPACE_E2E_RESEND_API_KEY: \${{ secrets.WORKSPACE_E2E_RESEND_API_KEY }}`
+  );
+
+  const occurrences = workflow.split("WORKSPACE_E2E_RESEND_API_KEY").length - 1;
+  expect(occurrences).toBe(2);
+
+  expect(workflow).not.toContain(
+    `RESEND_API_KEY: \${{ secrets.RESEND_API_KEY }}`
+  );
+  expect(productionWorkflow).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
+  expect(productionWorkflow).not.toContain("EMAIL_API_KEY");
+  expect(productionWorkflow).not.toContain("BETTER_AUTH");
+
+  const turboGlobal = turbo.global?.passThroughEnv ?? [];
+  expect(turboGlobal).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
 });
 
 test("runs invoice persistence inside the normal exact-SHA Playwright graph", async () => {
@@ -272,6 +355,25 @@ test("lets Playwright own checkout preparation, scheduling, and parallelism", as
     "makeWorkspaceE2EProviderVerificationPermitLive"
   );
   expect(cleanupRuntime).not.toContain("makeWorkspaceE2ECaseRuntimeLive");
+});
+
+test("admits availability preparation only after discount fixture seeding commits", async () => {
+  const config = await Bun.file(
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
+  ).text();
+
+  expect(config).toContain(
+    'dependencies: ["checkout-setup", "checkout-seed"],\n      name: "checkout-availability",'
+  );
+  expect(config).toContain(
+    'dependencies: ["checkout-setup"],\n      name: "account-auth",'
+  );
+  expect(config).toContain(
+    'dependencies: ["checkout-setup"],\n      name: "checkout-provider-preparation",'
+  );
+  expect(config).toContain(
+    'dependencies: ["checkout-setup"],\n      name: "checkout-invoice-persistence",'
+  );
 });
 
 test("lets Playwright schedule read-only navigation beside checkout cases", async () => {

@@ -29,6 +29,14 @@ The Neon/Vercel integration owns both creation and deletion of these preview
 branches. Keep its automatic obsolete-branch deletion enabled. E2E and other
 repository workflows must not expire or delete integration-owned branches.
 
+Preview data follows the repository PII rule with one approved exception.
+An ordinary protected production-derived Neon branch may inherit Better Auth
+login email, pending-verification email, and short-lived rate-limit IP keys
+from production at its branch point. Preview fixtures and all Dotypos profile
+and reservation data remain synthetic. Do not add a scrubber or a separate
+preview branch procedure to remove the inherited authentication data; the
+existing branch access controls and integration-owned expiry bound it.
+
 Preview Ready currently precedes migration and is acceptable only while builds
 are database-independent. Schema-breaking changes must remain compatible with
 that ordering or add a preview-only pre-runtime migration mechanism. Do not put

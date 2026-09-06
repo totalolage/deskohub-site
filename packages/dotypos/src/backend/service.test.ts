@@ -343,7 +343,7 @@ describe("DotyposService customer lookup", () => {
     ) as FetchCall;
     const searchUrl = new URL(getUrl(searchCall));
     expect(searchUrl.searchParams.get("filter")).toBe(
-      "email|like|ada@example.com"
+      "email|like|ada@example.com;deleted|in|0,1"
     );
     expect(searchUrl.searchParams.get("limit")).toBe("100");
     expect(getHeader(searchCall, "Authorization")).toBe("Bearer access-token");
@@ -534,6 +534,112 @@ describe("DotyposService customer lookup", () => {
     );
 
     expect(result).toEqual({ _tag: "NotFound", matches: [] });
+  });
+
+  test("reports deleted-only exact-email matches as Deleted and requests deleted customers in the filter", async () => {
+    const deleted = customer({
+      id: "deleted-match",
+      email: "ada@example.com",
+      deleted: true,
+    });
+    const filters: (string | null)[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        filters.push(url.searchParams.get("filter"));
+        return Response.json({ data: [deleted] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findCustomer(
+          { firstName: "Ada", email: "ada@example.com" },
+          { lookupFields: ["email"] }
+        );
+      }),
+      fetchMock
+    );
+
+    expect(filters).toEqual(["email|like|ada@example.com;deleted|in|0,1"]);
+    expect(result).toEqual({ _tag: "Deleted", matches: [deleted] });
+  });
+
+  test("prefers the active exact-email match among deleted candidates", async () => {
+    const deleted = customer({
+      id: "deleted-match",
+      email: "ada@example.com",
+      deleted: true,
+    });
+    const active = customer({ id: "active-match", email: "ada@example.com" });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [deleted, active] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findCustomer(
+          { firstName: "Ada", email: "ada@example.com" },
+          { lookupFields: ["email"] }
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual({
+      _tag: "Matched",
+      customer: active,
+      matches: [active],
+    });
+  });
+
+  test("keeps findOrCreateCustomer creating a fresh customer when only deleted exact-email matches exist", async () => {
+    const deleted = customer({
+      id: "deleted-match",
+      email: "ada@example.com",
+      deleted: true,
+    });
+    const created = customer({
+      id: "freshly-created",
+      email: "ada@example.com",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") {
+          return Response.json({ data: [deleted] });
+        }
+        if (request.method === "POST") return Response.json([created]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Ada",
+            email: "ada@example.com",
+            phone: "+420 601 111 222",
+          },
+          { lookupFields: ["email"] }
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual(created);
   });
 
   test("keeps matched customer usable when update fails", async () => {

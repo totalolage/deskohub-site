@@ -1,18 +1,17 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { WorkspaceE2EPreparation } from "../cases";
 import type { DiscountAvailabilityE2EPreparation } from "../cases/discounts";
 import type { MeetingRoomE2EPreparation } from "../cases/meeting-room";
 import type { OfficeE2EPreparation } from "../cases/office";
 import type { E2EDotyposDiscountGroup } from "../integrations/dotypos";
-import { workspaceDir } from "../runtime";
+import { workspaceDir, writeJsonAtomically } from "../runtime";
 import type { E2ERunContext } from "../services/telemetry";
 import type { CheckoutData, CheckoutFlowState } from "../types";
 import { isWorkspaceE2ECaseId, type WorkspaceE2ECaseId } from "./case-catalog";
 
 const checkoutArtifactRoot = resolve(workspaceDir, "e2e-artifacts", "checkout");
 const runPlanPath = resolve(checkoutArtifactRoot, "run-plan.json");
-const runContextPath = resolve(checkoutArtifactRoot, "run-context.json");
 const journalRoot = resolve(checkoutArtifactRoot, "cleanup-journals");
 const formatVersion = 2;
 
@@ -41,12 +40,6 @@ export const writeWorkspaceE2ERunPlan = async (plan: WorkspaceE2ERunPlan) =>
 
 export const readWorkspaceE2ERunPlan = async (): Promise<WorkspaceE2ERunPlan> =>
   parseRunPlan(await readFile(runPlanPath, "utf8"));
-
-export const writeWorkspaceE2ERunContext = async (value: E2ERunContext) =>
-  writeJsonAtomically(runContextPath, value);
-
-export const readWorkspaceE2ERunContext = async (): Promise<E2ERunContext> =>
-  parseRunContext(await readFile(runContextPath, "utf8"));
 
 const preparationPaths = {
   customerDiscountGroup: resolve(
@@ -182,18 +175,6 @@ const parseRunPlan = (serialized: string): WorkspaceE2ERunPlan => {
   return value as WorkspaceE2ERunPlan;
 };
 
-const parseRunContext = (serialized: string): E2ERunContext => {
-  const value: unknown = JSON.parse(serialized);
-  if (
-    !isRecord(value) ||
-    typeof value.runId !== "string" ||
-    !isRecord(value.allocation)
-  ) {
-    throw new Error("Invalid workspace E2E run context");
-  }
-  return value as E2ERunContext;
-};
-
 const parseObject = (serialized: string, label: string) => {
   const value: unknown = JSON.parse(serialized);
   if (!isRecord(value)) {
@@ -225,16 +206,6 @@ const parseCleanupJournal = (
     throw new Error("Invalid workspace E2E cleanup journal");
   }
   return value as WorkspaceE2ECleanupJournal;
-};
-
-const writeJsonAtomically = async (path: string, value: unknown) => {
-  await mkdir(dirname(path), { recursive: true });
-  const temporaryPath = `${path}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  await rename(temporaryPath, path);
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

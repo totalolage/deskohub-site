@@ -56,7 +56,18 @@ export default defineConfig({
       testMatch: "seed.pw.ts",
     },
     {
-      dependencies: ["checkout-seed"],
+      dependencies: ["checkout-setup"],
+      name: "account-auth",
+      testDir: "./e2e/account",
+      testMatch: "account-lane.pw.ts",
+      use: {
+        screenshot: "off",
+        trace: "off",
+        video: "off",
+      },
+    },
+    {
+      dependencies: ["checkout-setup", "checkout-seed"],
       name: "checkout-availability",
       testMatch: "availability.pw.ts",
     },
