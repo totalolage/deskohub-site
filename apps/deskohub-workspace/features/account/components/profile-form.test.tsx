@@ -141,7 +141,7 @@ describe("ProfileForm", () => {
     expect(en.getByLabelText("First name")).toBeTruthy();
     expect(en.getByLabelText("Last name")).toBeTruthy();
     expect(en.getByLabelText("Phone")).toBeTruthy();
-    expect(en.getByText("Billing details, optional")).toBeTruthy();
+    expect(en.getByText("Billing details")).toBeTruthy();
     en.unmount();
 
     const cs = render(
@@ -155,6 +155,7 @@ describe("ProfileForm", () => {
     expect(cs.getByLabelText("Jméno")).toBeTruthy();
     expect(cs.getByLabelText("Příjmení")).toBeTruthy();
     expect(cs.getByLabelText("Telefon")).toBeTruthy();
+    expect(cs.getByText("Fakturační údaje")).toBeTruthy();
   });
 
   test("keeps the verified login email read-only", async () => {

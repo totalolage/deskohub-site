@@ -70,9 +70,12 @@ describe("AccountPage states", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  const renderState = async (state: CustomerAccountPageState) => {
+  const renderState = async (
+    state: CustomerAccountPageState,
+    locale: "en-US" | "cs-CZ" = "en-US"
+  ) => {
     const { AccountPage } = await import("./account-page");
-    return render(<AccountPage locale="en-US" state={state} />);
+    return render(<AccountPage locale={locale} state={state} />);
   };
 
   test("asks for profile completion with the read-only verified email", async () => {
@@ -101,15 +104,22 @@ describe("AccountPage states", () => {
     const view = await renderState(linkedState);
 
     expect(view.getByText("My Workspace")).toBeTruthy();
+    const billingSummary = view.getByText("Billing details");
+    expect(billingSummary.textContent).not.toMatch(/optional/i);
     expect(
       view.queryByText(
-        "Your customer profile and reservations in one place, protected by your verified email."
+        "Your profile details live in our booking system. Your verified login email links your reservations and cannot be changed here."
       )
     ).toBeNull();
     expect(view.getByText("Reservations")).toBeTruthy();
     expect(view.getByText("Delete my account")).toBeTruthy();
     expect(view.getByText("Sign out")).toBeTruthy();
     expect(view.getByText("Save profile")).toBeTruthy();
+
+    view.unmount();
+    const czechView = await renderState(linkedState, "cs-CZ");
+    const czechBillingSummary = czechView.getByText("Fakturační údaje");
+    expect(czechBillingSummary.textContent).not.toMatch(/nepovinné/i);
   });
 
   test("renders the support state with the contact destination and no profile data", async () => {

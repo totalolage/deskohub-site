@@ -85,12 +85,9 @@ function renderState(
           <div className="grid items-start gap-6 lg:grid-cols-[minmax(17rem,0.72fr)_minmax(0,1.28fr)]">
             <Card className={cardClassName}>
               <CardContent className="p-6 sm:p-8">
-                <h2 className="text-2xl text-navy-blue">
+                <h2 className="mb-6 text-2xl text-navy-blue">
                   {m.accountProfileTitle({}, { locale })}
                 </h2>
-                <p className="mb-6 mt-2 text-sm leading-6 text-navy-blue/68">
-                  {m.accountProfileDescription({}, { locale })}
-                </p>
                 <ProfileForm
                   mode="edit"
                   locale={locale}
