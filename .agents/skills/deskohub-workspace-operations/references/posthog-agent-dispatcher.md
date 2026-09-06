@@ -16,11 +16,11 @@ Posted by: PostHog dispatcher agent (posthog-agent-dispatcher.md)
 
 ## Resume answered questions
 
-Before every worker resume, run `/home/dev/.local/libexec/deskohub-posthog-worker-model <thread-id>`. Continue with `t3 send` only after it succeeds. This refreshes the thread from OpenCode's current `orchestrator` model and variant, including when reconciling stopped workers below.
+For every worker resume, use `/home/dev/.local/libexec/deskohub-posthog-worker-model <thread-id> <message> <idempotency-key>`. Quote each argument. The helper sends the turn with OpenCode's current `orchestrator` model and variant. Use it for both human replies and stopped workers below; plain `t3 send` can retain an old session model.
 
 1. Find open issues containing both `<!-- posthog-agent:human-needed -->` and `<!-- t3-worker-thread:`.
 2. Anchor the search to the latest comment containing `<!-- posthog-agent:human-needed -->`. Find the first later comment from the exact GitHub login `totalolage` that contains none of the automation markers `<!-- posthog-agent:` or `<!-- t3-worker-thread:` and has no matching `<!-- posthog-agent:consumed-comment:<comment-id> -->` marker. The response needs no codeword.
-3. Send that comment to the recorded worker thread with `/home/dev/.local/bin/t3 send`, `--base-dir /home/dev/.t3`, `--yes`, and idempotency key `github-comment-<comment-id>`.
+3. Send that comment to the recorded worker thread with the resume helper and idempotency key `github-comment-<comment-id>`.
 4. Comment `<!-- posthog-agent:consumed-comment:<comment-id> -->` on the issue only after T3 accepts the send.
 
 ## Reconcile recorded workers

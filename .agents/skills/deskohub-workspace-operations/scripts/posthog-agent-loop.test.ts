@@ -319,17 +319,28 @@ describe("posthog-agent-loop", () => {
     expect(curlArguments).not.toContain("fake-token");
   });
 
-  test("refreshes an existing worker from agent config without forcing a variant", async () => {
+  test("resumes an existing worker with explicit agent config and a stable command ID", async () => {
     const { exitCode, payload, stderr, curlArguments } = await runApiScript(
       workerModel,
-      ["posthog-worker-issue-303"],
+      [
+        "posthog-worker-issue-303",
+        "Continue after the human reply.",
+        "github-comment-42",
+      ],
       null
     );
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(payload).toMatchObject({
-      type: "thread.meta.update",
+      type: "thread.turn.start",
+      commandId:
+        "posthog-worker-resume:posthog-worker-issue-303:github-comment-42",
       threadId: "posthog-worker-issue-303",
+      message: {
+        text: "Continue after the human reply.",
+        role: "user",
+        attachments: [],
+      },
       modelSelection: {
         instanceId: "opencode",
         model: "test-provider/configured-model",

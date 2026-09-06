@@ -21,15 +21,20 @@ if [[ $# == 0 ]]; then
 fi
 
 thread_id="$1"
+message="${2:?Usage: posthog-worker-model <thread-id> <message> <idempotency-key>}"
+command_id="${3:?Usage: posthog-worker-model <thread-id> <message> <idempotency-key>}"
 t3_bin="${T3_BIN:-/home/dev/.local/bin/t3}"
 t3_base_dir="${T3_BASE_DIR:-/home/dev/.t3}"
 origin="$("$t3_bin" session --base-dir "$t3_base_dir" | jq -er '.target.httpBaseUrl')"
 token="$("$t3_bin" auth session issue --base-dir "$t3_base_dir" \
   --ttl 10m --label "PostHog worker model" --subject posthog-cron --token-only)"
-payload="$(jq -cn --arg thread "$thread_id" --arg command "$(cat /proc/sys/kernel/random/uuid)" \
+payload="$(jq -cn --arg thread "$thread_id" --arg command "posthog-worker-resume:$thread_id:$command_id" \
+  --arg message "$message" --arg now "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" \
   --argjson selection "$selection" '{
-    type: "thread.meta.update", commandId: $command,
-    threadId: $thread, modelSelection: $selection
+    type: "thread.turn.start", commandId: $command,
+    threadId: $thread, modelSelection: $selection,
+    message: {messageId: $command, role: "user", text: $message, attachments: []},
+    runtimeMode: "full-access", interactionMode: "default", createdAt: $now
   }')"
 response="$("${CURL_BIN:-curl}" --fail-with-body --silent --show-error \
   --config - --header "Content-Type: application/json" --data-binary "$payload" \
