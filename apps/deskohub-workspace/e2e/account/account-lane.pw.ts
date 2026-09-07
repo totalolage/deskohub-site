@@ -24,6 +24,7 @@ import {
   captureAccountReview,
   withSignInPendingReview,
 } from "./review-screenshots";
+import { verifyStickyAccountSections } from "./sticky-sections";
 import type { WorkspaceE2EAccountDeletionHandoff } from "./types";
 
 const accountReviewTargetByCaseId: Partial<
@@ -147,37 +148,53 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       if (!selected) {
         throw new Error(`Workspace account E2E case ${caseId} was not built`);
       }
-      const verifyPage: WorkspaceE2EStep<void> | undefined =
-        caseId === "account-profile-completion"
-          ? {
-              execute: Effect.tryPromise({
-                catch: () =>
-                  workspaceE2EError(
-                    "verify profile navigation and unsaved changes failed",
-                    {
-                      operation:
-                        "verify profile navigation and unsaved changes",
-                    }
-                  ),
-                try: async () => {
-                  const pages = browser
-                    .contexts()
-                    .flatMap((context) => context.pages());
-                  if (pages.length !== 1)
-                    throw new Error(accountReviewCaptureFailureMessage);
-                  const page = pages[0];
-                  if (!page)
-                    throw new Error(accountReviewCaptureFailureMessage);
-                  await verifyProfileNavigation(
-                    page,
-                    accountLane.config.baseUrl
-                  );
-                },
+      const getOwnedPage = () => {
+        const pages = browser.contexts().flatMap((context) => context.pages());
+        if (pages.length !== 1)
+          throw new Error(accountReviewCaptureFailureMessage);
+        const page = pages[0];
+        if (!page) throw new Error(accountReviewCaptureFailureMessage);
+        return page;
+      };
+      let verifyPage: WorkspaceE2EStep<void> | undefined;
+      if (caseId === "account-profile-completion") {
+        verifyPage = {
+          execute: Effect.tryPromise({
+            catch: () =>
+              workspaceE2EError(
+                "verify profile navigation and unsaved changes failed",
+                {
+                  operation: "verify profile navigation and unsaved changes",
+                }
+              ),
+            try: async () => {
+              await verifyProfileNavigation(
+                getOwnedPage(),
+                accountLane.config.baseUrl
+              );
+            },
+          }),
+          id: "checks profile re-entry and unsaved navigation",
+          timeoutMs: workspaceE2ETimeouts.providerTransition,
+        };
+      } else if (caseId === "account-reservation-transitions") {
+        verifyPage = {
+          execute: Effect.tryPromise({
+            catch: () =>
+              workspaceE2EError("verify sticky account sections failed", {
+                operation: "verify sticky account sections",
               }),
-              id: "checks profile re-entry and unsaved navigation",
-              timeoutMs: workspaceE2ETimeouts.providerTransition,
-            }
-          : undefined;
+            try: async () => {
+              await verifyStickyAccountSections(
+                getOwnedPage(),
+                accountLane.config.baseUrl
+              );
+            },
+          }),
+          id: "checks sticky account sections",
+          timeoutMs: workspaceE2ETimeouts.providerTransition,
+        };
+      }
       const runCase = () =>
         runEffect(
           runWorkspaceE2EAccountCase({

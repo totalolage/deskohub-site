@@ -9,6 +9,7 @@ export type AccountReviewTarget =
   | "account-loading-desktop"
   | "sign-in-handoff-desktop"
   | "linked-desktop1440x1000"
+  | "linked-sticky-desktop"
   | "linked-history-desktop"
   | "support-desktop"
   | "sign-in-accepted-desktop"
@@ -19,6 +20,7 @@ export type AccountReviewTarget =
 
 type AccountReviewTargetMetadata = {
   readonly filename: `${string}.png`;
+  readonly fullPage?: boolean;
   readonly path: string | readonly string[];
   readonly viewport: Playwright.ViewportSize;
 };
@@ -43,6 +45,12 @@ const accountReviewTargetMetadata = {
     filename: "linked-desktop1440x1000.png",
     path: "/en-US/account",
     viewport: { height: 1000, width: 1440 },
+  },
+  "linked-sticky-desktop": {
+    filename: "linked-sticky-desktop.png",
+    fullPage: false,
+    path: "/en-US/account",
+    viewport: { height: 900, width: 1440 },
   },
   "linked-history-desktop": {
     filename: "linked-history-desktop.png",
@@ -136,7 +144,7 @@ const captureAccountReviewPixels = async (
   target: AccountReviewTarget,
   deadline: number
 ): Promise<void> => {
-  const metadata = accountReviewTargetMetadata[target];
+  const metadata: AccountReviewTargetMetadata = accountReviewTargetMetadata[target];
   if (!metadata) throw accountReviewCaptureFailure();
 
   validateAccountReviewPage(page, baseUrl, target, metadata);
@@ -144,7 +152,7 @@ const captureAccountReviewPixels = async (
   remainingAccountReviewBudget(deadline);
   await page.screenshot({
     animations: "disabled",
-    fullPage: true,
+    fullPage: metadata.fullPage ?? true,
     path: resolve(accountReviewArtifactDirectory, metadata.filename),
     timeout: remainingAccountReviewBudget(deadline),
   });

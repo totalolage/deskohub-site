@@ -27,6 +27,7 @@ const validTargets = [
     query: "",
     target: "completion-mobile375x900",
     viewport: { height: 900, width: 375 },
+    fullPage: true,
   },
   {
     filename: "account-loading-desktop.png",
@@ -34,6 +35,7 @@ const validTargets = [
     query: "",
     target: "account-loading-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
     filename: "sign-in-handoff-desktop.png",
@@ -41,6 +43,7 @@ const validTargets = [
     query: "",
     target: "sign-in-handoff-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
     filename: "linked-desktop1440x1000.png",
@@ -48,6 +51,15 @@ const validTargets = [
     query: "",
     target: "linked-desktop1440x1000",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-sticky-desktop.png",
+    path: "/en-US/account",
+    query: "",
+    target: "linked-sticky-desktop",
+    viewport: { height: 900, width: 1440 },
+    fullPage: false,
   },
   {
     filename: "linked-history-desktop.png",
@@ -55,6 +67,7 @@ const validTargets = [
     query: "",
     target: "linked-history-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
     filename: "support-desktop.png",
@@ -62,6 +75,7 @@ const validTargets = [
     query: "",
     target: "support-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
     filename: "sign-in-accepted-desktop.png",
@@ -69,6 +83,7 @@ const validTargets = [
     query: "",
     target: "sign-in-accepted-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
     filename: "sign-in-pending-desktop.png",
@@ -76,6 +91,7 @@ const validTargets = [
     query: "",
     target: "sign-in-pending-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
     filename: "sign-in-desktop.png",
@@ -83,6 +99,7 @@ const validTargets = [
     query: "",
     target: "sign-in-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
     filename: "callback-failed-desktop.png",
@@ -90,6 +107,7 @@ const validTargets = [
     query: "",
     target: "callback-failed-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
     filename: "deleted-desktop.png",
@@ -97,9 +115,11 @@ const validTargets = [
     query: "",
     target: "deleted-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
 ] as const satisfies ReadonlyArray<{
   readonly filename: `${string}.png`;
+  readonly fullPage: boolean;
   readonly path: string | readonly string[];
   readonly query: string;
   readonly target: AccountReviewTarget;
@@ -430,7 +450,7 @@ describe("account review screenshot capture", () => {
         expect(fakePage.screenshotCalls).toHaveLength(1);
         expect(fakePage.screenshotCalls[0]).toEqual({
           animations: "disabled",
-          fullPage: true,
+          fullPage: expected.fullPage,
           path: resolve(accountReviewArtifactDirectory, expected.filename),
           timeout: expect.any(Number),
         });
