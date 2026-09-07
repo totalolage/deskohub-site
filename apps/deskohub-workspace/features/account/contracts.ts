@@ -1,6 +1,7 @@
 import { normalizePhoneNumber } from "@deskohub/dotypos";
 import { Schema } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
 const trimmedRequiredText = (maximumLength: number) =>
   Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(maximumLength));
@@ -93,6 +94,7 @@ export type CustomerReservationProduct =
 
 export type CustomerReservationSummary = {
   readonly id: string;
+  readonly workspaceReservationId?: WorkspaceReservationId;
   readonly product: CustomerReservationProduct;
   readonly startsAt: string | null;
   readonly endsAt: string | null;

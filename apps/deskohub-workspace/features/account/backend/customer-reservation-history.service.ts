@@ -83,6 +83,7 @@ const toReservationSummary = (
   index: number
 ): CustomerReservationSummary => ({
   id: row?.id ?? reservation.id ?? `${reservation.startDate}:${index}`,
+  ...(row?.id && { workspaceReservationId: row.id }),
   product: getReservationProduct(row),
   startsAt: reservation.startDate,
   endsAt: reservation.endDate,

@@ -1,4 +1,4 @@
-import { CalendarDays, Users } from "lucide-react";
+import { CalendarDays, ChevronRight, Users } from "lucide-react";
 import type {
   CustomerReservationHistory,
   CustomerReservationStatus,
@@ -10,6 +10,8 @@ import {
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
+import { reservationStatusPath } from "@/features/reservation/routes";
+import { GuardedLink } from "@/shared/components/guarded-link";
 import { Badge } from "@/shared/components/ui/badge";
 import {
   Card,
@@ -207,39 +209,57 @@ function ReservationItem({
   readonly subdued?: boolean;
 }) {
   const period = formatReservationPeriod(reservation, locale);
+  const workspaceReservationId = reservation.workspaceReservationId;
+  const content = (
+    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+      <div>
+        <h4 className="text-base text-navy-blue">
+          {getReservationTitle(reservation, locale)}
+        </h4>
+        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-navy-blue/62">
+          {period ? (
+            <span className="inline-flex items-center gap-1.5">
+              <CalendarDays aria-hidden className="size-4" />
+              {period}
+            </span>
+          ) : null}
+          {reservation.seats !== null ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Users aria-hidden className="size-4" />
+              {m.accountReservationSeats(
+                { count: reservation.seats },
+                { locale }
+              )}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      <Badge className={getStatusClassName(reservation.status)}>
+        {getStatusLabel(reservation.status, locale)}
+      </Badge>
+    </div>
+  );
+
   return (
     <li
-      className={`rounded-2xl border border-navy-blue/10 p-4 ${
+      className={`rounded-2xl border border-navy-blue/10 ${
         subdued ? "bg-navy-blue/[0.025]" : "bg-white"
       }`}
     >
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-        <div>
-          <h4 className="text-base text-navy-blue">
-            {getReservationTitle(reservation, locale)}
-          </h4>
-          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 text-sm text-navy-blue/62">
-            {period ? (
-              <span className="inline-flex items-center gap-1.5">
-                <CalendarDays aria-hidden className="size-4" />
-                {period}
-              </span>
-            ) : null}
-            {reservation.seats !== null ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Users aria-hidden className="size-4" />
-                {m.accountReservationSeats(
-                  { count: reservation.seats },
-                  { locale }
-                )}
-              </span>
-            ) : null}
-          </div>
-        </div>
-        <Badge className={getStatusClassName(reservation.status)}>
-          {getStatusLabel(reservation.status, locale)}
-        </Badge>
-      </div>
+      {workspaceReservationId ? (
+        <GuardedLink
+          href={`/${locale}${reservationStatusPath}/${encodeURIComponent(workspaceReservationId)}`}
+          className="group relative block rounded-2xl p-4 pr-10 transition-colors hover:bg-navy-blue/[0.025] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange"
+        >
+          {content}
+          <ChevronRight
+            aria-hidden
+            className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-navy-blue/45 transition-transform group-hover:translate-x-0.5"
+          />
+        </GuardedLink>
+      ) : (
+        <div className="p-4">{content}</div>
+      )}
     </li>
   );
 }
