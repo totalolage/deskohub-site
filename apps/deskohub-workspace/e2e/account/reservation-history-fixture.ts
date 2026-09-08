@@ -12,7 +12,7 @@ import {
   IgloohomeDeviceIdSchema,
 } from "@deskohub/igloohome";
 import { eq } from "drizzle-orm";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   paymentAttempts,
   reservationAccessGrants,
@@ -24,12 +24,12 @@ import {
   type PaymentAttemptId,
   paymentAttemptIdSchema,
 } from "@/features/checkout/checkout-identifiers";
-import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import { getReservationAccessInterval } from "@/features/reservation-access";
+import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
+import { getReservationAccessInterval } from "@/features/reservation-access/backend/reservation-access.service";
 import {
   type ReservationAccessGrantId,
   reservationAccessGrantIdSchema,
@@ -239,9 +239,11 @@ export function seedWorkspaceE2EReservationHistory(
     );
     const dotyposReservationId = input.dotyposReservationId;
 
-    const providerTiming = yield* getDotyposReservationTiming({
-      reservationId: ids.reservationId,
-      reservation: providerReservation.reservation,
+    const normalizedProviderTiming = yield* Schema.decodeEffect(
+      reservationIntervalSchema
+    )({
+      startsAt: providerReservation.reservation.startDate,
+      endsAt: providerReservation.reservation.endDate,
     }).pipe(
       Effect.mapError((cause) =>
         workspaceE2EError("read account reservation history provider timing", {
@@ -251,6 +253,18 @@ export function seedWorkspaceE2EReservationHistory(
         })
       )
     );
+    const providerTiming = yield* Effect.try({
+      catch: (cause) =>
+        workspaceE2EError("read account reservation history provider timing", {
+          cause,
+          diagnosticCode: "postgres_account_fixture_assertion_failed",
+          operation: "read account reservation history provider timing",
+        }),
+      try: () => ({
+        reservedFrom: Temporal.Instant.from(normalizedProviderTiming.startsAt),
+        reservedUntil: Temporal.Instant.from(normalizedProviderTiming.endsAt),
+      }),
+    });
     const accessInterval = yield* getReservationAccessInterval({
       reservationId: ids.reservationId,
       ...providerTiming,

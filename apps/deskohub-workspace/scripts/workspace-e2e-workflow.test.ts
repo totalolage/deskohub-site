@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 
+const decoder = new TextDecoder();
+
 test("keeps the atomic allocator isolated from exact-SHA test code", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
@@ -206,6 +208,79 @@ test("passes allocated shard and provider coordination through Turborepo", async
   expect(environment).toContain("WORKSPACE_E2E_RESEND_API_KEY");
 });
 
+test("generates the Igloohome client before Workspace E2E startup", async () => {
+  const result = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "turbo",
+      "run",
+      "test:e2e",
+      "--filter=deskohub-workspace",
+      "--dry=json",
+    ],
+    cwd: resolve(import.meta.dir, "../../../"),
+    env: { ...process.env, TURBO_UI: "false" },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
+  expect(result.exitCode).toBe(0);
+  const output = decoder.decode(result.stdout);
+  const jsonStart = output.indexOf("{");
+  expect(jsonStart).toBeGreaterThanOrEqual(0);
+  const graph = JSON.parse(output.slice(jsonStart)) as {
+    readonly tasks: readonly {
+      readonly command: string;
+      readonly dependencies: readonly string[];
+      readonly directory: string;
+      readonly outputs: readonly string[] | null;
+      readonly resolvedTaskDefinition: {
+        readonly dependsOn: readonly string[];
+        readonly passThroughEnv: readonly string[];
+      };
+      readonly taskId: string;
+    }[];
+  };
+  const rootTurbo = (await Bun.file(
+    resolve(import.meta.dir, "../../../turbo.json")
+  ).json()) as {
+    readonly tasks: {
+      readonly "test:e2e": {
+        readonly passThroughEnv: readonly string[];
+      };
+    };
+  };
+  const e2eTask = graph.tasks.find(
+    (task) => task.taskId === "deskohub-workspace#test:e2e"
+  );
+  const generatorTask = graph.tasks.find(
+    (task) => task.taskId === "@deskohub/igloohome#generate"
+  );
+  const i18nTask = graph.tasks.find(
+    (task) => task.taskId === "deskohub-workspace#i18n:compile"
+  );
+
+  expect(e2eTask).toBeDefined();
+  expect(generatorTask).toBeDefined();
+  expect(i18nTask).toBeDefined();
+  expect(e2eTask?.dependencies).toEqual(
+    expect.arrayContaining([
+      "@deskohub/igloohome#generate",
+      "deskohub-workspace#i18n:compile",
+    ])
+  );
+  expect(e2eTask?.resolvedTaskDefinition.dependsOn).toEqual(
+    expect.arrayContaining(["@deskohub/igloohome#generate", "i18n:compile"])
+  );
+  expect(
+    [...(e2eTask?.resolvedTaskDefinition.passThroughEnv ?? [])].sort()
+  ).toEqual([...rootTurbo.tasks["test:e2e"].passThroughEnv].sort());
+  expect(generatorTask?.command).toContain("generate-effect-openapi-client.ts");
+  expect(generatorTask?.directory).toBe("packages/igloohome");
+  expect(generatorTask?.outputs).toEqual(["src/generated/**"]);
+  expect(i18nTask?.directory).toBe("apps/deskohub-workspace");
+});
+
 test("keeps the Resend retrieval key inside the account Playwright execution only", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
@@ -279,7 +354,6 @@ test("runs invoice persistence inside the normal exact-SHA Playwright graph", as
   expect(packageJson.scripts["test:accounting-persistence"]).toBeUndefined();
   expect(testUnit).not.toContain("e2e.test.ts");
   expect(turbo.tasks["test:accounting-persistence"]).toBeUndefined();
-  expect(turbo.tasks["test:e2e"]).toBeUndefined();
   expect(playwrightConfig).toContain('name: "checkout-invoice-persistence"');
   expect(playwrightConfig).toContain('"checkout-invoice-persistence"');
   expect(invoicePersistenceProject).toContain("assertInvoicePersistence");

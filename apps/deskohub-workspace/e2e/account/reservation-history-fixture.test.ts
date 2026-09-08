@@ -171,6 +171,30 @@ const makeDependencies = (
       }),
   }) satisfies WorkspaceE2EReservationHistoryFixtureTestDependencies;
 
+const expectProviderTimingError = async (input: {
+  readonly fixtureInput: WorkspaceE2EReservationHistoryFixtureInput;
+  readonly providerProjection: WorkspaceE2EReservationHistoryProviderProjection;
+}) => {
+  const fakeDatabase = makeFakeDatabase();
+  const providerCalls: string[] = [];
+
+  await expect(
+    Effect.runPromise(
+      seedWorkspaceE2EReservationHistory(
+        input.fixtureInput,
+        makeDependencies(fakeDatabase, input.providerProjection, providerCalls)
+      )
+    )
+  ).rejects.toMatchObject({
+    _tag: "WorkspaceE2EError",
+    diagnosticCode: "postgres_account_fixture_assertion_failed",
+    operation: "read account reservation history provider timing",
+  });
+
+  expect(providerCalls).toEqual([input.fixtureInput.dotyposReservationId]);
+  expect(fakeDatabase.transactionCalls).toHaveLength(0);
+};
+
 test("seeds the exact rows and cleans them through the finalizer", async () => {
   const { input, providerProjection } = makeFixtureInput();
   const fakeDatabase = makeFakeDatabase();
@@ -202,6 +226,15 @@ test("seeds the exact rows and cleans them through the finalizer", async () => {
             expect(rows?.accessGrant.accessCode).toBeUndefined();
             expect(rows?.accessGrant.failureCode).toBe(
               "workspace_e2e_fixture_uncertain"
+            );
+            expect(rows?.accessGrant.scheduledAccessStartsAt).toEqual(
+              Temporal.Instant.from(providerProjection.reservation.startDate)
+            );
+            expect(rows?.accessGrant.accessStartsAt).toEqual(
+              Temporal.Instant.from(providerProjection.reservation.startDate)
+            );
+            expect(rows?.accessGrant.accessEndsAt).toEqual(
+              Temporal.Instant.from(providerProjection.reservation.endDate)
             );
             expect(fakeDatabase.reservations.size).toBe(1);
             expect(fakeDatabase.paymentAttempts.size).toBe(1);
@@ -243,6 +276,35 @@ test("seeds the exact rows and cleans them through the finalizer", async () => {
   expect(fakeDatabase.reservations.size).toBe(0);
   expect(fakeDatabase.paymentAttempts.size).toBe(0);
   expect(fakeDatabase.accessGrants.size).toBe(0);
+});
+
+test("maps a reversed provider interval through the fixed E2E error boundary", async () => {
+  const { input, providerProjection } = makeFixtureInput();
+  await expectProviderTimingError({
+    fixtureInput: input,
+    providerProjection: {
+      ...providerProjection,
+      reservation: {
+        ...providerProjection.reservation,
+        endDate: providerProjection.reservation.startDate,
+        startDate: providerProjection.reservation.endDate,
+      },
+    },
+  });
+});
+
+test("maps malformed provider timestamps through the fixed E2E error boundary", async () => {
+  const { input, providerProjection } = makeFixtureInput();
+  await expectProviderTimingError({
+    fixtureInput: input,
+    providerProjection: {
+      ...providerProjection,
+      reservation: {
+        ...providerProjection.reservation,
+        startDate: "not-a-provider-timestamp",
+      },
+    },
+  });
 });
 
 test("does not leave rows when the seed transaction rolls back", async () => {
