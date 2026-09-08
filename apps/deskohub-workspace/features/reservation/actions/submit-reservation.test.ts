@@ -71,6 +71,48 @@ const runSubmitReservation = async (options?: {
 };
 
 describe("submitWorkspaceReservation", () => {
+  test.each(["en-US", "cs-CZ"] as const)(
+    "maps cookie-store acquisition failure to the localized public error in %s",
+    async (locale) => {
+      const { CheckoutService } = await import(
+        "@/features/checkout/backend/checkout"
+      );
+      const { submitReservationEffect } = await import(
+        "./submit-reservation-composition"
+      );
+      const { BotProtectionServiceMock } = await import(
+        "@/shared/backend/bot-protection/bot-protection.service.mock"
+      );
+      const { ReservationAccessCookieWriter } = await import(
+        "@/features/reservation/backend/reservation-access-cookie.server"
+      );
+      const { m } = await import("@/features/i18n");
+      const verifyHuman = mock(() => Effect.void);
+      const createHostedPaymentCheckout = mock(() =>
+        Effect.succeed({
+          status: "redirect" as const,
+          redirectUrl: "https://payments.example.test/checkout",
+          statusUrl: "/en-US/reservation/status/reservation-id",
+        })
+      );
+
+      const effect = submitReservationEffect(
+        { ...input, locale },
+        Layer.mergeAll(
+          Layer.succeed(CheckoutService, { createHostedPaymentCheckout }),
+          ReservationAccessCookieWriter.Live
+        )
+      ).pipe(Effect.provide(BotProtectionServiceMock({ verifyHuman })));
+      const error = await Effect.runPromise(Effect.flip(effect));
+
+      expect(error).toMatchObject({
+        _tag: "PublicSafeActionError",
+        message: m.reservationErrorMessage({}, { locale }),
+      });
+      expect(createHostedPaymentCheckout).not.toHaveBeenCalled();
+    }
+  );
+
   test("verifies with the allow policy before creating checkout", async () => {
     const eventOrder: string[] = [];
     const verifyHuman = mock(() =>

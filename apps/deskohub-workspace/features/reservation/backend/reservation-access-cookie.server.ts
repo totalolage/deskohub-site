@@ -20,19 +20,25 @@ export class ReservationAccessCookieWriter extends Context.Service<
   ReservationAccessCookieWriter,
   IReservationAccessCookieWriter
 >()("ReservationAccessCookieWriter") {
-  static Default = Layer.succeed(this, {
-    write: Effect.fn("ReservationAccessCookieWriter.write")(function* (input) {
-      const store = yield* Effect.tryPromise({
-        try: () => cookies(),
-        catch: () =>
-          new ReservationAccessCookieError({
-            code: "store-unavailable",
-            message: "Reservation access cookie storage is unavailable.",
-          }),
-      });
-      yield* writeReservationAccessCookie(store, input);
-    }),
-  });
+  static Default = Layer.effect(
+    this,
+    Effect.tryPromise({
+      try: () => cookies(),
+      catch: () =>
+        new ReservationAccessCookieError({
+          code: "store-unavailable",
+          message: "Reservation access cookie storage is unavailable.",
+        }),
+    }).pipe(
+      Effect.map((store) => ({
+        write: Effect.fn("ReservationAccessCookieWriter.write")(
+          function* (input) {
+            yield* writeReservationAccessCookie(store, input);
+          }
+        ),
+      }))
+    )
+  );
 
   static Live = this.Default;
 }
