@@ -4,6 +4,7 @@ import {
   workspaceE2EError,
   workspaceE2ETimeoutError,
 } from "../errors";
+import type { E2EDatabase } from "../integrations/database.service";
 import { log } from "../runtime";
 import { E2ETelemetryService } from "../services/telemetry";
 import type { WorkspaceE2EFailureReporter } from "../suite";
@@ -37,7 +38,7 @@ export const runWorkspaceE2EAccountCase = ({
   readonly reportFailure?: WorkspaceE2EFailureReporter;
   readonly session: string;
   readonly testCase: WorkspaceE2EAccountCase;
-  readonly verifyPage?: WorkspaceE2EStep<void>;
+  readonly verifyPage?: WorkspaceE2EStep<void, E2EDatabase>;
 }): Effect.Effect<void, WorkspaceE2EError, WorkspaceE2EAccountRequirement> =>
   Effect.scoped(
     Effect.gen(function* () {

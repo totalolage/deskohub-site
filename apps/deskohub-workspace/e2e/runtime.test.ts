@@ -23,7 +23,7 @@ const browserWithFrame = (frame: EvaluationFrame) => {
   };
   return {
     newContext: async () => context,
-  } as unknown as Browser;
+  } as Browser;
 };
 
 const runEval = (
@@ -133,7 +133,7 @@ test("targets the visible match for selector-based browser actions", async () =>
   };
   const browser = {
     newContext: async () => context,
-  } as unknown as Browser;
+  } as Browser;
   const run = makePlaywrightBrowserRunner(browser);
 
   try {
@@ -174,7 +174,7 @@ test("types provider-controlled fields with user-like key timing", async () => {
   };
   const browser = {
     newContext: async () => context,
-  } as unknown as Browser;
+  } as Browser;
   const run = makePlaywrightBrowserRunner(browser);
 
   try {
@@ -215,7 +215,7 @@ test("waits for the document body before taking a snapshot", async () => {
   };
   const browser = {
     newContext: async () => context,
-  } as unknown as Browser;
+  } as Browser;
   const run = makePlaywrightBrowserRunner(browser);
 
   try {
@@ -253,7 +253,7 @@ test("restores the remaining page when the current popup closes", async () => {
   };
   const browser = {
     newContext: async () => context,
-  } as unknown as Browser;
+  } as Browser;
   const run = makePlaywrightBrowserRunner(browser);
 
   try {
@@ -280,7 +280,7 @@ test("rejects a hanging browser evaluation within the command timeout", async ()
   const setTimeoutSpy = ((callback: () => void, delay?: number) => {
     budgetDelays.push(delay ?? 0);
     return realSetTimeout(callback, delay);
-  }) as unknown as typeof setTimeout;
+  }) as typeof setTimeout;
   globalThis.setTimeout = setTimeoutSpy;
   const evalRun = runEval(
     {
@@ -347,6 +347,283 @@ test("returns browser evaluation results unchanged within the command timeout", 
     ]);
     expect(first.stdout).toBe('{"reservationText":"Table 4 - 2 seats"}');
     expect(second.stdout).toBe("Reserved table text");
+  } finally {
+    await run.close?.();
+  }
+});
+
+test("bounds preview access priming redirects before opening a page", async () => {
+  const target = "https://workspace.test/en-US/reservation/status/order-id";
+  let requestOptions: unknown;
+  const page = {
+    goto: async () => undefined,
+    mainFrame: () => ({}),
+    on: () => undefined,
+    url: () => target,
+  };
+  const context = {
+    close: async () => undefined,
+    newPage: async () => page,
+    on: () => undefined,
+    request: {
+      get: async (_url: string, options: unknown) => {
+        requestOptions = options;
+        return {
+          dispose: async () => undefined,
+          ok: () => true,
+          status: () => 200,
+        };
+      },
+    },
+  };
+  const browser = {
+    newContext: async () => context,
+  } as Browser;
+  const run = makePlaywrightBrowserRunner(browser);
+
+  try {
+    const result = await run(
+      "playwright",
+      [
+        "--session",
+        "preview-priming-test",
+        "--headers",
+        JSON.stringify({ "x-vercel-protection-bypass": "test-bypass" }),
+        "open",
+        target,
+      ],
+      { logCommand: false, logOutput: false, timeoutMs: 5000 }
+    );
+
+    expect(result.stdout).toBe(target);
+    expect(requestOptions).toEqual({
+      headers: { "x-vercel-protection-bypass": "test-bypass" },
+      maxRedirects: 3,
+      timeout: 5000,
+    });
+  } finally {
+    await run.close?.();
+  }
+});
+
+test("returns only browser request metadata and disables HAR for an isolated request session", async () => {
+  const requestUrl = "https://workspace.test/en-US/reservation/access/order-id";
+  const cleanLocation = "https://workspace.test/clean";
+  const wrongLocation = "https://workspace.test/wrong";
+  const contextOptions: unknown[] = [];
+  let requestOptions: unknown;
+  let disposed = false;
+  let responseLocation = cleanLocation;
+  const page = {
+    mainFrame: () => ({}),
+    on: () => undefined,
+  };
+  const response = {
+    dispose: async () => {
+      disposed = true;
+    },
+    headers: () => ({ location: responseLocation }),
+    headersArray: () => [
+      {
+        name: "set-cookie",
+        value:
+          "__Host-access=secret-cookie-value; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=86400; Expires=Wed, 01 Jan 2099 00:00:00 GMT",
+      },
+    ],
+    status: () => 307,
+  };
+  const context = {
+    close: async () => undefined,
+    cookies: async () => [
+      {
+        domain: "workspace.test",
+        expires: 4_070_908_800,
+        httpOnly: true,
+        name: "__Host-access",
+        path: "/",
+        sameSite: "Lax",
+        secure: true,
+      },
+    ],
+    newPage: async () => page,
+    on: () => undefined,
+    request: {
+      get: async (_url: string, options: unknown) => {
+        requestOptions = options;
+        return response;
+      },
+    },
+  };
+  const browser = {
+    newContext: async (options: unknown) => {
+      contextOptions.push(options);
+      return context;
+    },
+  } as Browser;
+  const run = makePlaywrightBrowserRunner(browser);
+  addRedaction(cleanLocation);
+  addRedaction(wrongLocation);
+
+  try {
+    const result = await run(
+      "playwright",
+      [
+        "--session",
+        "request-metadata-test",
+        "--headers",
+        JSON.stringify({ "x-vercel-protection-bypass": "test-bypass" }),
+        "--no-har",
+        "--json",
+        "request",
+        "get",
+        requestUrl,
+      ],
+      {
+        logCommand: false,
+        logOutput: false,
+        request: { expectedLocation: cleanLocation, maxRedirects: 0 },
+      }
+    );
+
+    expect(JSON.parse(result.stdout)).toEqual({
+      cookies: [
+        {
+          domain: "workspace.test",
+          expires: 4_070_908_800,
+          httpOnly: true,
+          name: "__Host-access",
+          path: "/",
+          sameSite: "Lax",
+          secure: true,
+        },
+      ],
+      locationMatches: true,
+      setCookies: [
+        {
+          hasExpires: true,
+          httpOnly: true,
+          maxAge: 86400,
+          name: "__Host-access",
+          path: "/",
+          sameSite: "lax",
+          secure: true,
+        },
+      ],
+      status: 307,
+    });
+    expect(result.stdout).not.toContain(cleanLocation);
+    expect(result.stdout).not.toContain("secret-cookie-value");
+    expect(result.stdout).not.toContain("test-bypass");
+    expect(contextOptions[0]).toEqual({
+      recordHar: undefined,
+      viewport: { height: 900, width: 1440 },
+    });
+    expect(requestOptions).toEqual({
+      headers: { "x-vercel-protection-bypass": "test-bypass" },
+      maxRedirects: 0,
+      timeout: 120_000,
+    });
+    expect(disposed).toBe(true);
+
+    responseLocation = wrongLocation;
+    const wrong = await run(
+      "playwright",
+      [
+        "--session",
+        "request-metadata-test",
+        "--headers",
+        JSON.stringify({ "x-vercel-protection-bypass": "test-bypass" }),
+        "--no-har",
+        "--json",
+        "request",
+        "get",
+        requestUrl,
+      ],
+      {
+        logCommand: false,
+        logOutput: false,
+        request: { expectedLocation: cleanLocation, maxRedirects: 0 },
+      }
+    );
+    expect(JSON.parse(wrong.stdout).locationMatches).toBe(false);
+    expect(wrong.stdout).not.toContain(wrongLocation);
+
+    responseLocation = new URL(cleanLocation).pathname;
+    const relative = await run(
+      "playwright",
+      [
+        "--session",
+        "request-metadata-test",
+        "--headers",
+        JSON.stringify({ "x-vercel-protection-bypass": "test-bypass" }),
+        "--no-har",
+        "--json",
+        "request",
+        "get",
+        requestUrl,
+      ],
+      {
+        logCommand: false,
+        logOutput: false,
+        request: { expectedLocation: cleanLocation, maxRedirects: 0 },
+      }
+    );
+    expect(JSON.parse(relative.stdout).locationMatches).toBe(true);
+    expect(JSON.parse(relative.stdout)).not.toHaveProperty("location");
+
+    const fragmentLocation = `${cleanLocation}#fragment-only`;
+    responseLocation = fragmentLocation;
+    const fragment = await run(
+      "playwright",
+      [
+        "--session",
+        "request-metadata-test",
+        "--headers",
+        JSON.stringify({ "x-vercel-protection-bypass": "test-bypass" }),
+        "--no-har",
+        "--json",
+        "request",
+        "get",
+        requestUrl,
+      ],
+      {
+        logCommand: false,
+        logOutput: false,
+        request: { expectedLocation: cleanLocation, maxRedirects: 0 },
+      }
+    );
+    expect(JSON.parse(fragment.stdout).locationMatches).toBe(false);
+    expect(JSON.parse(fragment.stdout)).not.toHaveProperty("location");
+    expect(fragment.stdout).not.toContain("fragment-only");
+
+    const credentialLocation = cleanLocation.replace(
+      "https://",
+      "https://username:password@"
+    );
+    responseLocation = credentialLocation;
+    const credentials = await run(
+      "playwright",
+      [
+        "--session",
+        "request-metadata-test",
+        "--headers",
+        JSON.stringify({ "x-vercel-protection-bypass": "test-bypass" }),
+        "--no-har",
+        "--json",
+        "request",
+        "get",
+        requestUrl,
+      ],
+      {
+        logCommand: false,
+        logOutput: false,
+        request: { expectedLocation: cleanLocation, maxRedirects: 0 },
+      }
+    );
+    expect(JSON.parse(credentials.stdout).locationMatches).toBe(false);
+    expect(JSON.parse(credentials.stdout)).not.toHaveProperty("location");
+    expect(credentials.stdout).not.toContain("username");
+    expect(credentials.stdout).not.toContain("password");
   } finally {
     await run.close?.();
   }

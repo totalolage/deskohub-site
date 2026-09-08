@@ -1,17 +1,31 @@
 import "../../shared/polyfills/temporal";
 
+import {
+  DotyposCustomerIdSchema,
+  DotyposReservationIdSchema,
+} from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
+import type { E2EDatabase } from "../integrations/database.service";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EStep } from "../types";
 import {
+  findAuthUserIdByEmail,
+  findLinkedDotyposCustomerId,
+} from "./auth-rows";
+import { withCallbackHandoffReview } from "./callback-handoff";
+import {
   type WorkspaceE2EAccountCaseId,
   workspaceE2EAccountCaseIds,
 } from "./catalog";
-import { getAccountE2EConfig } from "./config";
+import {
+  getAccountE2EConfig,
+  makeWorkspaceE2EAccountRecipient,
+  workspaceE2EAccountMainRecipientLabel,
+} from "./config";
 import {
   emptyWorkspaceE2EAccountJournal,
   type WorkspaceE2EAccountJournal,
@@ -19,9 +33,12 @@ import {
 } from "./journal";
 import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
+import { withWorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
+import { verifyWorkspaceE2EReservationHistoryNavigation } from "./reservation-navigation";
 import {
   type AccountReviewTarget,
   captureAccountReview,
+  captureReservationStatusReview,
   withSignInPendingReview,
 } from "./review-screenshots";
 import { verifyStickyAccountSections } from "./sticky-sections";
@@ -77,7 +94,7 @@ const accountTest = runtimeTest.extend<
   WorkspaceE2EAccountWorkerFixtures
 >({
   accountLane: [
-    async ({ browser, environment, runContext }, use) => {
+    async ({ browser, environment, runContext }, applyFixture) => {
       const config = getAccountE2EConfig(environment, runContext.runId);
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
       const deletionHandoff: WorkspaceE2EAccountDeletionHandoff = {};
@@ -111,7 +128,7 @@ const accountTest = runtimeTest.extend<
         },
       };
       try {
-        await use({
+        await applyFixture({
           config,
           deletionHandoff,
           journalRef,
@@ -136,9 +153,10 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       const { makeWorkspaceE2EAccountCases } = await import("./cases");
       const { getDatasourceConfig } = await import("../config");
       const { runWorkspaceE2EAccountCase } = await import("./runner");
+      const datasourceConfig = getDatasourceConfig(environment);
       const cases = makeWorkspaceE2EAccountCases({
         config: accountLane.config,
-        datasourceConfig: getDatasourceConfig(environment),
+        datasourceConfig,
         deletionHandoff: accountLane.deletionHandoff,
         rateBudget: accountLane.rateBudget,
         run: accountLane.run,
@@ -156,7 +174,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         if (!page) throw new Error(accountReviewCaptureFailureMessage);
         return page;
       };
-      let verifyPage: WorkspaceE2EStep<void> | undefined;
+      let verifyPage: WorkspaceE2EStep<void, E2EDatabase> | undefined;
       if (caseId === "account-profile-completion") {
         verifyPage = {
           execute: Effect.tryPromise({
@@ -179,19 +197,94 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         };
       } else if (caseId === "account-reservation-transitions") {
         verifyPage = {
-          execute: Effect.tryPromise({
-            catch: () =>
-              workspaceE2EError("verify sticky account sections failed", {
-                operation: "verify sticky account sections",
-              }),
-            try: async () => {
-              await verifyStickyAccountSections(
-                getOwnedPage(),
-                accountLane.config.baseUrl
+          execute: Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              catch: () =>
+                workspaceE2EError("verify sticky account sections failed", {
+                  operation: "verify sticky account sections",
+                }),
+              try: async () => {
+                await verifyStickyAccountSections(
+                  getOwnedPage(),
+                  accountLane.config.baseUrl
+                );
+              },
+            });
+
+            const recipient = makeWorkspaceE2EAccountRecipient(
+              accountLane.config,
+              workspaceE2EAccountMainRecipientLabel
+            );
+            const userId = yield* findAuthUserIdByEmail(recipient);
+            if (!userId) {
+              return yield* workspaceE2EError(
+                "The account reservation history fixture has no synthetic user",
+                {
+                  diagnosticCode: "postgres_account_fixture_assertion_failed",
+                  operation: "read account reservation history user",
+                }
               );
-            },
+            }
+            const customerId = yield* findLinkedDotyposCustomerId(userId);
+            if (!customerId) {
+              return yield* workspaceE2EError(
+                "The account reservation history fixture has no linked customer",
+                {
+                  diagnosticCode: "postgres_account_fixture_assertion_failed",
+                  operation: "read account reservation history customer",
+                }
+              );
+            }
+            const [firstReservationId, secondReservationId] =
+              accountLane.journalRef.journal.dotyposReservationIds;
+            if (!firstReservationId || !secondReservationId) {
+              return yield* workspaceE2EError(
+                "The account reservation history case did not journal both provider reservations",
+                {
+                  diagnosticCode: "postgres_account_fixture_assertion_failed",
+                  operation: "read account reservation history journal",
+                }
+              );
+            }
+
+            yield* withWorkspaceE2EReservationHistoryFixture(
+              {
+                customerId: DotyposCustomerIdSchema.make(customerId),
+                datasourceConfig,
+                dotyposReservationId:
+                  DotyposReservationIdSchema.make(firstReservationId),
+              },
+              (fixture) =>
+                Effect.tryPromise({
+                  catch: () =>
+                    workspaceE2EError(
+                      "verify account reservation history navigation failed",
+                      {
+                        operation:
+                          "verify account reservation history navigation",
+                      }
+                    ),
+                  try: () =>
+                    verifyWorkspaceE2EReservationHistoryNavigation({
+                      baseUrl: accountLane.config.baseUrl,
+                      browser,
+                      bypassSecret: accountLane.config.bypassSecret,
+                      captureStatusReview: (stage) =>
+                        captureReservationStatusReview(
+                          getOwnedPage(),
+                          accountLane.config.baseUrl,
+                          stage === "modal"
+                            ? "reservation-status-modal-desktop"
+                            : "reservation-status-details-desktop",
+                          fixture.reservationId
+                        ),
+                      fixture,
+                      page: getOwnedPage(),
+                    }),
+                })
+            );
           }),
-          id: "checks sticky account sections",
+          id: "checks reservation history navigation and access privacy",
           timeoutMs: workspaceE2ETimeouts.providerTransition,
         };
       }
@@ -214,6 +307,12 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         if (!page) throw new Error(accountReviewCaptureFailureMessage);
         await withSignInPendingReview(
           page,
+          accountLane.config.baseUrl,
+          runCase
+        );
+      } else if (caseId === "account-magic-link-delivery") {
+        await withCallbackHandoffReview(
+          getOwnedPage(),
           accountLane.config.baseUrl,
           runCase
         );

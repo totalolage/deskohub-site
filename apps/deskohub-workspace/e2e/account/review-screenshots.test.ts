@@ -1,10 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import * as fsPromises from "node:fs/promises";
 import { resolve } from "node:path";
 import type * as Playwright from "@playwright/test";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { reservationStatusPath } from "@/features/reservation/routes";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
   type AccountReviewTarget,
   captureAccountReview,
+  captureReservationStatusReview,
   withSignInPendingReview,
 } from "./review-screenshots";
 
@@ -14,6 +18,7 @@ const magicLinkUrl = new URL(
   baseUrl
 ).toString();
 const initialViewport = { height: 768, width: 1024 } as const;
+const screenshotBuffer = Buffer.from("synthetic-png");
 const accountReviewArtifactDirectory = resolve(
   import.meta.dir,
   "../../e2e-artifacts/account-review"
@@ -34,6 +39,14 @@ const validTargets = [
     path: "/en-US/account",
     query: "",
     target: "account-loading-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "callback-loading-desktop.png",
+    path: "/en-US/auth/callback",
+    query: "",
+    target: "callback-loading-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
   },
@@ -130,6 +143,9 @@ type FakePage = {
   readonly currentViewport: () => Playwright.ViewportSize | null;
   readonly fontReadyCalls: () => number;
   readonly page: Playwright.Page;
+  readonly setCallbackLoadingPresent: (present: boolean) => void;
+  readonly setUrl: (url: string) => void;
+  readonly screenshotStarted: Promise<void>;
   readonly screenshotCalls: readonly Record<string, unknown>[];
   readonly viewportChanges: readonly (Playwright.ViewportSize | null)[];
 };
@@ -137,36 +153,70 @@ type FakePage = {
 const makeFakePage = (
   url: string,
   options: {
+    readonly callbackLoadingPresent?: boolean;
     readonly failScreenshot?: boolean;
-    readonly onFontsReady?: () => void;
-    readonly onScreenshot?: () => void;
+    readonly onFontsReady?: () => Promise<void> | void;
+    readonly onScreenshot?: () => Promise<void> | void;
     readonly onViewportChange?: (
       viewport: Playwright.ViewportSize | null
     ) => Promise<void> | void;
   } = {}
 ): FakePage => {
   let currentViewport: Playwright.ViewportSize | null = { ...initialViewport };
+  let currentUrl = url;
+  let callbackLoadingPresent = options.callbackLoadingPresent ?? true;
   let fontReadyCallCount = 0;
   const screenshotCalls: Record<string, unknown>[] = [];
   const viewportChanges: (Playwright.ViewportSize | null)[] = [];
+  let resolveScreenshotStarted!: () => void;
+  const screenshotStarted = new Promise<void>((resolve) => {
+    resolveScreenshotStarted = resolve;
+  });
+
+  const makeLocator = (kind: string): Playwright.Locator =>
+    Object.assign({} as Playwright.Locator, {
+      boundingBox: async () => {
+        if (kind === "main") return { height: 800, width: 1_000, x: 0, y: 0 };
+        if (!callbackLoadingPresent) return null;
+        return { height: 422, width: 512, x: 0, y: 0 };
+      },
+      count: async () =>
+        kind === "loading-card" && !callbackLoadingPresent ? 0 : 1,
+      getByText: () => makeLocator("loading-text"),
+      waitFor: async () => {
+        if (
+          (kind === "loading-card" ||
+            kind === "loading-status" ||
+            kind === "loading-text") &&
+          !callbackLoadingPresent
+        )
+          throw new Error("callback loading state is not visible");
+      },
+    });
 
   const page = Object.assign({} as Playwright.Page, {
     evaluate: async () => {
       fontReadyCallCount += 1;
-      options.onFontsReady?.();
+      await options.onFontsReady?.();
     },
     screenshot: async (screenshotOptions: Record<string, unknown>) => {
       screenshotCalls.push(screenshotOptions);
-      options.onScreenshot?.();
+      resolveScreenshotStarted();
+      await options.onScreenshot?.();
       if (options.failScreenshot)
         throw new Error(`screenshot failed for ${url}`);
+      return screenshotBuffer;
     },
     setViewportSize: async (viewport: Playwright.ViewportSize | null) => {
       viewportChanges.push(viewport);
       currentViewport = viewport;
       await options.onViewportChange?.(viewport);
     },
-    url: () => url,
+    getByRole: (role: string) =>
+      makeLocator(role === "status" ? "loading-status" : "landmark"),
+    locator: (selector: string) =>
+      makeLocator(selector === "main" ? "main" : "loading-card"),
+    url: () => currentUrl,
     viewportSize: () => currentViewport,
   });
 
@@ -174,6 +224,13 @@ const makeFakePage = (
     currentViewport: () => currentViewport,
     fontReadyCalls: () => fontReadyCallCount,
     page,
+    setCallbackLoadingPresent: (present) => {
+      callbackLoadingPresent = present;
+    },
+    setUrl: (nextUrl) => {
+      currentUrl = nextUrl;
+    },
+    screenshotStarted,
     screenshotCalls,
     viewportChanges,
   };
@@ -206,13 +263,55 @@ const flushMicrotasks = async () => {
   for (let index = 0; index < 5; index += 1) await Promise.resolve();
 };
 
+const withControlledTimers = async (
+  clock: ReturnType<typeof makeControlledClock>,
+  operation: (advanceTo: (next: number) => Promise<void>) => Promise<void>
+): Promise<void> => {
+  const realSetTimeout = globalThis.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
+  let nextTimerId = 0;
+  const timers = new Map<
+    number,
+    { readonly callback: () => void; readonly dueAt: number }
+  >();
+  globalThis.setTimeout = ((callback: () => void, delay?: number) => {
+    const id = nextTimerId++;
+    timers.set(id, {
+      callback,
+      dueAt: clock.now() + Math.max(0, delay ?? 0),
+    });
+    return id;
+  }) as typeof setTimeout;
+  globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+    timers.delete(Number(id));
+  }) as typeof clearTimeout;
+
+  const advanceTo = async (next: number) => {
+    clock.advanceTo(next);
+    for (const [id, timer] of [...timers]) {
+      if (timer.dueAt > next || !timers.delete(id)) continue;
+      timer.callback();
+      await flushMicrotasks();
+    }
+  };
+
+  try {
+    await operation(advanceTo);
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
+};
+
 type PendingReviewFakePageOptions = {
   readonly advanceFontsTo?: number;
   readonly advancePendingTo?: number;
   readonly continueError?: Error;
   readonly deferContinue?: boolean;
   readonly deferRestore?: boolean;
+  readonly deferRoute?: boolean;
   readonly failScreenshot?: boolean;
+  readonly routeError?: Error;
   readonly unrouteError?: Error;
 };
 
@@ -224,12 +323,16 @@ type PendingReviewFakePage = FakePage & {
   readonly events: () => readonly string[];
   readonly releaseContinue: () => void;
   readonly releaseRestore: () => void;
+  readonly releaseRoute: () => void;
   readonly restoreComplete: Promise<void>;
+  readonly routeInstallArguments: readonly unknown[][];
+  readonly routeStarted: Promise<void>;
   readonly routeCalls: readonly {
     readonly times?: number;
     readonly url: string;
   }[];
   readonly startPost: () => Promise<void>;
+  readonly unrouteArguments: readonly unknown[][];
   readonly unrouteCallCount: () => number;
   readonly pendingWaitTimeouts: readonly number[];
 };
@@ -261,6 +364,15 @@ const makePendingReviewFakePage = (
     restoreReleased = true;
     releaseRestorePromise();
   };
+  let resolveRoute!: () => void;
+  let routeReleased = !options.deferRoute;
+  const routeReady = new Promise<void>((resolve) => {
+    resolveRoute = resolve;
+  });
+  let resolveRouteStarted!: () => void;
+  const routeStarted = new Promise<void>((resolve) => {
+    resolveRouteStarted = resolve;
+  });
   const fakePage = makeFakePage(`${baseUrl}/en-US/auth/sign-in`, {
     failScreenshot: options.failScreenshot,
     onFontsReady: () => {
@@ -287,8 +399,10 @@ const makePendingReviewFakePage = (
     },
   });
   const routeCalls: { times?: number; url: string }[] = [];
+  const routeInstallArguments: unknown[][] = [];
   const pendingWaitTimeouts: number[] = [];
   const continueArguments: unknown[][] = [];
+  const unrouteArguments: unknown[][] = [];
   let continueCallCount = 0;
   let unrouteCallCount = 0;
   let routeHandler: Parameters<Playwright.Page["route"]>[1] | undefined;
@@ -332,10 +446,17 @@ const makePendingReviewFakePage = (
     ) => {
       events.push("route-install");
       routeCalls.push({ times: routeOptions?.times, url: String(url) });
+      routeInstallArguments.push([url, handler]);
       routeHandler = handler;
+      resolveRouteStarted();
+      if (!routeReleased) await routeReady;
+      if (options.routeError) throw options.routeError;
     },
-    unroute: async () => {
+    unroute: async (...args: unknown[]) => {
       unrouteCallCount += 1;
+      unrouteArguments.push(args);
+      if (args[0] === routeCalls[0]?.url && args[1] === routeHandler)
+        routeHandler = undefined;
       if (options.unrouteError) throw options.unrouteError;
     },
   });
@@ -349,20 +470,41 @@ const makePendingReviewFakePage = (
     events: () => events,
     page,
     pendingWaitTimeouts,
+    releaseRoute: () => {
+      if (routeReleased) return;
+      routeReleased = true;
+      resolveRoute();
+    },
     releaseContinue,
     releaseRestore,
     restoreComplete,
+    routeInstallArguments,
+    routeStarted,
     routeCalls,
     startPost: () => {
       if (!routeHandler)
         throw new Error("pending review route was not installed");
       return Promise.resolve(routeHandler(route, request));
     },
+    unrouteArguments,
     unrouteCallCount: () => unrouteCallCount,
   };
 };
 
 describe("account review screenshot capture", () => {
+  const createWriteFileSpy = () =>
+    spyOn(fsPromises, "writeFile").mockImplementation(async () => undefined);
+  let writeFileSpy: ReturnType<typeof createWriteFileSpy> | undefined;
+
+  beforeEach(() => {
+    writeFileSpy = createWriteFileSpy();
+  });
+
+  afterEach(() => {
+    writeFileSpy?.mockRestore();
+    writeFileSpy = undefined;
+  });
+
   const invalidPages = [
     {
       name: "a foreign origin",
@@ -395,6 +537,21 @@ describe("account review screenshot capture", () => {
       url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&token=synthetic-secret-token`,
     },
     {
+      name: "a callback query",
+      target: "callback-loading-desktop",
+      url: `${baseUrl}/en-US/auth/callback?_rsc=synthetic-cache-key`,
+    },
+    {
+      name: "a callback hash",
+      target: "callback-loading-desktop",
+      url: `${baseUrl}/en-US/auth/callback#review-state`,
+    },
+    {
+      name: "a callback foreign origin",
+      target: "callback-loading-desktop",
+      url: "https://other.example.test/en-US/auth/callback",
+    },
+    {
       name: "a hash",
       target: "completion-mobile375x900",
       url: `${baseUrl}/en-US/account#review-state`,
@@ -411,11 +568,12 @@ describe("account review screenshot capture", () => {
 
       expect(fakePage.screenshotCalls).toHaveLength(0);
       expect(fakePage.viewportChanges).toHaveLength(0);
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
     });
   }
 
   test("does not include the rejected URL in its fixed error", async () => {
-    const unsafeUrl = `${baseUrl}/en-US/account?token=synthetic-secret-token`;
+    const unsafeUrl = `${baseUrl}/en-US/auth/callback?token=synthetic-secret-token`;
     const fakePage = makeFakePage(unsafeUrl);
     let failure: unknown;
 
@@ -423,7 +581,7 @@ describe("account review screenshot capture", () => {
       await captureAccountReview(
         fakePage.page,
         baseUrl,
-        "completion-mobile375x900"
+        "callback-loading-desktop"
       );
     } catch (cause) {
       failure = cause;
@@ -433,6 +591,7 @@ describe("account review screenshot capture", () => {
     expect((failure as Error).message).toBe(captureFailureMessage);
     expect((failure as Error).message).not.toContain(unsafeUrl);
     expect((failure as Error).message).not.toContain("synthetic-secret-token");
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
   });
 
   for (const expected of validTargets) {
@@ -451,7 +610,6 @@ describe("account review screenshot capture", () => {
         expect(fakePage.screenshotCalls[0]).toEqual({
           animations: "disabled",
           fullPage: expected.fullPage,
-          path: resolve(accountReviewArtifactDirectory, expected.filename),
           timeout: expect.any(Number),
         });
         expect(fakePage.screenshotCalls[0]?.timeout).toBeGreaterThan(0);
@@ -464,9 +622,70 @@ describe("account review screenshot capture", () => {
         ]);
         expect(fakePage.currentViewport()).toEqual(initialViewport);
         expect(fakePage.fontReadyCalls()).toBe(1);
+        expect(writeFileSpy?.mock.calls).toEqual([
+          [
+            resolve(accountReviewArtifactDirectory, expected.filename),
+            screenshotBuffer,
+          ],
+        ]);
       });
     }
   }
+
+  test("captures a reservation status target only at the exact fixture path", async () => {
+    const reservationId = workspaceReservationIdSchema.make(
+      "account-history-reservation/with-special-value"
+    );
+    const statusPath = `/en-US${reservationStatusPath}/${encodeURIComponent(reservationId)}`;
+    const fakePage = makeFakePage(`${baseUrl}${statusPath}`);
+
+    await captureReservationStatusReview(
+      fakePage.page,
+      baseUrl,
+      "reservation-status-modal-desktop",
+      reservationId
+    );
+
+    expect(fakePage.screenshotCalls).toHaveLength(1);
+    expect(fakePage.viewportChanges).toEqual([
+      { height: 1000, width: 1440 },
+      initialViewport,
+    ]);
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(
+          accountReviewArtifactDirectory,
+          "reservation-status-modal-desktop.png"
+        ),
+        screenshotBuffer,
+      ],
+    ]);
+  });
+
+  test("rejects a reservation status capture for another reservation", async () => {
+    const fixtureReservationId = workspaceReservationIdSchema.make(
+      "account-history-reservation"
+    );
+    const otherReservationId = workspaceReservationIdSchema.make(
+      "different-reservation"
+    );
+    const fakePage = makeFakePage(
+      `${baseUrl}/en-US${reservationStatusPath}/${encodeURIComponent(otherReservationId)}`
+    );
+
+    await expect(
+      captureReservationStatusReview(
+        fakePage.page,
+        baseUrl,
+        "reservation-status-details-desktop",
+        fixtureReservationId
+      )
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(fakePage.viewportChanges).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+  });
 
   test("allows the closed invalid-token callback query", async () => {
     const fakePage = makeFakePage(
@@ -480,6 +699,12 @@ describe("account review screenshot capture", () => {
     );
 
     expect(fakePage.screenshotCalls).toHaveLength(1);
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(accountReviewArtifactDirectory, "callback-failed-desktop.png"),
+        screenshotBuffer,
+      ],
+    ]);
   });
 
   test("restores the previous viewport when screenshot capture fails", async () => {
@@ -496,6 +721,149 @@ describe("account review screenshot capture", () => {
       initialViewport,
     ]);
     expect(fakePage.currentViewport()).toEqual(initialViewport);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+  });
+
+  test("does not start a late screenshot after aborted preparation", async () => {
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      for (const phase of ["viewport", "fonts"] as const) {
+        let resolvePreparation!: () => void;
+        const preparation = new Promise<void>((resolve) => {
+          resolvePreparation = resolve;
+        });
+        let resolvePreparationStarted!: () => void;
+        const preparationStarted = new Promise<void>((resolve) => {
+          resolvePreparationStarted = resolve;
+        });
+        const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+          onFontsReady: () => {
+            if (phase !== "fonts") return;
+            resolvePreparationStarted();
+            return preparation;
+          },
+          onViewportChange: (viewport) => {
+            if (
+              phase !== "viewport" ||
+              viewport?.height !== 1000 ||
+              viewport.width !== 1440
+            )
+              return;
+            resolvePreparationStarted();
+            return preparation;
+          },
+        });
+        const controller = new AbortController();
+        const capture = captureAccountReview(
+          fakePage.page,
+          baseUrl,
+          "linked-desktop1440x1000",
+          { signal: controller.signal }
+        );
+
+        await preparationStarted;
+        controller.abort();
+        await expect(capture).rejects.toThrow(captureFailureMessage);
+
+        resolvePreparation();
+        await flushMicrotasks();
+        expect(fakePage.screenshotCalls).toHaveLength(0);
+      }
+
+      expect(unhandledRejections).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+    }
+  });
+
+  test("discards a screenshot that resolves after cancellation and URL change", async () => {
+    let resolveScreenshot!: () => void;
+    const screenshotReady = new Promise<void>((resolve) => {
+      resolveScreenshot = resolve;
+    });
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+      onScreenshot: () => screenshotReady,
+    });
+    const controller = new AbortController();
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      const capture = captureAccountReview(
+        fakePage.page,
+        baseUrl,
+        "linked-desktop1440x1000",
+        { signal: controller.signal }
+      );
+      await fakePage.screenshotStarted;
+      fakePage.setUrl(`${baseUrl}/en-US/auth/sign-in`);
+      controller.abort();
+      await expect(capture).rejects.toThrow(captureFailureMessage);
+
+      resolveScreenshot();
+      await flushMicrotasks();
+      expect(fakePage.screenshotCalls).toHaveLength(1);
+      expect(writeFileSpy?.mock.calls).toHaveLength(0);
+      expect(unhandledRejections).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+      resolveScreenshot();
+    }
+  });
+
+  test("discards a screenshot that resolves after its deadline", async () => {
+    const clock = makeControlledClock();
+    let resolveScreenshot!: () => void;
+    const screenshotReady = new Promise<void>((resolve) => {
+      resolveScreenshot = resolve;
+    });
+
+    await withControlledDateNow(clock, async () => {
+      await withControlledTimers(clock, async (advanceTo) => {
+        const fakePage = makeFakePage(`${baseUrl}/en-US/account`, {
+          onScreenshot: () => screenshotReady,
+        });
+        const capture = captureAccountReview(
+          fakePage.page,
+          baseUrl,
+          "linked-desktop1440x1000",
+          { deadline: workspaceE2ETimeouts.browserAction }
+        );
+
+        await fakePage.screenshotStarted;
+        await advanceTo(workspaceE2ETimeouts.browserAction);
+        await expect(capture).rejects.toThrow(captureFailureMessage);
+
+        resolveScreenshot();
+        await flushMicrotasks();
+        expect(fakePage.screenshotCalls).toHaveLength(1);
+        expect(writeFileSpy?.mock.calls).toHaveLength(0);
+      });
+    });
+  });
+
+  test("does not write when the callback loading status is removed after capture", async () => {
+    let fakePage!: FakePage;
+    fakePage = makeFakePage(`${baseUrl}/en-US/auth/callback`, {
+      onScreenshot: () => {
+        fakePage.setCallbackLoadingPresent(false);
+      },
+    });
+
+    await expect(
+      captureAccountReview(fakePage.page, baseUrl, "callback-loading-desktop")
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(fakePage.screenshotCalls).toHaveLength(1);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
   });
 
   test("installs one exact route and forwards the original request once", async () => {
@@ -512,6 +880,68 @@ describe("account review screenshot capture", () => {
       expect(fakePage.continueArguments).toEqual([[]]);
       expect(fakePage.continueCallCount()).toBe(1);
     });
+  });
+
+  test("unroutes a synchronously registered pending route after ack timeout", async () => {
+    const clock = makeControlledClock();
+
+    await withControlledDateNow(clock, async () => {
+      await withControlledTimers(clock, async (advanceTo) => {
+        const fakePage = makePendingReviewFakePage(clock, {
+          deferRoute: true,
+        });
+        let runCaseCalls = 0;
+        const wrapped = withSignInPendingReview(
+          fakePage.page,
+          baseUrl,
+          async () => {
+            runCaseCalls += 1;
+          }
+        );
+
+        await fakePage.routeStarted;
+        await advanceTo(workspaceE2ETimeouts.browserAction);
+        await expect(wrapped).rejects.toThrow(captureFailureMessage);
+
+        expect(runCaseCalls).toBe(0);
+        expect(fakePage.unrouteCallCount()).toBe(1);
+        expect(fakePage.unrouteArguments[0]?.[0]).toBe(
+          fakePage.routeInstallArguments[0]?.[0]
+        );
+        expect(fakePage.unrouteArguments[0]?.[1]).toBe(
+          fakePage.routeInstallArguments[0]?.[1]
+        );
+
+        fakePage.releaseRoute();
+        await flushMicrotasks();
+        expect(fakePage.startPost).toThrow(
+          "pending review route was not installed"
+        );
+      });
+    });
+  });
+
+  test("unroutes a synchronously registered pending route after ack rejection", async () => {
+    const clock = makeControlledClock();
+    const fakePage = makePendingReviewFakePage(clock, {
+      routeError: new Error("raw route install failure"),
+    });
+    let runCaseCalls = 0;
+
+    await expect(
+      withSignInPendingReview(fakePage.page, baseUrl, async () => {
+        runCaseCalls += 1;
+      })
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(runCaseCalls).toBe(0);
+    expect(fakePage.unrouteCallCount()).toBe(1);
+    expect(fakePage.unrouteArguments[0]?.[0]).toBe(
+      fakePage.routeInstallArguments[0]?.[0]
+    );
+    expect(fakePage.unrouteArguments[0]?.[1]).toBe(
+      fakePage.routeInstallArguments[0]?.[1]
+    );
   });
 
   test("waits for deferred forwarding after a failed capture", async () => {

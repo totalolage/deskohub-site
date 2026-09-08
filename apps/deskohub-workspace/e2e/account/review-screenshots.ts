@@ -1,12 +1,15 @@
-import { mkdir } from "node:fs/promises";
+import * as fsPromises from "node:fs/promises";
 import { resolve } from "node:path";
 import type * as Playwright from "@playwright/test";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import { reservationStatusPath } from "@/features/reservation/routes";
 import { workspaceDir } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 
 export type AccountReviewTarget =
   | "completion-mobile375x900"
   | "account-loading-desktop"
+  | "callback-loading-desktop"
   | "sign-in-handoff-desktop"
   | "linked-desktop1440x1000"
   | "linked-sticky-desktop"
@@ -18,12 +21,23 @@ export type AccountReviewTarget =
   | "callback-failed-desktop"
   | "deleted-desktop";
 
+export type ReservationStatusReviewTarget =
+  | "reservation-status-modal-desktop"
+  | "reservation-status-details-desktop";
+
 type AccountReviewTargetMetadata = {
   readonly filename: `${string}.png`;
   readonly fullPage?: boolean;
   readonly path: string | readonly string[];
   readonly viewport: Playwright.ViewportSize;
 };
+
+type ReviewTarget = AccountReviewTarget | ReservationStatusReviewTarget;
+
+type ReservationStatusReviewMetadata = Omit<
+  AccountReviewTargetMetadata,
+  "path"
+>;
 
 const accountReviewTargetMetadata = {
   "completion-mobile375x900": {
@@ -34,6 +48,11 @@ const accountReviewTargetMetadata = {
   "account-loading-desktop": {
     filename: "account-loading-desktop.png",
     path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "callback-loading-desktop": {
+    filename: "callback-loading-desktop.png",
+    path: "/en-US/auth/callback",
     viewport: { height: 1000, width: 1440 },
   },
   "sign-in-handoff-desktop": {
@@ -89,6 +108,21 @@ const accountReviewTargetMetadata = {
   },
 } as const satisfies Record<AccountReviewTarget, AccountReviewTargetMetadata>;
 
+const reservationStatusReviewMetadata = {
+  "reservation-status-modal-desktop": {
+    filename: "reservation-status-modal-desktop.png",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "reservation-status-details-desktop": {
+    filename: "reservation-status-details-desktop.png",
+    viewport: { height: 1000, width: 1440 },
+  },
+} as const satisfies Record<
+  ReservationStatusReviewTarget,
+  ReservationStatusReviewMetadata
+>;
+const reservationStatusPathPrefix = `/en-US${reservationStatusPath}`;
+
 const accountReviewArtifactDirectory = resolve(
   workspaceDir,
   "e2e-artifacts",
@@ -100,6 +134,15 @@ const accountReviewCaptureFailureMessage =
 const accountReviewCaptureFailure = () =>
   new Error(accountReviewCaptureFailureMessage);
 
+const callbackLoadingName = "Loading sign-in…";
+const callbackLoadingSelector =
+  '[data-slot="auth-callback-loading"][role="status"][aria-busy="true"]';
+
+type AccountReviewCaptureOptions = {
+  readonly deadline?: number;
+  readonly signal?: AbortSignal;
+};
+
 const remainingAccountReviewBudget = (deadline: number): number => {
   const remaining = deadline - Date.now();
   if (!Number.isFinite(remaining) || remaining <= 0)
@@ -107,10 +150,54 @@ const remainingAccountReviewBudget = (deadline: number): number => {
   return remaining;
 };
 
+const throwIfAccountReviewAborted = (signal: AbortSignal | undefined): void => {
+  if (signal?.aborted) throw accountReviewCaptureFailure();
+};
+
+const waitForAccountReviewOperation = async <A>(
+  operation: () => Promise<A>,
+  deadline: number,
+  signal?: AbortSignal
+): Promise<A> => {
+  throwIfAccountReviewAborted(signal);
+  const timeout = remainingAccountReviewBudget(deadline);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let abort: (() => void) | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(accountReviewCaptureFailure()),
+      timeout
+    );
+  });
+  const abortPromise = signal
+    ? new Promise<never>((_, reject) => {
+        abort = () => reject(accountReviewCaptureFailure());
+        signal.addEventListener("abort", abort, { once: true });
+        if (signal.aborted) abort();
+      })
+    : undefined;
+  const operationPromise = Promise.resolve().then(() => {
+    throwIfAccountReviewAborted(signal);
+    return operation();
+  });
+  const races: Promise<A>[] = [operationPromise, timeoutPromise];
+  if (abortPromise) races.push(abortPromise);
+
+  try {
+    const result = await Promise.race(races);
+    throwIfAccountReviewAborted(signal);
+    remainingAccountReviewBudget(deadline);
+    return result;
+  } finally {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (abort && signal) signal.removeEventListener("abort", abort);
+  }
+};
+
 const validateAccountReviewPage = (
   page: Playwright.Page,
   baseUrl: string,
-  target: AccountReviewTarget,
+  target: ReviewTarget,
   metadata: AccountReviewTargetMetadata
 ): void => {
   let pageUrl: URL;
@@ -141,21 +228,129 @@ const validateAccountReviewPage = (
 const captureAccountReviewPixels = async (
   page: Playwright.Page,
   baseUrl: string,
-  target: AccountReviewTarget,
-  deadline: number
-): Promise<void> => {
-  const metadata: AccountReviewTargetMetadata = accountReviewTargetMetadata[target];
-  if (!metadata) throw accountReviewCaptureFailure();
-
+  target: ReviewTarget,
+  metadata: AccountReviewTargetMetadata,
+  deadline: number,
+  signal?: AbortSignal
+): Promise<Buffer> => {
   validateAccountReviewPage(page, baseUrl, target, metadata);
-  await waitForDocumentFonts(page, deadline);
+  throwIfAccountReviewAborted(signal);
+  await waitForDocumentFonts(page, deadline, signal);
+  throwIfAccountReviewAborted(signal);
+  validateAccountReviewPage(page, baseUrl, target, metadata);
+  const screenshotTimeout = remainingAccountReviewBudget(deadline);
+  // Playwright cannot cancel an already-started screenshot; the signal race
+  // only prevents a cancelled preparation from starting a new one.
+  const screenshot = await waitForAccountReviewOperation(
+    () =>
+      page.screenshot({
+        animations: "disabled",
+        fullPage: metadata.fullPage ?? true,
+        timeout: screenshotTimeout,
+      }),
+    deadline,
+    signal
+  );
   remainingAccountReviewBudget(deadline);
-  await page.screenshot({
-    animations: "disabled",
-    fullPage: metadata.fullPage ?? true,
-    path: resolve(accountReviewArtifactDirectory, metadata.filename),
-    timeout: remainingAccountReviewBudget(deadline),
+  return screenshot;
+};
+
+const validateCallbackLoadingCapture = async (
+  page: Playwright.Page,
+  deadline: number,
+  signal?: AbortSignal
+): Promise<void> => {
+  const main = page.locator("main");
+  const loadingCard = page.locator(callbackLoadingSelector);
+  const loadingStatus = page.getByRole("status", {
+    exact: true,
+    name: callbackLoadingName,
   });
+  const loadingText = loadingCard.getByText(callbackLoadingName, {
+    exact: true,
+  });
+
+  await waitForAccountReviewOperation(
+    () =>
+      loadingCard.waitFor({
+        state: "visible",
+        timeout: remainingAccountReviewBudget(deadline),
+      }),
+    deadline,
+    signal
+  );
+  if (
+    (await waitForAccountReviewOperation(
+      () => loadingCard.count(),
+      deadline,
+      signal
+    )) !== 1
+  )
+    throw accountReviewCaptureFailure();
+  await waitForAccountReviewOperation(
+    () =>
+      loadingStatus.waitFor({
+        state: "visible",
+        timeout: remainingAccountReviewBudget(deadline),
+      }),
+    deadline,
+    signal
+  );
+  await waitForAccountReviewOperation(
+    () =>
+      loadingText.waitFor({
+        state: "visible",
+        timeout: remainingAccountReviewBudget(deadline),
+      }),
+    deadline,
+    signal
+  );
+  const mainBox = await waitForAccountReviewOperation(
+    () => main.boundingBox({ timeout: remainingAccountReviewBudget(deadline) }),
+    deadline,
+    signal
+  );
+  if (!mainBox || mainBox.width <= 0 || mainBox.height <= 0)
+    throw accountReviewCaptureFailure();
+  throwIfAccountReviewAborted(signal);
+  remainingAccountReviewBudget(deadline);
+};
+
+const persistAccountReview = async (
+  page: Playwright.Page,
+  baseUrl: string,
+  target: ReviewTarget,
+  metadata: AccountReviewTargetMetadata,
+  screenshot: Buffer,
+  deadline: number,
+  signal?: AbortSignal
+): Promise<void> => {
+  const validateBeforeWrite = async () => {
+    throwIfAccountReviewAborted(signal);
+    remainingAccountReviewBudget(deadline);
+    validateAccountReviewPage(page, baseUrl, target, metadata);
+    if (target === "callback-loading-desktop")
+      await validateCallbackLoadingCapture(page, deadline, signal);
+    throwIfAccountReviewAborted(signal);
+    remainingAccountReviewBudget(deadline);
+  };
+
+  await validateBeforeWrite();
+  await waitForAccountReviewOperation(
+    () => fsPromises.mkdir(accountReviewArtifactDirectory, { recursive: true }),
+    deadline,
+    signal
+  );
+  await validateBeforeWrite();
+  await waitForAccountReviewOperation(
+    () =>
+      fsPromises.writeFile(
+        resolve(accountReviewArtifactDirectory, metadata.filename),
+        screenshot
+      ),
+    deadline,
+    signal
+  );
   remainingAccountReviewBudget(deadline);
 };
 
@@ -164,17 +359,15 @@ const captureAccountReviewPixels = async (
  * emits the explicitly requested PNG; it creates no browser, auth, database,
  * cookie, trace, HAR, or logging state.
  */
-export const captureAccountReview = async (
+const captureAccountReviewWithMetadata = async (
   page: Playwright.Page,
   baseUrl: string,
-  target: AccountReviewTarget,
-  options: { readonly deadline?: number } = {}
+  target: ReviewTarget,
+  metadata: AccountReviewTargetMetadata,
+  options: AccountReviewCaptureOptions = {}
 ): Promise<void> => {
   const deadline =
     options.deadline ?? Date.now() + workspaceE2ETimeouts.browserAction;
-  const metadata = accountReviewTargetMetadata[target];
-  if (!metadata) throw accountReviewCaptureFailure();
-
   validateAccountReviewPage(page, baseUrl, target, metadata);
 
   let previousViewport: Playwright.ViewportSize | null;
@@ -187,17 +380,37 @@ export const captureAccountReview = async (
 
   let captureFailed = false;
   try {
-    remainingAccountReviewBudget(deadline);
-    await mkdir(accountReviewArtifactDirectory, { recursive: true });
-    remainingAccountReviewBudget(deadline);
-    await page.setViewportSize(metadata.viewport);
-    remainingAccountReviewBudget(deadline);
-    await captureAccountReviewPixels(page, baseUrl, target, deadline);
+    await waitForAccountReviewOperation(
+      () => page.setViewportSize(metadata.viewport),
+      deadline,
+      options.signal
+    );
+    const screenshot = await captureAccountReviewPixels(
+      page,
+      baseUrl,
+      target,
+      metadata,
+      deadline,
+      options.signal
+    );
+    await persistAccountReview(
+      page,
+      baseUrl,
+      target,
+      metadata,
+      screenshot,
+      deadline,
+      options.signal
+    );
   } catch {
     captureFailed = true;
   } finally {
     try {
-      await page.setViewportSize(previousViewport);
+      const cleanupDeadline = Date.now() + workspaceE2ETimeouts.cleanupAction;
+      await waitForAccountReviewOperation(
+        () => page.setViewportSize(previousViewport),
+        cleanupDeadline
+      );
     } catch {
       captureFailed = true;
     }
@@ -206,26 +419,55 @@ export const captureAccountReview = async (
   if (captureFailed) throw accountReviewCaptureFailure();
 };
 
+export const captureAccountReview = async (
+  page: Playwright.Page,
+  baseUrl: string,
+  target: AccountReviewTarget,
+  options: AccountReviewCaptureOptions = {}
+): Promise<void> => {
+  const metadata = accountReviewTargetMetadata[target];
+  if (!metadata) throw accountReviewCaptureFailure();
+  await captureAccountReviewWithMetadata(
+    page,
+    baseUrl,
+    target,
+    metadata,
+    options
+  );
+};
+
+export const captureReservationStatusReview = async (
+  page: Playwright.Page,
+  baseUrl: string,
+  target: ReservationStatusReviewTarget,
+  reservationId: WorkspaceReservationId,
+  options: AccountReviewCaptureOptions = {}
+): Promise<void> => {
+  const metadata = reservationStatusReviewMetadata[target];
+  if (!metadata) throw accountReviewCaptureFailure();
+
+  await captureAccountReviewWithMetadata(
+    page,
+    baseUrl,
+    target,
+    {
+      ...metadata,
+      path: `${reservationStatusPathPrefix}/${encodeURIComponent(reservationId)}`,
+    },
+    options
+  );
+};
+
 const waitForDocumentFonts = async (
   page: Playwright.Page,
-  deadline: number
+  deadline: number,
+  signal?: AbortSignal
 ): Promise<void> => {
-  const timeout = remainingAccountReviewBudget(deadline);
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    await Promise.race([
-      page.evaluate(() => document.fonts.ready.then(() => undefined)),
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(
-          () => reject(accountReviewCaptureFailure()),
-          timeout
-        );
-      }),
-    ]);
-    remainingAccountReviewBudget(deadline);
-  } finally {
-    if (timeoutId !== undefined) clearTimeout(timeoutId);
-  }
+  await waitForAccountReviewOperation(
+    () => page.evaluate(() => document.fonts.ready.then(() => undefined)),
+    deadline,
+    signal
+  );
 };
 
 export const withSignInPendingReview = async (
@@ -241,7 +483,13 @@ export const withSignInPendingReview = async (
   let runCaseFailure: unknown;
   let wrapperFailed = false;
   let previousViewport: Playwright.ViewportSize | null = null;
-  let routeInstalled = false;
+  let routeCleanupOwed = false;
+  let magicLinkUrl = "";
+  let cleanupDeadline: number | undefined;
+  const beginCleanup = () => {
+    cleanupDeadline ??= Date.now() + workspaceE2ETimeouts.cleanupAction;
+    return cleanupDeadline;
+  };
   const handleMagicLinkRoute: Parameters<Playwright.Page["route"]>[1] = (
     route,
     request
@@ -258,10 +506,19 @@ export const withSignInPendingReview = async (
           timeout: remainingAccountReviewBudget(deadline),
         });
         remainingAccountReviewBudget(deadline);
-        await captureAccountReviewPixels(
+        const screenshot = await captureAccountReviewPixels(
           page,
           baseUrl,
           "sign-in-pending-desktop",
+          pendingMetadata,
+          deadline
+        );
+        await persistAccountReview(
+          page,
+          baseUrl,
+          "sign-in-pending-desktop",
+          pendingMetadata,
+          screenshot,
           deadline
         );
       } catch {
@@ -281,29 +538,41 @@ export const withSignInPendingReview = async (
   try {
     previousViewport = page.viewportSize();
     if (previousViewport === null) throw accountReviewCaptureFailure();
-    await mkdir(accountReviewArtifactDirectory, { recursive: true });
-    await page.setViewportSize(pendingMetadata.viewport);
-    const magicLinkUrl = new URL(
-      "/api/auth/sign-in/magic-link",
-      baseUrl
-    ).toString();
-    await page.route(magicLinkUrl, handleMagicLinkRoute, { times: 1 });
-    routeInstalled = true;
+    await waitForAccountReviewOperation(
+      () => page.setViewportSize(pendingMetadata.viewport),
+      Date.now() + workspaceE2ETimeouts.browserAction
+    );
+    magicLinkUrl = new URL("/api/auth/sign-in/magic-link", baseUrl).toString();
+    routeCleanupOwed = true;
+    await waitForAccountReviewOperation(
+      () => page.route(magicLinkUrl, handleMagicLinkRoute, { times: 1 }),
+      Date.now() + workspaceE2ETimeouts.browserAction
+    );
     try {
       await runCase();
     } catch (cause) {
       runCaseFailed = true;
       runCaseFailure = cause;
     }
-    if (routeInstalled) {
+  } catch {
+    wrapperFailed = true;
+  } finally {
+    const sharedCleanupDeadline = beginCleanup();
+    if (routeCleanupOwed) {
       try {
-        await page.unroute(magicLinkUrl, handleMagicLinkRoute);
+        await waitForAccountReviewOperation(
+          () => page.unroute(magicLinkUrl, handleMagicLinkRoute),
+          sharedCleanupDeadline
+        );
       } catch {
         wrapperFailed = true;
       }
       if (fullHandlerPromise) {
         try {
-          await fullHandlerPromise;
+          await waitForAccountReviewOperation(
+            () => fullHandlerPromise as Promise<void>,
+            sharedCleanupDeadline
+          );
         } catch {
           wrapperFailed = true;
         }
@@ -311,12 +580,13 @@ export const withSignInPendingReview = async (
         reviewFailed = true;
       }
     }
-  } catch {
-    wrapperFailed = true;
-  } finally {
     if (previousViewport !== null) {
+      const viewportToRestore = previousViewport;
       try {
-        await page.setViewportSize(previousViewport);
+        await waitForAccountReviewOperation(
+          () => page.setViewportSize(viewportToRestore),
+          sharedCleanupDeadline
+        );
       } catch {
         wrapperFailed = true;
       }

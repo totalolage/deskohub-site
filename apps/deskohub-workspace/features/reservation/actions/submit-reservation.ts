@@ -1,9 +1,10 @@
 "use server";
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { submitReservationSchema } from "@/features/reservation/actions/submit-reservation-input";
 import { submitWorkspaceReservation } from "@/features/reservation/actions/submit-workspace-reservation";
+import { ReservationAccessCookieWriter } from "@/features/reservation/backend/reservation-access-cookie.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 
 const submitReservationAction = defineWorkspaceAction(
@@ -12,7 +13,11 @@ const submitReservationAction = defineWorkspaceAction(
     schema: submitReservationSchema,
   },
   (input) =>
-    submitWorkspaceReservation(input).pipe(Effect.provide(CheckoutService.Live))
+    submitWorkspaceReservation(input).pipe(
+      Effect.provide(
+        Layer.mergeAll(CheckoutService.Live, ReservationAccessCookieWriter.Live)
+      )
+    )
 );
 
 export const submitReservation: typeof submitReservationAction = async (

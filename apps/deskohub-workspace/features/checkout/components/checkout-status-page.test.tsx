@@ -117,6 +117,17 @@ describe("CheckoutStatusPage", () => {
     ).toBeNull();
   });
 
+  test("links fulfilled reservations to the canonical access page", () => {
+    const view = render(
+      <CheckoutStatusPage locale="en-US" status={baseStatus} />
+    );
+
+    const accessLink = view.getByRole("link", { name: "Show access code" });
+    expect(accessLink.getAttribute("href")).toBe(
+      "/en-US/reservation/access/reservation-status-page"
+    );
+  });
+
   test("keeps the generic meeting-room start when exact duration is unavailable", () => {
     const view = render(
       <CheckoutStatusPage

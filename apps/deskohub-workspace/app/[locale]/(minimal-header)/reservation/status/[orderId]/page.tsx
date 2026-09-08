@@ -1,5 +1,6 @@
-import { Effect, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -14,6 +15,8 @@ import { CheckoutStatusPage } from "@/features/checkout/components/checkout-stat
 import { CheckoutStatusPageSkeleton } from "@/features/checkout/components/checkout-status-page-skeleton";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { readReservationAccessCookie } from "@/features/reservation/backend/reservation-access-cookie";
+import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -109,18 +112,24 @@ async function CheckoutStatusContent({
 
   return runWithRequestLocale(async (locale) => {
     await connection();
+    const cookieStore = await cookies();
+    const accessCookie = readReservationAccessCookie(cookieStore, orderId);
     const rawSearchParams = await searchParams;
     const decodedSearchParams = Option.getOrElse(
       decodeCheckoutStatusSearchParams(rawSearchParams),
       () => ({ outcome: undefined })
     );
     const returnOutcome = decodedSearchParams.outcome ?? "unknown";
-    const status = await Effect.flatMap(CheckoutStatusService, (service) =>
-      loadCheckoutStatusPage(service, {
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      const authorization = yield* ReservationAuthorizationService;
+      return yield* loadCheckoutStatusPage(service, authorization, {
+        accessCookie,
+        locale,
         orderId,
         returnOutcome,
-      })
-    ).pipe(
+      });
+    }).pipe(
       Effect.tapError((cause) =>
         Effect.logError("Checkout status load failed", {
           orderId,
@@ -128,7 +137,12 @@ async function CheckoutStatusContent({
           cause,
         })
       ),
-      Effect.provide(CheckoutStatusService.Live),
+      Effect.provide(
+        Layer.mergeAll(
+          CheckoutStatusService.Live,
+          ReservationAuthorizationService.Live
+        )
+      ),
       runWorkspaceEffect("checkout.status.load")
     );
     return (

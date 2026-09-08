@@ -30,7 +30,7 @@ export class ReservationAccessTokenError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-type ReservationAccessTokenOptions = {
+export type ReservationAccessTokenOptions = {
   readonly secret?: string | Buffer;
   readonly now?: () => number;
 };
@@ -42,9 +42,9 @@ const invalidToken = (message: string, cause?: unknown) =>
     cause,
   });
 
-const getSecret = Effect.fn("reservationAccessToken.getSecret")(function* (
-  options: ReservationAccessTokenOptions
-) {
+export const getReservationAccessTokenSecret = Effect.fn(
+  "reservationAccessToken.getSecret"
+)(function* (options: ReservationAccessTokenOptions) {
   const configuredSecret =
     options.secret ?? env.RESERVATION_ACCESS_TOKEN_SECRET;
   if (!configuredSecret) {
@@ -81,7 +81,7 @@ export const createReservationAccessToken = Effect.fn(
   },
   options: ReservationAccessTokenOptions = {}
 ) {
-  const secret = yield* getSecret(options);
+  const secret = yield* getReservationAccessTokenSecret(options);
   const claims = yield* Schema.decodeUnknownEffect(
     reservationAccessTokenClaimsSchema
   )({
@@ -137,7 +137,7 @@ export const openReservationAccessToken = Effect.fn(
         : invalidToken("Reservation access token is invalid.", cause)
     )
   );
-  const secret = yield* getSecret(options);
+  const secret = yield* getReservationAccessTokenSecret(options);
   const providedSignature = yield* Effect.try({
     try: () => Buffer.from(encodedSignature, "base64url"),
     catch: (cause) =>

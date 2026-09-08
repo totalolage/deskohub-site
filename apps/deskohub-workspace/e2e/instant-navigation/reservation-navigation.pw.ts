@@ -79,7 +79,7 @@ test("serves the reservation access shell on direct navigation", async ({
     page,
     async () => {
       await page.goto(
-        "/en-US/reservation/access/instant-navigation-missing-order?accessToken=synthetic"
+        "/en-US/reservation/access/instant-navigation-missing-order"
       );
 
       await expectReservationSteps(page);
@@ -88,6 +88,28 @@ test("serves the reservation access shell on direct navigation", async ({
           name: "Reservation access | Deskohub Workspace",
         })
       ).toHaveAttribute("aria-busy", "true");
+      await page.close();
+    },
+    { baseURL: requireBaseUrl(baseURL) }
+  );
+});
+
+test("rejects an invalid reservation capability with a private 404", async ({
+  baseURL,
+  page,
+}) => {
+  await instant(
+    page,
+    async () => {
+      const response = await page.goto(
+        "/en-US/reservation/access/instant-navigation-missing-order?accessToken=invalid"
+      );
+
+      expect(response?.status()).toBe(404);
+      expect(response?.headers()).toMatchObject({
+        "cache-control": "private, no-store",
+        "referrer-policy": "no-referrer",
+      });
       await page.close();
     },
     { baseURL: requireBaseUrl(baseURL) }

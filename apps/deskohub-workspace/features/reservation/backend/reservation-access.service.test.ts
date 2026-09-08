@@ -9,7 +9,19 @@ import {
   type WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
 } from "@/features/checkout/backend/reservation/access-code.service";
 import type { Locale } from "@/features/i18n";
-import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
+import {
+  createReservationAccessCookieCapability,
+  openReservationAccessCookie,
+  sealReservationAccessCookie,
+} from "@/features/reservation/backend/reservation-access-cookie";
+import {
+  createReservationAccessToken,
+  openReservationAccessToken,
+} from "@/features/reservation/backend/reservation-access-token";
+import {
+  type ReservationAuthorizationInput,
+  ReservationAuthorizationService,
+} from "@/features/reservation/backend/reservation-authorization.service";
 import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
@@ -94,6 +106,8 @@ const makeProviderReservation = (
 
 type HarnessOptions = {
   readonly accessToken?: ReservationAccessToken;
+  readonly accessCookie?: string;
+  readonly authorized?: boolean;
   readonly inputLocale?: Locale;
   readonly reservation?: ReturnType<typeof makeReservation> | null;
   readonly reservationFails?: boolean;
@@ -108,6 +122,29 @@ const runAccess = async (options: HarnessOptions = {}) => {
   const { ReservationAccessService } = await import(
     "./reservation-access.service"
   );
+  const isAuthorized = mock((input: ReservationAuthorizationInput) => {
+    if (options.authorized !== undefined) {
+      return Effect.succeed(options.authorized);
+    }
+    if (input.accessCookie) {
+      return openReservationAccessCookie({
+        value: input.accessCookie,
+        orderId: input.orderId,
+      }).pipe(
+        Effect.as(true),
+        Effect.orElseSucceed(() => false)
+      );
+    }
+    if (!input.accessToken) return Effect.succeed(false);
+    return openReservationAccessToken({
+      token: input.accessToken,
+      orderId: input.orderId,
+      locale: input.locale,
+    }).pipe(
+      Effect.as(true),
+      Effect.orElseSucceed(() => false)
+    );
+  });
   const findById = mock(() =>
     options.reservationFails
       ? Effect.fail(new Error("reservation lookup unavailable"))
@@ -134,6 +171,7 @@ const runAccess = async (options: HarnessOptions = {}) => {
     return yield* service.getAccess({
       orderId,
       locale: options.inputLocale ?? "en-US",
+      accessCookie: options.accessCookie,
       accessToken: options.accessToken,
     });
   }).pipe(
@@ -142,7 +180,8 @@ const runAccess = async (options: HarnessOptions = {}) => {
       Layer.mergeAll(
         Layer.mock(WorkspaceReservationRepository, { findById }),
         Layer.mock(DotyposService, { getReservation }),
-        Layer.succeed(WorkspaceCheckoutAccessCodeService, accessCodes)
+        Layer.succeed(WorkspaceCheckoutAccessCodeService, accessCodes),
+        Layer.succeed(ReservationAuthorizationService, { isAuthorized })
       )
     ),
     Effect.runPromise
@@ -157,8 +196,29 @@ const createAccessToken = (tokenOrderId = orderId, locale: Locale = "en-US") =>
     locale,
   }).pipe(Effect.runPromise);
 
+const createAccessCookie = async () => {
+  const capability = await Effect.runPromise(
+    createReservationAccessCookieCapability({ orderId, locale: "en-US" })
+  );
+  return Effect.runPromise(
+    sealReservationAccessCookie({
+      orderId,
+      capability,
+    })
+  );
+};
+
 describe("ReservationAccessService", () => {
-  test("rejects missing, tampered, reservation-mismatched, and locale-mismatched capabilities before provider lookup", async () => {
+  test("accepts a valid access cookie before provider lookup", async () => {
+    const result = await runAccess({
+      accessCookie: await createAccessCookie(),
+    });
+
+    expect(result.access.state).toBe("available");
+    expect(result.getReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns an invalid-link state for missing, tampered, reservation-mismatched, and locale-mismatched capabilities", async () => {
     const validToken = await createAccessToken();
     const otherOrderToken = await createAccessToken(
       workspaceReservationIdSchema.make("another-reservation")
@@ -174,23 +234,31 @@ describe("ReservationAccessService", () => {
     for (const accessToken of inputs) {
       const result = await runAccess({ accessToken });
 
-      expect(result.access).toEqual({ state: "unavailable" });
+      expect(result.access).toEqual({ state: "invalid_link" });
       expect(result.findById).not.toHaveBeenCalled();
       expect(result.getReservation).not.toHaveBeenCalled();
       expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
     }
   });
 
-  test("requires the route locale to match the stored reservation locale", async () => {
-    const accessToken = await createAccessToken();
+  test("allows owner-authorized access details across route locales", async () => {
     const result = await runAccess({
-      accessToken,
-      reservation: makeReservation({ locale: "cs-CZ" }),
+      authorized: true,
+      inputLocale: "cs-CZ",
     });
 
-    expect(result.access).toEqual({ state: "unavailable" });
-    expect(result.getReservation).not.toHaveBeenCalled();
-    expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
+    expect(result.access).toEqual({ state: "available", ...resolvedAccess });
+    expect(result.resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
+  });
+
+  test("allows cookie-authorized access details across route locales", async () => {
+    const result = await runAccess({
+      accessCookie: await createAccessCookie(),
+      inputLocale: "cs-CZ",
+    });
+
+    expect(result.access).toEqual({ state: "available", ...resolvedAccess });
+    expect(result.resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
   });
 
   test("fails closed when the local reservation is missing or cannot be read", async () => {

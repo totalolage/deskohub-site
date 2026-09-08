@@ -1,5 +1,6 @@
 import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
@@ -7,18 +8,13 @@ import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkou
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
+import { readReservationAccessCookie } from "@/features/reservation/backend/reservation-access-cookie";
 import { ReservationAccessPage } from "@/features/reservation/components/reservation-access-page";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
-import {
-  reservationAccessTokenQueryParam,
-  reservationAccessTokenSchema,
-} from "@/features/reservation/reservation-access-token";
 import { reservationAccessPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
-  getSearchParamsDecoder,
   getWorkspaceLocalizedCanonicalUrl,
-  type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
 
@@ -27,19 +23,10 @@ export const instant = true;
 
 type LocalizedReservationAccessPageProps = {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<SearchParamsRecord>;
 };
 
 const decodeReservationAccessParams = Schema.decodeUnknownOption(
   Schema.Struct({ orderId: workspaceReservationIdSchema })
-);
-
-const decodeReservationAccessSearchParams = getSearchParamsDecoder(
-  Schema.Struct({
-    [reservationAccessTokenQueryParam]: Schema.optional(
-      reservationAccessTokenSchema
-    ),
-  })
 );
 
 export async function generateMetadata({
@@ -87,37 +74,38 @@ export async function generateMetadata({
 
 export default async function LocalizedReservationAccessPage({
   params,
-  searchParams,
 }: LocalizedReservationAccessPageProps) {
   return runWithRequestLocale((locale) => (
     <Suspense fallback={<ReservationAccessFallback locale={locale} />}>
-      <ReservationAccessContent params={params} searchParams={searchParams} />
+      <ReservationAccessContent params={params} />
     </Suspense>
   ));
 }
 
 async function ReservationAccessContent({
   params,
-  searchParams,
 }: LocalizedReservationAccessPageProps) {
   const decodedParams = decodeReservationAccessParams(await params);
   const { orderId } = Option.getOrElse(decodedParams, () => notFound());
 
   return runWithRequestLocale(async (locale) => {
     await connection();
-    const decodedSearchParams = Option.getOrElse(
-      decodeReservationAccessSearchParams(await searchParams),
-      () => ({ accessToken: undefined })
-    );
-    const accessToken = decodedSearchParams[reservationAccessTokenQueryParam];
+    const cookieStore = await cookies();
+    const accessCookie = readReservationAccessCookie(cookieStore, orderId);
     const access = await Effect.flatMap(ReservationAccessService, (service) =>
-      service.getAccess({ orderId, locale, accessToken })
+      service.getAccess({ orderId, locale, accessCookie })
     ).pipe(
       Effect.provide(ReservationAccessService.Live),
       runWorkspaceEffect("reservation.access.load")
     );
 
-    return <ReservationAccessPage access={access} locale={locale} />;
+    return (
+      <ReservationAccessPage
+        access={access}
+        locale={locale}
+        orderId={orderId}
+      />
+    );
   });
 }
 

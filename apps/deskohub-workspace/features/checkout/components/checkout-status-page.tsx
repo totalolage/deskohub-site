@@ -23,6 +23,7 @@ import { formatReservationDisplayDate } from "@/features/reservation/reservation
 import {
   getCoworkReservationPath,
   getReservationStartPath,
+  reservationAccessPath,
 } from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
@@ -257,6 +258,10 @@ export function CheckoutStatusPage({
     repeatReservationSearchParams
   );
   const showSupportButton = !!supportContactHref;
+  const reservationAccessHref =
+    status.status === "fulfilled"
+      ? `/${locale}${reservationAccessPath}/${encodeURIComponent(status.orderId)}`
+      : undefined;
   const Icon = copy.Icon;
 
   return (
@@ -380,6 +385,13 @@ export function CheckoutStatusPage({
               {m.checkoutStatusBackHome({}, { locale })}
             </Link>
           </Button>
+          {reservationAccessHref && (
+            <Button asChild variant="secondary" className="h-12 px-6">
+              <a href={reservationAccessHref} id="checkout-status-access">
+                {m.checkoutEmailCustomerAccessButton({}, { locale })}
+              </a>
+            </Button>
+          )}
         </div>
       </div>
     </CheckoutFlowLayout>

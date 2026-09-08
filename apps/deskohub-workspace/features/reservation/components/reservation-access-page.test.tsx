@@ -36,6 +36,7 @@ describe("ReservationAccessPage", () => {
           accessEndsAt: Temporal.Instant.from("2026-08-13T16:00:00Z"),
         }}
         locale="en-US"
+        orderId="reservation-access-page"
       />
     );
 
@@ -64,12 +65,56 @@ describe("ReservationAccessPage", () => {
 
   test("fails closed when reservation access is unavailable", () => {
     const view = render(
-      <ReservationAccessPage access={{ state: "unavailable" }} locale="en-US" />
+      <ReservationAccessPage
+        access={{ state: "unavailable" }}
+        locale="en-US"
+        orderId="reservation-access-page"
+      />
     );
 
     expect(view.getByText("The access PIN is unavailable")).toBeDefined();
     expect(
       view.container.querySelector("[data-reservation-access-code]")
     ).toBeNull();
+  });
+
+  test("distinguishes an invalid access link from unavailable access", () => {
+    const view = render(
+      <ReservationAccessPage
+        access={{ state: "invalid_link" }}
+        locale="en-US"
+        orderId="reservation-access-page"
+      />
+    );
+
+    expect(
+      view.getByText("This reservation access link cannot be used")
+    ).toBeDefined();
+    expect(view.getByText(/missing or no longer valid/)).toBeDefined();
+    expect(view.queryByText("The access PIN is unavailable")).toBeNull();
+    expect(
+      view.container.querySelector("[data-reservation-access-code]")
+    ).toBeNull();
+  });
+
+  test("links to the canonical reservation status page", () => {
+    const view = render(
+      <ReservationAccessPage
+        access={{
+          state: "available",
+          code: "2468",
+          accessStartsAt: Temporal.Instant.from("2026-08-13T08:00:00Z"),
+          accessEndsAt: Temporal.Instant.from("2026-08-13T16:00:00Z"),
+        }}
+        locale="en-US"
+        orderId="reservation-access-page"
+      />
+    );
+
+    expect(
+      view
+        .getByRole("link", { name: "Reservation summary" })
+        .getAttribute("href")
+    ).toBe("/en-US/reservation/status/reservation-access-page");
   });
 });

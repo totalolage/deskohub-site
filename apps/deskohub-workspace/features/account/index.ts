@@ -3,6 +3,7 @@ export {
   requireAccountActivity,
 } from "./backend/customer-account-activity";
 export type { CustomerAccountActivityState } from "./backend/customer-account-link.repository";
+export { CustomerAccountReservationOwnership } from "./backend/customer-account-reservation-ownership";
 export {
   CustomerAccountResolver,
   resolveCurrentCustomerAccount,

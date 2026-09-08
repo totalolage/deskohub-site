@@ -1,23 +1,30 @@
 import { KeyRound } from "lucide-react";
+import Link from "next/link";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import type { ReservationAccessViewModel } from "@/features/reservation/backend/reservation-access.service";
 import { formatReservationDisplayDateTime } from "@/features/reservation/reservation-date";
+import { reservationStatusPath } from "@/features/reservation/routes";
+import { Button } from "@/shared/components/ui/button";
 
 type ReservationAccessPageProps = {
   readonly access: ReservationAccessViewModel;
   readonly locale: Locale;
+  readonly orderId: string;
 };
 
 export function ReservationAccessPage({
   access,
   locale,
+  orderId,
 }: ReservationAccessPageProps) {
   const title = {
     available: m.reservationAccessTitle({}, { locale }),
+    invalid_link: m.reservationAccessInvalidLinkTitle({}, { locale }),
     unavailable: m.reservationAccessUnavailableTitle({}, { locale }),
   }[access.state];
+  const reservationStatusHref = `/${locale}${reservationStatusPath}/${encodeURIComponent(orderId)}`;
 
   return (
     <CheckoutFlowLayout activeStepKey="access" locale={locale}>
@@ -34,6 +41,11 @@ export function ReservationAccessPage({
               <h1 className="text-balance text-[1.75rem] leading-none sm:text-5xl">
                 {title}
               </h1>
+              {access.state === "invalid_link" && (
+                <p className="mt-5 text-lg leading-8 text-navy-blue/70">
+                  {m.reservationAccessInvalidLinkLead({}, { locale })}
+                </p>
+              )}
               {access.state === "unavailable" && (
                 <p className="mt-5 text-lg leading-8 text-navy-blue/70">
                   {m.reservationAccessUnavailableLead({}, { locale })}
@@ -80,6 +92,14 @@ export function ReservationAccessPage({
               </p>
             </div>
           )}
+
+          <div className="mt-8 flex justify-center sm:mt-10">
+            <Button asChild variant="secondary" className="h-12 px-6">
+              <Link href={reservationStatusHref} prefetch={false}>
+                {m.checkoutStatusSummaryTitle({}, { locale })}
+              </Link>
+            </Button>
+          </div>
         </div>
       </section>
     </CheckoutFlowLayout>

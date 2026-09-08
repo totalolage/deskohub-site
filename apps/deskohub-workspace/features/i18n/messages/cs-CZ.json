@@ -515,6 +515,8 @@
   "reservationAccessMetadataDescription": "Otevřete bezpečnou stránku přístupu k rezervaci a zobrazte aktuální PIN ke dveřím.",
   "reservationAccessTitle": "Váš přístupový PIN",
   "reservationAccessLead": "Zámek přijme tento PIN od {startsAt} do {endsAt}.",
+  "reservationAccessInvalidLinkTitle": "Tento přístupový odkaz k rezervaci nelze použít",
+  "reservationAccessInvalidLinkLead": "Odkaz chybí nebo už není platný. Otevřete nejnovější přístupový odkaz z potvrzovacího e-mailu.",
   "reservationAccessUnavailableTitle": "Přístupový PIN není dostupný",
   "reservationAccessUnavailableLead": "Pro aktuální stav rezervace nemůžeme PIN bezpečně zobrazit. Pokud má být potvrzená rezervace právě aktivní, kontaktuj nás.",
   "postOrderInvoiceMetadataTitle": "Faktura k rezervaci | Deskohub Workspace",
