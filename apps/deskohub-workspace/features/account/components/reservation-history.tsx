@@ -10,6 +10,7 @@ import {
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
+import { formatReservationDisplayDateRange } from "@/features/reservation/reservation-date";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Badge } from "@/shared/components/ui/badge";
@@ -21,6 +22,7 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { isMidnight } from "@/shared/utils/temporal";
 
 const getReservationTitle = (
   reservation: CustomerReservationSummary,
@@ -73,6 +75,30 @@ const formatReservationPeriod = (
   const end = new Date(reservation.endsAt);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     return null;
+  }
+  if (end.getTime() > start.getTime()) {
+    const startInstant = Temporal.Instant.fromEpochMilliseconds(
+      start.getTime()
+    );
+    const endInstant = Temporal.Instant.fromEpochMilliseconds(end.getTime());
+    if (
+      isMidnight(
+        startInstant
+          .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+          .toPlainDateTime()
+      ) &&
+      isMidnight(
+        endInstant
+          .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+          .toPlainDateTime()
+      )
+    ) {
+      return formatReservationDisplayDateRange(
+        startInstant,
+        endInstant,
+        locale
+      );
+    }
   }
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",

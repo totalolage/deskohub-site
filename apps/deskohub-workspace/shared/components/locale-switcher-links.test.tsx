@@ -7,7 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import {
   registerWorkspaceComponentTestEnv,
@@ -100,6 +100,21 @@ mock.module("@/shared/components/logo", () => ({
     return <span data-testid="small-logo" />;
   },
 }));
+
+const completeSiteHeaderProps = {
+  accountHref: "/en-US/account",
+  accountLabel: "Account",
+  closeNavigationMenuLabel: "Close navigation menu",
+  contactHref: "/en-US/reservation/cowork",
+  contactLabel: "Book",
+  currentLocale: "en-US" as const,
+  languageLabels: { "cs-CZ": "Czech", "en-US": "English" },
+  languageSwitcherLabel: "Language switcher",
+  links: [],
+  mobilePrimaryNavigationLabel: "Mobile primary navigation",
+  openNavigationMenuLabel: "Open navigation menu",
+  primaryNavigationLabel: "Primary navigation",
+};
 
 beforeAll(() => {
   registerWorkspaceComponentTestEnv();
@@ -280,6 +295,143 @@ test("keeps the full-header home link compact and controls usable on mobile", as
   expect(contactLink.className).toContain("shrink-0");
   expect(menuButton.className).toContain("h-10");
   expect(menuButton.className).toContain("w-10");
+});
+
+test.each([
+  {
+    accountHref: "/en-US/account",
+    currentLocale: "en-US" as const,
+    pathname: "/en-US/account",
+    active: true,
+  },
+  {
+    accountHref: "/cs-CZ/account",
+    currentLocale: "cs-CZ" as const,
+    pathname: "/cs-CZ/account",
+    active: true,
+  },
+  {
+    accountHref: "/en-US/account",
+    currentLocale: "en-US" as const,
+    pathname: "/en-US",
+    active: false,
+  },
+  {
+    accountHref: "/en-US/account",
+    currentLocale: "en-US" as const,
+    pathname: "/en-US/contact",
+    active: false,
+  },
+  {
+    accountHref: "/en-US/account",
+    currentLocale: "en-US" as const,
+    pathname: "/en-US/reservation/status/reservation-1",
+    active: false,
+  },
+  {
+    accountHref: "/en-US/account",
+    currentLocale: "en-US" as const,
+    pathname: "/en-US/accounting",
+    active: false,
+  },
+  {
+    accountHref: "/en-US/account",
+    currentLocale: "en-US" as const,
+    pathname: "/cs-CZ/account",
+    active: false,
+  },
+] as const)(
+  "marks both account links active only for an exact pathname ($pathname)",
+  async ({ accountHref, active, currentLocale, pathname }) => {
+    const { SiteHeader } = await import("./site-header");
+    currentPathname = pathname;
+    const view = render(
+      <SiteHeader
+        {...completeSiteHeaderProps}
+        accountHref={accountHref}
+        contactHref={`/${currentLocale}/contact`}
+        currentLocale={currentLocale}
+      />
+    );
+
+    const accountLinks = Array.from(
+      view.container.querySelectorAll(`a[href="${accountHref}"]`)
+    );
+    expect(accountLinks).toHaveLength(2);
+    expect(view.getAllByRole("link", { name: "Account" })).toHaveLength(2);
+
+    for (const link of accountLinks) {
+      expect(link.getAttribute("aria-current")).toBe(active ? "page" : null);
+      if (active) {
+        expect(link.className).toContain("border-sunset-yellow/55");
+        expect(link.className).toContain("bg-sunset-yellow/10");
+        expect(link.className).toContain("text-sunset-yellow");
+      }
+    }
+
+    expect(accountLinks[0]?.getAttribute("aria-label")).toBe("Account");
+    expect(accountLinks[0]?.getAttribute("title")).toBe("Account");
+    expect(
+      accountLinks[0]?.querySelector("svg")?.getAttribute("class")
+    ).toContain("size-4.5");
+    expect(
+      accountLinks[1]?.querySelector("svg")?.getAttribute("class")
+    ).toContain("size-4");
+
+    if (!active) {
+      expect(accountLinks[0]?.className).toContain("border-white/12");
+      expect(accountLinks[0]?.className).toContain("bg-white/6");
+      expect(accountLinks[0]?.className).toContain("text-white/82");
+      expect(accountLinks[1]?.className).toContain("border-white/8");
+      expect(accountLinks[1]?.className).toContain("bg-white/5");
+      expect(accountLinks[1]?.className).toContain("text-white/80");
+    }
+  }
+);
+
+test("updates account active state when the exact route changes", async () => {
+  const { SiteHeader } = await import("./site-header");
+  currentPathname = "/en-US/account";
+  const view = render(<SiteHeader {...completeSiteHeaderProps} />);
+
+  const accountLinks = () =>
+    Array.from(view.container.querySelectorAll('a[href="/en-US/account"]'));
+
+  expect(
+    accountLinks().every((link) => link.getAttribute("aria-current") === "page")
+  ).toBe(true);
+
+  act(() => {
+    currentPathname = "/en-US/contact";
+    view.rerender(<SiteHeader {...completeSiteHeaderProps} />);
+  });
+
+  expect(
+    accountLinks().every((link) => link.getAttribute("aria-current") === null)
+  ).toBe(true);
+});
+
+test("closes the mobile menu when its account link is clicked", async () => {
+  const { SiteHeader } = await import("./site-header");
+  currentPathname = "/en-US";
+  const view = render(<SiteHeader {...completeSiteHeaderProps} />);
+  const menuButton = view.getByRole("button", {
+    name: "Open navigation menu",
+  });
+
+  fireEvent.click(menuButton);
+  expect(menuButton.getAttribute("aria-expanded")).toBe("true");
+
+  const mobileAccountLink = view.container.querySelector<HTMLAnchorElement>(
+    '#site-header-mobile-menu a[href="/en-US/account"]'
+  );
+  expect(mobileAccountLink).toBeTruthy();
+
+  act(() => {
+    fireEvent.click(mobileAccountLink!);
+  });
+
+  expect(menuButton.getAttribute("aria-expanded")).toBe("false");
 });
 
 test("uses document navigation for the alternate-locale minimal-header link", async () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu, UserRound, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
 import { GuardedLink as Link } from "@/shared/components/guarded-link";
@@ -27,6 +28,49 @@ type SiteHeaderProps = {
   openNavigationMenuLabel: string;
   primaryNavigationLabel: string;
 };
+
+type AccountLinkProps = {
+  readonly active?: boolean;
+  readonly href: string;
+  readonly label: string;
+  readonly mobile?: boolean;
+  readonly onClick?: () => void;
+};
+
+function AccountLink({
+  active = false,
+  href,
+  label,
+  mobile = false,
+  onClick,
+}: AccountLinkProps) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      aria-label={mobile ? undefined : label}
+      title={mobile ? undefined : label}
+      className={cn(
+        mobile
+          ? "flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm uppercase tracking-[0.12em] transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
+          : "inline-flex size-10 items-center justify-center rounded-full border transition-colors hover:border-sunset-yellow/55 hover:text-sunset-yellow",
+        active &&
+          "border-sunset-yellow/55 bg-sunset-yellow/10 text-sunset-yellow",
+        !active && mobile && "border-white/8 bg-white/5 text-white/80",
+        !active && !mobile && "border-white/12 bg-white/6 text-white/82"
+      )}
+      onClick={onClick}
+    >
+      <UserRound aria-hidden className={mobile ? "size-4" : "size-4.5"} />
+      {mobile && label}
+    </Link>
+  );
+}
+
+function ActiveAccountLink(props: Omit<AccountLinkProps, "active">) {
+  const pathname = usePathname();
+  return <AccountLink {...props} active={pathname === props.href} />;
+}
 
 export function SiteHeader({
   accountHref,
@@ -86,15 +130,21 @@ export function SiteHeader({
         </nav>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:gap-3">
-          <Link
-            href={accountHref}
-            className="inline-flex size-10 items-center justify-center rounded-full border border-white/12 bg-white/6 text-white/82 transition-colors hover:border-sunset-yellow/55 hover:text-sunset-yellow"
-            aria-label={accountLabel}
-            title={accountLabel}
-            onClick={closeMenu}
+          <Suspense
+            fallback={
+              <AccountLink
+                href={accountHref}
+                label={accountLabel}
+                onClick={closeMenu}
+              />
+            }
           >
-            <UserRound aria-hidden className="size-4.5" />
-          </Link>
+            <ActiveAccountLink
+              href={accountHref}
+              label={accountLabel}
+              onClick={closeMenu}
+            />
+          </Suspense>
 
           <Link
             href={contactHref}
@@ -158,14 +208,23 @@ export function SiteHeader({
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <nav aria-label={mobilePrimaryNavigationLabel} className="grid gap-2">
-            <Link
-              href={accountHref}
-              onClick={closeMenu}
-              className="flex items-center gap-2 rounded-2xl border border-sunset-yellow/28 bg-sunset-yellow/10 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
+            <Suspense
+              fallback={
+                <AccountLink
+                  href={accountHref}
+                  label={accountLabel}
+                  mobile
+                  onClick={closeMenu}
+                />
+              }
             >
-              <UserRound aria-hidden className="size-4" />
-              {accountLabel}
-            </Link>
+              <ActiveAccountLink
+                href={accountHref}
+                label={accountLabel}
+                mobile
+                onClick={closeMenu}
+              />
+            </Suspense>
             {links.map((link) => (
               <Link
                 key={link.id}

@@ -93,6 +93,31 @@ const linkedHistory = {
   },
 };
 
+const expectedPragueAllDayRange = (
+  locale: "en-US" | "cs-CZ",
+  startsAt: string,
+  endsAt: string
+) =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "full",
+    timeZone: "Europe/Prague",
+  }).formatRange(new Date(startsAt), new Date(new Date(endsAt).getTime() - 1));
+
+const expectedPragueTimedRange = (
+  locale: "en-US" | "cs-CZ",
+  startsAt: string,
+  endsAt: string
+) =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/Prague",
+  }).formatRange(new Date(startsAt), new Date(endsAt));
+
+const calendarPeriod = (view: ReturnType<typeof render>) =>
+  view.container.querySelector("svg.lucide-calendar-days")?.parentElement
+    ?.textContent;
+
 function DirtyProfileGuard() {
   useUnsavedChanges({
     enabled: true,
@@ -149,6 +174,169 @@ describe("ReservationHistory", () => {
     expect(view.getByText("Rezervace bez údaje o datu")).toBeTruthy();
     expect(view.getByText("Zrušeno")).toBeTruthy();
   });
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders a single Prague calendar day as a localized full date in %s",
+    (locale) => {
+      const startsAt = "2026-09-05T22:00:00Z";
+      const endsAt = "2026-09-06T22:00:00Z";
+      const view = render(
+        <ReservationHistory
+          locale={locale}
+          history={{
+            kind: "available",
+            groups: {
+              current: [
+                reservation({
+                  endsAt,
+                  product: { kind: "other" },
+                  startsAt,
+                }),
+              ],
+              past: [],
+              unavailable: [],
+            },
+          }}
+        />
+      );
+
+      expect(calendarPeriod(view)).toBe(
+        expectedPragueAllDayRange(locale, startsAt, endsAt)
+      );
+    }
+  );
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders a multi-day Prague calendar interval through the inclusive end date in %s",
+    (locale) => {
+      const startsAt = "2026-09-05T22:00:00Z";
+      const endsAt = "2026-09-07T22:00:00Z";
+      const view = render(
+        <ReservationHistory
+          locale={locale}
+          history={{
+            kind: "available",
+            groups: {
+              current: [reservation({ endsAt, startsAt })],
+              past: [],
+              unavailable: [],
+            },
+          }}
+        />
+      );
+
+      expect(calendarPeriod(view)).toBe(
+        expectedPragueAllDayRange(locale, startsAt, endsAt)
+      );
+    }
+  );
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders a DST all-day interval as one Prague calendar day in %s",
+    (locale) => {
+      const startsAt = "2026-03-28T23:00:00Z";
+      const endsAt = "2026-03-29T22:00:00Z";
+      const view = render(
+        <ReservationHistory
+          locale={locale}
+          history={{
+            kind: "available",
+            groups: {
+              current: [reservation({ endsAt, startsAt })],
+              past: [],
+              unavailable: [],
+            },
+          }}
+        />
+      );
+
+      expect(calendarPeriod(view)).toBe(
+        expectedPragueAllDayRange(locale, startsAt, endsAt)
+      );
+    }
+  );
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "keeps timed reservation formatting unchanged in %s",
+    (locale) => {
+      const startsAt = "2026-09-18T12:00:00Z";
+      const endsAt = "2026-09-18T14:00:00Z";
+      const view = render(
+        <ReservationHistory
+          locale={locale}
+          history={{
+            kind: "available",
+            groups: {
+              current: [reservation({ endsAt, startsAt })],
+              past: [],
+              unavailable: [],
+            },
+          }}
+        />
+      );
+
+      expect(calendarPeriod(view)).toBe(
+        expectedPragueTimedRange(locale, startsAt, endsAt)
+      );
+    }
+  );
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "keeps a midnight-to-noon reservation timed in %s",
+    (locale) => {
+      const startsAt = "2026-09-18T22:00:00Z";
+      const endsAt = "2026-09-19T10:00:00Z";
+      const view = render(
+        <ReservationHistory
+          locale={locale}
+          history={{
+            kind: "available",
+            groups: {
+              current: [reservation({ endsAt, startsAt })],
+              past: [],
+              unavailable: [],
+            },
+          }}
+        />
+      );
+
+      expect(calendarPeriod(view)).toBe(
+        expectedPragueTimedRange(locale, startsAt, endsAt)
+      );
+    }
+  );
+
+  test.each([
+    ["en-US", "missing start", { startsAt: null }],
+    ["en-US", "missing end", { endsAt: null }],
+    ["en-US", "invalid start", { startsAt: "not-a-date" }],
+    ["en-US", "invalid end", { endsAt: "not-a-date" }],
+    ["cs-CZ", "missing start", { startsAt: null }],
+    ["cs-CZ", "missing end", { endsAt: null }],
+    ["cs-CZ", "invalid start", { startsAt: "not-a-date" }],
+    ["cs-CZ", "invalid end", { endsAt: "not-a-date" }],
+  ] as const)(
+    "omits the calendar row for a %s %s reservation",
+    (locale, _caseName, overrides) => {
+      const view = render(
+        <ReservationHistory
+          locale={locale}
+          history={{
+            kind: "available",
+            groups: {
+              current: [reservation({ ...overrides, seats: null })],
+              past: [],
+              unavailable: [],
+            },
+          }}
+        />
+      );
+
+      const item = view.container.querySelector("li");
+      expect(item).toBeTruthy();
+      expect(item?.querySelector("svg.lucide-calendar-days")).toBeNull();
+    }
+  );
 
   test("links a persisted reservation to its encoded English status URL", () => {
     const view = render(
