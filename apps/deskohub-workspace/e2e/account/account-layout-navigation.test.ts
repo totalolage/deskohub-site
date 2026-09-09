@@ -91,23 +91,32 @@ function AccountShellHarness() {
     useState<AccountSection>("reservations");
 
   return createElement(
-    AccountShell,
-    {
-      activeSection,
-      // AccountShell receives the rendered panels as variadic children below.
-      // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in this createElement call.
-      children: null,
-      labels: shellLabels,
-      onSectionChange: setActiveSection,
-      signOut: createElement("button", { type: "button" }, "Sign out"),
-      title: "Workspace account",
-    },
-    ...sections.map((section) =>
-      createElement(
-        "div",
-        { hidden: activeSection !== section, key: section },
-        sectionPanel(section)
+    "div",
+    null,
+    createElement(
+      AccountShell,
+      {
+        activeSection,
+        // AccountShell receives the rendered panels as variadic children below.
+        // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in this createElement call.
+        children: null,
+        labels: shellLabels,
+        onSectionChange: setActiveSection,
+        signOut: createElement("button", { type: "button" }, "Sign out"),
+        title: "Workspace account",
+      },
+      ...sections.map((section) =>
+        createElement(
+          "div",
+          { hidden: activeSection !== section, key: section },
+          sectionPanel(section)
+        )
       )
+    ),
+    createElement(
+      "footer",
+      { "data-testid": "public-site-footer" },
+      createElement("a", { href: "/en-US/privacy-policy" }, "Privacy policy")
     )
   );
 }
@@ -190,7 +199,13 @@ const makeFakePage = (): Page => {
     },
     getByRole,
     locator: (selector: string) => {
-      const element = document.querySelector(selector);
+      const elements = Array.from(document.querySelectorAll(selector));
+      if (elements.length > 1) {
+        throw new Error(
+          `fake locator expected one match for ${selector}, got ${elements.length}`
+        );
+      }
+      const element = elements[0];
       if (!element) throw new Error(`fake locator was not found: ${selector}`);
       return fakeLocator(element);
     },

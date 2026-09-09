@@ -36,7 +36,7 @@ export const accountSectionLandmarks = {
   reservations: "#account-reservations-current-title",
   profile: "[data-slot='profile-screen']",
   billing: "#account-profile-billing-kind",
-  legal: "a[href$='/privacy-policy']",
+  legal: "main a[href$='/privacy-policy']",
   danger: "#delete-account-trigger",
 } as const satisfies Readonly<Record<AccountSection, string>>;
 

@@ -42,7 +42,7 @@ const misleadingShellLabels = {
   },
 } as const satisfies AccountShellProps["labels"];
 
-const sectionPanel = (section: AccountSection) => {
+const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
   switch (section) {
     case "reservations":
       return createElement(
@@ -64,11 +64,13 @@ const sectionPanel = (section: AccountSection) => {
         createElement("select", { id: "account-profile-billing-kind" })
       );
     case "legal":
-      return createElement(
-        "a",
-        { href: "/en-US/privacy-policy" },
-        "Privacy policy"
-      );
+      return includeLegalLink
+        ? createElement(
+            "a",
+            { href: "/en-US/privacy-policy" },
+            "Privacy policy"
+          )
+        : null;
     case "danger":
       return createElement(
         "button",
@@ -79,9 +81,11 @@ const sectionPanel = (section: AccountSection) => {
 };
 
 function AccountShellHarness({
+  includeLegalLink = true,
   labels = shellLabels,
   reservationCount,
 }: {
+  readonly includeLegalLink?: boolean;
   readonly labels?: AccountShellProps["labels"];
   readonly reservationCount?: number;
 }) {
@@ -89,25 +93,34 @@ function AccountShellHarness({
     useState<AccountSection>("reservations");
 
   return createElement(
-    AccountShell,
-    {
-      activeSection,
-      // The variadic children below are the rendered panels; this satisfies
-      // AccountShellProps' required children field without replacing them.
-      // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in its createElement props type.
-      children: null,
-      labels,
-      onSectionChange: setActiveSection,
-      reservationCount,
-      signOut: createElement("button", { type: "button" }, "Sign out"),
-      title: "Workspace account",
-    },
-    ...sections.map((section) =>
-      createElement(
-        "div",
-        { hidden: activeSection !== section, key: section },
-        sectionPanel(section)
+    "div",
+    null,
+    createElement(
+      AccountShell,
+      {
+        activeSection,
+        // The variadic children below are the rendered panels; this satisfies
+        // AccountShellProps' required children field without replacing them.
+        // biome-ignore lint/correctness/noChildrenProp: AccountShellProps requires children in its createElement props type.
+        children: null,
+        labels,
+        onSectionChange: setActiveSection,
+        reservationCount,
+        signOut: createElement("button", { type: "button" }, "Sign out"),
+        title: "Workspace account",
+      },
+      ...sections.map((section) =>
+        createElement(
+          "div",
+          { hidden: activeSection !== section, key: section },
+          sectionPanel(section, includeLegalLink)
+        )
       )
+    ),
+    createElement(
+      "footer",
+      { "data-testid": "public-site-footer" },
+      createElement("a", { href: "/en-US/privacy-policy" }, "Privacy policy")
     )
   );
 }
@@ -212,6 +225,32 @@ test("selects every section through rendered desktop AccountShell controls", asy
     );
     expect(button?.getAttribute("aria-current")).toBe("page");
   }
+});
+
+test("scopes the legal landmark to AccountShell when the public footer duplicates it", () => {
+  render(createElement(AccountShellHarness));
+
+  expect(document.querySelectorAll("a[href$='/privacy-policy']")).toHaveLength(
+    2
+  );
+  const legalLandmarks = document.querySelectorAll(
+    accountSectionLandmarks.legal
+  );
+  expect(legalLandmarks).toHaveLength(1);
+  expect(legalLandmarks[0]?.closest("main")).not.toBeNull();
+});
+
+test("does not accept the public footer as the legal account landmark", async () => {
+  const page = makeFakePage(1440);
+  render(
+    createElement(AccountShellHarness, {
+      includeLegalLink: false,
+    })
+  );
+
+  await expect(selectAccountSection(page, "legal")).rejects.toThrow(
+    "fake account section did not settle"
+  );
 });
 
 for (const reservationCount of [0, 3] as const) {
