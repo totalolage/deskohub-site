@@ -13,15 +13,12 @@ const immutableWorkspaceDeploymentHost =
 export const getConfig = (environment: E2EEnvironment) => {
   const target = parseWorkspaceE2EBaseUrl(environment.WORKSPACE_E2E_BASE_URL);
   const bypassSecret = environment.VERCEL_AUTOMATION_BYPASS_SECRET;
-  const resendApiKey = environment.WORKSPACE_E2E_RESEND_API_KEY;
 
   addRedaction(bypassSecret);
-  addRedaction(resendApiKey);
 
   return {
     ...target,
     bypassSecret,
-    resendApiKey,
     timeouts: workspaceE2ETimeouts,
   };
 };
@@ -101,10 +98,5 @@ export const assertNexiSandbox = (origin: string) =>
     "NEXI_API_ORIGIN must point at Nexi sandbox for workspace checkout e2e"
   );
 
-export type WorkspaceE2EConfig = Omit<
-  ReturnType<typeof getConfig>,
-  "resendApiKey"
-> & {
-  readonly resendApiKey?: string;
-};
+export type WorkspaceE2EConfig = ReturnType<typeof getConfig>;
 export type DatasourceConfig = ReturnType<typeof getDatasourceConfig>;

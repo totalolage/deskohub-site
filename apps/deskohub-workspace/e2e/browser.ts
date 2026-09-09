@@ -11,7 +11,7 @@ import {
   type WorkspaceE2EError,
 } from "./errors";
 import { pollUntil } from "./polling";
-import type { BrowserRequestOptions, Runner } from "./runtime";
+import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import { workspaceE2EPollIntervalMs } from "./timeouts";
 
@@ -111,105 +111,19 @@ export const getBrowserHeaderArgs = (config: WorkspaceE2EConfig) =>
       ]
     : [];
 
-export type BrowserCookieMetadata = {
-  readonly domain: string;
-  readonly expires: number;
-  readonly httpOnly: boolean;
-  readonly name: string;
-  readonly path: string;
-  readonly sameSite: string;
-  readonly secure: boolean;
-};
-
-export type BrowserSetCookieMetadata = {
-  readonly domain?: string;
-  readonly hasExpires: boolean;
-  readonly httpOnly: boolean;
-  readonly maxAge?: number;
-  readonly name: string;
-  readonly path?: string;
-  readonly sameSite?: string;
-  readonly secure: boolean;
-};
-
-export type BrowserRequestResult = {
-  readonly cookies: readonly BrowserCookieMetadata[];
-  readonly locationMatches?: boolean;
-  readonly setCookies: readonly BrowserSetCookieMetadata[];
-  readonly status: number;
-};
-
-export const requestBrowserGet = ({
-  config,
-  expectedLocation,
-  maxRedirects,
-  run,
-  session,
-  timeoutMs,
-  url,
-}: {
-  readonly config: WorkspaceE2EConfig;
-  readonly expectedLocation?: string;
-  readonly maxRedirects?: number;
-  readonly run: Runner;
-  readonly session: string;
-  readonly timeoutMs: number;
-  readonly url: string;
-}): Effect.Effect<BrowserRequestResult, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "request browser GET",
-    run,
-    session,
-    [
-      ...getBrowserHeaderArgs(config),
-      "--no-har",
-      "--json",
-      "request",
-      "get",
-      url,
-    ],
-    {
-      logCommand: false,
-      logOutput: false,
-      request: {
-        ...(expectedLocation !== undefined ? { expectedLocation } : {}),
-        maxRedirects: maxRedirects ?? 0,
-      } satisfies BrowserRequestOptions,
-      timeoutMs,
-    }
-  ).pipe(
-    Effect.flatMap((result) =>
-      tryWorkspaceE2ESync("parse browser GET result", () => {
-        const parsed: unknown = JSON.parse(result.stdout);
-        if (!isBrowserRequestResult(parsed)) {
-          throw new Error("browser GET result has an invalid shape");
-        }
-        return parsed;
-      })
-    )
-  );
-
 export const openBrowserPage = (
   config: WorkspaceE2EConfig,
   run: Runner,
   session: string,
   url: string,
-  options: {
-    readonly logCommand?: boolean;
-    readonly logOutput?: boolean;
-    readonly timeoutMs?: number;
-  } = {}
+  options: { readonly timeoutMs?: number } = {}
 ) =>
   runBrowserCommand(
     "open browser page",
     run,
     session,
     [...getBrowserHeaderArgs(config), "open", url],
-    {
-      logCommand: options.logCommand,
-      logOutput: options.logOutput,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
+    { timeoutMs: options.timeoutMs ?? 60_000 }
   );
 
 export const waitForBrowserReactHydration = (
@@ -733,21 +647,6 @@ const writeTextArtifact = (
       `${sanitizeArtifactText(text.trim())}\n`
     )
   );
-
-const isBrowserRequestResult = (
-  value: unknown
-): value is BrowserRequestResult => {
-  if (!value || typeof value !== "object") return false;
-  const result = value as Record<string, unknown>;
-  return (
-    typeof result.status === "number" &&
-    (result.locationMatches === undefined ||
-      typeof result.locationMatches === "boolean") &&
-    Array.isArray(result.cookies) &&
-    Array.isArray(result.setCookies) &&
-    !Object.hasOwn(result, "location")
-  );
-};
 
 export const switchToMainFrame = (
   run: Runner,

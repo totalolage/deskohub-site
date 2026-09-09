@@ -19,17 +19,11 @@ export const workspaceDir = resolve(scriptDir, "..");
 export const repoRoot = resolve(workspaceDir, "../..");
 const redactions = new Map<string, "substring" | "token">();
 
-export type BrowserRequestOptions = {
-  readonly expectedLocation?: string;
-  readonly maxRedirects?: number;
-};
-
 export type RunBrowserOptions = {
   allowFailure?: boolean;
   input?: string;
   logCommand?: boolean;
   logOutput?: boolean;
-  request?: BrowserRequestOptions;
   signal?: AbortSignal;
   timeoutMs?: number;
 };
@@ -86,8 +80,7 @@ const makePlaywrightRuntimeRunner = (runtime: PlaywrightRuntime): Runner => {
           args,
           options.input,
           options.timeoutMs,
-          options.signal,
-          options.request
+          options.signal
         )
       );
       const result = { exitCode: 0, stderr: "", stdout } as const;
@@ -129,23 +122,15 @@ class PlaywrightRuntime {
     args: string[],
     input: string | undefined,
     timeoutMs = 120_000,
-    signal?: AbortSignal,
-    requestOptions?: BrowserRequestOptions
+    signal?: AbortSignal
   ) {
     const sessionId = args[0] === "--session" ? args[1] : undefined;
     if (!sessionId) throw new Error("Playwright session is required");
     const commandArgs = args.slice(2);
-    const { recordHar } = parseBrowserCommand(commandArgs);
 
     return this.interruptible(signal, async () => {
-      const session = await this.getSession(sessionId, recordHar);
-      return this.runCommand(
-        session,
-        commandArgs,
-        input,
-        timeoutMs,
-        requestOptions
-      );
+      const session = await this.getSession(sessionId);
+      return this.runCommand(session, commandArgs, input, timeoutMs);
     });
   }
 
@@ -162,8 +147,7 @@ class PlaywrightRuntime {
     session: PlaywrightSession,
     args: string[],
     input: string | undefined,
-    timeoutMs: number,
-    requestOptions?: BrowserRequestOptions
+    timeoutMs: number
   ): Promise<string> {
     const { command, commandArgs, headers, json } = parseBrowserCommand(args);
     const page = () => session.currentPage;
@@ -180,42 +164,6 @@ class PlaywrightRuntime {
         await page().goto(url, { timeout: timeoutMs, waitUntil: "load" });
         session.currentFrame = page().mainFrame();
         return page().url();
-      }
-      case "request": {
-        if (commandArgs[0] !== "get")
-          throw new Error("Only Playwright GET requests are supported");
-        const url = requireArgument(commandArgs[1], "browser request URL");
-        const response = await session.context.request.get(url, {
-          headers,
-          maxRedirects: requestOptions?.maxRedirects ?? 0,
-          timeout: timeoutMs,
-        });
-        try {
-          return serializeBrowserValue({
-            cookies: (await session.context.cookies(url)).map((cookie) => ({
-              domain: cookie.domain,
-              expires: cookie.expires,
-              httpOnly: cookie.httpOnly,
-              name: cookie.name,
-              path: cookie.path,
-              sameSite: cookie.sameSite,
-              secure: cookie.secure,
-            })),
-            ...(requestOptions?.expectedLocation !== undefined && {
-              locationMatches: locationsMatch(
-                response.headers().location,
-                requestOptions.expectedLocation
-              ),
-            }),
-            setCookies: response
-              .headersArray()
-              .filter(({ name }) => name.toLowerCase() === "set-cookie")
-              .map(({ value }) => parseSetCookieMetadata(value)),
-            status: response.status(),
-          });
-        } finally {
-          await response.dispose();
-        }
       }
       case "wait": {
         if (commandArgs[0] !== "--fn")
@@ -367,19 +315,17 @@ class PlaywrightRuntime {
     }
   }
 
-  private async getSession(sessionId: string, recordHar?: boolean) {
+  private async getSession(sessionId: string) {
     const existing = this.sessionPromises.get(sessionId);
     if (existing) return existing;
 
-    const created = this.createSession(sessionId, recordHar);
+    const created = this.createSession(sessionId);
     this.sessionPromises.set(sessionId, created);
     return created;
   }
 
-  private async createSession(
-    sessionId: string,
-    recordHar = this.options.recordHar !== false
-  ): Promise<PlaywrightSession> {
+  private async createSession(sessionId: string): Promise<PlaywrightSession> {
+    const recordHar = this.options.recordHar !== false;
     const rawHarPath = recordHar
       ? resolve(
           tmpdir(),
@@ -460,7 +406,6 @@ const parseBrowserCommand = (args: string[]) => {
   let cursor = 0;
   let headers: Record<string, string> | undefined;
   let json = false;
-  let recordHar: boolean | undefined;
   while (args[cursor]?.startsWith("--")) {
     if (args[cursor] === "--headers") {
       headers = JSON.parse(
@@ -474,11 +419,6 @@ const parseBrowserCommand = (args: string[]) => {
       cursor += 1;
       continue;
     }
-    if (args[cursor] === "--no-har") {
-      recordHar = false;
-      cursor += 1;
-      continue;
-    }
     break;
   }
   return {
@@ -486,46 +426,7 @@ const parseBrowserCommand = (args: string[]) => {
     commandArgs: args.slice(cursor + 1),
     headers,
     json,
-    recordHar,
   };
-};
-
-const parseSetCookieMetadata = (header: string) => {
-  const parts = header.split(";");
-  const nameValue = parts.shift() ?? "";
-  const separator = nameValue.indexOf("=");
-  const metadata: {
-    domain?: string;
-    hasExpires: boolean;
-    httpOnly: boolean;
-    maxAge?: number;
-    name: string;
-    path?: string;
-    sameSite?: string;
-    secure: boolean;
-  } = {
-    hasExpires: false,
-    httpOnly: false,
-    name: separator === -1 ? "" : nameValue.slice(0, separator).trim(),
-    secure: false,
-  };
-
-  for (const part of parts) {
-    const [rawName, ...rawValue] = part.trim().split("=");
-    const name = rawName?.toLowerCase();
-    const value = rawValue.join("=").trim();
-    if (name === "domain") metadata.domain = value;
-    else if (name === "expires") metadata.hasExpires = true;
-    else if (name === "httponly") metadata.httpOnly = true;
-    else if (name === "max-age") {
-      const maxAge = Number(value);
-      if (Number.isFinite(maxAge)) metadata.maxAge = maxAge;
-    } else if (name === "path") metadata.path = value;
-    else if (name === "samesite") metadata.sameSite = value.toLowerCase();
-    else if (name === "secure") metadata.secure = true;
-  }
-
-  return metadata;
 };
 
 const primePreviewAccess = async (
@@ -637,21 +538,6 @@ const serializeBrowserValue = (value: unknown) => {
   if (typeof value === "string") return value;
   if (value === undefined) return "";
   return JSON.stringify(value);
-};
-
-const locationsMatch = (
-  actualLocation: string | undefined,
-  expectedLocation: string
-) => {
-  if (!actualLocation) return false;
-
-  try {
-    const expected = new URL(expectedLocation);
-    const actual = new URL(actualLocation, expected.origin);
-    return actual.href === expected.href;
-  } catch {
-    return false;
-  }
 };
 
 const requireArgument = (value: string | undefined, label: string) => {

@@ -31,7 +31,7 @@ import {
   reuseMeetingRoomCheckoutContact,
   selectAvailableMeetingRoomSlots,
 } from "../checkout/data";
-import { reservationEmailCapabilityStep } from "../checkout/reservation-email-capability";
+import { reservationCookieIsolationStep } from "../checkout/reservation-cookie-isolation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -175,7 +175,6 @@ export const makeMeetingRoomE2ECases = ({
       {
         checkoutStates: [paidState],
         execute: ({ runStep, session }) => {
-          const startedAt = new Date();
           return executeCheckoutFlow({
             config,
             data: paidData,
@@ -205,7 +204,7 @@ export const makeMeetingRoomE2ECases = ({
             .pipe(
               Effect.flatMap(() =>
                 tryWorkspaceE2ESync(
-                  "read paid meeting-room order and customer for email capability",
+                  "read paid meeting-room order and customer for reservation cookie isolation",
                   () => {
                     const orderId = paidState.orderId;
                     const customerId =
@@ -221,23 +220,18 @@ export const makeMeetingRoomE2ECases = ({
                     return { customerId, orderId };
                   }
                 ).pipe(
-                  Effect.flatMap(({ customerId, orderId }) => {
-                    const step = reservationEmailCapabilityStep({
-                      config,
-                      customerId,
-                      data: paidData,
-                      orderId,
-                      run,
-                      session,
-                      startedAt,
-                    });
-                    return runStep({
-                      ...step,
-                      execute: step.execute.pipe(
-                        Effect.provideService(HttpClient.HttpClient, httpClient)
-                      ),
-                    });
-                  })
+                  Effect.flatMap(({ customerId, orderId }) =>
+                    runStep(
+                      reservationCookieIsolationStep({
+                        config,
+                        customerId,
+                        data: paidData,
+                        orderId,
+                        run,
+                        session,
+                      })
+                    )
+                  )
                 )
               )
             )
