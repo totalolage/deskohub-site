@@ -36,6 +36,86 @@ mock.module("@/features/account/actions", () => ({
   updateCustomerProfile: () => Promise.resolve({ data: { status: "updated" } }),
   deleteCustomerAccount: () => Promise.resolve({ data: { status: "deleted" } }),
 }));
+const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
+  shell: {
+    mobileSection: "Account section",
+    navigation: "Account navigation",
+    sections: {
+      billing: "Billing & invoices",
+      danger: "Danger zone",
+      legal: "Legal & privacy",
+      profile: "Profile & identity",
+      reservations: "Reservations",
+    },
+  },
+  profile: {
+    avatarUnavailableDescription: "Profile photos are not available here.",
+    avatarUnavailableLabel: "Profile photo unavailable",
+    emailDescription: "This verified address cannot be changed here.",
+    emailLabel: "Email address",
+    languageLabel: "Preferred communication language",
+    languageUnavailableDescription: "Language preferences are not saved yet.",
+    languageUnavailableValue: "Not set",
+    memberFallback: "Workspace member",
+    title: "Profile & identity",
+    verifiedEmail: "Verified login email",
+  },
+  billing: {
+    addPaymentCard: "Add payment card",
+    aresUnavailable: "ARES Registry sync is not available in this account.",
+    billingDetailsTitle:
+      locale === "cs-CZ" ? "Fakturační údaje" : "Billing details",
+    currency: "Currency: CZK (Kč)",
+    downloadInvoice: "Download PDF",
+    exportInvoices: "Export all",
+    invoiceHistoryTitle: "Invoice history",
+    invoiceHistoryUnavailable:
+      "Invoice history and downloads are not available in this account.",
+    paymentMethodsTitle: "Saved payment methods",
+    paymentMethodsUnavailable:
+      "Saved payment methods are not available in this account.",
+    removePaymentCard: "Remove payment card",
+    syncAres: "Sync with ARES Registry",
+    title: "Billing & invoices",
+  },
+  legal: {
+    analyticsDescription:
+      "Analytics preferences cannot be viewed or changed from your account.",
+    analyticsTitle: "Web & usage analytics",
+    archiveAction: "Request GDPR data archive",
+    archiveDescription:
+      "Requesting or downloading a personal data archive is not available in your account.",
+    archiveTitle: "Your personal data archive",
+    marketingDescription:
+      "Communications consent cannot be viewed or changed from your account.",
+    marketingTitle: "Marketing & community communications",
+    preferencesUnavailable:
+      "Account consent settings are not available here. Use cookie settings to manage this browser's cookies.",
+    savePreferences: "Save consent preferences",
+    title: "Legal, privacy & GDPR consents",
+    unavailable: "Unavailable",
+  },
+  reservations: {
+    assignedDesk: "Assigned desk",
+    checkIn: "Check in",
+    date: "Date",
+    moreCurrent: "More upcoming reservations",
+    nfcAccess: "NFC access",
+    product: "Product",
+    seats: "Seats",
+    showPinCode: "Show PIN code",
+    status: "Status",
+    unavailable: "Unavailable",
+    unsupportedDescription: "This access detail is not available yet.",
+    validity: "Validity",
+    viewReservation: "View reservation",
+    wifi: "Wi-Fi",
+  },
+  dangerTitle: "Danger zone",
+});
+mock.module("@/features/account/components/account-screen-copy", () => ({
+  getAccountScreenCopy: accountScreenCopy,
+}));
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
     signIn: { magicLink: signInMagicLink },
@@ -114,30 +194,24 @@ describe("AccountPage states", () => {
     const view = await renderState(linkedState);
 
     expect(view.getByText("My Workspace")).toBeTruthy();
-    const billingSummary = view.getByText("Billing details");
-    expect(billingSummary.textContent).not.toMatch(/optional/i);
-    expect(
-      view.queryByText(
-        "Your profile details live in our booking system. Your verified login email links your reservations and cannot be changed here."
-      )
-    ).toBeNull();
-    expect(view.getByText("Reservations")).toBeTruthy();
+    expect(view.getByRole("button", { name: /^Reservations/ })).toBeTruthy();
     expect(view.getByText("Delete my account")).toBeTruthy();
     expect(view.getByText("Sign out")).toBeTruthy();
+    expect(view.container.querySelectorAll("main")).toHaveLength(1);
+
+    fireEvent.click(view.getByRole("button", { name: "Profile & identity" }));
     expect(view.getByText("Save profile")).toBeTruthy();
-    const stickySections = view.getAllByTestId("sticky-section");
-    expect(stickySections).toHaveLength(2);
-    expect(stickySections[0]?.textContent).toContain("Profile");
-    expect(stickySections[1]?.textContent).toContain("Reservations");
-    const pageShell = view.container.querySelector("main");
-    if (!pageShell) throw new Error("Account page shell was not rendered");
-    expect(pageShell.className).toContain("overflow-clip");
-    expect(pageShell.className).not.toContain("overflow-hidden");
+
+    fireEvent.click(view.getByRole("button", { name: "Billing & invoices" }));
+    expect(view.getByText("Billing details")).toBeTruthy();
+    expect(view.getByText("Save profile")).toBeTruthy();
 
     view.unmount();
     const czechView = await renderState(linkedState, "cs-CZ");
-    const czechBillingSummary = czechView.getByText("Fakturační údaje");
-    expect(czechBillingSummary.textContent).not.toMatch(/nepovinné/i);
+    fireEvent.click(
+      czechView.getByRole("button", { name: "Profile & identity" })
+    );
+    expect(czechView.getByText("Fakturační údaje")).toBeTruthy();
   });
 
   test("renders the support state with the contact destination and no profile data", async () => {

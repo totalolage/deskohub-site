@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import React from "react";
+import { type Locale, m } from "@/features/i18n";
 import {
   UnsavedChangesProvider,
   useUnsavedChanges,
@@ -25,8 +26,8 @@ type ActionResult = {
   validationErrors?: unknown;
 };
 
-const deleteCustomerAccount = mock(() =>
-  Promise.resolve({ data: { status: "deleted" } as const })
+const deleteCustomerAccount = mock(
+  (): Promise<ActionResult> => Promise.resolve({ data: { status: "deleted" } })
 );
 mock.module("@/features/account/actions", () => ({
   deleteCustomerAccount,
@@ -84,9 +85,16 @@ describe("DeleteAccountCard", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  const openDialog = async (view: ReturnType<typeof render>) => {
+  const openDialog = async (
+    view: ReturnType<typeof render>,
+    locale: Locale = "en-US"
+  ) => {
     await act(async () => {
-      fireEvent.click(view.getByText("Delete my account"));
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountDeletionButton({}, { locale }),
+        })
+      );
     });
   };
 
@@ -109,6 +117,63 @@ describe("DeleteAccountCard", () => {
     window.dispatchEvent(event);
     return event;
   }
+
+  test("renders an optional h2 heading and keeps the default heading compatible", async () => {
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+        heading="Synthetic danger heading"
+      />
+    );
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: "Synthetic danger heading",
+      })
+    ).toBeTruthy();
+    expect(
+      view.getByRole("heading", {
+        level: 3,
+        name: m.accountDeletionTitle({}, { locale: "en-US" }),
+      })
+    ).toBeTruthy();
+
+    view.rerender(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: m.accountDeletionTitle({}, { locale: "en-US" }),
+      })
+    ).toBeTruthy();
+  });
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "shows the truthful normal deletion notice in %s",
+    async (locale) => {
+      const { DeleteAccountCard } = await import("./delete-account-card");
+
+      const view = render(
+        <DeleteAccountCard
+          email="ada@example.test"
+          locale={locale}
+          deletionPending={false}
+        />
+      );
+      expect(
+        view.getByText(m.accountDeletionDescription({}, { locale }))
+      ).toBeTruthy();
+    }
+  );
 
   test("keeps the destructive confirmation disabled until the checkbox is checked", async () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
@@ -498,6 +563,130 @@ describe("DeleteAccountCard", () => {
     ).toBe(false);
   });
 
+  test("shows an explicit server error while keeping the dialog open", async () => {
+    const serverError = "Synthetic deletion server failure";
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.resolve({ serverError })
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        })
+      );
+    });
+
+    expect(view.getByText(serverError)).toBeTruthy();
+    expect(view.getByRole("dialog")).toBeTruthy();
+  });
+
+  test("keeps the deletion confirmation disabled while the request is in flight", async () => {
+    let resolveDeletion!: (result: ActionResult) => void;
+    const pendingDeletion = new Promise<ActionResult>((resolve) => {
+      resolveDeletion = resolve;
+    });
+    deleteCustomerAccount.mockImplementationOnce(() => pendingDeletion);
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+
+    const confirm = view.getByRole("button", {
+      name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+    }) as HTMLButtonElement;
+    expect(confirm.disabled).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(confirm);
+    });
+    expect(confirm.disabled).toBe(true);
+
+    await act(async () => {
+      resolveDeletion({ data: { status: "failed" } });
+      await pendingDeletion;
+    });
+    expect(
+      (
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+  });
+
+  test("resets confirmation after cancelling and reopening the dialog", async () => {
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+    expect(
+      (
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountDeletionCancel({}, { locale: "en-US" }),
+        })
+      );
+    });
+    await openDialog(view);
+    expect(
+      (
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+  });
+
   test("renders the pending-deletion copy while a retryable deletion marker is set", async () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 
@@ -513,6 +702,9 @@ describe("DeleteAccountCard", () => {
       view.getByText(
         "We could not finish deleting your account because our reservation system did not respond. You can sign out, or try deleting it again."
       )
+    ).toBeTruthy();
+    expect(
+      view.getByText(m.accountDeletionDescription({}, { locale: "en-US" }))
     ).toBeTruthy();
 
     await act(async () => {

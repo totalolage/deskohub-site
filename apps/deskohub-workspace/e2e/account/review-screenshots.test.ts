@@ -59,26 +59,42 @@ const validTargets = [
     fullPage: true,
   },
   {
-    filename: "linked-desktop1440x1000.png",
+    filename: "linked-reservations-desktop.png",
     path: "/en-US/account",
     query: "",
-    target: "linked-desktop1440x1000",
+    target: "linked-reservations-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
   },
   {
-    filename: "linked-sticky-desktop.png",
+    filename: "linked-profile-desktop.png",
     path: "/en-US/account",
     query: "",
-    target: "linked-sticky-desktop",
-    viewport: { height: 900, width: 1440 },
-    fullPage: false,
+    target: "linked-profile-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
   },
   {
-    filename: "linked-history-desktop.png",
+    filename: "linked-billing-desktop.png",
     path: "/en-US/account",
     query: "",
-    target: "linked-history-desktop",
+    target: "linked-billing-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-legal-desktop.png",
+    path: "/en-US/account",
+    query: "",
+    target: "linked-legal-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-danger-desktop.png",
+    path: "/en-US/account",
+    query: "",
+    target: "linked-danger-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
   },
@@ -713,7 +729,7 @@ describe("account review screenshot capture", () => {
     });
 
     await expect(
-      captureAccountReview(fakePage.page, baseUrl, "linked-desktop1440x1000")
+      captureAccountReview(fakePage.page, baseUrl, "linked-profile-desktop")
     ).rejects.toThrow(captureFailureMessage);
 
     expect(fakePage.viewportChanges).toEqual([
@@ -762,7 +778,7 @@ describe("account review screenshot capture", () => {
         const capture = captureAccountReview(
           fakePage.page,
           baseUrl,
-          "linked-desktop1440x1000",
+          "linked-profile-desktop",
           { signal: controller.signal }
         );
 
@@ -800,7 +816,7 @@ describe("account review screenshot capture", () => {
       const capture = captureAccountReview(
         fakePage.page,
         baseUrl,
-        "linked-desktop1440x1000",
+        "linked-profile-desktop",
         { signal: controller.signal }
       );
       await fakePage.screenshotStarted;
@@ -834,7 +850,7 @@ describe("account review screenshot capture", () => {
         const capture = captureAccountReview(
           fakePage.page,
           baseUrl,
-          "linked-desktop1440x1000",
+          "linked-profile-desktop",
           { deadline: workspaceE2ETimeouts.browserAction }
         );
 

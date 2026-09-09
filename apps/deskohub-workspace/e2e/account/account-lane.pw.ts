@@ -5,6 +5,7 @@ import {
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
+import type { AccountSection } from "@/features/account/components/shell/account-shell";
 import { workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -12,6 +13,7 @@ import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
 import { makePlaywrightBrowserRunner, type Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EStep } from "../types";
+import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
 import {
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
@@ -41,7 +43,6 @@ import {
   captureReservationStatusReview,
   withSignInPendingReview,
 } from "./review-screenshots";
-import { verifyStickyAccountSections } from "./sticky-sections";
 import type { WorkspaceE2EAccountDeletionHandoff } from "./types";
 
 const accountReviewTargetByCaseId: Partial<
@@ -50,11 +51,16 @@ const accountReviewTargetByCaseId: Partial<
   "account-anonymous-redirect": "sign-in-desktop",
   "account-sign-in-form": "sign-in-accepted-desktop",
   "account-magic-link-delivery": "completion-mobile375x900",
-  "account-profile-completion": "linked-desktop1440x1000",
-  "account-reservation-transitions": "linked-history-desktop",
   "account-deletion-marker-reauth": "callback-failed-desktop",
   "account-linking-variants": "support-desktop",
 };
+const accountReviewTargetBySection = {
+  reservations: "linked-reservations-desktop",
+  profile: "linked-profile-desktop",
+  billing: "linked-billing-desktop",
+  legal: "linked-legal-desktop",
+  danger: "linked-danger-desktop",
+} as const satisfies Readonly<Record<AccountSection, AccountReviewTarget>>;
 const accountReviewCaptureFailureMessage =
   "Account review screenshot capture failed";
 
@@ -198,17 +204,20 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       } else if (caseId === "account-reservation-transitions") {
         verifyPage = {
           execute: Effect.gen(function* () {
+            const page = getOwnedPage();
             yield* Effect.tryPromise({
               catch: () =>
-                workspaceE2EError("verify sticky account sections failed", {
-                  operation: "verify sticky account sections",
+                workspaceE2EError("verify account layout navigation failed", {
+                  operation: "verify account layout navigation",
                 }),
-              try: async () => {
-                await verifyStickyAccountSections(
-                  getOwnedPage(),
-                  accountLane.config.baseUrl
-                );
-              },
+              try: () =>
+                verifyAccountLayoutNavigation(page, async (section) => {
+                  await captureAccountReview(
+                    page,
+                    accountLane.config.baseUrl,
+                    accountReviewTargetBySection[section]
+                  );
+                }),
             });
 
             const recipient = makeWorkspaceE2EAccountRecipient(

@@ -3,13 +3,12 @@ import { UserRound } from "lucide-react";
 import Link from "next/link";
 import { AccountSignInRedirect } from "@/features/account/components/account-sign-in-redirect";
 import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
+import { LinkedAccount } from "@/features/account/components/linked-account";
 import { ProfileForm } from "@/features/account/components/profile-form";
-import { ReservationHistory } from "@/features/account/components/reservation-history";
 import { SessionRefresh } from "@/features/account/components/session-refresh";
 import { SignOutButton } from "@/features/account/components/sign-out-button";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { type Locale, m } from "@/features/i18n";
-import { StickySection } from "@/shared/components/sticky-section";
 import { Card, CardContent } from "@/shared/components/ui/card";
 
 const pageShellClassName =
@@ -29,6 +28,19 @@ export function AccountPage({
   if (state.kind === "unauthenticated") {
     return <AccountSignInRedirect locale={locale} />;
   }
+  if (state.kind === "linked") {
+    return (
+      <>
+        <SessionRefresh />
+        <LinkedAccount
+          email={state.email}
+          history={state.history}
+          locale={locale}
+          profile={state.profile}
+        />
+      </>
+    );
+  }
 
   return (
     <main className={pageShellClassName}>
@@ -43,7 +55,10 @@ export function AccountPage({
 
 function renderState(
   locale: Locale,
-  state: Exclude<CustomerAccountPageState, { readonly kind: "unauthenticated" }>
+  state: Exclude<
+    CustomerAccountPageState,
+    { readonly kind: "unauthenticated" | "linked" }
+  >
 ): React.ReactNode {
   switch (state.kind) {
     case "unavailable":
@@ -78,40 +93,6 @@ function renderState(
             email={state.email}
             locale={locale}
             deletionPending
-          />
-        </div>
-      );
-    case "linked":
-      return (
-        <div className="grid items-start gap-6">
-          <LinkedAccountHeader
-            locale={locale}
-            title={m.accountTitle({}, { locale })}
-          />
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(17rem,0.72fr)_minmax(0,1.28fr)]">
-            <StickySection>
-              <Card className={cardClassName}>
-                <CardContent className="p-6 sm:p-8">
-                  <h2 className="mb-6 text-2xl text-navy-blue">
-                    {m.accountProfileTitle({}, { locale })}
-                  </h2>
-                  <ProfileForm
-                    mode="edit"
-                    locale={locale}
-                    email={state.email}
-                    profile={state.profile}
-                  />
-                </CardContent>
-              </Card>
-            </StickySection>
-            <StickySection>
-              <ReservationHistory locale={locale} history={state.history} />
-            </StickySection>
-          </div>
-          <DeleteAccountCard
-            email={state.email}
-            locale={locale}
-            deletionPending={false}
           />
         </div>
       );

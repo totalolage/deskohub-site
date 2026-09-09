@@ -11,9 +11,11 @@ export type AccountReviewTarget =
   | "account-loading-desktop"
   | "callback-loading-desktop"
   | "sign-in-handoff-desktop"
-  | "linked-desktop1440x1000"
-  | "linked-sticky-desktop"
-  | "linked-history-desktop"
+  | "linked-reservations-desktop"
+  | "linked-profile-desktop"
+  | "linked-billing-desktop"
+  | "linked-legal-desktop"
+  | "linked-danger-desktop"
   | "support-desktop"
   | "sign-in-accepted-desktop"
   | "sign-in-pending-desktop"
@@ -60,19 +62,28 @@ const accountReviewTargetMetadata = {
     path: ["/en-US/account", "/en-US/auth/sign-in"],
     viewport: { height: 1000, width: 1440 },
   },
-  "linked-desktop1440x1000": {
-    filename: "linked-desktop1440x1000.png",
+  "linked-reservations-desktop": {
+    filename: "linked-reservations-desktop.png",
     path: "/en-US/account",
     viewport: { height: 1000, width: 1440 },
   },
-  "linked-sticky-desktop": {
-    filename: "linked-sticky-desktop.png",
-    fullPage: false,
+  "linked-profile-desktop": {
+    filename: "linked-profile-desktop.png",
     path: "/en-US/account",
-    viewport: { height: 900, width: 1440 },
+    viewport: { height: 1000, width: 1440 },
   },
-  "linked-history-desktop": {
-    filename: "linked-history-desktop.png",
+  "linked-billing-desktop": {
+    filename: "linked-billing-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-legal-desktop": {
+    filename: "linked-legal-desktop.png",
+    path: "/en-US/account",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "linked-danger-desktop": {
+    filename: "linked-danger-desktop.png",
     path: "/en-US/account",
     viewport: { height: 1000, width: 1440 },
   },

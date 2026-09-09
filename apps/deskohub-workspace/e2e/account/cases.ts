@@ -8,8 +8,10 @@ import {
   clickBrowserElement,
   evalBrowserScript,
   fillBrowserField,
+  focusBrowserElement,
   normalizeBrowserText,
   openBrowserPage,
+  pressBrowserKey,
   readBrowserText,
   readBrowserUrl,
   waitForBrowserCondition,
@@ -26,6 +28,10 @@ import {
 import { pollUntil } from "../polling";
 import { assert, type Runner } from "../runtime";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
+import {
+  accountSectionLandmarks,
+  selectAccountSectionInRunner,
+} from "./account-sections";
 import {
   assertNoAuthRows,
   findAuthUserIdByEmail,
@@ -66,7 +72,6 @@ const callbackFailedTitle = "This link cannot be used";
 const completionTitle = "Complete your profile";
 const profileSaved = "Profile updated.";
 const linkedEditSubmitLabel = "Save profile";
-const linkedDeleteCardTitle = "Delete account";
 const supportTitle = "We need to verify your profile";
 const deletionPendingTitle = "Account deletion is pending";
 const deletionReauthLinkSent =
@@ -89,6 +94,8 @@ const profileLastNameSelector = "#account-profile-last-name";
 const profilePhoneSelector = "#account-profile-phone";
 const profileEmailSelector = "#account-profile-email";
 const profileSubmitSelector = "#account-profile-form button[type=submit]";
+const billingKindSelector = "#account-profile-billing-kind";
+const billingCompanyNameSelector = "#account-profile-billing-company-name";
 const signOutSelector = "#account-sign-out";
 const deleteTriggerSelector = "#delete-account-trigger";
 const deleteReauthSendSelector = "#delete-account-reauth-send";
@@ -97,6 +104,7 @@ const deleteConfirmSelector = "#delete-account-confirm";
 
 /** Submitted as-is; the provider PATCH normalizes it to E.164. */
 const profilePhoneFixture = "+420 555 000 111";
+const billingCompanyFixture = "E2E Draft Company";
 
 const browserTimeout = workspaceE2ETimeouts.browserAction;
 const uiTransition = workspaceE2ETimeouts.uiTransition;
@@ -207,6 +215,18 @@ export const makeWorkspaceE2EAccountCases = ({
         label: description,
         timeoutMs: uiTransition,
       }
+    );
+
+  const waitDefaultReservations = (description: string) =>
+    waitForBrowserCondition(
+      run,
+      session,
+      description,
+      `(() => {
+        const landmark = document.querySelector(${JSON.stringify(accountSectionLandmarks.reservations)});
+        return landmark !== null && landmark.closest("[hidden]") === null;
+      })()`,
+      { timeoutMs: uiTransition }
     );
 
   const withoutTrailingSlash = (url: string) =>
@@ -538,6 +558,39 @@ export const makeWorkspaceE2EAccountCases = ({
       Effect.gen(function* () {
         yield* runStep(
           step(
+            "keeps the completion login email input read-only",
+            Effect.gen(function* () {
+              yield* waitText("completion page", completionTitle);
+              const result = yield* evalBrowserScript(
+                "assert the completion login email is read-only",
+                run,
+                session,
+                `(() => {
+                    const input = document.querySelector(${JSON.stringify(profileEmailSelector)});
+                    return JSON.stringify({
+                      readOnly: input instanceof HTMLInputElement && input.readOnly,
+                      matches: input instanceof HTMLInputElement && input.value === ${JSON.stringify(recipient)},
+                    });
+                  })()`,
+                { timeoutMs: browserTimeout }
+              ).pipe(Effect.map((command) => command.stdout));
+              const parsed = JSON.parse(result) as {
+                matches: boolean;
+                readOnly: boolean;
+              };
+              assert(
+                parsed.readOnly,
+                "the completion login email input is editable"
+              );
+              assert(
+                parsed.matches,
+                "the completion login email input shows a different address"
+              );
+            })
+          )
+        );
+        yield* runStep(
+          step(
             "completes the profile with a required first name",
             Effect.gen(function* () {
               yield* waitText("completion page", completionTitle);
@@ -586,37 +639,47 @@ export const makeWorkspaceE2EAccountCases = ({
         );
         yield* runStep(
           step(
-            "keeps the verified login email read-only",
+            "keeps the linked login email display read-only",
             Effect.gen(function* () {
+              yield* selectAccountSectionInRunner(run, session, "profile");
               const result = yield* evalBrowserScript(
-                "assert the verified login email is read-only",
+                "assert the linked login email display is read-only",
                 run,
                 session,
                 `(() => {
-                    const input = document.querySelector(${JSON.stringify(profileEmailSelector)});
+                    const profile = document.querySelector(${JSON.stringify(accountSectionLandmarks.profile)});
+                    const emailField = profile instanceof HTMLElement
+                      ? Array.from(profile.querySelectorAll("fieldset")).find((field) =>
+                          field.textContent?.includes(${JSON.stringify(recipient)})
+                        )
+                      : undefined;
                     return JSON.stringify({
-                      readOnly: input instanceof HTMLInputElement && input.readOnly,
-                      matches: input instanceof HTMLInputElement && input.value === ${JSON.stringify(recipient)},
+                      editable: emailField?.querySelector("input, textarea, select") !== null,
+                      matches: emailField?.textContent?.includes(${JSON.stringify(recipient)}) === true,
                     });
                   })()`,
                 { timeoutMs: browserTimeout }
               ).pipe(Effect.map((command) => command.stdout));
               const parsed = JSON.parse(result) as {
+                editable: boolean;
                 matches: boolean;
-                readOnly: boolean;
               };
-              assert(parsed.readOnly, "the login email input is editable");
               assert(
                 parsed.matches,
-                "the login email input shows a different address"
+                "the linked login email display shows a different address"
+              );
+              assert(
+                !parsed.editable,
+                "the linked login email display exposes an editable control"
               );
             })
           )
         );
         yield* runStep(
           step(
-            "persists optional profile fields to the provider profile",
+            "persists optional profile and billing fields to the provider profile",
             Effect.gen(function* () {
+              yield* selectAccountSectionInRunner(run, session, "profile");
               yield* fillBrowserField(
                 run,
                 session,
@@ -631,6 +694,67 @@ export const makeWorkspaceE2EAccountCases = ({
                 profilePhoneFixture,
                 { timeoutMs: browserTimeout }
               );
+              yield* selectAccountSectionInRunner(run, session, "billing");
+              yield* focusBrowserElement(run, session, billingKindSelector, {
+                timeoutMs: browserTimeout,
+              });
+              yield* pressBrowserKey(run, session, "End", {
+                timeoutMs: browserTimeout,
+              });
+              yield* pressBrowserKey(run, session, "Tab", {
+                timeoutMs: browserTimeout,
+              });
+              yield* waitForBrowserCondition(
+                run,
+                session,
+                "business billing kind",
+                `(() => document.querySelector(${JSON.stringify(billingKindSelector)})?.value === "business")()`,
+                { timeoutMs: uiTransition }
+              );
+              yield* fillBrowserField(
+                run,
+                session,
+                billingCompanyNameSelector,
+                billingCompanyFixture,
+                { timeoutMs: browserTimeout }
+              );
+              yield* selectAccountSectionInRunner(run, session, "profile");
+              const drafts = yield* evalBrowserScript(
+                "assert profile and billing drafts survived section navigation",
+                run,
+                session,
+                `(() => {
+                    const firstName = document.querySelector(${JSON.stringify(profileFirstNameSelector)});
+                    const lastName = document.querySelector(${JSON.stringify(profileLastNameSelector)});
+                    const phone = document.querySelector(${JSON.stringify(profilePhoneSelector)});
+                    const companyName = document.querySelector(${JSON.stringify(billingCompanyNameSelector)});
+                    return JSON.stringify({
+                      profilePreserved:
+                        firstName instanceof HTMLInputElement &&
+                        lastName instanceof HTMLInputElement &&
+                        phone instanceof HTMLInputElement &&
+                        firstName.value === "E2E" &&
+                        lastName.value === "Lane" &&
+                        phone.value === ${JSON.stringify(profilePhoneFixture)},
+                      billingPreserved:
+                        companyName instanceof HTMLInputElement &&
+                        companyName.value === ${JSON.stringify(billingCompanyFixture)},
+                    });
+                  })()`,
+                { timeoutMs: browserTimeout }
+              ).pipe(Effect.map((command) => command.stdout));
+              const parsedDrafts = JSON.parse(drafts) as {
+                billingPreserved: boolean;
+                profilePreserved: boolean;
+              };
+              assert(
+                parsedDrafts.profilePreserved,
+                "profile drafts changed across section navigation"
+              );
+              assert(
+                parsedDrafts.billingPreserved,
+                "billing drafts changed across section navigation"
+              );
               yield* clickBrowserElement(run, session, profileSubmitSelector, {
                 timeoutMs: browserTimeout,
               });
@@ -644,6 +768,10 @@ export const makeWorkspaceE2EAccountCases = ({
                 normalizePhoneNumber(customer.phone) ===
                   normalizePhoneNumber(profilePhoneFixture),
                 "the optional phone did not reach the provider profile"
+              );
+              assert(
+                customer.companyName === billingCompanyFixture,
+                "the billing draft did not reach the provider profile"
               );
             }),
             datasourceTimeout
@@ -766,6 +894,8 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "shows the durable deletion marker state",
             Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* selectAccountSectionInRunner(run, session, "danger");
               yield* setDeletionRequestedAt(userId.userId, new Date());
               yield* setSessionCreatedAt(
                 userId.userId,
@@ -1006,9 +1136,8 @@ export const makeWorkspaceE2EAccountCases = ({
               "reactivates the retained profile under a new Better Auth identity",
               Effect.gen(function* () {
                 yield* openPage(link);
-                yield* waitText(
-                  "reactivated linked account",
-                  linkedDeleteCardTitle
+                yield* waitDefaultReservations(
+                  "reactivated linked account reservations"
                 );
                 const newUserId = yield* requireAuthUserId(recipient);
                 assert(
@@ -1105,9 +1234,8 @@ export const makeWorkspaceE2EAccountCases = ({
               "signs the same account back in",
               Effect.gen(function* () {
                 yield* openPage(link);
-                yield* waitText(
-                  "returning linked account",
-                  linkedDeleteCardTitle
+                yield* waitDefaultReservations(
+                  "returning linked account reservations"
                 );
                 const userId = yield* requireAuthUserId(recipient);
                 const linked = yield* requireLinkedCustomerId(userId);
@@ -1179,9 +1307,8 @@ export const makeWorkspaceE2EAccountCases = ({
               "links the active provider profile without completion",
               Effect.gen(function* () {
                 yield* openPage(activeLink);
-                yield* waitText(
-                  "directly linked active profile",
-                  linkedDeleteCardTitle
+                yield* waitDefaultReservations(
+                  "directly linked account reservations"
                 );
                 const userId = yield* requireAuthUserId(activeRecipient);
                 const linked = yield* requireLinkedCustomerId(userId);
@@ -1255,9 +1382,8 @@ export const makeWorkspaceE2EAccountCases = ({
               "reactivates the expired provider profile on linking",
               Effect.gen(function* () {
                 yield* openPage(expiredLink);
-                yield* waitText(
-                  "linked expired profile",
-                  linkedDeleteCardTitle
+                yield* waitDefaultReservations(
+                  "linked expired account reservations"
                 );
                 const userId = yield* requireAuthUserId(expiredRecipient);
                 const linked = yield* requireLinkedCustomerId(userId);

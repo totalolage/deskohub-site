@@ -39,6 +39,85 @@ mock.module("@/features/account/actions", () => ({
   completeCustomerProfile,
   updateCustomerProfile,
 }));
+mock.module("@/features/account/components/account-screen-copy", () => ({
+  getAccountScreenCopy: (locale: "en-US" | "cs-CZ") => ({
+    shell: {
+      mobileSection: "Account section",
+      navigation: "Account navigation",
+      sections: {
+        billing: "Billing & invoices",
+        danger: "Danger zone",
+        legal: "Legal & privacy",
+        profile: "Profile & identity",
+        reservations: "Reservations",
+      },
+    },
+    profile: {
+      avatarUnavailableDescription: "Profile photos are not available here.",
+      avatarUnavailableLabel: "Profile photo unavailable",
+      emailDescription: "This verified address cannot be changed here.",
+      emailLabel: "Email address",
+      languageLabel: "Preferred communication language",
+      languageUnavailableDescription: "Language preferences are not saved yet.",
+      languageUnavailableValue: "Not set",
+      memberFallback: "Workspace member",
+      title: "Profile & identity",
+      verifiedEmail: "Verified login email",
+    },
+    billing: {
+      addPaymentCard: "Add payment card",
+      aresUnavailable: "ARES Registry sync is not available in this account.",
+      billingDetailsTitle:
+        locale === "cs-CZ" ? "Fakturační údaje" : "Billing details",
+      currency: "Currency: CZK (Kč)",
+      downloadInvoice: "Download PDF",
+      exportInvoices: "Export all",
+      invoiceHistoryTitle: "Invoice history",
+      invoiceHistoryUnavailable:
+        "Invoice history and downloads are not available in this account.",
+      paymentMethodsTitle: "Saved payment methods",
+      paymentMethodsUnavailable:
+        "Saved payment methods are not available in this account.",
+      removePaymentCard: "Remove payment card",
+      syncAres: "Sync with ARES Registry",
+      title: "Billing & invoices",
+    },
+    legal: {
+      analyticsDescription:
+        "Analytics preferences cannot be viewed or changed from your account.",
+      analyticsTitle: "Web & usage analytics",
+      archiveAction: "Request GDPR data archive",
+      archiveDescription:
+        "Requesting or downloading a personal data archive is not available in your account.",
+      archiveTitle: "Your personal data archive",
+      marketingDescription:
+        "Communications consent cannot be viewed or changed from your account.",
+      marketingTitle: "Marketing & community communications",
+      preferencesUnavailable:
+        "Account consent settings are not available here. Use cookie settings to manage this browser's cookies.",
+      savePreferences: "Save consent preferences",
+      title: "Legal, privacy & GDPR consents",
+      unavailable: "Unavailable",
+    },
+    reservations: {
+      assignedDesk: "Assigned desk",
+      checkIn: "Check in",
+      date: "Date",
+      moreCurrent: "More upcoming reservations",
+      nfcAccess: "NFC access",
+      product: "Product",
+      seats: "Seats",
+      showPinCode: "Show PIN code",
+      status: "Status",
+      unavailable: "Unavailable",
+      unsupportedDescription: "This access detail is not available yet.",
+      validity: "Validity",
+      viewReservation: "View reservation",
+      wifi: "Wi-Fi",
+    },
+    dangerTitle: "Danger zone",
+  }),
+}));
 
 // A faithful stand-in for next-safe-action's hook contract so the component
 // behaves as it does in the browser.
@@ -209,7 +288,7 @@ describe("ProfileForm", () => {
     expect(cs.getByText("Fakturační údaje")).toBeTruthy();
   });
 
-  test("keeps the verified login email read-only", async () => {
+  test("renders the verified login email as immutable profile text", async () => {
     const { ProfileForm } = await import("./profile-form");
 
     const view = render(
@@ -220,13 +299,8 @@ describe("ProfileForm", () => {
         profile={editProfile}
       />
     );
-    const email = view.getByLabelText(
-      "Verified login email"
-    ) as HTMLInputElement;
-    expect(email.value).toBe("ada@example.test");
-    expect(email.readOnly).toBe(true);
-    expect(email.getAttribute("aria-readonly")).toBe("true");
-    expect(email.hasAttribute("required")).toBe(false);
+    expect(view.getByText("ada@example.test")).toBeTruthy();
+    expect(view.container.querySelector("#account-profile-email")).toBeNull();
     expect(
       view.queryByText(
         "To protect your reservation history, the login email cannot be changed."
@@ -254,6 +328,212 @@ describe("ProfileForm", () => {
     expect(JSON.stringify(input)).not.toContain("email");
     expect(workspaceRouterRefresh).toHaveBeenCalledTimes(1);
     await view.findByText("Your customer profile was created and linked.");
+  });
+
+  test("keeps the full edit snapshot and drafts across identity and billing sections", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    function SectionHarness() {
+      const [section, setSection] = React.useState<"profile" | "billing">(
+        "profile"
+      );
+      return (
+        <>
+          <button type="button" onClick={() => setSection("profile")}>
+            Identity section
+          </button>
+          <button type="button" onClick={() => setSection("billing")}>
+            Billing section
+          </button>
+          <ProfileForm
+            email="ada@example.test"
+            locale="en-US"
+            mode="edit"
+            profile={businessProfile}
+            section={section}
+          />
+        </>
+      );
+    }
+
+    const view = render(<SectionHarness />);
+    fireEvent.input(view.getByLabelText("First name"), {
+      target: { value: "Grace" },
+    });
+    fireEvent.input(view.getByLabelText("Last name"), {
+      target: { value: "Byron" },
+    });
+    fireEvent.input(view.getByLabelText("Phone"), {
+      target: { value: "+420602222333" },
+    });
+    fireEvent.click(view.getByRole("button", { name: "Billing section" }));
+
+    await act(async () => {
+      fireEvent.input(view.getByLabelText("Company name"), {
+        target: { value: "Draft Company" },
+      });
+      fireEvent.input(view.getByLabelText("Company ID"), {
+        target: { value: "87654321" },
+      });
+      fireEvent.input(view.getByLabelText("VAT ID"), {
+        target: { value: "CZ87654321" },
+      });
+      fireEvent.input(view.getByLabelText("Street and number"), {
+        target: { value: "Draft Street 2" },
+      });
+      fireEvent.input(view.getByLabelText("Apartment, suite"), {
+        target: { value: "Suite 2" },
+      });
+      fireEvent.input(view.getByLabelText("City"), {
+        target: { value: "Brno" },
+      });
+      fireEvent.input(view.getByLabelText("Postal code"), {
+        target: { value: "60200" },
+      });
+      fireEvent.input(view.getByLabelText("Country code"), {
+        target: { value: "CZ" },
+      });
+    });
+
+    const form = view.container.querySelector(
+      "#account-profile-form"
+    ) as HTMLFormElement;
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    expect(updateCustomerProfile).toHaveBeenCalledTimes(1);
+    expect(updateCustomerProfile.mock.calls[0]?.[0]).toEqual({
+      firstName: "Grace",
+      lastName: "Byron",
+      phone: "+420602222333",
+      billing: {
+        kind: "business",
+        companyName: "Draft Company",
+        companyId: "87654321",
+        vatId: "CZ87654321",
+        addressLine1: "Draft Street 2",
+        addressLine2: "Suite 2",
+        city: "Brno",
+        zip: "60200",
+        country: "CZ",
+      },
+    });
+    expect(view.getByText("Profile updated.")).toBeTruthy();
+    expect(
+      view.container.querySelectorAll("#account-profile-feedback")
+    ).toHaveLength(1);
+    expect(
+      view.container.querySelectorAll("#account-profile-submit")
+    ).toHaveLength(1);
+    expect(workspaceRouterRefresh).not.toHaveBeenCalled();
+
+    fireEvent.click(view.getByRole("button", { name: "Identity section" }));
+    fireEvent.click(view.getByRole("button", { name: "Billing section" }));
+    expect(
+      (view.getByLabelText("Company name") as HTMLInputElement).value
+    ).toBe("Draft Company");
+    expect(
+      (view.getByLabelText("Street and number") as HTMLInputElement).value
+    ).toBe("Draft Street 2");
+    expect(view.getByText("Profile updated.")).toBeTruthy();
+  });
+
+  test("returns to profile when a hidden required identity field is invalid", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    function SectionHarness() {
+      const [section, setSection] = React.useState<"profile" | "billing">(
+        "profile"
+      );
+      return (
+        <>
+          <button type="button" onClick={() => setSection("profile")}>
+            Identity section
+          </button>
+          <button type="button" onClick={() => setSection("billing")}>
+            Billing section
+          </button>
+          <output data-testid="active-section">{section}</output>
+          <ProfileForm
+            email="ada@example.test"
+            locale="en-US"
+            mode="edit"
+            onSectionChange={setSection}
+            profile={businessProfile}
+            section={section}
+          />
+        </>
+      );
+    }
+
+    const view = render(<SectionHarness />);
+    fireEvent.click(view.getByRole("button", { name: "Billing section" }));
+    fireEvent.input(view.getByLabelText("Company name"), {
+      target: { value: "Draft Company" },
+    });
+    fireEvent.input(view.getByLabelText("First name"), {
+      target: { value: "" },
+    });
+
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    const firstName = view.getByLabelText("First name") as HTMLInputElement;
+    expect(updateCustomerProfile).not.toHaveBeenCalled();
+    expect(view.getByTestId("active-section").textContent).toBe("profile");
+    expect(firstName.validity.valid).toBe(false);
+    expect(view.getByText("Enter your first name.")).toBeTruthy();
+    expect(
+      view.container.querySelector("[data-slot='profile-screen']")
+        ?.parentElement?.hidden
+    ).toBe(false);
+
+    fireEvent.click(view.getByRole("button", { name: "Billing section" }));
+    expect(
+      (view.getByLabelText("Company name") as HTMLInputElement).value
+    ).toBe("Draft Company");
+  });
+
+  test("returns to billing when a hidden required billing field is invalid", async () => {
+    const { ProfileForm } = await import("./profile-form");
+
+    function SectionHarness() {
+      const [section, setSection] = React.useState<"profile" | "billing">(
+        "profile"
+      );
+      return (
+        <>
+          <output data-testid="active-section">{section}</output>
+          <ProfileForm
+            email="ada@example.test"
+            locale="en-US"
+            mode="edit"
+            onSectionChange={setSection}
+            profile={businessProfile}
+            section={section}
+          />
+        </>
+      );
+    }
+
+    const view = render(<SectionHarness />);
+    const companyName = view.getByLabelText("Company name") as HTMLInputElement;
+    fireEvent.input(companyName, { target: { value: "" } });
+
+    await act(async () => {
+      fireEvent.submit(view.container.querySelector("#account-profile-form")!);
+    });
+
+    expect(updateCustomerProfile).not.toHaveBeenCalled();
+    expect(view.getByTestId("active-section").textContent).toBe("billing");
+    expect(companyName.validity.valid).toBe(false);
+    expect(
+      view.getByRole("region", { name: "Billing & invoices" }).parentElement
+        ?.hidden
+    ).toBe(false);
   });
 
   test("keeps a deferred completion draft for the next update save", async () => {

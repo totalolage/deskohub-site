@@ -10,7 +10,6 @@ import { Button } from "@/shared/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
@@ -33,12 +32,14 @@ type DeleteAccountCardProps = {
   readonly locale: Locale;
   /** True when the durable deletion marker is set and deletion is retryable. */
   readonly deletionPending: boolean;
+  readonly heading?: string;
 };
 
 export function DeleteAccountCard({
   email,
   locale,
   deletionPending,
+  heading,
 }: DeleteAccountCardProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -101,35 +102,45 @@ export function DeleteAccountCard({
     }
   };
 
-  const title = deletionPending
+  const noticeTitle = deletionPending
     ? m.accountDeletionPendingTitle({}, { locale })
     : m.accountDeletionTitle({}, { locale });
-  const description = deletionPending
-    ? m.accountDeletionPendingDescription({}, { locale })
-    : m.accountDeletionDescription({}, { locale });
+  const cardHeading = heading ?? m.accountDeletionTitle({}, { locale });
 
   return (
-    <Card
-      className={
-        deletionPending
-          ? "rounded-3xl border-red-800/30 bg-white/94 shadow-[0_26px_80px_-48px_rgba(0,2,79,0.55)]"
-          : "rounded-3xl border-red-950/12 bg-white/92 shadow-none"
-      }
-    >
-      <CardHeader>
-        <CardTitle className="text-xl">{title}</CardTitle>
-        <CardDescription className="max-w-3xl leading-6">
-          {description}
-        </CardDescription>
+    <Card className="rounded-2xl border-rose-200 bg-white p-5 shadow-none sm:p-8">
+      <CardHeader className="space-y-0 border-b border-rose-200 p-0 pb-5">
+        <CardTitle
+          as="h2"
+          className="flex items-center gap-2 font-semibold text-rose-900"
+        >
+          <span
+            aria-hidden
+            className="size-2 shrink-0 rounded-full bg-rose-500"
+          />
+          {cardHeading}
+        </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0 pt-4">
+        <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
+          <h3 className="text-sm font-semibold leading-5 text-rose-800">
+            {noticeTitle}
+          </h3>
+          <div className="mt-2 space-y-2 text-sm leading-5 text-rose-800">
+            {deletionPending && (
+              <p>{m.accountDeletionPendingDescription({}, { locale })}</p>
+            )}
+            <p>{m.accountDeletionDescription({}, { locale })}</p>
+          </div>
+        </div>
+
         <Dialog open={open} onOpenChange={closeDialog}>
           <DialogTrigger asChild>
             <Button
               id="delete-account-trigger"
               type="button"
-              variant="secondary"
-              className="border-red-900/25 text-red-800 hover:border-red-900/55 hover:bg-red-50"
+              variant="primary"
+              className="mt-6 flex h-auto min-h-11 w-full whitespace-normal rounded-xl bg-rose-600 px-5 py-3 text-center leading-5 text-white hover:bg-rose-700 sm:ml-auto sm:w-auto sm:whitespace-nowrap"
             >
               <Trash2 aria-hidden className="size-4" />
               {deletionPending
