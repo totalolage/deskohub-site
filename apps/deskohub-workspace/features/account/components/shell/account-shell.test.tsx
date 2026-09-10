@@ -182,7 +182,7 @@ describe("AccountShell", () => {
     expect(reservationIconClass).toContain("size-4");
   });
 
-  test("stacks the mobile header while restoring the desktop row", () => {
+  test("keeps the mobile header in a constrained row and restores desktop wrapping", () => {
     const view = renderShell();
     const header = view.container.querySelector("header");
     if (!header) throw new Error("Account shell header was not rendered");
@@ -192,16 +192,61 @@ describe("AccountShell", () => {
     if (!signOutWrapper)
       throw new Error("Account shell sign-out wrapper was not rendered");
 
-    expect(header.className).toContain("flex-col");
-    expect(header.className).toContain("sm:flex-row");
+    expect(header.className).toContain("flex-row");
+    expect(header.className).toContain("items-start");
+    expect(header.className).toContain("justify-between");
+    expect(header.className).toContain("gap-x-3");
+    expect(header.className).toContain("sm:gap-x-8");
     expect(header.className).toContain("sm:flex-wrap");
-    expect(header.className).toContain("sm:items-start");
-    expect(heading.className).toContain("w-full");
-    expect(heading.className).toContain("sm:w-auto");
+    expect(header.className).not.toContain("flex-col");
     expect(heading.className).toContain("min-w-0");
     expect(heading.className).toContain("flex-1");
-    expect(signOutWrapper.className).toContain("self-start");
-    expect(signOutWrapper.className).toContain("sm:self-auto");
+    expect(heading.className).toContain("break-words");
+    expect(heading.className).toContain("text-[24px]");
+    expect(heading.className).toContain("min-[375px]:text-[28px]");
+    expect(heading.className).toContain("sm:text-[36px]");
+    expect(heading.className).not.toContain("w-full");
+    expect(heading.className).not.toContain("sm:w-auto");
+    expect(signOutWrapper.className).toContain("min-w-0");
+    expect(signOutWrapper.className).toContain("max-w-[60%]");
+    expect(signOutWrapper.className).toContain("shrink-0");
+    expect(signOutWrapper.className).toContain("break-words");
+    expect(signOutWrapper.className).toContain("sm:max-w-full");
+    expect(signOutWrapper.className).toContain("sm:break-normal");
+    expect(signOutWrapper.className).not.toContain("self-start");
+    expect(signOutWrapper.className).not.toContain("sm:self-auto");
+  });
+
+  test("allows the caller to omit the sign-out action", () => {
+    const view = renderShell({ signOut: null });
+    const header = view.container.querySelector("header");
+    if (!header) throw new Error("Account shell header was not rendered");
+    const heading = view.getByRole("heading", { level: 1 });
+
+    expect(
+      view.getByRole("heading", { level: 1, name: "Workspace account" })
+    ).toBeTruthy();
+    expect(header.children).toHaveLength(1);
+    expect(header.firstElementChild).toBe(heading);
+    expect(view.queryByRole("button", { name: "Sign out" })).toBeNull();
+  });
+
+  test("preserves caller-owned pending and feedback content in the action slot", () => {
+    const view = renderShell({
+      signOut: (
+        <>
+          <span data-testid="sign-out-pending">Signing out...</span>
+          <span data-testid="sign-out-feedback">Try again.</span>
+        </>
+      ),
+    });
+
+    expect(view.getByTestId("sign-out-pending").textContent).toBe(
+      "Signing out..."
+    );
+    expect(view.getByTestId("sign-out-feedback").textContent).toBe(
+      "Try again."
+    );
   });
 
   test("uses a controlled native mobile select", () => {
