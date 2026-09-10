@@ -36,7 +36,10 @@ import {
 import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
 import { withWorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
-import { verifyWorkspaceE2EReservationHistoryNavigation } from "./reservation-navigation";
+import {
+  toWorkspaceE2EReservationHistoryFailure,
+  verifyWorkspaceE2EReservationHistoryNavigation,
+} from "./reservation-navigation";
 import {
   type AccountReviewTarget,
   captureAccountReview,
@@ -265,14 +268,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
               },
               (fixture) =>
                 Effect.tryPromise({
-                  catch: () =>
-                    workspaceE2EError(
-                      "verify account reservation history navigation failed",
-                      {
-                        operation:
-                          "verify account reservation history navigation",
-                      }
-                    ),
+                  catch: toWorkspaceE2EReservationHistoryFailure,
                   try: () =>
                     verifyWorkspaceE2EReservationHistoryNavigation({
                       baseUrl: accountLane.config.baseUrl,
