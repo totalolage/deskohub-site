@@ -14,7 +14,6 @@ export interface ProfileScreenCopy {
   readonly memberFallback: string;
   readonly verifiedEmail: string;
   readonly emailLabel: string;
-  readonly emailDescription: string;
   readonly avatarUnavailableLabel: string;
   readonly avatarUnavailableDescription: string;
   readonly languageLabel: string;
@@ -111,7 +110,6 @@ export function ProfileScreen({
         {children}
 
         <fieldset
-          aria-describedby={`${languageId}-email-description`}
           aria-labelledby={`${languageId}-email-label`}
           className="m-0 min-w-0 space-y-2 border-0 p-0 sm:col-span-2 lg:col-span-1"
         >
@@ -130,12 +128,6 @@ export function ProfileScreen({
               </span>
             </span>
           </div>
-          <p
-            className="text-sm leading-5 text-[#52647c]"
-            id={`${languageId}-email-description`}
-          >
-            {copy.emailDescription}
-          </p>
         </fieldset>
       </div>
 

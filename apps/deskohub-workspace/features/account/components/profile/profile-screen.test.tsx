@@ -7,7 +7,6 @@ import { ProfileScreen } from "./profile-screen";
 const englishCopy: ProfileScreenCopy = {
   avatarUnavailableDescription: "Profile photos are not available here.",
   avatarUnavailableLabel: "Profile photo unavailable",
-  emailDescription: "This verified address cannot be changed here.",
   emailLabel: "Email address",
   languageLabel: "Preferred communication language",
   languageUnavailableDescription: "Language preferences are not saved yet.",
@@ -118,9 +117,19 @@ describe("ProfileScreen", () => {
     expect(markup).toContain("break-all");
     expect(markup).toContain("Verified login email");
     expect(markup).toContain("<fieldset");
-    expect(markup).toMatch(
+    const emailFieldset = markup.match(
       /<legend[^>]*id="[^"]+-email-label">Email address<\/legend>/
     );
+    expect(emailFieldset).toBeTruthy();
+    expect(markup).not.toContain(
+      "This verified address cannot be changed here."
+    );
+    expect(markup).not.toMatch(/id="[^"]+-email-description"/);
+    const emailFieldsetElement = markup.match(
+      /<fieldset[^>]*aria-labelledby="[^"]+-email-label"[^>]*>/
+    )?.[0];
+    expect(emailFieldsetElement).toBeDefined();
+    expect(emailFieldsetElement).not.toContain("aria-describedby");
     expect(markup).not.toMatch(/<span[^>]*aria-label="Verified login email"/);
     expect(markup).not.toMatch(/name="email"/);
     expect(markup).not.toMatch(/<input[^>]*ada@example\.test/);
@@ -262,7 +271,6 @@ describe("ProfileScreen", () => {
     const localizedCopy: ProfileScreenCopy = {
       avatarUnavailableDescription: "Profilové fotografie nejsou k dispozici.",
       avatarUnavailableLabel: "Profilová fotografie není k dispozici",
-      emailDescription: "Tuto ověřenou adresu zde nelze změnit.",
       emailLabel: "E-mailová adresa",
       languageLabel: "Preferovaný komunikační jazyk",
       languageUnavailableDescription: "Preference jazyka se zatím neukládají.",
