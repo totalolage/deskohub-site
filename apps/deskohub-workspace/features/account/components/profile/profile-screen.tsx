@@ -2,6 +2,11 @@ import { Camera, Check, UserRound } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 
 /*
  * Direction: extend the account's quiet Sculpin operate surface with a white
@@ -138,14 +143,15 @@ export function ProfileScreen({
         >
           {copy.languageLabel}
         </Label>
-        <select
-          aria-describedby={languageDescriptionId}
-          className="mt-2 min-h-11 w-full rounded-2xl border border-[#cad3df] bg-[#f8fafc] px-3 py-2 text-base text-[#52647c] outline-none disabled:cursor-not-allowed disabled:opacity-70 focus-visible:ring-2 focus-visible:ring-burned-orange"
-          disabled
-          id={languageId}
-        >
-          <option value="">{copy.languageUnavailableValue}</option>
-        </select>
+        <Select disabled value="unavailable">
+          <SelectTrigger
+            id={languageId}
+            aria-describedby={languageDescriptionId}
+            className="mt-2 min-h-11 w-full rounded-2xl border border-[#cad3df] bg-[#f8fafc] px-3 py-2 text-base text-[#52647c] outline-none disabled:cursor-not-allowed disabled:opacity-70 focus-visible:ring-2 focus-visible:ring-burned-orange"
+          >
+            <SelectValue>{copy.languageUnavailableValue}</SelectValue>
+          </SelectTrigger>
+        </Select>
         <p
           className="mt-2 text-sm leading-5 text-[#52647c]"
           id={languageDescriptionId}
