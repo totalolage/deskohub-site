@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
+import { z } from "zod";
 
 const appDir = resolve(import.meta.dir, "../..");
 const artifactDirectory = resolve(appDir, "e2e-artifacts", "scheduling");
@@ -27,25 +28,25 @@ const scenarios = [
 ] as const;
 type Scenario = (typeof scenarios)[number];
 
-type ImportedConfig = Awaited<
-  typeof import("../../playwright.e2e.config")
->["default"];
-type Graph = Omit<
-  ImportedConfig,
-  | "projects"
-  | "workers"
-  | "maxFailures"
-  | "retries"
-  | "fullyParallel"
-  | "forbidOnly"
-> & {
-  projects: NonNullable<ImportedConfig["projects"]>;
-  workers: NonNullable<ImportedConfig["workers"]>;
-  maxFailures: NonNullable<ImportedConfig["maxFailures"]>;
-  retries: NonNullable<ImportedConfig["retries"]>;
-  fullyParallel: NonNullable<ImportedConfig["fullyParallel"]>;
-  forbidOnly: NonNullable<ImportedConfig["forbidOnly"]>;
-};
+const projectSchema = z
+  .object({
+    dependencies: z.array(z.string()).optional(),
+    name: z.string(),
+    teardown: z.string().optional(),
+    workers: z.number().optional(),
+  })
+  .strict();
+const graphSchema = z
+  .object({
+    forbidOnly: z.boolean().default(false),
+    fullyParallel: z.boolean().default(false),
+    maxFailures: z.number(),
+    projects: z.array(projectSchema),
+    retries: z.number(),
+    workers: z.number(),
+  })
+  .strict();
+type Graph = z.infer<typeof graphSchema>;
 type Project = Graph["projects"][number];
 type Event = {
   at: number;
@@ -77,23 +78,76 @@ type FailFast = readonly [
 ];
 
 async function loadGraph(): Promise<Graph> {
-  const { default: graph } = await import("../../playwright.e2e.config");
-  must(graph.projects, "actual config contains no projects");
-  must(graph.workers !== undefined, "actual config contains no workers");
-  must(
-    graph.maxFailures !== undefined,
-    "actual config contains no maxFailures"
-  );
-  must(graph.retries !== undefined, "actual config contains no retries");
-  return {
-    ...graph,
-    projects: graph.projects,
-    workers: graph.workers,
-    maxFailures: graph.maxFailures,
-    retries: graph.retries,
-    fullyParallel: graph.fullyParallel ?? false,
-    forbidOnly: graph.forbidOnly ?? false,
-  };
+  const configUrl = pathToFileURL(
+    resolve(appDir, "playwright.e2e.config.ts")
+  ).href;
+  const evaluator = `
+const { default: config } = await import(${JSON.stringify(configUrl)});
+const projects = config.projects?.map((project) => ({
+  name: project.name,
+  dependencies: project.dependencies,
+  teardown: project.teardown,
+  workers: project.workers,
+}));
+process.stdout.write(JSON.stringify({
+  projects,
+  workers: config.workers,
+  maxFailures: config.maxFailures,
+  retries: config.retries,
+  fullyParallel: config.fullyParallel,
+  forbidOnly: config.forbidOnly,
+}));
+`;
+  const child = Bun.spawn([process.execPath, "-e", evaluator], {
+    cwd: appDir,
+    env: {
+      HOME: process.env.HOME ?? "/tmp",
+      NODE_ENV: "test",
+      PATH: process.env.PATH ?? "",
+    },
+    stderr: "pipe",
+    stdin: "ignore",
+    stdout: "pipe",
+  });
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill();
+  }, childTimeoutMs);
+
+  try {
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+    const capturedOutputLength = stdout.length + stderr.length;
+    must(
+      !timedOut,
+      `actual config loader timed out after ${childTimeoutMs}ms after draining ${capturedOutputLength} output characters`
+    );
+    must(
+      exitCode === 0,
+      `actual config loader exited with ${exitCode} after draining ${capturedOutputLength} output characters`
+    );
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(stdout);
+    } catch {
+      throw new Error(
+        `Workspace E2E scheduling discrepancy: actual config loader emitted invalid JSON after draining ${capturedOutputLength} output characters`
+      );
+    }
+    const parsed = graphSchema.safeParse(payload);
+    must(
+      parsed.success,
+      `actual config loader emitted an invalid scheduling JSON shape after draining ${capturedOutputLength} output characters`
+    );
+    return parsed.data;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function must<T>(value: T, message: string): asserts value {

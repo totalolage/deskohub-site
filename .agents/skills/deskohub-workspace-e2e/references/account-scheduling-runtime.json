@@ -191,6 +191,89 @@
       "lateAdmissions": 0
     }
   },
+  "recoveryEvidence": {
+    "incident": "f96",
+    "packageRunnerFailure": {
+      "command": "bun run test scripts/workspace-e2e-scheduling.test.ts",
+      "invokesPreload": true,
+      "parallel": 1,
+      "isolatedBunVersion": "1.3.14",
+      "failure": "dynamic import TLA config default TDZ"
+    },
+    "controlledMatrix": {
+      "preloadAlone": "passes",
+      "parallelAlone": "fails"
+    },
+    "harnessRecovery": {
+      "freshBoundedBunProcess": true,
+      "importsRealConfig": true,
+      "validates": ["projects", "controls JSON"],
+      "actualSchedulerChanged": false
+    },
+    "verification": {
+      "packageCommandOwnerRuns": {
+        "command": "bun run test scripts/account-e2e-graph.test.ts scripts/workspace-e2e-workflow.test.ts e2e/account/rate-budget.test.ts scripts/workspace-e2e-scheduling.test.ts",
+        "runs": [
+          {
+            "run": 1,
+            "passed": 46,
+            "assertions": 431
+          },
+          {
+            "run": 2,
+            "passed": 46,
+            "assertions": 431
+          }
+        ]
+      },
+      "cleanBareRun": {
+        "command": "bun test scripts/workspace-e2e-scheduling.test.ts",
+        "passed": 1
+      },
+      "fullTurboRun": {
+        "command": "bun turbo test --filter=deskohub-workspace",
+        "generatedDependenciesPresent": true,
+        "passed": 2774,
+        "skipped": 123,
+        "failed": 1,
+        "errors": 1,
+        "assertions": 10832,
+        "tests": 2898,
+        "files": 385,
+        "unrelatedFailure": {
+          "file": "scripts/account-visual/run.test.ts",
+          "line": 1267,
+          "test": "controlled fixture header probe rejects a narrow single-word flex heading",
+          "timeoutSeconds": 120,
+          "inScope": false
+        }
+      },
+      "fullUnitNonGreen": {
+        "visualTimeout": "preserved",
+        "postgresqlSkips": "preserved"
+      },
+      "rootTypecheck": {
+        "command": "bun turbo typecheck --filter=deskohub-workspace",
+        "generatedDependenciesPresent": true,
+        "status": "passed",
+        "scope": "suggestions only",
+        "supersedes": "preliminary missing-generated type errors"
+      },
+      "earlierFullRunsValid": false,
+      "earlierFullRunsInvalidReason": "Generated dependencies were absent."
+    },
+    "recoveryReview": {
+      "status": "APPROVED",
+      "previousStatus": "AWAITING_REVIEW",
+      "reviewerProvenance": {
+        "sessionId": "ses_f759529fcffeYdhIDqjVbv6wIr",
+        "decision": "APPROVED",
+        "basis": "recoveryEvidence"
+      },
+      "doesNotOverwriteReleaseApproval": true,
+      "reason": "Recovery evidence approved by reviewer."
+    }
+  },
   "failFastTeardown": {
     "playwrightVersion": "1.61",
     "baselineTeardownAdmitted": false,
@@ -290,7 +373,8 @@
   ],
   "reproduction": {
     "cwd": "apps/deskohub-workspace",
-    "command": "bun test scripts/workspace-e2e-scheduling.test.ts",
+    "command": "bun run test scripts/workspace-e2e-scheduling.test.ts",
+    "scope": "Single scheduler test file",
     "classification": "Synthetic scheduler harness only; not deployed runtime evidence."
   }
 }

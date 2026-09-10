@@ -122,8 +122,14 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   `checkout-payment-3` by depending on `checkout-plan`; require real scheduler
   regression evidence, not only a graph assertion.
   Keep the bounded evidence in [account scheduling runtime](references/account-scheduling-runtime.json)
-  and reproduce its synthetic harness with `bun test scripts/workspace-e2e-scheduling.test.ts`
-  from `apps/deskohub-workspace`; synthetic results are not deployed-run evidence.
+  and reproduce its synthetic harness with `bun run test scripts/workspace-e2e-scheduling.test.ts`
+  from `apps/deskohub-workspace`. The package command supplies the preload and
+  `--parallel=1` isolation. Load the actual config in a fresh bounded Bun
+  process, validate projects and controls JSON, and do not change the actual
+  scheduler. Run `bun turbo test --filter=deskohub-workspace` to prepare
+  generated dependencies before package tests; the Turbo task owns that
+  prerequisite generation. Runs without that generated-dependency step are not
+  valid full verification. Synthetic results are not deployed-run evidence.
 - Treat a successful Dotypos cancellation response as issued, not converged.
   Before suite cleanup releases the sandbox boundary, poll the same active
   reservation inventory consumed by availability until every successfully
