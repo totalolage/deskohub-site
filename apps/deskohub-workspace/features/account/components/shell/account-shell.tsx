@@ -38,11 +38,13 @@ export interface AccountShellProps {
   };
   readonly reservationCount?: number;
   readonly sidebarFooter?: ReactNode;
+  readonly disabledSections?: readonly AccountSection[];
 }
 
 export function AccountShell({
   activeSection,
   children,
+  disabledSections = [],
   labels,
   onSectionChange,
   reservationCount,
@@ -65,6 +67,10 @@ export function AccountShell({
     { icon: ShieldCheck, key: "legal" },
     { icon: TriangleAlert, key: "danger" },
   ] as const;
+  const handleSectionChange = (section: AccountSection) => {
+    if (disabledSections.includes(section)) return;
+    onSectionChange(section);
+  };
 
   return (
     <main className="min-h-screen [--font-heading-weight:700] [--font-subheading-weight:600] [background:radial-gradient(circle_at_0%_0%,rgba(255,242,214,0.9),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(218,244,235,0.82),transparent_38%),#f8f5ef] px-4 pb-28 pt-[calc(var(--site-header-height)+3rem)] sm:px-6 lg:px-8">
@@ -99,13 +105,17 @@ export function AccountShell({
                       (section) => section.key === event.currentTarget.value
                     );
                     if (selectedSection) {
-                      onSectionChange(selectedSection.key);
+                      handleSectionChange(selectedSection.key);
                     }
                   }}
                   value={activeSection}
                 >
                   {sections.map((section) => (
-                    <option key={section.key} value={section.key}>
+                    <option
+                      disabled={disabledSections.includes(section.key)}
+                      key={section.key}
+                      value={section.key}
+                    >
                       {labels.sections[section.key]}
                     </option>
                   ))}
@@ -141,8 +151,9 @@ export function AccountShell({
                       <Button
                         aria-current={isActive ? "page" : undefined}
                         className={`h-auto min-h-[40px] w-full justify-start gap-3 rounded-2xl px-3 text-left text-[15px] font-semibold leading-snug whitespace-normal ${buttonStateClassName}`}
+                        disabled={disabledSections.includes(section.key)}
                         key={section.key}
-                        onClick={() => onSectionChange(section.key)}
+                        onClick={() => handleSectionChange(section.key)}
                         type="button"
                         variant="ghost"
                       >

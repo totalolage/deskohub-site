@@ -10,7 +10,11 @@ import {
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import React from "react";
 import type { CustomerProfileInput } from "@/features/account/contracts";
-import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
+import {
+  workspaceRouterPush,
+  workspaceRouterRefresh,
+  workspaceUseSearchParams,
+} from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -114,6 +118,14 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
   }),
 }));
 
+mock.module("@/features/account/components/legal/legal-screen", () => ({
+  LegalScreen: ({
+    strings,
+  }: {
+    readonly strings: { readonly title: string };
+  }) => <h2>{strings.title}</h2>,
+}));
+
 mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: (
     action: (input: CustomerProfileInput) => Promise<unknown>,
@@ -194,7 +206,9 @@ describe("LinkedAccount", () => {
   afterEach(() => {
     cleanup();
     updateCustomerProfile.mockClear();
+    workspaceRouterPush.mockClear();
     workspaceRouterRefresh.mockClear();
+    workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
   });
 
   afterAll(() => {
@@ -262,9 +276,169 @@ describe("LinkedAccount", () => {
         ?.hidden
     ).toBe(true);
     fireEvent.click(view.getByRole("button", { name: "Legal & privacy" }));
-    expect(view.getByText("Legal, privacy & GDPR consents")).toBeTruthy();
+    expect(workspaceRouterPush).toHaveBeenCalledWith("/en-US/account/legal");
     fireEvent.click(view.getByRole("button", { name: "Danger zone" }));
     expect(view.getByText("Delete my account")).toBeTruthy();
+  });
+
+  test("confirms legal navigation before leaving a dirty profile form", async () => {
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const { LinkedAccount } = await import("./linked-account");
+    const originalConfirm = window.confirm;
+    const confirmDiscardChanges = mock(() => false);
+    window.confirm = confirmDiscardChanges;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <LinkedAccount
+            email="ada@example.test"
+            history={history}
+            locale="en-US"
+            profile={profile}
+          />
+        </UnsavedChangesProvider>
+      );
+
+      fireEvent.click(view.getByRole("button", { name: "Profile & identity" }));
+      await act(async () => {
+        fireEvent.input(view.getByLabelText("First name"), {
+          target: { value: "Grace" },
+        });
+      });
+      const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+      fireEvent.click(view.getByRole("button", { name: "Legal & privacy" }));
+
+      expect(confirmDiscardChanges).toHaveBeenCalledTimes(1);
+      expect(workspaceRouterPush).not.toHaveBeenCalled();
+      expect(firstName.value).toBe("Grace");
+      expect(
+        view
+          .getByRole("button", { name: "Profile & identity" })
+          .getAttribute("aria-current")
+      ).toBe("page");
+      expect(updateCustomerProfile).not.toHaveBeenCalled();
+
+      confirmDiscardChanges.mockImplementation(() => true);
+      fireEvent.click(view.getByRole("button", { name: "Legal & privacy" }));
+
+      expect(confirmDiscardChanges).toHaveBeenCalledTimes(2);
+      expect(workspaceRouterPush).toHaveBeenCalledWith("/en-US/account/legal");
+      expect(firstName.value).toBe("Grace");
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("reconciles query section changes without resetting the profile form", async () => {
+    const { UnsavedChangesProvider } = await import(
+      "@/shared/components/unsaved-changes-guard"
+    );
+    const { LinkedAccount } = await import("./linked-account");
+    let query = new URLSearchParams("section=profile");
+    workspaceUseSearchParams.mockImplementation(() => query);
+
+    const renderAccount = () => (
+      <UnsavedChangesProvider>
+        <LinkedAccount
+          email="ada@example.test"
+          history={history}
+          locale="en-US"
+          profile={profile}
+        />
+      </UnsavedChangesProvider>
+    );
+    const view = render(renderAccount());
+    const firstName = view.getByLabelText("First name") as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.input(firstName, { target: { value: "Grace" } });
+    });
+    expect(firstName.value).toBe("Grace");
+
+    query = new URLSearchParams("section=billing");
+    await act(async () => {
+      view.rerender(renderAccount());
+    });
+    expect(
+      view
+        .getByRole("button", { name: "Billing & invoices" })
+        .getAttribute("aria-current")
+    ).toBe("page");
+    expect(firstName.value).toBe("Grace");
+
+    query = new URLSearchParams("section=legal");
+    await act(async () => {
+      view.rerender(renderAccount());
+    });
+    expect(
+      view
+        .getByRole("button", { name: "Legal & privacy" })
+        .getAttribute("aria-current")
+    ).toBe("page");
+    expect(firstName.value).toBe("Grace");
+
+    query = new URLSearchParams("section=profile");
+    await act(async () => {
+      view.rerender(renderAccount());
+    });
+    expect(
+      view
+        .getByRole("button", { name: "Profile & identity" })
+        .getAttribute("aria-current")
+    ).toBe("page");
+    expect(firstName.value).toBe("Grace");
+    expect(updateCustomerProfile).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["profile", "Profile & identity"],
+    ["billing", "Billing & invoices"],
+    ["danger", "Danger zone"],
+  ] as const)(
+    "starts on a valid %s section from the query",
+    async (section, label) => {
+      workspaceUseSearchParams.mockReturnValue(
+        new URLSearchParams(`section=${section}`)
+      );
+      const { LinkedAccount } = await import("./linked-account");
+      const view = render(
+        <LinkedAccount
+          email="ada@example.test"
+          history={history}
+          locale="en-US"
+          profile={profile}
+        />
+      );
+
+      expect(
+        view.getByRole("button", { name: label }).getAttribute("aria-current")
+      ).toBe("page");
+    }
+  );
+
+  test("falls back to reservations for an invalid section query", async () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("section=not-a-section")
+    );
+    const { LinkedAccount } = await import("./linked-account");
+    const view = render(
+      <LinkedAccount
+        email="ada@example.test"
+        history={history}
+        locale="en-US"
+        profile={profile}
+      />
+    );
+
+    expect(
+      view
+        .getByRole("button", { name: /^Reservations/ })
+        .getAttribute("aria-current")
+    ).toBe("page");
   });
 
   test("returns to profile before saving an invalid hidden identity field", async () => {

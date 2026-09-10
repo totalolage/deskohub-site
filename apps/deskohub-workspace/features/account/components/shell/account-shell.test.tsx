@@ -140,6 +140,64 @@ describe("AccountShell", () => {
     expect(dangerButton.className).not.toContain("bg-[#00024f]");
   });
 
+  test("keeps every section enabled by default", () => {
+    const view = renderShell();
+
+    for (const section of sectionKeys) {
+      const button = view.getByRole("button", {
+        name: labels.sections[section],
+      }) as HTMLButtonElement;
+      const option = view.getByRole("option", {
+        name: labels.sections[section],
+      }) as HTMLOptionElement;
+
+      expect(button.disabled).toBe(false);
+      expect(option.disabled).toBe(false);
+    }
+  });
+
+  test("disables anonymous nonlegal sections while keeping legal enabled", () => {
+    const onSectionChange = mock((section: AccountSection) => {
+      void section;
+    });
+    const disabledSections = sectionKeys.filter(
+      (section) => section !== "legal"
+    );
+    const view = renderShell({
+      activeSection: "legal",
+      disabledSections,
+      onSectionChange,
+    });
+    const select = view.getByRole("combobox", {
+      name: labels.mobileSection,
+    }) as HTMLSelectElement;
+
+    for (const section of sectionKeys) {
+      const button = view.getByRole("button", {
+        name: labels.sections[section],
+      }) as HTMLButtonElement;
+      const option = view.getByRole("option", {
+        name: labels.sections[section],
+      }) as HTMLOptionElement;
+      const isLegal = section === "legal";
+
+      expect(button.disabled).toBe(!isLegal);
+      expect(option.disabled).toBe(!isLegal);
+    }
+
+    fireEvent.click(
+      view.getByRole("button", { name: labels.sections.profile })
+    );
+    fireEvent.change(select, { target: { value: "profile" } });
+    fireEvent.click(view.getByRole("button", { name: labels.sections.legal }));
+    fireEvent.change(select, { target: { value: "legal" } });
+
+    expect(onSectionChange.mock.calls.map(([section]) => section)).toEqual([
+      "legal",
+      "legal",
+    ]);
+  });
+
   test("keeps the reference background, weight, and desktop geometry tokens explicit", () => {
     const view = renderShell();
     const main = view.container.querySelector("main");
@@ -290,5 +348,11 @@ describe("AccountShell", () => {
     expect(view.getByTestId("sidebar-footer").textContent).toBe(
       "Need help at the reception desk."
     );
+  });
+
+  test("accepts a null sign-out action", () => {
+    const view = renderShell({ signOut: null });
+
+    expect(view.queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 });
