@@ -56,7 +56,8 @@ export default defineConfig({
       testMatch: "seed.pw.ts",
     },
     {
-      dependencies: ["checkout-setup"],
+      // Playwright waits for the entire dependency phase before advancing.
+      dependencies: ["checkout-plan"],
       name: "account-auth",
       testDir: "./e2e/account",
       testMatch: "account-lane.pw.ts",

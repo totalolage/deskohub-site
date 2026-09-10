@@ -431,7 +431,7 @@ test("lets Playwright own checkout preparation, scheduling, and parallelism", as
   expect(cleanupRuntime).not.toContain("makeWorkspaceE2ECaseRuntimeLive");
 });
 
-test("admits availability preparation only after discount fixture seeding commits", async () => {
+test("preserves discount seeding and account phase dependencies", async () => {
   const config = await Bun.file(
     resolve(import.meta.dir, "../playwright.e2e.config.ts")
   ).text();
@@ -440,7 +440,7 @@ test("admits availability preparation only after discount fixture seeding commit
     'dependencies: ["checkout-setup", "checkout-seed"],\n      name: "checkout-availability",'
   );
   expect(config).toContain(
-    'dependencies: ["checkout-setup"],\n      name: "account-auth",'
+    'dependencies: ["checkout-plan"],\n      name: "account-auth",'
   );
   expect(config).toContain(
     'dependencies: ["checkout-setup"],\n      name: "checkout-provider-preparation",'

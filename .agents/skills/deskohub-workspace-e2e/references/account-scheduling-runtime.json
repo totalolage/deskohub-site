@@ -1,0 +1,296 @@
+{
+  "schemaVersion": 1,
+  "artifact": "account-scheduling-runtime",
+  "scope": {
+    "purpose": "Bounded evidence for the account lane dependency-phase change",
+    "deployedEvidence": true,
+    "syntheticEvidence": true,
+    "notAFullE2EReport": true
+  },
+  "source": {
+    "mode": "read-only",
+    "description": "gh run view job and filtered log metadata",
+    "metadataCommand": "gh run view <id> --attempt <n> --json headSha,jobs,status,conclusion"
+  },
+  "deployedRuns": [
+    {
+      "role": "base",
+      "headSha": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+      "runId": "34444974359",
+      "attempt": 1,
+      "conclusion": "success",
+      "e2e": {
+        "timeWindowUtc": {
+          "start": "06:24:49",
+          "end": "06:53:56"
+        },
+        "durationSeconds": 1747,
+        "setupSeconds": 39,
+        "testJobSeconds": 1794,
+        "tests": {
+          "passed": 72,
+          "skipped": 1
+        }
+      }
+    },
+    {
+      "role": "earlier",
+      "headSha": "1458d852b11bb51a1bb853f114373aca43ae3830",
+      "runId": "34090903415",
+      "attempt": 1,
+      "e2e": {
+        "durationSeconds": 1686,
+        "setupSeconds": 31
+      }
+    },
+    {
+      "role": "earlier",
+      "headSha": "a9c8e323e5497198bca4728787ae246f8268f42e",
+      "runId": "34110280202",
+      "attempt": 2,
+      "e2e": {
+        "durationSeconds": 1681,
+        "setupSeconds": 34
+      }
+    },
+    {
+      "role": "main-comparison",
+      "headSha": "8a0db5e1b9678942c748325ab09da802819a49d9",
+      "runId": "34032339011",
+      "e2e": {
+        "durationSeconds": 441,
+        "tests": {
+          "passed": 61,
+          "skipped": 1
+        }
+      }
+    }
+  ],
+  "comparability": {
+    "notLikeForLike": true,
+    "reason": "The main comparison has no account cases; the base has the same 36 checkout cases plus 9 account cases and 2 other tests.",
+    "caseCounts": {
+      "mainCheckout": 36,
+      "mainAccount": 0,
+      "baseCheckout": 36,
+      "baseAccount": 9,
+      "baseOther": 2
+    }
+  },
+  "accountCaseDurations": {
+    "runId": "34444974359",
+    "reportedRounded": true,
+    "order": "workspaceE2EAccountCaseIds",
+    "cases": [
+      {
+        "id": "account-anonymous-redirect",
+        "duration": "2.3s"
+      },
+      {
+        "id": "account-sign-in-form",
+        "duration": "6.1s"
+      },
+      {
+        "id": "account-magic-link-delivery",
+        "duration": "9.1s"
+      },
+      {
+        "id": "account-profile-completion",
+        "duration": "13.5s"
+      },
+      {
+        "id": "account-reservation-transitions",
+        "duration": "38.6s"
+      },
+      {
+        "id": "account-deletion-marker-reauth",
+        "duration": "16.5s"
+      },
+      {
+        "id": "account-deletion-and-reactivation",
+        "duration": "10.2m",
+        "mandatoryQuiet": true
+      },
+      {
+        "id": "account-session-lifecycle",
+        "duration": "10.3m",
+        "mandatoryQuiet": true
+      },
+      {
+        "id": "account-linking-variants",
+        "duration": "26.2s"
+      }
+    ]
+  },
+  "phaseDurations": {
+    "runId": "34444974359",
+    "reportedRounded": true,
+    "readiness": "4.9s",
+    "fixtureSeeding": "9.4s",
+    "providerPreparation": "1.4s",
+    "invoicePersistence": "34.7s",
+    "availabilityPreparation": {
+      "cowork": "4.2s",
+      "meetingRoom": "4.1s",
+      "office": "1.9s"
+    },
+    "plan": "6ms",
+    "sharedFixture": "20.6s",
+    "cleanup": "12.5s"
+  },
+  "fixtureIsolation": {
+    "accountIdentities": "exact synthetic identities",
+    "accountFixtureOffsetDays": 120,
+    "checkoutFixtureWindowDays": {
+      "min": 14,
+      "max": 90
+    },
+    "setupDependencyRetainedTransitively": true,
+    "teardownWaitsForDescendants": true
+  },
+  "phaseBarrierChange": {
+    "playwrightVersion": "1.61",
+    "baselineAccountAuthDependency": ["checkout-setup"],
+    "candidateAccountAuthDependency": ["checkout-plan"],
+    "candidatePhasePeers": [
+      "checkout-non-payment",
+      "checkout-payment-1",
+      "checkout-payment-2",
+      "checkout-payment-3"
+    ]
+  },
+  "syntheticSchedulerEvidence": {
+    "deployed": false,
+    "interpretation": "Each row reports baseline to candidate values.",
+    "runs": [
+      {
+        "runId": "run-kUpJq2",
+        "baseline": {
+          "wallMs": 10535
+        },
+        "candidate": {
+          "wallMs": 8550
+        },
+        "overlapMs": 1912
+      },
+      {
+        "runId": "run-yFLkA3",
+        "baseline": {
+          "wallMs": 10572
+        },
+        "candidate": {
+          "wallMs": 8516
+        },
+        "overlapMs": 1906
+      }
+    ],
+    "interruption": {
+      "acquired": 13,
+      "finalized": 13,
+      "successful": 26,
+      "lateAdmissions": 0
+    }
+  },
+  "failFastTeardown": {
+    "playwrightVersion": "1.61",
+    "baselineTeardownAdmitted": false,
+    "candidateTeardownAdmitted": false,
+    "unchanged": true,
+    "productionCleanupFollowUp": "Keep production cleanup as a parent follow-up; do not hide it in this scheduler artifact."
+  },
+  "parentOperationsEvidence": {
+    "workerId": "ses_f80052fd5ffeG5fp9lOkgBonLM",
+    "deployment": {
+      "deploymentId": "6365818018",
+      "actor": "vercel[bot]",
+      "status": "success",
+      "headSha": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+      "immutableUrl": "https://deskohub-workspace-site-iq3riamvq-filip-kalny-projects.vercel.app",
+      "workflowRunId": "34444974359",
+      "attempt": 1,
+      "sameHeadSha": true,
+      "branchStatus": "completed",
+      "branchConclusion": "success"
+    },
+    "runtimeTransport": {
+      "service": "Preview",
+      "serviceVersion": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+      "workflowRunId": "34444974359",
+      "attempt": 1,
+      "events": [
+        {
+          "event": "Using Console email provider",
+          "level": "info",
+          "count": 200
+        },
+        {
+          "event": "Using Resend email provider",
+          "count": 0
+        },
+        {
+          "event": "Resend-send",
+          "count": 0
+        }
+      ],
+      "transportBoundary": {
+        "reservationCheckout": "Console",
+        "auth": "direct Resend",
+        "authBoundary": "unchanged independent boundary"
+      },
+      "establishesTransportIsolation": true
+    },
+    "provenance": {
+      "sources": [
+        "GitHub API",
+        "PostHog CLI 0.8.4 logs-count",
+        "PostHog CLI 0.8.4 query-logs"
+      ],
+      "redaction": "No credentials, PII, or raw payloads."
+    }
+  },
+  "releaseApprovalGate": {
+    "status": "APPROVED",
+    "approved": true,
+    "evidenceSatisfied": true,
+    "evidenceSource": "parentOperationsEvidence",
+    "targetHeadSha": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+    "effectiveEmailProvider": {
+      "reservationCheckout": "Console",
+      "auth": "direct Resend",
+      "authBoundary": "unchanged independent boundary"
+    },
+    "configurationFallback": "Resend when EMAIL_API_KEY is present; this fallback is not console-provider evidence",
+    "configurationFallbackIsNotConsoleEvidence": true,
+    "evidenceScope": {
+      "transport": "Exact immutable target transport only",
+      "targetHeadSha": "b87d48db5a47eb610aa3d656a0b3f2a232cffc4e",
+      "invalidatedBy": "Any subsequent transport configuration change",
+      "revalidationRequired": true
+    },
+    "requiredBeforeApproval": [],
+    "deployedPerformanceVerified": false,
+    "independentReview": {
+      "status": "APPROVED",
+      "previousStatus": "AWAITING_REVIEW",
+      "reviewerProvenance": {
+        "sessionId": "ses_f759529fcffeYdhIDqjVbv6wIr",
+        "decision": "APPROVED",
+        "basis": "parentOperationsEvidence"
+      },
+      "scope": "Transport evidence only",
+      "transportFinding": "closed",
+      "interruptionFinding": "closed"
+    },
+    "doNotReconcileEnvironmentGuidanceUntilConfirmed": false
+  },
+  "timingLimits": [
+    "Summary spans are rounded.",
+    "Buffered stdout cannot establish wall timestamps or sum concurrent durations.",
+    "Screenshot capture is not measurable because no APM tool was available."
+  ],
+  "reproduction": {
+    "cwd": "apps/deskohub-workspace",
+    "command": "bun test scripts/workspace-e2e-scheduling.test.ts",
+    "classification": "Synthetic scheduler harness only; not deployed runtime evidence."
+  }
+}

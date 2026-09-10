@@ -47,10 +47,15 @@ const expectSingleConjunctiveSnapshotMatcher = (
 describe("workspace account e2e graph", () => {
   test("runs account cases as one project in the existing Playwright graph", async () => {
     const config = await Bun.file(repoFile("playwright.e2e.config.ts")).text();
+    const accountNameAt = config.indexOf('name: "account-auth"');
+    const accountProject = config.slice(
+      config.lastIndexOf("    {", accountNameAt),
+      config.indexOf('name: "checkout-availability"')
+    );
 
-    expect(config).toContain('name: "account-auth"');
-    expect(config).toContain('testDir: "./e2e/account"');
-    expect(config).toContain('dependencies: ["checkout-setup"]');
+    expect(accountProject).toContain('name: "account-auth"');
+    expect(accountProject).toContain('testDir: "./e2e/account"');
+    expect(accountProject).toContain('dependencies: ["checkout-plan"]');
     expect(config).not.toContain('name: "account-auth-setup"');
     const checkoutEntry = await Bun.file(
       repoFile("scripts/workspace-e2e.ts")
