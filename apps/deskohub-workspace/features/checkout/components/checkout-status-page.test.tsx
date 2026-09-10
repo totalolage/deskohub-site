@@ -26,6 +26,19 @@ const baseStatus: CheckoutStatusViewModel = {
   fulfillmentStatus: "fulfilled",
 };
 
+const reconstructedCoworkStatus: CheckoutStatusViewModel = {
+  ...baseStatus,
+  summary: {
+    kind: "cowork",
+    entryTier: "profi",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+    reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00.000Z"),
+    reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00.000Z"),
+    price: { value: 55_000, exponent: 2, currency: "CZK" },
+  },
+};
+
 describe("CheckoutStatusPage", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -51,24 +64,35 @@ describe("CheckoutStatusPage", () => {
     ).toBe("true");
   });
 
+  test("exposes an accessible plain modal busy status shell", () => {
+    const view = render(
+      <CheckoutStatusPageSkeleton locale="en-US" presentation="modal" />
+    );
+    const status = view.getByRole("status", {
+      name: "Payment status | Deskohub Workspace",
+    });
+
+    expect(status.getAttribute("aria-busy")).toBe("true");
+    expect(status.getAttribute("class")).toBe(
+      "block bg-white p-6 text-navy-blue sm:p-10"
+    );
+  });
+
+  test("keeps the canonical default skeleton equivalent to explicit page markup", () => {
+    const defaultView = render(<CheckoutStatusPageSkeleton locale="en-US" />);
+    const defaultMarkup = defaultView.container.innerHTML;
+    cleanup();
+
+    const explicitPageView = render(
+      <CheckoutStatusPageSkeleton locale="en-US" presentation="page" />
+    );
+
+    expect(explicitPageView.container.innerHTML).toBe(defaultMarkup);
+  });
+
   test("renders reconstructed reservation summary rows", () => {
     const view = render(
-      <CheckoutStatusPage
-        locale="en-US"
-        status={{
-          ...baseStatus,
-          kind: "cowork",
-          summary: {
-            kind: "cowork",
-            entryTier: "profi",
-            coffee: true,
-            monitorOption: "2x27-qhd",
-            reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00.000Z"),
-            reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00.000Z"),
-            price: { value: 55_000, exponent: 2, currency: "CZK" },
-          },
-        }}
-      />
+      <CheckoutStatusPage locale="en-US" status={reconstructedCoworkStatus} />
     );
 
     expect(view.getByText("Profi Workstation")).toBeDefined();
@@ -94,6 +118,17 @@ describe("CheckoutStatusPage", () => {
     ).toBeNull();
   });
 
+  test("keeps the fulfilled default presentation inside the checkout flow", () => {
+    const view = render(
+      <CheckoutStatusPage locale="en-US" status={reconstructedCoworkStatus} />
+    );
+
+    expect(view.container.querySelector("main")).not.toBeNull();
+    expect(view.container.querySelector("ol")).not.toBeNull();
+    expect(view.getByRole("link", { name: "Book again" })).toBeDefined();
+    expect(view.getByRole("link", { name: "Back home" })).toBeDefined();
+  });
+
   test("renders fallback copy without a reconstructed summary", () => {
     const view = render(
       <CheckoutStatusPage locale="en-US" status={baseStatus} />
@@ -115,6 +150,127 @@ describe("CheckoutStatusPage", () => {
     expect(
       view.container.querySelector("[data-reservation-access-code]")
     ).toBeNull();
+  });
+
+  test("keeps the default page presentation equivalent to explicit page presentation", () => {
+    const defaultView = render(
+      <CheckoutStatusPage locale="en-US" status={baseStatus} />
+    );
+    const defaultMarkup = defaultView.container.innerHTML;
+    cleanup();
+
+    const explicitPageView = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        presentation="page"
+        status={baseStatus}
+      />
+    );
+
+    expect(explicitPageView.container.innerHTML).toBe(defaultMarkup);
+  });
+
+  test("renders fulfilled modal content without the page shell or page CTAs", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        presentation="modal"
+        status={reconstructedCoworkStatus}
+      />
+    );
+
+    expect(view.container.querySelector("main")).toBeNull();
+    expect(view.container.querySelector("ol")).toBeNull();
+    expect(view.container.firstElementChild?.className).toBe(
+      "bg-white p-6 text-navy-blue sm:p-10"
+    );
+    expect(view.getByText("Reservation summary")).toBeDefined();
+    expect(view.getByText("reservation-status-page")).toBeDefined();
+    expect(view.getByText("Profi Workstation")).toBeDefined();
+    expect(view.getByRole("link", { name: "Show access code" })).toBeDefined();
+    expect(
+      view.container.querySelector(
+        '#checkout-status-access[href="/en-US/reservation/access/reservation-status-page"]'
+      )
+    ).not.toBeNull();
+    expect(
+      view.container.querySelector("#checkout-status-reserve-again")
+    ).toBeNull();
+    expect(view.queryByRole("link", { name: "Back home" })).toBeNull();
+    expect(view.container.querySelector('a[href="/en-US"]')).toBeNull();
+  });
+
+  test("omits modal reservation CTAs without relying on localized copy", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="cs-CZ"
+        presentation="modal"
+        status={reconstructedCoworkStatus}
+      />
+    );
+
+    expect(
+      view.container.querySelector("#checkout-status-reserve-again")
+    ).toBeNull();
+    expect(view.container.querySelector('a[href="/cs-CZ"]')).toBeNull();
+  });
+
+  test("keeps support in a failed modal without reservation CTAs", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        presentation="modal"
+        status={{
+          ...baseStatus,
+          status: "fulfillment_failed",
+          fulfillmentStatus: "failed",
+        }}
+      />
+    );
+
+    expect(
+      view.getByRole("link", { name: "Send support request" })
+    ).toBeDefined();
+    expect(
+      view.container.querySelector("#checkout-status-reserve-again")
+    ).toBeNull();
+    expect(view.queryByRole("link", { name: "Back home" })).toBeNull();
+  });
+
+  test("omits modal CTAs for not-found and pending states", () => {
+    const statuses: CheckoutStatusViewModel[] = [
+      {
+        orderId: "not-found-modal",
+        returnOutcome: "unknown",
+        status: "not_found",
+      },
+      {
+        ...baseStatus,
+        orderId: "pending-modal",
+        status: "pending",
+        paymentStatus: "pending",
+        fulfillmentStatus: "not_started",
+      },
+    ];
+
+    for (const status of statuses) {
+      const view = render(
+        <CheckoutStatusPage
+          locale="en-US"
+          presentation="modal"
+          status={status}
+        />
+      );
+
+      expect(
+        view.container.querySelector("#checkout-status-reserve-again")
+      ).toBeNull();
+      expect(view.queryByRole("link", { name: "Back home" })).toBeNull();
+      expect(
+        view.queryByRole("link", { name: "Send support request" })
+      ).toBeNull();
+      cleanup();
+    }
   });
 
   test("links fulfilled reservations to the canonical access page", () => {

@@ -1,4 +1,4 @@
-import LocalizedCheckoutStatusPage from "@/app/[locale]/(minimal-header)/reservation/status/[orderId]/page";
+import { CheckoutStatusRoute } from "@/features/checkout/components/checkout-status-route";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { ReservationDetailsModal } from "@/features/reservation/components/reservation-details-modal";
 
@@ -11,9 +11,10 @@ export default function ReservationStatusModalPage({
 }: ReservationStatusModalPageProps) {
   return runWithRequestLocale((locale) => (
     <ReservationDetailsModal locale={locale}>
-      <LocalizedCheckoutStatusPage
+      <CheckoutStatusRoute
         params={params}
         searchParams={Promise.resolve({})}
+        presentation="modal"
       />
     </ReservationDetailsModal>
   ));
