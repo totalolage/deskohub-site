@@ -12,7 +12,6 @@
   "accountProfileScreenTitle": "Member profile and settings",
   "accountProfileScreenMemberFallback": "Workspace member",
   "accountProfileScreenVerifiedEmail": "Verified login email",
-  "accountProfileScreenEmailDescription": "This verified address cannot be changed here.",
   "accountProfileScreenAvatarUnavailableLabel": "Profile photo unavailable",
   "accountProfileScreenAvatarUnavailableDescription": "Profile photos are not available here.",
   "accountProfileScreenLanguageLabel": "Preferred communication language",

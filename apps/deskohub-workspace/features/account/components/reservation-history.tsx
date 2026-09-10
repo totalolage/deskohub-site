@@ -1,6 +1,5 @@
 import { CalendarDays, Users } from "lucide-react";
 import type {
-  CustomerReservationGroups,
   CustomerReservationHistory,
   CustomerReservationStatus,
   CustomerReservationSummary,
@@ -173,11 +172,6 @@ export function ReservationHistory({
         >
           {m.accountReservationsCurrentTitle({}, { locale })}
         </h2>
-        <ReservationNavigation
-          groups={groups}
-          locale={locale}
-          hasUndatedReservations={hasUndatedReservations}
-        />
       </header>
 
       <div className="min-w-0 space-y-8">
@@ -200,63 +194,6 @@ export function ReservationHistory({
         )}
       </div>
     </section>
-  );
-}
-
-function ReservationNavigation({
-  groups,
-  hasUndatedReservations,
-  locale,
-}: {
-  readonly groups: CustomerReservationGroups;
-  readonly hasUndatedReservations: boolean;
-  readonly locale: Locale;
-}) {
-  const items = [
-    {
-      count: groups.current.length,
-      id: "account-reservations-current",
-      title: m.accountReservationsCurrentTitle({}, { locale }),
-    },
-    {
-      count: groups.past.length,
-      id: "account-reservations-past",
-      title: m.accountReservationsPastTitle({}, { locale }),
-    },
-    ...(hasUndatedReservations
-      ? [
-          {
-            count: groups.unavailable.length,
-            id: "account-reservations-unavailable",
-            title: m.accountReservationsOtherTitle({}, { locale }),
-          },
-        ]
-      : []),
-  ] as const;
-  const columnClassName =
-    items.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2";
-
-  return (
-    <nav
-      aria-label={m.accountReservationsTitle({}, { locale })}
-      className={`grid w-full min-w-0 max-w-full grid-cols-1 gap-1 overflow-hidden rounded-2xl border border-[#dfe4ec] bg-white p-1 text-sm text-[#344258] sm:w-auto ${columnClassName}`}
-    >
-      {items.map((item) => (
-        <a
-          aria-current={
-            item.id === "account-reservations-current" ? "location" : undefined
-          }
-          className={`min-w-0 rounded-xl px-3 py-2 text-center leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-1 ${item.id === "account-reservations-current" ? "bg-[#00024f] text-white" : "hover:bg-[#f3f5f8]"}`}
-          href={`#${item.id}`}
-          key={item.id}
-        >
-          <span className="break-words">{item.title}</span>{" "}
-          <span className="whitespace-nowrap font-semibold">
-            ({item.count})
-          </span>
-        </a>
-      ))}
-    </nav>
   );
 }
 

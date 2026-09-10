@@ -1,13 +1,24 @@
-import { describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Input } from "@/shared/components/ui/input";
+import {
+  registerWorkspaceComponentTestEnv,
+  unregisterWorkspaceComponentTestEnv,
+} from "@/shared/testing/workspace-component-test-env";
 import type { ProfileScreenCopy, ProfileScreenProps } from "./profile-screen";
 import { ProfileScreen } from "./profile-screen";
 
 const englishCopy: ProfileScreenCopy = {
   avatarUnavailableDescription: "Profile photos are not available here.",
   avatarUnavailableLabel: "Profile photo unavailable",
-  emailDescription: "This verified address cannot be changed here.",
   emailLabel: "Email address",
   languageLabel: "Preferred communication language",
   languageUnavailableDescription: "Language preferences are not saved yet.",
@@ -15,6 +26,18 @@ const englishCopy: ProfileScreenCopy = {
   memberFallback: "Workspace member",
   title: "Member profile and settings",
   verifiedEmail: "Verified login email",
+};
+
+const czechCopy: ProfileScreenCopy = {
+  avatarUnavailableDescription: "Profilové fotografie nejsou k dispozici.",
+  avatarUnavailableLabel: "Profilová fotografie není k dispozici",
+  emailLabel: "E-mailová adresa",
+  languageLabel: "Preferovaný komunikační jazyk",
+  languageUnavailableDescription: "Preference jazyka se zatím neukládají.",
+  languageUnavailableValue: "Nenastaveno",
+  memberFallback: "Člen Workspace",
+  title: "Profil a nastavení",
+  verifiedEmail: "Ověřený přihlašovací e-mail",
 };
 
 const profileFields = (
@@ -95,6 +118,16 @@ function renderProfile(overrides: Partial<ProfileScreenProps> = {}): string {
 }
 
 describe("ProfileScreen", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
+  afterEach(cleanup);
+
+  afterAll(() => {
+    unregisterWorkspaceComponentTestEnv();
+  });
+
   test("renders the caller fields and footer without owning a form", () => {
     const markup = renderProfile();
 
@@ -118,9 +151,19 @@ describe("ProfileScreen", () => {
     expect(markup).toContain("break-all");
     expect(markup).toContain("Verified login email");
     expect(markup).toContain("<fieldset");
-    expect(markup).toMatch(
+    const emailFieldset = markup.match(
       /<legend[^>]*id="[^"]+-email-label">Email address<\/legend>/
     );
+    expect(emailFieldset).toBeTruthy();
+    expect(markup).not.toContain(
+      "This verified address cannot be changed here."
+    );
+    expect(markup).not.toMatch(/id="[^"]+-email-description"/);
+    const emailFieldsetElement = markup.match(
+      /<fieldset[^>]*aria-labelledby="[^"]+-email-label"[^>]*>/
+    )?.[0];
+    expect(emailFieldsetElement).toBeDefined();
+    expect(emailFieldsetElement).not.toContain("aria-describedby");
     expect(markup).not.toMatch(/<span[^>]*aria-label="Verified login email"/);
     expect(markup).not.toMatch(/name="email"/);
     expect(markup).not.toMatch(/<input[^>]*ada@example\.test/);
@@ -178,14 +221,72 @@ describe("ProfileScreen", () => {
     const disabledButtons = markup.match(/<button\b[^>]*disabled/g) ?? [];
     const options = markup.match(/<option\b/g) ?? [];
 
-    expect(disabledButtons).toHaveLength(1);
+    expect(disabledButtons).toHaveLength(2);
     expect(markup).toContain('aria-label="Profile photo unavailable"');
-    expect(markup).toMatch(/<select\b[^>]*disabled/);
+    expect(markup).toContain('data-slot="select-trigger"');
+    expect(markup).toContain('role="combobox"');
+    expect(markup).toMatch(
+      /<select\b[^>]*aria-hidden="true"[^>]*tabindex="-1"/
+    );
     expect(markup).not.toMatch(/<select\b[^>]*name=/);
-    expect(options).toHaveLength(1);
-    expect(markup).toContain('<option value="">Not set</option>');
+    expect(markup).not.toMatch(/<option\b/);
+    expect(options).toHaveLength(0);
+    expect(markup).toContain("Not set");
     expect(markup).toContain("Language preferences are not saved yet.");
     expect(markup).not.toContain("Czech");
+  });
+
+  test("renders the unavailable language control as a disabled localized combobox", () => {
+    for (const copy of [englishCopy, czechCopy]) {
+      const view = render(
+        <form data-testid="profile-form">
+          <ProfileScreen
+            copy={copy}
+            email="ada@example.test"
+            firstName="Ada"
+            footer={<button type="button">Save profile</button>}
+            lastName="Lovelace"
+          >
+            {profileFields}
+          </ProfileScreen>
+        </form>
+      );
+      const languageTrigger = view.getByRole("combobox", {
+        name: copy.languageLabel,
+      });
+      const languageDescription = view.getByText(
+        copy.languageUnavailableDescription
+      );
+      const languageIcon = languageTrigger.querySelector("svg");
+
+      expect(languageTrigger.getAttribute("data-slot")).toBe("select-trigger");
+      expect(languageTrigger.tagName).toBe("BUTTON");
+      expect((languageTrigger as HTMLButtonElement).disabled).toBe(true);
+      expect(languageTrigger.className).toContain("min-h-11");
+      expect(languageTrigger.className).toContain("w-full");
+      expect(languageTrigger.className).toContain("rounded-2xl");
+      expect(languageTrigger.className).toContain("px-3");
+      expect(languageIcon?.getAttribute("class")).toContain("h-4 w-4 shrink-0");
+      expect(languageTrigger.textContent).toContain(
+        copy.languageUnavailableValue
+      );
+      expect(view.getByLabelText(copy.languageLabel)).toBe(languageTrigger);
+      expect(languageTrigger.getAttribute("aria-describedby")).toBe(
+        languageDescription.id
+      );
+
+      const form = view.getByTestId("profile-form") as HTMLFormElement;
+      expect([...new FormData(form).keys()]).not.toContain("language");
+
+      fireEvent.click(languageTrigger);
+      fireEvent.keyDown(languageTrigger, { key: "ArrowDown" });
+
+      expect(view.queryByRole("listbox")).toBeNull();
+      expect(languageTrigger.textContent).toContain(
+        copy.languageUnavailableValue
+      );
+      cleanup();
+    }
   });
 
   test("keeps informational and verification text above the contrast floor", () => {
@@ -208,12 +309,13 @@ describe("ProfileScreen", () => {
       "text",
       verificationSpan
     );
-    const languageSelect = /<select[^>]*bg-\[#f8fafc\][^>]*>/;
-    const languageText = extractLiteralColor(markup, "text", languageSelect);
+    const languageTrigger =
+      /<button[^>]*data-slot="select-trigger"[^>]*bg-\[#f8fafc\][^>]*>/;
+    const languageText = extractLiteralColor(markup, "text", languageTrigger);
     const languageBackground = extractLiteralColor(
       markup,
       "bg",
-      languageSelect
+      languageTrigger
     );
 
     expect(sectionClass).toContain("bg-white");
@@ -259,25 +361,13 @@ describe("ProfileScreen", () => {
   });
 
   test("renders injected localized copy without inventing membership claims", () => {
-    const localizedCopy: ProfileScreenCopy = {
-      avatarUnavailableDescription: "Profilové fotografie nejsou k dispozici.",
-      avatarUnavailableLabel: "Profilová fotografie není k dispozici",
-      emailDescription: "Tuto ověřenou adresu zde nelze změnit.",
-      emailLabel: "E-mailová adresa",
-      languageLabel: "Preferovaný komunikační jazyk",
-      languageUnavailableDescription: "Preference jazyka se zatím neukládají.",
-      languageUnavailableValue: "Nenastaveno",
-      memberFallback: "Člen Workspace",
-      title: "Profil a nastavení",
-      verifiedEmail: "Ověřený přihlašovací e-mail",
-    };
     const markup = renderProfile({
-      copy: localizedCopy,
+      copy: czechCopy,
       firstName: "",
       lastName: null,
     });
 
-    for (const copyValue of Object.values(localizedCopy)) {
+    for (const copyValue of Object.values(czechCopy)) {
       expect(markup).toContain(copyValue);
     }
     expect(markup).not.toMatch(/member since|Prague|Czechia|turnstile|access/i);

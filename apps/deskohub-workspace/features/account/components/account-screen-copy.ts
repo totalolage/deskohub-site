@@ -23,7 +23,6 @@ export function getAccountScreenCopy(locale: Locale) {
       memberFallback: m.accountProfileScreenMemberFallback({}, { locale }),
       verifiedEmail: m.accountProfileScreenVerifiedEmail({}, { locale }),
       emailLabel: m.accountProfileEmailLabel({}, { locale }),
-      emailDescription: m.accountProfileScreenEmailDescription({}, { locale }),
       avatarUnavailableLabel: m.accountProfileScreenAvatarUnavailableLabel(
         {},
         { locale }
