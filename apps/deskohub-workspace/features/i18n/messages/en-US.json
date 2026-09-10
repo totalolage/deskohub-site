@@ -51,6 +51,7 @@
   "accountReservationStatus": "Status",
   "accountFeatureUnavailable": "Unavailable",
   "accountFeatureUnavailableDescription": "Not available in your account yet.",
+  "account_future_feature_tooltip": "This feature is coming in the future.",
   "accountReservationValidity": "Validity",
   "accountReservationView": "View reservation",
   "accountReservationWifi": "Wi-Fi",

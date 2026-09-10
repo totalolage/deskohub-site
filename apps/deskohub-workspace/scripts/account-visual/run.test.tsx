@@ -360,6 +360,7 @@ const productionProfileEmailHtml = (locale: "en-US" | "cs-CZ"): string =>
       email={productionProfileEmail}
       firstName="Ada"
       lastName="Lovelace"
+      locale={locale}
     >
       {null}
     </ProfileScreen>

@@ -156,7 +156,19 @@ test("renders immutable necessary consent and functional optional controls", asy
   expect(
     view.queryByRole("button", { name: strings.savePreferences })
   ).toBeNull();
+  expect(view.queryByRole("button", { name: strings.unavailable })).toBeNull();
+  expect(view.queryByText(strings.analyticsDescription)).toBeNull();
+  expect(view.queryByText(strings.marketingDescription)).toBeNull();
   expect(view.queryByText(strings.preferencesUnavailable)).toBeNull();
+
+  const archiveAction = view.getByRole("button", {
+    name: strings.archiveAction,
+  });
+  expect(archiveAction.closest("[role='group'][tabindex='0']")).not.toBeNull();
+  expect(
+    view.container.querySelectorAll("[role='group'][tabindex='0']")
+  ).toHaveLength(1);
+
   for (const checkbox of [analytics, marketing, preferences]) {
     expect(checkbox.getAttribute("aria-checked")).toBe("false");
     expect((checkbox as HTMLButtonElement).disabled).toBe(false);

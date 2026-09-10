@@ -445,6 +445,7 @@ export function ProfileForm({
                 firstName={savedIdentity.firstName}
                 footer={section === "profile" ? formFooter : undefined}
                 lastName={savedIdentity.lastName}
+                locale={locale}
               >
                 {identityFields}
               </ProfileScreen>
@@ -453,6 +454,7 @@ export function ProfileForm({
               <BillingScreen
                 copy={screenCopy.billing}
                 footer={section === "billing" ? formFooter : undefined}
+                locale={locale}
               >
                 <div className="grid gap-5 sm:grid-cols-2">{billingFields}</div>
               </BillingScreen>
