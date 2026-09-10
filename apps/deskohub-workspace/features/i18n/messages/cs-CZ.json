@@ -47,6 +47,7 @@
   "accountReservationProduct": "Produkt",
   "accountReservationSeatsLabel": "Místa",
   "accountReservationShowPinCode": "Zobrazit PIN kód",
+  "accountReservationPinUnavailable": "PIN není k dispozici, protože tato rezervace není propojena s Workspace.",
   "accountReservationStatus": "Stav",
   "accountFeatureUnavailable": "Nedostupné",
   "accountFeatureUnavailableDescription": "Ve vašem účtu zatím není k dispozici.",

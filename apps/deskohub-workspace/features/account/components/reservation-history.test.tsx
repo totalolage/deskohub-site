@@ -88,6 +88,13 @@ const historyCopy = {
 
 const copyFor = (locale: keyof typeof historyCopy) => historyCopy[locale];
 
+const pinUnavailableCopy = {
+  "en-US":
+    "PIN access is unavailable because this reservation is not linked to Workspace.",
+  "cs-CZ":
+    "PIN není k dispozici, protože tato rezervace není propojena s Workspace.",
+} as const;
+
 const renderHistory = (
   locale: keyof typeof historyCopy,
   history: CustomerReservationHistory
@@ -293,12 +300,17 @@ describe("ReservationHistory", () => {
     for (const label of [
       copyFor("en-US").checkIn,
       copyFor("en-US").nfcAccess,
-      copyFor("en-US").showPinCode,
     ]) {
       expect(
         view.getByRole("button", { name: label }).hasAttribute("disabled")
       ).toBe(true);
     }
+    expect(
+      view.getByRole("link", { name: copyFor("en-US").showPinCode })
+    ).toBeTruthy();
+    expect(
+      view.queryByRole("button", { name: copyFor("en-US").showPinCode })
+    ).toBeNull();
 
     expect(view.getByText(copyFor("en-US").assignedDesk)).toBeTruthy();
     expect(view.getByText(copyFor("en-US").wifi)).toBeTruthy();
@@ -735,6 +747,57 @@ describe("ReservationHistory", () => {
     );
   });
 
+  test.each(["en-US", "cs-CZ"] as const)(
+    "renders a localized guarded PIN access link without URL extras in %s",
+    (locale) => {
+      const view = renderHistory(locale, linkedHistory);
+      const pinLink = view.getByRole("link", {
+        name: copyFor(locale).showPinCode,
+      });
+      const pinHref = pinLink.getAttribute("href");
+      const detailLink = view.getByRole("link", {
+        name: copyFor(locale).viewReservation,
+      });
+
+      expect(pinLink.tagName).toBe("A");
+      expect(pinLink.getAttribute("role")).toBeNull();
+      expect(pinHref).toBe(
+        `/${locale}/reservation/access/workspace%20reservation%2F1`
+      );
+      expect(pinHref).not.toContain("?");
+      expect(pinHref).not.toContain("#");
+      expect(detailLink.getAttribute("href")).toBe(
+        `/${locale}/reservation/status/workspace%20reservation%2F1`
+      );
+    }
+  );
+
+  test.each(["en-US", "cs-CZ"] as const)(
+    "explains why PIN access is disabled for provider-only reservations in %s",
+    (locale) => {
+      const view = renderHistory(locale, {
+        kind: "available",
+        groups: {
+          current: [reservation({ id: `provider-only-${locale}` })],
+          past: [],
+          unavailable: [],
+        },
+      });
+      const pinButton = view.getByRole("button", {
+        name: copyFor(locale).showPinCode,
+      });
+
+      expect(pinButton.hasAttribute("disabled")).toBe(true);
+      expect(
+        view.queryByRole("link", { name: copyFor(locale).showPinCode })
+      ).toBeNull();
+      expect(view.getByText(pinUnavailableCopy[locale])).toBeTruthy();
+      expect(
+        view.container.querySelector('a[href*="/reservation/access/"]')
+      ).toBeNull();
+    }
+  );
+
   test("does not create a fake link from a provider-only reservation id", () => {
     const view = renderHistory("en-US", {
       kind: "available",
@@ -767,7 +830,7 @@ describe("ReservationHistory", () => {
     expect(document.activeElement).toBe(link);
     const item = link.closest("li");
     expect(item).toBeTruthy();
-    expect(item?.querySelectorAll("a")).toHaveLength(1);
+    expect(item?.querySelectorAll("a")).toHaveLength(2);
     expect(link.className).toContain("h-9");
     expect(link.className).toContain("hover:");
     expect(link.className).toContain("focus-visible:");
@@ -801,6 +864,74 @@ describe("ReservationHistory", () => {
       link.dispatchEvent(event);
 
       expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledTimes(1);
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("cancels dirty PIN access navigation after confirmation is declined", () => {
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => false);
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <DirtyProfileGuard />
+          <ReservationHistory
+            copy={copyFor("en-US")}
+            locale="en-US"
+            history={linkedHistory}
+          />
+        </UnsavedChangesProvider>
+      );
+      const pinLink = view.getByRole("link", {
+        name: copyFor("en-US").showPinCode,
+      });
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+
+      pinLink.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(confirm).toHaveBeenCalledTimes(1);
+    } finally {
+      window.confirm = originalConfirm;
+    }
+  });
+
+  test("allows dirty PIN access navigation after confirmation is accepted", () => {
+    const originalConfirm = window.confirm;
+    const confirm = mock(() => true);
+    window.confirm = confirm;
+
+    try {
+      const view = render(
+        <UnsavedChangesProvider>
+          <DirtyProfileGuard />
+          <ReservationHistory
+            copy={copyFor("en-US")}
+            locale="en-US"
+            history={linkedHistory}
+          />
+        </UnsavedChangesProvider>
+      );
+      const pinLink = view.getByRole("link", {
+        name: copyFor("en-US").showPinCode,
+      });
+      const event = new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      });
+
+      pinLink.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(false);
       expect(confirm).toHaveBeenCalledTimes(1);
     } finally {
       window.confirm = originalConfirm;

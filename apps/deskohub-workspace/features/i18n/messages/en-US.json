@@ -47,6 +47,7 @@
   "accountReservationProduct": "Product",
   "accountReservationSeatsLabel": "Seats",
   "accountReservationShowPinCode": "Show PIN code",
+  "accountReservationPinUnavailable": "PIN access is unavailable because this reservation is not linked to Workspace.",
   "accountReservationStatus": "Status",
   "accountFeatureUnavailable": "Unavailable",
   "accountFeatureUnavailableDescription": "Not available in your account yet.",
