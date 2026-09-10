@@ -79,7 +79,7 @@ const accountReviewTargetMetadata = {
   },
   "linked-legal-desktop": {
     filename: "linked-legal-desktop.png",
-    path: "/en-US/account",
+    path: "/en-US/account/legal",
     viewport: { height: 1000, width: 1440 },
   },
   "linked-danger-desktop": {
@@ -148,6 +148,24 @@ const accountReviewCaptureFailure = () =>
 const callbackLoadingName = "Loading sign-in…";
 const callbackLoadingSelector =
   '[data-slot="auth-callback-loading"][role="status"][aria-busy="true"]';
+const privateLinkedAccountSections = [
+  "reservations",
+  "profile",
+  "billing",
+  "danger",
+] as const;
+
+const isPrivateLinkedAccountTarget = (target: ReviewTarget): boolean =>
+  target === "linked-reservations-desktop" ||
+  target === "linked-profile-desktop" ||
+  target === "linked-billing-desktop" ||
+  target === "linked-danger-desktop";
+
+const isAllowedPrivateLinkedAccountQuery = (search: string): boolean =>
+  search === "" ||
+  privateLinkedAccountSections.some(
+    (section) => search === `?section=${section}`
+  );
 
 type AccountReviewCaptureOptions = {
   readonly deadline?: number;
@@ -221,7 +239,9 @@ const validateAccountReviewPage = (
   }
 
   const queryIsAllowed =
-    pageUrl.search === "" ||
+    (isPrivateLinkedAccountTarget(target) &&
+      isAllowedPrivateLinkedAccountQuery(pageUrl.search)) ||
+    (!isPrivateLinkedAccountTarget(target) && pageUrl.search === "") ||
     (target === "callback-failed-desktop" &&
       pageUrl.search === "?error=INVALID_TOKEN");
   const allowedPaths =

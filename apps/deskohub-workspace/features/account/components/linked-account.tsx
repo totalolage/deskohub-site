@@ -1,6 +1,7 @@
 "use client";
 
 import Interpolate from "@doist/react-interpolate";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
@@ -16,6 +17,7 @@ import { SignOutButton } from "@/features/account/components/sign-out-button";
 import type { CustomerReservationHistory } from "@/features/account/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { GuardedLink } from "@/shared/components/guarded-link";
+import { useConfirmDiscardChanges } from "@/shared/components/unsaved-changes-guard";
 
 type LinkedAccountProps = {
   readonly email: string;
@@ -24,22 +26,54 @@ type LinkedAccountProps = {
   readonly profile: CustomerProfile;
 };
 
+function sectionFromQuery(value: string | null): AccountSection {
+  switch (value) {
+    case "reservations":
+    case "profile":
+    case "billing":
+    case "legal":
+    case "danger":
+      return value;
+    default:
+      return "reservations";
+  }
+}
+
 export function LinkedAccount({
   email,
   history,
   locale,
   profile,
 }: LinkedAccountProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedSection = searchParams.get("section");
+  const querySection = sectionFromQuery(requestedSection);
   const [activeSection, setActiveSection] =
-    useState<AccountSection>("reservations");
+    useState<AccountSection>(querySection);
   const [profileSection, setProfileSection] = useState<"profile" | "billing">(
-    "profile"
+    querySection === "billing" ? "billing" : "profile"
   );
+  const [previousRequestedSection, setPreviousRequestedSection] =
+    useState(requestedSection);
+  const confirmDiscardChanges = useConfirmDiscardChanges();
+  if (previousRequestedSection !== requestedSection) {
+    setPreviousRequestedSection(requestedSection);
+    setActiveSection(querySection);
+    if (querySection === "profile" || querySection === "billing") {
+      setProfileSection(querySection);
+    }
+  }
   const copy = getAccountScreenCopy(locale);
   const reservationCount =
     history.kind === "available" ? history.groups.current.length : undefined;
 
   const changeSection = (section: AccountSection) => {
+    if (section === "legal") {
+      if (!confirmDiscardChanges()) return;
+      router.push(`/${locale}/account/legal`);
+      return;
+    }
     if (section === "profile" || section === "billing") {
       setProfileSection(section);
     }
@@ -99,9 +133,9 @@ export function LinkedAccount({
         />
       </div>
 
-      <div hidden={activeSection !== "legal"}>
+      {activeSection === "legal" && (
         <LegalScreen locale={locale} strings={copy.legal} />
-      </div>
+      )}
 
       <div hidden={activeSection !== "danger"}>
         <DeleteAccountCard

@@ -1,5 +1,5 @@
 import { Download } from "lucide-react";
-import { useId } from "react";
+import { CookieSettings } from "@/features/cookie-consent/components/cookie-settings-page";
 import { type Locale, m } from "@/features/i18n";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
@@ -25,7 +25,6 @@ export interface LegalScreenProps {
 }
 
 export function LegalScreen({ locale, strings }: LegalScreenProps) {
-  const unavailableDescriptionId = useId();
   const localePath = `/${locale}`;
 
   return (
@@ -52,33 +51,13 @@ export function LegalScreen({ locale, strings }: LegalScreenProps) {
             label={m.footerTermsLink({}, { locale })}
           />
           <PolicyLink
-            href={`${localePath}/cookie-settings`}
-            label={m.footerCookieSettingsLink({}, { locale })}
+            href={`${localePath}/cookie-policy`}
+            label={m.footerCookiePolicyLink({}, { locale })}
           />
         </nav>
       </div>
 
-      <div className="mt-6 grid min-w-0 gap-4">
-        <PreferenceRow
-          description={strings.analyticsDescription}
-          descriptionId={unavailableDescriptionId}
-          title={strings.analyticsTitle}
-          unavailable={strings.unavailable}
-        />
-        <PreferenceRow
-          description={strings.marketingDescription}
-          descriptionId={unavailableDescriptionId}
-          title={strings.marketingTitle}
-          unavailable={strings.unavailable}
-        />
-      </div>
-
-      <p
-        className="mt-4 text-sm leading-6 text-[#586c88]"
-        id={unavailableDescriptionId}
-      >
-        {strings.preferencesUnavailable}
-      </p>
+      <CookieSettings locale={locale} />
 
       <div className="mt-8 border-t border-[#e5e9ef] pt-6">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -101,52 +80,7 @@ export function LegalScreen({ locale, strings }: LegalScreenProps) {
           </Button>
         </div>
       </div>
-
-      <div className="mt-8 flex min-w-0 flex-wrap items-center gap-3">
-        <Button
-          aria-describedby={unavailableDescriptionId}
-          className="h-auto w-full whitespace-normal bg-[#00024f] px-8 py-3 text-center text-white hover:bg-[#00024f] sm:w-auto"
-          disabled
-          type="button"
-        >
-          {strings.savePreferences}
-        </Button>
-      </div>
     </Card>
-  );
-}
-
-function PreferenceRow({
-  description,
-  descriptionId,
-  title,
-  unavailable,
-}: {
-  readonly description: string;
-  readonly descriptionId: string;
-  readonly title: string;
-  readonly unavailable: string;
-}) {
-  return (
-    <div className="flex min-w-0 flex-wrap items-start justify-between gap-4 rounded-2xl border border-[#dfe4ec] bg-[#fbfcfd] p-4">
-      <div className="min-w-0 flex-1">
-        <h3 className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]">
-          {title}
-        </h3>
-        <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
-          {description}
-        </p>
-      </div>
-      <Button
-        aria-describedby={descriptionId}
-        className="h-auto shrink-0 whitespace-normal px-4 py-2 leading-5"
-        disabled
-        type="button"
-        variant="secondary"
-      >
-        {unavailable}
-      </Button>
-    </div>
   );
 }
 

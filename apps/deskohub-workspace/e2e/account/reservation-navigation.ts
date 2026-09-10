@@ -590,12 +590,12 @@ export const verifyWorkspaceE2EReservationHistoryNavigation = async (
   });
   await runReservationHistoryStage(
     "access-details-return-dialog",
-    () => expect(input.page.getByRole("dialog")).toBeVisible(),
+    () => expect(input.page.getByRole("dialog")).toHaveCount(0),
     "assertion"
   );
   await runReservationHistoryStage(
     "access-details-return-content",
-    () => expectFulfilledStatus(input.page, input.fixture, "modal"),
+    () => expectFulfilledStatus(input.page, input.fixture, "page"),
     "assertion"
   );
 
