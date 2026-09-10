@@ -253,6 +253,37 @@ describe("AccountShell", () => {
     }
   });
 
+  test("keeps the reservation count badge text paint local across active sections", () => {
+    const view = renderShell({
+      activeSection: "profile",
+      reservationCount: 0,
+    });
+
+    for (const activeSection of ["profile", "reservations"] as const) {
+      view.rerender(
+        <AccountShell
+          {...makeProps({
+            activeSection,
+            reservationCount: activeSection === "profile" ? 0 : 3,
+          })}
+        />
+      );
+
+      const badge = view
+        .getByRole("button", { name: /^Reservations/ })
+        .querySelector("span.ml-auto");
+      if (!badge) throw new Error("Reservation count badge was not rendered");
+
+      expect(badge.className).toContain("bg-[#b06147]");
+      expect(badge.className).toContain("text-white");
+      expect(badge.className).toContain(
+        "[font-family:var(--font-sculpin,Arial),sans-serif]"
+      );
+      expect(badge.className).not.toContain("bg-[#cf7253]");
+      expect(badge.className).not.toContain("text-[#00024f]");
+    }
+  });
+
   test("retains long localized title and section labels", () => {
     const localizedLabels: AccountShellProps["labels"] = {
       mobileSection: "Vyberte sekci svého zákaznického účtu",
