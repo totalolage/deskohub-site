@@ -5,6 +5,7 @@ import {
   describe,
   expect,
   mock,
+  spyOn,
   test,
 } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
@@ -180,6 +181,145 @@ describe("AccountShell", () => {
     const reservationIconClass =
       reservationButton.querySelector("svg")?.getAttribute("class") ?? "";
     expect(reservationIconClass).toContain("size-4");
+  });
+
+  test("bounds the desktop aside as a sticky scroll container", () => {
+    const view = renderShell({
+      sidebarFooter: <p>Need help at the reception desk.</p>,
+    });
+    const aside = view.container.querySelector("aside");
+    if (!aside) throw new Error("Account shell aside was not rendered");
+
+    expect(aside.className).toContain("md:sticky");
+    expect(aside.className).toContain(
+      "md:top-[calc(var(--site-header-height)+1rem)]"
+    );
+    expect(aside.className).toContain(
+      "md:max-h-[calc(100dvh-var(--site-header-height)-2rem)]"
+    );
+    expect(aside.className).toContain("md:overflow-y-auto");
+    expect(aside.className).not.toMatch(
+      /(?<!md:)\b(?:sticky|overflow-y-auto)\b/
+    );
+  });
+
+  test("corrects sticky focus targets obscured above or below the viewport", () => {
+    const view = renderShell();
+    const aside = view.container.querySelector("aside");
+    if (!aside) throw new Error("Account shell aside was not rendered");
+    const topTarget = view.getByRole("button", { name: "Reservations" });
+    const bottomTarget = view.getByRole("button", {
+      name: "Billing & invoices",
+    });
+    const topRect = mock(() => ({ bottom: 140, top: 80 }));
+    const bottomRect = mock(() => ({
+      bottom: window.innerHeight + 20,
+      top: window.innerHeight - 20,
+    }));
+    const topScrollIntoView = mock(() => undefined);
+    const bottomScrollIntoView = mock(() => undefined);
+    Object.defineProperty(topTarget, "getBoundingClientRect", {
+      configurable: true,
+      value: topRect,
+    });
+    Object.defineProperty(topTarget, "scrollIntoView", {
+      configurable: true,
+      value: topScrollIntoView,
+    });
+    Object.defineProperty(bottomTarget, "getBoundingClientRect", {
+      configurable: true,
+      value: bottomRect,
+    });
+    Object.defineProperty(bottomTarget, "scrollIntoView", {
+      configurable: true,
+      value: bottomScrollIntoView,
+    });
+    const getComputedStyle = spyOn(window, "getComputedStyle").mockReturnValue({
+      position: "sticky",
+      top: "112px",
+    } as CSSStyleDeclaration);
+
+    try {
+      fireEvent.focus(topTarget);
+      fireEvent.focus(bottomTarget);
+
+      expect(topRect).toHaveBeenCalledTimes(1);
+      expect(topScrollIntoView).toHaveBeenCalledWith({
+        block: "center",
+        inline: "nearest",
+      });
+      expect(bottomRect).toHaveBeenCalledTimes(1);
+      expect(bottomScrollIntoView).toHaveBeenCalledWith({
+        block: "center",
+        inline: "nearest",
+      });
+      expect(getComputedStyle).toHaveBeenCalledWith(aside);
+    } finally {
+      getComputedStyle.mockRestore();
+    }
+  });
+
+  test("does not scroll an already visible sticky focus target", () => {
+    const view = renderShell();
+    const aside = view.container.querySelector("aside");
+    if (!aside) throw new Error("Account shell aside was not rendered");
+    const target = view.getByRole("button", { name: "Reservations" });
+    const getBoundingClientRect = mock(() => ({ bottom: 160, top: 120 }));
+    const scrollIntoView = mock(() => undefined);
+    Object.defineProperty(target, "getBoundingClientRect", {
+      configurable: true,
+      value: getBoundingClientRect,
+    });
+    Object.defineProperty(target, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const getComputedStyle = spyOn(window, "getComputedStyle").mockReturnValue({
+      position: "sticky",
+      top: "112px",
+    } as CSSStyleDeclaration);
+
+    try {
+      fireEvent.focus(target);
+
+      expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      getComputedStyle.mockRestore();
+    }
+  });
+
+  test("does not inspect or scroll a static mobile aside", () => {
+    const view = renderShell();
+    const aside = view.container.querySelector("aside");
+    if (!aside) throw new Error("Account shell aside was not rendered");
+    const target = view.getByRole("button", { name: "Reservations" });
+    const getBoundingClientRect = mock(() => {
+      throw new Error("Static mobile focus should not read target geometry");
+    });
+    const scrollIntoView = mock(() => undefined);
+    Object.defineProperty(target, "getBoundingClientRect", {
+      configurable: true,
+      value: getBoundingClientRect,
+    });
+    Object.defineProperty(target, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    const getComputedStyle = spyOn(window, "getComputedStyle").mockReturnValue({
+      position: "static",
+      top: "auto",
+    } as CSSStyleDeclaration);
+
+    try {
+      fireEvent.focus(target);
+
+      expect(getComputedStyle).toHaveBeenCalledWith(aside);
+      expect(getBoundingClientRect).not.toHaveBeenCalled();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      getComputedStyle.mockRestore();
+    }
   });
 
   test("stacks the mobile header while restoring the desktop row", () => {
