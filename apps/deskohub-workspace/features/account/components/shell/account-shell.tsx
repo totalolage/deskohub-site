@@ -7,7 +7,7 @@ import {
   TriangleAlert,
   UserRound,
 } from "lucide-react";
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import { Button } from "@/shared/components/ui/button";
 
 /*
@@ -15,7 +15,7 @@ import { Button } from "@/shared/components/ui/button";
  * OWN-WORLD: Sculpin, navy, slate, warm cream, mint, and terracotta extend the account page.
  * STORY: Visitors see their account title, choose one section, and own the content task.
  * FIRST VIEWPORT: A wrapped title/action header sits above a sidebar and unstyled content slot.
- * FORM: Desktop buttons collapse to a native select; callers own every action and fact.
+ * FORM: Mobile navigation uses labelled buttons; callers own every action and fact.
  */
 
 export type AccountSection =
@@ -65,6 +65,40 @@ export function AccountShell({
     { icon: ShieldCheck, key: "legal" },
     { icon: TriangleAlert, key: "danger" },
   ] as const;
+  const mobileNavigationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const mobileNavigation = mobileNavigationRef.current;
+    if (mobileNavigation === null) return;
+
+    const revealActiveSection = () => {
+      const activeButton = mobileNavigation.querySelector<HTMLButtonElement>(
+        `[data-account-section="${activeSection}"]`
+      );
+      if (activeButton === null) return;
+
+      const navigationRect = mobileNavigation.getBoundingClientRect();
+      const buttonRect = activeButton.getBoundingClientRect();
+      if (
+        navigationRect.width <= 0 ||
+        navigationRect.height <= 0 ||
+        buttonRect.width <= 0 ||
+        buttonRect.height <= 0
+      )
+        return;
+
+      if (buttonRect.left < navigationRect.left) {
+        mobileNavigation.scrollLeft -= navigationRect.left - buttonRect.left;
+      } else if (buttonRect.right > navigationRect.right) {
+        mobileNavigation.scrollLeft += buttonRect.right - navigationRect.right;
+      }
+    };
+    const resizeObserver = new ResizeObserver(revealActiveSection);
+    resizeObserver.observe(mobileNavigation);
+    revealActiveSection();
+
+    return () => resizeObserver.disconnect();
+  }, [activeSection]);
 
   return (
     <main className="min-h-screen [--font-heading-weight:700] [--font-subheading-weight:600] [background:radial-gradient(circle_at_0%_0%,rgba(255,242,214,0.9),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(218,244,235,0.82),transparent_38%),#f8f5ef] px-4 pb-28 pt-[calc(var(--site-header-height)+3rem)] sm:px-6 lg:px-8">
@@ -85,31 +119,56 @@ export function AccountShell({
               className="rounded-[20px] border border-[#dfe4ec] bg-white p-4"
             >
               <div className="md:hidden">
-                <label
-                  className="mb-2 block text-sm font-semibold text-[#344258]"
-                  htmlFor={mobileSectionId}
+                <fieldset
+                  aria-labelledby={mobileSectionId}
+                  className="min-w-0 border-0 p-0"
                 >
-                  {labels.mobileSection}
-                </label>
-                <select
-                  className="min-h-[44px] w-full rounded-xl border border-[#cad3df] bg-white px-3 text-[18px] leading-tight text-[#344258] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
-                  id={mobileSectionId}
-                  onChange={(event) => {
-                    const selectedSection = sections.find(
-                      (section) => section.key === event.currentTarget.value
-                    );
-                    if (selectedSection) {
-                      onSectionChange(selectedSection.key);
-                    }
-                  }}
-                  value={activeSection}
-                >
-                  {sections.map((section) => (
-                    <option key={section.key} value={section.key}>
-                      {labels.sections[section.key]}
-                    </option>
-                  ))}
-                </select>
+                  <legend
+                    className="mb-2 block text-sm font-semibold text-[#344258]"
+                    id={mobileSectionId}
+                  >
+                    {labels.mobileSection}
+                  </legend>
+                  <div
+                    className="flex min-w-0 touch-pan-x flex-nowrap gap-2 overflow-x-auto px-1 py-1"
+                    data-account-mobile-navigation=""
+                    ref={mobileNavigationRef}
+                  >
+                    {sections.map((section) => {
+                      const isActive = activeSection === section.key;
+                      const isDanger = section.key === "danger";
+                      let buttonStateClassName =
+                        "text-[#344258] hover:bg-[#f3f5f8]";
+
+                      if (isDanger) {
+                        buttonStateClassName =
+                          "text-[#d71945] hover:bg-[#fff1f4]";
+                      }
+                      if (isActive) {
+                        buttonStateClassName =
+                          "bg-[#00024f] text-white hover:bg-[#00024f]";
+                        if (isDanger) {
+                          buttonStateClassName =
+                            "bg-[#e71545] text-white hover:bg-[#e71545]";
+                        }
+                      }
+
+                      return (
+                        <Button
+                          aria-current={isActive ? "page" : undefined}
+                          className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-2xl px-3 text-[15px] font-semibold focus-visible:ring-inset focus-visible:ring-offset-0 ${buttonStateClassName}`}
+                          data-account-section={section.key}
+                          key={section.key}
+                          onClick={() => onSectionChange(section.key)}
+                          type="button"
+                          variant="ghost"
+                        >
+                          {labels.sections[section.key]}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
               </div>
 
               <div className="hidden md:block">
