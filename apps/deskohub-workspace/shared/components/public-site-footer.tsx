@@ -90,7 +90,7 @@ export async function PublicSiteFooter() {
                 {m.footerCookiePolicyLink({}, { locale })}
               </Link>
               <Link
-                href={`${localePath}/cookie-settings`}
+                href={`${localePath}/account/legal`}
                 prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >

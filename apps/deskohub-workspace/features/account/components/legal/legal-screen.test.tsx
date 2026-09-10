@@ -1,7 +1,15 @@
-import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  mock,
+  test,
+} from "bun:test";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentPropsWithoutRef, Ref } from "react";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -32,20 +40,64 @@ function MockNextLink({
 
 mock.module("next/link", () => ({ default: MockNextLink }));
 
+let acceptedCategories = ["necessary"];
+let onConsentChange: (() => void) | undefined;
+
+function getAcceptedCategories(categories: string | string[]) {
+  if (categories === "all") {
+    return ["necessary", "analytics", "marketing", "preferences"];
+  }
+  if (categories === "necessary") return ["necessary"];
+  if (Array.isArray(categories)) {
+    return [
+      "necessary",
+      ...categories.filter((category) => category !== "necessary"),
+    ];
+  }
+
+  return ["necessary", categories];
+}
+
+mock.module("vanilla-cookieconsent", () => ({
+  acceptCategory: (categories: string | string[]) => {
+    acceptedCategories = [...new Set(getAcceptedCategories(categories))];
+    onConsentChange?.();
+  },
+  acceptedCategory: (category: string) => acceptedCategories.includes(category),
+  getUserPreferences: () => ({ acceptedCategories }),
+  run: (config: { onChange?: () => void }) => {
+    onConsentChange = config.onChange;
+    return Promise.resolve();
+  },
+  showPreferences: () => undefined,
+}));
+
+const { CookieConsentProvider } = await import(
+  "@/features/cookie-consent/components/cookie-consent-provider"
+);
 const { LegalScreen } = await import("./legal-screen");
 
 beforeAll(registerWorkspaceComponentTestEnv);
+beforeEach(() => {
+  acceptedCategories = ["necessary"];
+  onConsentChange = undefined;
+});
 afterEach(cleanup);
 afterAll(unregisterWorkspaceComponentTestEnv);
+
+function renderLegalScreen(locale: Locale) {
+  return render(
+    <>
+      <CookieConsentProvider locale={locale} />
+      <LegalScreen locale={locale} strings={legalScreenCopy[locale]} />
+    </>
+  );
+}
 
 for (const locale of ["en-US", "cs-CZ"] as const) {
   test(`${locale} renders the supplied copy and localized policy destinations`, () => {
     const strings = legalScreenCopy[locale];
-    const view = render(<LegalScreen locale={locale} strings={strings} />);
-
-    for (const string of Object.values(strings)) {
-      expect(view.container.textContent).toContain(string);
-    }
+    const view = renderLegalScreen(locale);
 
     expect(
       view.getByRole("heading", { level: 2, name: strings.title })
@@ -63,81 +115,102 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
         `/${locale}/marketing-communications`,
       ],
       [m.footerTermsLink({}, { locale }), `/${locale}/terms-and-conditions`],
-      [
-        m.footerCookieSettingsLink({}, { locale }),
-        `/${locale}/cookie-settings`,
-      ],
+      [m.footerCookiePolicyLink({}, { locale }), `/${locale}/cookie-policy`],
     ] as const;
 
     for (const [name, href] of policyLinks) {
       expect(view.getByRole("link", { name }).getAttribute("href")).toBe(href);
     }
+
+    expect(
+      view.getByRole("heading", {
+        level: 3,
+        name: strings.archiveTitle,
+      })
+    ).toBeTruthy();
+    expect(view.getByText(strings.archiveDescription)).toBeTruthy();
+    const archiveAction = view.getByRole("button", {
+      name: strings.archiveAction,
+    });
+    expect((archiveAction as HTMLButtonElement).disabled).toBe(true);
+    expect(archiveAction.getAttribute("type")).toBe("button");
   });
 }
 
-test("keeps account legal controls visibly unavailable and inert", () => {
-  const strings = legalScreenCopy["en-US"];
-  const view = render(<LegalScreen locale="en-US" strings={strings} />);
-  const buttons = view.getAllByRole("button");
+test("renders immutable necessary consent and functional optional controls", async () => {
+  const locale = "en-US" as const;
+  const strings = legalScreenCopy[locale];
+  const view = renderLegalScreen(locale);
+  const checkboxFor = (title: string) =>
+    view.getByRole("checkbox", { name: new RegExp(`^${title}`) });
 
-  expect(buttons).toHaveLength(4);
-  for (const button of buttons) {
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect(button.getAttribute("type")).toBe("button");
+  const necessary = checkboxFor(m.cookieSettingsNecessaryTitle({}, { locale }));
+  const analytics = checkboxFor(m.cookieSettingsAnalyticsTitle({}, { locale }));
+  const marketing = checkboxFor(m.cookieSettingsMarketingTitle({}, { locale }));
+  const preferences = checkboxFor(
+    m.cookieSettingsPreferencesTitle({}, { locale })
+  );
+
+  expect(necessary.getAttribute("aria-checked")).toBe("true");
+  expect((necessary as HTMLButtonElement).disabled).toBe(true);
+  expect(
+    view.queryByRole("button", { name: strings.savePreferences })
+  ).toBeNull();
+  expect(view.queryByText(strings.preferencesUnavailable)).toBeNull();
+  for (const checkbox of [analytics, marketing, preferences]) {
+    expect(checkbox.getAttribute("aria-checked")).toBe("false");
+    expect((checkbox as HTMLButtonElement).disabled).toBe(false);
   }
 
-  const unavailableButtons = view.getAllByRole("button", {
-    name: strings.unavailable,
+  fireEvent.click(analytics);
+  await waitFor(() => {
+    expect(analytics.getAttribute("aria-checked")).toBe("true");
   });
-  expect(unavailableButtons).toHaveLength(2);
 
-  const descriptionId = unavailableButtons[0]?.getAttribute("aria-describedby");
-  expect(descriptionId).toBeTruthy();
-  expect(descriptionId).toBe(
-    unavailableButtons[1]?.getAttribute("aria-describedby")
+  fireEvent.click(analytics);
+  await waitFor(() => {
+    expect(analytics.getAttribute("aria-checked")).toBe("false");
+  });
+
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.cookieSettingsAcceptAll({}, { locale }),
+    })
   );
-  expect(
-    descriptionId && document.getElementById(descriptionId)?.textContent
-  ).toBe(strings.preferencesUnavailable);
+  await waitFor(() => {
+    for (const checkbox of [analytics, marketing, preferences]) {
+      expect(checkbox.getAttribute("aria-checked")).toBe("true");
+    }
+  });
 
-  for (const description of [
-    strings.analyticsDescription,
-    strings.marketingDescription,
-    strings.preferencesUnavailable,
-    strings.archiveDescription,
-  ]) {
-    expect(view.getByText(description).className).toContain("text-[#586c88]");
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.cookieSettingsRejectAll({}, { locale }),
+    })
+  );
+  await waitFor(() => {
+    expect(necessary.getAttribute("aria-checked")).toBe("true");
+    for (const checkbox of [analytics, marketing, preferences]) {
+      expect(checkbox.getAttribute("aria-checked")).toBe("false");
+    }
+  });
+});
+
+test("keeps consent controls wrapped and free of page-only shells", () => {
+  const view = renderLegalScreen("en-US");
+
+  expect(view.container.querySelector("main")).toBeNull();
+  expect(view.container.querySelector("h1")).toBeNull();
+  expect(view.container.querySelectorAll("article")).toHaveLength(4);
+
+  for (const category of view.container.querySelectorAll("article")) {
+    expect(category.className).toContain("min-w-0");
+    expect(category.querySelector("p")?.className).toContain("break-words");
   }
 
-  expect(view.container.querySelector("form")).toBeNull();
-  expect(
-    view.container.querySelectorAll(
-      "input, [role='checkbox'], [role='switch'], [aria-checked], [aria-pressed], [data-state]"
-    )
-  ).toHaveLength(0);
-
-  const archiveButton = view.getByRole("button", {
-    name: strings.archiveAction,
-  });
-  const archiveRow = view.getByRole("heading", {
-    name: strings.archiveTitle,
-  }).parentElement?.parentElement;
-  if (!archiveRow) throw new Error("Archive row was not rendered");
-  expect(archiveRow.className).toContain("lg:flex-row");
-  expect(archiveRow.className).not.toContain("sm:flex-row");
-  expect(archiveButton.className).toContain("lg:text-center");
-  expect(archiveButton.className).not.toContain("sm:text-center");
-  expect(archiveButton.getAttribute("href")).toBeNull();
-  expect(archiveButton.getAttribute("download")).toBeNull();
-  expect(view.container.querySelectorAll("button[type='submit']")).toHaveLength(
-    0
-  );
-  expect(
-    view
-      .getByRole("button", { name: strings.savePreferences })
-      .getAttribute("aria-describedby")
-  ).toBe(descriptionId);
-  expect(archiveButton.querySelector("svg")?.getAttribute("aria-hidden")).toBe(
-    "true"
-  );
+  const actions = view.getByRole("button", {
+    name: m.cookieSettingsAcceptAll({}, { locale: "en-US" }),
+  }).parentElement;
+  expect(actions?.className).toContain("flex-wrap");
+  expect(actions?.className).toContain("min-w-0");
 });

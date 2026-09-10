@@ -110,6 +110,14 @@ function getDesktopButton(
   });
 }
 
+function getMobileNavigation(view: { readonly container: HTMLElement }) {
+  return within(
+    view.getByRole("group", {
+      name: labels.mobileSection,
+    })
+  );
+}
+
 describe("AccountShell", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -192,6 +200,69 @@ describe("AccountShell", () => {
     expect(dangerButton.className).toContain("text-white");
     expect(dangerButton.className).toContain("hover:bg-[#e71545]");
     expect(dangerButton.className).not.toContain("bg-[#00024f]");
+  });
+
+  test("keeps every section enabled by default", () => {
+    const view = renderShell();
+    const mobileNavigation = getMobileNavigation(view);
+
+    for (const section of sectionKeys) {
+      const mobileButton = mobileNavigation.getByRole("button", {
+        name: labels.sections[section],
+      }) as HTMLButtonElement;
+      const desktopButton = getDesktopButton(
+        view,
+        section
+      ) as HTMLButtonElement;
+
+      expect(mobileButton.disabled).toBe(false);
+      expect(desktopButton.disabled).toBe(false);
+    }
+  });
+
+  test("disables anonymous nonlegal sections while keeping legal enabled", () => {
+    const onSectionChange = mock((section: AccountSection) => {
+      void section;
+    });
+    const disabledSections = sectionKeys.filter(
+      (section) => section !== "legal"
+    );
+    const view = renderShell({
+      activeSection: "legal",
+      disabledSections,
+      onSectionChange,
+    });
+    const mobileNavigation = getMobileNavigation(view);
+
+    for (const section of sectionKeys) {
+      const mobileButton = mobileNavigation.getByRole("button", {
+        name: labels.sections[section],
+      }) as HTMLButtonElement;
+      const desktopButton = getDesktopButton(
+        view,
+        section
+      ) as HTMLButtonElement;
+      const isLegal = section === "legal";
+
+      expect(mobileButton.disabled).toBe(!isLegal);
+      expect(desktopButton.disabled).toBe(!isLegal);
+    }
+
+    fireEvent.click(
+      mobileNavigation.getByRole("button", {
+        name: labels.sections.profile,
+      })
+    );
+    fireEvent.click(getDesktopButton(view, "profile"));
+    fireEvent.click(
+      mobileNavigation.getByRole("button", { name: labels.sections.legal })
+    );
+    fireEvent.click(getDesktopButton(view, "legal"));
+
+    expect(onSectionChange.mock.calls.map(([section]) => section)).toEqual([
+      "legal",
+      "legal",
+    ]);
   });
 
   test("keeps the reference background, weight, and desktop geometry tokens explicit", () => {
@@ -836,5 +907,11 @@ describe("AccountShell", () => {
     expect(view.getByTestId("sidebar-footer").textContent).toBe(
       "Need help at the reception desk."
     );
+  });
+
+  test("accepts a null sign-out action", () => {
+    const view = renderShell({ signOut: null });
+
+    expect(view.queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 });

@@ -4,8 +4,7 @@ import {
   type ConsentCategory,
   useCookieConsent,
 } from "@/features/cookie-consent";
-import { getLocale, m } from "@/features/i18n";
-import { Container } from "@/shared/components/container";
+import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 
@@ -35,8 +34,11 @@ const categoryMessageGetters = {
   },
 } as const;
 
-export function CookieSettingsPage() {
-  const locale = getLocale();
+export interface CookieSettingsProps {
+  readonly locale: Locale;
+}
+
+export function CookieSettings({ locale }: CookieSettingsProps) {
   const { acceptAll, rejectAll, acceptCategory, rejectCategory, isAccepted } =
     useCookieConsent();
   const preferences = {
@@ -46,12 +48,13 @@ export function CookieSettingsPage() {
     preferences: isAccepted("preferences"),
   } satisfies Record<ConsentCategory, boolean>;
 
-  const handleToggle = (category: ConsentCategory) => {
+  const handleToggle = (
+    category: ConsentCategory,
+    checked: boolean | "indeterminate"
+  ) => {
     if (category === "necessary") return;
 
-    const nextValue = !preferences[category];
-
-    if (nextValue) {
+    if (checked === true) {
       acceptCategory(category);
       return;
     }
@@ -60,60 +63,43 @@ export function CookieSettingsPage() {
   };
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[#f4f1ea] text-navy-blue">
-      <section className="relative isolate overflow-hidden pb-20 pt-28 sm:pb-24 sm:pt-36">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(236,164,35,0.18),transparent_28%),radial-gradient(circle_at_right,rgba(0,223,153,0.1),transparent_26%),linear-gradient(180deg,#08154a_0%,#10205a_30%,#f4f1ea_30%,#f4f1ea_100%)]" />
+    <div className="mt-6 min-w-0 space-y-4">
+      {consentCategories.map((category) => (
+        <CookieCategoryCard
+          key={category}
+          category={category}
+          locale={locale}
+          checked={preferences[category]}
+          onToggle={(nextChecked) => handleToggle(category, nextChecked)}
+        />
+      ))}
 
-        <Container>
-          <div className="mx-auto max-w-4xl rounded-[2rem] border border-white/60 bg-white/92 p-8 shadow-[0_40px_120px_-52px_rgba(0,2,79,0.55)] backdrop-blur-sm sm:p-12">
-            <div className="mt-6 space-y-4">
-              <h1 className="text-balance text-4xl leading-none sm:text-5xl">
-                {m.cookieSettingsTitle({}, { locale })}
-              </h1>
-              <p className="max-w-3xl text-base leading-7 text-navy-blue/72 sm:text-lg">
-                {m.cookieSettingsDescription({}, { locale })}
-              </p>
-            </div>
-
-            <div className="mt-10 space-y-4">
-              {consentCategories.map((category) => (
-                <CookieCategoryCard
-                  key={category}
-                  category={category}
-                  locale={locale}
-                  checked={preferences[category]}
-                  onToggle={() => handleToggle(category)}
-                />
-              ))}
-            </div>
-
-            <div className="mt-10 flex flex-wrap gap-4">
-              <Button
-                onClick={acceptAll}
-                className="h-12 px-6 text-xs uppercase tracking-[0.16em]"
-              >
-                {m.cookieSettingsAcceptAll({}, { locale })}
-              </Button>
-              <Button
-                onClick={rejectAll}
-                variant="secondary"
-                className="h-12 px-6 text-xs uppercase tracking-[0.16em]"
-              >
-                {m.cookieSettingsRejectAll({}, { locale })}
-              </Button>
-            </div>
-          </div>
-        </Container>
-      </section>
-    </main>
+      <div className="flex min-w-0 flex-wrap gap-4 pt-2">
+        <Button
+          onClick={acceptAll}
+          type="button"
+          className="h-12 max-w-full whitespace-normal px-6 text-left text-xs uppercase tracking-[0.16em]"
+        >
+          {m.cookieSettingsAcceptAll({}, { locale })}
+        </Button>
+        <Button
+          onClick={rejectAll}
+          type="button"
+          variant="secondary"
+          className="h-12 max-w-full whitespace-normal px-6 text-left text-xs uppercase tracking-[0.16em]"
+        >
+          {m.cookieSettingsRejectAll({}, { locale })}
+        </Button>
+      </div>
+    </div>
   );
 }
 
 type CookieCategoryCardProps = {
   category: ConsentCategory;
-  locale: ReturnType<typeof getLocale>;
+  locale: Locale;
   checked: boolean;
-  onToggle: () => void;
+  onToggle: (checked: boolean | "indeterminate") => void;
 };
 
 function CookieCategoryCard({
@@ -129,17 +115,20 @@ function CookieCategoryCard({
   const titleId = `${checkboxId}-title`;
 
   return (
-    <article className="flex flex-col gap-5 rounded-[1.5rem] border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
-      <div className="max-w-2xl space-y-2">
-        <h2 id={titleId} className="text-2xl leading-tight">
+    <article className="flex min-w-0 flex-col gap-5 rounded-[1.5rem] border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+      <div className="min-w-0 max-w-2xl space-y-2">
+        <h2 id={titleId} className="break-words text-2xl leading-tight">
           {messages.title({}, { locale })}
         </h2>
-        <p id={descriptionId} className="text-base leading-7 text-navy-blue/70">
+        <p
+          id={descriptionId}
+          className="break-words text-base leading-7 text-navy-blue/70"
+        >
           {messages.description({}, { locale })}
         </p>
       </div>
 
-      <div className="inline-flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue">
+      <div className="inline-flex max-w-full min-w-0 flex-wrap items-center gap-3 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue">
         <Checkbox
           id={checkboxId}
           checked={checked}
@@ -148,7 +137,11 @@ function CookieCategoryCard({
           aria-describedby={descriptionId}
           aria-labelledby={`${titleId} ${stateId}`}
         />
-        <label id={stateId} htmlFor={checkboxId} className="cursor-pointer">
+        <label
+          id={stateId}
+          htmlFor={checkboxId}
+          className="cursor-pointer break-words"
+        >
           {checked
             ? m.cookieSettingsToggleEnabled({}, { locale })
             : m.cookieSettingsToggleDisabled({}, { locale })}

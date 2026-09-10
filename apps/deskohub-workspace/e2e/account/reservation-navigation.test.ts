@@ -236,6 +236,7 @@ test("surfaces only the closed navigation stage through lane error mapping", asy
 });
 
 type NavigationHarnessOptions = {
+  readonly accessReturnPresentation?: "modal" | "page";
   readonly failureMarker?: string;
   readonly failureStage?: WorkspaceE2EReservationHistorySubstage;
   readonly leakedAccessCode?: boolean;
@@ -401,7 +402,14 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
             record(
               current().mode === "account" ? "click:history" : "click:status"
             );
-            push({ mode: "modal", url: urls.statusUrl });
+            const presentation =
+              current().mode === "account"
+                ? "modal"
+                : (options.accessReturnPresentation ?? "page");
+            push({
+              mode: presentation === "modal" ? "modal" : "status",
+              url: urls.statusUrl,
+            });
             return;
           }
           if (query === "close") {
@@ -672,6 +680,38 @@ const assertMappedVerifierFailure = (
   expect(String(failure)).not.toContain(marker);
   expect(failure.cause).toBeUndefined();
 };
+
+test("rejects an access-origin modal and accepts the canonical page", async () => {
+  const runVerifier = (harness: ReturnType<typeof makeNavigationHarness>) =>
+    verifyWorkspaceE2EReservationHistoryNavigation({
+      baseUrl: "https://workspace.example.test",
+      browser: harness.browser as never,
+      bypassSecret: undefined,
+      captureStatusReview: async () => undefined,
+      fixture: {
+        accessGrantId: "grant",
+        dotyposReservationId: "dotypos-reservation",
+        paymentAttemptId: "payment",
+        reservationId: harness.reservationId,
+      },
+      page: harness.page as never,
+    });
+
+  const canonicalPage = makeNavigationHarness();
+  await expect(runVerifier(canonicalPage)).resolves.toBeUndefined();
+
+  const marker = "access-return-modal-marker";
+  const wrongModal = await runMappedVerifierFailure({
+    accessReturnPresentation: "modal",
+    failureMarker: marker,
+  });
+  assertMappedVerifierFailure(
+    wrongModal.failure,
+    "access-details-return-dialog",
+    "assertion",
+    marker
+  );
+});
 
 test("rejects status assertions that escape the active presentation root", async () => {
   const missingAccessLink = await runMappedVerifierFailure({

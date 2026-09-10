@@ -80,7 +80,7 @@ test("uses guarded links for the localized internal footer destinations", async 
     "/cs-CZ/terms-and-conditions",
     "/cs-CZ/operating-rules",
     "/cs-CZ/cookie-policy",
-    "/cs-CZ/cookie-settings",
+    "/cs-CZ/account/legal",
     "/cs-CZ",
     "/cs-CZ/contact",
     "/cs-CZ/reservation/cowork",

@@ -24,6 +24,13 @@ const accountReviewArtifactDirectory = resolve(
   "../../e2e-artifacts/account-review"
 );
 const captureFailureMessage = "Account review screenshot capture failed";
+const privateLinkedAccountQueries = [
+  "",
+  "?section=reservations",
+  "?section=profile",
+  "?section=billing",
+  "?section=danger",
+] as const;
 
 const validTargets = [
   {
@@ -62,6 +69,7 @@ const validTargets = [
     filename: "linked-reservations-desktop.png",
     path: "/en-US/account",
     query: "",
+    queries: privateLinkedAccountQueries,
     target: "linked-reservations-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
@@ -70,6 +78,7 @@ const validTargets = [
     filename: "linked-profile-desktop.png",
     path: "/en-US/account",
     query: "",
+    queries: privateLinkedAccountQueries,
     target: "linked-profile-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
@@ -78,13 +87,14 @@ const validTargets = [
     filename: "linked-billing-desktop.png",
     path: "/en-US/account",
     query: "",
+    queries: privateLinkedAccountQueries,
     target: "linked-billing-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
   },
   {
     filename: "linked-legal-desktop.png",
-    path: "/en-US/account",
+    path: "/en-US/account/legal",
     query: "",
     target: "linked-legal-desktop",
     viewport: { height: 1000, width: 1440 },
@@ -94,6 +104,7 @@ const validTargets = [
     filename: "linked-danger-desktop.png",
     path: "/en-US/account",
     query: "",
+    queries: privateLinkedAccountQueries,
     target: "linked-danger-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
@@ -151,6 +162,7 @@ const validTargets = [
   readonly fullPage: boolean;
   readonly path: string | readonly string[];
   readonly query: string;
+  readonly queries?: readonly string[];
   readonly target: AccountReviewTarget;
   readonly viewport: Playwright.ViewportSize;
 }>;
@@ -548,6 +560,36 @@ describe("account review screenshot capture", () => {
       url: `${baseUrl}/en-US/auth/sign-in?token=synthetic-secret-token`,
     },
     {
+      name: "linked legal at the private account path",
+      target: "linked-legal-desktop",
+      url: `${baseUrl}/en-US/account`,
+    },
+    {
+      name: "linked legal with a private section query",
+      target: "linked-legal-desktop",
+      url: `${baseUrl}/en-US/account/legal?section=profile`,
+    },
+    {
+      name: "linked account with an extra query parameter",
+      target: "linked-profile-desktop",
+      url: `${baseUrl}/en-US/account?section=profile&view=private`,
+    },
+    {
+      name: "linked account with a credential query",
+      target: "linked-profile-desktop",
+      url: `${baseUrl}/en-US/account?section=profile&token=synthetic-secret-token`,
+    },
+    {
+      name: "linked account with a duplicate section query",
+      target: "linked-profile-desktop",
+      url: `${baseUrl}/en-US/account?section=profile&section=profile`,
+    },
+    {
+      name: "linked account with an unknown section query",
+      target: "linked-profile-desktop",
+      url: `${baseUrl}/en-US/account?section=unknown`,
+    },
+    {
       name: "a callback query with another parameter",
       target: "callback-failed-desktop",
       url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&token=synthetic-secret-token`,
@@ -571,6 +613,16 @@ describe("account review screenshot capture", () => {
       name: "a hash",
       target: "completion-mobile375x900",
       url: `${baseUrl}/en-US/account#review-state`,
+    },
+    {
+      name: "linked legal at a foreign origin",
+      target: "linked-legal-desktop",
+      url: "https://other.example.test/en-US/account/legal",
+    },
+    {
+      name: "linked legal with a hash",
+      target: "linked-legal-desktop",
+      url: `${baseUrl}/en-US/account/legal#review-state`,
     },
   ] as const;
 
@@ -615,36 +667,38 @@ describe("account review screenshot capture", () => {
       ? expected.path
       : [expected.path];
     for (const expectedPath of expectedPaths) {
-      test(`captures fixed metadata for ${expected.target} at ${expectedPath}`, async () => {
-        const fakePage = makeFakePage(
-          `${baseUrl}${expectedPath}${expected.query}`
-        );
+      for (const expectedQuery of expected.queries ?? [expected.query]) {
+        test(`captures fixed metadata for ${expected.target} at ${expectedPath}${expectedQuery}`, async () => {
+          const fakePage = makeFakePage(
+            `${baseUrl}${expectedPath}${expectedQuery}`
+          );
 
-        await captureAccountReview(fakePage.page, baseUrl, expected.target);
+          await captureAccountReview(fakePage.page, baseUrl, expected.target);
 
-        expect(fakePage.screenshotCalls).toHaveLength(1);
-        expect(fakePage.screenshotCalls[0]).toEqual({
-          animations: "disabled",
-          fullPage: expected.fullPage,
-          timeout: expect.any(Number),
+          expect(fakePage.screenshotCalls).toHaveLength(1);
+          expect(fakePage.screenshotCalls[0]).toEqual({
+            animations: "disabled",
+            fullPage: expected.fullPage,
+            timeout: expect.any(Number),
+          });
+          expect(fakePage.screenshotCalls[0]?.timeout).toBeGreaterThan(0);
+          expect(fakePage.screenshotCalls[0]?.timeout).toBeLessThanOrEqual(
+            workspaceE2ETimeouts.browserAction
+          );
+          expect(fakePage.viewportChanges).toEqual([
+            expected.viewport,
+            initialViewport,
+          ]);
+          expect(fakePage.currentViewport()).toEqual(initialViewport);
+          expect(fakePage.fontReadyCalls()).toBe(1);
+          expect(writeFileSpy?.mock.calls).toEqual([
+            [
+              resolve(accountReviewArtifactDirectory, expected.filename),
+              screenshotBuffer,
+            ],
+          ]);
         });
-        expect(fakePage.screenshotCalls[0]?.timeout).toBeGreaterThan(0);
-        expect(fakePage.screenshotCalls[0]?.timeout).toBeLessThanOrEqual(
-          workspaceE2ETimeouts.browserAction
-        );
-        expect(fakePage.viewportChanges).toEqual([
-          expected.viewport,
-          initialViewport,
-        ]);
-        expect(fakePage.currentViewport()).toEqual(initialViewport);
-        expect(fakePage.fontReadyCalls()).toBe(1);
-        expect(writeFileSpy?.mock.calls).toEqual([
-          [
-            resolve(accountReviewArtifactDirectory, expected.filename),
-            screenshotBuffer,
-          ],
-        ]);
-      });
+      }
     }
   }
 
