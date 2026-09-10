@@ -191,7 +191,7 @@ describe("CheckoutStatusRoute", () => {
   test("forwards modal presentation and omits the flow layout from its fallback", async () => {
     const { CheckoutStatusRoute } = await import("./checkout-status-route");
     const { default: ReservationStatusModalPage } = await import(
-      "@/app/[locale]/@modal/(.)reservation/status/[orderId]/page"
+      "@/app/[locale]/(full-header)/account/@modal/(..)reservation/status/[orderId]/page"
     );
     const modalPage = await ReservationStatusModalPage({
       params: routeInput.params,

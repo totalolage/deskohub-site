@@ -36,6 +36,30 @@ test("runs the Postgres-backed workspace suites against the disposable service d
   expect(testJob.split("WORKSPACE_TEST_DATABASE_URL").length - 1).toBe(1);
 });
 
+test("installs the matching Chromium browser before the Workspace test task", async () => {
+  const workflow = await Bun.file(workflowPath).text();
+  const testJob = workflow.slice(workflow.indexOf("  test-functional:"));
+  const frozenInstallIndex = testJob.indexOf(
+    "- run: bun install --frozen-lockfile"
+  );
+  const browserInstallIndex = testJob.indexOf(
+    "- name: Install Workspace Playwright Chromium"
+  );
+  const lintIndex = testJob.indexOf("- name: Lint Workspace");
+  const testIndex = testJob.indexOf("- name: Run Workspace tests");
+  const browserStep = testJob.slice(browserInstallIndex, lintIndex);
+
+  expect(frozenInstallIndex).toBeGreaterThanOrEqual(0);
+  expect(browserInstallIndex).toBeGreaterThan(frozenInstallIndex);
+  expect(browserInstallIndex).toBeLessThan(lintIndex);
+  expect(browserInstallIndex).toBeLessThan(testIndex);
+  expect(browserStep).toContain("working-directory: apps/deskohub-workspace");
+  expect(browserStep).toContain(
+    "run: bun ./node_modules/@playwright/test/cli.js install --with-deps chromium"
+  );
+  expect(browserStep).not.toContain("npx");
+});
+
 test("passes the disposable test database through Turborepo at the test task only", async () => {
   const turbo = await Bun.file(
     resolve(import.meta.dir, "../turbo.json")
