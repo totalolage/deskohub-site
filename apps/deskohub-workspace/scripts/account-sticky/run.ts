@@ -756,22 +756,21 @@ const traverseDesktopFocus = async (
   const start = await readGeometry(page);
   const asideScrollTopBefore = start.asideStyle.scrollTop;
   const steps: FocusStepEvidence[] = [];
-  const expectedLabels = (
-    await page.locator("aside nav button").allTextContents()
-  ).map((label) => label.trim().replace(/\s+/g, " "));
-  const navButtonCount = await page.locator("aside nav button").count();
+  const visibleNavButtons = page.locator("aside nav button:visible");
+  const expectedLabels = (await visibleNavButtons.allTextContents()).map(
+    (label) => label.trim().replace(/\s+/g, " ")
+  );
+  const navButtonCount = await visibleNavButtons.count();
   if (navButtonCount !== 5) {
     failures.push(
       `${scenario.width}x${scenario.height}/${scenario.content}/${scenario.sidebar}/${traversal.label}: expected five account nav buttons, got ${navButtonCount}`
     );
   }
   try {
-    await page.evaluate(() => {
-      const firstNavButton =
-        document.querySelector<HTMLButtonElement>("aside nav button");
-      if (!firstNavButton)
-        throw new Error("first account nav button is missing");
-      firstNavButton.focus({ preventScroll: true });
+    await visibleNavButtons.first().evaluate((element) => {
+      if (!(element instanceof HTMLButtonElement))
+        throw new Error("first account nav button is not a button");
+      element.focus({ preventScroll: true });
     });
     for (let index = 0; index < 16; index += 1) {
       const step = await readFocusedStepEvidence(page);

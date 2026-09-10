@@ -7,7 +7,13 @@ import {
   mock,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import {
   workspaceRouterRefresh,
@@ -193,24 +199,38 @@ describe("AccountPage states", () => {
 
   test("renders the linked account with profile, reservations, sign out, and deletion", async () => {
     const view = await renderState(linkedState);
+    const sectionNavigation = within(
+      view.getByRole("group", { name: "Account section" })
+    );
 
     expect(view.getByText("My Workspace")).toBeTruthy();
-    expect(view.getByRole("button", { name: /^Reservations/ })).toBeTruthy();
+    expect(
+      sectionNavigation.getByRole("button", { name: /^Reservations/ })
+    ).toBeTruthy();
     expect(view.getByText("Delete my account")).toBeTruthy();
     expect(view.getByText("Sign out")).toBeTruthy();
     expect(view.container.querySelectorAll("main")).toHaveLength(1);
 
-    fireEvent.click(view.getByRole("button", { name: "Profile & identity" }));
+    fireEvent.click(
+      sectionNavigation.getByRole("button", { name: "Profile & identity" })
+    );
     expect(view.getByText("Save profile")).toBeTruthy();
 
-    fireEvent.click(view.getByRole("button", { name: "Billing & invoices" }));
+    fireEvent.click(
+      sectionNavigation.getByRole("button", { name: "Billing & invoices" })
+    );
     expect(view.getByText("Billing details")).toBeTruthy();
     expect(view.getByText("Save profile")).toBeTruthy();
 
     view.unmount();
     const czechView = await renderState(linkedState, "cs-CZ");
+    const czechSectionNavigation = within(
+      czechView.getByRole("group", { name: "Account section" })
+    );
     fireEvent.click(
-      czechView.getByRole("button", { name: "Profile & identity" })
+      czechSectionNavigation.getByRole("button", {
+        name: "Profile & identity",
+      })
     );
     expect(czechView.getByText("Fakturační údaje")).toBeTruthy();
   });

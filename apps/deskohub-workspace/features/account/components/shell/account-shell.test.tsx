@@ -8,7 +8,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import {
   registerWorkspaceComponentTestEnv,
@@ -40,6 +40,41 @@ const labels: AccountShellProps["labels"] = {
   },
 };
 
+class TestResizeObserver implements ResizeObserver {
+  static readonly instances: TestResizeObserver[] = [];
+
+  readonly callback: ResizeObserverCallback;
+  observedElement: Element | null = null;
+  disconnectCalls = 0;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    TestResizeObserver.instances.push(this);
+  }
+
+  disconnect() {
+    this.disconnectCalls += 1;
+  }
+
+  observe(target: Element) {
+    this.observedElement = target;
+  }
+
+  unobserve() {}
+
+  trigger() {
+    this.callback([], this);
+  }
+}
+
+const originalResizeObserver = globalThis.ResizeObserver;
+
+function getLatestResizeObserver() {
+  const observer = TestResizeObserver.instances.at(-1);
+  if (!observer) throw new Error("ResizeObserver was not created");
+  return observer;
+}
+
 function makeProps(
   overrides: Partial<AccountShellProps> = {}
 ): AccountShellProps {
@@ -58,16 +93,36 @@ function renderShell(overrides: Partial<AccountShellProps> = {}) {
   return render(<AccountShell {...makeProps(overrides)} />);
 }
 
+function getDesktopNavigation(view: { readonly container: HTMLElement }) {
+  const desktopNavigation =
+    view.container.querySelector<HTMLDivElement>("div.hidden");
+  if (!desktopNavigation)
+    throw new Error("Desktop account navigation was not rendered");
+  return within(desktopNavigation);
+}
+
+function getDesktopButton(
+  view: { readonly container: HTMLElement },
+  section: AccountSection
+) {
+  return getDesktopNavigation(view).getByRole("button", {
+    name: labels.sections[section],
+  });
+}
+
 describe("AccountShell", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
+    globalThis.ResizeObserver = TestResizeObserver;
   });
 
   afterEach(() => {
     cleanup();
+    TestResizeObserver.instances.length = 0;
   });
 
   afterAll(() => {
+    globalThis.ResizeObserver = originalResizeObserver;
     unregisterWorkspaceComponentTestEnv();
   });
 
@@ -92,7 +147,7 @@ describe("AccountShell", () => {
     ).toBeTruthy();
     expect(view.getByTestId("account-content")).toBeTruthy();
 
-    fireEvent.click(view.getByRole("button", { name: "Reservations" }));
+    fireEvent.click(getDesktopButton(view, "reservations"));
     fireEvent.click(view.getByRole("button", { name: "Sign out" }));
 
     expect(onSectionChange).toHaveBeenCalledWith("reservations");
@@ -109,9 +164,7 @@ describe("AccountShell", () => {
     });
 
     for (const section of sectionKeys) {
-      const button = view.getByRole("button", {
-        name: labels.sections[section],
-      });
+      const button = getDesktopButton(view, section);
 
       expect(button.getAttribute("aria-current")).toBe(
         section === "legal" ? "page" : null
@@ -123,18 +176,18 @@ describe("AccountShell", () => {
       sectionKeys
     );
     expect(
-      view
+      getDesktopNavigation(view)
         .getByRole("button", { name: labels.sections.legal })
         .getAttribute("aria-current")
     ).toBe("page");
     expect(
-      view.getByRole("button", { name: labels.sections.legal }).className
+      getDesktopNavigation(view).getByRole("button", {
+        name: labels.sections.legal,
+      }).className
     ).toContain("bg-[#00024f]");
 
     view.rerender(<AccountShell {...makeProps({ activeSection: "danger" })} />);
-    const dangerButton = view.getByRole("button", {
-      name: labels.sections.danger,
-    });
+    const dangerButton = getDesktopButton(view, "danger");
     expect(dangerButton.className).toContain("bg-[#e71545]");
     expect(dangerButton.className).toContain("text-white");
     expect(dangerButton.className).toContain("hover:bg-[#e71545]");
@@ -172,9 +225,7 @@ describe("AccountShell", () => {
     if (!desktopRowGroup)
       throw new Error("Desktop account rows were not rendered");
     expect(desktopRowGroup.className).toContain("gap-[6px]");
-    const reservationButton = view.getByRole("button", {
-      name: labels.sections.reservations,
-    });
+    const reservationButton = getDesktopButton(view, "reservations");
     expect(reservationButton.className).toContain("h-auto");
     expect(reservationButton.className).toContain("min-h-[40px]");
     expect(reservationButton.className).toContain("text-[15px]");
@@ -207,10 +258,8 @@ describe("AccountShell", () => {
     const view = renderShell();
     const aside = view.container.querySelector("aside");
     if (!aside) throw new Error("Account shell aside was not rendered");
-    const topTarget = view.getByRole("button", { name: "Reservations" });
-    const bottomTarget = view.getByRole("button", {
-      name: "Billing & invoices",
-    });
+    const topTarget = getDesktopButton(view, "reservations");
+    const bottomTarget = getDesktopButton(view, "billing");
     const topRect = mock(() => ({ bottom: 140, top: 80 }));
     const bottomRect = mock(() => ({
       bottom: window.innerHeight + 20,
@@ -263,7 +312,7 @@ describe("AccountShell", () => {
     const view = renderShell();
     const aside = view.container.querySelector("aside");
     if (!aside) throw new Error("Account shell aside was not rendered");
-    const target = view.getByRole("button", { name: "Reservations" });
+    const target = getDesktopButton(view, "reservations");
     const getBoundingClientRect = mock(() => ({ bottom: 160, top: 120 }));
     const scrollIntoView = mock(() => undefined);
     Object.defineProperty(target, "getBoundingClientRect", {
@@ -293,7 +342,7 @@ describe("AccountShell", () => {
     const view = renderShell();
     const aside = view.container.querySelector("aside");
     if (!aside) throw new Error("Account shell aside was not rendered");
-    const target = view.getByRole("button", { name: "Reservations" });
+    const target = getDesktopButton(view, "reservations");
     const getBoundingClientRect = mock(() => {
       throw new Error("Static mobile focus should not read target geometry");
     });
@@ -389,7 +438,7 @@ describe("AccountShell", () => {
     );
   });
 
-  test("uses a controlled native mobile select", () => {
+  test("uses a controlled labelled mobile button group", () => {
     const onSectionChange = mock((section: AccountSection) => {
       void section;
     });
@@ -397,28 +446,307 @@ describe("AccountShell", () => {
       activeSection: "reservations",
       onSectionChange,
     });
-    const select = view.getByRole("combobox", {
+    const group = view.getByRole("group", {
       name: labels.mobileSection,
-    }) as HTMLSelectElement;
+    });
+    const mobileNavigation = group.querySelector<HTMLDivElement>(
+      "[data-account-mobile-navigation]"
+    );
+    if (!mobileNavigation)
+      throw new Error("Mobile account navigation was not rendered");
+    const buttons = within(group).getAllByRole("button");
 
-    expect(select.value).toBe("reservations");
-    fireEvent.change(select, { target: { value: "billing" } });
+    expect(view.getByRole("navigation").querySelector("select")).toBeNull();
+    expect(
+      mobileNavigation.getAttribute("data-account-mobile-navigation")
+    ).toBe("");
+    expect(mobileNavigation.className).toContain("min-w-0");
+    expect(mobileNavigation.className).toContain("flex");
+    expect(mobileNavigation.className).toContain("flex-nowrap");
+    expect(mobileNavigation.className).toContain("overflow-x-auto");
+    expect(mobileNavigation.className).toContain("touch-pan-x");
+    expect(mobileNavigation.className).toContain("px-1");
+    expect(mobileNavigation.className).toContain("py-1");
+    expect(buttons).toHaveLength(sectionKeys.length);
+    expect(
+      buttons.map((button) => button.getAttribute("data-account-section"))
+    ).toEqual(sectionKeys);
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(
+      sectionKeys.map((section) => labels.sections[section])
+    );
+    for (const button of buttons) {
+      expect(button.getAttribute("type")).toBe("button");
+      expect(button.className).toContain("min-h-[44px]");
+      expect(button.className).toContain("shrink-0");
+      expect(button.className).toContain("whitespace-nowrap");
+      expect(button.className).toContain("focus-visible:ring-inset");
+      expect(button.className).toContain("focus-visible:ring-offset-0");
+    }
+    expect(group.querySelector('[role="tablist"]')).toBeNull();
+    expect(group.querySelector('[role="tab"]')).toBeNull();
+
+    expect(
+      within(group)
+        .getByRole("button", { name: labels.sections.reservations })
+        .getAttribute("aria-current")
+    ).toBe("page");
+    expect(onSectionChange).not.toHaveBeenCalled();
+    expect(
+      within(group)
+        .getByRole("button", { name: labels.sections.billing })
+        .getAttribute("aria-current")
+    ).toBeNull();
+
+    fireEvent.click(
+      within(group).getByRole("button", { name: labels.sections.billing })
+    );
 
     expect(onSectionChange).toHaveBeenCalledWith("billing");
-    expect(select.value).toBe("reservations");
+    expect(onSectionChange).toHaveBeenCalledTimes(1);
+    expect(
+      within(group)
+        .getByRole("button", { name: labels.sections.reservations })
+        .getAttribute("aria-current")
+    ).toBe("page");
 
     view.rerender(
       <AccountShell
         {...makeProps({ activeSection: "billing", onSectionChange })}
       />
     );
-    expect(select.value).toBe("billing");
+    expect(onSectionChange).toHaveBeenCalledTimes(1);
+    for (const section of sectionKeys) {
+      expect(
+        within(group)
+          .getByRole("button", { name: labels.sections[section] })
+          .getAttribute("aria-current")
+      ).toBe(section === "billing" ? "page" : null);
+    }
+    expect(
+      within(group).getByRole("button", { name: labels.sections.billing })
+        .className
+    ).toContain("bg-[#00024f]");
+    expect(
+      within(group).getByRole("button", { name: labels.sections.danger })
+        .className
+    ).toContain("text-[#d71945]");
+
+    onSectionChange.mockClear();
+    for (const section of sectionKeys) {
+      fireEvent.click(
+        within(group).getByRole("button", {
+          name: labels.sections[section],
+        })
+      );
+    }
+    expect(onSectionChange.mock.calls.map(([section]) => section)).toEqual(
+      sectionKeys
+    );
+  });
+
+  test("scrolls the active mobile section locally without stealing focus", () => {
+    const originalGetBoundingClientRect =
+      Element.prototype.getBoundingClientRect;
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const sectionPositions: Record<string, number> = {};
+    const makeRect = (left: number, right: number): DOMRect =>
+      ({
+        bottom: 44,
+        height: 44,
+        left,
+        right,
+        top: 0,
+        width: right - left,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    Element.prototype.getBoundingClientRect = function () {
+      const section = this.getAttribute("data-account-section");
+      if (section !== null && sectionPositions[section] !== undefined) {
+        const mobileNavigation = this.closest(
+          "[data-account-mobile-navigation]"
+        );
+        const scrollLeft =
+          mobileNavigation instanceof HTMLElement
+            ? mobileNavigation.scrollLeft
+            : 0;
+        const left = sectionPositions[section];
+        return makeRect(left - scrollLeft, left + 100 - scrollLeft);
+      }
+      if (this.hasAttribute("data-account-mobile-navigation")) {
+        return makeRect(0, 200);
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+    Element.prototype.scrollIntoView = mock(() => undefined);
+
+    try {
+      sectionPositions.billing = 240;
+      sectionPositions.danger = 400;
+      const view = renderShell({ activeSection: "billing" });
+      const group = view.getByRole("group", { name: labels.mobileSection });
+      const mobileNavigation = group.querySelector<HTMLDivElement>(
+        "[data-account-mobile-navigation]"
+      );
+      if (!mobileNavigation)
+        throw new Error("Mobile account navigation was not rendered");
+      const billingButton = within(group).getByRole("button", {
+        name: labels.sections.billing,
+      });
+      billingButton.focus();
+
+      expect(mobileNavigation.scrollLeft).toBe(140);
+      expect(document.activeElement).toBe(billingButton);
+
+      view.rerender(
+        <AccountShell {...makeProps({ activeSection: "danger" })} />
+      );
+
+      expect(mobileNavigation.scrollLeft).toBe(300);
+      expect(document.activeElement).toBe(billingButton);
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  test("re-reveals the active mobile section when hidden layout becomes visible", () => {
+    const originalGetBoundingClientRect =
+      Element.prototype.getBoundingClientRect;
+    let isVisible = false;
+    const sectionPosition = 400;
+    const makeRect = (left: number, right: number): DOMRect =>
+      ({
+        bottom: 44,
+        height: 44,
+        left,
+        right,
+        top: 0,
+        width: right - left,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    Element.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute("data-account-mobile-navigation")) {
+        return makeRect(0, isVisible ? 200 : 0);
+      }
+      if (this.getAttribute("data-account-section") === "danger") {
+        const mobileNavigation = this.closest(
+          "[data-account-mobile-navigation]"
+        );
+        const scrollLeft =
+          mobileNavigation instanceof HTMLElement
+            ? mobileNavigation.scrollLeft
+            : 0;
+        return makeRect(
+          sectionPosition - scrollLeft,
+          sectionPosition + 100 - scrollLeft
+        );
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    try {
+      const view = renderShell({ activeSection: "danger" });
+      const group = view.getByRole("group", { name: labels.mobileSection });
+      const mobileNavigation = group.querySelector<HTMLDivElement>(
+        "[data-account-mobile-navigation]"
+      );
+      if (!mobileNavigation)
+        throw new Error("Mobile account navigation was not rendered");
+      const observer = getLatestResizeObserver();
+
+      expect(observer.observedElement).toBe(mobileNavigation);
+      expect(mobileNavigation.scrollLeft).toBe(0);
+
+      isVisible = true;
+      observer.trigger();
+
+      expect(mobileNavigation.scrollLeft).toBe(300);
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  test("re-reveals the active mobile section when its container narrows", () => {
+    const originalGetBoundingClientRect =
+      Element.prototype.getBoundingClientRect;
+    let navigationWidth = 500;
+    const sectionPosition = 400;
+    const makeRect = (left: number, right: number): DOMRect =>
+      ({
+        bottom: 44,
+        height: 44,
+        left,
+        right,
+        top: 0,
+        width: right - left,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    Element.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute("data-account-mobile-navigation")) {
+        return makeRect(0, navigationWidth);
+      }
+      if (this.getAttribute("data-account-section") === "danger") {
+        const mobileNavigation = this.closest(
+          "[data-account-mobile-navigation]"
+        );
+        const scrollLeft =
+          mobileNavigation instanceof HTMLElement
+            ? mobileNavigation.scrollLeft
+            : 0;
+        return makeRect(
+          sectionPosition - scrollLeft,
+          sectionPosition + 100 - scrollLeft
+        );
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    try {
+      const view = renderShell({ activeSection: "danger" });
+      const group = view.getByRole("group", { name: labels.mobileSection });
+      const mobileNavigation = group.querySelector<HTMLDivElement>(
+        "[data-account-mobile-navigation]"
+      );
+      if (!mobileNavigation)
+        throw new Error("Mobile account navigation was not rendered");
+      const observer = getLatestResizeObserver();
+
+      expect(mobileNavigation.scrollLeft).toBe(0);
+
+      navigationWidth = 200;
+      observer.trigger();
+
+      expect(mobileNavigation.scrollLeft).toBe(300);
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  test("disconnects the mobile ResizeObserver when unmounted", () => {
+    const view = renderShell({ activeSection: "danger" });
+    const observer = getLatestResizeObserver();
+
+    view.unmount();
+
+    expect(observer.disconnectCalls).toBe(1);
   });
 
   test("renders only valid supplied reservation counts, including zero", () => {
     const view = renderShell();
     const reservationButton = () =>
-      view.getByRole("button", { name: /^Reservations/ });
+      getDesktopNavigation(view).getByRole("button", {
+        name: /^Reservations/,
+      });
 
     expect(reservationButton().querySelector("span.ml-auto")).toBeNull();
 
@@ -454,7 +782,7 @@ describe("AccountShell", () => {
         />
       );
 
-      const badge = view
+      const badge = getDesktopNavigation(view)
         .getByRole("button", { name: /^Reservations/ })
         .querySelector("span.ml-auto");
       if (!badge) throw new Error("Reservation count badge was not rendered");
@@ -486,12 +814,14 @@ describe("AccountShell", () => {
 
     expect(view.getByRole("heading", { level: 1, name: title })).toBeTruthy();
     expect(
-      view.getByRole("button", {
+      getDesktopNavigation(view).getByRole("button", {
         name: localizedLabels.sections.legal,
       })
     ).toBeTruthy();
     expect(
-      view.getByRole("option", {
+      within(
+        view.getByRole("group", { name: localizedLabels.mobileSection })
+      ).getByRole("button", {
         name: localizedLabels.sections.reservations,
       })
     ).toBeTruthy();

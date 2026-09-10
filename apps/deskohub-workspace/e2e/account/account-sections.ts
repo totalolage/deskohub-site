@@ -3,8 +3,6 @@ import type { AccountSection } from "@/features/account/components/shell/account
 import {
   clickBrowserElement,
   evalBrowserScript,
-  focusBrowserElement,
-  pressBrowserKey,
   waitForBrowserCondition,
 } from "../browser";
 import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
@@ -12,16 +10,8 @@ import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 
 const accountNavigationLabel = "Account navigation";
-const accountMobileSectionLabel = "Account section";
 const desktopBreakpoint = 768;
-const accountSectionOrder = [
-  "reservations",
-  "profile",
-  "billing",
-  "legal",
-  "danger",
-] as const satisfies readonly AccountSection[];
-const accountSectionSelectSelector = `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] select`;
+const accountMobileNavigationSelector = `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] [data-account-mobile-navigation]`;
 
 export const accountSectionLabels = {
   reservations: "Reservations",
@@ -41,17 +31,17 @@ export const accountSectionLandmarks = {
 } as const satisfies Readonly<Record<AccountSection, string>>;
 
 type AccountSectionWaitInput = {
-  readonly desktop: boolean;
+  readonly desktop: boolean | null;
   readonly landmark: string;
   readonly label: string;
-  readonly mobileSelectSelector: string;
+  readonly mobileNavigationSelector: string;
   readonly navigationLabel: string;
   readonly section: AccountSection;
 };
 
 export type AccountSectionPage = {
   readonly getByRole: (
-    role: "button" | "combobox",
+    role: "button",
     options?: { readonly exact?: boolean; readonly name?: string }
   ) => AccountSectionLocator;
   readonly viewportSize: () => {
@@ -68,21 +58,18 @@ export type AccountSectionPage = {
 type AccountSectionLocator = {
   readonly click: (options?: { readonly timeout?: number }) => Promise<void>;
   readonly isVisible: () => Promise<boolean>;
-  readonly selectOption: (
-    value: string,
-    options?: { readonly timeout?: number }
-  ) => Promise<readonly string[]>;
 };
 
 const accountSectionIsReady = ({
   desktop,
   landmark,
   label,
-  mobileSelectSelector,
+  mobileNavigationSelector,
   navigationLabel,
   section,
 }: AccountSectionWaitInput): boolean => {
-  const isVisible = (element: Element): boolean => {
+  const isVisible = (element: Element | null): boolean => {
+    if (element === null) return false;
     for (
       let current: Element | null = element;
       current !== null;
@@ -100,12 +87,18 @@ const accountSectionIsReady = ({
   const panel = document.querySelector(landmark);
   if (panel === null || !isVisible(panel)) return false;
 
-  if (desktop) {
+  const responsiveDesktop =
+    desktop === null
+      ? !isVisible(document.querySelector(mobileNavigationSelector))
+      : desktop;
+
+  if (responsiveDesktop) {
     const selectedButton = Array.from(
       document.querySelectorAll<HTMLButtonElement>(
         `nav[aria-label=${JSON.stringify(navigationLabel)}] button[aria-current="page"]`
       )
     ).find((button) => {
+      if (!isVisible(button)) return false;
       const primaryLabel =
         button
           .querySelector("span")
@@ -116,31 +109,40 @@ const accountSectionIsReady = ({
     return selectedButton !== undefined && isVisible(selectedButton);
   }
 
-  const select =
-    document.querySelector<HTMLSelectElement>(mobileSelectSelector);
-  return select !== null && isVisible(select) && select.value === section;
+  const selectedButtons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>(
+      `${mobileNavigationSelector} button[data-account-section=${JSON.stringify(section)}][aria-current="page"]`
+    )
+  ).filter(isVisible);
+  return (
+    selectedButtons.length === 1 &&
+    selectedButtons[0]?.textContent?.replaceAll(/\s+/g, " ").trim() === label
+  );
 };
 
 const makeAccountSectionWaitInput = (
   section: AccountSection,
-  desktop: boolean
+  desktop: boolean | null
 ): AccountSectionWaitInput => ({
   desktop,
   landmark: accountSectionLandmarks[section],
   label: accountSectionLabels[section],
-  mobileSelectSelector: accountSectionSelectSelector,
+  mobileNavigationSelector: accountMobileNavigationSelector,
   navigationLabel: accountNavigationLabel,
   section,
 });
 
 const makeAccountSectionWaitCondition = (
   section: AccountSection,
-  desktop: boolean
+  desktop: boolean | null
 ) =>
   `(${accountSectionIsReady.toString()})(${JSON.stringify(makeAccountSectionWaitInput(section, desktop))})`;
 
 const accountSectionButtonSelector = (section: AccountSection) =>
-  `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] button:has-text(${JSON.stringify(accountSectionLabels[section])})`;
+  `nav[aria-label=${JSON.stringify(accountNavigationLabel)}] button:not([data-account-section]):has-text(${JSON.stringify(accountSectionLabels[section])})`;
+
+const accountMobileSectionButtonSelector = (section: AccountSection) =>
+  `${accountMobileNavigationSelector} button[data-account-section=${JSON.stringify(section)}]`;
 
 const readDesktopMode = (
   run: Runner,
@@ -170,26 +172,15 @@ export const selectAccountSection = async (
 ): Promise<void> => {
   const timeout = workspaceE2ETimeouts.browserAction;
   const label = accountSectionLabels[section];
-  const desktopButton = page.getByRole("button", {
+  const sectionButton = page.getByRole("button", {
     exact: false,
     name: label,
   });
   const viewport = page.viewportSize();
   const desktop =
-    viewport === null
-      ? await desktopButton.isVisible()
-      : viewport.width >= desktopBreakpoint;
+    viewport === null ? null : viewport.width >= desktopBreakpoint;
 
-  if (desktop) {
-    await desktopButton.click({ timeout });
-  } else {
-    await page
-      .getByRole("combobox", {
-        exact: true,
-        name: accountMobileSectionLabel,
-      })
-      .selectOption(section, { timeout });
-  }
+  await sectionButton.click({ timeout });
 
   await page.waitForFunction(
     accountSectionIsReady,
@@ -214,21 +205,14 @@ export const selectAccountSectionInRunner = (
         { timeoutMs: workspaceE2ETimeouts.browserAction }
       );
     } else {
-      yield* focusBrowserElement(run, session, accountSectionSelectSelector, {
-        timeoutMs: workspaceE2ETimeouts.browserAction,
-      });
-      yield* pressBrowserKey(run, session, "Home", {
-        timeoutMs: workspaceE2ETimeouts.browserAction,
-      });
-      const targetIndex = accountSectionOrder.indexOf(section);
-      for (let index = 0; index < targetIndex; index += 1) {
-        yield* pressBrowserKey(run, session, "ArrowDown", {
+      yield* clickBrowserElement(
+        run,
+        session,
+        accountMobileSectionButtonSelector(section),
+        {
           timeoutMs: workspaceE2ETimeouts.browserAction,
-        });
-      }
-      yield* pressBrowserKey(run, session, "Tab", {
-        timeoutMs: workspaceE2ETimeouts.browserAction,
-      });
+        }
+      );
     }
 
     yield* waitForBrowserCondition(

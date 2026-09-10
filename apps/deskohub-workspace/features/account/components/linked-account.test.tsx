@@ -7,7 +7,13 @@ import {
   mock,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import type { CustomerProfileInput } from "@/features/account/contracts";
 import { workspaceRouterRefresh } from "@/shared/testing/workspace-component-module-mocks";
@@ -154,6 +160,15 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
   },
 }));
 
+function getDesktopSectionNavigation(view: {
+  readonly container: HTMLElement;
+}) {
+  const navigation = view.container.querySelector<HTMLDivElement>("div.hidden");
+  if (!navigation)
+    throw new Error("Desktop account navigation was not rendered");
+  return within(navigation);
+}
+
 const profile = {
   firstName: "Ada",
   lastName: "Lovelace",
@@ -214,12 +229,18 @@ describe("LinkedAccount", () => {
         profile={profile}
       />
     );
+    const sectionNavigation = within(
+      view.getByRole("group", { name: "Account section" })
+    );
+    const desktopSectionNavigation = getDesktopSectionNavigation(view);
 
     expect(
-      view.getByRole("button", { name: /^Reservations/ }).textContent
+      sectionNavigation.getByRole("button", { name: /^Reservations/ })
+        .textContent
     ).toContain("Reservations");
     expect(
-      view.getByRole("button", { name: /^Reservations/ }).textContent
+      desktopSectionNavigation.getByRole("button", { name: /^Reservations/ })
+        .textContent
     ).toContain("1");
     expect(
       view.container.querySelectorAll("#account-profile-form")
@@ -240,12 +261,16 @@ describe("LinkedAccount", () => {
       ).getAttribute("href")
     ).toBe("/en-US/contact");
 
-    fireEvent.click(view.getByRole("button", { name: "Profile & identity" }));
+    fireEvent.click(
+      sectionNavigation.getByRole("button", { name: "Profile & identity" })
+    );
     const profileSubmit = view.getByRole("button", { name: "Save profile" });
     expect(profileSubmit.className).toContain("bg-burned-orange");
     expect(profileSubmit.className).toContain("h-9");
     expect(profileSubmit.className).toContain("rounded-xl");
-    fireEvent.click(view.getByRole("button", { name: "Billing & invoices" }));
+    fireEvent.click(
+      sectionNavigation.getByRole("button", { name: "Billing & invoices" })
+    );
     const billingSubmit = view.getByRole("button", { name: "Save profile" });
     expect(billingSubmit.className).toContain("bg-navy-blue");
     expect(
@@ -259,14 +284,20 @@ describe("LinkedAccount", () => {
       view.container.querySelectorAll("#account-profile-submit")
     ).toHaveLength(1);
 
-    fireEvent.click(view.getByRole("button", { name: /^Reservations/ }));
+    fireEvent.click(
+      sectionNavigation.getByRole("button", { name: /^Reservations/ })
+    );
     expect(
       view.container.querySelector("#account-profile-form")?.parentElement
         ?.hidden
     ).toBe(true);
-    fireEvent.click(view.getByRole("button", { name: "Legal & privacy" }));
+    fireEvent.click(
+      sectionNavigation.getByRole("button", { name: "Legal & privacy" })
+    );
     expect(view.getByText("Legal, privacy & GDPR consents")).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "Danger zone" }));
+    fireEvent.click(
+      sectionNavigation.getByRole("button", { name: "Danger zone" })
+    );
     expect(view.getByText("Delete my account")).toBeTruthy();
   });
 
@@ -280,8 +311,13 @@ describe("LinkedAccount", () => {
         profile={profile}
       />
     );
+    const sectionNavigation = within(
+      view.getByRole("group", { name: "Account section" })
+    );
 
-    fireEvent.click(view.getByRole("button", { name: "Billing & invoices" }));
+    fireEvent.click(
+      sectionNavigation.getByRole("button", { name: "Billing & invoices" })
+    );
     await act(async () => {
       fireEvent.input(view.getByLabelText("First name"), {
         target: { value: "" },
@@ -299,7 +335,7 @@ describe("LinkedAccount", () => {
     ).toBe(false);
     expect(view.getByText("Enter your first name.")).toBeTruthy();
     expect(
-      view
+      sectionNavigation
         .getByRole("button", { name: "Profile & identity" })
         .getAttribute("aria-current")
     ).toBe("page");
@@ -325,14 +361,21 @@ describe("LinkedAccount", () => {
           />
         </UnsavedChangesProvider>
       );
+      const sectionNavigation = within(
+        view.getByRole("group", { name: "Account section" })
+      );
 
-      fireEvent.click(view.getByRole("button", { name: "Profile & identity" }));
+      fireEvent.click(
+        sectionNavigation.getByRole("button", { name: "Profile & identity" })
+      );
       await act(async () => {
         fireEvent.input(view.getByLabelText("First name"), {
           target: { value: "Grace" },
         });
       });
-      fireEvent.click(view.getByRole("button", { name: /^Reservations/ }));
+      fireEvent.click(
+        sectionNavigation.getByRole("button", { name: /^Reservations/ })
+      );
 
       const profilePanel = view.container.querySelector(
         "#account-profile-form"
