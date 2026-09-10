@@ -51,7 +51,11 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
   profile: {
     avatarUnavailableDescription: "Profile photos are not available here.",
     avatarUnavailableLabel: "Profile photo unavailable",
-    emailLabel: "Email address",
+    emailLabel: "Email",
+    emailVerification: {
+      unverified: "This email still needs verification.",
+      verified: "This email has been successfully verified.",
+    },
     languageLabel: "Preferred communication language",
     languageUnavailableDescription: "Language preferences are not saved yet.",
     languageUnavailableValue: "Not set",
@@ -174,9 +178,7 @@ describe("AccountPage states", () => {
     });
 
     expect(view.getByText("Complete your profile")).toBeTruthy();
-    const email = view.getByLabelText(
-      "Verified login email"
-    ) as HTMLInputElement;
+    const email = view.getByLabelText("Email") as HTMLInputElement;
     expect(email.value).toBe("ada@example.test");
     expect(email.readOnly).toBe(true);
     expect(view.getByLabelText("First name")).toBeTruthy();

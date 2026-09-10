@@ -7,6 +7,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import {
+  EmailVerificationStatus,
+  type EmailVerificationStatusCopy,
+} from "./email-verification-status";
 
 /*
  * Direction: extend the account's quiet Sculpin operate surface with a white
@@ -19,6 +23,7 @@ export interface ProfileScreenCopy {
   readonly memberFallback: string;
   readonly verifiedEmail: string;
   readonly emailLabel: string;
+  readonly emailVerification: EmailVerificationStatusCopy;
   readonly avatarUnavailableLabel: string;
   readonly avatarUnavailableDescription: string;
   readonly languageLabel: string;
@@ -126,12 +131,10 @@ export function ProfileScreen({
           </legend>
           <div className="flex min-h-11 min-w-0 flex-wrap items-center gap-x-3 gap-y-1 rounded-2xl border border-[#cad3df] bg-[#f8fafc] px-3 py-2 text-base leading-6 text-[#202b3d]">
             <span className="min-w-0 flex-1 break-all">{email}</span>
-            <span className="inline-flex min-w-0 max-w-full items-center gap-1 text-sm font-semibold text-[#006b50]">
-              <Check aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-0 flex-1 break-words whitespace-normal">
-                {copy.verifiedEmail}
-              </span>
-            </span>
+            <EmailVerificationStatus
+              copy={copy.emailVerification}
+              emailVerified={true}
+            />
           </div>
         </fieldset>
       </div>

@@ -408,6 +408,11 @@ const productionSectionTargets = {
   danger: "#delete-account-trigger",
 } as const satisfies Record<AccountVisualScreen, string>;
 
+const verifiedLoginEmailExplanationTexts = [
+  "This email has been successfully verified.",
+  "Tento e-mail byl úspěšně ověřen.",
+] as const;
+
 const verifiedLoginEmailStatusTexts = [
   "Verified",
   "Verified login email",
@@ -415,6 +420,7 @@ const verifiedLoginEmailStatusTexts = [
   "Ověřený přihlašovací e-mail",
   "Ověřený e-mail",
   "E-mail ověřen",
+  ...verifiedLoginEmailExplanationTexts,
 ] as const;
 
 type MainCapture = {
@@ -1877,7 +1883,14 @@ export const readInitialDomProbe = async (
   }
 ): Promise<InitialDomProbe> =>
   page.evaluate(
-    ({ deviceScaleFactor, locale, mode, emailProbe, statusTexts }) => {
+    ({
+      deviceScaleFactor,
+      locale,
+      mode,
+      emailProbe,
+      statusTexts,
+      iconStatusTexts,
+    }) => {
       type ProbeRect = {
         readonly x: number;
         readonly y: number;
@@ -2250,16 +2263,27 @@ export const readInitialDomProbe = async (
                 Node.DOCUMENT_POSITION_FOLLOWING
             )
           : false;
+      const normalizedIconStatusTexts = new Set(
+        iconStatusTexts.map((text) => normalizeText(text))
+      );
+      const emailWrapper = emailNode?.parentElement?.parentElement ?? null;
+      const isVerifiedIconButton = (element: Element) =>
+        element instanceof HTMLButtonElement &&
+        element.parentElement === emailWrapper &&
+        isAfterEmail(element) &&
+        normalizedIconStatusTexts.has(
+          normalizeText(element.getAttribute("aria-label") ?? "")
+        );
       const statusElementFor = (container: Element, email: string) =>
         [container, ...container.querySelectorAll("*")]
           .filter((element) => {
             const text = normalizeText(element.textContent ?? "");
-            return (
+            const isTextBadge =
               element !== emailNode?.parentElement &&
               !text.includes(email) &&
               isVerifiedStatus(text) &&
-              isAfterEmail(element)
-            );
+              isAfterEmail(element);
+            return isTextBadge || isVerifiedIconButton(element);
           })
           .sort((first, second) => {
             const firstDepth = first.querySelectorAll("*").length;
@@ -2270,9 +2294,9 @@ export const readInitialDomProbe = async (
         node: Node,
         field: ProbeRect,
         text: string,
-        element: Element
+        element: Element,
+        rects: readonly ProbeRect[] = rangeRectsForNode(node)
       ): EmailTextEvidence => {
-        const rects = rangeRectsForNode(node);
         const withinField =
           rects.length > 0 && rects.every((rect) => contains(rect, field));
         const withinViewportHorizontally =
@@ -2431,12 +2455,24 @@ export const readInitialDomProbe = async (
               email,
               emailNode.parentElement!
             );
-            const statusText = normalizeText(statusElement.textContent ?? "");
+            const iconStatus = isVerifiedIconButton(statusElement);
+            const statusText = iconStatus
+              ? normalizeText(statusElement.getAttribute("aria-label") ?? "")
+              : normalizeText(statusElement.textContent ?? "");
+            const statusRect = iconStatus ? rectFor(statusElement) : null;
+            let statusRects: readonly ProbeRect[] | undefined;
+            if (iconStatus) {
+              statusRects =
+                statusRect && statusRect.width > 0 && statusRect.height > 0
+                  ? [statusRect]
+                  : [];
+            }
             const statusEvidence = rangeEvidence(
               statusElement,
               fieldRect,
               statusText,
-              statusElement
+              statusElement,
+              statusRects
             );
             const failures = [
               ...(emailEvidence.readable
@@ -2505,6 +2541,7 @@ export const readInitialDomProbe = async (
       mode,
       emailProbe,
       statusTexts: [...verifiedLoginEmailStatusTexts],
+      iconStatusTexts: [...verifiedLoginEmailExplanationTexts],
     }
   );
 
