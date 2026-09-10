@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 
 type Subscriber = () => void;
 
@@ -10,12 +10,26 @@ const notify = () => {
   for (const subscriber of subscribers) subscriber();
 };
 
+const handlePopState = () => notify();
+
 const subscribe = (subscriber: Subscriber) => {
   subscribers.add(subscriber);
-  return () => subscribers.delete(subscriber);
+  if (subscribers.size === 1 && globalThis.window !== undefined) {
+    window.addEventListener("popstate", handlePopState);
+  }
+
+  return () => {
+    subscribers.delete(subscriber);
+    if (subscribers.size === 0 && globalThis.window !== undefined) {
+      window.removeEventListener("popstate", handlePopState);
+    }
+  };
 };
 
-const getSnapshot = () => `${window.location.href}:${revision}`;
+const getSnapshot = () =>
+  globalThis.window === undefined
+    ? "server"
+    : `${window.location.href}:${revision}`;
 
 const getServerSnapshot = () => "server";
 
@@ -47,4 +61,11 @@ export function useRouter() {
 
 export function useNavigationState() {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+export function useSearchParams() {
+  useNavigationState();
+  const search = globalThis.window === undefined ? "" : window.location.search;
+
+  return useMemo(() => new URLSearchParams(search), [search]);
 }

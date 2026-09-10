@@ -20,12 +20,15 @@ import {
   type Browser,
   type BrowserContext,
   chromium,
+  expect,
   type Locator,
   type Page,
 } from "@playwright/test";
 import { Schema } from "effect";
 import postcss from "postcss";
 import loadPostCssConfig from "postcss-load-config";
+import { getAccountScreenCopy } from "../../features/account/components/account-screen-copy";
+import { m } from "../../features/i18n";
 import {
   accountMetricRegionGeometry,
   accountMetricRegionsByScreen,
@@ -273,6 +276,8 @@ type MobileSectionNavigation = {
 type DraftPersistenceReport = {
   readonly status: "passed" | "adapter-defined" | "failed";
   readonly method: "fresh-real-page-mobile-menu" | "adapter-defined" | "none";
+  readonly scope: "private-account-sections" | "adapter-defined";
+  readonly note: string;
   readonly submitted: false;
   readonly firstName: string | null;
   readonly companyName: string | null;
@@ -397,6 +402,33 @@ type NativeValidationReport = {
   readonly failures: readonly string[];
 };
 
+type PublicLegalNavigationReturn = {
+  readonly section: "profile" | "billing";
+  readonly pathname: string;
+  readonly search: string;
+  readonly selected: boolean;
+  readonly targetVisible: boolean;
+  readonly metadataScreen: string | null;
+};
+
+type PublicLegalNavigationReport = {
+  readonly status: "passed" | "failed";
+  readonly simulation: "visual-fixture-only";
+  readonly authentication: "not-proved";
+  readonly legalPathname: string | null;
+  readonly cookiePreferencesVisible: boolean;
+  readonly archiveDisabled: boolean;
+  readonly consentChanges: {
+    readonly analyticsEnabled: boolean;
+    readonly analyticsDisabled: boolean;
+    readonly acceptAll: boolean;
+    readonly rejectAll: boolean;
+    readonly persistedAfterRouteReturn: boolean;
+  };
+  readonly returns: readonly PublicLegalNavigationReturn[];
+  readonly failures: readonly string[];
+};
+
 const productionSectionTargets = {
   reservations: "#account-reservations-current-title",
   profile: "[data-slot='profile-screen']",
@@ -404,6 +436,58 @@ const productionSectionTargets = {
   legal: "a[href$='/privacy-policy']",
   danger: "#delete-account-trigger",
 } as const satisfies Record<AccountVisualScreen, string>;
+
+const publicLegalCookieCategories = [
+  "necessary",
+  "analytics",
+  "marketing",
+  "preferences",
+] as const;
+
+type PublicLegalConsentState = Record<
+  (typeof publicLegalCookieCategories)[number],
+  boolean
+>;
+
+const waitForPublicLegalConsentState = async (
+  page: Page,
+  expected: PublicLegalConsentState
+): Promise<boolean> => {
+  try {
+    await page.waitForFunction(
+      (expectedState) =>
+        Object.entries(expectedState).every(([category, expectedChecked]) => {
+          const control = document.getElementById(
+            `cookie-category-${category}`
+          );
+          return (
+            control instanceof HTMLButtonElement &&
+            control.getAttribute("aria-checked") === String(expectedChecked) &&
+            control.disabled === (category === "necessary")
+          );
+        }),
+      expected,
+      { timeout: 5_000 }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const waitForPublicLegalControlDisabled = async (
+  control: Locator,
+  expectedDisabled: boolean
+): Promise<boolean> => {
+  try {
+    await expect
+      .poll(() => control.isDisabled(), { timeout: 5_000 })
+      .toBe(expectedDisabled);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const verifiedLoginEmailExplanationTexts = [
   "This email has been successfully verified.",
@@ -662,6 +746,7 @@ type DesktopEvidence = {
   };
   readonly captureKind: MainCapture["kind"];
   readonly selection: ScreenSelection;
+  readonly routeComponent: string | null;
   readonly initialDomProbe: InitialDomProbe;
   readonly emailProbe: SelectedEmailProbe;
   readonly computedStyles: ComputedStyleEvidence;
@@ -713,6 +798,7 @@ type MobileEvidence = {
   readonly focusSelection: ScreenSelection;
   readonly sectionNavigation: MobileSectionNavigation;
   readonly draftPersistence: DraftPersistenceReport;
+  readonly publicLegalNavigation: PublicLegalNavigationReport | null;
   readonly computedStyles: ComputedStyleEvidence;
   readonly files: { readonly screenshot: string; readonly focus: string };
   readonly hashes: Record<"screenshot" | "focus", string>;
@@ -786,6 +872,7 @@ type ScreenReport = {
       | "adapter-defined";
     readonly source: "production-account-shell" | "adapter-defined";
     readonly selection: ScreenSelection["status"];
+    readonly component: string | null;
     readonly note: string;
   };
   readonly desktop: DesktopEvidence;
@@ -803,28 +890,29 @@ API:
   --label selects an immutable output label. If it already exists, -2, -3, and later suffixes are used.
   --screen limits capture to one of the five prescribed screens. Without it, all five are captured.
   --adapter loads a caller-owned default-exported React component receiving { screen, locale } and a named accountVisualAdapterMetadata export with owner and fixture strings. The adapter owns integrated shell and screen composition.
-  --locale selects en-US or cs-CZ for the adapter and rendered AccountPage. It defaults to en-US.
+  --locale selects en-US or cs-CZ for the adapter and rendered AccountPage/PublicAccountLegal components. It defaults to en-US.
   --tablet selects a 768 CSS px, DPR 1 desktop/tablet capture instead of the standard 1280 CSS px, DPR 2 capture.
   --references selects the directory containing the supplied reference PNGs.
   --output selects a directory under /tmp/opencode/pr239-account-redesign/visual.
   WORKSPACE_ACCOUNT_VISUAL_PORT selects the exclusive localhost renderer port (default 3111); it must be a decimal integer from 1 through 65535.
 
   Methodology:
-  The browser bundle imports the production AccountPage and globals.css. Tailwind PostCSS processes globals.css before Bun emits the standalone browser bundle.
-  Backend action and auth boundaries are build-time aliases. Actions return unavailable errors and never success; the renderer disables and labels their controls.
+  The browser bundle imports the production AccountPage/PublicAccountLegal components and globals.css. Tailwind PostCSS processes globals.css before Bun emits the standalone browser bundle.
+  Backend action, auth, and client-environment boundaries are build-time aliases. Actions return unavailable errors and never success; the renderer disables and labels their controls.
   Each standard screen uses a fresh Chromium context at 1280 CSS px wide, DPR 2, and Math.round(reference physical height / 2) CSS px high. With --tablet, the desktop context is 768 CSS px wide, DPR 1, and Math.round(reference physical height / 1) CSS px high. Odd reference heights therefore round to the nearest integer CSS pixel, with .5 rounding up. Mobile probes use fresh contexts at 375x900 and 320x900, DPR 1.
   The desktop interpretation is chosen, not original capture metadata: 1280 CSS px at DPR 2 produces a 2560 physical-pixel comparison width. A reference sidebar of about 560 physical px maps to about 280 CSS px and an input of about 84 physical px maps to about 42 CSS px, supporting that choice. Reference PNG pixels remain native with no resize. The comparison canvas keeps native reference pixels and top-left crops or pads the actual physical capture; reports distinguish actual CSS dimensions from actual physical pixels. RGB metrics use mean absolute channel error and a max-channel mismatch threshold greater than 16.
 
   Limitations:
   This is component-only evidence. Full-route site chrome is unavailable here: SiteHeader, PageNavigationBoundary, and PublicSiteFooter are not mounted, and UnsavedChangesProvider is absent so its default confirm=true context is used. Parent integration must prove those boundaries separately.
-  Caller-owned adapters compose the integrated account shell and screen content. The default AccountPage is captured through its current production AccountShell when present; no fake screens are created.
+  Caller-owned adapters compose the integrated account shell and screen content. The built-in route captures AccountPage for simulated private account locations and PublicAccountLegal for the simulated public legal location when the observed route wrapper provides that evidence; no fake screens are created. This simulator does not prove production route or authentication behavior.
+  The built-in route initializes the actual local vanilla-cookieconsent library with createConsentConfig(locale) and autoShow=false; the consent banner and analytics runtime are omitted from component-only captures, and screenshots are taken before consent interaction with the default state unmutated.
   Mobile focus PNGs are native screenshots from the same page that received keyboard focus. Carets are hidden and screenshot animations are disabled, but browser focus rasterization can still vary between runs; repeatability is reported, never normalized by painting pixels.
   One renderer process owns the selected localhost port and runs screens sequentially. Screen agents supply adapters; the caller runs after integration and must not run renderer processes concurrently. An occupied port fails without stopping another process.
   The populated adapter also runs one post-capture native-validation probe in a fresh browser context. It uses real requestSubmit() constraint validation, records passive invalid events, and never dispatches invalid events or enables unavailable backend actions.
   Unavailable backend controls retain their actual labels and native disabled styles. The component renderer adds only disabled state, a native title, and data metadata; it does not paint an in-flow annotation or overlay.
   Renderer method version: ${accountVisualRendererMethodVersion}. Historical baseline comparability is false because the prior baseline used a layout-changing unavailable annotation (${accountVisualHistoricalBaselineComparabilityReason}). Iteration comparisons are eligible only when renderer method version, fixture, and locale match. Reference metrics remain direct native PNG comparisons and are not masked.
   Initial DOM probes run before screen selection, screenshots, interaction, focus, or style mutation. They measure the main header h1 and Range text boxes; only inactive section-button text inside a visible, viewport-contained mobile section navigation whose computed overflowX is exactly auto or scroll may be clipped, while the active section button and all other content remain audited. Mobile navigation selection requires the active section button to be fully visible after each navigation. A selected-screen email probe runs after the requested screen is selected but before screenshot, interaction, focus, or style mutation; hidden non-selected profile DOM is not measured. Horizontal overflow and field clipping fail, while ordinary vertical offscreen or partial visibility is recorded without failing.
-  No authenticated end-to-end, database, provider, environment, or external-network claim is made. Missing controls and baseline functional failures are reported rather than simulated as successes.
+  No authenticated end-to-end, database, provider, environment, or external-network claim is made. The visual simulator is not proof of production route or authentication behavior. Missing controls and baseline functional failures are reported rather than simulated as successes.
 `;
 
 const isAccountVisualScreenValue = (
@@ -1130,6 +1218,7 @@ const serverOnlyStubPath = join(
   import.meta.dir,
   "stubs/server-only-fail-closed.ts"
 );
+const componentRendererEnvNamespace = "account-visual-component-renderer-env";
 
 const createBuildPlugin = (): Bun.BunPlugin => ({
   name: "account-visual-tailwind-postcss",
@@ -1141,6 +1230,17 @@ const createBuildPlugin = (): Bun.BunPlugin => ({
       ["next/navigation", nextNavigationStubPath],
       ["server-only", serverOnlyStubPath],
     ]);
+    build.onResolve({ filter: /^@\/env$/ }, () => ({
+      namespace: componentRendererEnvNamespace,
+      path: "env",
+    }));
+    build.onLoad(
+      { filter: /^env$/, namespace: componentRendererEnvNamespace },
+      () => ({
+        contents: `export const env = { NEXT_PUBLIC_POSTHOG_HOST: undefined, NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: undefined } as const;`,
+        loader: "ts",
+      })
+    );
     build.onResolve({ filter: /^@\// }, async (args) => ({
       path:
         exactAliases.get(args.path) ??
@@ -1551,6 +1651,24 @@ const readVisibleTarget = async (
   }
 };
 
+const readRouteAttribute = async (
+  page: Page,
+  attribute: "data-account-visual-route" | "data-account-visual-route-component"
+): Promise<string | null> => {
+  const route = page.locator(`[${attribute}]`).first();
+  if ((await route.count()) === 0) return null;
+  return await route.getAttribute(attribute);
+};
+
+const readRouteComponent = (page: Page) =>
+  readRouteAttribute(page, "data-account-visual-route-component");
+
+const readRendererScreen = async (page: Page): Promise<string | null> => {
+  const renderer = page.locator("[data-account-visual-screen]").first();
+  if ((await renderer.count()) === 0) return null;
+  return await renderer.getAttribute("data-account-visual-screen");
+};
+
 const selectProductionScreen = async (
   page: Page,
   screen: AccountVisualScreen,
@@ -1810,6 +1928,15 @@ const runDraftPersistenceCheck = async ({
   const problems: BrowserProblem[] = [];
   const page = await loadRendererPage(context, baseUrl, "profile", problems);
   const failures: string[] = [];
+  const intermediateScreen: AccountVisualScreen = isCallerAdapter
+    ? "legal"
+    : "danger";
+  const scope = isCallerAdapter
+    ? "adapter-defined"
+    : "private-account-sections";
+  const note = isCallerAdapter
+    ? "Draft persistence follows caller-owned adapter composition; no production private-section or public-route persistence claim is made."
+    : "Draft persistence is checked only across private account sections; drafts across the public legal route are not claimed.";
   let firstName: string | null = null;
   let companyName: string | null = null;
   try {
@@ -1823,6 +1950,8 @@ const runDraftPersistenceCheck = async ({
       return {
         status: "adapter-defined",
         method: "adapter-defined",
+        scope,
+        note,
         submitted: false,
         firstName: null,
         companyName: null,
@@ -1856,48 +1985,48 @@ const runDraftPersistenceCheck = async ({
         await companyInput.waitFor({ state: "visible", timeout: 5_000 });
         await companyInput.fill("Example Draft s.r.o.");
 
-        const legalSelection = await selectProductionScreen(
+        const intermediateSelection = await selectProductionScreen(
           page,
-          "legal",
+          intermediateScreen,
           "mobile",
           isCallerAdapter
         );
-        if (legalSelection.status !== "selected") {
-          failures.push(legalSelection.detail);
+        if (intermediateSelection.status !== "selected") {
+          failures.push(intermediateSelection.detail);
         }
 
-        const profileAfterLegal = await selectProductionScreen(
+        const profileAfterIntermediate = await selectProductionScreen(
           page,
           "profile",
           "mobile",
           isCallerAdapter
         );
-        if (profileAfterLegal.status !== "selected") {
-          failures.push(profileAfterLegal.detail);
+        if (profileAfterIntermediate.status !== "selected") {
+          failures.push(profileAfterIntermediate.detail);
         } else {
           firstName = await firstNameInput.inputValue();
           if (firstName !== "Ada Draft") {
             failures.push(
-              `Profile draft changed across navigation: ${JSON.stringify(firstName)}`
+              `Profile draft changed after ${intermediateScreen} navigation: ${JSON.stringify(firstName)}`
             );
           }
         }
 
-        const billingAfterLegal = await selectProductionScreen(
+        const billingAfterIntermediate = await selectProductionScreen(
           page,
           "billing",
           "mobile",
           isCallerAdapter
         );
-        if (billingAfterLegal.status !== "selected") {
-          failures.push(billingAfterLegal.detail);
+        if (billingAfterIntermediate.status !== "selected") {
+          failures.push(billingAfterIntermediate.detail);
         } else {
           companyName = await page
             .locator("#account-profile-billing-company-name")
             .inputValue();
           if (companyName !== "Example Draft s.r.o.") {
             failures.push(
-              `Business billing draft changed across navigation: ${JSON.stringify(companyName)}`
+              `Business billing draft changed after ${intermediateScreen} navigation: ${JSON.stringify(companyName)}`
             );
           }
         }
@@ -1921,6 +2050,8 @@ const runDraftPersistenceCheck = async ({
     return {
       status: failures.length === 0 ? "passed" : "failed",
       method: "fresh-real-page-mobile-menu",
+      scope,
+      note,
       submitted: false,
       firstName,
       companyName,
@@ -1931,6 +2062,8 @@ const runDraftPersistenceCheck = async ({
     return {
       status: "failed",
       method: "fresh-real-page-mobile-menu",
+      scope,
+      note,
       submitted: false,
       firstName,
       companyName,
@@ -1938,6 +2071,373 @@ const runDraftPersistenceCheck = async ({
     };
   } finally {
     await page.close();
+  }
+};
+
+const runPublicLegalNavigationCheck = async ({
+  baseUrl,
+  context,
+  locale,
+}: {
+  readonly baseUrl: string;
+  readonly context: BrowserContext;
+  readonly locale: AccountVisualLocale;
+}): Promise<PublicLegalNavigationReport> => {
+  const failures: string[] = [];
+  const browserProblems: BrowserProblem[] = [];
+  const returns: PublicLegalNavigationReturn[] = [];
+  const publicLegalPathname = `/${locale}/account/legal`;
+  let page: Page | undefined;
+  let legalPathname: string | null = null;
+  let cookiePreferencesVisible = false;
+  let archiveDisabled = false;
+  const consentChanges = {
+    analyticsEnabled: false,
+    analyticsDisabled: false,
+    acceptAll: false,
+    rejectAll: false,
+    persistedAfterRouteReturn: false,
+  };
+
+  const addBrowserProblems = () => {
+    failures.push(
+      ...browserProblems.map(({ kind, message }) => `${kind}: ${message}`)
+    );
+  };
+
+  const assertConsentState = async (
+    expected: PublicLegalConsentState,
+    phase: string
+  ) => {
+    if (!page) {
+      failures.push(`${phase}: consent page is missing`);
+      return false;
+    }
+    const matched = await waitForPublicLegalConsentState(page, expected);
+    if (!matched) {
+      failures.push(
+        `${phase}: expected cookie controls to expose aria-checked=${JSON.stringify(expected)} with necessary disabled and optional controls enabled within 5 seconds`
+      );
+    }
+    return matched;
+  };
+
+  const clickConsentControl = async (control: Locator, phase: string) => {
+    try {
+      await control.click({ timeout: 5_000 });
+      return true;
+    } catch (error) {
+      failures.push(
+        `${phase}: native consent control click failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return false;
+    }
+  };
+
+  const assertPublicLegalLocation = async (phase: string) => {
+    if (!page) throw new Error("Public legal navigation page is missing");
+
+    const url = new URL(page.url());
+    if (url.pathname !== publicLegalPathname) {
+      failures.push(
+        `${phase}: expected pathname ${publicLegalPathname}, received ${url.pathname}`
+      );
+    }
+    if (url.search !== "") {
+      failures.push(
+        `${phase}: expected an empty search, received ${url.search}`
+      );
+    }
+
+    const route = await readRouteAttribute(page, "data-account-visual-route");
+    if (route !== "public-legal") {
+      failures.push(
+        `${phase}: expected data-account-visual-route=public-legal, received ${JSON.stringify(route)}`
+      );
+    }
+    const routeComponent = await readRouteComponent(page);
+    if (routeComponent !== "PublicAccountLegal") {
+      failures.push(
+        `${phase}: expected data-account-visual-route-component=PublicAccountLegal, received ${JSON.stringify(routeComponent)}`
+      );
+    }
+    return url;
+  };
+
+  try {
+    page = await loadRendererPage(context, baseUrl, "legal", browserProblems);
+    const legalSelection = await selectProductionScreen(
+      page,
+      "legal",
+      "mobile",
+      false
+    );
+    if (legalSelection.status !== "selected") {
+      failures.push(
+        `Public legal navigation selection failed: ${legalSelection.detail}`
+      );
+    }
+    const legalUrl = await assertPublicLegalLocation(
+      "Initial public legal route"
+    );
+    legalPathname = legalUrl.pathname;
+
+    let allCookiePreferencesVisible = true;
+    for (const category of publicLegalCookieCategories) {
+      const control = page.locator(`#cookie-category-${category}`).first();
+      let visible = true;
+      try {
+        await control.waitFor({ state: "visible", timeout: 5_000 });
+      } catch {
+        visible = false;
+      }
+      if (!visible) {
+        allCookiePreferencesVisible = false;
+        failures.push(
+          `Initial public legal route: cookie control #cookie-category-${category} was not visible`
+        );
+        continue;
+      }
+
+      const expectedDisabled = category === "necessary";
+      if (
+        !(await waitForPublicLegalControlDisabled(control, expectedDisabled))
+      ) {
+        const disabled = await control.isDisabled();
+        failures.push(
+          `Initial public legal route: cookie control #cookie-category-${category} expected disabled=${expectedDisabled}, received disabled=${disabled}`
+        );
+      }
+    }
+    cookiePreferencesVisible = allCookiePreferencesVisible;
+
+    const archiveAction = getAccountScreenCopy(locale).legal.archiveAction;
+    const archiveButton = page
+      .getByRole("button", { name: archiveAction, exact: true })
+      .first();
+    let archiveVisible = true;
+    try {
+      await archiveButton.waitFor({ state: "visible", timeout: 5_000 });
+    } catch {
+      archiveVisible = false;
+    }
+    if (!archiveVisible) {
+      failures.push(
+        `Initial public legal route: archive button with localized copy ${JSON.stringify(archiveAction)} was not visible`
+      );
+    } else {
+      archiveDisabled = await waitForPublicLegalControlDisabled(
+        archiveButton,
+        true
+      );
+      if (!archiveDisabled) {
+        failures.push(
+          "Initial public legal route: localized archive button was not disabled"
+        );
+      }
+    }
+
+    const initialConsentState: PublicLegalConsentState = {
+      necessary: true,
+      analytics: false,
+      marketing: false,
+      preferences: false,
+    };
+    const allConsentState: PublicLegalConsentState = {
+      necessary: true,
+      analytics: true,
+      marketing: true,
+      preferences: true,
+    };
+
+    await assertConsentState(
+      initialConsentState,
+      "Initial public legal consent state"
+    );
+
+    const analyticsControl = page.locator("#cookie-category-analytics").first();
+    if (
+      await clickConsentControl(
+        analyticsControl,
+        "Analytics consent enable interaction"
+      )
+    ) {
+      consentChanges.analyticsEnabled = await assertConsentState(
+        {
+          necessary: true,
+          analytics: true,
+          marketing: false,
+          preferences: false,
+        },
+        "Analytics consent enabled"
+      );
+    }
+
+    if (
+      await clickConsentControl(
+        analyticsControl,
+        "Analytics consent disable interaction"
+      )
+    ) {
+      consentChanges.analyticsDisabled = await assertConsentState(
+        initialConsentState,
+        "Analytics consent disabled"
+      );
+    }
+
+    const acceptAllButton = page
+      .getByRole("button", {
+        name: m.cookieSettingsAcceptAll({}, { locale }),
+        exact: true,
+      })
+      .first();
+    if (
+      await clickConsentControl(
+        acceptAllButton,
+        "Accept-all consent interaction"
+      )
+    ) {
+      consentChanges.acceptAll = await assertConsentState(
+        allConsentState,
+        "Accept-all consent state"
+      );
+    }
+
+    const rejectAllButton = page
+      .getByRole("button", {
+        name: m.cookieSettingsRejectAll({}, { locale }),
+        exact: true,
+      })
+      .first();
+    if (
+      await clickConsentControl(
+        rejectAllButton,
+        "Reject-all consent interaction"
+      )
+    ) {
+      consentChanges.rejectAll = await assertConsentState(
+        initialConsentState,
+        "Reject-all consent state"
+      );
+    }
+
+    for (const section of ["profile", "billing"] as const) {
+      const selection = await selectProductionScreen(
+        page,
+        section,
+        "mobile",
+        false
+      );
+      const url = new URL(page.url());
+      const target = await readVisibleTarget(page, section);
+      const route = await readRouteAttribute(page, "data-account-visual-route");
+      const routeComponent = await readRouteComponent(page);
+      const metadataScreen = await readRendererScreen(page);
+      const selected =
+        selection.status === "selected" &&
+        selection.selectedValue === section &&
+        selection.selectedAriaCurrent === "page";
+      const expectedSearch = `?section=${section}`;
+
+      if (selection.status !== "selected") {
+        failures.push(
+          `Return from public legal to ${section} failed: ${selection.detail}`
+        );
+      }
+      if (url.pathname !== `/${locale}/account`) {
+        failures.push(
+          `Return from public legal to ${section}: expected pathname /${locale}/account, received ${url.pathname}`
+        );
+      }
+      if (url.search !== expectedSearch) {
+        failures.push(
+          `Return from public legal to ${section}: expected search ${expectedSearch}, received ${url.search}`
+        );
+      }
+      if (!selected) {
+        failures.push(
+          `Return from public legal to ${section}: the section button was not selected with aria-current=page`
+        );
+      }
+      if (!target.visible) {
+        failures.push(
+          `Return from public legal to ${section}: the real ${section} target was not visible`
+        );
+      }
+      if (route !== "private-account") {
+        failures.push(
+          `Return from public legal to ${section}: expected data-account-visual-route=private-account, received ${JSON.stringify(route)}`
+        );
+      }
+      if (routeComponent !== "AccountPage") {
+        failures.push(
+          `Return from public legal to ${section}: expected data-account-visual-route-component=AccountPage, received ${JSON.stringify(routeComponent)}`
+        );
+      }
+      if (metadataScreen !== section) {
+        failures.push(
+          `Return from public legal to ${section}: expected data-account-visual-screen=${section}, received ${JSON.stringify(metadataScreen)}`
+        );
+      }
+
+      returns.push({
+        section,
+        pathname: url.pathname,
+        search: url.search,
+        selected,
+        targetVisible: target.visible,
+        metadataScreen,
+      });
+
+      const legalReturn = await selectProductionScreen(
+        page,
+        "legal",
+        "mobile",
+        false
+      );
+      if (legalReturn.status !== "selected") {
+        failures.push(
+          `Return to public legal after ${section} failed: ${legalReturn.detail}`
+        );
+        break;
+      }
+      await assertPublicLegalLocation(`Public legal route after ${section}`);
+      if (section === "profile") {
+        consentChanges.persistedAfterRouteReturn = await assertConsentState(
+          initialConsentState,
+          "Public legal consent state after profile route return"
+        );
+      }
+    }
+
+    addBrowserProblems();
+    return {
+      status: failures.length === 0 ? "passed" : "failed",
+      simulation: "visual-fixture-only",
+      authentication: "not-proved",
+      legalPathname,
+      cookiePreferencesVisible,
+      archiveDisabled,
+      consentChanges,
+      returns,
+      failures,
+    };
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+    addBrowserProblems();
+    return {
+      status: "failed",
+      simulation: "visual-fixture-only",
+      authentication: "not-proved",
+      legalPathname,
+      cookiePreferencesVisible,
+      archiveDisabled,
+      consentChanges,
+      returns,
+      failures,
+    };
+  } finally {
+    await page?.close();
   }
 };
 
@@ -3569,6 +4069,7 @@ const runDesktopCapture = async ({
       "desktop",
       isCallerAdapter
     );
+    const routeComponent = await readRouteComponent(page);
     const emailProbe = await readSelectedEmailProbe(page, {
       deviceScaleFactor: desktop.deviceScaleFactor,
       expectedSelectedProfile: screen === "profile" && !isCallerAdapter,
@@ -3627,6 +4128,7 @@ const runDesktopCapture = async ({
       mainPhysicalDimensions,
       captureKind: mainCapture.kind,
       selection,
+      routeComponent,
       initialDomProbe,
       emailProbe,
       computedStyles,
@@ -3720,6 +4222,14 @@ const runMobileCapture = async ({
       animations: "disabled",
       fullPage: false,
     });
+    const publicLegalNavigation =
+      !isCallerAdapter && screen === "legal"
+        ? await runPublicLegalNavigationCheck({
+            baseUrl,
+            context,
+            locale,
+          })
+        : null;
     const horizontalOverflow = await readHorizontalOverflow(page);
     const sectionNavigation = await runMobileSectionNavigation(
       page,
@@ -3839,6 +4349,7 @@ const runMobileCapture = async ({
       ),
       ...emailProbe.failures.map((failure) => `email probe: ${failure}`),
       ...functional.failures,
+      ...(publicLegalNavigation?.failures ?? []),
       ...(selection.status === "failed" ? [selection.detail] : []),
       ...(focusSelection.status === "failed" ? [focusSelection.detail] : []),
       ...sectionNavigation.failures,
@@ -3865,6 +4376,7 @@ const runMobileCapture = async ({
       computedStyles,
       sectionNavigation,
       draftPersistence,
+      publicLegalNavigation,
       files: {
         screenshot: relative(screenDirectory, files.screenshot),
         focus: relative(screenDirectory, files.focus),
@@ -4714,8 +5226,16 @@ export const run = async (options: CliOptions) => {
           : "adapter-defined";
       let coverageNote: string;
       if (desktop.selection.status === "selected") {
-        coverageNote =
-          "The requested section was selected through the current production AccountShell and captured from the current AccountPage.";
+        if (desktop.routeComponent === "PublicAccountLegal") {
+          coverageNote =
+            "The requested section was selected through the current production AccountShell and captured from the observed PublicAccountLegal component on the simulated public legal route; this visual fixture does not prove route or authentication behavior.";
+        } else if (desktop.routeComponent === "AccountPage") {
+          coverageNote =
+            "The requested section was selected through the current production AccountShell and captured from the observed AccountPage component on the simulated private account route; this visual fixture does not prove route or authentication behavior.";
+        } else {
+          coverageNote =
+            "The requested section was selected through the current production AccountShell, but the renderer exposed no route component wrapper; no component, route, or authentication claim is made.";
+        }
       } else if (desktop.selection.status === "adapter-defined") {
         coverageNote =
           "The supplied adapter did not render the production AccountShell; screen composition remains adapter-defined and no production selection is claimed.";
@@ -4729,6 +5249,7 @@ export const run = async (options: CliOptions) => {
           status: coverageStatus,
           source: coverageSource,
           selection: desktop.selection.status,
+          component: desktop.routeComponent,
           note: coverageNote,
         },
         desktop,
@@ -4808,7 +5329,10 @@ export const run = async (options: CliOptions) => {
         "PublicSiteFooter",
         "UnsavedChangesProvider (default confirm=true context)",
       ],
-      bypasses: [],
+      bypasses: [
+        "Build-time @/env alias supplies explicit undefined NEXT_PUBLIC_POSTHOG_HOST and NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN values for visual-only rendering; no real client environment or cookie stub is used.",
+        "The actual local vanilla-cookieconsent library is initialized with createConsentConfig(locale) and autoShow=false; its banner and analytics runtime are omitted, screenshots precede consent interaction with the default state unmutated, and no fake consent state or external network is used.",
+      ],
     },
     renderer: {
       browserEntry: displayPath(rendererEntryPath),

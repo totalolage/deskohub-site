@@ -40,6 +40,7 @@ import {
   readInitialDomProbe,
   readSelectedEmailProbe,
 } from "./run";
+import { useSearchParams } from "./stubs/next-navigation";
 
 const chromiumAvailable = await access(
   chromium.executablePath(),
@@ -83,6 +84,7 @@ const syntheticReferencePng = await sharp(
   .png()
   .toBuffer();
 const expectedOwnedSourcePaths = [
+  "apps/deskohub-workspace/scripts/account-visual/account-route.tsx",
   "apps/deskohub-workspace/scripts/account-visual/browser-entry.tsx",
   "apps/deskohub-workspace/scripts/account-visual/create-account-visual-verification.ts",
   "apps/deskohub-workspace/scripts/account-visual/default-adapter.tsx",
@@ -1186,6 +1188,167 @@ export default function NonWorkingCancelAdapter() {
   );
   return path;
 };
+
+const buildNavigationStubBrowserEntry = async (directory: string) => {
+  const entryPath = join(directory, "navigation-stub-entry.tsx");
+  const reactEntry = join(
+    import.meta.dir,
+    "../../node_modules/react/cjs/react.production.js"
+  );
+  const reactDomClientEntry = join(
+    import.meta.dir,
+    "../../node_modules/react-dom/client.js"
+  );
+  const navigationStubEntry = join(import.meta.dir, "stubs/next-navigation.ts");
+
+  await writeFile(
+    entryPath,
+    `import { createElement, useState } from ${JSON.stringify(reactEntry)};
+import { createRoot } from ${JSON.stringify(reactDomClientEntry)};
+import { useRouter, useSearchParams } from ${JSON.stringify(navigationStubEntry)};
+
+function NavigationStubProbe() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [copySearch, setCopySearch] = useState("none");
+  const [refreshCount, setRefreshCount] = useState(0);
+
+  return createElement(
+    "main",
+    null,
+    createElement("output", { id: "navigation-path" }, window.location.pathname),
+    createElement("output", { id: "navigation-search" }, searchParams.toString() || "empty"),
+    createElement("output", { id: "navigation-section" }, searchParams.get("section") || "missing"),
+    createElement("output", { id: "navigation-copy" }, copySearch),
+    createElement("output", { id: "navigation-refresh-count" }, String(refreshCount)),
+    createElement(
+      "button",
+      { id: "navigation-push-profile", onClick: () => router.push("/en-US/account?section=profile"), type: "button" },
+      "Push profile"
+    ),
+    createElement(
+      "button",
+      { id: "navigation-replace-billing", onClick: () => router.replace("/en-US/account?section=billing"), type: "button" },
+      "Replace billing"
+    ),
+    createElement(
+      "button",
+      { id: "navigation-push-legal", onClick: () => router.push("/en-US/account/legal"), type: "button" },
+      "Push legal"
+    ),
+    createElement(
+      "button",
+      { id: "navigation-back", onClick: () => router.back(), type: "button" },
+      "Back"
+    ),
+    createElement(
+      "button",
+      { id: "navigation-forward", onClick: () => router.forward(), type: "button" },
+      "Forward"
+    ),
+    createElement(
+      "button",
+      {
+        id: "navigation-refresh",
+        onClick: () => {
+          router.refresh();
+          setRefreshCount((count) => count + 1);
+        },
+        type: "button",
+      },
+      "Refresh"
+    ),
+    createElement(
+      "button",
+      {
+        id: "navigation-mutate-copy",
+        onClick: () => {
+          const copy = new URLSearchParams(searchParams);
+          copy.set("section", "mutated");
+          setCopySearch(copy.toString());
+        },
+        type: "button",
+      },
+      "Mutate params copy"
+    )
+  );
+}
+
+const root = document.getElementById("navigation-stub-root");
+if (!root) throw new Error("Navigation stub root is missing");
+createRoot(root).render(createElement(NavigationStubProbe));
+`,
+    "utf8"
+  );
+
+  const result = await Bun.build({
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    entrypoints: [entryPath],
+    format: "esm",
+    minify: false,
+    outdir: join(directory, "build"),
+    sourcemap: "none",
+    target: "browser",
+  });
+  if (!result.success) {
+    throw new Error(
+      `Navigation stub browser bundle failed to build: ${result.logs
+        .map(({ message }) => message)
+        .join("\n")}`
+    );
+  }
+  const javascriptPath = result.outputs.find(({ path }) =>
+    path.endsWith(".js")
+  )?.path;
+  if (!javascriptPath) {
+    throw new Error("Navigation stub browser bundle did not emit JavaScript");
+  }
+  return readFile(javascriptPath);
+};
+
+const serveNavigationStubPage = () => {
+  const html = `<!doctype html>
+<html lang="en-US">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+  <body><div id="navigation-stub-root"></div></body>
+</html>`;
+  const server = Bun.serve({
+    fetch(request) {
+      if (request.method !== "GET") return new Response(null, { status: 405 });
+      return new Response(html, {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type": "text/html; charset=utf-8",
+        },
+      });
+    },
+    hostname: "localhost",
+    port: 0,
+  });
+  return {
+    baseUrl: `http://localhost:${server.port}`,
+    server,
+  } as const;
+};
+
+function SearchParamsSsrProbe() {
+  const searchParams = useSearchParams();
+  return (
+    <output data-search={searchParams.toString()}>
+      {searchParams.toString() || "empty"}:
+      {searchParams.get("section") ?? "missing"}
+    </output>
+  );
+}
+
+test("useSearchParams stub is safe for static SSR without a browser window", () => {
+  let markup = "";
+  expect(() => {
+    markup = renderToStaticMarkup(<SearchParamsSsrProbe />);
+  }).not.toThrow();
+  expect(markup).toContain('data-search=""');
+  expect(markup).toContain(">empty:missing<");
+});
 
 test("CLI parses the prescribed screen and adapter options", () => {
   const options = parseCliArgs([
@@ -3193,6 +3356,396 @@ test.serial.skipIf(!chromiumAvailable)(
     } finally {
       await rm(directory, { recursive: true, force: true });
       await rm(adapterDirectory, { recursive: true, force: true });
+    }
+  },
+  120_000
+);
+
+const assertPublicLegalCliRun = async ({
+  adapterPath,
+  label,
+  locale,
+}: {
+  readonly adapterPath: string;
+  readonly label: string;
+  readonly locale: "en-US" | "cs-CZ";
+}) => {
+  await mkdir(outputRoot, { recursive: true });
+  const directory = await mkdtemp(`${outputRoot}/account-visual-public-legal-`);
+  try {
+    const referencesDir = join(directory, "references");
+    await writeRegressionReference(referencesDir);
+    const report = await runRendererCli([
+      "--label",
+      label,
+      "--screen",
+      "legal",
+      "--adapter",
+      adapterPath,
+      "--locale",
+      locale,
+      "--references",
+      referencesDir,
+      "--output",
+      join(directory, "output"),
+    ]);
+    const execution = await Bun.file(
+      join(report.outputDirectory, "execution.json")
+    ).json();
+    const sourceManifest = await Bun.file(
+      join(report.outputDirectory, "source-manifest.json")
+    ).json();
+    const screen = report.screens[0]!;
+
+    expect(report.execution).toMatchObject({ status: "passed" });
+    expect(execution).toMatchObject({ status: "passed", findings: [] });
+    expect(report.scope.bypasses).toEqual([
+      "Build-time @/env alias supplies explicit undefined NEXT_PUBLIC_POSTHOG_HOST and NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN values for visual-only rendering; no real client environment or cookie stub is used.",
+      "The actual local vanilla-cookieconsent library is initialized with createConsentConfig(locale) and autoShow=false; its banner and analytics runtime are omitted, screenshots precede consent interaction with the default state unmutated, and no fake consent state or external network is used.",
+    ]);
+    expect(screen.coverage).toMatchObject({
+      status: "rendered",
+      source: "production-account-shell",
+      selection: "selected",
+      component: "PublicAccountLegal",
+    });
+    expect(screen.coverage.note).toContain(
+      "observed PublicAccountLegal component on the simulated public legal route"
+    );
+    expect(screen.coverage.note).toContain(
+      "this visual fixture does not prove route or authentication behavior"
+    );
+    expect(screen.desktop.routeComponent).toBe("PublicAccountLegal");
+    expect(screen.desktop.selection).toMatchObject({
+      requestedScreen: "legal",
+      status: "selected",
+      method: "desktop-nav-button",
+      selectedValue: "legal",
+      selectedAriaCurrent: "page",
+      targetSelector: "a[href$='/privacy-policy']",
+      targetVisible: true,
+    });
+
+    expect(
+      sourceManifest.bundleInputs.map(({ path }: { path: string }) => path)
+    ).toEqual(
+      expect.arrayContaining([
+        "apps/deskohub-workspace/features/account/components/public-account-legal.tsx",
+        "apps/deskohub-workspace/features/cookie-consent/components/cookie-settings-page.tsx",
+        "apps/deskohub-workspace/features/account/components/linked-account.tsx",
+      ])
+    );
+
+    for (const width of ["320", "375"] as const) {
+      const mobile = screen.mobile[width];
+      expect(mobile.selection).toMatchObject({
+        requestedScreen: "legal",
+        status: "selected",
+        method: "mobile-nav-button",
+        selectedValue: "legal",
+        selectedAriaCurrent: "page",
+        targetSelector: "a[href$='/privacy-policy']",
+        targetVisible: true,
+      });
+      expect(mobile.focusSelection).toMatchObject({
+        requestedScreen: "legal",
+        status: "selected",
+        selectedValue: "legal",
+        selectedAriaCurrent: "page",
+        targetVisible: true,
+      });
+      expect(mobile.sectionNavigation).toEqual({
+        status: "passed",
+        method: "mobile-nav-button",
+        requestedScreen: "legal",
+        alternateScreen: "profile",
+        selectedBefore: "legal",
+        selectedAlternate: "profile",
+        selectedAfter: "legal",
+        failures: [],
+      });
+      expect(mobile.publicLegalNavigation).toEqual({
+        status: "passed",
+        simulation: "visual-fixture-only",
+        authentication: "not-proved",
+        legalPathname: `/${locale}/account/legal`,
+        cookiePreferencesVisible: true,
+        archiveDisabled: true,
+        consentChanges: {
+          analyticsEnabled: true,
+          analyticsDisabled: true,
+          acceptAll: true,
+          rejectAll: true,
+          persistedAfterRouteReturn: true,
+        },
+        returns: [
+          {
+            section: "profile",
+            pathname: `/${locale}/account`,
+            search: "?section=profile",
+            selected: true,
+            targetVisible: true,
+            metadataScreen: "profile",
+          },
+          {
+            section: "billing",
+            pathname: `/${locale}/account`,
+            search: "?section=billing",
+            selected: true,
+            targetVisible: true,
+            metadataScreen: "billing",
+          },
+        ],
+        failures: [],
+      });
+      expect(mobile.draftPersistence).toMatchObject({
+        status: "passed",
+        method: "fresh-real-page-mobile-menu",
+        scope: "private-account-sections",
+        submitted: false,
+        firstName: "Ada Draft",
+        companyName: "Example Draft s.r.o.",
+        failures: [],
+      });
+      expect(mobile.draftPersistence.note).toBe(
+        "Draft persistence is checked only across private account sections; drafts across the public legal route are not claimed."
+      );
+    }
+
+    if (adapterPath.endsWith("populated-adapter.tsx")) {
+      expect(report.nativeValidation).toMatchObject({
+        status: "passed",
+        method: "fresh-browser-context-native-request-submit",
+        context: "fresh-context-after-original-capture",
+      });
+    } else {
+      expect(report.nativeValidation).toBeNull();
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+};
+
+test.serial.skipIf(!chromiumAvailable)(
+  "default adapter captures the public legal route in English",
+  async () => {
+    await assertPublicLegalCliRun({
+      adapterPath: join(import.meta.dir, "default-adapter.tsx"),
+      label: "public-legal-default-en",
+      locale: "en-US",
+    });
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "default adapter captures the public legal route in Czech",
+  async () => {
+    await assertPublicLegalCliRun({
+      adapterPath: join(import.meta.dir, "default-adapter.tsx"),
+      label: "public-legal-default-cs",
+      locale: "cs-CZ",
+    });
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "populated adapter captures the public legal route in English",
+  async () => {
+    await assertPublicLegalCliRun({
+      adapterPath: join(import.meta.dir, "populated-adapter.tsx"),
+      label: "public-legal-populated-en",
+      locale: "en-US",
+    });
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "populated adapter captures the public legal route in Czech",
+  async () => {
+    await assertPublicLegalCliRun({
+      adapterPath: join(import.meta.dir, "populated-adapter.tsx"),
+      label: "public-legal-populated-cs",
+      locale: "cs-CZ",
+    });
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "useSearchParams stub follows browser history without confusing screen queries",
+  async () => {
+    await mkdir(outputRoot, { recursive: true });
+    const directory = await mkdtemp(
+      `${outputRoot}/account-visual-navigation-stub-`
+    );
+    const server = serveNavigationStubPage();
+    const pageErrors: string[] = [];
+    try {
+      const javascript = await buildNavigationStubBrowserEntry(directory);
+      await withControlledPage(
+        {
+          html: "<div></div>",
+          locale: "en-US",
+          width: 375,
+        },
+        async (page) => {
+          page.on("pageerror", (error) => pageErrors.push(error.message));
+          await page.goto(`${server.baseUrl}/en-US/account?screen=legal`, {
+            timeout: 5_000,
+            waitUntil: "load",
+          });
+          await page.addScriptTag({
+            content: javascript.toString("utf8"),
+            type: "module",
+          });
+          await page.locator("#navigation-search").waitFor({
+            state: "attached",
+            timeout: 5_000,
+          });
+
+          const readState = async () => {
+            const url = new URL(page.url());
+            return {
+              copy:
+                (await page.locator("#navigation-copy").textContent()) ?? "",
+              path: url.pathname,
+              refreshCount:
+                (await page
+                  .locator("#navigation-refresh-count")
+                  .textContent()) ?? "",
+              search:
+                (await page.locator("#navigation-search").textContent()) ?? "",
+              section:
+                (await page.locator("#navigation-section").textContent()) ?? "",
+            } as const;
+          };
+          const waitForState = async (expected: {
+            readonly copy: string;
+            readonly path: string;
+            readonly refreshCount: string;
+            readonly search: string;
+            readonly section: string;
+          }) => {
+            await page.waitForFunction(
+              (state) => {
+                const text = (id: string) =>
+                  document.getElementById(id)?.textContent ?? "";
+                return (
+                  window.location.pathname === state.path &&
+                  window.location.search ===
+                    (state.search === "empty" ? "" : `?${state.search}`) &&
+                  text("navigation-copy") === state.copy &&
+                  text("navigation-refresh-count") === state.refreshCount &&
+                  text("navigation-search") === state.search &&
+                  text("navigation-section") === state.section
+                );
+              },
+              expected,
+              { timeout: 5_000 }
+            );
+            return readState();
+          };
+
+          expect(
+            await waitForState({
+              copy: "none",
+              path: "/en-US/account",
+              refreshCount: "0",
+              search: "screen=legal",
+              section: "missing",
+            })
+          ).toMatchObject({
+            path: "/en-US/account",
+            search: "screen=legal",
+            section: "missing",
+          });
+
+          await page
+            .getByRole("button", { name: "Mutate params copy" })
+            .click();
+          expect(
+            await waitForState({
+              copy: "screen=legal&section=mutated",
+              path: "/en-US/account",
+              refreshCount: "0",
+              search: "screen=legal",
+              section: "missing",
+            })
+          ).toMatchObject({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account",
+            search: "screen=legal",
+            section: "missing",
+          });
+
+          await page.getByRole("button", { name: "Push profile" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account",
+            refreshCount: "0",
+            search: "section=profile",
+            section: "profile",
+          });
+
+          await page.getByRole("button", { name: "Replace billing" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account",
+            refreshCount: "0",
+            search: "section=billing",
+            section: "billing",
+          });
+
+          await page.getByRole("button", { name: "Push legal" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account/legal",
+            refreshCount: "0",
+            search: "empty",
+            section: "missing",
+          });
+
+          await page.getByRole("button", { name: "Back" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account",
+            refreshCount: "0",
+            search: "section=billing",
+            section: "billing",
+          });
+
+          await page.getByRole("button", { name: "Forward" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account/legal",
+            refreshCount: "0",
+            search: "empty",
+            section: "missing",
+          });
+
+          await page.getByRole("button", { name: "Refresh" }).click();
+          expect(
+            await waitForState({
+              copy: "screen=legal&section=mutated",
+              path: "/en-US/account/legal",
+              refreshCount: "1",
+              search: "empty",
+              section: "missing",
+            })
+          ).toMatchObject({
+            path: "/en-US/account/legal",
+            search: "empty",
+            section: "missing",
+          });
+        }
+      );
+      expect(pageErrors).toEqual([]);
+    } finally {
+      server.server.stop(true);
+      await rm(directory, { recursive: true, force: true });
     }
   },
   120_000
