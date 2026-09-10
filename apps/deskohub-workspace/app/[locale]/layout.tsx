@@ -47,13 +47,11 @@ export function generateStaticParams() {
 
 type LocaleLayoutProps = {
   children: ReactNode;
-  modal: ReactNode;
   params: Promise<{ locale: string }>;
 };
 
 export default async function LocaleLayout({
   children,
-  modal,
   params,
 }: LocaleLayoutProps) {
   const { locale } = await params;
@@ -73,10 +71,7 @@ export default async function LocaleLayout({
               posthogEnvironment={env.VERCEL_ENV}
             />
           </Suspense>
-          <UnsavedChangesProvider>
-            {children}
-            {modal}
-          </UnsavedChangesProvider>
+          <UnsavedChangesProvider>{children}</UnsavedChangesProvider>
         </PostHogProvider>
       </body>
     </html>
