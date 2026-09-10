@@ -222,23 +222,25 @@ describe("ReservationHistory", () => {
     expect(group("past").textContent).toContain("Cancelled");
     expect(group("current").textContent).toContain("Confirmed");
 
-    expect(
-      view
-        .getByRole("link", { name: "Current and upcoming (1)" })
-        .getAttribute("href")
-    ).toBe("#account-reservations-current");
-    expect(
-      view
-        .getByRole("link", { name: "Past reservations (2)" })
-        .getAttribute("href")
-    ).toBe("#account-reservations-past");
-    expect(
-      view
-        .getByRole("link", {
-          name: "Reservations missing date details (1)",
-        })
-        .getAttribute("href")
-    ).toBe("#account-reservations-unavailable");
+    expect(view.container.querySelector("nav")).toBeNull();
+    for (const id of [
+      "account-reservations-current",
+      "account-reservations-past",
+      "account-reservations-unavailable",
+    ]) {
+      expect(view.container.querySelector(`a[href="#${id}"]`)).toBeNull();
+    }
+
+    for (const [name, id] of [
+      ["Current and upcoming", "account-reservations-current"],
+      ["Past reservations", "account-reservations-past"],
+      ["Reservations missing date details", "account-reservations-unavailable"],
+    ] as const) {
+      expect(view.getByRole("region", { name }).getAttribute("id")).toBe(id);
+    }
+    expect(group("current").querySelector("li > div")).toBeTruthy();
+    expect(group("past").querySelector("tbody tr")).toBeTruthy();
+    expect(group("unavailable").querySelector("article")).toBeTruthy();
   });
 
   test("renders localized group titles and statuses in Czech", () => {
