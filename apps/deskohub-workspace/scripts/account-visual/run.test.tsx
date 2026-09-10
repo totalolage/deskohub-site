@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import {
@@ -9,6 +10,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "@playwright/test";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -24,6 +26,7 @@ import {
   validateArchivalArchiveStructure,
   verifyPinnedArchiveBytes,
 } from "./create-account-visual-verification";
+import type { RgbaImage } from "./metrics";
 import {
   markUnavailableActions,
   unavailableActionDescription,
@@ -59,10 +62,26 @@ const referenceSuffixes = {
   reservations: "49ca0eec-85be-41bb-a8c6-7cfac690311f.png",
 } as const;
 const menuReference = "a519a69f-b101-48ec-ba71-e9d4f1218110.png";
-const tinyReferencePng = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAJ0lEQVR4nO3BAQ0AAADCoPdPbQ43oAAAAAAAAAAAAAAAAAAAAIDODUBAAAENBzWNAAAAAElFTkSuQmCC",
-  "base64"
-);
+const sharp = createRequire(
+  join(import.meta.dir, "../../../..", "packages/osm/package.json")
+)("sharp");
+const syntheticReferenceImage = {
+  width: 2560,
+  height: 1600,
+  data: new Uint8Array(2560 * 1600 * 4).fill(255),
+} satisfies RgbaImage;
+const syntheticReferencePng = await sharp(
+  Buffer.from(syntheticReferenceImage.data),
+  {
+    raw: {
+      width: syntheticReferenceImage.width,
+      height: syntheticReferenceImage.height,
+      channels: 4,
+    },
+  }
+)
+  .png()
+  .toBuffer();
 const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/browser-entry.tsx",
   "apps/deskohub-workspace/scripts/account-visual/create-account-visual-verification.ts",
@@ -227,42 +246,56 @@ const writeRegressionReference = async (referencesDir: string) => {
   for (const suffix of Object.values(referenceSuffixes)) {
     await writeFile(
       join(referencesDir, `${referencePrefix}${suffix}`),
-      tinyReferencePng
+      syntheticReferencePng
     );
   }
   await writeFile(
     join(referencesDir, `${referencePrefix}${menuReference}`),
-    tinyReferencePng
+    syntheticReferencePng
   );
 };
 
 const runRendererCli = async (argumentsList: readonly string[]) => {
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      "run",
-      join(import.meta.dir, "run.ts"),
-      ...argumentsList,
-    ],
+  const result = spawnSync(
+    process.execPath,
+    ["run", join(import.meta.dir, "run.ts"), ...argumentsList],
     {
       cwd: join(import.meta.dir, "../../../.."),
-      stderr: "pipe",
-      stdout: "pipe",
+      env: process.env,
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      shell: false,
+      timeout: 60_000,
     }
   );
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  if (exitCode !== 0) {
+
+  const stdout = result.stdout ?? "";
+  const stderr = result.stderr ?? "";
+  const diagnostics = [stderr, stdout].filter(Boolean).join("\n");
+  if (result.error) {
     throw new Error(
-      `Account visual CLI exited with ${exitCode}: ${stderr || stdout}`
+      `Account visual CLI failed to spawn or timed out: ${result.error.message}${diagnostics ? `\n${diagnostics}` : ""}`,
+      { cause: result.error }
+    );
+  }
+  if (result.status !== 0 || result.signal !== null) {
+    const termination =
+      result.signal === null ? result.status : `signal ${result.signal}`;
+    throw new Error(
+      `Account visual CLI exited with ${termination}: ${diagnostics}`
     );
   }
   const summary = JSON.parse(stdout) as { readonly outputDirectory: string };
   return Bun.file(join(summary.outputDirectory, "report.json")).json();
 };
+
+test("renderer CLI failures propagate through the subprocess seam", async () => {
+  await expect(
+    runRendererCli(["--unknown-account-visual-argument"])
+  ).rejects.toThrow(
+    /Account visual CLI exited with 1:[\s\S]*Unknown argument: --unknown-account-visual-argument/
+  );
+});
 
 const withControlledPage = async <T,>(
   {
@@ -387,10 +420,14 @@ const controlledHeaderFixture = (
     narrow = false,
     overflowing = false,
     srOnlyLabel = false,
+    headingFontSize = 24,
+    headingWidth,
   }: {
     readonly narrow?: boolean;
     readonly overflowing?: boolean;
     readonly srOnlyLabel?: boolean;
+    readonly headingFontSize?: number;
+    readonly headingWidth?: number;
   } = {}
 ) => {
   let headingLayout = "flex:1 1 auto; min-width:0;";
@@ -399,11 +436,13 @@ const controlledHeaderFixture = (
   } else if (overflowing) {
     headingLayout =
       "flex:0 0 160px; width:160px; min-width:160px; overflow:hidden; white-space:nowrap;";
+  } else if (headingWidth !== undefined) {
+    headingLayout = `flex:0 0 ${headingWidth}px; width:${headingWidth}px; min-width:${headingWidth}px;`;
   }
   return `
   <main style="width:100%; margin:0; padding:0;">
     <header style="display:flex; align-items:center; gap:16px; width:100%; padding:16px; box-sizing:border-box;">
-      <h1 style="${headingLayout} margin:0; font:700 24px/28px Arial, sans-serif;">${heading}</h1>
+      <h1 style="${headingLayout} margin:0; font:700 ${headingFontSize}px/28px Arial, sans-serif;">${heading}</h1>
       <button id="account-sign-out" type="button" aria-label="Sign out" style="flex:0 0 auto;">Sign out</button>
     </header>
     ${
@@ -1488,7 +1527,10 @@ test.serial.skipIf(!chromiumAvailable)(
           locale === "en-US" ? "My Workspace" : "Moje pracovni plocha";
         const probe = await withControlledPage(
           {
-            html: controlledHeaderFixture(heading),
+            html: controlledHeaderFixture(heading, {
+              headingFontSize: 23,
+              headingWidth: 142,
+            }),
             locale,
             width,
           },
@@ -1504,14 +1546,27 @@ test.serial.skipIf(!chromiumAvailable)(
         expect(probe.locale).toBe(locale);
         expect(probe.viewport.cssWidth).toBe(width);
         expect(probe.headerReadability.status).toBe("passed");
-        expect(probe.headerReadability.headingWidth).toBeGreaterThanOrEqual(
-          Math.min(160, width - 32)
+        expect(probe.headerReadability.minimumHeadingWidth).toBeGreaterThan(0);
+        expect(probe.headerReadability.minimumHeadingWidth).toBeLessThanOrEqual(
+          probe.headerReadability.headingWidth!
         );
+        expect(probe.headerReadability.headingWidth).toBe(142);
         expect(probe.headerReadability.lineCount).toBeGreaterThan(0);
-        expect(probe.headerReadability.computedStyle.fontSize).toBe("24px");
+        expect(probe.headerReadability.computedStyle.fontSize).toBe("23px");
         expect(probe.headerReadability.computedStyle.lineHeight).toBe("28px");
         expect(probe.headerReadability.singleWordGlyphWrapping).toBe(false);
         expect(probe.failures).toEqual([]);
+
+        const headingRect = probe.headerReadability.cssRect!;
+        expect(
+          probe.headerReadability.textRangeRects.every(
+            (rect) =>
+              rect.x >= headingRect.x - 1 &&
+              rect.y >= headingRect.y - 1 &&
+              rect.right <= headingRect.right + 1 &&
+              rect.bottom <= headingRect.bottom + 1
+          )
+        ).toBe(true);
       }
     }
   },
@@ -1565,9 +1620,12 @@ test.serial.skipIf(!chromiumAvailable)(
 
       expect(probe.headerReadability.status).toBe("failed");
       expect(probe.headerReadability.headingWidth).toBe(32);
-      expect(probe.headerReadability.minimumHeadingWidth).toBe(160);
+      expect(probe.headerReadability.minimumHeadingWidth).toBeGreaterThan(0);
+      expect(probe.headerReadability.minimumHeadingWidth).toBeGreaterThan(
+        probe.headerReadability.headingWidth!
+      );
       expect(probe.headerReadability.failures).toEqual(
-        expect.arrayContaining([expect.stringContaining("below minimum 160px")])
+        expect.arrayContaining([expect.stringContaining("below minimum")])
       );
       expect(probe.headerReadability.wrapped).toBe(true);
       expect(probe.headerReadability.singleWordGlyphWrapping).toBe(true);
@@ -1599,6 +1657,7 @@ test.serial.skipIf(!chromiumAvailable)(
 
       expect(probe.headerReadability.status).toBe("failed");
       expect(probe.headerReadability.headingWidth).toBe(160);
+      expect(probe.headerReadability.minimumHeadingWidth).toBeGreaterThan(0);
       expect(probe.headerReadability.lineCount).toBe(1);
       expect(probe.headerReadability.cssRect?.right).toBeLessThanOrEqual(width);
       expect(probe.headerReadability.textRangeRects).toEqual(
@@ -2574,16 +2633,16 @@ test.serial.skipIf(!chromiumAvailable)(
       });
       expect(screen.desktop.viewport).toEqual({
         cssWidth: 1280,
-        cssHeight: 32,
+        cssHeight: 800,
         physicalWidth: 2560,
-        physicalHeight: 64,
+        physicalHeight: 1600,
         deviceScaleFactor: 2,
       });
       expect(screen.desktop.mainCssDimensions.width).toBeGreaterThan(1280);
       expect(screen.desktop.mainPhysicalDimensions.width).toBeGreaterThan(2560);
       expect(screen.desktop.comparison).toMatchObject({
         coordinateSpace: "reference-physical-pixels",
-        referencePhysicalPixels: { width: 64, height: 64 },
+        referencePhysicalPixels: { width: 2560, height: 1600 },
         actualCssPixels: screen.desktop.mainCssDimensions,
         actualPhysicalPixels: screen.desktop.mainPhysicalDimensions,
       });

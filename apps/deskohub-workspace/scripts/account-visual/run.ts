@@ -2296,8 +2296,74 @@ export const readInitialDomProbe = async (
           ...headingRangeRects.map((rect) => rect.bottom),
           headingRect.bottom
         );
+        const longestUnbrokenWordWidth = (() => {
+          const words = headingText.split(/\s+/).filter(Boolean);
+          if (words.length === 0) return 0;
+
+          const measurement = heading.cloneNode(false) as HTMLElement;
+          measurement.removeAttribute("id");
+          measurement.setAttribute("aria-hidden", "true");
+          for (const property of [
+            "font",
+            "font-family",
+            "font-size",
+            "font-weight",
+            "font-style",
+            "font-stretch",
+            "font-variant",
+            "font-kerning",
+            "font-feature-settings",
+            "font-variation-settings",
+            "font-optical-sizing",
+            "font-synthesis",
+            "font-size-adjust",
+            "line-height",
+            "letter-spacing",
+            "word-spacing",
+            "text-transform",
+            "text-indent",
+            "direction",
+            "unicode-bidi",
+            "writing-mode",
+            "text-orientation",
+          ]) {
+            const value = style.getPropertyValue(property);
+            if (value) measurement.style.setProperty(property, value);
+          }
+          measurement.style.setProperty("position", "absolute");
+          measurement.style.setProperty("display", "inline-block");
+          measurement.style.setProperty("width", "max-content", "important");
+          measurement.style.setProperty(
+            "min-width",
+            "max-content",
+            "important"
+          );
+          measurement.style.setProperty("max-width", "none", "important");
+          measurement.style.setProperty("height", "auto", "important");
+          measurement.style.setProperty("flex", "none", "important");
+          measurement.style.setProperty("white-space", "nowrap", "important");
+          measurement.style.setProperty("visibility", "hidden");
+          measurement.style.setProperty("pointer-events", "none");
+          measurement.style.setProperty("left", "0");
+          measurement.style.setProperty("top", "0");
+          measurement.textContent = "";
+
+          const measurementParent = heading.parentElement ?? document.body;
+          measurementParent.append(measurement);
+          try {
+            return words.reduce((longest, word) => {
+              measurement.textContent = word;
+              const width = measurement.getBoundingClientRect().width;
+              return Number.isFinite(width)
+                ? Math.max(longest, width)
+                : longest;
+            }, 0);
+          } finally {
+            measurement.remove();
+          }
+        })();
         const minimumHeadingWidth = Math.min(
-          160,
+          longestUnbrokenWordWidth,
           Math.max(0, window.innerWidth - 32)
         );
         const singleWordGlyphWrapping =
