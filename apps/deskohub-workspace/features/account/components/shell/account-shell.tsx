@@ -69,13 +69,15 @@ export function AccountShell({
   return (
     <main className="min-h-screen [--font-heading-weight:700] [--font-subheading-weight:600] [background:radial-gradient(circle_at_0%_0%,rgba(255,242,214,0.9),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(218,244,235,0.82),transparent_38%),#f8f5ef] px-4 pb-28 pt-[calc(var(--site-header-height)+3rem)] sm:px-6 lg:px-8">
       <div className="mx-auto min-w-0 max-w-[95rem]">
-        <header className="flex min-w-0 flex-col gap-x-8 gap-y-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-          <h1 className="w-full min-w-0 flex-1 break-words text-[28px] font-bold leading-[1.15] tracking-[-0.025em] text-[#00024f] sm:w-auto sm:text-[36px]">
+        <header className="flex min-w-0 flex-row items-start justify-between gap-x-3 gap-y-4 sm:flex-wrap sm:gap-x-8">
+          <h1 className="min-w-0 flex-1 break-words text-[24px] min-[375px]:text-[28px] font-bold leading-[1.15] tracking-[-0.025em] text-[#00024f] sm:text-[36px]">
             {title}
           </h1>
-          <div className="max-w-full shrink-0 self-start sm:self-auto">
-            {signOut}
-          </div>
+          {signOut && (
+            <div className="min-w-0 max-w-[60%] shrink-0 break-words sm:max-w-full sm:break-normal">
+              {signOut}
+            </div>
+          )}
         </header>
 
         <div className="mt-7 grid min-w-0 items-start gap-8 md:grid-cols-[minmax(0,17.5rem)_minmax(0,1fr)]">
