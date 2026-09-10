@@ -51,6 +51,7 @@
   "accountReservationStatus": "Stav",
   "accountFeatureUnavailable": "Nedostupné",
   "accountFeatureUnavailableDescription": "Ve vašem účtu zatím není k dispozici.",
+  "account_future_feature_tooltip": "Tato funkce bude k dispozici v budoucnu.",
   "accountReservationValidity": "Platnost",
   "accountReservationView": "Zobrazit rezervaci",
   "accountReservationWifi": "Wi-Fi",

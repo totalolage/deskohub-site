@@ -1,4 +1,5 @@
 import { Download } from "lucide-react";
+import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { CookieSettings } from "@/features/cookie-consent/components/cookie-settings-page";
 import { type Locale, m } from "@/features/i18n";
 import { GuardedLink } from "@/shared/components/guarded-link";
@@ -69,15 +70,17 @@ export function LegalScreen({ locale, strings }: LegalScreenProps) {
               {strings.archiveDescription}
             </p>
           </div>
-          <Button
-            className="h-auto shrink-0 whitespace-normal px-4 py-2 text-left leading-5 lg:text-center"
-            disabled
-            type="button"
-            variant="secondary"
-          >
-            <Download aria-hidden="true" className="size-4 shrink-0" />
-            {strings.archiveAction}
-          </Button>
+          <FutureFeatureTooltip locale={locale}>
+            <Button
+              className="h-auto min-w-0 max-w-full whitespace-normal px-4 py-2 text-left leading-5 lg:text-center"
+              disabled
+              type="button"
+              variant="secondary"
+            >
+              <Download aria-hidden="true" className="size-4 shrink-0" />
+              {strings.archiveAction}
+            </Button>
+          </FutureFeatureTooltip>
         </div>
       </div>
     </Card>

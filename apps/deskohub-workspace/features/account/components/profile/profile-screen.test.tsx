@@ -118,6 +118,7 @@ function renderProfile(overrides: Partial<ProfileScreenProps> = {}): string {
       lastName={
         "lastName" in overrides ? (overrides.lastName ?? null) : "Lovelace"
       }
+      locale={overrides.locale ?? "en-US"}
       footer={overrides.footer ?? <button type="button">Save profile</button>}
     >
       {overrides.children ?? profileFields}
@@ -243,7 +244,10 @@ describe("ProfileScreen", () => {
   });
 
   test("renders the unavailable language control as a disabled localized combobox", () => {
-    for (const copy of [englishCopy, czechCopy]) {
+    for (const [locale, copy] of [
+      ["en-US", englishCopy],
+      ["cs-CZ", czechCopy],
+    ] as const) {
       const view = render(
         <form data-testid="profile-form">
           <ProfileScreen
@@ -252,6 +256,7 @@ describe("ProfileScreen", () => {
             firstName="Ada"
             footer={<button type="button">Save profile</button>}
             lastName="Lovelace"
+            locale={locale}
           >
             {profileFields}
           </ProfileScreen>
@@ -351,6 +356,7 @@ describe("ProfileScreen", () => {
       copy: czechCopy,
       firstName: "",
       lastName: null,
+      locale: "cs-CZ",
     });
 
     const { emailVerification, ...localizedStrings } = czechCopy;
