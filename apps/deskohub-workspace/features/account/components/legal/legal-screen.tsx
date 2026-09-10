@@ -1,5 +1,6 @@
 import { Download } from "lucide-react";
 import { useId } from "react";
+import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { type Locale, m } from "@/features/i18n";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
@@ -62,12 +63,14 @@ export function LegalScreen({ locale, strings }: LegalScreenProps) {
         <PreferenceRow
           description={strings.analyticsDescription}
           descriptionId={unavailableDescriptionId}
+          locale={locale}
           title={strings.analyticsTitle}
           unavailable={strings.unavailable}
         />
         <PreferenceRow
           description={strings.marketingDescription}
           descriptionId={unavailableDescriptionId}
+          locale={locale}
           title={strings.marketingTitle}
           unavailable={strings.unavailable}
         />
@@ -90,27 +93,31 @@ export function LegalScreen({ locale, strings }: LegalScreenProps) {
               {strings.archiveDescription}
             </p>
           </div>
-          <Button
-            className="h-auto shrink-0 whitespace-normal px-4 py-2 text-left leading-5 lg:text-center"
-            disabled
-            type="button"
-            variant="secondary"
-          >
-            <Download aria-hidden="true" className="size-4 shrink-0" />
-            {strings.archiveAction}
-          </Button>
+          <FutureFeatureTooltip locale={locale}>
+            <Button
+              className="h-auto min-w-0 max-w-full whitespace-normal px-4 py-2 text-left leading-5 lg:text-center"
+              disabled
+              type="button"
+              variant="secondary"
+            >
+              <Download aria-hidden="true" className="size-4 shrink-0" />
+              {strings.archiveAction}
+            </Button>
+          </FutureFeatureTooltip>
         </div>
       </div>
 
       <div className="mt-8 flex min-w-0 flex-wrap items-center gap-3">
-        <Button
-          aria-describedby={unavailableDescriptionId}
-          className="h-auto w-full whitespace-normal bg-[#00024f] px-8 py-3 text-center text-white hover:bg-[#00024f] sm:w-auto"
-          disabled
-          type="button"
-        >
-          {strings.savePreferences}
-        </Button>
+        <FutureFeatureTooltip locale={locale}>
+          <Button
+            aria-describedby={unavailableDescriptionId}
+            className="h-auto w-full whitespace-normal bg-[#00024f] px-8 py-3 text-center text-white hover:bg-[#00024f] sm:w-auto"
+            disabled
+            type="button"
+          >
+            {strings.savePreferences}
+          </Button>
+        </FutureFeatureTooltip>
       </div>
     </Card>
   );
@@ -119,11 +126,13 @@ export function LegalScreen({ locale, strings }: LegalScreenProps) {
 function PreferenceRow({
   description,
   descriptionId,
+  locale,
   title,
   unavailable,
 }: {
   readonly description: string;
   readonly descriptionId: string;
+  readonly locale: Locale;
   readonly title: string;
   readonly unavailable: string;
 }) {
@@ -137,15 +146,17 @@ function PreferenceRow({
           {description}
         </p>
       </div>
-      <Button
-        aria-describedby={descriptionId}
-        className="h-auto shrink-0 whitespace-normal px-4 py-2 leading-5"
-        disabled
-        type="button"
-        variant="secondary"
-      >
-        {unavailable}
-      </Button>
+      <FutureFeatureTooltip locale={locale}>
+        <Button
+          aria-describedby={descriptionId}
+          className="h-auto shrink-0 whitespace-normal px-4 py-2 leading-5"
+          disabled
+          type="button"
+          variant="secondary"
+        >
+          {unavailable}
+        </Button>
+      </FutureFeatureTooltip>
     </div>
   );
 }

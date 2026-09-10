@@ -1,5 +1,7 @@
 import { Camera, Check, UserRound } from "lucide-react";
 import { type ReactNode, useId } from "react";
+import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
+import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 
@@ -26,6 +28,7 @@ export interface ProfileScreenProps {
   readonly firstName: string;
   readonly lastName: string | null;
   readonly email: string;
+  readonly locale: Locale;
   readonly copy: ProfileScreenCopy;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
@@ -38,6 +41,7 @@ export function ProfileScreen({
   firstName,
   footer,
   lastName,
+  locale,
 }: ProfileScreenProps) {
   const titleId = useId();
   const languageId = useId();
@@ -77,17 +81,21 @@ export function ProfileScreen({
               <UserRound className="size-9" strokeWidth={1.8} />
             )}
           </div>
-          <Button
-            aria-describedby={avatarDescriptionId}
-            aria-label={copy.avatarUnavailableLabel}
-            className="absolute -right-1 -bottom-1 size-10 rounded-full border border-[#dfe4ec] bg-white p-0 text-[#344258] shadow-[0_3px_10px_rgba(0,2,79,0.14)] disabled:cursor-not-allowed"
-            disabled
-            size="icon"
-            type="button"
-            variant="secondary"
-          >
-            <Camera aria-hidden="true" className="size-4" strokeWidth={2} />
-          </Button>
+          <span className="absolute -right-1 -bottom-1 inline-flex size-10">
+            <FutureFeatureTooltip locale={locale}>
+              <Button
+                aria-describedby={avatarDescriptionId}
+                aria-label={copy.avatarUnavailableLabel}
+                className="size-10 rounded-full border border-[#dfe4ec] bg-white p-0 text-[#344258] shadow-[0_3px_10px_rgba(0,2,79,0.14)] disabled:cursor-not-allowed"
+                disabled
+                size="icon"
+                type="button"
+                variant="secondary"
+              >
+                <Camera aria-hidden="true" className="size-4" strokeWidth={2} />
+              </Button>
+            </FutureFeatureTooltip>
+          </span>
         </div>
 
         <div className="min-w-0">

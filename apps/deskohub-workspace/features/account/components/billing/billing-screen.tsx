@@ -1,6 +1,8 @@
 import { Download, FileDown, Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId } from "react";
+import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
+import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 /*
@@ -33,11 +35,17 @@ export interface BillingScreenCopy {
 
 export interface BillingScreenProps {
   readonly copy: BillingScreenCopy;
+  readonly locale: Locale;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
 }
 
-export function BillingScreen({ children, copy, footer }: BillingScreenProps) {
+export function BillingScreen({
+  children,
+  copy,
+  footer,
+  locale,
+}: BillingScreenProps) {
   const instanceId = useId();
   const titleId = `${instanceId}-billing-title`;
   const paymentMethodsTitleId = `${instanceId}-payment-methods-title`;
@@ -81,36 +89,40 @@ export function BillingScreen({ children, copy, footer }: BillingScreenProps) {
             >
               {copy.paymentMethodsUnavailable}
             </p>
+            <FutureFeatureTooltip locale={locale}>
+              <Button
+                aria-describedby={paymentMethodsUnavailableId}
+                className="h-auto min-h-9 max-w-full self-start whitespace-normal rounded-xl px-3 py-2 text-left text-xs font-semibold text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
+                disabled
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                <Trash2 aria-hidden="true" className="size-4 shrink-0" />
+                <span className="min-w-0 break-words">
+                  {copy.removePaymentCard}
+                </span>
+              </Button>
+            </FutureFeatureTooltip>
+          </div>
+
+          <FutureFeatureTooltip locale={locale}>
             <Button
               aria-describedby={paymentMethodsUnavailableId}
-              className="h-auto min-h-9 max-w-full self-start whitespace-normal rounded-xl px-3 py-2 text-left text-xs font-semibold text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
+              className="flex h-auto min-h-[9rem] min-w-0 w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[#cbd7e5] bg-[#fbfcfd] px-4 py-6 text-center text-[#53657f] whitespace-normal hover:bg-[#fbfcfd] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
               disabled
-              size="sm"
               type="button"
               variant="ghost"
             >
-              <Trash2 aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-0 break-words">
-                {copy.removePaymentCard}
+              <Plus
+                aria-hidden="true"
+                className="size-5 shrink-0 text-[#8291a6]"
+              />
+              <span className="min-w-0 max-w-full break-words">
+                {copy.addPaymentCard}
               </span>
             </Button>
-          </div>
-
-          <Button
-            aria-describedby={paymentMethodsUnavailableId}
-            className="flex h-auto min-h-[9rem] min-w-0 w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[#cbd7e5] bg-[#fbfcfd] px-4 py-6 text-center text-[#53657f] whitespace-normal hover:bg-[#fbfcfd] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
-            disabled
-            type="button"
-            variant="ghost"
-          >
-            <Plus
-              aria-hidden="true"
-              className="size-5 shrink-0 text-[#8291a6]"
-            />
-            <span className="min-w-0 max-w-full break-words">
-              {copy.addPaymentCard}
-            </span>
-          </Button>
+          </FutureFeatureTooltip>
         </div>
       </section>
 
@@ -132,17 +144,19 @@ export function BillingScreen({ children, copy, footer }: BillingScreenProps) {
               {copy.aresUnavailable}
             </p>
           </div>
-          <Button
-            aria-describedby={aresUnavailableId}
-            className="h-auto max-w-full shrink-0 whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
-            disabled
-            size="sm"
-            type="button"
-            variant="secondary"
-          >
-            <RefreshCw aria-hidden="true" className="size-4 shrink-0" />
-            <span className="min-w-0 break-words">{copy.syncAres}</span>
-          </Button>
+          <FutureFeatureTooltip locale={locale}>
+            <Button
+              aria-describedby={aresUnavailableId}
+              className="h-auto max-w-full shrink-0 whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
+              disabled
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <RefreshCw aria-hidden="true" className="size-4 shrink-0" />
+              <span className="min-w-0 break-words">{copy.syncAres}</span>
+            </Button>
+          </FutureFeatureTooltip>
         </div>
         <div className="mt-6 min-w-0">{children}</div>
       </section>
@@ -158,30 +172,36 @@ export function BillingScreen({ children, copy, footer }: BillingScreenProps) {
             {copy.invoiceHistoryTitle}
           </h3>
           <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto">
-            <Button
-              aria-describedby={invoiceHistoryUnavailableId}
-              className="h-auto max-w-full whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
-              disabled
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <Download aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-0 break-words">
-                {copy.downloadInvoice}
-              </span>
-            </Button>
-            <Button
-              aria-describedby={invoiceHistoryUnavailableId}
-              className="h-auto max-w-full whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
-              disabled
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              <FileDown aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-0 break-words">{copy.exportInvoices}</span>
-            </Button>
+            <FutureFeatureTooltip locale={locale}>
+              <Button
+                aria-describedby={invoiceHistoryUnavailableId}
+                className="h-auto max-w-full whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
+                disabled
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                <Download aria-hidden="true" className="size-4 shrink-0" />
+                <span className="min-w-0 break-words">
+                  {copy.downloadInvoice}
+                </span>
+              </Button>
+            </FutureFeatureTooltip>
+            <FutureFeatureTooltip locale={locale}>
+              <Button
+                aria-describedby={invoiceHistoryUnavailableId}
+                className="h-auto max-w-full whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
+                disabled
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                <FileDown aria-hidden="true" className="size-4 shrink-0" />
+                <span className="min-w-0 break-words">
+                  {copy.exportInvoices}
+                </span>
+              </Button>
+            </FutureFeatureTooltip>
           </div>
         </div>
         <div className="mt-4 min-w-0 rounded-2xl border border-[#e0e6ee] bg-[#fbfcfd] px-4 py-5">

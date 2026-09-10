@@ -75,7 +75,7 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
   });
 }
 
-test("keeps account legal controls visibly unavailable and inert", () => {
+test("keeps account legal controls disabled while exposing future placeholders", () => {
   const strings = legalScreenCopy["en-US"];
   const view = render(<LegalScreen locale="en-US" strings={strings} />);
   const buttons = view.getAllByRole("button");
@@ -114,11 +114,18 @@ test("keeps account legal controls visibly unavailable and inert", () => {
     view.container.querySelectorAll(
       "input, [role='checkbox'], [role='switch'], [aria-checked], [aria-pressed], [data-state]"
     )
-  ).toHaveLength(0);
+  ).toHaveLength(4);
 
   const archiveButton = view.getByRole("button", {
     name: strings.archiveAction,
   });
+  const staticInteractionMarkers = view.container.querySelectorAll(
+    "input, [role='checkbox'], [role='switch'], [aria-checked], [aria-pressed], [data-state]"
+  );
+  expect(staticInteractionMarkers).toHaveLength(4);
+  for (const button of buttons) {
+    expect(button.closest("[data-state]")).not.toBeNull();
+  }
   const archiveRow = view.getByRole("heading", {
     name: strings.archiveTitle,
   }).parentElement?.parentElement;

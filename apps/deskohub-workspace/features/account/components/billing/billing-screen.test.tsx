@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import type { Locale } from "@/features/i18n";
 import type { BillingScreenCopy } from "./billing-screen";
 import { BillingScreen } from "./billing-screen";
 
@@ -51,9 +52,9 @@ const escapeHtml = (value: string) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#x27;");
 
-const renderScreen = (copy: BillingScreenCopy) =>
+const renderScreen = (copy: BillingScreenCopy, locale: Locale) =>
   renderToStaticMarkup(
-    <BillingScreen copy={copy}>
+    <BillingScreen copy={copy} locale={locale}>
       <div data-child-marker="billing-fields">Caller-owned billing fields</div>
     </BillingScreen>
   );
@@ -69,6 +70,7 @@ describe("BillingScreen", () => {
       <BillingScreen
         copy={englishCopy}
         footer={<span data-footer-marker="billing-footer">Save billing</span>}
+        locale="en-US"
       >
         <div data-child-marker="billing-fields">
           Caller-owned billing fields
@@ -87,7 +89,7 @@ describe("BillingScreen", () => {
   });
 
   test("renders safely without an optional footer", () => {
-    const markup = renderScreen(englishCopy);
+    const markup = renderScreen(englishCopy, "en-US");
 
     expect(markup).not.toContain("data-footer-marker");
   });
@@ -98,6 +100,7 @@ describe("BillingScreen", () => {
         <BillingScreen
           copy={englishCopy}
           footer={<button type="submit">Save billing</button>}
+          locale="en-US"
         >
           <div>
             <label htmlFor="company-legal-name">Company legal name</label>
@@ -121,7 +124,7 @@ describe("BillingScreen", () => {
   });
 
   test("keeps every unsupported action disabled and native button-shaped", () => {
-    const markup = renderScreen(englishCopy);
+    const markup = renderScreen(englishCopy, "en-US");
     const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
     expect(buttons).toHaveLength(5);
@@ -132,12 +135,12 @@ describe("BillingScreen", () => {
   });
 
   test.each([
-    ["English", englishCopy],
-    ["Czech", czechCopy],
+    ["English", "en-US", englishCopy],
+    ["Czech", "cs-CZ", czechCopy],
   ] as const)(
     "renders every supplied %s string without invented billing data",
-    (_locale, copy) => {
-      const markup = renderScreen(copy);
+    (_language, locale, copy) => {
+      const markup = renderScreen(copy, locale);
 
       for (const value of Object.values(copy)) {
         expect(markup).toContain(escapeHtml(value));
@@ -152,10 +155,10 @@ describe("BillingScreen", () => {
   test("keeps labels and description references unique across two instances", () => {
     const markup = renderToStaticMarkup(
       <div>
-        <BillingScreen copy={englishCopy}>
+        <BillingScreen copy={englishCopy} locale="en-US">
           <div>First billing fields</div>
         </BillingScreen>
-        <BillingScreen copy={czechCopy}>
+        <BillingScreen copy={czechCopy} locale="cs-CZ">
           <div>Second billing fields</div>
         </BillingScreen>
       </div>

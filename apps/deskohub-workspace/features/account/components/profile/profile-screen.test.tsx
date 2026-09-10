@@ -87,6 +87,7 @@ function renderProfile(overrides: Partial<ProfileScreenProps> = {}): string {
       lastName={
         "lastName" in overrides ? (overrides.lastName ?? null) : "Lovelace"
       }
+      locale={overrides.locale ?? "en-US"}
       footer={overrides.footer ?? <button type="button">Save profile</button>}
     >
       {overrides.children ?? profileFields}
@@ -275,6 +276,7 @@ describe("ProfileScreen", () => {
       copy: localizedCopy,
       firstName: "",
       lastName: null,
+      locale: "cs-CZ",
     });
 
     for (const copyValue of Object.values(localizedCopy)) {

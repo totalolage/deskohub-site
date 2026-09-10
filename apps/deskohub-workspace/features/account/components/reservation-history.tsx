@@ -1,4 +1,5 @@
 import { CalendarDays, Users } from "lucide-react";
+import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import type {
   CustomerReservationGroups,
   CustomerReservationHistory,
@@ -408,24 +409,28 @@ function FeaturedReservationItem({
 
         <div className="flex min-w-0 flex-col gap-4 border-t border-[#dfe4ec] p-6 sm:flex-row sm:items-center sm:justify-between xl:grid xl:grid-cols-[minmax(0,1fr)_auto] xl:gap-x-4 xl:gap-y-2 xl:px-6 xl:py-4">
           <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap xl:col-start-1 xl:row-start-2">
-            <Button
-              className="w-full sm:w-auto"
-              disabled
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              {copy.checkIn}
-            </Button>
-            <Button
-              className="w-full sm:w-auto"
-              disabled
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              {copy.nfcAccess}
-            </Button>
+            <FutureFeatureTooltip locale={locale}>
+              <Button
+                className="w-full sm:w-auto"
+                disabled
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                {copy.checkIn}
+              </Button>
+            </FutureFeatureTooltip>
+            <FutureFeatureTooltip locale={locale}>
+              <Button
+                className="w-full sm:w-auto"
+                disabled
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                {copy.nfcAccess}
+              </Button>
+            </FutureFeatureTooltip>
             <Button
               className="w-full sm:w-auto"
               disabled
