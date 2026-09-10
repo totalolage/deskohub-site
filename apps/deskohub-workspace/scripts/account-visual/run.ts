@@ -76,16 +76,12 @@ const rendererEntryPath = join(import.meta.dir, "browser-entry.tsx");
 const defaultAdapterPath = join(import.meta.dir, "default-adapter.tsx");
 const populatedAdapterPath = join(import.meta.dir, "populated-adapter.tsx");
 const rendererCssPath = join(import.meta.dir, "renderer.css");
-const generatedBuildEntryPath = join(
-  defaultOutputRoot,
-  ".account-visual-build-entry.tsx"
-);
 const postCssConfigPath = join(appRoot, "postcss.config.mjs");
 const fixedClockIso = "2026-11-10T10:00:00.000Z";
 const fixedClockMilliseconds = Date.parse(fixedClockIso);
 const timeZone = "Europe/Prague";
 const referenceLocale: AccountVisualLocale = "en-US";
-const rendererPort = 3111;
+const defaultRendererPort = 3111;
 const desktopDeviceScaleFactor = 2;
 const desktopCssWidth = 1280;
 const desktopPhysicalWidth = desktopCssWidth * desktopDeviceScaleFactor;
@@ -218,6 +214,7 @@ type CliOptions = {
   readonly label: string;
   readonly locale: AccountVisualLocale;
   readonly outputRoot: string;
+  readonly port: number;
   readonly referencesDir: string;
   readonly screen?: AccountVisualScreen;
   readonly tablet: boolean;
@@ -250,7 +247,7 @@ type ScreenSelection = {
   readonly status: "selected" | "adapter-defined" | "failed";
   readonly method:
     | "desktop-nav-button"
-    | "mobile-native-select"
+    | "mobile-nav-button"
     | "adapter-defined"
     | "none";
   readonly sectionLabel: string | null;
@@ -264,7 +261,7 @@ type ScreenSelection = {
 
 type MobileSectionNavigation = {
   readonly status: "passed" | "adapter-defined" | "failed";
-  readonly method: "mobile-native-select" | "adapter-defined" | "none";
+  readonly method: "mobile-nav-button" | "adapter-defined" | "none";
   readonly requestedScreen: AccountVisualScreen;
   readonly alternateScreen: AccountVisualScreen | null;
   readonly selectedBefore: string | null;
@@ -804,6 +801,7 @@ API:
   --tablet selects a 768 CSS px, DPR 1 desktop/tablet capture instead of the standard 1280 CSS px, DPR 2 capture.
   --references selects the directory containing the supplied reference PNGs.
   --output selects a directory under /tmp/opencode/pr239-account-redesign/visual.
+  WORKSPACE_ACCOUNT_VISUAL_PORT selects the exclusive localhost renderer port (default 3111); it must be a decimal integer from 1 through 65535.
 
   Methodology:
   The browser bundle imports the production AccountPage and globals.css. Tailwind PostCSS processes globals.css before Bun emits the standalone browser bundle.
@@ -815,11 +813,11 @@ API:
   This is component-only evidence. Full-route site chrome is unavailable here: SiteHeader, PageNavigationBoundary, and PublicSiteFooter are not mounted, and UnsavedChangesProvider is absent so its default confirm=true context is used. Parent integration must prove those boundaries separately.
   Caller-owned adapters compose the integrated account shell and screen content. The default AccountPage is captured through its current production AccountShell when present; no fake screens are created.
   Mobile focus PNGs are native screenshots from the same page that received keyboard focus. Carets are hidden and screenshot animations are disabled, but browser focus rasterization can still vary between runs; repeatability is reported, never normalized by painting pixels.
-  One renderer process owns localhost:3111 and runs screens sequentially. Screen agents supply adapters; the caller runs after integration and must not run renderer processes concurrently. An occupied port fails without stopping another process.
+  One renderer process owns the selected localhost port and runs screens sequentially. Screen agents supply adapters; the caller runs after integration and must not run renderer processes concurrently. An occupied port fails without stopping another process.
   The populated adapter also runs one post-capture native-validation probe in a fresh browser context. It uses real requestSubmit() constraint validation, records passive invalid events, and never dispatches invalid events or enables unavailable backend actions.
   Unavailable backend controls retain their actual labels and native disabled styles. The component renderer adds only disabled state, a native title, and data metadata; it does not paint an in-flow annotation or overlay.
   Renderer method version: ${accountVisualRendererMethodVersion}. Historical baseline comparability is false because the prior baseline used a layout-changing unavailable annotation (${accountVisualHistoricalBaselineComparabilityReason}). Iteration comparisons are eligible only when renderer method version, fixture, and locale match. Reference metrics remain direct native PNG comparisons and are not masked.
-  Initial DOM probes run before screen selection, screenshots, interaction, focus, or style mutation. They measure the main header h1 and Range text boxes. A selected-screen email probe runs after the requested screen is selected but before screenshot, interaction, focus, or style mutation; hidden non-selected profile DOM is not measured. Horizontal overflow and field clipping fail, while ordinary vertical offscreen or partial visibility is recorded without failing.
+  Initial DOM probes run before screen selection, screenshots, interaction, focus, or style mutation. They measure the main header h1 and Range text boxes; only inactive section-button text inside a visible, viewport-contained mobile section navigation whose computed overflowX is exactly auto or scroll may be clipped, while the active section button and all other content remain audited. Mobile navigation selection requires the active section button to be fully visible after each navigation. A selected-screen email probe runs after the requested screen is selected but before screenshot, interaction, focus, or style mutation; hidden non-selected profile DOM is not measured. Horizontal overflow and field clipping fail, while ordinary vertical offscreen or partial visibility is recorded without failing.
   No authenticated end-to-end, database, provider, environment, or external-network claim is made. Missing controls and baseline functional failures are reported rather than simulated as successes.
 `;
 
@@ -837,6 +835,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
   let referencesDir = "/home/dev/.t3/userdata/attachments";
   let screen: AccountVisualScreen | undefined;
   let tablet = false;
+  const port = parseRendererPort(process.env.WORKSPACE_ACCOUNT_VISUAL_PORT);
 
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
@@ -892,6 +891,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
       label: label ?? "baseline",
       locale,
       outputRoot,
+      port,
       referencesDir,
       screen,
       tablet,
@@ -910,11 +910,28 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     label,
     locale,
     outputRoot,
+    port,
     referencesDir,
     screen,
     tablet,
   };
 }
+
+export const parseRendererPort = (value: string | undefined): number => {
+  if (value === undefined) return defaultRendererPort;
+  if (!/^\d+$/.test(value)) {
+    throw new Error(
+      `WORKSPACE_ACCOUNT_VISUAL_PORT must be a decimal integer from 1 through 65535; received ${JSON.stringify(value)}`
+    );
+  }
+  const port = Number(value);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(
+      `WORKSPACE_ACCOUNT_VISUAL_PORT must be a decimal integer from 1 through 65535; received ${JSON.stringify(value)}`
+    );
+  }
+  return port;
+};
 
 const isWithin = (parent: string, child: string) => {
   const childRelative = relative(parent, child);
@@ -1165,6 +1182,9 @@ import { mountAccountVisual } from ${JSON.stringify(rendererEntryPath)};
 mountAccountVisual(Adapter, accountVisualAdapterMetadata, ${JSON.stringify(locale)});
 `;
 
+const buildEntryPathForRun = (runDirectory: string) =>
+  join(runDirectory, ".account-visual-build-entry.tsx");
+
 type BuildResult = {
   readonly success: boolean;
   readonly outputs: readonly { readonly path: string }[];
@@ -1183,7 +1203,7 @@ const buildBundle = async (
 ) => {
   const buildDirectory = join(runDirectory, "build");
   await mkdir(buildDirectory, { recursive: true });
-  const buildEntryPath = generatedBuildEntryPath;
+  const buildEntryPath = buildEntryPathForRun(runDirectory);
   await writeFile(
     buildEntryPath,
     createBuildEntry(adapterPath, locale),
@@ -1308,7 +1328,8 @@ const makeStaticServer = async (
   rendererCss: Uint8Array,
   regularFont: Uint8Array,
   italicFont: Uint8Array,
-  locale: AccountVisualLocale
+  locale: AccountVisualLocale,
+  port: number
 ) => {
   const javascriptName = basename(javascriptPath);
   const cssName = basename(cssPath);
@@ -1364,16 +1385,16 @@ const makeStaticServer = async (
         });
       },
       hostname: "localhost",
-      port: rendererPort,
+      port,
     });
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Account visual renderer requires exclusive localhost:${rendererPort}; the port is occupied or unavailable. No existing process was stopped. ${details}`
+      `Account visual renderer requires exclusive localhost:${port}; the port is occupied or unavailable. No existing process was stopped. ${details}`
     );
   }
   return {
-    baseUrl: `http://localhost:${rendererPort}`,
+    baseUrl: `http://localhost:${port}`,
     server,
   } as const;
 };
@@ -1459,32 +1480,50 @@ const loadRendererPage = async (
   return page;
 };
 
-type AccountSectionSelect = {
-  readonly index: number;
+type AccountSectionNavigationButton = {
   readonly label: string;
 };
 
-const readAccountSectionSelect = async (
+const readAccountSectionNavigationButton = async (
   page: Page,
   screen: AccountVisualScreen
-): Promise<AccountSectionSelect | null> =>
-  page.locator("select").evaluateAll(
-    (elements, expected) => {
-      const selects = elements as HTMLSelectElement[];
-      const index = selects.findIndex((element) => {
+): Promise<AccountSectionNavigationButton | null> =>
+  page
+    .locator("[data-account-mobile-navigation] button[data-account-section]")
+    .evaluateAll(
+      (elements, expected) => {
+        const buttons = elements as HTMLButtonElement[];
         const values = new Set(
-          Array.from(element.options, (option) => option.value)
+          buttons.map((button) => button.dataset.accountSection)
         );
-        return expected.screens.every((value) => values.has(value));
-      });
-      if (index < 0) return null;
-      const option = Array.from(selects[index]!.options).find(
-        ({ value }) => value === expected.screen
-      );
-      return option ? { index, label: option.textContent?.trim() ?? "" } : null;
-    },
-    { screen, screens: [...accountVisualScreens] }
-  );
+        if (!expected.screens.every((value) => values.has(value))) return null;
+        const button = buttons.find(
+          ({ dataset }) => dataset.accountSection === expected.screen
+        );
+        return button ? { label: button.textContent?.trim() ?? "" } : null;
+      },
+      { screen, screens: [...accountVisualScreens] }
+    );
+
+const isMobileSectionButtonFullyVisible = async (button: Locator) =>
+  button.evaluate((element) => {
+    const mobileNavigation = element.closest(
+      "[data-account-mobile-navigation]"
+    );
+    if (!(mobileNavigation instanceof HTMLElement)) return false;
+    const navigationRect = mobileNavigation.getBoundingClientRect();
+    const buttonRect = element.getBoundingClientRect();
+    return (
+      navigationRect.width > 0 &&
+      navigationRect.height > 0 &&
+      buttonRect.width > 0 &&
+      buttonRect.height > 0 &&
+      buttonRect.left >= navigationRect.left - 1 &&
+      buttonRect.right <= navigationRect.right + 1 &&
+      buttonRect.top >= navigationRect.top - 1 &&
+      buttonRect.bottom <= navigationRect.bottom + 1
+    );
+  });
 
 const readVisibleTarget = async (
   page: Page,
@@ -1512,8 +1551,8 @@ const selectProductionScreen = async (
   mode: "desktop" | "mobile",
   isCallerAdapter: boolean
 ): Promise<ScreenSelection> => {
-  const sectionSelect = await readAccountSectionSelect(page, screen);
-  if (!sectionSelect) {
+  const sectionButton = await readAccountSectionNavigationButton(page, screen);
+  if (!sectionButton) {
     return {
       requestedScreen: screen,
       status: isCallerAdapter ? "adapter-defined" : "failed",
@@ -1526,7 +1565,7 @@ const selectProductionScreen = async (
       targetText: null,
       detail: isCallerAdapter
         ? "The supplied adapter did not render the production AccountShell; screen composition remains adapter-defined and no production selection is claimed."
-        : "The production AccountShell section select was not rendered.",
+        : "The production AccountShell section navigation buttons were not rendered.",
     };
   }
 
@@ -1535,7 +1574,7 @@ const selectProductionScreen = async (
     if (mode === "desktop") {
       const buttons = await page
         .getByRole("button")
-        .filter({ hasText: sectionSelect.label })
+        .filter({ hasText: sectionButton.label })
         .all();
       let visibleButton: Locator | undefined;
       for (const button of buttons) {
@@ -1546,15 +1585,26 @@ const selectProductionScreen = async (
       }
       if (!visibleButton) {
         throw new Error(
-          `No visible production desktop section button matched option label ${JSON.stringify(sectionSelect.label)}`
+          `No visible production desktop section button matched mobile navigation label ${JSON.stringify(sectionButton.label)}`
         );
       }
       await visibleButton.click();
-      const selectedButton = page
+      const selectedButtons = await page
         .locator("button[aria-current='page']")
-        .filter({ hasText: sectionSelect.label })
-        .first();
-      await selectedButton.waitFor({ state: "visible", timeout: 5_000 });
+        .filter({ hasText: sectionButton.label })
+        .all();
+      let selectedButton: Locator | undefined;
+      for (const button of selectedButtons) {
+        if (await button.isVisible()) {
+          selectedButton = button;
+          break;
+        }
+      }
+      if (!selectedButton) {
+        throw new Error(
+          `No visible production desktop selected section button matched mobile navigation label ${JSON.stringify(sectionButton.label)}`
+        );
+      }
       const selectedAriaCurrent =
         await selectedButton.getAttribute("aria-current");
       const target = await readVisibleTarget(page, screen);
@@ -1567,46 +1617,62 @@ const selectProductionScreen = async (
         requestedScreen: screen,
         status: "selected",
         method: "desktop-nav-button",
-        sectionLabel: sectionSelect.label,
+        sectionLabel: sectionButton.label,
         selectedValue: screen,
         selectedAriaCurrent,
         targetSelector,
         targetVisible: target.visible,
         targetText: target.text,
-        detail: `Selected ${screen} through the visible desktop navigation button labelled ${JSON.stringify(sectionSelect.label)}.`,
+        detail: `Selected ${screen} through the visible desktop navigation button labelled ${JSON.stringify(sectionButton.label)}.`,
       };
     }
 
-    const select = page.locator("select").nth(sectionSelect.index);
-    await select.waitFor({ state: "visible", timeout: 5_000 });
-    await select.selectOption(screen);
-    const selectedValue = await select.inputValue();
+    const sectionNavigationButton = page.locator(
+      `[data-account-mobile-navigation] button[data-account-section="${screen}"]`
+    );
+    await sectionNavigationButton.waitFor({ state: "visible", timeout: 5_000 });
+    await sectionNavigationButton.click();
+    const selectedButton = page.locator(
+      `[data-account-mobile-navigation] button[data-account-section="${screen}"][aria-current="page"]`
+    );
+    await selectedButton.waitFor({ state: "visible", timeout: 5_000 });
+    const selectedValue = await selectedButton.getAttribute(
+      "data-account-section"
+    );
+    const selectedAriaCurrent =
+      await selectedButton.getAttribute("aria-current");
+    const selectedButtonFullyVisible =
+      await isMobileSectionButtonFullyVisible(selectedButton);
     const target = await readVisibleTarget(page, screen);
-    if (selectedValue !== screen || !target.visible) {
+    if (
+      selectedValue !== screen ||
+      selectedAriaCurrent !== "page" ||
+      !selectedButtonFullyVisible ||
+      !target.visible
+    ) {
       throw new Error(
-        `Production mobile selection did not expose value ${screen} and a visible target`
+        `Production mobile selection did not expose data-account-section=${screen}, aria-current=page, a fully visible active button, and a visible target`
       );
     }
     return {
       requestedScreen: screen,
       status: "selected",
-      method: "mobile-native-select",
-      sectionLabel: sectionSelect.label,
+      method: "mobile-nav-button",
+      sectionLabel: sectionButton.label,
       selectedValue,
-      selectedAriaCurrent: null,
+      selectedAriaCurrent,
       targetSelector,
       targetVisible: target.visible,
       targetText: target.text,
-      detail: `Selected ${screen} through the visible mobile native select labelled ${JSON.stringify(sectionSelect.label)}.`,
+      detail: `Selected ${screen} through the visible mobile navigation button labelled ${JSON.stringify(sectionButton.label)}.`,
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     return {
       requestedScreen: screen,
       status: "failed",
-      method:
-        mode === "desktop" ? "desktop-nav-button" : "mobile-native-select",
-      sectionLabel: sectionSelect.label,
+      method: mode === "desktop" ? "desktop-nav-button" : "mobile-nav-button",
+      sectionLabel: sectionButton.label,
       selectedValue: null,
       selectedAriaCurrent: null,
       targetSelector,
@@ -1622,11 +1688,11 @@ const runMobileSectionNavigation = async (
   screen: AccountVisualScreen,
   isCallerAdapter: boolean
 ): Promise<MobileSectionNavigation> => {
-  const sectionSelect = await readAccountSectionSelect(page, screen);
+  const sectionButton = await readAccountSectionNavigationButton(page, screen);
   const alternateScreen = accountVisualScreens.find(
     (candidate) => candidate !== screen
   );
-  if (!sectionSelect || !alternateScreen) {
+  if (!sectionButton || !alternateScreen) {
     return {
       status: isCallerAdapter ? "adapter-defined" : "failed",
       method: isCallerAdapter ? "adapter-defined" : "none",
@@ -1637,19 +1703,45 @@ const runMobileSectionNavigation = async (
       selectedAfter: null,
       failures: isCallerAdapter
         ? []
-        : ["Production mobile section select was not rendered"],
+        : ["Production mobile section navigation buttons were not rendered"],
     };
   }
 
-  const select = page.locator("select").nth(sectionSelect.index);
+  const mobileNavigation = page.locator("[data-account-mobile-navigation]");
+  const readSelectedSection = async (): Promise<string | null> => {
+    const selectedButtons = await mobileNavigation
+      .locator("button[aria-current='page']")
+      .all();
+    for (const button of selectedButtons) {
+      if (await button.isVisible()) {
+        return await button.getAttribute("data-account-section");
+      }
+    }
+    return null;
+  };
+  const selectSection = async (nextScreen: AccountVisualScreen) => {
+    const button = mobileNavigation.locator(
+      `button[data-account-section="${nextScreen}"]`
+    );
+    await button.waitFor({ state: "visible", timeout: 5_000 });
+    await button.click();
+    const selectedButton = mobileNavigation.locator(
+      `button[data-account-section="${nextScreen}"][aria-current="page"]`
+    );
+    await selectedButton.waitFor({ state: "visible", timeout: 5_000 });
+    if (!(await isMobileSectionButtonFullyVisible(selectedButton))) {
+      throw new Error(
+        `Mobile section ${nextScreen} was not fully visible after navigation`
+      );
+    }
+    return await selectedButton.getAttribute("data-account-section");
+  };
   try {
-    await select.waitFor({ state: "visible", timeout: 5_000 });
-    const selectedBefore = await select.inputValue();
-    await select.selectOption(alternateScreen);
-    const selectedAlternate = await select.inputValue();
+    await mobileNavigation.waitFor({ state: "visible", timeout: 5_000 });
+    const selectedBefore = await readSelectedSection();
+    const selectedAlternate = await selectSection(alternateScreen);
     const alternateTarget = await readVisibleTarget(page, alternateScreen);
-    await select.selectOption(screen);
-    const selectedAfter = await select.inputValue();
+    const selectedAfter = await selectSection(screen);
     const requestedTarget = await readVisibleTarget(page, screen);
     const failures = [
       ...(selectedBefore !== screen
@@ -1672,7 +1764,7 @@ const runMobileSectionNavigation = async (
     ];
     return {
       status: failures.length === 0 ? "passed" : "failed",
-      method: "mobile-native-select",
+      method: "mobile-nav-button",
       requestedScreen: screen,
       alternateScreen,
       selectedBefore,
@@ -1683,7 +1775,7 @@ const runMobileSectionNavigation = async (
   } catch (error) {
     return {
       status: "failed",
-      method: "mobile-native-select",
+      method: "mobile-nav-button",
       requestedScreen: screen,
       alternateScreen,
       selectedBefore: null,
@@ -1996,7 +2088,7 @@ export const readInitialDomProbe = async (
       const collectTextRanges = (
         container: Element | null,
         boundary: ProbeRect | null,
-        excludedContainer: Element | null = null
+        excludedContainers: readonly (Element | null)[] = []
       ) => {
         if (!container || !boundary) return [];
         const walker = document.createTreeWalker(
@@ -2010,19 +2102,24 @@ export const readInitialDomProbe = async (
         }> = [];
         let node = walker.nextNode();
         while (node) {
-          if (
-            node instanceof Text &&
-            !excludedContainer?.contains(node.parentElement) &&
-            isUsableTextNode(node) &&
-            normalizeText(node.textContent ?? "")
-          ) {
-            const rects = rangeRectsForNode(node);
-            if (rects.length > 0) {
-              ranges.push({
-                node,
-                text: normalizeText(node.textContent ?? ""),
-                rects,
-              });
+          if (node instanceof Text) {
+            const textNode = node;
+            const excluded = excludedContainers.some((excludedContainer) =>
+              excludedContainer?.contains(textNode.parentElement)
+            );
+            if (
+              !excluded &&
+              isUsableTextNode(textNode) &&
+              normalizeText(textNode.textContent ?? "")
+            ) {
+              const rects = rangeRectsForNode(textNode);
+              if (rects.length > 0) {
+                ranges.push({
+                  node: textNode,
+                  text: normalizeText(textNode.textContent ?? ""),
+                  rects,
+                });
+              }
             }
           }
           node = walker.nextNode();
@@ -2061,8 +2158,36 @@ export const readInitialDomProbe = async (
       const mainRect = rectFor(main);
       const headerRect = rectFor(header);
       const headingRect = rectFor(heading);
-      const headerTextRanges = collectTextRanges(header, headerRect, heading);
-      const mainTextRanges = collectTextRanges(main, mainRect, header);
+      const mobileNavigation =
+        main?.querySelector("[data-account-mobile-navigation]") ?? null;
+      const mobileNavigationAllowsIntentionalClipping =
+        mobileNavigation instanceof HTMLElement
+          ? (() => {
+              const style = getComputedStyle(mobileNavigation);
+              const navigationRect = makeRect(
+                mobileNavigation.getBoundingClientRect()
+              );
+              return (
+                style.display !== "none" &&
+                style.visibility === "visible" &&
+                navigationRect.width > 0 &&
+                navigationRect.height > 0 &&
+                contains(navigationRect, viewport) &&
+                (style.overflowX === "auto" || style.overflowX === "scroll")
+              );
+            })()
+          : false;
+      const inactiveMobileSectionButtons =
+        mobileNavigationAllowsIntentionalClipping && mobileNavigation
+          ? Array.from(
+              mobileNavigation.querySelectorAll("button[data-account-section]")
+            ).filter((button) => button.getAttribute("aria-current") !== "page")
+          : [];
+      const headerTextRanges = collectTextRanges(header, headerRect, [heading]);
+      const mainTextRanges = collectTextRanges(main, mainRect, [
+        header,
+        ...inactiveMobileSectionButtons,
+      ]);
       const allTextRanges = [...headerTextRanges, ...mainTextRanges];
       const textRangeFailures = allTextRanges.flatMap((range) => [
         ...(range.withinBoundary
@@ -2954,8 +3079,78 @@ const readHorizontalOverflow = async (page: Page) =>
     const root = document.getElementById("account-visual-root");
     const main = root?.querySelector("main");
     const viewportWidth = document.documentElement.clientWidth;
+    const viewportHeight = document.documentElement.clientHeight;
     const documentScrollWidth = document.documentElement.scrollWidth;
     const bodyScrollWidth = document.body.scrollWidth;
+    const mobileNavigation =
+      root?.querySelector<HTMLElement>("[data-account-mobile-navigation]") ??
+      null;
+    const mobileNavigationAllowsIntentionalClipping = mobileNavigation
+      ? (() => {
+          const style = getComputedStyle(mobileNavigation);
+          const navigationRect = mobileNavigation.getBoundingClientRect();
+          return (
+            style.display !== "none" &&
+            style.visibility === "visible" &&
+            navigationRect.width > 0 &&
+            navigationRect.height > 0 &&
+            navigationRect.left >= -1 &&
+            navigationRect.top >= -1 &&
+            navigationRect.right <= viewportWidth + 1 &&
+            navigationRect.bottom <= viewportHeight + 1 &&
+            (style.overflowX === "auto" || style.overflowX === "scroll")
+          );
+        })()
+      : false;
+    const mobileSectionButtons = mobileNavigation
+      ? Array.from(
+          mobileNavigation.querySelectorAll<HTMLButtonElement>(
+            "button[data-account-section]"
+          )
+        )
+      : [];
+    const activeMobileSectionButton = mobileSectionButtons.find(
+      (button) => button.getAttribute("aria-current") === "page"
+    );
+    const activeMobileSectionFullyVisible = activeMobileSectionButton
+      ? (() => {
+          const navigationRect = mobileNavigation?.getBoundingClientRect();
+          const buttonRect = activeMobileSectionButton.getBoundingClientRect();
+          return (
+            navigationRect !== undefined &&
+            navigationRect.width > 0 &&
+            navigationRect.height > 0 &&
+            buttonRect.width > 0 &&
+            buttonRect.height > 0 &&
+            buttonRect.left >= navigationRect.left - 1 &&
+            buttonRect.right <= navigationRect.right + 1 &&
+            buttonRect.top >= navigationRect.top - 1 &&
+            buttonRect.bottom <= navigationRect.bottom + 1
+          );
+        })()
+      : false;
+    const isInactiveMobileSectionButton = (element: HTMLElement) => {
+      const sectionButton = element.closest<HTMLButtonElement>(
+        "[data-account-mobile-navigation] button[data-account-section]"
+      );
+      return (
+        mobileNavigationAllowsIntentionalClipping &&
+        sectionButton !== null &&
+        mobileNavigation?.contains(sectionButton) === true &&
+        sectionButton.getAttribute("aria-current") !== "page"
+      );
+    };
+    // The mobile navigation is a horizontal scroll viewport. Its own
+    // scrollWidth is expected only when its section-button contents are the
+    // source of the overflow and the active button remains fully contained.
+    const isExpectedMobileNavigationScrollViewport = (element: HTMLElement) =>
+      mobileNavigationAllowsIntentionalClipping &&
+      element === mobileNavigation &&
+      mobileSectionButtons.length > 0 &&
+      activeMobileSectionFullyVisible &&
+      [...element.children].every((child) =>
+        child.matches("button[data-account-section]")
+      );
     const offenders = root
       ? [...root.querySelectorAll<HTMLElement>("*")]
           .map((element) => {
@@ -2968,12 +3163,19 @@ const readHorizontalOverflow = async (page: Page) =>
             const hasClippedOverflow =
               hasOwnOverflow && style.overflowX !== "visible";
             const isScreenReaderOnly = element.classList.contains("sr-only");
+            const expectedMobileNavigationOverflow =
+              isInactiveMobileSectionButton(element) ||
+              (isExpectedMobileNavigationScrollViewport(element) &&
+                hasClippedOverflow &&
+                !extendsViewport);
             return {
               element,
               rect,
               style,
               relevant:
-                !isScreenReaderOnly && (extendsViewport || hasClippedOverflow),
+                !isScreenReaderOnly &&
+                !expectedMobileNavigationOverflow &&
+                (extendsViewport || hasClippedOverflow),
             };
           })
           .filter(({ relevant }) => relevant)
@@ -4318,7 +4520,7 @@ export const run = async (options: CliOptions) => {
   try {
     bundle = await buildBundle(outputDirectory, adapterPath, options.locale);
   } finally {
-    await rm(generatedBuildEntryPath, { force: true });
+    await rm(buildEntryPathForRun(outputDirectory), { force: true });
   }
   const sourceManifestPath = join(outputDirectory, "source-manifest.json");
   const sourceManifestBytes = Buffer.from(
@@ -4352,7 +4554,8 @@ export const run = async (options: CliOptions) => {
     rendererCss,
     regularFont,
     italicFont,
-    options.locale
+    options.locale,
+    options.port
   );
   let browser: Browser | undefined;
   let browserVersion = "";
@@ -4530,7 +4733,7 @@ export const run = async (options: CliOptions) => {
       bunVersion: Bun.version,
       browser: `Chromium ${browserVersion}`,
       server: {
-        port: rendererPort,
+        port: options.port,
         ownership: "single renderer process",
         concurrency: "sequential screens and runs only",
         occupiedPort: "fail without stopping another process",

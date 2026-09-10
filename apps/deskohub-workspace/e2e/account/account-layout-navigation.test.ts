@@ -124,9 +124,10 @@ function AccountShellHarness() {
 type FakeLocator = {
   readonly click: () => Promise<void>;
   readonly isVisible: () => Promise<boolean>;
-  readonly selectOption: (value: string) => Promise<readonly string[]>;
   readonly waitFor: (options?: { readonly state?: string }) => Promise<void>;
 };
+
+const desktopBreakpoint = 768;
 
 const elementIsVisible = (element: Element): boolean => {
   for (
@@ -135,6 +136,13 @@ const elementIsVisible = (element: Element): boolean => {
     current = current.parentElement
   ) {
     if (current.hasAttribute("hidden")) return false;
+    if (
+      (current.classList.contains("md:hidden") &&
+        window.innerWidth >= desktopBreakpoint) ||
+      (current.classList.contains("hidden") &&
+        window.innerWidth < desktopBreakpoint)
+    )
+      return false;
     const styles = window.getComputedStyle(current);
     if (styles.display === "none" || styles.visibility === "hidden") {
       return false;
@@ -149,11 +157,6 @@ const fakeLocator = (element: Element): FakeLocator => ({
     fireEvent.click(element);
   },
   isVisible: async () => elementIsVisible(element),
-  selectOption: async (value) => {
-    if (!elementIsVisible(element)) throw new Error("fake target is hidden");
-    fireEvent.change(element, { target: { value } });
-    return [value];
-  },
   waitFor: async (options = {}) => {
     if (options.state === "visible" && !elementIsVisible(element))
       throw new Error("fake target did not become visible");
@@ -168,23 +171,18 @@ const makeFakePage = (): Page => {
   });
 
   const getByRole = (
-    role: "button" | "combobox",
+    role: "button",
     options: { readonly exact?: boolean; readonly name?: string } = {}
   ) => {
     const candidates = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        role === "button" ? "button" : "select"
-      )
+      document.querySelectorAll<HTMLElement>("button")
     );
     const name = options.name ?? "";
     const exact = options.exact !== false;
     const element = candidates.find((candidate) => {
+      if (!elementIsVisible(candidate)) return false;
       const accessibleName =
-        role === "combobox"
-          ? (Array.from(document.querySelectorAll("label"))
-              .find((label) => label.htmlFor === candidate.id)
-              ?.textContent?.trim() ?? "")
-          : (candidate.textContent?.replaceAll(/\s+/g, " ").trim() ?? "");
+        candidate.textContent?.replaceAll(/\s+/g, " ").trim() ?? "";
       return exact ? accessibleName === name : accessibleName.includes(name);
     });
     if (!element) throw new Error(`fake ${role} target was not found`);
@@ -268,6 +266,25 @@ const installLayoutGeometry = (): (() => void) => {
         y: top,
         toJSON: () => ({}),
       }) as DOMRect;
+
+    const isResponsiveHidden = (element: Element): boolean => {
+      for (
+        let current: Element | null = element;
+        current !== null;
+        current = current.parentElement
+      ) {
+        if (
+          (current.classList.contains("md:hidden") &&
+            window.innerWidth >= desktopBreakpoint) ||
+          (current.classList.contains("hidden") &&
+            window.innerWidth < desktopBreakpoint)
+        )
+          return true;
+      }
+      return false;
+    };
+
+    if (isResponsiveHidden(this)) return makeRect(0, 0, 0, 0);
 
     if (this === navigation) return makeRect(16, 200, 264, 400);
     if (this === aside) return makeRect(16, 200, 264, 600);

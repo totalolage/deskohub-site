@@ -30,6 +30,7 @@ import {
   HELP_TEXT,
   makeComparisonMetadata,
   parseCliArgs,
+  parseRendererPort,
   readInitialDomProbe,
   readSelectedEmailProbe,
 } from "./run";
@@ -42,6 +43,9 @@ const chromiumAvailable = await access(
   .catch(() => false);
 
 const outputRoot = "/tmp/opencode/pr239-account-redesign/visual";
+const expectedRendererPort = parseRendererPort(
+  process.env.WORKSPACE_ACCOUNT_VISUAL_PORT
+);
 const referencePrefix = "e318512b-b78b-4780-8d86-7dcd43cc3d1f-";
 const profileReference = "fab0fa57-710e-4a5c-9807-a8ada402931b.png";
 const referenceSuffixes = {
@@ -332,21 +336,21 @@ const controlledEmailFixture = ({
   overflowingStatus = false,
   statusText = "Verified",
   missingStatus = false,
-  includeSectionSelection = false,
+  includeSectionNavigation = false,
   longPage = false,
 }: {
   readonly overflowingStatus?: boolean;
   readonly statusText?: string;
   readonly missingStatus?: boolean;
-  readonly includeSectionSelection?: boolean;
+  readonly includeSectionNavigation?: boolean;
   readonly longPage?: boolean;
 } = {}) => `
   ${
-    includeSectionSelection
-      ? `<select id="account-section-select">
-    <option value="reservations" selected>Reservations</option>
-    <option value="profile">Profile</option>
-  </select>`
+    includeSectionNavigation
+      ? `<div data-account-mobile-navigation>
+    <button type="button" data-account-section="reservations" aria-current="page">Reservations</button>
+    <button type="button" data-account-section="profile">Profile</button>
+  </div>`
       : ""
   }
   <main style="position:relative; width:100%; min-height:500px; margin:0; padding:0;">
@@ -356,12 +360,12 @@ const controlledEmailFixture = ({
     ${longPage ? '<span data-fixture-long-text style="position:absolute; top:325px; left:0; white-space:nowrap; font-size:8px; line-height:19px;">Long page content</span>' : ""}
     ${longPage ? '<div style="height:230px;"></div>' : ""}
     ${
-      includeSectionSelection
+      includeSectionNavigation
         ? '<section data-fixture-screen="reservations" style="padding:16px;">Current reservations</section>'
         : ""
     }
     <section data-slot="profile-screen" style="padding:16px;${
-      includeSectionSelection ? "display:none;" : ""
+      includeSectionNavigation ? "display:none;" : ""
     }">
       <div data-fixture-field="login-email">
         <div>Verified login email</div>
@@ -381,16 +385,20 @@ const controlledEmailFixture = ({
     </section>
   </main>
   ${
-    includeSectionSelection
+    includeSectionNavigation
       ? `<script>
-    const sectionSelect = document.querySelector("#account-section-select");
+    const sectionButtons = Array.from(document.querySelectorAll("[data-account-mobile-navigation] button[data-account-section]"));
     const reservations = document.querySelector("[data-fixture-screen='reservations']");
     const profile = document.querySelector("[data-slot='profile-screen']");
-    sectionSelect.addEventListener("change", () => {
-      const isProfile = sectionSelect.value === "profile";
+    sectionButtons.forEach((button) => button.addEventListener("click", () => {
+      sectionButtons.forEach((candidate) => {
+        if (candidate === button) candidate.setAttribute("aria-current", "page");
+        else candidate.removeAttribute("aria-current");
+      });
+      const isProfile = button.dataset.accountSection === "profile";
       reservations.style.display = isProfile ? "none" : "block";
       profile.style.display = isProfile ? "block" : "none";
-    });
+    }));
   </script>`
       : ""
   }
@@ -480,13 +488,21 @@ export default function MissingLegalAdapter() {
       )
     ),
     createElement(
-      "select",
-      {
-        "aria-label": "Account section",
-        onChange: (event) => setActive(event.currentTarget.value),
-        value: active,
-      },
-      sections.map(([key, label]) => createElement("option", { key, value: key }, label))
+      "div",
+      { "data-account-mobile-navigation": "" },
+      sections.map(([key, label]) =>
+        createElement(
+          "button",
+          {
+            "aria-current": active === key ? "page" : undefined,
+            "data-account-section": key,
+            key,
+            onClick: () => setActive(key),
+            type: "button",
+          },
+          label
+        )
+      )
     ),
     target
   );
@@ -590,13 +606,21 @@ export default function RoundtripOverflowAdapter() {
       )
     ),
     createElement(
-      "select",
-      {
-        "aria-label": "Account section",
-        onChange: (event) => changeSection(event.currentTarget.value),
-        value: active,
-      },
-      sections.map(([key, label]) => createElement("option", { key, value: key }, label))
+      "div",
+      { "data-account-mobile-navigation": "" },
+      sections.map(([key, label]) =>
+        createElement(
+          "button",
+          {
+            "aria-current": active === key ? "page" : undefined,
+            "data-account-section": key,
+            key,
+            onClick: () => changeSection(key),
+            type: "button",
+          },
+          label
+        )
+      )
     ),
     target,
     createElement("div", {
@@ -605,6 +629,155 @@ export default function RoundtripOverflowAdapter() {
         width: active === "profile" && !visitedAlternate ? "2200px" : "100%",
       },
     })
+  );
+}
+`,
+    "utf8"
+  );
+  return path;
+};
+
+type NavigationOverflow = "auto" | "scroll" | "hidden" | "clip";
+
+const writeNavigationOverflowAdapter = async (
+  directory: string,
+  overflowX: NavigationOverflow,
+  activeClipped = false
+) => {
+  const path = join(
+    directory,
+    `navigation-overflow-${overflowX}${activeClipped ? "-active-clipped" : ""}-adapter.tsx`
+  );
+  const reactEntry = join(
+    import.meta.dir,
+    "../../node_modules/react/cjs/react.production.js"
+  );
+  await writeFile(
+    path,
+    `import { createElement, useState } from ${JSON.stringify(reactEntry)};
+
+const sections = [
+  ["profile", "Profile & Identity"],
+  ["billing", "Billing & Invoices"],
+  ["legal", "Legal & Privacy"],
+  ["danger", "Danger zone"],
+  ["reservations", "Reservations"],
+];
+
+export const accountVisualAdapterMetadata = {
+  owner: "temporary mobile navigation overflow adapter",
+  fixture: ${JSON.stringify(`${overflowX} marked navigation${activeClipped ? " with clipped active section" : ""}`)},
+};
+
+export default function NavigationOverflowAdapter() {
+  const [active, setActive] = useState("profile");
+  const [firstName, setFirstName] = useState("Ada");
+  const [companyName, setCompanyName] = useState("");
+  const target =
+    active === "profile"
+      ? createElement(
+          "div",
+          { "data-slot": "profile-screen" },
+          createElement(
+            "form",
+            { id: "account-profile-form" },
+            createElement(
+              "label",
+              { htmlFor: "account-profile-first-name" },
+              "First name"
+            ),
+            createElement("input", {
+              id: "account-profile-first-name",
+              onChange: (event) => setFirstName(event.currentTarget.value),
+              required: true,
+              value: firstName,
+            })
+          )
+        )
+      : active === "billing"
+        ? createElement(
+            "div",
+            null,
+            createElement(
+              "select",
+              {
+                id: "account-profile-billing-kind",
+                onChange: () => {},
+                value: "business",
+              },
+              createElement("option", { value: "business" }, "Business")
+            ),
+            createElement("input", {
+              id: "account-profile-billing-company-name",
+              onChange: (event) => setCompanyName(event.currentTarget.value),
+              value: companyName,
+            })
+          )
+        : active === "legal"
+          ? createElement("a", { href: "/en-US/privacy-policy" }, "Privacy")
+          : active === "danger"
+            ? createElement(
+                "button",
+                { id: "delete-account-trigger", type: "button" },
+                "Delete"
+              )
+            : createElement(
+                "h2",
+                { id: "account-reservations-current-title" },
+                "Reservations"
+              );
+
+  return createElement(
+    "main",
+    { style: { minHeight: "500px", width: "100%" } },
+    createElement(
+      "nav",
+      { "aria-label": "Account navigation" },
+      sections.map(([key, label]) =>
+        createElement(
+          "button",
+          {
+            "aria-current": active === key ? "page" : undefined,
+            key,
+            onClick: () => setActive(key),
+            type: "button",
+          },
+          label
+        )
+      )
+    ),
+    createElement(
+      "div",
+      {
+        "data-account-mobile-navigation": "",
+        id: "navigation-overflow-nav",
+        style: {
+          display: "flex",
+          gap: "8px",
+          overflowX: ${JSON.stringify(overflowX)},
+          width: "320px",
+        },
+      },
+      sections.map(([key, label]) =>
+        createElement(
+          "button",
+          {
+            "aria-current": active === key ? "page" : undefined,
+            "data-account-section": key,
+            key,
+            onClick: () => setActive(key),
+            style: {
+              flexShrink: 0,
+              whiteSpace: "nowrap",
+              ${activeClipped ? 'transform: key === "profile" ? "translateX(-16px)" : undefined,' : ""}
+            },
+            type: "button",
+          },
+          label
+        )
+      )
+    ),
+    target
   );
 }
 `,
@@ -797,13 +970,21 @@ export default function ComputedStyleAdapter() {
       )
     ),
     createElement(
-      "select",
-      {
-        "aria-label": "Account section",
-        onChange: (event) => setActive(event.currentTarget.value),
-        value: active,
-      },
-      sections.map(([key, label]) => createElement("option", { key, value: key }, label))
+      "div",
+      { "data-account-mobile-navigation": "" },
+      sections.map(([key, label]) =>
+        createElement(
+          "button",
+          {
+            "aria-current": active === key ? "page" : undefined,
+            "data-account-section": key,
+            key,
+            onClick: () => setActive(key),
+            type: "button",
+          },
+          label
+        )
+      )
     ),
     createElement("h1", { style: headingStyle }, "Account"),
     target
@@ -903,6 +1084,7 @@ test("CLI parses the prescribed screen and adapter options", () => {
     label: "after",
     locale: "en-US",
     outputRoot: "/tmp/opencode/pr239-account-redesign/visual",
+    port: expectedRendererPort,
     referencesDir: "/tmp/references",
     screen: "legal",
     tablet: false,
@@ -928,7 +1110,11 @@ test("desktop contract documents the chosen physical-pixel interpretation", asyn
   expect(HELP_TEXT).toContain(
     "Reference PNG pixels remain native with no resize"
   );
-  expect(HELP_TEXT).toContain("One renderer process owns localhost:3111");
+  expect(HELP_TEXT).toContain(
+    "One renderer process owns the selected localhost port"
+  );
+  expect(HELP_TEXT).toContain("default 3111");
+  expect(HELP_TEXT).toContain("WORKSPACE_ACCOUNT_VISUAL_PORT");
   expect(HELP_TEXT).toContain("--adapter PATH");
   expect(HELP_TEXT).toContain("--tablet");
 
@@ -944,6 +1130,19 @@ test("desktop contract documents the chosen physical-pixel interpretation", asyn
   expect(
     parseCliArgs(["--label", "czech-tablet", "--locale", "cs-CZ", "--tablet"])
   ).toMatchObject({ locale: "cs-CZ", tablet: true });
+});
+
+test("renderer port accepts only valid TCP port integers", () => {
+  expect(parseRendererPort(undefined)).toBe(3111);
+  expect(parseRendererPort("3164")).toBe(3164);
+  expect(parseRendererPort("1")).toBe(1);
+  expect(parseRendererPort("65535")).toBe(65535);
+
+  for (const value of ["", "0", "65536", "3164.5", "3164x", "-1"]) {
+    expect(() => parseRendererPort(value)).toThrow(
+      "WORKSPACE_ACCOUNT_VISUAL_PORT must be a decimal integer from 1 through 65535"
+    );
+  }
 });
 
 test("CLI rejects unsupported screens and unsafe labels", () => {
@@ -1477,7 +1676,7 @@ test.serial.skipIf(!chromiumAvailable)(
     await withControlledPage(
       {
         html: controlledEmailFixture({
-          includeSectionSelection: true,
+          includeSectionNavigation: true,
           statusText: "Ověřený přihlašovací e-mail",
         }),
         locale: "cs-CZ",
@@ -1508,7 +1707,11 @@ test.serial.skipIf(!chromiumAvailable)(
           "hidden non-selected profile DOM was not measured"
         );
 
-        await page.locator("#account-section-select").selectOption("profile");
+        await page
+          .locator(
+            "[data-account-mobile-navigation] button[data-account-section='profile']"
+          )
+          .click();
         const selectedTargetVisible = await page
           .locator("[data-slot='profile-screen']")
           .isVisible();
@@ -1540,7 +1743,7 @@ test.serial.skipIf(!chromiumAvailable)(
     await withControlledPage(
       {
         html: controlledEmailFixture({
-          includeSectionSelection: true,
+          includeSectionNavigation: true,
           missingStatus: true,
         }),
         locale: "en-US",
@@ -1558,7 +1761,11 @@ test.serial.skipIf(!chromiumAvailable)(
         });
         expect(otherSection.emailContainment.status).toBe("not-applicable");
 
-        await page.locator("#account-section-select").selectOption("profile");
+        await page
+          .locator(
+            "[data-account-mobile-navigation] button[data-account-section='profile']"
+          )
+          .click();
         const selected = await readSelectedEmailProbe(page, {
           deviceScaleFactor: 1,
           expectedSelectedProfile: true,
@@ -1584,7 +1791,7 @@ test.serial.skipIf(!chromiumAvailable)(
     await withControlledPage(
       {
         html: controlledEmailFixture({
-          includeSectionSelection: true,
+          includeSectionNavigation: true,
           longPage: true,
         }),
         locale: "en-US",
@@ -1603,7 +1810,11 @@ test.serial.skipIf(!chromiumAvailable)(
         expect(longTextRange?.withinViewportHorizontally).toBe(true);
         expect(longTextRange?.partiallyVisibleVertically).toBe(true);
 
-        await page.locator("#account-section-select").selectOption("profile");
+        await page
+          .locator(
+            "[data-account-mobile-navigation] button[data-account-section='profile']"
+          )
+          .click();
         const selected = await readSelectedEmailProbe(page, {
           deviceScaleFactor: 1,
           expectedSelectedProfile: true,
@@ -1966,7 +2177,7 @@ test.serial.skipIf(!chromiumAvailable)(
         desktopDeviceScaleFactor: 2,
       });
       expect(report.environment.server).toEqual({
-        port: 3111,
+        port: expectedRendererPort,
         ownership: "single renderer process",
         concurrency: "sequential screens and runs only",
         occupiedPort: "fail without stopping another process",
@@ -2382,7 +2593,7 @@ test.serial.skipIf(!chromiumAvailable)(
       expect(report.execution.status).toBe("completed-with-findings");
       expect(mobile.selection).toMatchObject({
         status: "selected",
-        method: "mobile-native-select",
+        method: "mobile-nav-button",
       });
       expect(mobile.sectionNavigation.status).toBe("passed");
       expect(mobile.horizontalOverflow.offenders).toEqual(
@@ -2391,6 +2602,132 @@ test.serial.skipIf(!chromiumAvailable)(
       expect(execution.findings).toEqual(
         expect.arrayContaining([
           "profile mobile 375: 2 horizontal overflow offender(s)",
+        ])
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+      await rm(adapterDirectory, { recursive: true, force: true });
+    }
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "only visible auto or scroll mobile navigation may clip inactive sections",
+  async () => {
+    for (const overflowX of ["auto", "scroll", "hidden", "clip"] as const) {
+      const directory = await mkdtemp(
+        `${outputRoot}/account-visual-navigation-overflow-${overflowX}-`
+      );
+      const adapterDirectory = await mkdtemp(
+        join(
+          outputRoot,
+          `account-visual-navigation-overflow-${overflowX}-adapter-`
+        )
+      );
+      try {
+        const referencesDir = join(directory, "references");
+        await writeRegressionReference(referencesDir);
+        const adapterPath = await writeNavigationOverflowAdapter(
+          adapterDirectory,
+          overflowX
+        );
+        const report = await runRendererCli([
+          "--label",
+          `navigation-overflow-${overflowX}`,
+          "--screen",
+          "profile",
+          "--adapter",
+          adapterPath,
+          "--references",
+          referencesDir,
+          "--output",
+          join(directory, "output"),
+        ]);
+        const screen = report.screens[0]!;
+        const mobile = screen.mobile["375"];
+        const execution = await Bun.file(
+          join(report.outputDirectory, "execution.json")
+        ).json();
+        const navigationOverflow = mobile.horizontalOverflow.offenders.find(
+          ({ id }) => id === "navigation-overflow-nav"
+        );
+
+        expect(mobile.selection.status).toBe("selected");
+        expect(mobile.selection.selectedAriaCurrent).toBe("page");
+        expect(mobile.sectionNavigation.status).toBe("passed");
+        if (overflowX === "auto" || overflowX === "scroll") {
+          expect(report.execution.status).toBe("passed");
+          expect(mobile.initialDomProbe.failures).toEqual([]);
+          expect(mobile.horizontalOverflow.offenders).toEqual([]);
+          expect(execution.findings).toEqual([]);
+        } else {
+          expect(report.execution.status).toBe("completed-with-findings");
+          expect(mobile.initialDomProbe.failures).toEqual(
+            expect.arrayContaining([
+              expect.stringContaining(
+                "text range horizontally overflows the viewport"
+              ),
+            ])
+          );
+          expect(navigationOverflow).toMatchObject({ overflowX });
+          expect(execution.findings).toEqual(
+            expect.arrayContaining([
+              expect.stringContaining("initial DOM probe"),
+              expect.stringContaining("horizontal overflow offender"),
+            ])
+          );
+        }
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+        await rm(adapterDirectory, { recursive: true, force: true });
+      }
+    }
+  },
+  240_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "active mobile navigation section must remain fully visible",
+  async () => {
+    const directory = await mkdtemp(
+      `${outputRoot}/account-visual-navigation-active-clipped-`
+    );
+    const adapterDirectory = await mkdtemp(
+      join(outputRoot, "account-visual-navigation-active-clipped-adapter-")
+    );
+    try {
+      const referencesDir = join(directory, "references");
+      await writeRegressionReference(referencesDir);
+      const adapterPath = await writeNavigationOverflowAdapter(
+        adapterDirectory,
+        "auto",
+        true
+      );
+      const report = await runRendererCli([
+        "--label",
+        "navigation-active-clipped",
+        "--screen",
+        "profile",
+        "--adapter",
+        adapterPath,
+        "--references",
+        referencesDir,
+        "--output",
+        join(directory, "output"),
+      ]);
+      const screen = report.screens[0]!;
+      const mobile = screen.mobile["375"];
+
+      expect(report.execution.status).toBe("completed-with-findings");
+      expect(mobile.selection.status).toBe("failed");
+      expect(mobile.selection.detail).toContain(
+        "a fully visible active button"
+      );
+      expect(mobile.sectionNavigation.status).toBe("failed");
+      expect(mobile.horizontalOverflow.offenders).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "navigation-overflow-nav" }),
         ])
       );
     } finally {

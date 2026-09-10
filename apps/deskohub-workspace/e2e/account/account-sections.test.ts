@@ -12,6 +12,7 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import type { Runner } from "../runtime";
+import { workspaceE2ETimeouts } from "../timeouts";
 import {
   type AccountSectionPage,
   accountSectionLabels,
@@ -126,65 +127,117 @@ function AccountShellHarness({
 }
 
 type FakeLocator = {
-  readonly click: () => Promise<void>;
+  readonly click: (options?: { readonly timeout?: number }) => Promise<void>;
   readonly isVisible: () => Promise<boolean>;
-  readonly selectOption: (value: string) => Promise<readonly string[]>;
 };
 
-const elementIsHidden = (element: Element) =>
-  element.closest("[hidden]") !== null;
+type FakePageOptions = {
+  readonly onClick?: (options?: { readonly timeout?: number }) => void;
+  readonly onIsVisible?: () => void;
+  readonly onWait?: () => void;
+};
 
-const fakeLocator = (element: Element): FakeLocator => ({
-  click: async () => {
-    if (elementIsHidden(element)) throw new Error("fake target is hidden");
+const desktopBreakpoint = 768;
+
+const elementIsVisible = (element: Element, width: number | null): boolean => {
+  for (
+    let current: Element | null = element;
+    current !== null;
+    current = current.parentElement
+  ) {
+    if (current.hasAttribute("hidden")) return false;
+    if (
+      width !== null &&
+      ((current.classList.contains("md:hidden") &&
+        width >= desktopBreakpoint) ||
+        (current.classList.contains("hidden") && width < desktopBreakpoint))
+    )
+      return false;
+    const styles = window.getComputedStyle(current);
+    if (styles.display === "none" || styles.visibility === "hidden") {
+      return false;
+    }
+  }
+  return true;
+};
+
+const fakeLocator = (
+  element: Element,
+  width: number | null,
+  options: FakePageOptions
+): FakeLocator => ({
+  click: async (clickOptions) => {
+    if (!elementIsVisible(element, width))
+      throw new Error("fake target is hidden");
+    options.onClick?.(clickOptions);
     fireEvent.click(element);
   },
-  isVisible: async () => !elementIsHidden(element),
-  selectOption: async (value) => {
-    if (elementIsHidden(element)) throw new Error("fake target is hidden");
-    fireEvent.change(element, { target: { value } });
-    return [value];
+  isVisible: async () => {
+    options.onIsVisible?.();
+    return elementIsVisible(element, width);
   },
 });
 
-const makeFakePage = (width: number): AccountSectionPage => {
+const makeFakePage = (
+  width: number | null,
+  pageOptions: FakePageOptions = {}
+): AccountSectionPage => {
   const page = {
-    getByRole: (role: string, options?: unknown) => {
+    getByRole: (role: string, roleOptions?: unknown) => {
       const name =
-        typeof options === "object" && options !== null && "name" in options
-          ? String((options as { readonly name?: unknown }).name)
+        typeof roleOptions === "object" &&
+        roleOptions !== null &&
+        "name" in roleOptions
+          ? String((roleOptions as { readonly name?: unknown }).name)
           : "";
       const exact =
-        typeof options === "object" && options !== null && "exact" in options
-          ? (options as { readonly exact?: unknown }).exact !== false
+        typeof roleOptions === "object" &&
+        roleOptions !== null &&
+        "exact" in roleOptions
+          ? (roleOptions as { readonly exact?: unknown }).exact !== false
           : true;
       const candidates = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          role === "button" ? "button" : "select"
-        )
+        document.querySelectorAll<HTMLElement>("button")
       );
       const match = candidates.find((element) => {
+        if (!elementIsVisible(element, width)) return false;
         const accessibleName =
-          role === "combobox"
-            ? (Array.from(document.querySelectorAll("label"))
-                .find((label) => label.htmlFor === element.id)
-                ?.textContent?.trim() ?? "")
-            : (element.textContent?.replaceAll(/\s+/g, " ").trim() ?? "");
+          element.textContent?.replaceAll(/\s+/g, " ").trim() ?? "";
         return exact ? accessibleName === name : accessibleName.includes(name);
       });
       if (!match) throw new Error(`fake ${role} target was not found`);
-      return fakeLocator(match);
+      return fakeLocator(match, width, pageOptions);
     },
-    viewportSize: () => ({ height: 900, width }),
+    viewportSize: () => (width === null ? null : { height: 900, width }),
     waitForFunction: async (pageFunction: unknown, arg: unknown) => {
       if (typeof pageFunction !== "function")
         throw new Error("fake wait predicate was not a function");
+      pageOptions.onWait?.();
       if (!(pageFunction as (value: unknown) => boolean)(arg)) {
         throw new Error("fake account section did not settle");
       }
     },
   };
   return page;
+};
+
+const setResponsiveNavigationVisibility = (
+  mode: "desktop" | "mobile"
+): void => {
+  const navigation = document.querySelector(
+    'nav[aria-label="Account navigation"]'
+  );
+  if (!navigation) throw new Error("fake account navigation was not rendered");
+
+  for (const child of Array.from(navigation.children)) {
+    if (!(child instanceof HTMLElement)) continue;
+    if (child.classList.contains("md:hidden")) {
+      child.style.display = mode === "mobile" ? "block" : "none";
+    }
+    if (child.classList.contains("hidden")) {
+      child.style.display = mode === "desktop" ? "block" : "none";
+    }
+  }
 };
 
 const makeRunner = (desktop: boolean) => {
@@ -218,7 +271,11 @@ test("selects every section through rendered desktop AccountShell controls", asy
     expect(landmark).toBeTruthy();
     expect(landmark?.closest("[hidden]")).toBeNull();
 
-    const button = Array.from(document.querySelectorAll("button")).find(
+    const button = Array.from(
+      document.querySelectorAll(
+        'nav[aria-label="Account navigation"] button:not([data-account-section])'
+      )
+    ).find(
       (candidate) =>
         candidate.textContent?.replaceAll(/\s+/g, " ").trim() ===
         accountSectionLabels[section]
@@ -284,17 +341,23 @@ test("does not accept a misleading Reservations label prefix", async () => {
   );
 });
 
-test("selects every section through the rendered mobile native select", async () => {
+test("selects every section through visible mobile section buttons", async () => {
   const page = makeFakePage(375);
   render(createElement(AccountShellHarness));
 
   for (const section of sections) {
     await selectAccountSection(page, section);
 
-    const select = document.querySelector<HTMLSelectElement>(
-      "nav[aria-label='Account navigation'] select"
+    const mobileNavigation = document.querySelector(
+      "[data-account-mobile-navigation]"
     );
-    expect(select?.value).toBe(section);
+    const button = mobileNavigation?.querySelector<HTMLButtonElement>(
+      `[data-account-section="${section}"]`
+    );
+    expect(button?.getAttribute("aria-current")).toBe("page");
+    expect(
+      mobileNavigation?.querySelectorAll('button[aria-current="page"]')
+    ).toHaveLength(1);
     expect(
       document
         .querySelector(accountSectionLandmarks[section])
@@ -303,7 +366,58 @@ test("selects every section through the rendered mobile native select", async ()
   }
 });
 
-test("uses a native desktop button and waits for its visible landmark in the Runner adapter", async () => {
+test("resolves the responsive section variant when viewport size is unavailable", async () => {
+  for (const mode of ["mobile", "desktop"] as const) {
+    cleanup();
+    const page = makeFakePage(null);
+    render(createElement(AccountShellHarness));
+    setResponsiveNavigationVisibility(mode);
+
+    for (const section of sections) {
+      await selectAccountSection(page, section);
+
+      const activeButtons = document.querySelectorAll(
+        mode === "mobile"
+          ? '[data-account-mobile-navigation] button[aria-current="page"]'
+          : 'nav[aria-label="Account navigation"] button:not([data-account-section])[aria-current="page"]'
+      );
+      expect(activeButtons).toHaveLength(1);
+      expect(activeButtons[0]?.textContent?.trim()).toBe(
+        accountSectionLabels[section]
+      );
+      expect(
+        document
+          .querySelector(accountSectionLandmarks[section])
+          ?.closest("[hidden]")
+      ).toBeNull();
+    }
+  }
+});
+
+test("lets the section click own delayed actionability before checking readiness", async () => {
+  const calls: string[] = [];
+  const page = makeFakePage(1440, {
+    onClick: (options) => {
+      calls.push(`click:${options?.timeout ?? "missing"}`);
+    },
+    onIsVisible: () => {
+      throw new Error("selection must not probe button visibility");
+    },
+    onWait: () => {
+      calls.push("wait");
+    },
+  });
+  render(createElement(AccountShellHarness));
+
+  await selectAccountSection(page, "billing");
+
+  expect(calls).toEqual([
+    `click:${workspaceE2ETimeouts.browserAction}`,
+    "wait",
+  ]);
+});
+
+test("uses a visible desktop button and waits for its visible landmark in the Runner adapter", async () => {
   const { calls, run } = makeRunner(true);
 
   await Effect.runPromise(
@@ -314,7 +428,7 @@ test("uses a native desktop button and waits for its visible landmark in the Run
     ["eval", "--stdin"],
     [
       "click",
-      'nav[aria-label="Account navigation"] button:has-text("Billing & Invoices")',
+      'nav[aria-label="Account navigation"] button:not([data-account-section]):has-text("Billing & Invoices")',
     ],
     ["wait", "--fn"],
   ]);
@@ -323,7 +437,7 @@ test("uses a native desktop button and waits for its visible landmark in the Run
   expect(calls[2]?.args[2]).not.toContain(".click(");
 });
 
-test("uses native mobile-select keyboard input in the Runner adapter", async () => {
+test("uses the visible mobile section button in the Runner adapter", async () => {
   const { calls, run } = makeRunner(false);
 
   await Effect.runPromise(
@@ -332,15 +446,12 @@ test("uses native mobile-select keyboard input in the Runner adapter", async () 
 
   expect(calls.map(({ args }) => args.slice(0, 2))).toEqual([
     ["eval", "--stdin"],
-    ["focus", 'nav[aria-label="Account navigation"] select'],
-    ["press", "Home"],
-    ["press", "ArrowDown"],
-    ["press", "ArrowDown"],
-    ["press", "ArrowDown"],
-    ["press", "ArrowDown"],
-    ["press", "Tab"],
+    [
+      "click",
+      'nav[aria-label="Account navigation"] [data-account-mobile-navigation] button[data-account-section="danger"]',
+    ],
     ["wait", "--fn"],
   ]);
-  expect(calls[8]?.args[2]).toContain('"desktop":false');
-  expect(calls[8]?.args[2]).toContain("#delete-account-trigger");
+  expect(calls[2]?.args[2]).toContain('"desktop":false');
+  expect(calls[2]?.args[2]).toContain("#delete-account-trigger");
 });

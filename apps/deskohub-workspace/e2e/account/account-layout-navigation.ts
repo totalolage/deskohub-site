@@ -8,7 +8,6 @@ import {
 } from "./account-sections";
 
 const accountNavigationLabel = "Account navigation";
-const accountMobileSectionLabel = "Account section";
 const desktopViewport = { height: 1000, width: 1440 } as const;
 const mobileViewports = [
   { height: 900, width: 375 },
@@ -75,9 +74,11 @@ const readAccountLayout = async (
       return {
         activeButtonLabels: Array.from(
           navigation.querySelectorAll('button[aria-current="page"]')
-        ).map(
-          (button) => button.textContent?.replaceAll(/\s+/g, " ").trim() ?? ""
-        ),
+        )
+          .filter(isVisible)
+          .map(
+            (button) => button.textContent?.replaceAll(/\s+/g, " ").trim() ?? ""
+          ),
         contentLeft: contentRect.left,
         contentWidth: contentRect.width,
         hasHorizontalOverflow: scrollWidth > window.innerWidth + 1,
@@ -123,23 +124,31 @@ const verifyMobileSection = async (
   page: Page,
   section: AccountSection
 ): Promise<void> => {
-  const mobileSelect = page.getByRole("combobox", {
-    exact: true,
-    name: accountMobileSectionLabel,
+  const mobileButton = page.getByRole("button", {
+    exact: false,
+    name: accountSectionLabels[section],
   });
-  if (!(await mobileSelect.isVisible()))
-    throw new Error("Account mobile section select is not visible");
+  if (!(await mobileButton.isVisible()))
+    throw new Error("Account mobile section button is not visible");
 
   const snapshot = await readAccountLayout(page);
-  const selectedSection = await page.evaluate(
+  const selectedSections = await page.evaluate(
     ({ navigationLabel }) =>
-      document
-        .querySelector(`nav[aria-label=${JSON.stringify(navigationLabel)}]`)
-        ?.querySelector<HTMLSelectElement>("select")?.value,
+      Array.from(
+        document
+          .querySelector(`nav[aria-label=${JSON.stringify(navigationLabel)}]`)
+          ?.querySelectorAll<HTMLButtonElement>(
+            '[data-account-mobile-navigation] button[aria-current="page"]'
+          ) ?? []
+      ).map((button) => button.getAttribute("data-account-section")),
     { navigationLabel: accountNavigationLabel }
   );
   expect(snapshot.hasHorizontalOverflow).toBe(false);
-  expect(selectedSection).toBe(section);
+  expect(snapshot.activeButtonLabels).toHaveLength(1);
+  expect(
+    snapshot.activeButtonLabels[0]?.startsWith(accountSectionLabels[section])
+  ).toBe(true);
+  expect(selectedSections).toEqual([section]);
   expect(snapshot.visibleLandmarks).toEqual([accountSectionLandmarks[section]]);
 };
 
