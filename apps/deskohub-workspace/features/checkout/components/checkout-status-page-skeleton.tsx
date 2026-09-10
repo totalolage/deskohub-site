@@ -3,16 +3,22 @@ import { Skeleton } from "@/shared/components/ui/skeleton";
 
 type CheckoutStatusPageSkeletonProps = {
   readonly locale: Locale;
+  readonly presentation?: "page" | "modal";
 };
 
 export function CheckoutStatusPageSkeleton({
   locale,
+  presentation = "page",
 }: CheckoutStatusPageSkeletonProps) {
   return (
     <output
       aria-busy="true"
       aria-label={m.checkoutStatusMetadataTitle({}, { locale })}
-      className="block rounded-[2.25rem] border border-white/55 bg-white/94 p-6 shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm sm:p-10"
+      className={
+        presentation === "modal"
+          ? "block bg-white p-6 text-navy-blue sm:p-10"
+          : "block rounded-[2.25rem] border border-white/55 bg-white/94 p-6 shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm sm:p-10"
+      }
     >
       <div
         aria-hidden="true"
