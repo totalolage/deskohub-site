@@ -1,4 +1,4 @@
-import { Download, FileDown, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { Download, FileDown, Plus, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId } from "react";
 import { Button } from "@/shared/components/ui/button";
@@ -41,7 +41,6 @@ export function BillingScreen({ children, copy, footer }: BillingScreenProps) {
   const instanceId = useId();
   const titleId = `${instanceId}-billing-title`;
   const paymentMethodsTitleId = `${instanceId}-payment-methods-title`;
-  const paymentMethodsUnavailableId = `${instanceId}-payment-methods-unavailable`;
   const billingDetailsTitleId = `${instanceId}-billing-details-title`;
   const aresUnavailableId = `${instanceId}-ares-unavailable`;
   const invoiceHistoryTitleId = `${instanceId}-invoice-history-title`;
@@ -74,30 +73,7 @@ export function BillingScreen({ children, copy, footer }: BillingScreenProps) {
           {copy.paymentMethodsTitle}
         </h3>
         <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
-          <div className="flex min-h-[9rem] min-w-0 flex-col justify-between gap-4 rounded-2xl border border-[#e0e6ee] bg-[#fbfcfd] p-5">
-            <p
-              id={paymentMethodsUnavailableId}
-              className="min-w-0 break-words text-sm leading-6 text-[#51627c]"
-            >
-              {copy.paymentMethodsUnavailable}
-            </p>
-            <Button
-              aria-describedby={paymentMethodsUnavailableId}
-              className="h-auto min-h-9 max-w-full self-start whitespace-normal rounded-xl px-3 py-2 text-left text-xs font-semibold text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
-              disabled
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              <Trash2 aria-hidden="true" className="size-4 shrink-0" />
-              <span className="min-w-0 break-words">
-                {copy.removePaymentCard}
-              </span>
-            </Button>
-          </div>
-
           <Button
-            aria-describedby={paymentMethodsUnavailableId}
             className="flex h-auto min-h-[9rem] min-w-0 w-full flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-[#cbd7e5] bg-[#fbfcfd] px-4 py-6 text-center text-[#53657f] whitespace-normal hover:bg-[#fbfcfd] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
             disabled
             type="button"

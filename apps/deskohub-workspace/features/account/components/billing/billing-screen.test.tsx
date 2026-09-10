@@ -63,6 +63,11 @@ const getAttributeValues = (markup: string, attribute: string) =>
     ([, value]) => value
   );
 
+const getSavedPaymentMethodsMarkup = (markup: string) =>
+  markup.match(
+    /<section aria-labelledby="[^"]+-payment-methods-title"[^>]*>[\s\S]*?<\/section>/
+  )?.[0] ?? "";
+
 describe("BillingScreen", () => {
   test("renders children and the optional footer exactly once without owning a form or input", () => {
     const markup = renderToStaticMarkup(
@@ -124,7 +129,7 @@ describe("BillingScreen", () => {
     const markup = renderScreen(englishCopy);
     const buttons = markup.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
 
-    expect(buttons).toHaveLength(5);
+    expect(buttons).toHaveLength(4);
     for (const button of buttons) {
       expect(button).toMatch(/\btype="button"/);
       expect(button).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
@@ -135,13 +140,41 @@ describe("BillingScreen", () => {
     ["English", englishCopy],
     ["Czech", czechCopy],
   ] as const)(
+    "renders only the saved payment heading and disabled Add action for %s",
+    (_locale, copy) => {
+      const savedSection = getSavedPaymentMethodsMarkup(renderScreen(copy));
+      const buttons =
+        savedSection.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+
+      expect(savedSection).toContain(escapeHtml(copy.paymentMethodsTitle));
+      expect(savedSection).not.toContain(
+        escapeHtml(copy.paymentMethodsUnavailable)
+      );
+      expect(savedSection).not.toContain(escapeHtml(copy.removePaymentCard));
+      expect(savedSection).not.toContain("payment-methods-unavailable");
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]).toContain(escapeHtml(copy.addPaymentCard));
+      expect(buttons[0]).toMatch(/\btype="button"/);
+      expect(buttons[0]).toMatch(/\bdisabled(?:="")?(?:\s|>)/);
+      expect(buttons[0]).not.toMatch(/\baria-describedby=/);
+    }
+  );
+
+  test.each([
+    ["English", englishCopy],
+    ["Czech", czechCopy],
+  ] as const)(
     "renders every supplied %s string without invented billing data",
     (_locale, copy) => {
       const markup = renderScreen(copy);
+      const { paymentMethodsUnavailable, removePaymentCard, ...renderedCopy } =
+        copy;
 
-      for (const value of Object.values(copy)) {
+      for (const value of Object.values(renderedCopy)) {
         expect(markup).toContain(escapeHtml(value));
       }
+      expect(markup).not.toContain(escapeHtml(paymentMethodsUnavailable));
+      expect(markup).not.toContain(escapeHtml(removePaymentCard));
       expect(markup).not.toMatch(
         /Visa|Mastercard|American Express|Stripe|4242|••••|Issued:/i
       );
