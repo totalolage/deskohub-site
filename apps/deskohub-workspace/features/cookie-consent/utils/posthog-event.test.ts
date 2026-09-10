@@ -74,9 +74,77 @@ describe("preparePostHogEvent", () => {
     type: "Error",
     value: "ResizeObserver loop completed with undelivered notifications.",
   };
+  const sdkFrame = {
+    filename: "https://example.test/page",
+    lineno: 0,
+    colno: 0,
+    function: "?",
+  };
+  const sdkFrameWithoutLine = {
+    filename: sdkFrame.filename,
+    colno: 0,
+    function: "?",
+  };
+  const realFrame = {
+    ...sdkFrame,
+    filename: "https://example.test/app.js",
+    lineno: 1,
+    colno: 1,
+    function: "onResize",
+  };
+  const resizeObserverCase = (
+    frames: unknown[],
+    value = resizeObserverNoise.value
+  ) => [{ ...resizeObserverNoise, value, stacktrace: { frames } }];
 
   test.each([
     ["drops the exact production shape", [resizeObserverNoise], true],
+    [
+      "drops the exact SDK placeholder frame",
+      resizeObserverCase([sdkFrame]),
+      true,
+    ],
+    [
+      "keeps a frame with a positive line",
+      resizeObserverCase([{ ...sdkFrame, lineno: 1 }]),
+      false,
+    ],
+    [
+      "keeps a frame with a positive column",
+      resizeObserverCase([{ ...sdkFrame, colno: 1 }]),
+      false,
+    ],
+    [
+      "keeps a frame with a named function",
+      resizeObserverCase([{ ...sdkFrame, function: "onResize" }]),
+      false,
+    ],
+    [
+      "keeps a frame with an absent coordinate",
+      resizeObserverCase([sdkFrameWithoutLine]),
+      false,
+    ],
+    [
+      "keeps a frame with an empty filename",
+      resizeObserverCase([{ ...sdkFrame, filename: "" }]),
+      false,
+    ],
+    ["keeps a null frame", resizeObserverCase([null]), false],
+    [
+      "keeps two SDK placeholder frames",
+      resizeObserverCase([sdkFrame, sdkFrame]),
+      false,
+    ],
+    [
+      "keeps an SDK placeholder frame with a real frame",
+      resizeObserverCase([sdkFrame, realFrame]),
+      false,
+    ],
+    [
+      "keeps the same placeholder frame for Script error.",
+      resizeObserverCase([sdkFrame], "Script error."),
+      false,
+    ],
     [
       "keeps a stackful application error",
       [

@@ -1,3 +1,4 @@
+import { Predicate } from "effect";
 import type { BeforeSendFn } from "posthog-js";
 import { sanitizePostHogProperties } from "./posthog-url";
 
@@ -25,23 +26,41 @@ function isBrowserDeliveryNoise(event: PostHogBeforeSendEvent) {
   const exceptionList = event.properties.$exception_list;
   if (!Array.isArray(exceptionList) || exceptionList.length !== 1) return false;
 
-  const exception = exceptionList[0] as PostHogException | undefined;
+  let exception: PostHogException | undefined;
+  if (Predicate.isObject(exceptionList[0])) exception = exceptionList[0];
+  if (!exception) return false;
   if (
     !browserDeliveryNoiseValues.some(
-      (noiseValue) => exception?.value === noiseValue
+      (noiseValue) => exception.value === noiseValue
     )
   ) {
     return false;
   }
   if (
-    exception?.mechanism?.handled !== false ||
-    exception?.mechanism?.synthetic !== true
+    !Predicate.isObject(exception.mechanism) ||
+    exception.mechanism.handled !== false ||
+    exception.mechanism.synthetic !== true
   ) {
     return false;
   }
 
-  const frames = exception?.stacktrace?.frames;
-  return !Array.isArray(frames) || frames.length === 0;
+  const frames =
+    Predicate.isObject(exception.stacktrace) && exception.stacktrace.frames;
+  if (!Array.isArray(frames) || frames.length === 0) return true;
+
+  // The PostHog SDK synthesizes a page URL at :0:0 for browser ErrorEvents.
+  const frame = frames[0];
+  return (
+    exception.value ===
+      "ResizeObserver loop completed with undelivered notifications." &&
+    frames.length === 1 &&
+    Predicate.isObject(frame) &&
+    frame.lineno === 0 &&
+    frame.colno === 0 &&
+    frame.function === "?" &&
+    Predicate.isString(frame.filename) &&
+    frame.filename.length > 0
+  );
 }
 
 export function preparePostHogEvent(
