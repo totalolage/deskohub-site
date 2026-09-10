@@ -11,7 +11,10 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
 import { formatReservationDisplayDateRange } from "@/features/reservation/reservation-date";
-import { reservationStatusPath } from "@/features/reservation/routes";
+import {
+  reservationAccessPath,
+  reservationStatusPath,
+} from "@/features/reservation/routes";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
@@ -363,15 +366,33 @@ function FeaturedReservationItem({
             >
               {copy.nfcAccess}
             </Button>
-            <Button
-              className="w-full sm:w-auto"
-              disabled
-              size="sm"
-              type="button"
-              variant="secondary"
-            >
-              {copy.showPinCode}
-            </Button>
+            {reservation.workspaceReservationId ? (
+              <GuardedLink
+                className={buttonVariants({
+                  className: "w-full sm:w-auto",
+                  size: "sm",
+                  variant: "secondary",
+                })}
+                href={`/${locale}${reservationAccessPath}/${encodeURIComponent(reservation.workspaceReservationId)}`}
+              >
+                {copy.showPinCode}
+              </GuardedLink>
+            ) : (
+              <div className="min-w-0">
+                <Button
+                  className="w-full sm:w-auto"
+                  disabled
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {copy.showPinCode}
+                </Button>
+                <p className="mt-2 max-w-sm break-words text-xs leading-5 text-[#64748b]">
+                  {m.accountReservationPinUnavailable({}, { locale })}
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex min-w-0 flex-col gap-3 sm:items-end xl:contents">
             <p className="max-w-sm break-words text-sm leading-5 text-[#64748b] xl:col-start-1 xl:row-start-1 xl:max-w-none xl:text-xs xl:leading-5">

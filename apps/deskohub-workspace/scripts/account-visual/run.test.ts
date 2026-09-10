@@ -11,6 +11,10 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Page } from "@playwright/test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { getAccountScreenCopy } from "../../features/account/components/account-screen-copy";
+import { ProfileScreen } from "../../features/account/components/profile/profile-screen";
 import type { JsonObject } from "./create-account-visual-verification";
 import {
   assertCurrentPngMatchesHistoricalHash,
@@ -293,6 +297,85 @@ const withControlledPage = async <T>(
     await browser.close();
   }
 };
+
+const productionProfileEmail = "ada@example.test";
+const productionProfileEmailFieldSelector =
+  "[data-slot='profile-screen'] fieldset[aria-labelledby$='-email-label'] > div";
+const productionProfileEmailStatusSelector = `${productionProfileEmailFieldSelector} > button`;
+const productionProfileEmailProbeCss = `
+  html, body {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  [data-slot="profile-screen"] {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 16px;
+  }
+
+  [data-slot="profile-screen"] fieldset[aria-labelledby$="-email-label"] {
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  [data-slot="profile-screen"] fieldset[aria-labelledby$="-email-label"] > div {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 40px;
+    padding: 4px 8px;
+    overflow: visible;
+  }
+
+  ${productionProfileEmailFieldSelector} > span {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-wrap: anywhere;
+  }
+
+  ${productionProfileEmailStatusSelector} {
+    box-sizing: border-box;
+    flex: 0 0 32px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+`;
+
+const productionProfileEmailHtml = (locale: "en-US" | "cs-CZ"): string =>
+  `<style>${productionProfileEmailProbeCss}</style>${renderToStaticMarkup(
+    createElement(ProfileScreen, {
+      children: null,
+      copy: getAccountScreenCopy(locale).profile,
+      email: productionProfileEmail,
+      firstName: "Ada",
+      lastName: "Lovelace",
+    })
+  )}`;
+
+const readProductionProfileEmailProbeRect = async (
+  page: Page,
+  selector: string
+) =>
+  page.locator(selector).evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      right: rect.right,
+      bottom: rect.bottom,
+    };
+  });
 
 const controlledHeaderFixture = (
   heading: string,
@@ -1667,6 +1750,269 @@ test.serial.skipIf(!chromiumAvailable)(
       expect.arrayContaining([
         "login email status text range is clipped by its field or horizontally overflows the viewport",
       ])
+    );
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "production profile email probe accepts the actual localized icon-button status at every captured viewport",
+  async () => {
+    for (const locale of ["en-US", "cs-CZ"] as const) {
+      const copy = getAccountScreenCopy(locale).profile;
+      for (const width of [1280, 375, 320] as const) {
+        await withControlledPage(
+          {
+            html: productionProfileEmailHtml(locale),
+            locale,
+            width,
+          },
+          async (page) => {
+            const actualButton = page.locator(
+              productionProfileEmailStatusSelector
+            );
+            expect(await actualButton.count()).toBe(1);
+            expect(
+              await actualButton.evaluate((element) => element.tagName)
+            ).toBe("BUTTON");
+            const actualButtonRect = await readProductionProfileEmailProbeRect(
+              page,
+              productionProfileEmailStatusSelector
+            );
+
+            const probe = await readSelectedEmailProbe(page, {
+              deviceScaleFactor: 1,
+              expectedSelectedProfile: true,
+              locale,
+              mode: width === 1280 ? "desktop" : "mobile",
+              requestedScreen: "profile",
+              selectionStatus: "selected",
+              selectedTargetVisible: true,
+            });
+
+            expect(probe.emailContainment.status).toBe("passed");
+            expect(probe.emailContainment.email?.text).toBe(
+              productionProfileEmail
+            );
+            const statusText = probe.emailContainment.statusText;
+            expect(statusText).not.toBeNull();
+            if (!statusText)
+              throw new Error("production status evidence missing");
+            expect(statusText.text).toBe(copy.emailVerification.verified);
+            expect(statusText.selector).toBeTruthy();
+            expect(
+              await page
+                .locator(statusText.selector)
+                .evaluate((element) => element.tagName)
+            ).toBe("BUTTON");
+            expect(statusText.rects).toEqual([actualButtonRect]);
+            expect(statusText.withinField).toBe(true);
+            expect(statusText.withinViewportHorizontally).toBe(true);
+            expect(statusText.readable).toBe(true);
+            expect(probe.emailContainment.failures).toEqual([]);
+          }
+        );
+      }
+    }
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "production profile email probe rejects an icon button clipped by its field without document overflow",
+  async () => {
+    const result = await withControlledPage(
+      {
+        html: productionProfileEmailHtml("en-US"),
+        locale: "en-US",
+        width: 320,
+      },
+      async (page) => {
+        await page
+          .locator(productionProfileEmailFieldSelector)
+          .evaluate((field) => {
+            const button = field.querySelector<HTMLButtonElement>("button");
+            if (!(field instanceof HTMLElement) || !button) {
+              throw new Error(
+                "production email field is missing its status button"
+              );
+            }
+            field.style.overflow = "hidden";
+            field.style.position = "relative";
+            button.style.position = "absolute";
+            button.style.left = "calc(100% - 24px)";
+            button.style.top = "4px";
+          });
+        return {
+          bodyScrollWidth: await page.evaluate(() => document.body.scrollWidth),
+          documentScrollWidth: await page.evaluate(
+            () => document.documentElement.scrollWidth
+          ),
+          probe: await readSelectedEmailProbe(page, {
+            deviceScaleFactor: 1,
+            expectedSelectedProfile: true,
+            locale: "en-US",
+            mode: "mobile",
+            requestedScreen: "profile",
+            selectionStatus: "selected",
+            selectedTargetVisible: true,
+          }),
+        };
+      }
+    );
+
+    expect(result.documentScrollWidth).toBeLessThanOrEqual(320);
+    expect(result.bodyScrollWidth).toBeLessThanOrEqual(320);
+    expect(result.probe.emailContainment.status).toBe("failed");
+    const statusText = result.probe.emailContainment.statusText;
+    expect(statusText).not.toBeNull();
+    if (!statusText) throw new Error("production status evidence missing");
+    expect(statusText.withinField).toBe(false);
+    expect(statusText.withinViewportHorizontally).toBe(true);
+    expect(statusText.clippedByField).toBe(true);
+    expect(statusText.readable).toBe(false);
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "production profile email probe rejects a wrong or unverified icon aria-label despite the retained pre-email verified badge",
+  async () => {
+    const locale = "en-US" as const;
+    const copy = getAccountScreenCopy(locale).profile;
+    await withControlledPage(
+      {
+        html: productionProfileEmailHtml(locale),
+        locale,
+        width: 375,
+      },
+      async (page) => {
+        expect(
+          await page.getByText(copy.verifiedEmail, { exact: true }).count()
+        ).toBe(1);
+
+        for (const ariaLabel of [
+          copy.emailVerification.unverified,
+          "Wrong email status",
+        ]) {
+          await page
+            .locator(productionProfileEmailStatusSelector)
+            .evaluate((button, label: string) => {
+              button.setAttribute("aria-label", label);
+            }, ariaLabel);
+          const probe = await readSelectedEmailProbe(page, {
+            deviceScaleFactor: 1,
+            expectedSelectedProfile: true,
+            locale,
+            mode: "mobile",
+            requestedScreen: "profile",
+            selectionStatus: "selected",
+            selectedTargetVisible: true,
+          });
+
+          expect(probe.emailContainment.status).toBe("failed");
+          expect(probe.emailContainment.statusText).toBeNull();
+          expect(probe.failures).toEqual([
+            "selected profile email probe missing expected verified login-email status coverage",
+          ]);
+        }
+      }
+    );
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "production profile email probe rejects a verified button moved into a later profile section",
+  async () => {
+    const locale = "cs-CZ" as const;
+    await withControlledPage(
+      {
+        html: productionProfileEmailHtml(locale),
+        locale,
+        width: 375,
+      },
+      async (page) => {
+        await page.evaluate(() => {
+          const profile = document.querySelector<HTMLElement>(
+            "[data-slot='profile-screen']"
+          );
+          const field = profile?.querySelector<HTMLElement>(
+            "fieldset[aria-labelledby$='-email-label'] > div"
+          );
+          const button = field?.querySelector<HTMLButtonElement>("button");
+          const laterProfileSection = profile?.querySelector<HTMLElement>(
+            ":scope > div:nth-of-type(3)"
+          );
+          if (!field || !button || !laterProfileSection) {
+            throw new Error("production profile sections are incomplete");
+          }
+          laterProfileSection.append(button);
+        });
+
+        expect(
+          await page
+            .locator(productionProfileEmailFieldSelector)
+            .locator("button")
+            .count()
+        ).toBe(0);
+        expect(
+          await page
+            .getByText(getAccountScreenCopy(locale).profile.verifiedEmail, {
+              exact: true,
+            })
+            .count()
+        ).toBe(1);
+
+        const probe = await readSelectedEmailProbe(page, {
+          deviceScaleFactor: 1,
+          expectedSelectedProfile: true,
+          locale,
+          mode: "mobile",
+          requestedScreen: "profile",
+          selectionStatus: "selected",
+          selectedTargetVisible: true,
+        });
+
+        expect(probe.emailContainment.status).toBe("failed");
+        expect(probe.emailContainment.statusText).toBeNull();
+        expect(probe.failures).toEqual([
+          "selected profile email probe missing expected verified login-email status coverage",
+        ]);
+      }
+    );
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "production profile email probe reports hidden icon status as unreadable and failed",
+  async () => {
+    await withControlledPage(
+      {
+        html: productionProfileEmailHtml("en-US"),
+        locale: "en-US",
+        width: 320,
+      },
+      async (page) => {
+        await page
+          .locator(productionProfileEmailStatusSelector)
+          .evaluate((button) => {
+            button.style.display = "none";
+          });
+        const probe = await readSelectedEmailProbe(page, {
+          deviceScaleFactor: 1,
+          expectedSelectedProfile: true,
+          locale: "en-US",
+          mode: "mobile",
+          requestedScreen: "profile",
+          selectionStatus: "selected",
+          selectedTargetVisible: true,
+        });
+
+        expect(probe.emailContainment.status).toBe("failed");
+        expect(probe.emailContainment.statusText?.readable).toBe(false);
+      }
     );
   },
   120_000

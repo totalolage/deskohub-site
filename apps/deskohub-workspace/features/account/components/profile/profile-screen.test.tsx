@@ -19,7 +19,11 @@ import { ProfileScreen } from "./profile-screen";
 const englishCopy: ProfileScreenCopy = {
   avatarUnavailableDescription: "Profile photos are not available here.",
   avatarUnavailableLabel: "Profile photo unavailable",
-  emailLabel: "Email address",
+  emailLabel: "Email",
+  emailVerification: {
+    unverified: "This email still needs verification.",
+    verified: "This email has been successfully verified.",
+  },
   languageLabel: "Preferred communication language",
   languageUnavailableDescription: "Language preferences are not saved yet.",
   languageUnavailableValue: "Not set",
@@ -31,7 +35,11 @@ const englishCopy: ProfileScreenCopy = {
 const czechCopy: ProfileScreenCopy = {
   avatarUnavailableDescription: "Profilové fotografie nejsou k dispozici.",
   avatarUnavailableLabel: "Profilová fotografie není k dispozici",
-  emailLabel: "E-mailová adresa",
+  emailLabel: "E-mail",
+  emailVerification: {
+    unverified: "Tento e-mail stále vyžaduje ověření.",
+    verified: "Tento e-mail byl úspěšně ověřen.",
+  },
   languageLabel: "Preferovaný komunikační jazyk",
   languageUnavailableDescription: "Preference jazyka se zatím neukládají.",
   languageUnavailableValue: "Nenastaveno",
@@ -152,7 +160,7 @@ describe("ProfileScreen", () => {
     expect(markup).toContain("Verified login email");
     expect(markup).toContain("<fieldset");
     const emailFieldset = markup.match(
-      /<legend[^>]*id="[^"]+-email-label">Email address<\/legend>/
+      /<legend[^>]*id="[^"]+-email-label">Email<\/legend>/
     );
     expect(emailFieldset).toBeTruthy();
     expect(markup).not.toContain(
@@ -183,42 +191,40 @@ describe("ProfileScreen", () => {
   });
 
   test("emits responsive wrapping constraints for a long Czech email status", () => {
-    const longCzechVerifiedEmail =
+    const longCzechVerificationCopy =
       "Ověřený přihlašovací e-mail pro rezervace a zákaznický účet Workspace";
     const longCzechEmail =
       "jan.novak.velmi.dlouhy.alias@example.workspace.deskohub.cz";
     const markup = renderProfile({
-      copy: { ...englishCopy, verifiedEmail: longCzechVerifiedEmail },
+      copy: {
+        ...englishCopy,
+        emailVerification: {
+          ...englishCopy.emailVerification,
+          verified: longCzechVerificationCopy,
+        },
+      },
       email: longCzechEmail,
     });
     const emailFieldsetClass = markup.match(
       /<fieldset[^>]*class="([^"]*)"/
     )?.[1];
-    const verificationStatusClass = markup.match(
-      /<span class="([^"]*inline-flex min-w-0 max-w-full[^"]*text-\[#006b50\][^"]*)">/
+    const verificationButton = markup.match(
+      /<button class="([^"]*size-8 shrink-0[^"]*text-emerald-800[^"]*)"[^>]*aria-label="[^"]+"/
     )?.[1];
-    const verificationStatus = markup.match(
-      /<span class="[^"]*inline-flex min-w-0 max-w-full[^"]*text-\[#006b50\][^"]*">[\s\S]*?<\/span><\/div>/
-    )?.[0];
 
     expect(markup).toContain(longCzechEmail);
-    expect(markup).toContain(longCzechVerifiedEmail);
+    expect(markup).toContain(longCzechVerificationCopy);
     expect(emailFieldsetClass).toContain("min-w-0");
     expect(emailFieldsetClass).toContain("sm:col-span-2");
     expect(emailFieldsetClass).toContain("lg:col-span-1");
-    expect(verificationStatusClass).toContain("inline-flex");
-    expect(verificationStatusClass).toContain("min-w-0");
-    expect(verificationStatusClass).toContain("max-w-full");
-    expect(verificationStatusClass).not.toContain("shrink-0");
-    expect(verificationStatus).toMatch(/class="[^"]*size-4 shrink-0[^"]*"/);
-    expect(verificationStatus).toContain(
-      'class="min-w-0 flex-1 break-words whitespace-normal"'
-    );
+    expect(verificationButton).toContain("size-8");
+    expect(verificationButton).toContain("shrink-0");
+    expect(verificationButton).toContain("text-emerald-800");
   });
 
   test("disables unavailable camera and language controls without a preference", () => {
     const markup = renderProfile();
-    const disabledButtons = markup.match(/<button\b[^>]*disabled/g) ?? [];
+    const disabledButtons = markup.match(/<button\b[^>]*disabled=""/g) ?? [];
     const options = markup.match(/<option\b/g) ?? [];
 
     expect(disabledButtons).toHaveLength(2);
@@ -289,7 +295,7 @@ describe("ProfileScreen", () => {
     }
   });
 
-  test("keeps informational and verification text above the contrast floor", () => {
+  test("keeps informational text and the verification indicator contrast-safe", () => {
     const markup = renderProfile();
     const sectionClass = markup.match(/<section[^>]*class="([^"]*)"/)?.[1];
     const informationalText = extractLiteralColor(
@@ -302,13 +308,9 @@ describe("ProfileScreen", () => {
       "bg",
       /<div class="[^"]*bg-\[#f8fafc\][^"]*">/
     );
-    const verificationSpan =
-      /<span class="[^"]*inline-flex min-w-0 max-w-full[^"]*text-sm font-semibold text-\[#(?:[0-9a-f]{6})\][^"]*">/;
-    const verificationText = extractLiteralColor(
-      markup,
-      "text",
-      verificationSpan
-    );
+    const verificationButton = markup.match(
+      /<button class="([^"]*text-emerald-800[^"]*)"[^>]*aria-label="This email has been successfully verified\."/
+    )?.[1];
     const languageTrigger =
       /<button[^>]*data-slot="select-trigger"[^>]*bg-\[#f8fafc\][^>]*>/;
     const languageText = extractLiteralColor(markup, "text", languageTrigger);
@@ -320,29 +322,13 @@ describe("ProfileScreen", () => {
 
     expect(sectionClass).toContain("bg-white");
     expect(emailBackground).toBe("#f8fafc");
-    expect(verificationText).toBe("#006b50");
+    expect(verificationButton).toContain("text-emerald-800");
     expect(contrastRatio(informationalText, "#ffffff")).toBeGreaterThanOrEqual(
       4.5
     );
     expect(
-      contrastRatio(verificationText, emailBackground)
-    ).toBeGreaterThanOrEqual(4.5);
-    expect(
       contrastRatio(languageText, languageBackground)
     ).toBeGreaterThanOrEqual(4.5);
-
-    const mutatedMarkup = markup.replace("text-[#006b50]", "text-[#008965]");
-    expect(mutatedMarkup).not.toBe(markup);
-    const mutatedVerificationText = extractLiteralColor(
-      mutatedMarkup,
-      "text",
-      verificationSpan
-    );
-    expect(() =>
-      expect(
-        contrastRatio(mutatedVerificationText, emailBackground)
-      ).toBeGreaterThanOrEqual(4.5)
-    ).toThrow();
   });
 
   test("uses real Unicode code points and a neutral icon when names are absent", () => {
@@ -367,7 +353,12 @@ describe("ProfileScreen", () => {
       lastName: null,
     });
 
-    for (const copyValue of Object.values(czechCopy)) {
+    const { emailVerification, ...localizedStrings } = czechCopy;
+    const localizedValues = [
+      ...Object.values(localizedStrings),
+      emailVerification.verified,
+    ];
+    for (const copyValue of localizedValues) {
       expect(markup).toContain(copyValue);
     }
     expect(markup).not.toMatch(/member since|Prague|Czechia|turnstile|access/i);

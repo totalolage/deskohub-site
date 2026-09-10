@@ -155,7 +155,7 @@ export function AccountShell({
                         </span>
                         {section.key === "reservations" &&
                           validReservationCount !== undefined && (
-                            <span className="ml-auto min-w-9 rounded-full bg-[#cf7253] px-2.5 py-1 text-center text-sm font-bold leading-none text-[#00024f]">
+                            <span className="ml-auto min-w-9 rounded-full bg-[#b06147] px-2.5 py-1 text-center text-sm font-bold leading-none text-white [font-family:var(--font-sculpin,Arial),sans-serif]">
                               {validReservationCount}
                             </span>
                           )}

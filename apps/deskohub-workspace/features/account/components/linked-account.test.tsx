@@ -51,7 +51,11 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
     profile: {
       avatarUnavailableDescription: "Profile photos are not available here.",
       avatarUnavailableLabel: "Profile photo unavailable",
-      emailLabel: "Email address",
+      emailLabel: "Email",
+      emailVerification: {
+        unverified: "This email still needs verification.",
+        verified: "This email has been successfully verified.",
+      },
       languageLabel: "Preferred communication language",
       languageUnavailableDescription: "Language preferences are not saved yet.",
       languageUnavailableValue: "Not set",
