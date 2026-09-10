@@ -11,7 +11,6 @@ import {
 } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, type Page } from "@playwright/test";
-import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getAccountScreenCopy } from "../../features/account/components/account-screen-copy";
 import { ProfileScreen } from "../../features/account/components/profile/profile-screen";
@@ -69,7 +68,7 @@ const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/populated-adapter.tsx",
   "apps/deskohub-workspace/scripts/account-visual/renderer-availability.ts",
   "apps/deskohub-workspace/scripts/account-visual/renderer.css",
-  "apps/deskohub-workspace/scripts/account-visual/run.test.ts",
+  "apps/deskohub-workspace/scripts/account-visual/run.test.tsx",
   "apps/deskohub-workspace/scripts/account-visual/run.ts",
   "apps/deskohub-workspace/scripts/account-visual/stubs/account-actions.ts",
   "apps/deskohub-workspace/scripts/account-visual/stubs/auth-client.ts",
@@ -261,7 +260,7 @@ const runRendererCli = async (argumentsList: readonly string[]) => {
   return Bun.file(join(summary.outputDirectory, "report.json")).json();
 };
 
-const withControlledPage = async <T>(
+const withControlledPage = async <T,>(
   {
     html,
     locale,
@@ -352,13 +351,14 @@ const productionProfileEmailProbeCss = `
 
 const productionProfileEmailHtml = (locale: "en-US" | "cs-CZ"): string =>
   `<style>${productionProfileEmailProbeCss}</style>${renderToStaticMarkup(
-    createElement(ProfileScreen, {
-      children: null,
-      copy: getAccountScreenCopy(locale).profile,
-      email: productionProfileEmail,
-      firstName: "Ada",
-      lastName: "Lovelace",
-    })
+    <ProfileScreen
+      copy={getAccountScreenCopy(locale).profile}
+      email={productionProfileEmail}
+      firstName="Ada"
+      lastName="Lovelace"
+    >
+      {null}
+    </ProfileScreen>
   )}`;
 
 const readProductionProfileEmailProbeRect = async (

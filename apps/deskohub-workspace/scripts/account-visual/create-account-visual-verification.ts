@@ -1224,13 +1224,13 @@ const boundedOutput = (value: string) => {
 
 const captureFocusedChecks = async () => {
   const command =
-    "bun test --max-concurrency=1 apps/deskohub-workspace/scripts/account-visual/run.test.ts -t 'archival|controlled fixture'";
+    "bun test --max-concurrency=1 apps/deskohub-workspace/scripts/account-visual/run.test.tsx -t 'archival|controlled fixture'";
   const child = Bun.spawn(
     [
       process.execPath,
       "test",
       "--max-concurrency=1",
-      "apps/deskohub-workspace/scripts/account-visual/run.test.ts",
+      "apps/deskohub-workspace/scripts/account-visual/run.test.tsx",
       "-t",
       "archival|controlled fixture",
     ],
