@@ -1,11 +1,13 @@
 import { Effect, Result } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { AuthCallbackLoading } from "@/features/account/components/auth-callback-loading";
 import { AuthCallbackRedirect } from "@/features/account/components/auth-callback-redirect";
+import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -34,6 +36,8 @@ const CustomerAuthCallbackSession = async ({
   readonly locale: Locale;
 }) => {
   await connection();
+  if (!(await areAccountsEnabled())) notFound();
+
   const session = await Effect.flatMap(
     CustomerAuthentication,
     (authentication) => authentication.currentUser
@@ -70,7 +74,7 @@ const CustomerAuthCallbackSession = async ({
   );
 };
 
-export default async function CustomerAuthCallbackPage() {
+export default function CustomerAuthCallbackPage() {
   return runWithRequestLocale((locale) => (
     <Suspense fallback={<AuthCallbackLoading locale={locale} />}>
       <CustomerAuthCallbackSession locale={locale} />

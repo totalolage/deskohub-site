@@ -10,6 +10,7 @@ import {
   workspaceSendMagicLink,
 } from "@/features/account/backend/auth/auth-server";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { areAccountsEnabled } from "./account-feature-flag.server";
 
 const secrets = parseBetterAuthSecrets(env.BETTER_AUTH_SECRETS);
 if (secrets.kind === "invalid") {
@@ -39,6 +40,7 @@ export const auth = makeWorkspaceAuth({
   secrets: secrets.secrets,
   allowedHosts: allowedHosts.hosts,
   httpsOnly: env.VERCEL_ENV !== "development",
+  areAccountsEnabled,
   sendMagicLink: workspaceSendMagicLink,
   beforeDeleteUser: workspaceBeforeDeleteUser,
 });

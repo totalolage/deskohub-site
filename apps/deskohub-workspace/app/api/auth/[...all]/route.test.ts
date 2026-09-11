@@ -2,6 +2,14 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
+import type {
+  Account,
+  RateLimit,
+  Session,
+  User,
+  Verification,
+} from "better-auth";
+import { memoryAdapter } from "better-auth/adapters/memory";
 import { makeNodePostgresDatabase } from "@/db/database-client";
 import {
   authAccount,
@@ -168,11 +176,111 @@ const makeDisposableAuth = (
     secrets: [{ version: 1, value: SECRET_V1 }],
     allowedHosts: [HOST],
     httpsOnly: true,
+    areAccountsEnabled: async () => true,
     sendMagicLink: (data) => {
       sentLinks.push(data);
     },
     beforeDeleteUser: () => Promise.resolve(),
   });
+
+type CapturedMagicLink = {
+  readonly email: string;
+  readonly url: string;
+  readonly token: string;
+};
+
+type MemoryAuthStore = {
+  readonly user: User[];
+  readonly session: Session[];
+  readonly account: Account[];
+  readonly verification: Verification[];
+  readonly rateLimit: RateLimit[];
+};
+
+const makeMemoryAuth = (
+  sentLinks: CapturedMagicLink[],
+  areAccountsEnabled: () => Promise<boolean>
+) => {
+  const store: MemoryAuthStore = {
+    user: [],
+    session: [],
+    account: [],
+    verification: [],
+    rateLimit: [],
+  };
+  const auth = makeWorkspaceAuth({
+    database: memoryAdapter(store),
+    secrets: [{ version: 1, value: SECRET_V1 }],
+    allowedHosts: [HOST],
+    httpsOnly: true,
+    areAccountsEnabled,
+    sendMagicLink: (data) => {
+      sentLinks.push(data);
+    },
+    beforeDeleteUser: () => Promise.resolve(),
+  });
+  return { auth, store };
+};
+
+const expectPrivateNoStore = (response: Response) => {
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+};
+
+test("runs the account gate through the exported route methods with memory auth", async () => {
+  const sentLinks: CapturedMagicLink[] = [];
+  let enabled = true;
+  const { auth, store } = makeMemoryAuth(sentLinks, async () => enabled);
+  handlerOverride = auth.handler as (request: Request) => Promise<Response>;
+
+  const email = uniqueEmail("route-gate");
+  const issued = await callRoute("/sign-in/magic-link", "POST", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  expect(issued.status).toBe(200);
+  expectPrivateNoStore(issued);
+  expect(issued.headers.getSetCookie()).toHaveLength(0);
+  expect(sentLinks).toHaveLength(1);
+  expect(store.verification).toHaveLength(1);
+  expect(store.session).toHaveLength(0);
+
+  const link = sentLinks[0]!;
+  const verifyPath = link.url.slice(`https://${HOST}/api/auth`.length);
+  enabled = false;
+
+  const offIssuance = await callRoute("/sign-in/magic-link", "POST", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: uniqueEmail("route-gate-off") }),
+  });
+  expect(offIssuance.status).toBe(503);
+  expectPrivateNoStore(offIssuance);
+  expect(offIssuance.headers.getSetCookie()).toHaveLength(0);
+  expect(sentLinks).toHaveLength(1);
+  expect(store.verification).toHaveLength(1);
+  expect(store.session).toHaveLength(0);
+
+  const offVerification = await callRoute(verifyPath, "GET");
+  expect(offVerification.status).toBe(503);
+  expectPrivateNoStore(offVerification);
+  expect(offVerification.headers.getSetCookie()).toHaveLength(0);
+  expect(sentLinks).toHaveLength(1);
+  expect(store.verification).toHaveLength(1);
+  expect(store.session).toHaveLength(0);
+
+  enabled = true;
+  const verified = await callRoute(verifyPath, "GET");
+  expect(verified.status).toBe(302);
+  expectPrivateNoStore(verified);
+  expect(
+    verified.headers
+      .getSetCookie()
+      .some((cookie) => cookie.includes("session_token="))
+  ).toBe(true);
+  expect(store.verification).toHaveLength(0);
+  expect(store.session).toHaveLength(1);
+});
 
 describe.skipIf(!testDatabase)(
   "Better Auth route on the migrated disposable Postgres",

@@ -240,6 +240,27 @@ test("renders only the configured full-header items without reserved slots", asy
   ]);
 });
 
+test("omits account links when the account configuration is unavailable", async () => {
+  const { SiteHeader } = await import("./site-header");
+  const view = render(
+    <SiteHeader
+      closeNavigationMenuLabel="Close navigation menu"
+      contactHref="/en-US/reservation/cowork"
+      contactLabel="Book"
+      currentLocale="en-US"
+      languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
+      links={[]}
+      mobilePrimaryNavigationLabel="Mobile primary navigation"
+      openNavigationMenuLabel="Open navigation menu"
+      primaryNavigationLabel="Primary navigation"
+    />
+  );
+
+  expect(
+    view.container.querySelectorAll('a[href="/en-US/account"]')
+  ).toHaveLength(0);
+});
+
 test("keeps the full-header home link compact and controls usable on mobile", async () => {
   const { SiteHeader } = await import("./site-header");
   const view = render(
