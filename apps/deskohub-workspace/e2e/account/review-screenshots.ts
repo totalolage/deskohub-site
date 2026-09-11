@@ -15,6 +15,16 @@ export type AccountReviewTarget =
   | "linked-profile-desktop"
   | "linked-billing-desktop"
   | "linked-legal-desktop"
+  | "account-marketing-withdrawn-desktop"
+  | "account-marketing-active-mobile"
+  | "marketing-link-pending-desktop"
+  | "marketing-link-pending-mobile"
+  | "marketing-link-active-desktop"
+  | "marketing-link-active-mobile"
+  | "marketing-link-withdrawn-desktop"
+  | "marketing-link-withdrawn-mobile"
+  | "marketing-link-invalid-desktop"
+  | "marketing-link-invalid-mobile"
   | "public-legal-desktop"
   | "public-legal-mobile"
   | "linked-danger-desktop"
@@ -83,6 +93,56 @@ const accountReviewTargetMetadata = {
     filename: "linked-legal-desktop.png",
     path: "/en-US/account/legal",
     viewport: { height: 1000, width: 1440 },
+  },
+  "account-marketing-withdrawn-desktop": {
+    filename: "account-marketing-withdrawn-desktop.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "account-marketing-active-mobile": {
+    filename: "account-marketing-active-mobile.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 900, width: 375 },
+  },
+  "marketing-link-pending-desktop": {
+    filename: "marketing-link-pending-desktop.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "marketing-link-pending-mobile": {
+    filename: "marketing-link-pending-mobile.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 900, width: 375 },
+  },
+  "marketing-link-active-desktop": {
+    filename: "marketing-link-active-desktop.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "marketing-link-active-mobile": {
+    filename: "marketing-link-active-mobile.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 900, width: 375 },
+  },
+  "marketing-link-withdrawn-desktop": {
+    filename: "marketing-link-withdrawn-desktop.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "marketing-link-withdrawn-mobile": {
+    filename: "marketing-link-withdrawn-mobile.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 900, width: 375 },
+  },
+  "marketing-link-invalid-desktop": {
+    filename: "marketing-link-invalid-desktop.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "marketing-link-invalid-mobile": {
+    filename: "marketing-link-invalid-mobile.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 900, width: 375 },
   },
   "public-legal-desktop": {
     filename: "public-legal-desktop.png",
