@@ -99,6 +99,19 @@ describe("BillingScreen", () => {
     expect(markup).not.toContain("data-footer-marker");
   });
 
+  test.each([
+    ["English", "en-US", englishCopy],
+    ["Czech", "cs-CZ", czechCopy],
+  ] as const)(
+    "keeps the %s billing title without rendering currency copy",
+    (_language, locale, copy) => {
+      const markup = renderScreen(copy, locale);
+
+      expect(markup).toContain(escapeHtml(copy.title));
+      expect(markup).not.toContain(escapeHtml(copy.currency));
+    }
+  );
+
   test("keeps one outer form and the supplied billing input and footer action intact", () => {
     const markup = renderToStaticMarkup(
       <form id="account-profile-form">
@@ -172,12 +185,17 @@ describe("BillingScreen", () => {
     "renders every supplied %s string without invented billing data",
     (_language, locale, copy) => {
       const markup = renderScreen(copy, locale);
-      const { paymentMethodsUnavailable, removePaymentCard, ...renderedCopy } =
-        copy;
+      const {
+        currency,
+        paymentMethodsUnavailable,
+        removePaymentCard,
+        ...renderedCopy
+      } = copy;
 
       for (const value of Object.values(renderedCopy)) {
         expect(markup).toContain(escapeHtml(value));
       }
+      expect(markup).not.toContain(escapeHtml(currency));
       expect(markup).not.toContain(escapeHtml(paymentMethodsUnavailable));
       expect(markup).not.toContain(escapeHtml(removePaymentCard));
       expect(markup).not.toMatch(

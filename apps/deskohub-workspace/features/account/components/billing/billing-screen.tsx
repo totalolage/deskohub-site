@@ -12,7 +12,7 @@ import { Button } from "@/shared/components/ui/button";
  * with compact controls and quiet empty states.
  * STORY: Visitors see what billing supports, understand what is unavailable,
  * and continue into their own billing details.
- * FIRST VIEWPORT: One padded billing card places title/currency, payment methods,
+ * FIRST VIEWPORT: One padded billing card places title, payment methods,
  * billing details, invoice history, and the caller-owned footer in one stack.
  * FORM: This shell never owns form markup, fields, values, or persistence; the caller owns them.
  */
@@ -66,9 +66,6 @@ export function BillingScreen({
         >
           {copy.title}
         </h2>
-        <span className="max-w-full shrink-0 break-words rounded-full bg-[#f1f4f8] px-3 py-1.5 text-sm font-semibold text-[#51627c]">
-          {copy.currency}
-        </span>
       </header>
 
       <hr className="my-7 h-px border-0 bg-[#e6ebf1]" />
