@@ -741,6 +741,7 @@
   "accountSignInAcceptedAgain": "Poslat další odkaz",
   "accountSignInRequestFailed": "Odkaz se nepodařilo poslat. Zkuste to prosím znovu.",
   "accountSignInLoading": "Načítání přihlášení…",
+  "accountContentLoading": "Načítání obsahu…",
   "accountCallbackMetadataTitle": "Přihlašovací odkaz | Deskohub Workspace",
   "accountCallbackMetadataDescription": "Otevřete svůj jednorázový přihlašovací odkaz k zákaznickému účtu Deskohub Workspace.",
   "accountCallbackFailedTitle": "Tento odkaz nelze použít",

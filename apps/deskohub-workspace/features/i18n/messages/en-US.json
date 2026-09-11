@@ -734,6 +734,7 @@
   "accountSignInAcceptedAgain": "Send another link",
   "accountSignInRequestFailed": "We could not send the link. Please try again.",
   "accountSignInLoading": "Loading sign-in…",
+  "accountContentLoading": "Loading content…",
   "accountCallbackMetadataTitle": "Sign-in link | Deskohub Workspace",
   "accountCallbackMetadataDescription": "Open your single-use sign-in link for the Deskohub Workspace customer account.",
   "accountCallbackFailedTitle": "This link cannot be used",

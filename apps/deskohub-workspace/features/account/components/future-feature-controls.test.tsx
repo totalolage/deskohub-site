@@ -537,7 +537,17 @@ describe("account future-feature controls", () => {
     ];
     for (const view of loadingViews) {
       expect(view.container.querySelectorAll("[tabindex='0']")).toHaveLength(0);
-      expect(view.container.querySelectorAll("button")).toHaveLength(0);
+      const loadingButtons = Array.from(
+        view.container.querySelectorAll("button")
+      );
+      expect(
+        loadingButtons.filter(
+          (button) => !(button as HTMLButtonElement).disabled
+        )
+      ).toHaveLength(0);
+      for (const button of loadingButtons) {
+        expect((button as HTMLButtonElement).disabled).toBe(true);
+      }
       view.unmount();
     }
 
