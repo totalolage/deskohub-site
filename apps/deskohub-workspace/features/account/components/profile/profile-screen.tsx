@@ -30,7 +30,6 @@ export interface ProfileScreenCopy {
   readonly avatarUnavailableDescription: string;
   readonly languageLabel: string;
   readonly languageUnavailableValue: string;
-  readonly languageUnavailableDescription: string;
 }
 
 export interface ProfileScreenProps {
@@ -54,7 +53,6 @@ export function ProfileScreen({
 }: ProfileScreenProps) {
   const titleId = useId();
   const languageId = useId();
-  const languageDescriptionId = `${languageId}-description`;
   const avatarDescriptionId = `${languageId}-avatar-description`;
   const nameParts = [firstName, lastName ?? ""]
     .map((name) => name.trim())
@@ -158,19 +156,12 @@ export function ProfileScreen({
           <FutureFeatureTooltip locale={locale}>
             <SelectTrigger
               id={languageId}
-              aria-describedby={languageDescriptionId}
               className="mt-2 min-h-11 w-full rounded-2xl border border-[#cad3df] bg-[#f8fafc] px-3 py-2 text-base text-[#52647c] outline-none disabled:cursor-not-allowed disabled:opacity-70 focus-visible:ring-2 focus-visible:ring-burned-orange"
             >
               <SelectValue>{copy.languageUnavailableValue}</SelectValue>
             </SelectTrigger>
           </FutureFeatureTooltip>
         </Select>
-        <p
-          className="mt-2 text-sm leading-5 text-[#52647c]"
-          id={languageDescriptionId}
-        >
-          {copy.languageUnavailableDescription}
-        </p>
       </div>
 
       {footer !== undefined && <div className="mt-8">{footer}</div>}

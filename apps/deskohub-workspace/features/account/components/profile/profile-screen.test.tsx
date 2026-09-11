@@ -25,7 +25,6 @@ const englishCopy: ProfileScreenCopy = {
     verified: "This email has been successfully verified.",
   },
   languageLabel: "Preferred communication language",
-  languageUnavailableDescription: "Language preferences are not saved yet.",
   languageUnavailableValue: "Not set",
   memberFallback: "Workspace member",
   title: "Member profile and settings",
@@ -41,12 +40,16 @@ const czechCopy: ProfileScreenCopy = {
     verified: "Tento e-mail byl úspěšně ověřen.",
   },
   languageLabel: "Preferovaný komunikační jazyk",
-  languageUnavailableDescription: "Preference jazyka se zatím neukládají.",
   languageUnavailableValue: "Nenastaveno",
   memberFallback: "Člen Workspace",
   title: "Profil a nastavení",
   verifiedEmail: "Ověřený přihlašovací e-mail",
 };
+
+const formerLanguageUnavailableDescriptions = {
+  "en-US": "Language preferences are not saved yet.",
+  "cs-CZ": "Preference jazyka se zatím neukládají.",
+} as const;
 
 const profileFields = (
   <>
@@ -239,7 +242,9 @@ describe("ProfileScreen", () => {
     expect(markup).not.toMatch(/<option\b/);
     expect(options).toHaveLength(0);
     expect(markup).toContain("Not set");
-    expect(markup).toContain("Language preferences are not saved yet.");
+    expect(markup).not.toContain(
+      formerLanguageUnavailableDescriptions["en-US"]
+    );
     expect(markup).not.toContain("Czech");
   });
 
@@ -265,11 +270,13 @@ describe("ProfileScreen", () => {
       const languageTrigger = view.getByRole("combobox", {
         name: copy.languageLabel,
       });
-      const languageDescription = view.getByText(
-        copy.languageUnavailableDescription
-      );
       const languageIcon = languageTrigger.querySelector("svg");
 
+      for (const description of Object.values(
+        formerLanguageUnavailableDescriptions
+      )) {
+        expect(view.queryByText(description)).toBeNull();
+      }
       expect(languageTrigger.getAttribute("data-slot")).toBe("select-trigger");
       expect(languageTrigger.tagName).toBe("BUTTON");
       expect((languageTrigger as HTMLButtonElement).disabled).toBe(true);
@@ -282,9 +289,10 @@ describe("ProfileScreen", () => {
         copy.languageUnavailableValue
       );
       expect(view.getByLabelText(copy.languageLabel)).toBe(languageTrigger);
-      expect(languageTrigger.getAttribute("aria-describedby")).toBe(
-        languageDescription.id
-      );
+      expect(languageTrigger.getAttribute("aria-describedby")).toBeNull();
+      expect(
+        view.getByRole("button", { name: copy.emailVerification.verified })
+      ).toBeTruthy();
 
       const form = view.getByTestId("profile-form") as HTMLFormElement;
       expect([...new FormData(form).keys()]).not.toContain("language");

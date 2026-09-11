@@ -16,7 +16,6 @@
   "accountProfileScreenAvatarUnavailableDescription": "Profilové fotografie nejsou k dispozici.",
   "accountProfileScreenLanguageLabel": "Preferovaný komunikační jazyk",
   "accountProfileScreenLanguageUnavailableValue": "Nenastaveno",
-  "accountProfileScreenLanguageUnavailableDescription": "Preference jazyka se zatím neukládají.",
   "accountBillingCurrency": "Měna: CZK (Kč)",
   "accountBillingPaymentMethodsTitle": "Uložené platební metody",
   "accountBillingPaymentMethodsUnavailable": "Uložené platební metody nejsou pro tento účet dostupné.",

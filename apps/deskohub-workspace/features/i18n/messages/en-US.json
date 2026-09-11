@@ -16,7 +16,6 @@
   "accountProfileScreenAvatarUnavailableDescription": "Profile photos are not available here.",
   "accountProfileScreenLanguageLabel": "Preferred communication language",
   "accountProfileScreenLanguageUnavailableValue": "Not set",
-  "accountProfileScreenLanguageUnavailableDescription": "Language preferences are not saved yet.",
   "accountBillingCurrency": "Currency: CZK (Kč)",
   "accountBillingPaymentMethodsTitle": "Saved payment methods",
   "accountBillingPaymentMethodsUnavailable": "Saved payment methods are not available in this account.",
