@@ -119,7 +119,13 @@ function renderProfile(overrides: Partial<ProfileScreenProps> = {}): string {
         "lastName" in overrides ? (overrides.lastName ?? null) : "Lovelace"
       }
       locale={overrides.locale ?? "en-US"}
-      footer={overrides.footer ?? <button type="button">Save profile</button>}
+      footer={
+        "footer" in overrides ? (
+          overrides.footer
+        ) : (
+          <button type="button">Save profile</button>
+        )
+      }
     >
       {overrides.children ?? profileFields}
     </ProfileScreen>
@@ -151,6 +157,49 @@ describe("ProfileScreen", () => {
     );
     expect(namedControls).toEqual(["firstName", "lastName", "phone"]);
     expect(markup).not.toMatch(/name="(?:email|language)"/);
+  });
+
+  test("keeps a provided footer in one sticky, opaque, safe-area wrapper", () => {
+    const markup = renderProfile({
+      footer: <span data-footer-marker="profile-footer">Save profile</span>,
+    });
+    const sectionClass = markup
+      .match(/<section[^>]*class="([^"]*)"/)?.[1]
+      ?.replaceAll("&amp;", "&");
+    const footerWrapperClass = markup.match(
+      /<div class="([^"]*)"><span data-footer-marker="profile-footer">Save profile<\/span><\/div><\/section>$/
+    )?.[1];
+
+    expect(sectionClass).toBeDefined();
+    expect(sectionClass).toContain(
+      "[&_input]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]"
+    );
+    expect(sectionClass).toContain(
+      "[&_select]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]"
+    );
+    expect(
+      markup.match(/data-footer-marker="profile-footer"/g) ?? []
+    ).toHaveLength(1);
+    expect(footerWrapperClass).toBeDefined();
+    expect(footerWrapperClass).toContain("sticky");
+    expect(footerWrapperClass).toContain("bottom-0");
+    expect(footerWrapperClass).toContain("z-10");
+    expect(footerWrapperClass).toContain("mt-8");
+    expect(footerWrapperClass).toContain("min-w-0");
+    expect(footerWrapperClass).toContain("border-t");
+    expect(footerWrapperClass).toContain("border-[#e6ebf1]");
+    expect(footerWrapperClass).toContain("bg-white");
+    expect(footerWrapperClass).toContain("pt-4");
+    expect(footerWrapperClass).toContain(
+      "pb-[max(1rem,env(safe-area-inset-bottom))]"
+    );
+  });
+
+  test("omits the optional footer when it is not provided", () => {
+    const markup = renderProfile({ footer: undefined });
+
+    expect(markup).not.toContain("data-footer-marker");
+    expect(markup).not.toContain("pb-[max(1rem,env(safe-area-inset-bottom))]");
   });
 
   test("keeps the login email visual, verified, and non-editable", () => {

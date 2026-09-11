@@ -57,7 +57,7 @@ export function BillingScreen({
   return (
     <section
       aria-labelledby={titleId}
-      className="min-w-0 rounded-2xl border border-[#dfe4ec] bg-white p-4 text-navy-blue shadow-[0_18px_40px_-28px_rgba(0,2,79,0.45)] sm:p-8"
+      className="min-w-0 rounded-2xl border border-[#dfe4ec] bg-white p-4 text-navy-blue shadow-[0_18px_40px_-28px_rgba(0,2,79,0.45)] sm:p-8 [&_input]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))] [&_select]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]"
     >
       <header className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:justify-between">
         <h2
@@ -189,7 +189,7 @@ export function BillingScreen({
       </section>
 
       {footer !== undefined && (
-        <div className="mt-8 min-w-0 border-t border-[#e6ebf1] pt-6">
+        <div className="sticky bottom-0 z-10 mt-8 min-w-0 border-t border-[#e6ebf1] bg-white pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {footer}
         </div>
       )}
