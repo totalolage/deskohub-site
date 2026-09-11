@@ -142,6 +142,7 @@ const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/run.test.tsx",
   "apps/deskohub-workspace/scripts/account-visual/run.ts",
   "apps/deskohub-workspace/scripts/account-visual/stubs/account-actions.ts",
+  "apps/deskohub-workspace/scripts/account-visual/stubs/analytics-identity.ts",
   "apps/deskohub-workspace/scripts/account-visual/stubs/auth-client.ts",
   "apps/deskohub-workspace/scripts/account-visual/stubs/next-link.tsx",
   "apps/deskohub-workspace/scripts/account-visual/stubs/next-navigation.ts",
@@ -1449,10 +1450,11 @@ const buildNavigationStubBrowserEntry = async (directory: string) => {
     entryPath,
     `import { createElement, useState } from ${JSON.stringify(reactEntry)};
 import { createRoot } from ${JSON.stringify(reactDomClientEntry)};
-import { useRouter, useSearchParams } from ${JSON.stringify(navigationStubEntry)};
+import { usePathname, useRouter, useSearchParams } from ${JSON.stringify(navigationStubEntry)};
 
 function NavigationStubProbe() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [copySearch, setCopySearch] = useState("none");
   const [refreshCount, setRefreshCount] = useState(0);
@@ -1460,7 +1462,7 @@ function NavigationStubProbe() {
   return createElement(
     "main",
     null,
-    createElement("output", { id: "navigation-path" }, window.location.pathname),
+    createElement("output", { id: "navigation-path" }, pathname),
     createElement("output", { id: "navigation-search" }, searchParams.toString() || "empty"),
     createElement("output", { id: "navigation-section" }, searchParams.get("section") || "missing"),
     createElement("output", { id: "navigation-copy" }, copySearch),
@@ -3948,11 +3950,11 @@ test.serial.skipIf(!chromiumAvailable)(
           });
 
           const readState = async () => {
-            const url = new URL(page.url());
             return {
               copy:
                 (await page.locator("#navigation-copy").textContent()) ?? "",
-              path: url.pathname,
+              path:
+                (await page.locator("#navigation-path").textContent()) ?? "",
               refreshCount:
                 (await page
                   .locator("#navigation-refresh-count")
@@ -3975,7 +3977,7 @@ test.serial.skipIf(!chromiumAvailable)(
                 const text = (id: string) =>
                   document.getElementById(id)?.textContent ?? "";
                 return (
-                  window.location.pathname === state.path &&
+                  text("navigation-path") === state.path &&
                   window.location.search ===
                     (state.search === "empty" ? "" : `?${state.search}`) &&
                   text("navigation-copy") === state.copy &&

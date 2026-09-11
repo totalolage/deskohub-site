@@ -145,6 +145,7 @@ description: Workspace customer account, Better Auth, magic link, auth persisten
 - [Customer-account data retention contract](references/auth-data-retention-contract.md)
 - [Better Auth data minimization in Neon](references/better-auth-pii-minimization.md)
 - [Neon preview branches containing authentication PII](references/neon-preview-branch-pii-controls.md)
+- [PostHog identity and privacy boundary](references/posthog-identity-privacy.md) for analytics consent, identity transitions, privacy fields, retention, flags, or connector questions.
 - https://better-auth.com/docs/integrations/next
 - https://better-auth.com/docs/adapters/drizzle
 - https://better-auth.com/docs/plugins/magic-link

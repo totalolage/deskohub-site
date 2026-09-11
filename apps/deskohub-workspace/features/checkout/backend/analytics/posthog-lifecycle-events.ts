@@ -58,7 +58,10 @@ const captureLifecycleEvent = Effect.fn("posthog.captureLifecycleEvent")(
     yield* posthog.capture({
       distinctId: PostHogDistinctId.make(input.distinctId),
       event: input.event,
-      properties: input.properties,
+      properties: {
+        ...input.properties,
+        $process_person_profile: false,
+      },
       timestamp: input.timestamp,
       uuid: PostHogEventId.make(`${input.id}:${input.event}`),
     });
@@ -74,15 +77,6 @@ export const captureReservationStarted = Effect.fn(
   >;
   readonly timestamp: LifecycleEventTimestamp;
 }) {
-  const posthog = yield* PostHogEventService;
-  const requestContext = yield* CurrentPostHogRequestContext;
-  if (requestContext.distinctId) {
-    yield* posthog.alias({
-      distinctId: requestContext.distinctId,
-      alias: PostHogDistinctId.make(input.reservation.id),
-    });
-  }
-
   yield* captureLifecycleEvent({
     distinctId: input.reservation.id,
     event: "reservation started",
@@ -104,14 +98,22 @@ const captureRequestEvent = Effect.fn("posthog.captureRequestEvent")(
     readonly properties: PostHogEventProperties;
     readonly timestamp: LifecycleEventTimestamp;
   }) {
-    const { distinctId } = yield* CurrentPostHogRequestContext;
+    const { distinctId, sessionId } = yield* CurrentPostHogRequestContext;
     if (!distinctId) return;
 
     const posthog = yield* PostHogEventService;
+    const properties: PostHogEventProperties =
+      sessionId === undefined
+        ? { ...input.properties, $process_person_profile: false }
+        : {
+            ...input.properties,
+            $process_person_profile: false,
+            $session_id: sessionId,
+          };
     yield* posthog.capture({
       distinctId,
       event: input.event,
-      properties: input.properties,
+      properties,
       timestamp: input.timestamp,
       uuid: PostHogEventId.make(`${input.id}:${input.event}:${input.result}`),
     });
@@ -191,7 +193,6 @@ export const captureReservationFulfilled = (input: {
     id: input.reservation.id,
     properties: {
       ...reservationProperties(input.reservation),
-      dotypos_customer_id: input.reservation.dotyposCustomerId,
       dotypos_reservation_id:
         input.reservation.dotyposReservationId ?? undefined,
     },

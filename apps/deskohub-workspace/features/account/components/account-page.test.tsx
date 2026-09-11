@@ -16,8 +16,10 @@ import {
 } from "@testing-library/react";
 import type { ReactNode } from "react";
 import {
+  workspaceRouterPush,
   workspaceRouterRefresh,
   workspaceRouterReplace,
+  workspaceUseSearchParams,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -26,7 +28,28 @@ import {
 import type { CustomerAccountPageState } from "../page-data.server";
 
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
-const getSession = mock(() => Promise.resolve({ data: null, error: null }));
+const beginAnalyticsAccountTransition = mock(() => undefined);
+const completeAnalyticsAccountSignOut = mock(() => undefined);
+const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
+mock.module("@/features/account/analytics-identity", () => ({
+  beginAnalyticsAccountTransition,
+  completeAnalyticsAccountSignOut,
+  getAnalyticsAccountIdentity: () => ({ status: "anonymous" }),
+  refreshAnalyticsAccountIdentity,
+  subscribeAnalyticsAccountIdentity: () => () => undefined,
+}));
+mock.module("next/navigation", () => ({
+  unstable_rethrow: (cause: unknown) => {
+    throw cause;
+  },
+  usePathname: () => "/en-US/account",
+  useRouter: () => ({
+    push: workspaceRouterPush,
+    refresh: workspaceRouterRefresh,
+    replace: workspaceRouterReplace,
+  }),
+  useSearchParams: workspaceUseSearchParams,
+}));
 mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: () => ({
     execute: () => undefined,
@@ -129,7 +152,6 @@ mock.module("@/features/account/auth.client", () => ({
   authClient: {
     signIn: { magicLink: signInMagicLink },
     signOut: () => Promise.resolve({ error: null }),
-    getSession,
   },
 }));
 mock.module("@/shared/components/sticky-section", () => ({
@@ -162,7 +184,9 @@ describe("AccountPage states", () => {
     cleanup();
     workspaceRouterRefresh.mockClear();
     workspaceRouterReplace.mockClear();
-    getSession.mockClear();
+    beginAnalyticsAccountTransition.mockClear();
+    completeAnalyticsAccountSignOut.mockClear();
+    refreshAnalyticsAccountIdentity.mockClear();
   });
 
   afterAll(() => {
@@ -279,12 +303,12 @@ describe("AccountPage states", () => {
     expect(view.queryByText("Delete my account")).toBeNull();
   });
 
-  test("redirects unauthenticated visitors without loading session or account data", async () => {
+  test("redirects unauthenticated visitors without loading account data", async () => {
     const view = await renderState({ kind: "unauthenticated" });
 
     expect(view.getByRole("status", { name: "Loading sign-in…" })).toBeTruthy();
     expect(workspaceRouterReplace).toHaveBeenCalledWith("/en-US/auth/sign-in");
-    expect(getSession).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
     expect(view.queryByText("My Workspace")).toBeNull();
     expect(view.queryByText("Reservations")).toBeNull();
     expect(view.queryByText("Delete my account")).toBeNull();
@@ -313,17 +337,19 @@ describe("AccountPage states", () => {
     ).toBeTruthy();
   });
 
-  test("asks the get-session route handler to roll the browser cookie once per authenticated view", async () => {
+  test("asks the account identity adapter to refresh once per authenticated view", async () => {
     await renderState(linkedState);
-    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith();
 
     await renderState({ kind: "unavailable" });
-    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith();
   });
 
-  test("swallows a failed get-session request instead of leaving an unhandled rejection", async () => {
-    getSession.mockImplementationOnce(() =>
-      Promise.reject(new Error("get-session unavailable"))
+  test("swallows a failed identity refresh instead of leaving an unhandled rejection", async () => {
+    refreshAnalyticsAccountIdentity.mockImplementationOnce(() =>
+      Promise.reject(new Error("identity refresh unavailable"))
     );
 
     const view = await renderState(linkedState);
@@ -332,5 +358,7 @@ describe("AccountPage states", () => {
     });
 
     expect(view.container).toBeTruthy();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith();
   });
 });

@@ -29,8 +29,22 @@ type ActionResult = {
 const deleteCustomerAccount = mock(
   (): Promise<ActionResult> => Promise.resolve({ data: { status: "deleted" } })
 );
+const analyticsEvents: string[] = [];
+const beginAnalyticsAccountTransition = mock(() => {
+  analyticsEvents.push("begin");
+});
+const completeAnalyticsAccountSignOut = mock(() => {
+  analyticsEvents.push("complete");
+});
+const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
 mock.module("@/features/account/actions", () => ({
   deleteCustomerAccount,
+}));
+
+mock.module("@/features/account/analytics-identity", () => ({
+  beginAnalyticsAccountTransition,
+  completeAnalyticsAccountSignOut,
+  refreshAnalyticsAccountIdentity,
 }));
 
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
@@ -47,6 +61,11 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
     action: (input: never) => Promise<unknown>,
     options?: {
       readonly onSuccess?: (args: { readonly data?: unknown }) => void;
+      readonly onError?: (args: { readonly error: ActionResult }) => void;
+      readonly onTransportError?: (args: {
+        readonly error: unknown;
+        readonly input: never;
+      }) => void;
     }
   ) => {
     const [result, setResult] = React.useState<ActionResult>({});
@@ -56,13 +75,25 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
       isExecuting,
       execute: (input: never) => {
         setExecuting(true);
-        void action(input).then((outcome) => {
-          setExecuting(false);
-          setResult((outcome ?? {}) as ActionResult);
-          options?.onSuccess?.({
-            data: (outcome as { data?: unknown })?.data,
+        void action(input)
+          .then((outcome) => {
+            setExecuting(false);
+            const result = (outcome ?? {}) as ActionResult;
+            setResult(result);
+            if (
+              result.serverError !== undefined ||
+              result.validationErrors !== undefined
+            ) {
+              options?.onError?.({ error: result });
+            } else {
+              options?.onSuccess?.({ data: result.data });
+            }
+          })
+          .catch((error) => {
+            setExecuting(false);
+            setResult({});
+            options?.onTransportError?.({ error, input });
           });
-        });
       },
       reset: () => setResult({}),
     };
@@ -76,6 +107,10 @@ describe("DeleteAccountCard", () => {
 
   afterEach(() => {
     cleanup();
+    analyticsEvents.length = 0;
+    beginAnalyticsAccountTransition.mockClear();
+    completeAnalyticsAccountSignOut.mockClear();
+    refreshAnalyticsAccountIdentity.mockClear();
     deleteCustomerAccount.mockClear();
     signInMagicLink.mockClear();
     workspaceRouterRefresh.mockClear();
@@ -204,11 +239,16 @@ describe("DeleteAccountCard", () => {
   });
 
   test("redirects to the deleted page after a successful deletion", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() => {
+      analyticsEvents.push("request");
+      return Promise.resolve({ data: { status: "deleted" } });
+    });
     const { DeleteAccountCard } = await import("./delete-account-card");
 
     let assigned: string | null = null;
     const originalAssign = window.location.assign;
     window.location.assign = ((href: string) => {
+      analyticsEvents.push("navigation");
       assigned = href;
     }) as typeof window.location.assign;
 
@@ -232,6 +272,15 @@ describe("DeleteAccountCard", () => {
     });
 
     expect(deleteCustomerAccount).toHaveBeenCalledWith({ confirmed: true });
+    expect(analyticsEvents).toEqual([
+      "begin",
+      "request",
+      "complete",
+      "navigation",
+    ]);
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
     expect(assigned).toBe("/en-US/account/deleted");
     window.location.assign = originalAssign;
   });
@@ -269,6 +318,9 @@ describe("DeleteAccountCard", () => {
       });
 
       expect(assigned).toBe("/en-US/account/deleted");
+      expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+      expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
+      expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
       expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
       expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     } finally {
@@ -301,6 +353,9 @@ describe("DeleteAccountCard", () => {
     });
 
     expect(deleteCustomerAccount).not.toHaveBeenCalled();
+    expect(beginAnalyticsAccountTransition).not.toHaveBeenCalled();
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
   });
 
@@ -332,6 +387,12 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     expect(view.getByText("Sign in again to delete")).toBeTruthy();
     expect(
@@ -386,6 +447,12 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
       name: "Email me a new link",
@@ -437,6 +504,12 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     await act(async () => {
       fireEvent.click(
@@ -492,6 +565,12 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     const send = view.getByRole("button", {
       name: "Email me a new link",
@@ -552,6 +631,12 @@ describe("DeleteAccountCard", () => {
       fireEvent.click(view.getByText("Delete permanently"));
     });
 
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
     expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
     expect(
       view.getByText(
@@ -594,6 +679,51 @@ describe("DeleteAccountCard", () => {
     });
 
     expect(view.getByText(serverError)).toBeTruthy();
+    expect(view.getByRole("dialog")).toBeTruthy();
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
+  });
+
+  test("refreshes identity after a transport error without completing sign-out", async () => {
+    deleteCustomerAccount.mockImplementationOnce(() =>
+      Promise.reject(new Error("synthetic transport failure"))
+    );
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        email="ada@example.test"
+        locale="en-US"
+        deletionPending={false}
+      />
+    );
+    await openDialog(view);
+    await act(async () => {
+      fireEvent.click(
+        view.getByLabelText(
+          m.accountDeletionConfirmLabel({}, { locale: "en-US" })
+        )
+      );
+    });
+    await act(async () => {
+      fireEvent.click(
+        view.getByRole("button", {
+          name: m.accountDeletionConfirm({}, { locale: "en-US" }),
+        })
+      );
+      await Promise.resolve();
+    });
+
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
     expect(view.getByRole("dialog")).toBeTruthy();
   });
 
@@ -642,6 +772,12 @@ describe("DeleteAccountCard", () => {
         }) as HTMLButtonElement
       ).disabled
     ).toBe(false);
+    expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+    expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+    expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+      settleTransition: true,
+    });
   });
 
   test("resets confirmation after cancelling and reopening the dialog", async () => {

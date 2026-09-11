@@ -1210,6 +1210,10 @@ const accountActionsStubPath = join(
   "stubs/account-actions.ts"
 );
 const authClientStubPath = join(import.meta.dir, "stubs/auth-client.ts");
+const analyticsIdentityStubPath = join(
+  import.meta.dir,
+  "stubs/analytics-identity.ts"
+);
 const nextLinkStubPath = join(import.meta.dir, "stubs/next-link.tsx");
 const nextNavigationStubPath = join(
   import.meta.dir,
@@ -1226,6 +1230,7 @@ const createBuildPlugin = (): Bun.BunPlugin => ({
   setup(build) {
     const exactAliases = new Map([
       ["@/features/account/actions", accountActionsStubPath],
+      ["@/features/account/analytics-identity", analyticsIdentityStubPath],
       ["@/features/account/auth.client", authClientStubPath],
       ["next/link", nextLinkStubPath],
       ["next/navigation", nextNavigationStubPath],

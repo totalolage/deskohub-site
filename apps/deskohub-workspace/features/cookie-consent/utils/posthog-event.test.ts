@@ -203,6 +203,17 @@ describe("preparePostHogEvent", () => {
     const event = createEvent("$exception", {
       $current_url:
         "https://workspace.deskohub.cz/en/checkout?checkoutToken=secret&step=pay",
+      $referrer:
+        "https://workspace.deskohub.cz/reservation/access/order-id?accessToken=secret#synthetic-fragment",
+      $session_entry_url:
+        "https://workspace.deskohub.cz/checkout/pay?payState=secret#synthetic-fragment",
+      $session_entry_referrer:
+        "https://workspace.deskohub.cz/checkout/pay/return/order-id?checkoutToken=secret",
+      $session_entry_pathname:
+        "/reservation/status/session-entry-order-id?statusToken=secret#synthetic-fragment",
+      $initial_utm_source: "legacy-synthetic-campaign",
+      $session_entry_utm_source: "synthetic-session-campaign",
+      $session_entry_gclid: "synthetic-session-click-id",
       $exception_list: [
         {
           type: "TypeError",
@@ -212,7 +223,12 @@ describe("preparePostHogEvent", () => {
     });
 
     expect(preparePostHogEvent(event, "production")?.properties).toEqual({
-      $current_url: "https://workspace.deskohub.cz/en/checkout?step=pay",
+      $current_url: "https://workspace.deskohub.cz/en/checkout",
+      $referrer: "https://workspace.deskohub.cz/reservation/access/[id]",
+      $session_entry_url: "https://workspace.deskohub.cz/checkout/pay",
+      $session_entry_referrer:
+        "https://workspace.deskohub.cz/checkout/pay/return/[id]",
+      $session_entry_pathname: "/reservation/status/[id]",
       $exception_list: [
         {
           type: "TypeError",
@@ -221,6 +237,48 @@ describe("preparePostHogEvent", () => {
       ],
       "deployment.environment.name": "production",
     });
+  });
+
+  test("sanitizes documented initial URLs in top-level person-property bags", () => {
+    const event = {
+      ...createEvent("workspace page viewed", {
+        $current_url:
+          "https://workspace.deskohub.cz/account?email=synthetic%40example.test#name",
+        $referrer: "$direct",
+      }),
+      $set_once: {
+        $initial_current_url:
+          "https://workspace.deskohub.cz/checkout/pay/return/order-id?token=synthetic-token#billing",
+        $initial_referrer:
+          "https://workspace.deskohub.cz/account?pin=123456#synthetic-fragment",
+        $initial_pathname:
+          "/reservation/invoice/synthetic-reservation-id?billing=synthetic-billing#synthetic-fragment",
+      },
+    };
+
+    const preparedEvent = preparePostHogEvent(event, "production");
+
+    expect(preparedEvent).toBe(event);
+    expect(preparedEvent?.properties).toEqual({
+      $current_url: "https://workspace.deskohub.cz/account",
+      $referrer: "$direct",
+      "deployment.environment.name": "production",
+    });
+    expect(preparedEvent?.$set_once).toEqual({
+      $initial_current_url:
+        "https://workspace.deskohub.cz/checkout/pay/return/[id]",
+      $initial_referrer: "https://workspace.deskohub.cz/account",
+      $initial_pathname: "/reservation/invoice/[id]",
+    });
+    for (const privateValue of [
+      "synthetic@example.test",
+      "synthetic-token",
+      "billing",
+      "123456",
+      "synthetic-fragment",
+    ]) {
+      expect(JSON.stringify(preparedEvent)).not.toContain(privateValue);
+    }
   });
 
   test("keeps ordinary analytics events", () => {

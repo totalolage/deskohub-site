@@ -2,6 +2,11 @@
 
 import { LogOut } from "lucide-react";
 import { useState } from "react";
+import {
+  beginAnalyticsAccountTransition,
+  completeAnalyticsAccountSignOut,
+  refreshAnalyticsAccountIdentity,
+} from "@/features/account/analytics-identity";
 import { authClient } from "@/features/account/auth.client";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -26,17 +31,25 @@ export function SignOutButton({ locale }: SignOutButtonProps) {
 
     setSigningOut(true);
     setSignOutFailed(false);
+    beginAnalyticsAccountTransition();
 
     try {
       const result = await authClient.signOut();
       if (result.error) {
+        void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
+          () => undefined
+        );
         setSigningOut(false);
         setSignOutFailed(true);
         return;
       }
+      completeAnalyticsAccountSignOut();
       allowNextUnload();
       window.location.assign(target);
     } catch {
+      void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
+        () => undefined
+      );
       setSigningOut(false);
       setSignOutFailed(true);
     }

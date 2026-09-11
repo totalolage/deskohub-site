@@ -4,6 +4,11 @@ import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { deleteCustomerAccount } from "@/features/account/actions";
+import {
+  beginAnalyticsAccountTransition,
+  completeAnalyticsAccountSignOut,
+  refreshAnalyticsAccountIdentity,
+} from "@/features/account/analytics-identity";
 import { authClient } from "@/features/account/auth.client";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -56,15 +61,29 @@ export function DeleteAccountCard({
       actionName: "account.delete",
       onSuccess: ({ data }) => {
         if (data?.status === "deleted") {
+          completeAnalyticsAccountSignOut();
           allowNextUnload();
           window.location.assign(`/${locale}/account/deleted`);
           return;
         }
+        void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
+          () => undefined
+        );
         if (data?.status === "reauthentication-required") {
           setReauthRequired(true);
           return;
         }
         // "failed" keeps the dialog open with the retryable error message.
+      },
+      onError: () => {
+        void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
+          () => undefined
+        );
+      },
+      onTransportError: () => {
+        void refreshAnalyticsAccountIdentity({ settleTransition: true }).catch(
+          () => undefined
+        );
       },
     }
   );
@@ -230,7 +249,10 @@ export function DeleteAccountCard({
                     type="button"
                     disabled={!confirmed || isExecuting}
                     className="bg-red-800 hover:bg-red-900"
-                    onClick={() => execute({ confirmed: true })}
+                    onClick={() => {
+                      beginAnalyticsAccountTransition();
+                      execute({ confirmed: true });
+                    }}
                   >
                     {isExecuting
                       ? m.accountDeletionConfirming({}, { locale })

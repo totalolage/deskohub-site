@@ -17,9 +17,23 @@ type SignOutResult = {
   };
 };
 
+const analyticsEvents: string[] = [];
+const beginAnalyticsAccountTransition = mock(() => {
+  analyticsEvents.push("begin");
+});
+const completeAnalyticsAccountSignOut = mock(() => {
+  analyticsEvents.push("complete");
+});
+const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
 const signOut = mock(
   (): Promise<SignOutResult> => Promise.resolve({ error: null })
 );
+
+mock.module("@/features/account/analytics-identity", () => ({
+  beginAnalyticsAccountTransition,
+  completeAnalyticsAccountSignOut,
+  refreshAnalyticsAccountIdentity,
+}));
 
 mock.module("@/features/account/auth.client", () => ({
   authClient: { signOut },
@@ -103,6 +117,10 @@ function restoreNavigation() {
 
 beforeEach(() => {
   window.location.href = "http://localhost/account";
+  analyticsEvents.length = 0;
+  beginAnalyticsAccountTransition.mockClear();
+  completeAnalyticsAccountSignOut.mockClear();
+  refreshAnalyticsAccountIdentity.mockClear();
   signOut.mockClear();
   signOut.mockImplementation(() => Promise.resolve({ error: null }));
   window.confirm = originalConfirm;
@@ -139,6 +157,7 @@ test("rejects a dirty sign-out before auth mutation or navigation", async () => 
   });
 
   expect(confirm).toHaveBeenCalledTimes(1);
+  expect(beginAnalyticsAccountTransition).not.toHaveBeenCalled();
   expect(signOut).not.toHaveBeenCalled();
   expect(assigned).toBeNull();
 });
@@ -150,9 +169,13 @@ test("allows one unload after deferred sign-out succeeds", async () => {
   const pendingSignOut = new Promise<{ error: null }>((resolve) => {
     resolveSignOut = resolve;
   });
-  signOut.mockImplementationOnce(() => pendingSignOut);
+  signOut.mockImplementationOnce(() => {
+    analyticsEvents.push("request");
+    return pendingSignOut;
+  });
   let assigned: string | null = null;
   window.location.assign = ((href: string) => {
+    analyticsEvents.push("navigation");
     assigned = href;
   }) as typeof window.location.assign;
 
@@ -171,6 +194,7 @@ test("allows one unload after deferred sign-out succeeds", async () => {
   });
 
   expect(confirm).toHaveBeenCalledTimes(1);
+  expect(analyticsEvents.slice(0, 2)).toEqual(["begin", "request"]);
   expect(signOut).toHaveBeenCalledTimes(1);
   expect((button as HTMLButtonElement).disabled).toBe(true);
   expect(assigned).toBeNull();
@@ -182,6 +206,14 @@ test("allows one unload after deferred sign-out succeeds", async () => {
   });
 
   expect(assigned).toBe("/cs-CZ");
+  expect(analyticsEvents).toEqual([
+    "begin",
+    "request",
+    "complete",
+    "navigation",
+  ]);
+  expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
+  expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
   expect(dispatchBeforeUnload().defaultPrevented).toBe(false);
   expect(dispatchBeforeUnload().defaultPrevented).toBe(true);
   expect(confirm).toHaveBeenCalledTimes(1);
@@ -216,6 +248,12 @@ test("does not navigate when sign-out resolves with a 503 error", async () => {
   });
 
   expect(signOut).toHaveBeenCalledTimes(1);
+  expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+  expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+    settleTransition: true,
+  });
   expect(assigned).toBeNull();
   expect((button as HTMLButtonElement).disabled).toBe(false);
   expect(view.getByRole("alert").textContent).toBe(
@@ -270,6 +308,12 @@ test("restores the button after a rejected sign-out without exposing the error",
   });
 
   expect(signOut).toHaveBeenCalledTimes(1);
+  expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+  expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
+  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+    settleTransition: true,
+  });
   expect(assigned).toBeNull();
   expect((button as HTMLButtonElement).disabled).toBe(false);
   expect(view.getByRole("alert").textContent).toBe(
@@ -326,6 +370,10 @@ test("retries a failed sign-out and navigates after the next success", async () 
 
   expect((button as HTMLButtonElement).disabled).toBe(false);
   expect(view.getByRole("alert")).toBeTruthy();
+  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledTimes(1);
+  expect(refreshAnalyticsAccountIdentity).toHaveBeenCalledWith({
+    settleTransition: true,
+  });
 
   await act(async () => {
     fireEvent.click(button);
@@ -333,6 +381,8 @@ test("retries a failed sign-out and navigates after the next success", async () 
   });
 
   expect(signOut).toHaveBeenCalledTimes(2);
+  expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(2);
+  expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
   expect(assigned).toBe("/en-US");
   expect((button as HTMLButtonElement).disabled).toBe(true);
   expect(view.queryByRole("alert")).toBeNull();
