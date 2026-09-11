@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ $# != 0 ]]; then
+  [[ "$1" =~ ^posthog-worker-issue-([1-9][0-9]*)$ ]]
+  "${POSTHOG_ISSUE_OPEN:-/home/dev/.local/libexec/deskohub-posthog-issue-open}" "${BASH_REMATCH[1]}"
+fi
+
 # T3 requires an explicit model, so resolve it through OpenCode's config loader.
 cd "${POSTHOG_PROJECT_CWD:-/home/dev/Projects/deskohub}"
 selection="$("${OPENCODE_BIN:-/home/dev/.local/bin/opencode}" debug agent orchestrator | jq -ce '
