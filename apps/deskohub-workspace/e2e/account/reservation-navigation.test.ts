@@ -14,8 +14,11 @@ import type {
 type FakeLocator = {
   readonly click: () => Promise<void>;
   readonly count: () => Promise<number>;
+  readonly fill: (value: string) => Promise<void>;
   readonly getByRole: (role: string, options?: unknown) => FakeLocator;
+  readonly getByTestId: (testId: string) => FakeLocator;
   readonly getByText: (text: string, options?: unknown) => FakeLocator;
+  readonly inputValue: () => Promise<string>;
   readonly locator: (selector: string) => FakeLocator;
 };
 
@@ -245,9 +248,12 @@ type NavigationHarnessOptions = {
 
 type NavigationScope = "dialog" | "main" | "page";
 type NavigationQuery =
+  | "account"
+  | "account-access"
+  | "account-draft"
   | "access"
   | "access-code"
-  | "access-link"
+  | "access-status"
   | "close"
   | "dialog"
   | "history-link"
@@ -289,25 +295,37 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
     | "modal"
     | "not-found"
     | "status";
-  type Entry = { readonly url: string; readonly mode: NavigationMode };
+  type BackgroundOrigin = "account" | "standalone";
+  type Entry = {
+    readonly backgroundOrigin: BackgroundOrigin;
+    readonly mode: NavigationMode;
+    readonly url: string;
+  };
 
   const makePage = (privatePage = false) => {
     let accountLoaded = false;
+    let draftValue = "account-draft";
     const history: Entry[] = [
       {
+        backgroundOrigin: privatePage ? "standalone" : "account",
         mode: privatePage ? "not-found" : "account",
         url: urls.accountUrl,
       },
     ];
     let historyIndex = 0;
     const current = () => history[historyIndex]!;
+    let backgroundOrigin = current().backgroundOrigin;
     const record = (action: string) => {
       if (!privatePage) actions.push(action);
+    };
+    const syncBackgroundOrigin = () => {
+      backgroundOrigin = current().backgroundOrigin;
     };
     const push = (entry: Entry) => {
       history.splice(historyIndex + 1);
       history.push(entry);
       historyIndex += 1;
+      syncBackgroundOrigin();
     };
     const modeForUrl = (url: string): NavigationMode => {
       if (privatePage) {
@@ -337,20 +355,26 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
         : "";
     const countFor = (scope: NavigationScope, query: NavigationQuery) => {
       const mode = current().mode;
+      const accountBackgroundMounted =
+        !privatePage && accountLoaded && backgroundOrigin === "account";
+      const modalOpen = mode === "modal" || mode === "access-modal";
       if (query === "dialog")
-        return (scope === "page" || scope === "dialog") && mode === "modal"
-          ? 1
-          : 0;
+        return (scope === "page" || scope === "dialog") && modalOpen ? 1 : 0;
       if (query === "main")
-        return (scope === "page" || scope === "main") && mode === "status"
+        return (scope === "page" || scope === "main") &&
+          (mode === "status" || accountBackgroundMounted)
           ? 1
           : 0;
-      if (query === "close")
-        return scope === "dialog" && mode === "modal" ? 1 : 0;
+      if (query === "close") return scope === "dialog" && modalOpen ? 1 : 0;
+      if (query === "account")
+        return scope === "page" && accountBackgroundMounted ? 1 : 0;
+      if (query === "account-access")
+        return scope === "page" && accountBackgroundMounted ? 1 : 0;
       if (query === "history-link") {
+        if (scope === "dialog" && mode === "access-modal") return 1;
         return scope === "page" &&
-          accountLoaded &&
-          (mode === "account" || mode === "access-unavailable")
+          ((accountBackgroundMounted && mode === "account") ||
+            mode === "access-unavailable")
           ? 1
           : 0;
       }
@@ -364,7 +388,7 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
           ? 1
           : 0;
       }
-      if (query === "status-access" || query === "access-link") {
+      if (query === "status-access") {
         if (mode === "modal") {
           if (scope === "dialog")
             return options.missingActiveStatusAccessLink ? 0 : 1;
@@ -374,15 +398,26 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
           ? 1
           : 0;
       }
+      if (query === "access-status") {
+        if (mode === "access-modal") return scope === "dialog" ? 1 : 0;
+        return mode === "access-unavailable" &&
+          (scope === "main" || scope === "page")
+          ? 1
+          : 0;
+      }
       if (query === "access-code")
         return scope === "page" && options.leakedAccessCode && mode === "modal"
           ? 1
           : 0;
       if (query === "access")
-        return scope === "page" &&
-          (mode === "access-invalid" || mode === "access-unavailable")
+        return (scope === "page" || scope === "dialog") &&
+          (mode === "access-invalid" ||
+            mode === "access-unavailable" ||
+            mode === "access-modal")
           ? 1
           : 0;
+      if (query === "account-draft")
+        return scope === "page" && accountBackgroundMounted ? 1 : 0;
       if (query === "not-found-heading")
         return scope === "page" && mode === "not-found" ? 1 : 0;
       if (query === "invalid-heading")
@@ -403,10 +438,59 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
               current().mode === "account" ? "click:history" : "click:status"
             );
             const presentation =
-              current().mode === "account"
+              current().mode === "account" ||
+              (current().mode === "access-modal" &&
+                current().backgroundOrigin === "account")
                 ? "modal"
                 : (options.accessReturnPresentation ?? "page");
             push({
+              backgroundOrigin:
+                current().mode === "account" ||
+                (current().mode === "access-modal" &&
+                  current().backgroundOrigin === "account")
+                  ? "account"
+                  : "standalone",
+              mode: presentation === "modal" ? "modal" : "status",
+              url: urls.statusUrl,
+            });
+            return;
+          }
+          if (query === "account-access") {
+            record("click:access-history");
+            push({
+              backgroundOrigin: "account",
+              mode: "access-modal",
+              url: urls.accessUrl,
+            });
+            return;
+          }
+          if (query === "status-access") {
+            record("click:access");
+            push({
+              backgroundOrigin:
+                current().mode === "modal" &&
+                current().backgroundOrigin === "account"
+                  ? "account"
+                  : "standalone",
+              mode:
+                current().mode === "modal" &&
+                current().backgroundOrigin === "account"
+                  ? "access-modal"
+                  : "access-unavailable",
+              url: urls.accessUrl,
+            });
+            return;
+          }
+          if (query === "access-status") {
+            record("click:status");
+            const accountModal =
+              current().mode === "access-modal" &&
+              current().backgroundOrigin === "account";
+            const presentation = accountModal
+              ? "modal"
+              : (options.accessReturnPresentation ?? "page");
+            push({
+              backgroundOrigin: accountModal ? "account" : "standalone",
               mode: presentation === "modal" ? "modal" : "status",
               url: urls.statusUrl,
             });
@@ -415,18 +499,37 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
           if (query === "close") {
             record("click:close");
             historyIndex -= 1;
+            syncBackgroundOrigin();
             record("back");
             return;
           }
-          if (query === "access-link") {
-            record("click:access");
-            push({ mode: "access-unavailable", url: urls.accessUrl });
-          }
         }),
       count: async () => countFor(scope, query),
+      fill: (value) =>
+        runNavigationOperation(async () => {
+          if (query !== "account-draft")
+            throw new Error("fake fill target was not an account draft");
+          draftValue = value;
+          record("fill:draft");
+        }),
       getByRole: (role, roleOptions) => {
         if (role === "dialog") return makeLocator("dialog", "dialog");
         if (role === "main") return makeLocator("main", "main");
+        if (role === "link") {
+          const name = nameFromOptions(roleOptions);
+          if (name === "Access instructions") {
+            return makeLocator(
+              scope,
+              scope === "dialog" ? "status-access" : "account-access"
+            );
+          }
+          if (name === "Reservation details") {
+            return makeLocator(
+              scope,
+              scope === "dialog" ? "access-status" : "history-link"
+            );
+          }
+        }
         if (role === "button") {
           return makeLocator(
             scope,
@@ -442,27 +545,61 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
             headingQuery = "unavailable-heading";
           return makeLocator(scope, headingQuery);
         }
+        if (role === "textbox") {
+          return makeLocator(scope, "account-draft");
+        }
+        return makeLocator(scope, "none");
+      },
+      getByTestId: (testId) => {
+        if (testId === "account-page") return makeLocator(scope, "account");
+        if (testId === "account-draft")
+          return makeLocator(scope, "account-draft");
+        if (testId === "reservation-status-modal")
+          return makeLocator(scope, "dialog");
+        if (testId === "reservation-access-modal")
+          return makeLocator(scope, "access");
+        if (testId === "canonical-status-page")
+          return makeLocator(
+            scope,
+            current().mode === "status" ? "main" : "none"
+          );
+        if (testId === "canonical-access-page")
+          return makeLocator(
+            scope,
+            current().mode === "access-unavailable" ? "access" : "none"
+          );
         return makeLocator(scope, "none");
       },
       getByText: (text) =>
         makeLocator(scope, text === reservationId ? "reservation-id" : "none"),
+      inputValue: () =>
+        query === "account-draft"
+          ? Promise.resolve(draftValue)
+          : Promise.reject(
+              new Error("fake input value target was not an input")
+            ),
       locator: (selector) => {
         if (selector === "#checkout-status-access") {
-          return makeLocator(
-            scope,
-            scope === "page" ? "access-link" : "status-access"
-          );
+          return makeLocator(scope, "status-access");
         }
         if (selector === "[data-reservation-access]")
           return makeLocator(scope, "access");
         if (selector === "[data-reservation-access-code]")
           return makeLocator(scope, "access-code");
+        if (selector === "#account-access-link")
+          return makeLocator(scope, "account-access");
+        if (selector === "#account-status-link")
+          return makeLocator(scope, "history-link");
+        if (selector === "#access-status-link")
+          return makeLocator(scope, "access-status");
         if (selector === `a[href="${urls.statusPath}"]`)
           return makeLocator(scope, "history-link");
         return makeLocator(scope, "none");
       },
     });
     const page = makeLocator("page", "none") as FakeLocator & {
+      readonly backgroundOrigin: BackgroundOrigin;
+      readonly draftValue: string;
       readonly goBack: () => Promise<void>;
       readonly goForward: () => Promise<void>;
       readonly goto: (
@@ -474,15 +611,23 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
       readonly waitForURL: (...args: readonly unknown[]) => Promise<void>;
     };
     Object.assign(page, {
+      get backgroundOrigin() {
+        return backgroundOrigin;
+      },
+      get draftValue() {
+        return draftValue;
+      },
       goBack: () =>
         runNavigationOperation(async () => {
           record("back");
           historyIndex -= 1;
+          syncBackgroundOrigin();
         }),
       goForward: () =>
         runNavigationOperation(async () => {
           record("forward");
           historyIndex += 1;
+          syncBackgroundOrigin();
         }),
       goto: (url: string) =>
         runNavigationOperation(async () => {
@@ -495,6 +640,8 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
           record(`goto:${url}`);
           if (url === urls.accountUrl) accountLoaded = true;
           push({
+            backgroundOrigin:
+              url === urls.accountUrl ? "account" : "standalone",
             mode:
               privatePage && url === urls.accessUrl
                 ? "access-invalid"
@@ -506,7 +653,17 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
       reload: () =>
         runNavigationOperation(async () => {
           record("reload");
-          history[historyIndex] = { mode: "status", url: urls.statusUrl };
+          const url = current().url;
+          history[historyIndex] = {
+            backgroundOrigin:
+              url === urls.accountUrl ? "account" : "standalone",
+            mode:
+              privatePage && url === urls.accessUrl
+                ? "access-invalid"
+                : modeForUrl(url),
+            url,
+          };
+          syncBackgroundOrigin();
         }),
       url: () => current().url,
       waitForFunction: (...args: readonly unknown[]) =>
@@ -514,7 +671,7 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
           const statusPath = args[1];
           if (statusPath === urls.statusPath)
             failFor(
-              historyIndex > 0 && current().mode === "account"
+              historyIndex === 1 && current().mode === "account"
                 ? "history-open-hydration"
                 : "history-reopen-hydration"
             );
@@ -547,7 +704,13 @@ const makeNavigationHarness = (options: NavigationHarnessOptions = {}) => {
 
   return {
     actions,
+    get backgroundOrigin() {
+      return page.backgroundOrigin;
+    },
     browser,
+    get draftValue() {
+      return page.draftValue;
+    },
     page,
     reservationId,
     urls,
@@ -612,15 +775,113 @@ test("runs the reservation verifier actions and captures both live stages", asyn
     `goto:${harness.urls.accountUrl}`,
     "wait:history-link-hydration",
     "click:history",
+    "click:access",
+    "click:status",
     "back",
     "forward",
     "reload",
     "click:access",
     "wait:history-link-hydration",
     "click:status",
+    `goto:${harness.urls.accessUrl}`,
+    "reload",
+    "wait:history-link-hydration",
+    "click:status",
     `goto:${harness.urls.accountUrl}`,
   ]);
   expect(harness.page.url()).toBe(harness.urls.accountUrl);
+});
+
+test("keeps the account background and draft through both reservation overlays", async () => {
+  const harness = makeNavigationHarness();
+  const draft = harness.page.getByTestId("account-draft");
+  const draftValue = "draft-kept";
+
+  const expectAccountOverlay = async (
+    url: string,
+    testId: "reservation-access-modal" | "reservation-status-modal"
+  ) => {
+    expect(harness.page.url()).toBe(url);
+    expect(harness.backgroundOrigin).toBe("account");
+    expect(await harness.page.getByRole("dialog").count()).toBe(1);
+    expect(await harness.page.getByTestId(testId).count()).toBe(1);
+    expect(await harness.page.getByTestId("account-page").count()).toBe(1);
+    expect(await draft.inputValue()).toBe(draftValue);
+  };
+
+  await harness.page.goto(harness.urls.accountUrl);
+  await draft.fill(draftValue);
+
+  await harness.page.locator("#account-status-link").click();
+  await expectAccountOverlay(
+    harness.urls.statusUrl,
+    "reservation-status-modal"
+  );
+
+  await harness.page
+    .getByRole("dialog")
+    .locator("#checkout-status-access")
+    .click();
+  await expectAccountOverlay(
+    harness.urls.accessUrl,
+    "reservation-access-modal"
+  );
+
+  await harness.page.getByRole("dialog").locator("#access-status-link").click();
+  await expectAccountOverlay(
+    harness.urls.statusUrl,
+    "reservation-status-modal"
+  );
+
+  await harness.page.goBack();
+  await expectAccountOverlay(
+    harness.urls.accessUrl,
+    "reservation-access-modal"
+  );
+  await harness.page.goForward();
+  await expectAccountOverlay(
+    harness.urls.statusUrl,
+    "reservation-status-modal"
+  );
+
+  await harness.page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close" })
+    .click();
+  await expectAccountOverlay(
+    harness.urls.accessUrl,
+    "reservation-access-modal"
+  );
+  await harness.page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close" })
+    .click();
+  await expectAccountOverlay(
+    harness.urls.statusUrl,
+    "reservation-status-modal"
+  );
+  await harness.page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close" })
+    .click();
+  expect(harness.page.url()).toBe(harness.urls.accountUrl);
+  expect(harness.backgroundOrigin).toBe("account");
+  expect(await harness.page.getByRole("dialog").count()).toBe(0);
+  expect(await draft.inputValue()).toBe(draftValue);
+
+  await harness.page.locator("#account-access-link").click();
+  await expectAccountOverlay(
+    harness.urls.accessUrl,
+    "reservation-access-modal"
+  );
+  await harness.page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close" })
+    .click();
+  expect(harness.page.url()).toBe(harness.urls.accountUrl);
+  expect(harness.backgroundOrigin).toBe("account");
+  expect(await harness.page.getByRole("dialog").count()).toBe(0);
+  expect(await draft.inputValue()).toBe(draftValue);
 });
 
 type MappedNavigationFailure = {

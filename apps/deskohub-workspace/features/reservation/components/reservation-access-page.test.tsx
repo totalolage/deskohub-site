@@ -117,4 +117,43 @@ describe("ReservationAccessPage", () => {
         .getAttribute("href")
     ).toBe("/en-US/reservation/status/reservation-access-page");
   });
+
+  test("renders modal content without the checkout flow chrome", () => {
+    const view = render(
+      <ReservationAccessPage
+        access={{ state: "unavailable" }}
+        locale="en-US"
+        orderId="reservation-access-page"
+        presentation="modal"
+      />
+    );
+
+    expect(view.container.querySelector("main")).toBeNull();
+    expect(view.getByText("The access PIN is unavailable")).toBeDefined();
+    expect(
+      view.container.querySelector("[data-reservation-access]")
+    ).toBeDefined();
+  });
+
+  test("keeps the access PIN visible in modal presentation", () => {
+    const view = render(
+      <ReservationAccessPage
+        access={{
+          state: "available",
+          code: "2468",
+          accessStartsAt: Temporal.Instant.from("2026-08-13T08:00:00Z"),
+          accessEndsAt: Temporal.Instant.from("2026-08-13T16:00:00Z"),
+        }}
+        locale="en-US"
+        orderId="reservation-access-page"
+        presentation="modal"
+      />
+    );
+
+    expect(
+      view.container.querySelector("[data-reservation-access-code]")
+    ).toBeDefined();
+    expect(view.getByText("Your access PIN")).toBeDefined();
+    expect(view.container.querySelector("main")).toBeNull();
+  });
 });
