@@ -112,6 +112,13 @@ negative cases across ingest headers and never contacts the real provider. This
 records the checked-in configuration and runtime guard, not an audit of actual
 production environment values.
 
+An inherited read-only configuration audit dated 2026-09-11 reports that
+production and preview use `https://t.workspace.deskohub.cz/` for PostHog
+project `204184`. This host differs from the production
+`workspace.deskohub.cz` and preview `vercel.app` app hosts, so the separate-host
+guard passes for those observed values. This is inherited configuration
+evidence, not a local test proving deployed behavior or proxy settings.
+
 ## Database connectors are not part of this integration
 
 - Do not add an auth or user database connector now.
@@ -134,7 +141,12 @@ governs Better Auth retention and provider-first account deletion. It does not
 define PostHog erasure.
 
 Public legal content uses generic provider-settings language for analytics
-retention. No verified PostHog project duration is available.
+retention. A completed read-only audit on 2026-09-11 (`ses_f6e3efbd7ffeQB1apvi5w3UW0l`)
+observed these settings in PostHog project `204184`:
+`session_recording_retention_period=30d`, `event_retention_months=84`, and
+`events_retention_enforced=false`. These observed settings are not guaranteed
+deletion deadlines. The 84-month value is not an enforced cap. Session replay
+remains disabled.
 
 PostHog `reset` changes local browser identity state. It does not delete remote
 historical events or aliases. Historical aliases and data are not retroactively
