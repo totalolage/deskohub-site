@@ -117,7 +117,9 @@ printf '%s' "$1" > "$POSTHOG_FAKE_CONFIGURED_THREAD"
 async function runApiScript(
   script: string,
   args: string[],
-  variant: string | null = "medium"
+  variant: string | null = "medium",
+  issueState = "OPEN",
+  githubExitCode = 0
 ) {
   const directory = await mkdtemp(join(tmpdir(), "posthog-api-script-"));
   temporaryDirectories.push(directory);
@@ -126,6 +128,16 @@ async function runApiScript(
   const fakeT3 = join(directory, "t3");
   const fakeCurl = join(directory, "curl");
   const fakeOpenCode = join(directory, "opencode");
+  const fakeGh = join(directory, "gh");
+  await Bun.write(
+    fakeGh,
+    `#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == "issue view 303 --repo totalolage/deskohub-site --json state --jq .state" ]]
+printf '%s\\n' "$FAKE_ISSUE_STATE"
+exit "$FAKE_GH_EXIT_CODE"
+`
+  );
   await Bun.write(
     fakeOpenCode,
     `#!/usr/bin/env bash
@@ -167,6 +179,7 @@ printf '{"sequence":42}\n'
     chmod(fakeT3, 0o755),
     chmod(fakeCurl, 0o755),
     chmod(fakeOpenCode, 0o755),
+    chmod(fakeGh, 0o755),
   ]);
 
   const process = Bun.spawn([script, ...args], {
@@ -180,6 +193,10 @@ printf '{"sequence":42}\n'
       OPENCODE_BIN: fakeOpenCode,
       POSTHOG_PROJECT_CWD: directory,
       POSTHOG_WORKER_MODEL: workerModel,
+      POSTHOG_ISSUE_OPEN: join(import.meta.dir, "posthog-issue-open"),
+      GH_BIN: fakeGh,
+      FAKE_ISSUE_STATE: issueState,
+      FAKE_GH_EXIT_CODE: String(githubExitCode),
     },
     stderr: "pipe",
     stdout: "pipe",
@@ -191,15 +208,42 @@ printf '{"sequence":42}\n'
   ]);
 
   return {
-    curlArguments: await Bun.file(curlArguments).text(),
+    curlArguments: (await Bun.file(curlArguments).exists())
+      ? await Bun.file(curlArguments).text()
+      : "",
     exitCode,
-    payload: await Bun.file(payloadPath).json(),
+    payload: (await Bun.file(payloadPath).exists())
+      ? await Bun.file(payloadPath).json()
+      : null,
     stderr,
     stdout,
   };
 }
 
 describe("posthog-agent-loop", () => {
+  test("closed issues and failed GitHub lookups never dispatch creation or resume", async () => {
+    for (const [script, args] of [
+      [workerCreator, ["303"]],
+      [workerModel, ["posthog-worker-issue-303", "Continue", "retry-1"]],
+    ] as const) {
+      for (const [state, status] of [
+        ["CLOSED", 0],
+        ["OPEN", 1],
+      ] as const) {
+        const result = await runApiScript(
+          script,
+          [...args],
+          "medium",
+          state,
+          status
+        );
+        expect(result.exitCode).not.toBe(0);
+        expect(result.payload).toBeNull();
+        expect(result.curlArguments).toBe("");
+        expect(result.stdout).toBe("");
+      }
+    }
+  });
   test("runs the first dispatcher pass after configuring the new thread", async () => {
     const { calls, configuredThread } = await runAgentLoop(false);
 
