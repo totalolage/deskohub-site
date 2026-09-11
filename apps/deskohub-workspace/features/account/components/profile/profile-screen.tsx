@@ -66,7 +66,7 @@ export function ProfileScreen({
   return (
     <section
       aria-labelledby={titleId}
-      className="min-w-0 rounded-2xl border border-[#dfe4ec] bg-white p-5 sm:p-8"
+      className="min-w-0 rounded-2xl border border-[#dfe4ec] bg-white p-5 sm:p-8 [&_input]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))] [&_select]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]"
       data-slot="profile-screen"
     >
       <h2
@@ -164,7 +164,11 @@ export function ProfileScreen({
         </Select>
       </div>
 
-      {footer !== undefined && <div className="mt-8">{footer}</div>}
+      {footer !== undefined && (
+        <div className="sticky bottom-0 z-10 mt-8 min-w-0 border-t border-[#e6ebf1] bg-white pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {footer}
+        </div>
+      )}
     </section>
   );
 }
