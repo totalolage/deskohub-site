@@ -155,7 +155,7 @@ export function ProfileScreen({
           {copy.languageLabel}
         </Label>
         <Select disabled value="unavailable">
-          <FutureFeatureTooltip locale={locale}>
+          <FutureFeatureTooltip className="w-full" locale={locale}>
             <SelectTrigger
               id={languageId}
               aria-describedby={languageDescriptionId}

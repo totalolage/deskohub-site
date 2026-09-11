@@ -269,10 +269,17 @@ describe("ProfileScreen", () => {
         copy.languageUnavailableDescription
       );
       const languageIcon = languageTrigger.querySelector("svg");
+      const languageWrapper =
+        languageTrigger.closest<HTMLElement>('[role="group"]');
+      const nativeSelect = view.container.querySelector<HTMLSelectElement>(
+        'select[aria-hidden="true"]'
+      );
 
       expect(languageTrigger.getAttribute("data-slot")).toBe("select-trigger");
       expect(languageTrigger.tagName).toBe("BUTTON");
       expect((languageTrigger as HTMLButtonElement).disabled).toBe(true);
+      expect(languageWrapper).not.toBeNull();
+      expect(languageWrapper?.classList.contains("w-full")).toBe(true);
       expect(languageTrigger.className).toContain("min-h-11");
       expect(languageTrigger.className).toContain("w-full");
       expect(languageTrigger.className).toContain("rounded-2xl");
@@ -285,6 +292,8 @@ describe("ProfileScreen", () => {
       expect(languageTrigger.getAttribute("aria-describedby")).toBe(
         languageDescription.id
       );
+      expect(nativeSelect).not.toBeNull();
+      expect(nativeSelect?.disabled).toBe(true);
 
       const form = view.getByTestId("profile-form") as HTMLFormElement;
       expect([...new FormData(form).keys()]).not.toContain("language");
