@@ -93,8 +93,8 @@ describe("workspace account e2e graph", () => {
       "account-profile-completion",
       "account-reservation-transitions",
       "account-deletion-marker-reauth",
-      "account-deletion-and-reactivation",
       "account-session-lifecycle",
+      "account-deletion-and-reactivation",
       "account-linking-variants",
     ]);
 
@@ -102,6 +102,12 @@ describe("workspace account e2e graph", () => {
       repoFile("e2e/account/account-lane.pw.ts")
     ).text();
     expect(lane).toContain('mode: "serial"');
+    expect(lane).toContain(
+      '"account-session-lifecycle": "callback-failed-desktop"'
+    );
+    expect(lane).not.toContain(
+      '"account-deletion-marker-reauth": "callback-failed-desktop"'
+    );
   });
 
   test("reconciles the account lane during suite cleanup", async () => {
@@ -133,9 +139,9 @@ describe("workspace account e2e graph", () => {
     expect(budgetSource).not.toMatch(/magicLinkOperationWindowMs\s*=\s*\d/);
 
     const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
-    expect(countOccurrences(cases, "rateBudget.run(")).toBe(17);
-    expect((cases.match(/rateBudget\.run\(\s*"send"/g) ?? []).length).toBe(9);
-    expect((cases.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length).toBe(8);
+    expect(countOccurrences(cases, "rateBudget.run(")).toBe(8);
+    expect((cases.match(/rateBudget\.run\(\s*"send"/g) ?? []).length).toBe(4);
+    expect((cases.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length).toBe(4);
     expect(cases).not.toContain(".reserve(");
     expect(cases).not.toContain("tryReserve");
 
@@ -179,13 +185,8 @@ describe("workspace account e2e graph", () => {
       "accepts a second unknown email with an identical response",
       "send"
     );
-    expectBudgetedStep("requests the synthetic magic link", "send");
     expectBudgetedStep("consumes the link into the completion state", "verify");
     expectBudgetedStep("sends the reauthentication link", "send");
-    expectBudgetedStep(
-      "keeps the deletion marker state after reauthentication",
-      "verify"
-    );
     expectBudgetedStep(
       "rejects the already-consumed reauthentication link",
       "verify"
@@ -195,32 +196,13 @@ describe("workspace account e2e graph", () => {
       "reactivates the retained profile under a new Better Auth identity",
       "verify"
     );
-    expectBudgetedStep("requests the returning sign-in link", "send");
     expectBudgetedStep("signs the same account back in", "verify");
-    expectBudgetedStep("requests the active-profile sign-in link", "send");
-    expectBudgetedStep(
-      "links the active provider profile without completion",
-      "verify"
-    );
-    expectBudgetedStep("requests the expired-profile sign-in link", "send");
-    expectBudgetedStep(
-      "reactivates the expired provider profile on linking",
-      "verify"
-    );
-    expectBudgetedStep("requests the support-state sign-in link", "send");
-    expectBudgetedStep(
-      "requires support for an ambiguous provider profile",
-      "verify"
-    );
 
     expectUnbudgetedStep("rejects an invalid email without requesting a link");
+    expectUnbudgetedStep("requires the first accepted main request handoff");
     expectUnbudgetedStep("retrieves the delivered single-use link");
     expectUnbudgetedStep("retrieves the delivered reauthentication link");
     expectUnbudgetedStep("retrieves the reactivation link");
-    expectUnbudgetedStep("retrieves the returning sign-in link");
-    expectUnbudgetedStep("retrieves the active-profile sign-in link");
-    expectUnbudgetedStep("retrieves the expired-profile sign-in link");
-    expectUnbudgetedStep("retrieves the support-state sign-in link");
 
     // The quiet-window budget consumes the real spacing between delivered
     // links, so a fake-clock duration claim would have to assume provider
@@ -232,13 +214,27 @@ describe("workspace account e2e graph", () => {
     );
     expect(
       (deliveryCase.match(/rateBudget\.run\(\s*"send"/g) ?? []).length
-    ).toBe(1);
+    ).toBe(0);
     expect(
       (deliveryCase.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length
     ).toBe(1);
     expect(deliveryCase).not.toContain("callbackFailedTitle");
     expect(deliveryCase).not.toContain("rejects the replayed link");
+    expect(deliveryCase).not.toContain("requests the synthetic magic link");
     expect(deliveryCase.match(/openPage\(link\)/g)).toHaveLength(1);
+    expect(deliveryCase).toContain("firstAcceptedRequestedAt");
+
+    const signInCase = cases.slice(
+      cases.indexOf('makeCase("account-sign-in-form"'),
+      cases.indexOf('makeCase("account-magic-link-delivery"')
+    );
+    const handoffAt = signInCase.indexOf(
+      "lifecycleHandoff.firstAcceptedRequestedAt = startedAt"
+    );
+    const submitAt = signInCase.indexOf("fillAndSubmitEmail(recipient)");
+    expect(handoffAt).toBeGreaterThan(-1);
+    expect(submitAt).toBeGreaterThan(handoffAt);
+    expect(signInCase).not.toContain("accepted-a");
 
     const profileCompletionCase = cases.slice(
       cases.indexOf('makeCase("account-profile-completion"'),
@@ -248,14 +244,26 @@ describe("workspace account e2e graph", () => {
 
     const markerCase = cases.slice(
       cases.indexOf('makeCase("account-deletion-marker-reauth"'),
-      cases.indexOf('makeCase("account-deletion-and-reactivation"')
+      cases.indexOf('makeCase("account-session-lifecycle"')
     );
     expect((markerCase.match(/rateBudget\.run\(\s*"send"/g) ?? []).length).toBe(
       1
     );
     expect(
       (markerCase.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length
-    ).toBe(2);
+    ).toBe(0);
+
+    const linkingCase = cases.slice(
+      cases.indexOf('makeCase("account-linking-variants"')
+    );
+    expect(linkingCase).not.toContain("rateBudget.");
+    expect(linkingCase).not.toContain("signOutAndRequireAnonymous");
+    expect(linkingCase).not.toContain("requestSignInLink");
+    expect(linkingCase).not.toContain("retrieveSignInLink");
+    expect(linkingCase.match(/localized\("\/contact"\)/g)).toHaveLength(3);
+    expect(linkingCase.match(/removeSyntheticAccountLink\(/g)).toHaveLength(3);
+    expect(linkingCase).toContain("email: recipient");
+    expect(linkingCase).toContain("dotyposCustomerIds: [duplicateCustomerId]");
   });
 
   test("waits for the durable linked edit state instead of the transient completion feedback", async () => {
@@ -358,19 +366,26 @@ describe("workspace account e2e graph", () => {
     expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
   });
 
-  test("completes the stale deletion through the delivered reauthentication link", async () => {
+  test("hands the reauthentication link to the session lifecycle case", async () => {
     const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
     const markerCase = cases.slice(
       cases.indexOf('makeCase("account-deletion-marker-reauth"'),
+      cases.indexOf('makeCase("account-session-lifecycle"')
+    );
+    const sessionCase = cases.slice(
+      cases.indexOf('makeCase("account-session-lifecycle"'),
       cases.indexOf('makeCase("account-deletion-and-reactivation"')
     );
 
     expect(markerCase).toContain("retrieveSignInLink");
-    expect(markerCase).toContain("openPage(reauthenticationLink)");
-    expect(markerCase).toContain("deleted page");
+    expect(markerCase).toContain("lifecycleHandoff.reauthentication");
+    expect(markerCase).not.toContain("openPage(reauthentication.link)");
+    expect(markerCase).not.toContain("deleted page");
     expect(markerCase).not.toContain("setDeletionRequestedAt(userId, null)");
     expect(markerCase).not.toContain("linked account restored");
     expect(markerCase.match(/setDeletionRequestedAt\(/g) ?? []).toHaveLength(1);
+    expect(sessionCase).toContain("openPage(reauthentication.link)");
+    expect(sessionCase).toContain("deleted page");
   });
 
   test("replays the consumed deletion link after proving anonymous access", async () => {
@@ -385,21 +400,31 @@ describe("workspace account e2e graph", () => {
 
     const markerCase = cases.slice(
       cases.indexOf('makeCase("account-deletion-marker-reauth"'),
+      cases.indexOf('makeCase("account-session-lifecycle"')
+    );
+    const sessionCase = cases.slice(
+      cases.indexOf('makeCase("account-session-lifecycle"'),
       cases.indexOf('makeCase("account-deletion-and-reactivation"')
     );
-    const consumptions = markerCase.match(/openPage\(reauthenticationLink\)/g);
+    expect(markerCase).not.toContain("openPage(reauthentication.link)");
+    const consumptions = sessionCase.match(
+      /openPage\(reauthentication\.link\)/g
+    );
     expect(consumptions).toHaveLength(2);
 
-    const consumedAt = markerCase.indexOf("openPage(reauthenticationLink)");
-    const deletedAt = markerCase.indexOf("deleted page");
-    const anonymousAt = markerCase.indexOf(
+    const consumedAt = sessionCase.indexOf("openPage(reauthentication.link)");
+    const signOutAt = sessionCase.indexOf("signOutAndRequireAnonymous()");
+    const deletedAt = sessionCase.indexOf("deleted page");
+    const anonymousAt = sessionCase.indexOf(
       "anonymous account redirect after deletion"
     );
-    const replayAt = markerCase.lastIndexOf("openPage(reauthenticationLink)");
+    const replayAt = sessionCase.lastIndexOf("openPage(reauthentication.link)");
+    expect(signOutAt).toBeGreaterThan(-1);
+    expect(signOutAt).toBeLessThan(consumedAt);
     expect(deletedAt).toBeGreaterThan(consumedAt);
     expect(anonymousAt).toBeGreaterThan(deletedAt);
     expect(replayAt).toBeGreaterThan(anonymousAt);
-    const replayStep = markerCase.slice(replayAt);
+    const replayStep = sessionCase.slice(replayAt);
     expect(replayStep).toContain("findAuthUserIdByEmail(recipient)");
     expect(replayStep).toContain("authUserIds: [replayedUserId]");
     const cleanupAt = replayStep.indexOf("findAuthUserIdByEmail");
@@ -411,7 +436,7 @@ describe("workspace account e2e graph", () => {
     expect(replayStep).toContain("callbackFailedTitle");
   });
 
-  test("hands the completed deletion through the worker-scoped lane fixture", async () => {
+  test("hands the account lifecycle through the worker-scoped lane fixture", async () => {
     const lane = await Bun.file(
       repoFile("e2e/account/account-lane.pw.ts")
     ).text();
@@ -420,22 +445,29 @@ describe("workspace account e2e graph", () => {
     const perTestLoopAt = lane.indexOf("for (const caseId");
     const fixtureScope = lane.slice(0, perTestLoopAt);
     expect(fixtureScope).toContain(
-      "deletionHandoff: WorkspaceE2EAccountDeletionHandoff"
+      "lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff"
     );
-    expect(fixtureScope).toContain("const deletionHandoff");
-    expect(fixtureScope).toContain("deletionHandoff,");
+    expect(fixtureScope).toContain("const lifecycleHandoff");
+    expect(fixtureScope).toContain("lifecycleHandoff,");
 
     const factoryCall = lane.slice(
       lane.indexOf("makeWorkspaceE2EAccountCases({")
     );
     expect(factoryCall).toContain(
-      "deletionHandoff: accountLane.deletionHandoff"
+      "lifecycleHandoff: accountLane.lifecycleHandoff"
     );
 
     expect(cases).toContain(
-      "readonly deletionHandoff: WorkspaceE2EAccountDeletionHandoff"
+      "readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff"
     );
     expect(cases).not.toContain("completedDeletion");
+
+    const types = await Bun.file(repoFile("e2e/account/types.ts")).text();
+    expect(types).toContain("WorkspaceE2EAccountLifecycleHandoff");
+    expect(types).toContain("firstAcceptedRequestedAt?: Date");
+    expect(types).toContain("reauthentication?:");
+    expect(types).toContain("link: string");
+    expect(types).toContain("linkedCustomerId: string");
   });
 
   test("disambiguates repeated sign-ins by excluding observed messages", async () => {

@@ -13,12 +13,17 @@ export type WorkspaceE2EAccountRequirement =
   | HttpClient.HttpClient;
 
 /**
- * In-memory handoff from the deletion marker case to the reactivation case.
- * The worker-scoped lane fixture owns the one instance because Playwright
- * rebuilds the case factory for every test; it never carries links or tokens
- * and stays out of the cleanup journal.
+ * In-memory handoff for the worker-scoped account lifecycle. The lane fixture
+ * owns the one instance because Playwright rebuilds the case factory for every
+ * test; it never carries persisted state and stays out of the cleanup journal.
  */
-export type WorkspaceE2EAccountDeletionHandoff = {
+export type WorkspaceE2EAccountLifecycleHandoff = {
+  firstAcceptedRequestedAt?: Date;
+  reauthentication?: {
+    link: string;
+    userId: string;
+    linkedCustomerId: string;
+  };
   deletedUserId?: string;
   retainedCustomerId?: string;
 };

@@ -36,6 +36,7 @@ import {
   assertNoAuthRows,
   findAuthUserIdByEmail,
   findLinkedDotyposCustomerId,
+  removeSyntheticAccountLink,
   setDeletionRequestedAt,
   setSessionCreatedAt,
 } from "./auth-rows";
@@ -60,8 +61,8 @@ import {
 } from "./resend-retrieval";
 import type {
   WorkspaceE2EAccountCase,
-  WorkspaceE2EAccountDeletionHandoff,
   WorkspaceE2EAccountJournalRef,
+  WorkspaceE2EAccountLifecycleHandoff,
 } from "./types";
 
 const acceptedTitle = "Check your inbox";
@@ -139,9 +140,9 @@ export type WorkspaceE2EAccountCaseInputs = {
   /**
    * The worker-scoped lane fixture owns this mutable handoff once; the case
    * factory is rebuilt for every Playwright test, so a factory-local object
-   * could never carry the completed deletion between the two deletion cases.
+   * could never carry the completed lifecycle between the account cases.
    */
-  readonly deletionHandoff: WorkspaceE2EAccountDeletionHandoff;
+  readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff;
   readonly rateBudget: MagicLinkRateBudget;
   readonly run: Runner;
   readonly session: string;
@@ -156,7 +157,7 @@ export type WorkspaceE2EAccountCaseInputs = {
 export const makeWorkspaceE2EAccountCases = ({
   config,
   datasourceConfig,
-  deletionHandoff,
+  lifecycleHandoff,
   rateBudget,
   run,
   session,
@@ -165,27 +166,10 @@ export const makeWorkspaceE2EAccountCases = ({
     config,
     workspaceE2EAccountMainRecipientLabel
   );
-  const acceptedRecipientOne = makeWorkspaceE2EAccountRecipient(
-    config,
-    "accepted-a"
-  );
   const acceptedRecipientTwo = makeWorkspaceE2EAccountRecipient(
     config,
     "accepted-b"
   );
-  const activeRecipient = makeWorkspaceE2EAccountRecipient(
-    config,
-    "active-linking"
-  );
-  const expiredRecipient = makeWorkspaceE2EAccountRecipient(
-    config,
-    "expired-linking"
-  );
-  const ambiguousRecipient = makeWorkspaceE2EAccountRecipient(
-    config,
-    "support"
-  );
-
   const localized = (suffix: string) =>
     `${config.baseUrl}/${config.locale}${suffix}`;
 
@@ -444,7 +428,9 @@ export const makeWorkspaceE2EAccountCases = ({
               "accepts a first unknown email generically",
               Effect.gen(function* () {
                 yield* waitSignInForm();
-                yield* fillAndSubmitEmail(acceptedRecipientOne);
+                const startedAt = new Date();
+                lifecycleHandoff.firstAcceptedRequestedAt = startedAt;
+                yield* fillAndSubmitEmail(recipient);
                 yield* waitText(
                   "first generic accepted response",
                   acceptedTitle
@@ -496,15 +482,17 @@ export const makeWorkspaceE2EAccountCases = ({
     ),
     makeCase("account-magic-link-delivery", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
-        const startedAt = new Date();
-        yield* rateBudget.run(
-          "send",
-          runStep(
-            step(
-              "requests the synthetic magic link",
-              requestSignInLink(recipient),
-              navigationTimeout
-            )
+        const startedAt = yield* runStep(
+          step(
+            "requires the first accepted main request handoff",
+            Effect.sync(() => {
+              const requestedAt = lifecycleHandoff.firstAcceptedRequestedAt;
+              assert(
+                requestedAt,
+                "the sign-in form did not record the first main request"
+              );
+              return requestedAt;
+            })
           )
         );
         yield* runStep(
@@ -974,24 +962,67 @@ export const makeWorkspaceE2EAccountCases = ({
             authDeliveryTimeout
           )
         );
-        // One verification covers the reauthentication consume; the second
-        // covers replaying the already-consumed link after deletion.
+        lifecycleHandoff.reauthentication = {
+          link: reauthenticationLink,
+          userId: userId.userId,
+          linkedCustomerId: userId.linked,
+        };
+      })
+    ),
+    makeCase("account-session-lifecycle", ({ journalRef, runStep }) =>
+      Effect.gen(function* () {
+        const reauthentication = yield* runStep(
+          step(
+            "requires the reauthentication handoff from the marker case",
+            Effect.sync(() => {
+              const handoff = lifecycleHandoff.reauthentication;
+              assert(
+                handoff,
+                "the deletion marker case did not complete the reauthentication handoff"
+              );
+              return handoff;
+            })
+          )
+        );
+        yield* runStep(
+          step(
+            "opens the pending account before signing out",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitText(
+                "deletion pending state before sign-out",
+                deletionPendingTitle
+              );
+            }),
+            accountPageLoadTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "signs out on the current device before consuming reauthentication",
+            signOutAndRequireAnonymous(),
+            navigationTimeout
+          )
+        );
         yield* rateBudget.run(
           "verify",
           runStep(
             step(
-              "keeps the deletion marker state after reauthentication",
+              "signs the same account back in",
               Effect.gen(function* () {
-                yield* openPage(reauthenticationLink);
+                yield* openPage(reauthentication.link);
                 yield* waitText(
                   "deletion pending state after reauthentication",
                   deletionPendingTitle
                 );
-                const linked = yield* findLinkedDotyposCustomerId(
-                  userId.userId
-                );
+                const userId = yield* requireAuthUserId(recipient);
                 assert(
-                  linked === userId.linked,
+                  userId === reauthentication.userId,
+                  "the reauthentication session used a different Better Auth id"
+                );
+                const linked = yield* requireLinkedCustomerId(userId);
+                assert(
+                  linked === reauthentication.linkedCustomerId,
                   "the reauthentication session lost the durable Dotypos link"
                 );
               }),
@@ -1031,7 +1062,9 @@ export const makeWorkspaceE2EAccountCases = ({
           step(
             "expires the provider profile first and removes every identity row",
             Effect.gen(function* () {
-              const customer = yield* readProviderProfile(userId.linked);
+              const customer = yield* readProviderProfile(
+                reauthentication.linkedCustomerId
+              );
               assert(
                 customer.expireDate != null &&
                   new Date(customer.expireDate).getTime() <= Date.now(),
@@ -1041,14 +1074,17 @@ export const makeWorkspaceE2EAccountCases = ({
                 customer.deleted !== true,
                 "the provider profile was permanently deleted"
               );
-              yield* assertNoAuthRows(userId.userId);
-              const link = yield* findLinkedDotyposCustomerId(userId.userId);
+              yield* assertNoAuthRows(reauthentication.userId);
+              const link = yield* findLinkedDotyposCustomerId(
+                reauthentication.userId
+              );
               assert(
                 link === undefined,
                 "the customer account link survived identity removal"
               );
-              deletionHandoff.deletedUserId = userId.userId;
-              deletionHandoff.retainedCustomerId = userId.linked;
+              lifecycleHandoff.deletedUserId = reauthentication.userId;
+              lifecycleHandoff.retainedCustomerId =
+                reauthentication.linkedCustomerId;
             }),
             datasourceTimeout
           )
@@ -1072,7 +1108,7 @@ export const makeWorkspaceE2EAccountCases = ({
             step(
               "rejects the already-consumed reauthentication link",
               Effect.gen(function* () {
-                yield* openPage(reauthenticationLink);
+                yield* openPage(reauthentication.link);
                 const replayedUserId = yield* findAuthUserIdByEmail(recipient);
                 if (replayedUserId) {
                   yield* recordFixtureIds(journalRef, {
@@ -1092,19 +1128,19 @@ export const makeWorkspaceE2EAccountCases = ({
     ),
     makeCase("account-deletion-and-reactivation", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
-        const startedAt = new Date();
         yield* runStep(
           step(
             "requires the completed deletion handoff from the marker case",
             Effect.sync(() => {
               assert(
-                deletionHandoff.deletedUserId != null &&
-                  deletionHandoff.retainedCustomerId != null,
-                "the deletion marker case did not complete the deletion handoff"
+                lifecycleHandoff.deletedUserId != null &&
+                  lifecycleHandoff.retainedCustomerId != null,
+                "the account session case did not complete the deletion handoff"
               );
             })
           )
         );
+        const startedAt = new Date();
         const observedMessageIds = yield* runStep(
           step(
             "records the delivered message baseline",
@@ -1141,12 +1177,12 @@ export const makeWorkspaceE2EAccountCases = ({
                 );
                 const newUserId = yield* requireAuthUserId(recipient);
                 assert(
-                  newUserId !== deletionHandoff.deletedUserId,
+                  newUserId !== lifecycleHandoff.deletedUserId,
                   "the reactivated identity reused the deleted Better Auth id"
                 );
                 const linked = yield* requireLinkedCustomerId(newUserId);
                 assert(
-                  linked === deletionHandoff.retainedCustomerId,
+                  linked === lifecycleHandoff.retainedCustomerId,
                   "the reactivated identity claimed a different Dotypos customer"
                 );
                 const customer = yield* readProviderProfile(linked);
@@ -1183,292 +1219,198 @@ export const makeWorkspaceE2EAccountCases = ({
         );
       })
     ),
-    makeCase("account-session-lifecycle", ({ runStep }) =>
-      Effect.gen(function* () {
-        const startedAt = new Date();
-        const customerId = yield* runStep(
-          step(
-            "reads the linked synthetic customer",
-            Effect.gen(function* () {
-              const userId = yield* requireAuthUserId(recipient);
-              return yield* requireLinkedCustomerId(userId);
-            }),
-            datasourceTimeout
-          )
-        );
-        yield* runStep(
-          step(
-            "signs out on the current device and blocks the account",
-            signOutAndRequireAnonymous(),
-            navigationTimeout
-          )
-        );
-        const observedMessageIds = yield* runStep(
-          step(
-            "records the delivered message baseline",
-            observeDeliveredMessageIds(recipient),
-            providerTransition
-          )
-        );
-        yield* rateBudget.run(
-          "send",
-          runStep(
-            step(
-              "requests the returning sign-in link",
-              requestSignInLink(recipient),
-              navigationTimeout
-            )
-          )
-        );
-        const link = yield* runStep(
-          step(
-            "retrieves the returning sign-in link",
-            retrieveSignInLink(recipient, observedMessageIds, startedAt),
-            authDeliveryTimeout
-          )
-        );
-        yield* rateBudget.run(
-          "verify",
-          runStep(
-            step(
-              "signs the same account back in",
-              Effect.gen(function* () {
-                yield* openPage(link);
-                yield* waitDefaultReservations(
-                  "returning linked account reservations"
-                );
-                const userId = yield* requireAuthUserId(recipient);
-                const linked = yield* requireLinkedCustomerId(userId);
-                assert(
-                  linked === customerId,
-                  "the returning session linked a different Dotypos customer"
-                );
-              }),
-              providerTransition
-            )
-          )
-        );
-      })
-    ),
     makeCase("account-linking-variants", ({ journalRef, runStep }) =>
       Effect.gen(function* () {
-        const startedAt = new Date();
+        const mainIdentity = yield* runStep(
+          step(
+            "reads the reactivated main identity",
+            Effect.gen(function* () {
+              const userId = yield* requireAuthUserId(recipient);
+              const customerId = yield* requireLinkedCustomerId(userId);
+              assert(
+                userId !== lifecycleHandoff.deletedUserId,
+                "the linking variants reused the deleted Better Auth id"
+              );
+              assert(
+                customerId === lifecycleHandoff.retainedCustomerId,
+                "the linking variants lost the retained Dotypos customer"
+              );
+              assert(
+                journalRef.journal.authUserIds.includes(userId),
+                "the reactivated main Better Auth user was not journaled"
+              );
+              assert(
+                journalRef.journal.dotyposCustomerIds.includes(customerId),
+                "the retained Dotypos customer was not journaled"
+              );
+              const customer = yield* readProviderProfile(customerId);
+              assert(
+                customer.expireDate == null && customer.deleted !== true,
+                "the retained Dotypos profile is not active"
+              );
+              return { customerId, userId };
+            }),
+            datasourceTimeout
+          )
+        );
+
         yield* runStep(
           step(
-            "signs out of the synthetic main identity",
-            signOutAndRequireAnonymous(),
+            "navigates to public contact before the active unlink",
+            openPage(localized("/contact")),
             navigationTimeout
           )
         );
-        const activeCustomerId = yield* runStep(
+        yield* runStep(
           step(
-            "creates the active provider profile fixture",
-            Effect.gen(function* () {
-              const customerId = yield* createSyntheticCustomerProfile(
-                datasourceConfig,
-                { email: activeRecipient, firstName: "E2E Active" }
-              );
-              yield* recordFixtureIds(journalRef, {
-                dotyposCustomerIds: [customerId],
-              });
-              return customerId;
-            }),
+            "removes the active main account link",
+            removeSyntheticAccountLink(
+              mainIdentity.userId,
+              mainIdentity.customerId
+            ),
             datasourceTimeout
-          )
-        );
-        const activeObserved = yield* runStep(
-          step(
-            "records the active-profile message baseline",
-            observeDeliveredMessageIds(activeRecipient),
-            providerTransition
-          )
-        );
-        yield* rateBudget.run(
-          "send",
-          runStep(
-            step(
-              "requests the active-profile sign-in link",
-              requestSignInLink(activeRecipient),
-              navigationTimeout
-            )
-          )
-        );
-        const activeLink = yield* runStep(
-          step(
-            "retrieves the active-profile sign-in link",
-            retrieveSignInLink(activeRecipient, activeObserved, startedAt),
-            authDeliveryTimeout
-          )
-        );
-        yield* rateBudget.run(
-          "verify",
-          runStep(
-            step(
-              "links the active provider profile without completion",
-              Effect.gen(function* () {
-                yield* openPage(activeLink);
-                yield* waitDefaultReservations(
-                  "directly linked account reservations"
-                );
-                const userId = yield* requireAuthUserId(activeRecipient);
-                const linked = yield* requireLinkedCustomerId(userId);
-                assert(
-                  linked === activeCustomerId,
-                  "the active provider profile did not link to the verified account"
-                );
-                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
-              }),
-              providerTransition
-            )
-          )
-        );
-        const expiredCustomerId = yield* runStep(
-          step(
-            "creates and expires the expired provider profile fixture",
-            Effect.gen(function* () {
-              const customerId = yield* createSyntheticCustomerProfile(
-                datasourceConfig,
-                { email: expiredRecipient, firstName: "E2E Expired" }
-              );
-              yield* recordFixtureIds(journalRef, {
-                dotyposCustomerIds: [customerId],
-              });
-              yield* expireSyntheticCustomerProfile(
-                datasourceConfig,
-                customerId
-              ).pipe(
-                Effect.timeoutOrElse({
-                  duration: `${datasourceTimeout} millis`,
-                  orElse: () =>
-                    workspaceE2ETimeoutError(
-                      "provider profile expiration timed out",
-                      { operation: "expire provider profile" }
-                    ),
-                })
-              );
-              return customerId;
-            }),
-            datasourceTimeout
-          )
-        );
-        const expiredObserved = yield* runStep(
-          step(
-            "records the expired-profile message baseline",
-            observeDeliveredMessageIds(expiredRecipient),
-            providerTransition
-          )
-        );
-        yield* rateBudget.run(
-          "send",
-          runStep(
-            step(
-              "requests the expired-profile sign-in link",
-              requestSignInLink(expiredRecipient),
-              navigationTimeout
-            )
-          )
-        );
-        const expiredLink = yield* runStep(
-          step(
-            "retrieves the expired-profile sign-in link",
-            retrieveSignInLink(expiredRecipient, expiredObserved, startedAt),
-            authDeliveryTimeout
-          )
-        );
-        yield* rateBudget.run(
-          "verify",
-          runStep(
-            step(
-              "reactivates the expired provider profile on linking",
-              Effect.gen(function* () {
-                yield* openPage(expiredLink);
-                yield* waitDefaultReservations(
-                  "linked expired account reservations"
-                );
-                const userId = yield* requireAuthUserId(expiredRecipient);
-                const linked = yield* requireLinkedCustomerId(userId);
-                assert(
-                  linked === expiredCustomerId,
-                  "the expired provider profile did not link to the verified account"
-                );
-                const customer = yield* readProviderProfile(linked);
-                assert(
-                  customer.expireDate == null,
-                  "the expired provider profile was not reactivated"
-                );
-                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
-              }),
-              providerTransition
-            )
           )
         );
         yield* runStep(
           step(
-            "creates the ambiguous provider profile fixtures",
+            "links the active provider profile without completion",
             Effect.gen(function* () {
-              const first = yield* createSyntheticCustomerProfile(
-                datasourceConfig,
-                {
-                  email: ambiguousRecipient,
-                  firstName: "E2E Support One",
-                }
+              yield* openPage(localized(accountSuffix));
+              yield* waitDefaultReservations(
+                "directly linked account reservations"
               );
-              const second = yield* createSyntheticCustomerProfile(
+              const userId = yield* requireAuthUserId(recipient);
+              assert(
+                userId === mainIdentity.userId,
+                "the active resolver changed the Better Auth id"
+              );
+              const linked = yield* requireLinkedCustomerId(userId);
+              assert(
+                linked === mainIdentity.customerId,
+                "the active provider profile did not link to the main account"
+              );
+            }),
+            providerTransition
+          )
+        );
+
+        yield* runStep(
+          step(
+            "navigates to public contact before the expired unlink",
+            openPage(localized("/contact")),
+            navigationTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "removes the expired main account link",
+            removeSyntheticAccountLink(
+              mainIdentity.userId,
+              mainIdentity.customerId
+            ),
+            datasourceTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "expires the retained provider profile after unlinking",
+            expireSyntheticCustomerProfile(
+              datasourceConfig,
+              mainIdentity.customerId
+            ).pipe(
+              Effect.timeoutOrElse({
+                duration: `${datasourceTimeout} millis`,
+                orElse: () =>
+                  workspaceE2ETimeoutError(
+                    "provider profile expiration timed out",
+                    { operation: "expire provider profile" }
+                  ),
+              })
+            ),
+            datasourceTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "reactivates the expired provider profile on linking",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitDefaultReservations(
+                "linked expired account reservations"
+              );
+              const userId = yield* requireAuthUserId(recipient);
+              assert(
+                userId === mainIdentity.userId,
+                "the expired resolver changed the Better Auth id"
+              );
+              const linked = yield* requireLinkedCustomerId(userId);
+              assert(
+                linked === mainIdentity.customerId,
+                "the expired provider profile did not link to the main account"
+              );
+              const customer = yield* readProviderProfile(linked);
+              assert(
+                customer.expireDate == null,
+                "the expired provider profile was not reactivated"
+              );
+            }),
+            providerTransition
+          )
+        );
+
+        yield* runStep(
+          step(
+            "navigates to public contact before the ambiguous unlink",
+            openPage(localized("/contact")),
+            navigationTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "removes the ambiguous main account link",
+            removeSyntheticAccountLink(
+              mainIdentity.userId,
+              mainIdentity.customerId
+            ),
+            datasourceTimeout
+          )
+        );
+        yield* runStep(
+          step(
+            "creates one additional ambiguous provider profile",
+            Effect.gen(function* () {
+              const duplicateCustomerId = yield* createSyntheticCustomerProfile(
                 datasourceConfig,
                 {
-                  email: ambiguousRecipient,
-                  firstName: "E2E Support Two",
+                  email: recipient,
+                  firstName: "E2E Support Duplicate",
                 }
               );
               yield* recordFixtureIds(journalRef, {
-                dotyposCustomerIds: [first, second],
+                dotyposCustomerIds: [duplicateCustomerId],
               });
             }),
             datasourceTimeout
           )
         );
-        const supportObserved = yield* runStep(
+        yield* runStep(
           step(
-            "records the support-state message baseline",
-            observeDeliveredMessageIds(ambiguousRecipient),
+            "requires support for an ambiguous provider profile",
+            Effect.gen(function* () {
+              yield* openPage(localized(accountSuffix));
+              yield* waitText("support-required state", supportTitle);
+              const userId = yield* requireAuthUserId(recipient);
+              assert(
+                userId === mainIdentity.userId,
+                "the ambiguous resolver changed the Better Auth id"
+              );
+              const claimed = yield* findLinkedDotyposCustomerId(userId);
+              assert(
+                claimed === undefined,
+                "an ambiguous provider match claimed a link"
+              );
+            }),
             providerTransition
-          )
-        );
-        yield* rateBudget.run(
-          "send",
-          runStep(
-            step(
-              "requests the support-state sign-in link",
-              requestSignInLink(ambiguousRecipient),
-              navigationTimeout
-            )
-          )
-        );
-        const supportLink = yield* runStep(
-          step(
-            "retrieves the support-state sign-in link",
-            retrieveSignInLink(ambiguousRecipient, supportObserved, startedAt),
-            authDeliveryTimeout
-          )
-        );
-        yield* rateBudget.run(
-          "verify",
-          runStep(
-            step(
-              "requires support for an ambiguous provider profile",
-              Effect.gen(function* () {
-                yield* openPage(supportLink);
-                yield* waitText("support-required state", supportTitle);
-                const userId = yield* requireAuthUserId(ambiguousRecipient);
-                yield* recordFixtureIds(journalRef, { authUserIds: [userId] });
-                const claimed = yield* findLinkedDotyposCustomerId(userId);
-                assert(
-                  claimed === undefined,
-                  "an ambiguous provider match claimed a link"
-                );
-              }),
-              providerTransition
-            )
           )
         );
       })
