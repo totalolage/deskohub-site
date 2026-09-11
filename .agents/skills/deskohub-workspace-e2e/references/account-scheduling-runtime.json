@@ -376,5 +376,176 @@
     "command": "bun run test scripts/workspace-e2e-scheduling.test.ts",
     "scope": "Single scheduler test file",
     "classification": "Synthetic scheduler harness only; not deployed runtime evidence."
+  },
+  "newCandidate": {
+    "recordType": "new-candidate",
+    "candidateId": "account-lane-quiet-window-removal",
+    "reviewStatus": "APPROVED",
+    "reviewScope": "CODE_COVERAGE_ONLY",
+    "benchmarkStatus": "PENDING_OPERATOR_BENCHMARK",
+    "runtimeClaimStatus": "NOT_CLAIMED",
+    "targetHeadSha": null,
+    "targetHeadShaStatus": "Not assigned until the candidate is committed.",
+    "independentReview": {
+      "status": "APPROVED",
+      "scope": "CODE_COVERAGE_ONLY",
+      "reviewerProvenance": {
+        "sessionId": "ses_f6f475f0cffemdkQldLsAf3ZnX",
+        "decision": "APPROVED",
+        "basis": "code coverage candidate"
+      },
+      "reviewedPatchRefs": {
+        "fixedParentHeadSha": "805d7f60dff07d9a0bedf88803f79cab31cdaf9f",
+        "trackedPatchPrefix": "2845fe",
+        "newTestPatchPrefix": "b290"
+      },
+      "runtimeBudgetApproval": false
+    },
+    "parentBaseline": {
+      "headSha": "805d7f60dff07d9a0bedf88803f79cab31cdaf9f",
+      "e2e": {
+        "runId": "34593791781",
+        "conclusion": "success",
+        "passed": 76,
+        "skipped": 1,
+        "testJobDuration": "27m18s",
+        "testJobDurationSeconds": 1638
+      },
+      "ci": {
+        "runId": "34593548635",
+        "status": "green",
+        "conclusion": "success",
+        "passed": 3033
+      }
+    },
+    "candidateChange": {
+      "removedMandatoryQuietWindows": 2,
+      "operationLedger": {
+        "parent": {
+          "send": 9,
+          "verify": 8
+        },
+        "candidate": {
+          "send": 4,
+          "verify": 4
+        }
+      },
+      "localRateBudget": {
+        "operationsPerWindow": 4,
+        "productionMaximum": 5,
+        "windowSeconds": 600,
+        "headroomOperations": 1
+      },
+      "productionLimitsChanged": false,
+      "headroomChanged": false,
+      "rateLimitStateCleared": false,
+      "resendConfigurationChanged": false
+    },
+    "coverageEquivalence": {
+      "firstAcceptedMainLinkReuse": {
+        "parentBehavior": "The delivery case issued another main-recipient sign-in link.",
+        "candidateBehavior": "The sign-in form sends the first accepted main-recipient link, records its timestamp in the worker lifecycle handoff, and the delivery case retrieves and consumes that link.",
+        "coveredBehaviors": [
+          "generic accepted response",
+          "single-use delivery retrieval",
+          "initial account verification"
+        ]
+      },
+      "staleReauthenticationReturningLogin": {
+        "candidateBehavior": "The deletion-marker case opens the stale-session reauthentication modal, issues the link, and hands it off; the session-lifecycle case signs out before consuming that same link, then verifies the returning login, deletion marker, and retained account link.",
+        "coveredBehaviors": [
+          "stale-session deletion gate",
+          "returning login",
+          "reauthentication link consumption"
+        ]
+      },
+      "deletionReplayAndFreshSignup": {
+        "candidateBehavior": "The session-lifecycle case completes deletion, proves anonymous access, and replays the consumed reauthentication link; the following deletion-and-reactivation case requests a fresh sign-in link, creates a new account identity, and reactivates the retained provider profile and reservation history.",
+        "coveredBehaviors": [
+          "destructive deletion",
+          "anonymous redirect after deletion",
+          "consumed-link replay rejection",
+          "fresh signup/reactivation"
+        ]
+      },
+      "linkingVariants": {
+        "candidateBehavior": "The same legitimate reactivated auth account and retained synthetic provider profile are reused through three exact unlink/relink transitions: active profile, expired profile with provider reactivation, and duplicate provider profile requiring support without claiming a link.",
+        "exactUnlinkCount": 3,
+        "providerStates": ["active", "expired", "duplicate/ambiguous"],
+        "extraAuthLinks": false,
+        "extraAuthIdentities": false
+      }
+    },
+    "screenshotCoverage": {
+      "target": "callback-failed-desktop",
+      "previousCaseId": "account-deletion-marker-reauth",
+      "candidateCaseId": "account-session-lifecycle",
+      "reason": "The callback review now observes consumption of the handed-off reauthentication link in the session case; the marker case only issues and stores the link."
+    },
+    "localExecutionEvidence": {
+      "command": "bun run test e2e/account/cases.test.ts",
+      "cwd": "apps/deskohub-workspace",
+      "testFile": "e2e/account/cases.test.ts",
+      "passed": 4,
+      "failed": 0,
+      "assertions": 79,
+      "parallel": 1,
+      "execution": "The test builds each selected case with makeWorkspaceE2EAccountCases and invokes selected.execute; runStep returns the implementation Effect unchanged.",
+      "actualCaseBuilder": "makeWorkspaceE2EAccountCases",
+      "realRateBudget": "makeMagicLinkRateBudget",
+      "fakeExternalBoundary": "FakeAccountExternalState",
+      "fixedClock": "setSystemTime(fixedNow)",
+      "classification": "Synthetic case-factory execution only; not deployed runtime evidence."
+    },
+    "verificationEvidence": {
+      "scopedPackageTests": {
+        "command": "bun run test e2e/account scripts/account-e2e-graph.test.ts scripts/workspace-e2e-workflow.test.ts scripts/workspace-e2e-scheduling.test.ts",
+        "cwd": "apps/deskohub-workspace",
+        "status": "passed",
+        "passed": 190,
+        "assertions": 1394,
+        "files": 16,
+        "duration": "51.30s",
+        "durationSeconds": 51.3,
+        "evidenceSource": "caller-reported final scoped run"
+      },
+      "typecheck": {
+        "command": "bun run typecheck --incremental false",
+        "status": "passed",
+        "interpretation": "suggestions only",
+        "earlierIncrementalFailures": "stale tsconfig.tsbuildinfo, not source errors; source and generated exports were valid",
+        "codeFixRequired": false,
+        "evidenceSource": "caller-reported final scoped verification"
+      },
+      "fullRootTurboTest": {
+        "command": "bun turbo test --filter=deskohub-workspace --output-logs=errors-only",
+        "status": "incomplete_timeout",
+        "localToolTimeoutSeconds": 600,
+        "failureLinesCaptured": 0,
+        "testCountsClaimed": false,
+        "fullPassClaimed": false,
+        "candidateAuthNewCasesPassedInFullLog": true,
+        "note": "The local tool timed out before completion; do not claim a full pass or counts.",
+        "rerunForThisDocumentation": false,
+        "owner": "repository-root operator CI"
+      }
+    },
+    "benchmark": {
+      "status": "PENDING",
+      "requiredScope": ["setup", "protected suite", "cleanup"],
+      "maxDurationSeconds": 600,
+      "claimMet": false,
+      "pendingReason": "Awaiting the repository-root operator's CI benchmark of the exact committed candidate.",
+      "owner": "repository-root operator",
+      "mustDeployExactCommittedCandidate": true,
+      "automaticProviderWork": false,
+      "rerunRequiredForDocumentationUpdate": false
+    },
+    "preservation": {
+      "historicalEvidencePreserved": true,
+      "priorApprovedStatusesPreserved": true,
+      "priorFullSuiteFailuresDifferentCommitsRetained": true,
+      "note": "This record is additive; it does not overwrite the historical runs, recovery review, release approval, or transport approval above."
+    }
   }
 }

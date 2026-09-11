@@ -1,4 +1,5 @@
-import { eq, sql } from "drizzle-orm";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
+import { and, eq, sql } from "drizzle-orm";
 import { Effect } from "effect";
 import { authSession, authUser } from "@/db/schema/auth";
 import { customerAccountLinks } from "@/db/schema/customer-account-links";
@@ -47,6 +48,41 @@ export const findLinkedDotyposCustomerId = (
         .where(eq(customerAccountLinks.customerAccountId, accountId))
     );
     return rows[0]?.dotyposCustomerId;
+  });
+
+export const removeSyntheticAccountLink = (
+  accountId: string,
+  customerId: string
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runDatabaseOperation(
+      "delete synthetic account link",
+      db
+        .delete(customerAccountLinks)
+        .where(
+          and(
+            eq(customerAccountLinks.customerAccountId, accountId),
+            eq(
+              customerAccountLinks.dotyposCustomerId,
+              customerId as DotyposCustomerId
+            )
+          )
+        )
+        .returning({
+          customerAccountId: customerAccountLinks.customerAccountId,
+        })
+    );
+
+    if (rows.length !== 1 || rows[0]?.customerAccountId !== accountId) {
+      return yield* workspaceE2EError(
+        "Synthetic account link cleanup did not remove exactly one matching row",
+        {
+          diagnosticCode: "postgres_account_fixture_assertion_failed",
+          operation: "delete synthetic account link",
+        }
+      );
+    }
   });
 
 /**
@@ -139,12 +175,10 @@ export type WorkspaceE2EAccountState = "linked" | "missing" | "unlinked";
 export const classifyWorkspaceE2EAccountState = (input: {
   readonly authUserId: string | undefined;
   readonly linkedDotyposCustomerId: string | undefined;
-}): WorkspaceE2EAccountState =>
-  !input.authUserId
-    ? "missing"
-    : input.linkedDotyposCustomerId
-      ? "linked"
-      : "unlinked";
+}): WorkspaceE2EAccountState => {
+  if (!input.authUserId) return "missing";
+  return input.linkedDotyposCustomerId ? "linked" : "unlinked";
+};
 
 /**
  * Classifies the exact synthetic account for one recipient. The read is

@@ -46,7 +46,7 @@ import {
   captureReservationStatusReview,
   withSignInPendingReview,
 } from "./review-screenshots";
-import type { WorkspaceE2EAccountDeletionHandoff } from "./types";
+import type { WorkspaceE2EAccountLifecycleHandoff } from "./types";
 
 const accountReviewTargetByCaseId: Partial<
   Record<WorkspaceE2EAccountCaseId, AccountReviewTarget>
@@ -54,7 +54,7 @@ const accountReviewTargetByCaseId: Partial<
   "account-anonymous-redirect": "sign-in-desktop",
   "account-sign-in-form": "sign-in-accepted-desktop",
   "account-magic-link-delivery": "completion-mobile375x900",
-  "account-deletion-marker-reauth": "callback-failed-desktop",
+  "account-session-lifecycle": "callback-failed-desktop",
   "account-linking-variants": "support-desktop",
 };
 const accountReviewTargetBySection = {
@@ -70,11 +70,11 @@ const accountReviewCaptureFailureMessage =
 type WorkspaceE2EAccountLane = {
   readonly config: ReturnType<typeof getAccountE2EConfig>;
   /**
-   * The one mutable deletion handoff for the whole worker. The case factory
+   * The one mutable lifecycle handoff for the whole worker. The case factory
    * runs again for every Playwright test, so this object must outlive it;
    * it stays in memory only and never joins the cleanup journal.
    */
-  readonly deletionHandoff: WorkspaceE2EAccountDeletionHandoff;
+  readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff;
   readonly journalRef: {
     readonly journal: WorkspaceE2EAccountJournal;
     readonly record: (update: {
@@ -106,7 +106,7 @@ const accountTest = runtimeTest.extend<
     async ({ browser, environment, runContext }, applyFixture) => {
       const config = getAccountE2EConfig(environment, runContext.runId);
       const run = makePlaywrightBrowserRunner(browser, { recordHar: false });
-      const deletionHandoff: WorkspaceE2EAccountDeletionHandoff = {};
+      const lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff = {};
       let journal = emptyWorkspaceE2EAccountJournal();
       const mergeIds = (
         existing: readonly string[],
@@ -139,7 +139,7 @@ const accountTest = runtimeTest.extend<
       try {
         await applyFixture({
           config,
-          deletionHandoff,
+          lifecycleHandoff,
           journalRef,
           rateBudget: makeMagicLinkRateBudget(),
           run,
@@ -166,7 +166,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       const cases = makeWorkspaceE2EAccountCases({
         config: accountLane.config,
         datasourceConfig,
-        deletionHandoff: accountLane.deletionHandoff,
+        lifecycleHandoff: accountLane.lifecycleHandoff,
         rateBudget: accountLane.rateBudget,
         run: accountLane.run,
         session: accountLane.session,

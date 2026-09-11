@@ -130,6 +130,24 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   generated dependencies before package tests; the Turbo task owns that
   prerequisite generation. Runs without that generated-dependency step are not
   valid full verification. Synthetic results are not deployed-run evidence.
+- For an account-lane runtime candidate, prove the local optimization with
+  the actual `makeWorkspaceE2EAccountCases` builder, the real
+  `makeMagicLinkRateBudget`, a fake external boundary, and a fixed clock.
+  Execute each selected case rather than only inspecting source, assert the
+  budgeted operation ledger and lifecycle handoffs, and keep this synthetic
+  evidence separate from deployed evidence. Reuse the first accepted
+  main-recipient link and the already-authenticated synthetic account and
+  provider profile; cover active, expired, and duplicate provider-link states
+  with exact unlink/relink transitions instead of extra auth links or
+  identities. Keep the callback screenshot review on
+  `account-session-lifecycle` when it consumes the handed-off
+  reauthentication link; the marker case only issues it. For a candidate that
+  removes quiet windows, the repository-root operator must deploy the exact
+  committed SHA and benchmark the entire protected E2E job—setup, suite, and
+  cleanup—against the 600-second limit before claiming the target. Keep
+  production limits and headroom unchanged, and perform no production auth
+  fabrication, rate-limit clearing, Resend configuration changes, or automatic
+  provider work.
 - Treat a successful Dotypos cancellation response as issued, not converged.
   Before suite cleanup releases the sandbox boundary, poll the same active
   reservation inventory consumed by availability until every successfully
