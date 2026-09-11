@@ -49,8 +49,7 @@ node_modules/
 .env*.local
 .playwright-mcp/
 
-.opencode/*
-!.opencode/codebase-index.json
+.opencode/
 .skillopt-sleep/
 
 # Turborepo
