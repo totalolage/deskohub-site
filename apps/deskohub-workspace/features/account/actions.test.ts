@@ -25,6 +25,11 @@ mock.module("botid/server", () => ({
   checkBotId: () => Promise.resolve({ isBot: false }),
 }));
 
+const areAccountsEnabled = mock(() => Promise.resolve(true));
+mock.module("@/features/account/server/account-feature-flag.server", () => ({
+  areAccountsEnabled,
+}));
+
 let deleteUser: (args: { body: object; headers: Headers }) => Promise<unknown>;
 mock.module("@/features/account/server/auth.server", () => ({
   auth: {
@@ -138,6 +143,8 @@ describe("account actions", () => {
   beforeEach(() => {
     profileCalls.length = 0;
     revalidatePath.mockClear();
+    areAccountsEnabled.mockReset();
+    areAccountsEnabled.mockResolvedValue(true);
     currentUser = Effect.succeed(activeSession);
     resolve = Effect.succeed({
       accountId: "@test/account-id",
@@ -225,7 +232,34 @@ describe("account actions", () => {
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
+  test("returns the existing unavailable failure without reading account data when accounts are disabled", async () => {
+    areAccountsEnabled.mockResolvedValue(false);
+    const { completeCustomerProfile } = await importActions();
+
+    const result = await completeCustomerProfile({ firstName: "Ada" });
+
+    expect(result.serverError).toBe(
+      "We cannot reach your account right now. Reservations can still be made without an account."
+    );
+    expect(profileCalls).toHaveLength(0);
+    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
+  });
+
+  test("applies the unavailable failure to profile updates when accounts are disabled", async () => {
+    areAccountsEnabled.mockResolvedValue(false);
+    const { updateCustomerProfile } = await importActions();
+
+    const result = await updateCustomerProfile({ firstName: "Ada" });
+
+    expect(result.serverError).toBe(
+      "We cannot reach your account right now. Reservations can still be made without an account."
+    );
+    expect(profileCalls).toHaveLength(0);
+    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
+  });
+
   test("deletes through the Better Auth endpoint and revalidates account and deleted paths", async () => {
+    areAccountsEnabled.mockResolvedValue(false);
     const seen: { body: object; headers: Headers }[] = [];
     deleteUser = async (args) => {
       seen.push(args);

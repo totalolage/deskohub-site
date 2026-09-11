@@ -42,9 +42,27 @@ export type WorkspaceAuthConfig = {
   readonly secrets: NonNullable<BetterAuthOptions["secrets"]>;
   readonly allowedHosts: readonly string[];
   readonly httpsOnly: boolean;
+  readonly areAccountsEnabled: () => Promise<boolean>;
   readonly sendMagicLink: MagicLinkSendFunction;
   readonly beforeDeleteUser: (accountId: CustomerAccountId) => Promise<void>;
 };
+
+const accountMagicLinkPaths = new Set([
+  "/sign-in/magic-link",
+  "/magic-link/verify",
+]);
+const accountsUnavailableErrors = new WeakSet<object>();
+
+const makeAccountsUnavailableError = () => {
+  const error = new APIError("SERVICE_UNAVAILABLE", {
+    message: "Service Unavailable",
+  });
+  accountsUnavailableErrors.add(error);
+  return error;
+};
+
+const isAccountsUnavailableError = (error: APIError) =>
+  accountsUnavailableErrors.has(error);
 
 const magicLinkMetadataSchema = Schema.Struct({
   locale: Schema.optional(Schema.String),
@@ -77,7 +95,12 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     logger: { disabled: true },
     onAPIError: {
       onError: (error) => {
-        if (isAPIError(error) && error.statusCode < 500) return;
+        if (
+          isAPIError(error) &&
+          (error.statusCode < 500 || isAccountsUnavailableError(error))
+        ) {
+          return;
+        }
 
         void runWorkspaceEffect("account.auth.handler", { boundary: "route" })(
           Effect.logError("Better Auth request failed.", {
@@ -95,6 +118,16 @@ export const makeWorkspaceAuth = (config: WorkspaceAuthConfig) => {
     disabledPaths: ["/update-user"],
     hooks: {
       before: createAuthMiddleware(async (ctx) => {
+        if (accountMagicLinkPaths.has(ctx.path)) {
+          let enabled = false;
+          try {
+            enabled = await config.areAccountsEnabled();
+          } catch {
+            enabled = false;
+          }
+          if (!enabled) return Promise.reject(makeAccountsUnavailableError());
+        }
+
         const hasProfileFields =
           ctx.path === "/sign-in/magic-link" &&
           (Object.hasOwn(ctx.body, "name") || Object.hasOwn(ctx.body, "image"));

@@ -1,3 +1,4 @@
+import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
@@ -51,20 +52,31 @@ export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
 });
 
 export async function getSiteHeaderConfig(locale: Locale) {
-  const [meetingRoomPageEnabled, officePageEnabled] = await Promise.all([
-    isMeetingRoomPageEnabled(),
-    isOfficePageEnabled(),
-  ]);
+  const [accountsEnabled, meetingRoomPageEnabled, officePageEnabled] =
+    await Promise.all([
+      areAccountsEnabled(),
+      isMeetingRoomPageEnabled(),
+      isOfficePageEnabled(),
+    ]);
 
   return createSiteHeaderConfig(locale, {
-    meetingRoom: !meetingRoomPageEnabled,
-    office: !officePageEnabled,
+    accountsEnabled,
+    disabledMenuItems: {
+      meetingRoom: !meetingRoomPageEnabled,
+      office: !officePageEnabled,
+    },
   });
 }
 
 const createSiteHeaderConfig = (
   locale: Locale,
-  disabledMenuItems: DisabledSiteHeaderMenuItems
+  {
+    accountsEnabled,
+    disabledMenuItems,
+  }: {
+    readonly accountsEnabled: boolean;
+    readonly disabledMenuItems: DisabledSiteHeaderMenuItems;
+  }
 ) => {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
@@ -108,8 +120,10 @@ const createSiteHeaderConfig = (
 
   return {
     ...getSiteHeaderAccessibilityLabels(locale),
-    accountHref: `${localePath}/account`,
-    accountLabel: m.accountNavLabel({}, { locale }),
+    ...(accountsEnabled && {
+      accountHref: `${localePath}/account`,
+      accountLabel: m.accountNavLabel({}, { locale }),
+    }),
     languageLabels: getSiteHeaderLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),

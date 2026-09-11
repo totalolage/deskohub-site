@@ -11,6 +11,7 @@ import {
   updateCustomerProfileStandardSchema,
 } from "@/features/account/contracts";
 import { CustomerAccountAccessError } from "@/features/account/customer-account";
+import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
@@ -57,6 +58,18 @@ const profileActionError =
       message: profileActionErrorMessage(cause, locale),
       cause,
     });
+
+const requireAccountsEnabled = (locale: Locale) =>
+  Effect.promise(areAccountsEnabled).pipe(
+    Effect.filterOrFail(
+      (enabled) => enabled,
+      () =>
+        new PublicSafeActionError({
+          message: m.accountUnavailableDescription({}, { locale }),
+        })
+    ),
+    Effect.asVoid
+  );
 
 /**
  * Saves the Dotypos-owned profile for the verified account: a not-yet-linked
@@ -108,9 +121,12 @@ const completeCustomerProfileAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.as(saveCustomerProfile(input, locale), {
-      status: "completed" as const,
-    })
+    Effect.andThen(
+      requireAccountsEnabled(locale),
+      Effect.as(saveCustomerProfile(input, locale), {
+        status: "completed" as const,
+      })
+    )
 );
 
 const updateCustomerProfileAction = defineWorkspaceAction(
@@ -120,9 +136,12 @@ const updateCustomerProfileAction = defineWorkspaceAction(
     logInput: false,
   },
   (input, { locale }) =>
-    Effect.as(saveCustomerProfile(input, locale), {
-      status: "updated" as const,
-    })
+    Effect.andThen(
+      requireAccountsEnabled(locale),
+      Effect.as(saveCustomerProfile(input, locale), {
+        status: "updated" as const,
+      })
+    )
 );
 
 export type CustomerAccountDeletionResult =

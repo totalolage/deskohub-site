@@ -15,8 +15,8 @@ import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
 type SiteHeaderProps = {
-  accountHref: string;
-  accountLabel: string;
+  accountHref?: string;
+  accountLabel?: string;
   currentLocale: Locale;
   languageLabels: Record<Locale, string>;
   links: SiteHeaderMenuItem[];
@@ -130,21 +130,23 @@ export function SiteHeader({
         </nav>
 
         <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:gap-3">
-          <Suspense
-            fallback={
-              <AccountLink
+          {accountHref !== undefined && accountLabel !== undefined && (
+            <Suspense
+              fallback={
+                <AccountLink
+                  href={accountHref}
+                  label={accountLabel}
+                  onClick={closeMenu}
+                />
+              }
+            >
+              <ActiveAccountLink
                 href={accountHref}
                 label={accountLabel}
                 onClick={closeMenu}
               />
-            }
-          >
-            <ActiveAccountLink
-              href={accountHref}
-              label={accountLabel}
-              onClick={closeMenu}
-            />
-          </Suspense>
+            </Suspense>
+          )}
 
           <Link
             href={contactHref}
@@ -208,23 +210,25 @@ export function SiteHeader({
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <nav aria-label={mobilePrimaryNavigationLabel} className="grid gap-2">
-            <Suspense
-              fallback={
-                <AccountLink
+            {accountHref !== undefined && accountLabel !== undefined && (
+              <Suspense
+                fallback={
+                  <AccountLink
+                    href={accountHref}
+                    label={accountLabel}
+                    mobile
+                    onClick={closeMenu}
+                  />
+                }
+              >
+                <ActiveAccountLink
                   href={accountHref}
                   label={accountLabel}
                   mobile
                   onClick={closeMenu}
                 />
-              }
-            >
-              <ActiveAccountLink
-                href={accountHref}
-                label={accountLabel}
-                mobile
-                onClick={closeMenu}
-              />
-            </Suspense>
+              </Suspense>
+            )}
             {links.map((link) => (
               <Link
                 key={link.id}

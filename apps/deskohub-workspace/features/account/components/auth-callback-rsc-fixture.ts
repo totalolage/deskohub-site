@@ -79,6 +79,9 @@ mock.module("next/navigation", () => ({
     throw new Error("unexpected notFound in auth callback RSC fixture");
   },
 }));
+mock.module("@/features/account/server/account-feature-flag.server", () => ({
+  areAccountsEnabled: () => Promise.resolve(true),
+}));
 mock.module("next/link", () => ({
   default: ({
     children,
