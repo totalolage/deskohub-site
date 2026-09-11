@@ -14,14 +14,17 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
+import { cn } from "@/shared/utils";
 
 type FutureFeatureTooltipProps = {
   readonly children: ReactNode;
+  readonly className?: string;
   readonly locale: Locale;
 };
 
 export function FutureFeatureTooltip({
   children,
+  className,
   locale,
 }: FutureFeatureTooltipProps) {
   const message = m.account_future_feature_tooltip({}, { locale });
@@ -46,7 +49,10 @@ export function FutureFeatureTooltip({
         <TooltipTrigger asChild>
           <span
             aria-labelledby={childId}
-            className="inline-flex min-w-0 max-w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
+            className={cn(
+              "inline-flex min-w-0 max-w-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2",
+              className
+            )}
             role="group"
             tabIndex={0}
           >

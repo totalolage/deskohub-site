@@ -153,7 +153,7 @@ export function ProfileScreen({
           {copy.languageLabel}
         </Label>
         <Select disabled value="unavailable">
-          <FutureFeatureTooltip locale={locale}>
+          <FutureFeatureTooltip className="w-full" locale={locale}>
             <SelectTrigger
               id={languageId}
               className="mt-2 min-h-11 w-full rounded-2xl border border-[#cad3df] bg-[#f8fafc] px-3 py-2 text-base text-[#52647c] outline-none disabled:cursor-not-allowed disabled:opacity-70 focus-visible:ring-2 focus-visible:ring-burned-orange"
