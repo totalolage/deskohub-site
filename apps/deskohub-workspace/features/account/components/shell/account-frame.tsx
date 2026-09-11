@@ -56,17 +56,23 @@ export function AccountFrame({
 
         <div className="mt-7 grid min-w-0 items-start gap-8 md:grid-cols-[minmax(0,17.5rem)_minmax(0,1fr)]">
           <aside
-            className="min-w-0 md:sticky md:top-[calc(var(--site-header-height)+1rem)] md:max-h-[calc(100dvh-var(--site-header-height)-2rem)] md:overflow-y-auto"
+            className="sticky top-(--site-header-height) z-40 min-w-0 md:sticky md:top-[calc(var(--site-header-height)+1rem)] md:max-h-[calc(100dvh-var(--site-header-height)-2rem)] md:overflow-y-auto"
             onFocusCapture={handleAsideFocusCapture}
           >
             {navigation}
 
             {sidebarFooter && (
-              <div className="mt-4 min-w-0">{sidebarFooter}</div>
+              <div className="mt-4 min-w-0 hidden md:block">
+                {sidebarFooter}
+              </div>
             )}
           </aside>
 
           <div className="min-w-0">{children}</div>
+
+          {sidebarFooter && (
+            <div className="min-w-0 md:hidden">{sidebarFooter}</div>
+          )}
         </div>
       </div>
     </main>

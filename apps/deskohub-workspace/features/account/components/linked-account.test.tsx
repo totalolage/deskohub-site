@@ -19,12 +19,38 @@ import type { CustomerProfileInput } from "@/features/account/contracts";
 import {
   workspaceRouterPush,
   workspaceRouterRefresh,
+  workspaceRouterReplace,
   workspaceUseSearchParams,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+
+let workspacePathname = "/en-US/account";
+
+mock.module("next/navigation", () => ({
+  usePathname: () => workspacePathname,
+  useRouter: () => ({
+    push: workspaceRouterPush,
+    refresh: workspaceRouterRefresh,
+    replace: workspaceRouterReplace,
+  }),
+  useSearchParams: workspaceUseSearchParams,
+  unstable_rethrow: (cause: unknown) => {
+    throw cause;
+  },
+}));
+
+mock.module("@/shared/components/guarded-link", () => ({
+  GuardedLink: ({
+    children,
+    href,
+  }: {
+    readonly children: React.ReactNode;
+    readonly href: string;
+  }) => <a href={href}>{children}</a>,
+}));
 
 const updateCustomerProfile = mock((input: CustomerProfileInput) => {
   void input;
@@ -227,6 +253,16 @@ const history = {
   },
 };
 
+const { AccountLayoutShell } = await import("./account-layout-shell");
+
+function withAccountLayout(children: React.ReactNode) {
+  return (
+    <AccountLayoutShell locale="en-US" signedIn>
+      {children}
+    </AccountLayoutShell>
+  );
+}
+
 describe("LinkedAccount", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -239,6 +275,7 @@ describe("LinkedAccount", () => {
     workspaceRouterPush.mockClear();
     workspaceRouterRefresh.mockClear();
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
+    workspacePathname = "/en-US/account";
   });
 
   afterAll(() => {
@@ -248,12 +285,14 @@ describe("LinkedAccount", () => {
   test("mounts each panel once and keeps one profile form across navigation", async () => {
     const { LinkedAccount } = await import("./linked-account");
     const view = render(
-      <LinkedAccount
-        email="ada@example.test"
-        history={history}
-        locale="en-US"
-        profile={profile}
-      />
+      withAccountLayout(
+        <LinkedAccount
+          email="ada@example.test"
+          history={history}
+          locale="en-US"
+          profile={profile}
+        />
+      )
     );
     const sectionNavigation = within(
       view.getByRole("group", { name: "Account section" })
@@ -271,7 +310,24 @@ describe("LinkedAccount", () => {
     expect(
       view.container.querySelectorAll("#account-profile-form")
     ).toHaveLength(1);
-    expect(view.getByText("Need help?")).toBeTruthy();
+    const helpHeadings = view.getAllByRole("heading", {
+      level: 2,
+      name: "Need help?",
+    });
+    expect(helpHeadings).toHaveLength(2);
+    const helpContainers = helpHeadings.map(
+      (heading) => heading.parentElement?.parentElement
+    );
+    const desktopHelpContainer = helpContainers.find((container) =>
+      container?.className.includes("hidden md:block")
+    );
+    const mobileHelpContainer = helpContainers.find((container) =>
+      container?.className.includes("md:hidden")
+    );
+    expect(desktopHelpContainer?.className).toBe(
+      "mt-4 min-w-0 hidden md:block"
+    );
+    expect(mobileHelpContainer?.className).toBe("min-w-0 md:hidden");
     expect(view.container.textContent).toContain(
       "For help with your account or reservations, contact us."
     );
@@ -281,11 +337,12 @@ describe("LinkedAccount", () => {
     expect(view.container.textContent).not.toContain(
       "We could not safely choose one customer profile"
     );
-    expect(
-      (
-        view.getByRole("link", { name: "contact us" }) as HTMLAnchorElement
-      ).getAttribute("href")
-    ).toBe("/en-US/contact");
+    const contactLinks = view.getAllByRole("link", { name: "contact us" });
+    expect(contactLinks).toHaveLength(2);
+    expect(contactLinks.map((link) => link.getAttribute("href"))).toEqual([
+      "/en-US/contact",
+      "/en-US/contact",
+    ]);
 
     fireEvent.click(
       sectionNavigation.getByRole("button", { name: "Profile & identity" })
@@ -327,6 +384,33 @@ describe("LinkedAccount", () => {
     expect(view.getByText("Delete my account")).toBeTruthy();
   });
 
+  test("clears the published reservation count when linked content unmounts", async () => {
+    const { LinkedAccount } = await import("./linked-account");
+    const view = render(
+      withAccountLayout(
+        <LinkedAccount
+          email="ada@example.test"
+          history={history}
+          locale="en-US"
+          profile={profile}
+        />
+      )
+    );
+
+    const reservations = getDesktopSectionNavigation(view).getByRole("button", {
+      name: /^Reservations/,
+    });
+    expect(reservations.textContent).toContain("1");
+
+    view.rerender(withAccountLayout(<p>Legal content</p>));
+
+    expect(
+      getDesktopSectionNavigation(view)
+        .getByRole("button", { name: /^Reservations/ })
+        .querySelector("span.ml-auto")
+    ).toBeNull();
+  });
+
   test("mounts legal only for the active section, including the legacy query", async () => {
     const { LinkedAccount } = await import("./linked-account");
 
@@ -340,12 +424,14 @@ describe("LinkedAccount", () => {
         new URLSearchParams(`section=${section}`)
       );
       const view = render(
-        <LinkedAccount
-          email="ada@example.test"
-          history={history}
-          locale="en-US"
-          profile={profile}
-        />
+        withAccountLayout(
+          <LinkedAccount
+            email="ada@example.test"
+            history={history}
+            locale="en-US"
+            profile={profile}
+          />
+        )
       );
 
       expect(legalScreenMountCount).toBe(0);
@@ -356,12 +442,14 @@ describe("LinkedAccount", () => {
       new URLSearchParams("section=legal")
     );
     render(
-      <LinkedAccount
-        email="ada@example.test"
-        history={history}
-        locale="en-US"
-        profile={profile}
-      />
+      withAccountLayout(
+        <LinkedAccount
+          email="ada@example.test"
+          history={history}
+          locale="en-US"
+          profile={profile}
+        />
+      )
     );
 
     expect(legalScreenMountCount).toBe(1);
@@ -379,12 +467,14 @@ describe("LinkedAccount", () => {
     try {
       const view = render(
         <UnsavedChangesProvider>
-          <LinkedAccount
-            email="ada@example.test"
-            history={history}
-            locale="en-US"
-            profile={profile}
-          />
+          {withAccountLayout(
+            <LinkedAccount
+              email="ada@example.test"
+              history={history}
+              locale="en-US"
+              profile={profile}
+            />
+          )}
         </UnsavedChangesProvider>
       );
       const sectionNavigation = getDesktopSectionNavigation(view);
@@ -438,12 +528,14 @@ describe("LinkedAccount", () => {
 
     const renderAccount = () => (
       <UnsavedChangesProvider>
-        <LinkedAccount
-          email="ada@example.test"
-          history={history}
-          locale="en-US"
-          profile={profile}
-        />
+        {withAccountLayout(
+          <LinkedAccount
+            email="ada@example.test"
+            history={history}
+            locale="en-US"
+            profile={profile}
+          />
+        )}
       </UnsavedChangesProvider>
     );
     const view = render(renderAccount());
@@ -502,12 +594,14 @@ describe("LinkedAccount", () => {
       );
       const { LinkedAccount } = await import("./linked-account");
       const view = render(
-        <LinkedAccount
-          email="ada@example.test"
-          history={history}
-          locale="en-US"
-          profile={profile}
-        />
+        withAccountLayout(
+          <LinkedAccount
+            email="ada@example.test"
+            history={history}
+            locale="en-US"
+            profile={profile}
+          />
+        )
       );
       const sectionNavigation = getDesktopSectionNavigation(view);
 
@@ -525,12 +619,14 @@ describe("LinkedAccount", () => {
     );
     const { LinkedAccount } = await import("./linked-account");
     const view = render(
-      <LinkedAccount
-        email="ada@example.test"
-        history={history}
-        locale="en-US"
-        profile={profile}
-      />
+      withAccountLayout(
+        <LinkedAccount
+          email="ada@example.test"
+          history={history}
+          locale="en-US"
+          profile={profile}
+        />
+      )
     );
     const sectionNavigation = getDesktopSectionNavigation(view);
 
@@ -544,12 +640,14 @@ describe("LinkedAccount", () => {
   test("returns to profile before saving an invalid hidden identity field", async () => {
     const { LinkedAccount } = await import("./linked-account");
     const view = render(
-      <LinkedAccount
-        email="ada@example.test"
-        history={history}
-        locale="en-US"
-        profile={profile}
-      />
+      withAccountLayout(
+        <LinkedAccount
+          email="ada@example.test"
+          history={history}
+          locale="en-US"
+          profile={profile}
+        />
+      )
     );
     const sectionNavigation = within(
       view.getByRole("group", { name: "Account section" })
@@ -593,12 +691,14 @@ describe("LinkedAccount", () => {
     try {
       const view = render(
         <UnsavedChangesProvider>
-          <LinkedAccount
-            email="ada@example.test"
-            history={history}
-            locale="en-US"
-            profile={profile}
-          />
+          {withAccountLayout(
+            <LinkedAccount
+              email="ada@example.test"
+              history={history}
+              locale="en-US"
+              profile={profile}
+            />
+          )}
         </UnsavedChangesProvider>
       );
       const sectionNavigation = within(

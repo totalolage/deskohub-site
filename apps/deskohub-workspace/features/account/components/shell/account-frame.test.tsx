@@ -58,16 +58,21 @@ describe("AccountFrame", () => {
     if (!grid) throw new Error("Account frame grid was not rendered");
     const aside = grid.querySelector(":scope > aside");
     if (!aside) throw new Error("Account frame aside was not rendered");
-    const contentSlot = grid.querySelector(":scope > div");
+    const contentSlot = grid.children.item(1);
     if (!contentSlot)
       throw new Error("Account frame content slot was not rendered");
+    const mobileFooter = grid.children.item(2);
+    if (!mobileFooter)
+      throw new Error("Account frame mobile footer was not rendered");
 
     const title = view.getByRole("heading", {
       level: 1,
       name: "Workspace account",
     });
     const navigation = view.getByTestId("navigation");
-    const footer = view.getByTestId("sidebar-footer");
+    const footers = view.getAllByTestId("sidebar-footer");
+    expect(footers).toHaveLength(2);
+    const [desktopFooter, mobileFooterContent] = footers;
     const signOut = view.getByTestId("sign-out");
 
     expect(header.children).toHaveLength(2);
@@ -75,11 +80,15 @@ describe("AccountFrame", () => {
     expect(header.lastElementChild).toBe(signOut.parentElement);
     expect(aside.children).toHaveLength(2);
     expect(aside.firstElementChild).toBe(navigation);
-    expect(aside.lastElementChild).toBe(footer.parentElement);
+    expect(aside.lastElementChild).toBe(desktopFooter.parentElement);
+    expect(grid.children).toHaveLength(3);
     expect(grid.firstElementChild).toBe(aside);
-    expect(grid.lastElementChild).toBe(contentSlot);
+    expect(grid.children.item(1)).toBe(contentSlot);
+    expect(grid.lastElementChild).toBe(mobileFooter);
     expect(contentSlot.contains(view.getByTestId("content"))).toBe(true);
     expect(navigation.parentElement).toBe(aside);
+    expect(mobileFooter.contains(mobileFooterContent)).toBe(true);
+    expect(mobileFooterContent).not.toBe(desktopFooter);
     expect(navigation.className).toBe("caller-owned-navigation");
   });
 
@@ -115,9 +124,17 @@ describe("AccountFrame", () => {
     if (!aside) throw new Error("Account frame aside was not rendered");
     const footer = aside.querySelector(":scope > div");
     if (!footer) throw new Error("Account frame footer was not rendered");
-    const contentSlot = grid.querySelector(":scope > div");
+    const contentSlot = grid.children.item(1);
     if (!contentSlot)
       throw new Error("Account frame content slot was not rendered");
+    const mobileFooter = grid.children.item(2);
+    if (!mobileFooter)
+      throw new Error("Account frame mobile footer was not rendered");
+    const mobileFooterContent = mobileFooter.querySelector(
+      "[data-testid='sidebar-footer']"
+    );
+    if (!mobileFooterContent)
+      throw new Error("Account frame mobile footer content was not rendered");
 
     expect(main.className).toBe(
       "min-h-screen [--font-heading-weight:700] [--font-subheading-weight:600] [background:radial-gradient(circle_at_0%_0%,rgba(255,242,214,0.9),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(218,244,235,0.82),transparent_38%),#f8f5ef] px-4 pb-28 pt-[calc(var(--site-header-height)+3rem)] sm:px-6 lg:px-8"
@@ -133,9 +150,11 @@ describe("AccountFrame", () => {
       "mt-7 grid min-w-0 items-start gap-8 md:grid-cols-[minmax(0,17.5rem)_minmax(0,1fr)]"
     );
     expect(aside.className).toBe(
-      "min-w-0 md:sticky md:top-[calc(var(--site-header-height)+1rem)] md:max-h-[calc(100dvh-var(--site-header-height)-2rem)] md:overflow-y-auto"
+      "sticky top-(--site-header-height) z-40 min-w-0 md:sticky md:top-[calc(var(--site-header-height)+1rem)] md:max-h-[calc(100dvh-var(--site-header-height)-2rem)] md:overflow-y-auto"
     );
-    expect(footer.className).toBe("mt-4 min-w-0");
+    expect(footer.className).toBe("mt-4 min-w-0 hidden md:block");
+    expect(mobileFooter.className).toBe("min-w-0 md:hidden");
+    expect(mobileFooterContent).not.toBe(footer);
     expect(contentSlot.className).toBe("min-w-0");
   });
 });

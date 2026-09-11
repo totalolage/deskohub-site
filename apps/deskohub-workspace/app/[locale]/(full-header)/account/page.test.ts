@@ -9,10 +9,10 @@ describe("customer account route boundary", () => {
     expect(pageSource).toContain("robots: { index: false, follow: false }");
     expect(pageSource).toContain('import { Suspense } from "react";');
     expect(pageSource).toContain(
-      'import { AccountLoading } from "@/features/account/components/account-loading";'
+      'import { AccountContentLoading } from "@/features/account/components/account-loading";'
     );
     expect(pageSource).toContain(
-      "<Suspense fallback={<AccountLoading locale={locale} />}>"
+      "<Suspense fallback={<AccountContentLoading locale={locale} />}>"
     );
     expect(pageSource).toContain(
       "<CustomerAccountPageContent locale={locale} />"

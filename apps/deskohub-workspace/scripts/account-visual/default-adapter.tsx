@@ -1,3 +1,4 @@
+import { AccountLayoutShell } from "@/features/account/components/account-layout-shell";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { AccountVisualRoute } from "./account-route";
 import {
@@ -24,7 +25,11 @@ export const accountVisualFixture = linkedFixture;
 export const accountVisualAdapterMetadata = defaultAccountVisualAdapterMetadata;
 
 export function DefaultAccountAdapter({ locale }: AccountVisualAdapterProps) {
-  return <AccountVisualRoute locale={locale} state={linkedFixture} />;
+  return (
+    <AccountLayoutShell locale={locale} signedIn>
+      <AccountVisualRoute locale={locale} state={linkedFixture} />
+    </AccountLayoutShell>
+  );
 }
 
 export default DefaultAccountAdapter;

@@ -90,10 +90,11 @@ export function AccountShell({
       )
         return;
 
-      if (buttonRect.left < navigationRect.left) {
-        mobileNavigation.scrollLeft -= navigationRect.left - buttonRect.left;
-      } else if (buttonRect.right > navigationRect.right) {
-        mobileNavigation.scrollLeft += buttonRect.right - navigationRect.right;
+      if (
+        buttonRect.left < navigationRect.left ||
+        buttonRect.right > navigationRect.right
+      ) {
+        mobileNavigation.scrollLeft += buttonRect.left - navigationRect.left;
       }
     };
     const resizeObserver = new ResizeObserver(revealActiveSection);
@@ -112,21 +113,18 @@ export function AccountShell({
       navigation={
         <nav
           aria-label={labels.navigation}
-          className="rounded-[20px] border border-[#dfe4ec] bg-white p-4"
+          className="-mx-4 min-w-0 rounded-none border-0 bg-white p-0 sm:-mx-6 md:mx-0 md:rounded-[20px] md:border md:border-[#dfe4ec] md:p-4"
         >
           <div className="md:hidden">
             <fieldset
               aria-labelledby={mobileSectionId}
               className="min-w-0 border-0 p-0"
             >
-              <legend
-                className="mb-2 block text-sm font-semibold text-[#344258]"
-                id={mobileSectionId}
-              >
+              <legend className="sr-only" id={mobileSectionId}>
                 {labels.mobileSection}
               </legend>
               <div
-                className="flex min-w-0 touch-pan-x flex-nowrap gap-2 overflow-x-auto px-1 py-1"
+                className="flex min-w-0 touch-pan-x snap-x snap-proximity flex-nowrap gap-2 overflow-x-auto"
                 data-account-mobile-navigation=""
                 ref={mobileNavigationRef}
               >
@@ -151,7 +149,7 @@ export function AccountShell({
                   return (
                     <Button
                       aria-current={isActive ? "page" : undefined}
-                      className={`min-h-[44px] shrink-0 whitespace-nowrap rounded-2xl px-3 text-[15px] font-semibold focus-visible:ring-inset focus-visible:ring-offset-0 ${buttonStateClassName}`}
+                      className={`min-h-[44px] shrink-0 snap-start whitespace-nowrap rounded-2xl px-3 text-[15px] font-semibold focus-visible:ring-inset focus-visible:ring-offset-0 ${buttonStateClassName}`}
                       data-account-section={section.key}
                       disabled={disabledSections.includes(section.key)}
                       key={section.key}

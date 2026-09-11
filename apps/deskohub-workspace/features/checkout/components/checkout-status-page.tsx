@@ -400,9 +400,19 @@ export function CheckoutStatusPage({
           )}
           {reservationAccessHref && (
             <Button asChild variant="secondary" className="h-12 px-6">
-              <a href={reservationAccessHref} id="checkout-status-access">
-                {m.checkoutEmailCustomerAccessButton({}, { locale })}
-              </a>
+              {presentation === "modal" ? (
+                <Link
+                  href={reservationAccessHref}
+                  id="checkout-status-access"
+                  prefetch={false}
+                >
+                  {m.checkoutEmailCustomerAccessButton({}, { locale })}
+                </Link>
+              ) : (
+                <a href={reservationAccessHref} id="checkout-status-access">
+                  {m.checkoutEmailCustomerAccessButton({}, { locale })}
+                </a>
+              )}
             </Button>
           )}
         </div>

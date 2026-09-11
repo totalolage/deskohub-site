@@ -289,10 +289,23 @@ describe("AccountShell", () => {
     expect(grid.className).toContain(
       "md:grid-cols-[minmax(0,17.5rem)_minmax(0,1fr)]"
     );
+    const navigation = view.getByRole("navigation", {
+      name: labels.navigation,
+    });
+    expect(navigation.className).toContain("-mx-4");
+    expect(navigation.className).toContain("sm:-mx-6");
+    expect(navigation.className).toContain("md:mx-0");
+    expect(navigation.className).toContain("rounded-none");
+    expect(navigation.className).toContain("border-0");
+    expect(navigation.className).toContain("bg-white");
+    expect(navigation.className).toContain("p-0");
+    expect(navigation.className).toContain("md:rounded-[20px]");
+    expect(navigation.className).toContain("md:border");
+    expect(navigation.className).toContain("md:p-4");
 
-    const desktopRowGroup = Array.from(
-      view.getByRole("navigation").querySelectorAll("div")
-    ).find((element) => element.className.includes("gap-[6px]"));
+    const desktopRowGroup = Array.from(navigation.querySelectorAll("div")).find(
+      (element) => element.className.includes("gap-[6px]")
+    );
     if (!desktopRowGroup)
       throw new Error("Desktop account rows were not rendered");
     expect(desktopRowGroup.className).toContain("gap-[6px]");
@@ -312,6 +325,9 @@ describe("AccountShell", () => {
     const aside = view.container.querySelector("aside");
     if (!aside) throw new Error("Account shell aside was not rendered");
 
+    expect(aside.className).toContain("sticky");
+    expect(aside.className).toContain("top-(--site-header-height)");
+    expect(aside.className).toContain("z-40");
     expect(aside.className).toContain("md:sticky");
     expect(aside.className).toContain(
       "md:top-[calc(var(--site-header-height)+1rem)]"
@@ -320,9 +336,7 @@ describe("AccountShell", () => {
       "md:max-h-[calc(100dvh-var(--site-header-height)-2rem)]"
     );
     expect(aside.className).toContain("md:overflow-y-auto");
-    expect(aside.className).not.toMatch(
-      /(?<!md:)\b(?:sticky|overflow-y-auto)\b/
-    );
+    expect(aside.className).not.toMatch(/(?<!md:)\boverflow-y-auto\b/);
   });
 
   test("corrects sticky focus targets obscured above or below the viewport", () => {
@@ -409,14 +423,14 @@ describe("AccountShell", () => {
     }
   });
 
-  test("does not inspect or scroll a static mobile aside", () => {
+  test("keeps sticky mobile focus targets visible without scrolling the page", () => {
     const view = renderShell();
     const aside = view.container.querySelector("aside");
     if (!aside) throw new Error("Account shell aside was not rendered");
-    const target = getDesktopButton(view, "reservations");
-    const getBoundingClientRect = mock(() => {
-      throw new Error("Static mobile focus should not read target geometry");
+    const target = getMobileNavigation(view).getByRole("button", {
+      name: labels.sections.reservations,
     });
+    const getBoundingClientRect = mock(() => ({ bottom: 160, top: 120 }));
     const scrollIntoView = mock(() => undefined);
     Object.defineProperty(target, "getBoundingClientRect", {
       configurable: true,
@@ -427,15 +441,15 @@ describe("AccountShell", () => {
       value: scrollIntoView,
     });
     const getComputedStyle = spyOn(window, "getComputedStyle").mockReturnValue({
-      position: "static",
-      top: "auto",
+      position: "sticky",
+      top: "96px",
     } as CSSStyleDeclaration);
 
     try {
       fireEvent.focus(target);
 
       expect(getComputedStyle).toHaveBeenCalledWith(aside);
-      expect(getBoundingClientRect).not.toHaveBeenCalled();
+      expect(getBoundingClientRect).toHaveBeenCalledTimes(1);
       expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
       getComputedStyle.mockRestore();
@@ -528,6 +542,11 @@ describe("AccountShell", () => {
     const group = view.getByRole("group", {
       name: labels.mobileSection,
     });
+    const navigation = view.getByRole("navigation", {
+      name: labels.navigation,
+    });
+    const legend = group.querySelector("legend");
+    if (!legend) throw new Error("Mobile account legend was not rendered");
     const mobileNavigation = group.querySelector<HTMLDivElement>(
       "[data-account-mobile-navigation]"
     );
@@ -535,7 +554,10 @@ describe("AccountShell", () => {
       throw new Error("Mobile account navigation was not rendered");
     const buttons = within(group).getAllByRole("button");
 
-    expect(view.getByRole("navigation").querySelector("select")).toBeNull();
+    expect(navigation.getAttribute("aria-label")).toBe(labels.navigation);
+    expect(legend.className).toBe("sr-only");
+    expect(legend.textContent).toBe(labels.mobileSection);
+    expect(navigation.querySelector("select")).toBeNull();
     expect(
       mobileNavigation.getAttribute("data-account-mobile-navigation")
     ).toBe("");
@@ -544,8 +566,10 @@ describe("AccountShell", () => {
     expect(mobileNavigation.className).toContain("flex-nowrap");
     expect(mobileNavigation.className).toContain("overflow-x-auto");
     expect(mobileNavigation.className).toContain("touch-pan-x");
-    expect(mobileNavigation.className).toContain("px-1");
-    expect(mobileNavigation.className).toContain("py-1");
+    expect(mobileNavigation.className).toContain("snap-x");
+    expect(mobileNavigation.className).toContain("snap-proximity");
+    expect(mobileNavigation.className).not.toContain("px-1");
+    expect(mobileNavigation.className).not.toContain("py-1");
     expect(buttons).toHaveLength(sectionKeys.length);
     expect(
       buttons.map((button) => button.getAttribute("data-account-section"))
@@ -557,12 +581,13 @@ describe("AccountShell", () => {
       expect(button.getAttribute("type")).toBe("button");
       expect(button.className).toContain("min-h-[44px]");
       expect(button.className).toContain("shrink-0");
+      expect(button.className).toContain("snap-start");
       expect(button.className).toContain("whitespace-nowrap");
       expect(button.className).toContain("focus-visible:ring-inset");
       expect(button.className).toContain("focus-visible:ring-offset-0");
     }
-    expect(group.querySelector('[role="tablist"]')).toBeNull();
-    expect(group.querySelector('[role="tab"]')).toBeNull();
+    expect(navigation.querySelector('[role="tablist"]')).toBeNull();
+    expect(navigation.querySelector('[role="tab"]')).toBeNull();
 
     expect(
       within(group)
@@ -623,7 +648,7 @@ describe("AccountShell", () => {
     );
   });
 
-  test("scrolls the active mobile section locally without stealing focus", () => {
+  test("aligns the active mobile section start without stealing focus", () => {
     const originalGetBoundingClientRect =
       Element.prototype.getBoundingClientRect;
     const originalScrollIntoView = Element.prototype.scrollIntoView;
@@ -676,19 +701,165 @@ describe("AccountShell", () => {
       });
       billingButton.focus();
 
-      expect(mobileNavigation.scrollLeft).toBe(140);
+      expect(mobileNavigation.scrollLeft).toBe(240);
       expect(document.activeElement).toBe(billingButton);
 
       view.rerender(
         <AccountShell {...makeProps({ activeSection: "danger" })} />
       );
 
-      expect(mobileNavigation.scrollLeft).toBe(300);
+      expect(mobileNavigation.scrollLeft).toBe(400);
       expect(document.activeElement).toBe(billingButton);
       expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     } finally {
       Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
       Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  test("aligns a right-clipped Czech-like section to its snap start", () => {
+    const originalGetBoundingClientRect =
+      Element.prototype.getBoundingClientRect;
+    let isVisible = false;
+    const activeButtonStart = 262;
+    const activeButtonWidth = 173;
+    const makeRect = (left: number, right: number): DOMRect =>
+      ({
+        bottom: 44,
+        height: 44,
+        left,
+        right,
+        top: 0,
+        width: right - left,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    Element.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute("data-account-mobile-navigation")) {
+        return makeRect(0, isVisible ? 320 : 0);
+      }
+      if (this.getAttribute("data-account-section") === "billing") {
+        const mobileNavigation = this.closest(
+          "[data-account-mobile-navigation]"
+        );
+        const scrollLeft =
+          mobileNavigation instanceof HTMLElement
+            ? mobileNavigation.scrollLeft
+            : 0;
+        return makeRect(
+          activeButtonStart - scrollLeft,
+          activeButtonStart + activeButtonWidth - scrollLeft
+        );
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    try {
+      const view = renderShell({ activeSection: "billing" });
+      const group = view.getByRole("group", { name: labels.mobileSection });
+      const mobileNavigation = group.querySelector<HTMLDivElement>(
+        "[data-account-mobile-navigation]"
+      );
+      if (!mobileNavigation)
+        throw new Error("Mobile account navigation was not rendered");
+      const billingButton = within(group).getByRole("button", {
+        name: labels.sections.billing,
+      });
+      const observer = getLatestResizeObserver();
+
+      mobileNavigation.scrollLeft = 112;
+      isVisible = true;
+      expect(billingButton.getBoundingClientRect()).toMatchObject({
+        left: 150,
+        right: 323,
+      });
+
+      observer.trigger();
+
+      expect(mobileNavigation.scrollLeft).toBe(262);
+      expect(billingButton.getBoundingClientRect()).toMatchObject({
+        left: 0,
+        right: 173,
+      });
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
+    }
+  });
+
+  test("aligns a left-clipped section and leaves a fully visible section unchanged", () => {
+    const originalGetBoundingClientRect =
+      Element.prototype.getBoundingClientRect;
+    const activeButtonStart = 88;
+    const activeButtonWidth = 173;
+    const makeRect = (left: number, right: number): DOMRect =>
+      ({
+        bottom: 44,
+        height: 44,
+        left,
+        right,
+        top: 0,
+        width: right - left,
+        x: left,
+        y: 0,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    Element.prototype.getBoundingClientRect = function () {
+      if (this.hasAttribute("data-account-mobile-navigation")) {
+        return makeRect(0, 320);
+      }
+      if (this.getAttribute("data-account-section") === "billing") {
+        const mobileNavigation = this.closest(
+          "[data-account-mobile-navigation]"
+        );
+        const scrollLeft =
+          mobileNavigation instanceof HTMLElement
+            ? mobileNavigation.scrollLeft
+            : 0;
+        return makeRect(
+          activeButtonStart - scrollLeft,
+          activeButtonStart + activeButtonWidth - scrollLeft
+        );
+      }
+      return originalGetBoundingClientRect.call(this);
+    };
+
+    try {
+      const view = renderShell({ activeSection: "billing" });
+      const group = view.getByRole("group", { name: labels.mobileSection });
+      const mobileNavigation = group.querySelector<HTMLDivElement>(
+        "[data-account-mobile-navigation]"
+      );
+      if (!mobileNavigation)
+        throw new Error("Mobile account navigation was not rendered");
+      const billingButton = within(group).getByRole("button", {
+        name: labels.sections.billing,
+      });
+      const observer = getLatestResizeObserver();
+
+      expect(mobileNavigation.scrollLeft).toBe(0);
+      expect(billingButton.getBoundingClientRect()).toMatchObject({
+        left: 88,
+        right: 261,
+      });
+
+      mobileNavigation.scrollLeft = 112;
+      expect(billingButton.getBoundingClientRect()).toMatchObject({
+        left: -24,
+        right: 149,
+      });
+
+      observer.trigger();
+
+      expect(mobileNavigation.scrollLeft).toBe(88);
+      expect(billingButton.getBoundingClientRect()).toMatchObject({
+        left: 0,
+        right: 173,
+      });
+    } finally {
+      Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     }
   });
 
@@ -746,7 +917,7 @@ describe("AccountShell", () => {
       isVisible = true;
       observer.trigger();
 
-      expect(mobileNavigation.scrollLeft).toBe(300);
+      expect(mobileNavigation.scrollLeft).toBe(400);
     } finally {
       Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     }
@@ -805,7 +976,7 @@ describe("AccountShell", () => {
       navigationWidth = 200;
       observer.trigger();
 
-      expect(mobileNavigation.scrollLeft).toBe(300);
+      expect(mobileNavigation.scrollLeft).toBe(400);
     } finally {
       Element.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     }
@@ -906,14 +1077,35 @@ describe("AccountShell", () => {
     ).toBeTruthy();
   });
 
-  test("renders the caller-owned sidebar footer below navigation", () => {
+  test("places the caller-owned sidebar footer below all mobile content", () => {
     const footer: ReactNode = (
       <p data-testid="sidebar-footer">Need help at the reception desk.</p>
     );
     const view = renderShell({ sidebarFooter: footer });
+    const aside = view.container.querySelector("aside");
+    if (!aside) throw new Error("Account shell aside was not rendered");
+    const grid = aside.parentElement;
+    if (!grid) throw new Error("Account shell grid was not rendered");
+    const footers = view.getAllByTestId("sidebar-footer");
+    const desktopFooter = footers[0];
+    const mobileFooter = footers[1];
+    if (!desktopFooter || !mobileFooter)
+      throw new Error("Both responsive sidebar footers were not rendered");
+    const mobileFooterContainer = mobileFooter.parentElement;
+    if (!mobileFooterContainer)
+      throw new Error("Mobile sidebar footer container was not rendered");
 
-    expect(view.getByTestId("sidebar-footer").textContent).toBe(
-      "Need help at the reception desk."
+    expect(footers).toHaveLength(2);
+    expect(desktopFooter.textContent).toBe("Need help at the reception desk.");
+    expect(mobileFooter.textContent).toBe("Need help at the reception desk.");
+    expect(desktopFooter.parentElement?.parentElement).toBe(aside);
+    expect(mobileFooterContainer.parentElement).toBe(grid);
+    expect(grid.children.item(0)).toBe(aside);
+    expect(grid.children.item(1)?.textContent).toBe("Account content");
+    expect(grid.lastElementChild).toBe(mobileFooterContainer);
+    expect(mobileFooterContainer.className).toBe("min-w-0 md:hidden");
+    expect(aside.children.item(1)?.className).toBe(
+      "mt-4 min-w-0 hidden md:block"
     );
   });
 

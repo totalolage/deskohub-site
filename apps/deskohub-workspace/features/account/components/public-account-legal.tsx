@@ -1,44 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import { LegalScreen } from "@/features/account/components/legal/legal-screen";
-import {
-  type AccountSection,
-  AccountShell,
-} from "@/features/account/components/shell/account-shell";
-import { SignOutButton } from "@/features/account/components/sign-out-button";
-import { type Locale, m } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 
 type PublicAccountLegalProps = {
   readonly locale: Locale;
   readonly signedIn: boolean;
 };
 
-export function PublicAccountLegal({
-  locale,
-  signedIn,
-}: PublicAccountLegalProps) {
-  const router = useRouter();
+export function PublicAccountLegal({ locale }: PublicAccountLegalProps) {
   const copy = getAccountScreenCopy(locale);
 
-  const changeSection = (section: AccountSection) => {
-    if (!signedIn || section === "legal") return;
-    router.push(`/${locale}/account?section=${section}`);
-  };
-
-  return (
-    <AccountShell
-      activeSection="legal"
-      disabledSections={
-        signedIn ? [] : ["reservations", "profile", "billing", "danger"]
-      }
-      labels={copy.shell}
-      onSectionChange={changeSection}
-      signOut={signedIn ? <SignOutButton locale={locale} /> : null}
-      title={m.accountTitle({}, { locale })}
-    >
-      <LegalScreen locale={locale} strings={copy.legal} />
-    </AccountShell>
-  );
+  return <LegalScreen locale={locale} strings={copy.legal} />;
 }

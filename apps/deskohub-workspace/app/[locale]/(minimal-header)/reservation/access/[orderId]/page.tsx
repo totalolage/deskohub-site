@@ -1,18 +1,11 @@
-import { Effect, Option, Schema } from "effect";
+import { Option, Schema } from "effect";
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
-import { connection } from "next/server";
-import { Suspense } from "react";
-import { CheckoutFlowPageSkeleton } from "@/features/checkout/components/checkout-flow-page-skeleton";
-import { type Locale, locales, m } from "@/features/i18n";
+import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { ReservationAccessService } from "@/features/reservation/backend/reservation-access.service";
-import { readReservationAccessCookie } from "@/features/reservation/backend/reservation-access-cookie";
-import { ReservationAccessPage } from "@/features/reservation/components/reservation-access-page";
+import { ReservationAccessRoute } from "@/features/reservation/components/reservation-access-route";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationAccessPath } from "@/features/reservation/routes";
-import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
@@ -72,48 +65,8 @@ export async function generateMetadata({
   });
 }
 
-export default async function LocalizedReservationAccessPage({
+export default function LocalizedReservationAccessPage({
   params,
 }: LocalizedReservationAccessPageProps) {
-  return runWithRequestLocale((locale) => (
-    <Suspense fallback={<ReservationAccessFallback locale={locale} />}>
-      <ReservationAccessContent params={params} />
-    </Suspense>
-  ));
-}
-
-async function ReservationAccessContent({
-  params,
-}: LocalizedReservationAccessPageProps) {
-  const decodedParams = decodeReservationAccessParams(await params);
-  const { orderId } = Option.getOrElse(decodedParams, () => notFound());
-
-  return runWithRequestLocale(async (locale) => {
-    await connection();
-    const cookieStore = await cookies();
-    const accessCookie = readReservationAccessCookie(cookieStore, orderId);
-    const access = await Effect.flatMap(ReservationAccessService, (service) =>
-      service.getAccess({ orderId, locale, accessCookie })
-    ).pipe(
-      Effect.provide(ReservationAccessService.Live),
-      runWorkspaceEffect("reservation.access.load")
-    );
-
-    return (
-      <ReservationAccessPage
-        access={access}
-        locale={locale}
-        orderId={orderId}
-      />
-    );
-  });
-}
-
-function ReservationAccessFallback({ locale }: { readonly locale: Locale }) {
-  return (
-    <CheckoutFlowPageSkeleton
-      label={m.reservationAccessMetadataTitle({}, { locale })}
-      locale={locale}
-    />
-  );
+  return <ReservationAccessRoute params={params} />;
 }

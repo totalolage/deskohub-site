@@ -29,23 +29,31 @@ const accountShellPath = join(
   appRoot,
   "features/account/components/shell/account-shell.tsx"
 );
+const accountFramePath = join(
+  appRoot,
+  "features/account/components/shell/account-frame.tsx"
+);
 const globalsCssPath = join(appRoot, "app/globals.css");
 const postCssConfigPath = join(appRoot, "postcss.config.mjs");
 const appRequire = createRequire(join(appRoot, "package.json"));
-const regressionAccountShellPath = join(
+const regressionAccountFramePath = join(
   regressionBuildRoot,
-  "account-shell-nonsticky.tsx"
+  "account-frame-nonsticky.tsx"
 );
 const rendererPort = 3163;
 const baseUrl = `http://localhost:${rendererPort}`;
 const stickyGapPx = 16;
 const desktopWidths = [1440, 1024] as const;
-const mobileWidths = [375, 320] as const;
+const mobileWidths = [320, 375, 480] as const;
+const mobileLocales = ["en-US", "cs-CZ"] as const;
 const contentVariants = ["short", "tall"] as const;
 const sidebarVariants = ["normal", "tall"] as const;
 const scrollPositions = ["top", "middle", "bottom"] as const;
+const accountAsideStickyClasses =
+  "sticky top-(--site-header-height) z-40 min-w-0 md:sticky md:top-[calc(var(--site-header-height)+1rem)] md:max-h-[calc(100dvh-var(--site-header-height)-2rem)] md:overflow-y-auto";
 
 type ContentVariant = (typeof contentVariants)[number];
+type FixtureLocale = (typeof mobileLocales)[number];
 type SidebarVariant = (typeof sidebarVariants)[number];
 type ScrollPosition = (typeof scrollPositions)[number];
 type BuildKind = "production" | "nonsticky";
@@ -82,6 +90,19 @@ type Rect = {
   readonly bottom: number;
 };
 
+type ComputedBoxStyle = {
+  readonly borderBottomWidth: string;
+  readonly borderLeftWidth: string;
+  readonly borderRightWidth: string;
+  readonly borderRadius: string;
+  readonly borderTopWidth: string;
+  readonly display: string;
+  readonly overflowX: string;
+  readonly padding: string;
+  readonly scrollSnapType: string;
+  readonly visibility: string;
+};
+
 type Geometry = {
   readonly viewport: { readonly width: number; readonly height: number };
   readonly scroll: {
@@ -94,9 +115,30 @@ type Geometry = {
   };
   readonly header: Rect;
   readonly aside: Rect;
+  readonly content: Rect;
+  readonly navigation: Rect;
   readonly parent: Rect;
   readonly pageFooter: Rect;
+  readonly sidebarFooter: Rect | null;
+  readonly mobileNavigation: Rect;
+  readonly mobileNavigationScroll: {
+    readonly clientWidth: number;
+    readonly scrollLeft: number;
+    readonly scrollWidth: number;
+  };
+  readonly mobileLegend: {
+    readonly accessibleNameReference: string | null;
+    readonly className: string;
+    readonly id: string;
+    readonly rect: Rect;
+    readonly text: string;
+    readonly style: ComputedBoxStyle;
+  };
+  readonly mobileNavigationStyle: ComputedBoxStyle;
+  readonly mobileFieldsetStyle: ComputedBoxStyle;
+  readonly navigationStyle: ComputedBoxStyle;
   readonly asideStyle: {
+    readonly top: string;
     readonly position: string;
     readonly overflowY: string;
     readonly maxHeight: string;
@@ -143,8 +185,26 @@ type FocusTraversalEvidence = {
 
 type MobilePositionEvidence = {
   readonly geometry: Geometry;
+  readonly expectedStickyTop: number;
   readonly position: ScrollPosition;
   readonly screenshot: string;
+};
+
+type MobileNavigationState = {
+  readonly activeLabel: string;
+  readonly activeRect: Rect;
+  readonly activeSection: string;
+  readonly stripRect: Rect;
+  readonly stripScrollLeft: number;
+  readonly stripScrollWidth: number;
+};
+
+type MobileNavigationEvidence = {
+  readonly accessibleGroupCount: number;
+  readonly afterSectionChange: MobileNavigationState;
+  readonly failures: readonly string[];
+  readonly initial: MobileNavigationState;
+  readonly legendText: string;
 };
 
 type FocusCheckResult = {
@@ -156,7 +216,9 @@ type MobileScenarioEvidence = {
   readonly scenario: Scenario;
   readonly status: "passed" | "failed";
   readonly initial: Geometry | null;
+  readonly navigation: MobileNavigationEvidence | null;
   readonly positions: readonly MobilePositionEvidence[];
+  readonly sectionChangeScreenshot: string | null;
   readonly sidebarFooterScrollY: number | null;
   readonly pageFooterScrollY: number | null;
   readonly screenshot: string | null;
@@ -164,6 +226,7 @@ type MobileScenarioEvidence = {
 };
 
 type Scenario = {
+  readonly locale: FixtureLocale;
   readonly width: number;
   readonly height: number;
   readonly content: ContentVariant;
@@ -173,6 +236,7 @@ type Scenario = {
 type DesktopPositionEvidence = {
   readonly position: ScrollPosition;
   readonly geometry: Geometry;
+  readonly expectedStickyTop: number;
   readonly expectedParentConstrainedBottom: number;
   readonly screenshot: string;
 };
@@ -188,6 +252,7 @@ type DesktopScenarioEvidence = {
 };
 
 type SourceHashes = {
+  readonly accountFrame: BuildFile;
   readonly accountShell: BuildFile;
   readonly globalsCss: BuildFile;
   readonly postCssConfig: BuildFile;
@@ -197,7 +262,7 @@ type SourceHashes = {
 };
 
 type GeometryReport = {
-  readonly schemaVersion: 2;
+  readonly schemaVersion: 3;
   readonly scope: {
     readonly kind: "isolated-production-component-fixture";
     readonly routeE2E: false;
@@ -210,6 +275,16 @@ type GeometryReport = {
     readonly engine: "Chromium";
     readonly version: string;
     readonly bunVersion: string;
+  };
+  readonly matrix: {
+    readonly desktopLocales: readonly FixtureLocale[];
+    readonly desktopPositions: number;
+    readonly desktopScenarios: number;
+    readonly mobileLocales: readonly FixtureLocale[];
+    readonly mobilePositions: number;
+    readonly mobileScenarios: number;
+    readonly mobileSectionChangeScreenshots: number;
+    readonly mobileWidths: readonly number[];
   };
   readonly sourceHashes: SourceHashes;
   readonly builds: {
@@ -294,16 +369,14 @@ const makeBuildPlugin = (
         }
       }
     );
-    build.onLoad({ filter: /\/account-shell\.tsx$/ }, async (args) => {
-      if (!nonsticky || resolve(args.path) !== accountShellPath)
+    build.onLoad({ filter: /\/account-frame\.tsx$/ }, async (args) => {
+      if (!nonsticky || resolve(args.path) !== accountFramePath)
         return undefined;
-      const source = await readFile(accountShellPath, "utf8");
-      const stickyClasses =
-        "md:sticky md:top-[calc(var(--site-header-height)+1rem)] md:max-h-[calc(100dvh-var(--site-header-height)-2rem)] md:overflow-y-auto";
+      const source = await readFile(regressionAccountFramePath, "utf8");
       return {
-        contents: source.replace(stickyClasses, ""),
+        contents: source,
         loader: "tsx",
-        resolveDir: dirname(accountShellPath),
+        resolveDir: dirname(accountFramePath),
       };
     });
     build.onLoad({ filter: /\/app\/globals\.css$/ }, async (args) => {
@@ -384,18 +457,16 @@ const buildBundle = async (
 };
 
 const writeNonstickyOverride = async () => {
-  const source = await readFile(accountShellPath, "utf8");
-  const stickyClasses =
-    "md:sticky md:top-[calc(var(--site-header-height)+1rem)] md:max-h-[calc(100dvh-var(--site-header-height)-2rem)] md:overflow-y-auto";
-  if (!source.includes(stickyClasses)) {
+  const source = await readFile(accountFramePath, "utf8");
+  if (!source.includes(accountAsideStickyClasses)) {
     throw new Error(
       "AccountShell sticky class was not found; the isolated regression override cannot be built"
     );
   }
   await mkdir(regressionBuildRoot, { recursive: true });
   await writeFile(
-    regressionAccountShellPath,
-    source.replace(stickyClasses, ""),
+    regressionAccountFramePath,
+    source.replace(accountAsideStickyClasses, "min-w-0"),
     "utf8"
   );
 };
@@ -472,14 +543,14 @@ const serveBuild = async (build: BuildResult) => {
 
 const createContext = async (
   browser: Browser,
-  viewport: { readonly width: number; readonly height: number },
+  scenario: Scenario,
   problems: string[]
 ) => {
   const context = await browser.newContext({
     deviceScaleFactor: 1,
-    locale: "en-US",
+    locale: scenario.locale,
     reducedMotion: "reduce",
-    viewport,
+    viewport: scenario,
   });
   await context.route("**/*", async (route) => {
     const requestUrl = new URL(route.request().url());
@@ -497,9 +568,7 @@ const loadFixture = async (
   page: Page,
   scenario: Scenario,
   problems: string[],
-  expectedPosition: "sticky" | "static" = scenario.width >= 768
-    ? "sticky"
-    : "static"
+  expectedPosition: "sticky" | "static" = "sticky"
 ) => {
   page.on("pageerror", (error) =>
     problems.push(`page error: ${error.message}`)
@@ -508,7 +577,7 @@ const loadFixture = async (
     if (message.type() === "error")
       problems.push(`console error: ${message.text()}`);
   });
-  const url = `${baseUrl}/?content=${scenario.content}&sidebar=${scenario.sidebar}`;
+  const url = `${baseUrl}/?content=${scenario.content}&locale=${scenario.locale}&sidebar=${scenario.sidebar}`;
   await page.goto(url, { timeout: 15_000, waitUntil: "load" });
   await page
     .locator("html[data-account-sticky-ready='true']")
@@ -542,10 +611,42 @@ const readGeometry = async (page: Page): Promise<Geometry> =>
     );
     const aside = document.querySelector<HTMLElement>("aside");
     const parent = aside?.parentElement;
+    const content = document.querySelector<HTMLElement>(
+      "[data-account-sticky-content]"
+    );
+    const navigation = document.querySelector<HTMLElement>("aside > nav");
+    const mobileNavigation = document.querySelector<HTMLElement>(
+      "[data-account-mobile-navigation]"
+    );
+    const mobileFieldset = mobileNavigation?.closest("fieldset");
+    const mobileLegend = mobileFieldset?.querySelector<HTMLElement>("legend");
     const pageFooter = document.querySelector<HTMLElement>(
       "[data-account-sticky-page-footer]"
     );
-    if (!header || !aside || !parent || !pageFooter) {
+    const sidebarFooter = [
+      ...document.querySelectorAll<HTMLElement>(
+        "[data-account-sticky-sidebar-footer]"
+      ),
+    ].find((candidate) => {
+      const style = getComputedStyle(candidate);
+      const candidateRect = candidate.getBoundingClientRect();
+      return (
+        style.display !== "none" &&
+        candidateRect.width > 0 &&
+        candidateRect.height > 0
+      );
+    });
+    if (
+      !header ||
+      !aside ||
+      !content ||
+      !navigation ||
+      !mobileNavigation ||
+      !mobileFieldset ||
+      !mobileLegend ||
+      !parent ||
+      !pageFooter
+    ) {
       throw new Error("Account sticky fixture geometry elements are missing");
     }
     const rect = (element: Element) => {
@@ -559,6 +660,21 @@ const readGeometry = async (page: Page): Promise<Geometry> =>
         y: value.y,
       };
     };
+    const styleOf = (element: Element): ComputedBoxStyle => {
+      const style = getComputedStyle(element);
+      return {
+        borderBottomWidth: style.borderBottomWidth,
+        borderLeftWidth: style.borderLeftWidth,
+        borderRightWidth: style.borderRightWidth,
+        borderRadius: style.borderRadius,
+        borderTopWidth: style.borderTopWidth,
+        display: style.display,
+        overflowX: style.overflowX,
+        padding: style.padding,
+        scrollSnapType: style.scrollSnapType,
+        visibility: style.visibility,
+      };
+    };
     const style = getComputedStyle(aside);
     return {
       aside: rect(aside),
@@ -569,8 +685,28 @@ const readGeometry = async (page: Page): Promise<Geometry> =>
         position: style.position,
         scrollHeight: aside.scrollHeight,
         scrollTop: aside.scrollTop,
+        top: style.top,
       },
+      content: rect(content),
       header: rect(header),
+      mobileFieldsetStyle: styleOf(mobileFieldset),
+      mobileLegend: {
+        accessibleNameReference: mobileFieldset.getAttribute("aria-labelledby"),
+        className: mobileLegend.className,
+        id: mobileLegend.id,
+        rect: rect(mobileLegend),
+        style: styleOf(mobileLegend),
+        text: mobileLegend.textContent?.trim() ?? "",
+      },
+      mobileNavigation: rect(mobileNavigation),
+      mobileNavigationScroll: {
+        clientWidth: mobileNavigation.clientWidth,
+        scrollLeft: mobileNavigation.scrollLeft,
+        scrollWidth: mobileNavigation.scrollWidth,
+      },
+      mobileNavigationStyle: styleOf(mobileNavigation),
+      navigation: rect(navigation),
+      navigationStyle: styleOf(navigation),
       pageFooter: rect(pageFooter),
       parent: rect(parent),
       scroll: {
@@ -584,6 +720,7 @@ const readGeometry = async (page: Page): Promise<Geometry> =>
         x: window.scrollX,
         y: window.scrollY,
       },
+      sidebarFooter: sidebarFooter ? rect(sidebarFooter) : null,
       viewport: { height: window.innerHeight, width: window.innerWidth },
     };
   });
@@ -648,6 +785,120 @@ const assertWithin = (
   }
 };
 
+const readMobileNavigation = async (
+  page: Page
+): Promise<MobileNavigationState> =>
+  page.evaluate(() => {
+    const strip = document.querySelector<HTMLElement>(
+      "[data-account-mobile-navigation]"
+    );
+    const active = strip?.querySelector<HTMLButtonElement>(
+      "button[aria-current='page']"
+    );
+    if (!strip || !active) {
+      throw new Error(
+        "Account sticky mobile navigation active button is missing"
+      );
+    }
+    const rect = (element: Element): Rect => {
+      const value = element.getBoundingClientRect();
+      return {
+        bottom: value.bottom,
+        height: value.height,
+        right: value.right,
+        width: value.width,
+        x: value.x,
+        y: value.y,
+      };
+    };
+    const stripRect = rect(strip);
+    return {
+      activeLabel: active.textContent?.trim().replace(/\s+/g, " ") ?? "",
+      activeRect: rect(active),
+      activeSection: active.dataset.accountSection ?? "",
+      stripRect,
+      stripScrollLeft: strip.scrollLeft,
+      stripScrollWidth: strip.scrollWidth,
+    };
+  });
+
+const waitForMobileActiveVisible = async (
+  page: Page,
+  expectedSection: string
+) => {
+  await page.waitForFunction(
+    (section) => {
+      const strip = document.querySelector<HTMLElement>(
+        "[data-account-mobile-navigation]"
+      );
+      const active = strip?.querySelector<HTMLButtonElement>(
+        `button[data-account-section="${section}"][aria-current='page']`
+      );
+      if (!strip || !active) return false;
+      const stripRect = strip.getBoundingClientRect();
+      const activeRect = active.getBoundingClientRect();
+      return (
+        activeRect.width > 0 &&
+        activeRect.height > 0 &&
+        activeRect.left >= stripRect.left - 1 &&
+        activeRect.right <= stripRect.right + 1
+      );
+    },
+    expectedSection,
+    { timeout: 5_000 }
+  );
+};
+
+const assertZeroBoxChrome = (style: ComputedBoxStyle, label: string): void => {
+  assertCondition(
+    style.padding === "0px",
+    `${label}: computed padding is ${style.padding}, not 0px`
+  );
+  for (const [edge, width] of [
+    ["top", style.borderTopWidth],
+    ["right", style.borderRightWidth],
+    ["bottom", style.borderBottomWidth],
+    ["left", style.borderLeftWidth],
+  ] as const) {
+    assertCondition(
+      width === "0px",
+      `${label}: computed ${edge} border is ${width}, not 0px`
+    );
+  }
+  assertCondition(
+    style.borderRadius === "0px",
+    `${label}: computed border radius is ${style.borderRadius}, not 0px`
+  );
+};
+
+const calculateExpectedStickyTop = (geometry: Geometry, offset: number) =>
+  Math.min(
+    geometry.header.bottom + offset,
+    geometry.parent.bottom - geometry.aside.height
+  );
+
+const assertStickyClamp = (
+  geometry: Geometry,
+  label: string,
+  offset: number
+) => {
+  const expectedTop = calculateExpectedStickyTop(geometry, offset);
+  assertWithin(
+    geometry.aside.y,
+    expectedTop,
+    `${label}: sticky aside top does not match containing-block clamp`
+  );
+  const contentWithinViewport =
+    geometry.content.bottom > geometry.header.bottom + 1 &&
+    geometry.content.y < geometry.viewport.height - 1;
+  if (contentWithinViewport && expectedTop >= geometry.header.bottom - 1) {
+    assertCondition(
+      geometry.aside.y >= geometry.header.bottom - 1,
+      `${label}: sticky aside overlaps the fixed site header while content is visible`
+    );
+  }
+};
+
 const assertNoHorizontalOverflow = (geometry: Geometry, label: string) => {
   assertCondition(
     geometry.scroll.documentWidth <= geometry.viewport.width + 1,
@@ -664,12 +915,35 @@ const assertDesktopStickyGeometry = (
   scenario: Scenario,
   position: ScrollPosition
 ) => {
-  const label = `${scenario.width}x${scenario.height}/${scenario.content}/${scenario.sidebar}/${position}`;
+  const label = `${scenario.locale}/${scenario.width}x${scenario.height}/${scenario.content}/${scenario.sidebar}/${position}`;
   assertCondition(
     geometry.asideStyle.position === "sticky",
     `${label}: aside position is ${geometry.asideStyle.position}, not sticky`
   );
   const minimumTop = geometry.header.bottom + stickyGapPx;
+  const desktopTop = Number.parseFloat(geometry.asideStyle.top);
+  assertWithin(
+    desktopTop,
+    minimumTop,
+    `${label}: desktop aside top does not preserve the header gap`
+  );
+  assertCondition(
+    geometry.asideStyle.overflowY === "auto",
+    `${label}: desktop aside overflow-y is ${geometry.asideStyle.overflowY}, not auto`
+  );
+  assertCondition(
+    geometry.asideStyle.maxHeight !== "none",
+    `${label}: desktop aside max-height is unconstrained`
+  );
+  assertCondition(
+    geometry.navigationStyle.padding === "16px" &&
+      geometry.navigationStyle.borderTopWidth === "1px" &&
+      geometry.navigationStyle.borderRightWidth === "1px" &&
+      geometry.navigationStyle.borderBottomWidth === "1px" &&
+      geometry.navigationStyle.borderLeftWidth === "1px" &&
+      geometry.navigationStyle.borderRadius === "20px",
+    `${label}: desktop navigation chrome changed: ${JSON.stringify(geometry.navigationStyle)}`
+  );
   const parentCannotFitAtStickyTop =
     minimumTop + geometry.aside.height > geometry.parent.bottom + 1;
   if (position !== "top" && !parentCannotFitAtStickyTop) {
@@ -677,6 +951,9 @@ const assertDesktopStickyGeometry = (
       geometry.aside.y >= minimumTop - 1,
       `${label}: aside top ${geometry.aside.y} is above header gap ${minimumTop}`
     );
+  }
+  if (position !== "top" && scenario.content === "tall") {
+    assertStickyClamp(geometry, label, stickyGapPx);
   }
   if (scenario.content === "tall" && position !== "top") {
     assertCondition(
@@ -905,8 +1182,18 @@ const checkPageFooter = async (page: Page, label: string) => {
 
 const assertMobileGeometry = (geometry: Geometry, label: string) => {
   assertCondition(
-    geometry.asideStyle.position === "static",
-    `${label}: mobile aside is not static`
+    geometry.asideStyle.position === "sticky",
+    `${label}: mobile aside is ${geometry.asideStyle.position}, not sticky`
+  );
+  const stickyTop = Number.parseFloat(geometry.asideStyle.top);
+  assertCondition(
+    Number.isFinite(stickyTop),
+    `${label}: mobile aside top is not a finite pixel value (${geometry.asideStyle.top})`
+  );
+  assertWithin(
+    stickyTop,
+    geometry.header.bottom,
+    `${label}: mobile aside top does not align below the site header`
   );
   assertCondition(
     geometry.asideStyle.overflowY !== "auto" &&
@@ -927,7 +1214,160 @@ const assertMobileGeometry = (geometry: Geometry, label: string) => {
     0,
     `${label}: mobile aside unexpectedly scrolled internally`
   );
+  assertWithin(
+    geometry.navigation.x,
+    0,
+    `${label}: mobile navigation card is not edge-to-edge at x=0`
+  );
+  assertWithin(
+    geometry.navigation.width,
+    geometry.viewport.width,
+    `${label}: mobile navigation card is not viewport width`
+  );
+  assertWithin(
+    geometry.mobileNavigation.x,
+    0,
+    `${label}: mobile navigation strip is not edge-to-edge at x=0`
+  );
+  assertWithin(
+    geometry.mobileNavigation.width,
+    geometry.viewport.width,
+    `${label}: mobile navigation strip is not viewport width`
+  );
+  assertZeroBoxChrome(geometry.navigationStyle, `${label}/navigation card`);
+  assertZeroBoxChrome(geometry.mobileFieldsetStyle, `${label}/mobile fieldset`);
+  assertZeroBoxChrome(
+    geometry.mobileNavigationStyle,
+    `${label}/mobile navigation strip`
+  );
+  assertCondition(
+    geometry.mobileNavigationStyle.overflowX === "auto" ||
+      geometry.mobileNavigationStyle.overflowX === "scroll",
+    `${label}: mobile navigation strip overflow-x is ${geometry.mobileNavigationStyle.overflowX}`
+  );
+  assertCondition(
+    geometry.mobileNavigationStyle.scrollSnapType.includes("x"),
+    `${label}: mobile navigation strip has no horizontal snap (${geometry.mobileNavigationStyle.scrollSnapType})`
+  );
+  assertCondition(
+    geometry.mobileLegend.className.split(/\s+/).includes("sr-only"),
+    `${label}: mobile navigation legend is not visually hidden with sr-only`
+  );
+  assertCondition(
+    geometry.mobileLegend.style.display !== "none" &&
+      geometry.mobileLegend.style.visibility !== "hidden",
+    `${label}: mobile navigation legend is removed from the accessibility tree`
+  );
+  assertCondition(
+    geometry.mobileLegend.text.length > 0 &&
+      geometry.mobileLegend.accessibleNameReference ===
+        geometry.mobileLegend.id,
+    `${label}: mobile navigation legend accessible name reference is missing`
+  );
+  assertCondition(
+    geometry.sidebarFooter !== null,
+    `${label}: mobile sidebar help/footer is missing`
+  );
+  if (geometry.sidebarFooter !== null) {
+    assertCondition(
+      geometry.sidebarFooter.y >= geometry.content.bottom - 1,
+      `${label}: mobile sidebar help/footer is not below all account content`
+    );
+    assertCondition(
+      geometry.pageFooter.y >= geometry.sidebarFooter.bottom - 1,
+      `${label}: page footer is not below the mobile sidebar help/footer`
+    );
+  }
   assertNoHorizontalOverflow(geometry, label);
+};
+
+const assertMobileNavigationState = (
+  state: MobileNavigationState,
+  expectedSection: string,
+  label: string
+) => {
+  assertCondition(
+    state.activeSection === expectedSection,
+    `${label}: active mobile section is ${state.activeSection}, not ${expectedSection}`
+  );
+  assertCondition(
+    state.activeRect.width > 0 && state.activeRect.height > 0,
+    `${label}: active mobile section button has no layout box`
+  );
+  assertCondition(
+    state.activeRect.x >= state.stripRect.x - 1,
+    `${label}: active mobile section button starts outside the navigation strip (${state.activeRect.x} < ${state.stripRect.x})`
+  );
+  assertCondition(
+    state.activeRect.right <= state.stripRect.right + 1,
+    `${label}: active mobile section button ends outside the navigation strip (${state.activeRect.right} > ${state.stripRect.right})`
+  );
+};
+
+const checkMobileNavigation = async (
+  page: Page,
+  label: string
+): Promise<MobileNavigationEvidence> => {
+  const failures: string[] = [];
+  const legend = page.locator("fieldset legend").first();
+  const legendText = ((await legend.textContent()) ?? "").trim();
+  let accessibleGroupCount = 0;
+  try {
+    const group = page.getByRole("group", { exact: true, name: legendText });
+    await group.waitFor({ state: "attached" });
+    accessibleGroupCount = await group.count();
+    assertCondition(
+      legendText.length > 0 && accessibleGroupCount === 1,
+      `${label}: mobile navigation accessible group count is ${accessibleGroupCount} for ${JSON.stringify(legendText)}`
+    );
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+  }
+
+  let initial: MobileNavigationState;
+  try {
+    await waitForMobileActiveVisible(page, "profile");
+    initial = await readMobileNavigation(page);
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+    initial = await readMobileNavigation(page);
+  }
+  try {
+    assertMobileNavigationState(initial, "profile", `${label}/initial`);
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+  }
+
+  const dangerButton = page.locator(
+    "aside nav button[data-account-section='danger']:visible"
+  );
+  let afterSectionChange = initial;
+  try {
+    await dangerButton.click();
+    await page.waitForFunction(
+      () =>
+        document.querySelector(
+          "[data-account-mobile-navigation] button[data-account-section='danger'][aria-current='page']"
+        ) !== null
+    );
+    await waitForMobileActiveVisible(page, "danger");
+    afterSectionChange = await readMobileNavigation(page);
+    assertMobileNavigationState(
+      afterSectionChange,
+      "danger",
+      `${label}/after-section-change`
+    );
+  } catch (error) {
+    failures.push(error instanceof Error ? error.message : String(error));
+  }
+
+  return {
+    accessibleGroupCount,
+    afterSectionChange,
+    failures,
+    initial,
+    legendText,
+  };
 };
 
 const runDesktopScenario = async (
@@ -950,6 +1390,10 @@ const runDesktopScenario = async (
     for (const position of scrollPositions) {
       const geometry = await scrollPage(page, position);
       scrollEvidence.push(geometry);
+      const expectedStickyTop = calculateExpectedStickyTop(
+        geometry,
+        stickyGapPx
+      );
       const expectedParentConstrainedBottom = Math.min(
         geometry.viewport.height - stickyGapPx,
         geometry.parent.bottom
@@ -983,6 +1427,7 @@ const runDesktopScenario = async (
           error instanceof Error ? error.message : String(error);
       }
       positions.push({
+        expectedStickyTop,
         expectedParentConstrainedBottom,
         geometry,
         position,
@@ -1058,7 +1503,9 @@ const runMobileScenario = async (
   const problems: string[] = [];
   const failures: string[] = [];
   let initial: Geometry | null = null;
+  let navigation: MobileNavigationEvidence | null = null;
   const positions: MobilePositionEvidence[] = [];
+  let sectionChangeScreenshot: string | null = null;
   let sidebarFooterScrollY: number | null = null;
   let pageFooterScrollY: number | null = null;
   let screenshot: string | null = null;
@@ -1067,20 +1514,34 @@ const runMobileScenario = async (
     context = await createContext(browser, scenario, problems);
     const page = await context.newPage();
     await loadFixture(page, scenario, problems);
-    const label = `${scenario.width}x${scenario.height}/${scenario.content}/${scenario.sidebar}`;
+    const label = `${scenario.locale}/${scenario.width}x${scenario.height}/${scenario.content}/${scenario.sidebar}`;
     for (const position of scrollPositions) {
       const geometry = await scrollPage(page, position);
       if (position === "top") initial = geometry;
       let positionFailure: string | null = null;
       try {
         assertMobileGeometry(geometry, `${label}/${position}`);
+        if (
+          position !== "top" &&
+          (position === "bottom" || scenario.content === "tall")
+        ) {
+          assertStickyClamp(geometry, `${label}/${position}`, 0);
+        }
       } catch (error) {
         positionFailure =
           error instanceof Error ? error.message : String(error);
       }
+      if (position === "top") {
+        try {
+          await waitForMobileActiveVisible(page, "profile");
+        } catch (error) {
+          positionFailure ??=
+            error instanceof Error ? error.message : String(error);
+        }
+      }
       const positionScreenshot = join(
         screenshotDirectory,
-        `mobile-${scenario.width}x${scenario.height}-${scenario.content}-${scenario.sidebar}-${position}.png`
+        `mobile-${scenario.locale}-${scenario.width}x${scenario.height}-${scenario.content}-${scenario.sidebar}-${position}.png`
       );
       try {
         await page.screenshot({ path: positionScreenshot });
@@ -1089,11 +1550,31 @@ const runMobileScenario = async (
           error instanceof Error ? error.message : String(error);
       }
       positions.push({
+        expectedStickyTop: calculateExpectedStickyTop(geometry, 0),
         geometry,
         position,
         screenshot: relative(artifactRoot, positionScreenshot),
       });
       if (positionFailure !== null) failures.push(positionFailure);
+
+      if (position === "top") {
+        try {
+          navigation = await checkMobileNavigation(page, label);
+          failures.push(...navigation.failures);
+          const afterSectionChange = await readGeometry(page);
+          assertMobileGeometry(
+            afterSectionChange,
+            `${label}/after-section-change`
+          );
+          sectionChangeScreenshot = join(
+            screenshotDirectory,
+            `mobile-${scenario.locale}-${scenario.width}x${scenario.height}-${scenario.content}-${scenario.sidebar}-section-change.png`
+          );
+          await page.screenshot({ path: sectionChangeScreenshot });
+        } catch (error) {
+          failures.push(error instanceof Error ? error.message : String(error));
+        }
+      }
     }
     const top = positions.find((position) => position.position === "top");
     const middle = positions.find((position) => position.position === "middle");
@@ -1139,9 +1620,14 @@ const runMobileScenario = async (
   return {
     failures,
     initial,
+    navigation,
     pageFooterScrollY,
     positions,
     scenario,
+    sectionChangeScreenshot:
+      sectionChangeScreenshot === null
+        ? null
+        : relative(artifactRoot, sectionChangeScreenshot),
     screenshot,
     sidebarFooterScrollY,
     status: failures.length === 0 ? "passed" : "failed",
@@ -1155,41 +1641,60 @@ const runRegressionProbe = async (
   readonly observedFailure: string | null;
 }> => {
   const problems: string[] = [];
-  const scenario: Scenario = {
-    content: "tall",
-    height: 900,
-    sidebar: "normal",
-    width: 1440,
-  };
-  let context: BrowserContext | undefined;
-  try {
-    context = await createContext(browser, scenario, problems);
-    const page = await context.newPage();
-    await loadFixture(page, scenario, problems, "static");
-    const geometry = await scrollPage(page, "middle");
+  const scenarios: readonly Scenario[] = [
+    {
+      content: "tall",
+      height: 900,
+      locale: "en-US",
+      sidebar: "normal",
+      width: 1440,
+    },
+    {
+      content: "tall",
+      height: 900,
+      locale: "en-US",
+      sidebar: "normal",
+      width: 375,
+    },
+  ];
+  for (const scenario of scenarios) {
+    let context: BrowserContext | undefined;
     try {
-      assertDesktopStickyGeometry(geometry, scenario, "middle");
-    } catch (error) {
-      return {
-        observedFailure: error instanceof Error ? error.message : String(error),
-        status: "passed",
-      };
+      context = await createContext(browser, scenario, problems);
+      const page = await context.newPage();
+      await loadFixture(page, scenario, problems, "static");
+      const geometry = await scrollPage(page, "middle");
+      try {
+        if (scenario.width >= 768) {
+          assertDesktopStickyGeometry(geometry, scenario, "middle");
+        } else {
+          assertMobileGeometry(
+            geometry,
+            `${scenario.locale}/${scenario.width}`
+          );
+        }
+      } catch (error) {
+        return {
+          observedFailure: `${scenario.locale}/${scenario.width}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          status: "passed",
+        };
+      }
+    } finally {
+      await context?.close();
     }
-    return {
-      observedFailure: null,
-      status: "failed",
-    };
-  } finally {
-    await context?.close();
   }
+  return { observedFailure: null, status: "failed" };
 };
 
 const makeScenario = (
+  locale: FixtureLocale,
   width: number,
   height: number,
   content: ContentVariant,
   sidebar: SidebarVariant
-): Scenario => ({ content, height, sidebar, width });
+): Scenario => ({ content, height, locale, sidebar, width });
 
 const main = async () => {
   await rm(artifactRoot, { force: true, recursive: true });
@@ -1203,13 +1708,14 @@ const main = async () => {
   const nonstickyBuild = await buildBundle(
     "nonsticky",
     regressionBuildRoot,
-    regressionAccountShellPath
+    accountShellPath
   );
   const sourceHashes: SourceHashes = {
     accountShell: await describeFile(accountShellPath),
+    accountFrame: await describeFile(accountFramePath),
     fixtureEntry: await describeFile(browserEntryPath),
     globalsCss: await describeFile(globalsCssPath),
-    nonstickyOverride: await describeFile(regressionAccountShellPath),
+    nonstickyOverride: await describeFile(regressionAccountFramePath),
     postCssConfig: await describeFile(postCssConfigPath),
     runner: await describeFile(join(import.meta.dir, "run.ts")),
   };
@@ -1232,7 +1738,13 @@ const main = async () => {
         for (const sidebar of sidebarVariants) {
           const evidence = await runDesktopScenario(
             browser,
-            makeScenario(width, width === 1440 ? 900 : 600, content, sidebar),
+            makeScenario(
+              "en-US",
+              width,
+              width === 1440 ? 900 : 600,
+              content,
+              sidebar
+            ),
             screenshotDirectory
           );
           desktop.push(evidence);
@@ -1245,21 +1757,23 @@ const main = async () => {
         }
       }
     }
-    for (const width of mobileWidths) {
-      for (const content of contentVariants) {
-        for (const sidebar of sidebarVariants) {
-          const evidence = await runMobileScenario(
-            browser,
-            makeScenario(width, 900, content, sidebar),
-            screenshotDirectory
-          );
-          mobile.push(evidence);
-          failures.push(
-            ...evidence.failures.map(
-              (failure) =>
-                `mobile ${JSON.stringify(evidence.scenario)}: ${failure}`
-            )
-          );
+    for (const locale of mobileLocales) {
+      for (const width of mobileWidths) {
+        for (const content of contentVariants) {
+          for (const sidebar of sidebarVariants) {
+            const evidence = await runMobileScenario(
+              browser,
+              makeScenario(locale, width, 900, content, sidebar),
+              screenshotDirectory
+            );
+            mobile.push(evidence);
+            failures.push(
+              ...evidence.failures.map(
+                (failure) =>
+                  `mobile ${JSON.stringify(evidence.scenario)}: ${failure}`
+              )
+            );
+          }
         }
       }
     }
@@ -1286,9 +1800,27 @@ const main = async () => {
     builds: { nonsticky: nonstickyBuild, production: productionBuild },
     desktop,
     failures,
+    matrix: {
+      desktopLocales: ["en-US"],
+      desktopPositions: desktop.reduce(
+        (count, scenario) => count + scenario.positions.length,
+        0
+      ),
+      desktopScenarios: desktop.length,
+      mobileLocales,
+      mobilePositions: mobile.reduce(
+        (count, scenario) => count + scenario.positions.length,
+        0
+      ),
+      mobileScenarios: mobile.length,
+      mobileSectionChangeScreenshots: mobile.filter(
+        (scenario) => scenario.sectionChangeScreenshot !== null
+      ).length,
+      mobileWidths,
+    },
     mobile,
     regression,
-    schemaVersion: 2,
+    schemaVersion: 3,
     scope: {
       browserServer: "localhost:3163",
       kind: "isolated-production-component-fixture",
@@ -1308,10 +1840,23 @@ const main = async () => {
   process.stdout.write(
     `${JSON.stringify({
       artifactRoot: displayPath(artifactRoot),
+      desktopPositions: desktop.reduce(
+        (count, scenario) => count + scenario.positions.length,
+        0
+      ),
       desktopScenarios: desktop.length,
       failures: failures.length,
       geometry: displayPath(join(artifactRoot, "geometry.json")),
+      mobileLocales,
+      mobilePositions: mobile.reduce(
+        (count, scenario) => count + scenario.positions.length,
+        0
+      ),
       mobileScenarios: mobile.length,
+      mobileSectionChangeScreenshots: mobile.filter(
+        (scenario) => scenario.sectionChangeScreenshot !== null
+      ).length,
+      mobileWidths,
       regression: regression.status,
       sourceHashes: displayPath(join(artifactRoot, "source-hashes.json")),
     })}\n`

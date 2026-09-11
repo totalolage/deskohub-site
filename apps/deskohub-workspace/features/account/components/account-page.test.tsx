@@ -15,9 +15,11 @@ import {
   within,
 } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { m } from "@/features/i18n";
 import {
   workspaceRouterRefresh,
   workspaceRouterReplace,
+  workspaceUseSearchParams,
 } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -138,6 +140,22 @@ mock.module("@/shared/components/sticky-section", () => ({
   ),
 }));
 
+class TestResizeObserver implements ResizeObserver {
+  readonly callback: ResizeObserverCallback;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+  }
+
+  disconnect() {}
+
+  observe(_target: Element) {}
+
+  unobserve(_target: Element) {}
+}
+
+const originalResizeObserver = globalThis.ResizeObserver;
+
 const linkedState = {
   kind: "linked",
   email: "ada@example.test",
@@ -156,16 +174,19 @@ const linkedState = {
 describe("AccountPage states", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
+    globalThis.ResizeObserver = TestResizeObserver;
   });
 
   afterEach(() => {
     cleanup();
     workspaceRouterRefresh.mockClear();
     workspaceRouterReplace.mockClear();
+    workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     getSession.mockClear();
   });
 
   afterAll(() => {
+    globalThis.ResizeObserver = originalResizeObserver;
     unregisterWorkspaceComponentTestEnv();
   });
 
@@ -174,7 +195,31 @@ describe("AccountPage states", () => {
     locale: "en-US" | "cs-CZ" = "en-US"
   ) => {
     const { AccountPage } = await import("./account-page");
-    return render(<AccountPage locale={locale} state={state} />);
+    if (state.kind === "unauthenticated") {
+      return render(<AccountPage locale={locale} state={state} />);
+    }
+
+    const { AccountLayoutShell } = await import("./account-layout-shell");
+    const signedIn =
+      state.kind !== "unauthenticated" && state.kind !== "unavailable";
+    const view = render(
+      <AccountLayoutShell locale={locale} signedIn={signedIn}>
+        <AccountPage locale={locale} state={state} />
+      </AccountLayoutShell>
+    );
+
+    expect(view.container.querySelectorAll("main")).toHaveLength(1);
+    expect(
+      within(view.container).getAllByRole("heading", { level: 1 })
+    ).toHaveLength(1);
+    expect(
+      within(view.container).getAllByText(m.accountTitle({}, { locale }))
+    ).toHaveLength(1);
+    expect(view.container.querySelectorAll("#account-sign-out")).toHaveLength(
+      signedIn ? 1 : 0
+    );
+
+    return view;
   };
 
   test("asks for profile completion with the read-only verified email", async () => {
@@ -183,7 +228,12 @@ describe("AccountPage states", () => {
       email: "ada@example.test",
     });
 
-    expect(view.getByText("Complete your profile")).toBeTruthy();
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: "Complete your profile",
+      })
+    ).toBeTruthy();
     const email = view.getByLabelText("Email") as HTMLInputElement;
     expect(email.value).toBe("ada@example.test");
     expect(email.readOnly).toBe(true);
@@ -241,13 +291,17 @@ describe("AccountPage states", () => {
       email: "ada@example.test",
     });
 
-    expect(view.getByText("We need to verify your profile")).toBeTruthy();
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: "We need to verify your profile",
+      })
+    ).toBeTruthy();
     const contact = view.getByRole("link", {
       name: "Contact us",
     }) as HTMLAnchorElement;
     expect(contact.getAttribute("href")).toBe("/en-US/contact");
     expect(view.queryByText("Save profile")).toBeNull();
-    expect(view.queryByText("Reservations")).toBeNull();
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Delete my account" }));
     });
@@ -265,7 +319,6 @@ describe("AccountPage states", () => {
     expect(view.getByText("Account deletion is pending")).toBeTruthy();
     expect(view.getByText("Delete permanently")).toBeTruthy();
     expect(view.getByText("Sign out")).toBeTruthy();
-    expect(view.queryByText("Reservations")).toBeNull();
   });
 
   test("renders the unavailable state without any account data", async () => {
@@ -274,7 +327,7 @@ describe("AccountPage states", () => {
     expect(
       view.getByText("Customer accounts are temporarily unavailable")
     ).toBeTruthy();
-    expect(view.queryByText("My Workspace")).toBeNull();
+    expect(view.getByText("My Workspace")).toBeTruthy();
     expect(view.queryByText("Sign out")).toBeNull();
     expect(view.queryByText("Delete my account")).toBeNull();
   });
@@ -285,8 +338,6 @@ describe("AccountPage states", () => {
     expect(view.getByRole("status", { name: "Loading sign-in…" })).toBeTruthy();
     expect(workspaceRouterReplace).toHaveBeenCalledWith("/en-US/auth/sign-in");
     expect(getSession).not.toHaveBeenCalled();
-    expect(view.queryByText("My Workspace")).toBeNull();
-    expect(view.queryByText("Reservations")).toBeNull();
     expect(view.queryByText("Delete my account")).toBeNull();
     expect(view.queryByLabelText("Verified login email")).toBeNull();
     expect(view.container.textContent).not.toContain("ada@example.test");

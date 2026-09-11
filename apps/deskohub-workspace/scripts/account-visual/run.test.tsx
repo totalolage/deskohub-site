@@ -45,7 +45,7 @@ import {
   readInitialDomProbe,
   readSelectedEmailProbe,
 } from "./run";
-import { useSearchParams } from "./stubs/next-navigation";
+import { usePathname, useSearchParams } from "./stubs/next-navigation";
 
 const chromiumAvailable = await access(
   chromium.executablePath(),
@@ -1449,9 +1449,10 @@ const buildNavigationStubBrowserEntry = async (directory: string) => {
     entryPath,
     `import { createElement, useState } from ${JSON.stringify(reactEntry)};
 import { createRoot } from ${JSON.stringify(reactDomClientEntry)};
-import { useRouter, useSearchParams } from ${JSON.stringify(navigationStubEntry)};
+import { usePathname, useRouter, useSearchParams } from ${JSON.stringify(navigationStubEntry)};
 
 function NavigationStubProbe() {
+  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [copySearch, setCopySearch] = useState("none");
@@ -1460,7 +1461,7 @@ function NavigationStubProbe() {
   return createElement(
     "main",
     null,
-    createElement("output", { id: "navigation-path" }, window.location.pathname),
+    createElement("output", { id: "navigation-path" }, pathname ?? "missing"),
     createElement("output", { id: "navigation-search" }, searchParams.toString() || "empty"),
     createElement("output", { id: "navigation-section" }, searchParams.get("section") || "missing"),
     createElement("output", { id: "navigation-copy" }, copySearch),
@@ -1576,20 +1577,25 @@ const serveNavigationStubPage = () => {
 };
 
 function SearchParamsSsrProbe() {
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   return (
-    <output data-search={searchParams.toString()}>
+    <output
+      data-pathname={pathname ?? "missing"}
+      data-search={searchParams.toString()}
+    >
       {searchParams.toString() || "empty"}:
       {searchParams.get("section") ?? "missing"}
     </output>
   );
 }
 
-test("useSearchParams stub is safe for static SSR without a browser window", () => {
+test("navigation stubs are safe for static SSR without a browser window", () => {
   let markup = "";
   expect(() => {
     markup = renderToStaticMarkup(<SearchParamsSsrProbe />);
   }).not.toThrow();
+  expect(markup).toContain('data-pathname="missing"');
   expect(markup).toContain('data-search=""');
   expect(markup).toContain(">empty:missing<");
 });

@@ -63,6 +63,11 @@ export function useNavigationState() {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
+export function usePathname() {
+  useNavigationState();
+  return globalThis.window === undefined ? null : window.location.pathname;
+}
+
 export function useSearchParams() {
   useNavigationState();
   const search = globalThis.window === undefined ? "" : window.location.search;
