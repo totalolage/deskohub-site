@@ -1,6 +1,6 @@
-import { AccountPage } from "@/features/account/components/account-page";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { AccountVisualRoute } from "./account-route";
 import type { AccountVisualAdapterProps } from "./types";
 
 const populatedFixture = {
@@ -95,7 +95,7 @@ export const accountVisualAdapterMetadata = {
 } as const;
 
 export function PopulatedAccountAdapter({ locale }: AccountVisualAdapterProps) {
-  return <AccountPage locale={locale} state={populatedFixture} />;
+  return <AccountVisualRoute locale={locale} state={populatedFixture} />;
 }
 
 export default PopulatedAccountAdapter;

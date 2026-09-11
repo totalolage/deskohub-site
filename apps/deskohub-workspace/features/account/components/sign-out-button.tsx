@@ -48,7 +48,7 @@ export function SignOutButton({ locale }: SignOutButtonProps) {
         id="account-sign-out"
         type="button"
         disabled={signingOut}
-        className="bg-red-800 hover:bg-red-900"
+        className="max-w-full whitespace-normal bg-red-800 hover:bg-red-900"
         onClick={signOut}
       >
         <LogOut aria-hidden className="size-4" />

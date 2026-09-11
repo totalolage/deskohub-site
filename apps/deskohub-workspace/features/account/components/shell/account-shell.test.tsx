@@ -451,6 +451,8 @@ describe("AccountShell", () => {
     const signOutWrapper = signOut.parentElement;
     if (!signOutWrapper)
       throw new Error("Account shell sign-out wrapper was not rendered");
+    const headingClassTokens = heading.className.split(/\s+/);
+    const signOutWrapperClassTokens = signOutWrapper.className.split(/\s+/);
 
     expect(header.className).toContain("flex-row");
     expect(header.className).toContain("items-start");
@@ -459,7 +461,11 @@ describe("AccountShell", () => {
     expect(header.className).toContain("sm:gap-x-8");
     expect(header.className).toContain("sm:flex-wrap");
     expect(header.className).not.toContain("flex-col");
-    expect(heading.className).toContain("min-w-0");
+    expect(headingClassTokens).toContain("min-w-min");
+    expect(headingClassTokens).toContain("sm:min-w-0");
+    expect(headingClassTokens).toContain("pr-px");
+    expect(headingClassTokens).toContain("sm:pr-0");
+    expect(headingClassTokens).not.toContain("min-w-0");
     expect(heading.className).toContain("flex-1");
     expect(heading.className).toContain("break-words");
     expect(heading.className).toContain("text-[24px]");
@@ -467,14 +473,16 @@ describe("AccountShell", () => {
     expect(heading.className).toContain("sm:text-[36px]");
     expect(heading.className).not.toContain("w-full");
     expect(heading.className).not.toContain("sm:w-auto");
-    expect(signOutWrapper.className).toContain("min-w-0");
-    expect(signOutWrapper.className).toContain("max-w-[60%]");
-    expect(signOutWrapper.className).toContain("shrink-0");
-    expect(signOutWrapper.className).toContain("break-words");
-    expect(signOutWrapper.className).toContain("sm:max-w-full");
-    expect(signOutWrapper.className).toContain("sm:break-normal");
-    expect(signOutWrapper.className).not.toContain("self-start");
-    expect(signOutWrapper.className).not.toContain("sm:self-auto");
+    expect(signOutWrapperClassTokens).toContain("min-w-0");
+    expect(signOutWrapperClassTokens).toContain("max-w-[60%]");
+    expect(signOutWrapperClassTokens).toContain("shrink");
+    expect(signOutWrapperClassTokens).toContain("break-words");
+    expect(signOutWrapperClassTokens).toContain("sm:max-w-full");
+    expect(signOutWrapperClassTokens).toContain("sm:shrink-0");
+    expect(signOutWrapperClassTokens).toContain("sm:break-normal");
+    expect(signOutWrapperClassTokens).not.toContain("shrink-0");
+    expect(signOutWrapperClassTokens).not.toContain("self-start");
+    expect(signOutWrapperClassTokens).not.toContain("sm:self-auto");
   });
 
   test("allows the caller to omit the sign-out action", () => {

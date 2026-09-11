@@ -1,8 +1,8 @@
 import { createRoot } from "react-dom/client";
-import { AccountPage } from "@/features/account/components/account-page";
 import "../../app/globals.css";
 import { type ReactNode, useLayoutEffect, useRef } from "react";
-import { accountVisualFixture } from "./default-adapter";
+import { resolveAccountVisualScreen } from "./account-route";
+import { DefaultAccountAdapter } from "./default-adapter";
 import { markUnavailableActions } from "./renderer-availability";
 import { useNavigationState } from "./stubs/next-navigation";
 import {
@@ -11,8 +11,9 @@ import {
   type AccountVisualAdapterProps,
   type AccountVisualLocale,
   defaultAccountVisualAdapterMetadata,
-  isAccountVisualScreen,
 } from "./types";
+
+export { DefaultAccountAdapter } from "./default-adapter";
 
 function ActionAvailabilityBoundary({
   children,
@@ -44,8 +45,10 @@ function ActionAvailabilityBoundary({
 }
 
 const screenFromLocation = (): AccountVisualAdapterProps["screen"] => {
-  const candidate = new URLSearchParams(window.location.search).get("screen");
-  return isAccountVisualScreen(candidate) ? candidate : "profile";
+  return resolveAccountVisualScreen({
+    pathname: window.location.pathname,
+    search: window.location.search,
+  });
 };
 
 function Renderer({
@@ -84,8 +87,4 @@ export function mountAccountVisual(
   createRoot(rootElement).render(
     <Renderer Adapter={adapter} locale={locale} metadata={metadata} />
   );
-}
-
-export function DefaultAccountAdapter({ locale }: AccountVisualAdapterProps) {
-  return <AccountPage locale={locale} state={accountVisualFixture} />;
 }

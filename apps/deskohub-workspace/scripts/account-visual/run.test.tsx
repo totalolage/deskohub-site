@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import {
@@ -9,6 +10,7 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Page } from "@playwright/test";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -24,6 +26,7 @@ import {
   validateArchivalArchiveStructure,
   verifyPinnedArchiveBytes,
 } from "./create-account-visual-verification";
+import type { RgbaImage } from "./metrics";
 import {
   markUnavailableActions,
   unavailableActionDescription,
@@ -37,6 +40,7 @@ import {
   readInitialDomProbe,
   readSelectedEmailProbe,
 } from "./run";
+import { useSearchParams } from "./stubs/next-navigation";
 
 const chromiumAvailable = await access(
   chromium.executablePath(),
@@ -59,11 +63,28 @@ const referenceSuffixes = {
   reservations: "49ca0eec-85be-41bb-a8c6-7cfac690311f.png",
 } as const;
 const menuReference = "a519a69f-b101-48ec-ba71-e9d4f1218110.png";
-const tinyReferencePng = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAJ0lEQVR4nO3BAQ0AAADCoPdPbQ43oAAAAAAAAAAAAAAAAAAAAIDODUBAAAENBzWNAAAAAElFTkSuQmCC",
-  "base64"
-);
+const sharp = createRequire(
+  join(import.meta.dir, "../../../..", "packages/osm/package.json")
+)("sharp");
+const syntheticReferenceImage = {
+  width: 2560,
+  height: 1600,
+  data: new Uint8Array(2560 * 1600 * 4).fill(255),
+} satisfies RgbaImage;
+const syntheticReferencePng = await sharp(
+  Buffer.from(syntheticReferenceImage.data),
+  {
+    raw: {
+      width: syntheticReferenceImage.width,
+      height: syntheticReferenceImage.height,
+      channels: 4,
+    },
+  }
+)
+  .png()
+  .toBuffer();
 const expectedOwnedSourcePaths = [
+  "apps/deskohub-workspace/scripts/account-visual/account-route.tsx",
   "apps/deskohub-workspace/scripts/account-visual/browser-entry.tsx",
   "apps/deskohub-workspace/scripts/account-visual/create-account-visual-verification.ts",
   "apps/deskohub-workspace/scripts/account-visual/default-adapter.tsx",
@@ -227,42 +248,56 @@ const writeRegressionReference = async (referencesDir: string) => {
   for (const suffix of Object.values(referenceSuffixes)) {
     await writeFile(
       join(referencesDir, `${referencePrefix}${suffix}`),
-      tinyReferencePng
+      syntheticReferencePng
     );
   }
   await writeFile(
     join(referencesDir, `${referencePrefix}${menuReference}`),
-    tinyReferencePng
+    syntheticReferencePng
   );
 };
 
 const runRendererCli = async (argumentsList: readonly string[]) => {
-  const child = Bun.spawn(
-    [
-      process.execPath,
-      "run",
-      join(import.meta.dir, "run.ts"),
-      ...argumentsList,
-    ],
+  const result = spawnSync(
+    process.execPath,
+    ["run", join(import.meta.dir, "run.ts"), ...argumentsList],
     {
       cwd: join(import.meta.dir, "../../../.."),
-      stderr: "pipe",
-      stdout: "pipe",
+      env: process.env,
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+      shell: false,
+      timeout: 60_000,
     }
   );
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  if (exitCode !== 0) {
+
+  const stdout = result.stdout ?? "";
+  const stderr = result.stderr ?? "";
+  const diagnostics = [stderr, stdout].filter(Boolean).join("\n");
+  if (result.error) {
     throw new Error(
-      `Account visual CLI exited with ${exitCode}: ${stderr || stdout}`
+      `Account visual CLI failed to spawn or timed out: ${result.error.message}${diagnostics ? `\n${diagnostics}` : ""}`,
+      { cause: result.error }
+    );
+  }
+  if (result.status !== 0 || result.signal !== null) {
+    const termination =
+      result.signal === null ? result.status : `signal ${result.signal}`;
+    throw new Error(
+      `Account visual CLI exited with ${termination}: ${diagnostics}`
     );
   }
   const summary = JSON.parse(stdout) as { readonly outputDirectory: string };
   return Bun.file(join(summary.outputDirectory, "report.json")).json();
 };
+
+test("renderer CLI failures propagate through the subprocess seam", async () => {
+  await expect(
+    runRendererCli(["--unknown-account-visual-argument"])
+  ).rejects.toThrow(
+    /Account visual CLI exited with 1:[\s\S]*Unknown argument: --unknown-account-visual-argument/
+  );
+});
 
 const withControlledPage = async <T,>(
   {
@@ -388,10 +423,24 @@ const controlledHeaderFixture = (
     narrow = false,
     overflowing = false,
     srOnlyLabel = false,
+    headingFontSize = 24,
+    headingLineHeight = 28,
+    headingLetterSpacing,
+    headingOverflowWrap,
+    headingPaddingRight,
+    headingBoxSizing,
+    headingWidth,
   }: {
     readonly narrow?: boolean;
     readonly overflowing?: boolean;
     readonly srOnlyLabel?: boolean;
+    readonly headingFontSize?: number;
+    readonly headingLineHeight?: number;
+    readonly headingLetterSpacing?: number;
+    readonly headingOverflowWrap?: "normal" | "break-word" | "anywhere";
+    readonly headingPaddingRight?: number;
+    readonly headingBoxSizing?: "border-box" | "content-box";
+    readonly headingWidth?: number;
   } = {}
 ) => {
   let headingLayout = "flex:1 1 auto; min-width:0;";
@@ -400,11 +449,25 @@ const controlledHeaderFixture = (
   } else if (overflowing) {
     headingLayout =
       "flex:0 0 160px; width:160px; min-width:160px; overflow:hidden; white-space:nowrap;";
+  } else if (headingWidth !== undefined) {
+    headingLayout = `flex:0 0 ${headingWidth}px; width:${headingWidth}px; min-width:${headingWidth}px;`;
   }
+  const headingStyle = [
+    headingLetterSpacing === undefined
+      ? ""
+      : `letter-spacing:${headingLetterSpacing}em;`,
+    headingOverflowWrap === undefined
+      ? ""
+      : `overflow-wrap:${headingOverflowWrap};`,
+    headingPaddingRight === undefined
+      ? ""
+      : `padding-right:${headingPaddingRight}px;`,
+    headingBoxSizing === undefined ? "" : `box-sizing:${headingBoxSizing};`,
+  ].join(" ");
   return `
   <main style="width:100%; margin:0; padding:0;">
     <header style="display:flex; align-items:center; gap:16px; width:100%; padding:16px; box-sizing:border-box;">
-      <h1 style="${headingLayout} margin:0; font:700 24px/28px Arial, sans-serif;">${heading}</h1>
+      <h1 style="${headingLayout} margin:0; font:700 ${headingFontSize}px/${headingLineHeight}px Arial, sans-serif; ${headingStyle}">${heading}</h1>
       <button id="account-sign-out" type="button" aria-label="Sign out" style="flex:0 0 auto;">Sign out</button>
     </header>
     ${
@@ -413,8 +476,17 @@ const controlledHeaderFixture = (
         : ""
     }
   </main>
-`;
+  `;
 };
+
+const controlledFractionalHeadingOptions = {
+  headingBoxSizing: "border-box",
+  headingFontSize: 21.8,
+  headingLetterSpacing: -0.03,
+  headingLineHeight: 27.6,
+  headingOverflowWrap: "break-word",
+  headingPaddingRight: 1,
+} as const;
 
 const controlledEmailFixture = ({
   overflowingStatus = false,
@@ -1148,6 +1220,167 @@ export default function NonWorkingCancelAdapter() {
   return path;
 };
 
+const buildNavigationStubBrowserEntry = async (directory: string) => {
+  const entryPath = join(directory, "navigation-stub-entry.tsx");
+  const reactEntry = join(
+    import.meta.dir,
+    "../../node_modules/react/cjs/react.production.js"
+  );
+  const reactDomClientEntry = join(
+    import.meta.dir,
+    "../../node_modules/react-dom/client.js"
+  );
+  const navigationStubEntry = join(import.meta.dir, "stubs/next-navigation.ts");
+
+  await writeFile(
+    entryPath,
+    `import { createElement, useState } from ${JSON.stringify(reactEntry)};
+import { createRoot } from ${JSON.stringify(reactDomClientEntry)};
+import { useRouter, useSearchParams } from ${JSON.stringify(navigationStubEntry)};
+
+function NavigationStubProbe() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [copySearch, setCopySearch] = useState("none");
+  const [refreshCount, setRefreshCount] = useState(0);
+
+  return createElement(
+    "main",
+    null,
+    createElement("output", { id: "navigation-path" }, window.location.pathname),
+    createElement("output", { id: "navigation-search" }, searchParams.toString() || "empty"),
+    createElement("output", { id: "navigation-section" }, searchParams.get("section") || "missing"),
+    createElement("output", { id: "navigation-copy" }, copySearch),
+    createElement("output", { id: "navigation-refresh-count" }, String(refreshCount)),
+    createElement(
+      "button",
+      { id: "navigation-push-profile", onClick: () => router.push("/en-US/account?section=profile"), type: "button" },
+      "Push profile"
+    ),
+    createElement(
+      "button",
+      { id: "navigation-replace-billing", onClick: () => router.replace("/en-US/account?section=billing"), type: "button" },
+      "Replace billing"
+    ),
+    createElement(
+      "button",
+      { id: "navigation-push-legal", onClick: () => router.push("/en-US/account/legal"), type: "button" },
+      "Push legal"
+    ),
+    createElement(
+      "button",
+      { id: "navigation-back", onClick: () => router.back(), type: "button" },
+      "Back"
+    ),
+    createElement(
+      "button",
+      { id: "navigation-forward", onClick: () => router.forward(), type: "button" },
+      "Forward"
+    ),
+    createElement(
+      "button",
+      {
+        id: "navigation-refresh",
+        onClick: () => {
+          router.refresh();
+          setRefreshCount((count) => count + 1);
+        },
+        type: "button",
+      },
+      "Refresh"
+    ),
+    createElement(
+      "button",
+      {
+        id: "navigation-mutate-copy",
+        onClick: () => {
+          const copy = new URLSearchParams(searchParams);
+          copy.set("section", "mutated");
+          setCopySearch(copy.toString());
+        },
+        type: "button",
+      },
+      "Mutate params copy"
+    )
+  );
+}
+
+const root = document.getElementById("navigation-stub-root");
+if (!root) throw new Error("Navigation stub root is missing");
+createRoot(root).render(createElement(NavigationStubProbe));
+`,
+    "utf8"
+  );
+
+  const result = await Bun.build({
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+    entrypoints: [entryPath],
+    format: "esm",
+    minify: false,
+    outdir: join(directory, "build"),
+    sourcemap: "none",
+    target: "browser",
+  });
+  if (!result.success) {
+    throw new Error(
+      `Navigation stub browser bundle failed to build: ${result.logs
+        .map(({ message }) => message)
+        .join("\n")}`
+    );
+  }
+  const javascriptPath = result.outputs.find(({ path }) =>
+    path.endsWith(".js")
+  )?.path;
+  if (!javascriptPath) {
+    throw new Error("Navigation stub browser bundle did not emit JavaScript");
+  }
+  return readFile(javascriptPath);
+};
+
+const serveNavigationStubPage = () => {
+  const html = `<!doctype html>
+<html lang="en-US">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+  <body><div id="navigation-stub-root"></div></body>
+</html>`;
+  const server = Bun.serve({
+    fetch(request) {
+      if (request.method !== "GET") return new Response(null, { status: 405 });
+      return new Response(html, {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type": "text/html; charset=utf-8",
+        },
+      });
+    },
+    hostname: "localhost",
+    port: 0,
+  });
+  return {
+    baseUrl: `http://localhost:${server.port}`,
+    server,
+  } as const;
+};
+
+function SearchParamsSsrProbe() {
+  const searchParams = useSearchParams();
+  return (
+    <output data-search={searchParams.toString()}>
+      {searchParams.toString() || "empty"}:
+      {searchParams.get("section") ?? "missing"}
+    </output>
+  );
+}
+
+test("useSearchParams stub is safe for static SSR without a browser window", () => {
+  let markup = "";
+  expect(() => {
+    markup = renderToStaticMarkup(<SearchParamsSsrProbe />);
+  }).not.toThrow();
+  expect(markup).toContain('data-search=""');
+  expect(markup).toContain(">empty:missing<");
+});
+
 test("CLI parses the prescribed screen and adapter options", () => {
   const options = parseCliArgs([
     "--label",
@@ -1489,7 +1722,10 @@ test.serial.skipIf(!chromiumAvailable)(
           locale === "en-US" ? "My Workspace" : "Moje pracovni plocha";
         const probe = await withControlledPage(
           {
-            html: controlledHeaderFixture(heading),
+            html: controlledHeaderFixture(heading, {
+              headingFontSize: 23,
+              headingWidth: 142,
+            }),
             locale,
             width,
           },
@@ -1505,15 +1741,114 @@ test.serial.skipIf(!chromiumAvailable)(
         expect(probe.locale).toBe(locale);
         expect(probe.viewport.cssWidth).toBe(width);
         expect(probe.headerReadability.status).toBe("passed");
-        expect(probe.headerReadability.headingWidth).toBeGreaterThanOrEqual(
-          Math.min(160, width - 32)
+        expect(probe.headerReadability.minimumHeadingWidth).toBeGreaterThan(0);
+        expect(probe.headerReadability.minimumHeadingWidth).toBeLessThanOrEqual(
+          probe.headerReadability.headingWidth!
         );
+        expect(probe.headerReadability.headingWidth).toBe(142);
         expect(probe.headerReadability.lineCount).toBeGreaterThan(0);
-        expect(probe.headerReadability.computedStyle.fontSize).toBe("24px");
+        expect(probe.headerReadability.computedStyle.fontSize).toBe("23px");
         expect(probe.headerReadability.computedStyle.lineHeight).toBe("28px");
         expect(probe.headerReadability.singleWordGlyphWrapping).toBe(false);
         expect(probe.failures).toEqual([]);
+
+        const headingRect = probe.headerReadability.cssRect!;
+        expect(
+          probe.headerReadability.textRangeRects.every(
+            (rect) =>
+              rect.x >= headingRect.x - 1 &&
+              rect.y >= headingRect.y - 1 &&
+              rect.right <= headingRect.right + 1 &&
+              rect.bottom <= headingRect.bottom + 1
+          )
+        ).toBe(true);
       }
+    }
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "controlled fixture header probe accepts a genuinely contained one-layout-unit deficit",
+  async () => {
+    const headingWidth = 129.578125;
+    const probe = await withControlledPage(
+      {
+        html: controlledHeaderFixture("Můj Workspace", {
+          ...controlledFractionalHeadingOptions,
+          headingWidth,
+        }),
+        locale: "cs-CZ",
+        width: 320,
+      },
+      (page) =>
+        readInitialDomProbe(page, {
+          deviceScaleFactor: 1,
+          locale: "cs-CZ",
+          mode: "mobile",
+        })
+    );
+
+    const readability = probe.headerReadability;
+    const headingRect = readability.cssRect!;
+    expect(readability.status).toBe("passed");
+    expect(readability.minimumHeadingWidth! - readability.headingWidth!).toBe(
+      1 / 64
+    );
+    expect(readability.headingWidth).toBe(headingWidth);
+    expect(readability.lineCount).toBe(2);
+    expect(readability.wrapped).toBe(true);
+    expect(readability.singleWordGlyphWrapping).toBe(false);
+    expect(readability.wordGlyphWrapping).toBe(false);
+    expect(
+      readability.textRangeRects.every(
+        (rect) =>
+          rect.x >= headingRect.x &&
+          rect.y >= headingRect.y &&
+          rect.right <= headingRect.right &&
+          rect.bottom <= headingRect.bottom
+      )
+    ).toBe(true);
+    expect(readability.failures).toEqual([]);
+    expect(probe.failures).toEqual([]);
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "controlled fixture header probe rejects the original 123px case and a 129px orphaned last glyph",
+  async () => {
+    for (const headingWidth of [123, 129] as const) {
+      const probe = await withControlledPage(
+        {
+          html: controlledHeaderFixture("Můj Workspace", {
+            ...controlledFractionalHeadingOptions,
+            headingWidth,
+          }),
+          locale: "cs-CZ",
+          width: 320,
+        },
+        (page) =>
+          readInitialDomProbe(page, {
+            deviceScaleFactor: 1,
+            locale: "cs-CZ",
+            mode: "mobile",
+          })
+      );
+
+      const readability = probe.headerReadability;
+      expect(readability.status).toBe("failed");
+      expect(
+        readability.minimumHeadingWidth! - readability.headingWidth!
+      ).toBeGreaterThan(1 / 64);
+      expect(readability.singleWordGlyphWrapping).toBe(false);
+      expect(readability.wordGlyphWrapping).toBe(true);
+      expect(readability.failures).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("below minimum"),
+          expect.stringContaining("wrapped a word across glyph lines"),
+        ])
+      );
     }
   },
   120_000
@@ -1566,9 +1901,12 @@ test.serial.skipIf(!chromiumAvailable)(
 
       expect(probe.headerReadability.status).toBe("failed");
       expect(probe.headerReadability.headingWidth).toBe(32);
-      expect(probe.headerReadability.minimumHeadingWidth).toBe(160);
+      expect(probe.headerReadability.minimumHeadingWidth).toBeGreaterThan(0);
+      expect(probe.headerReadability.minimumHeadingWidth).toBeGreaterThan(
+        probe.headerReadability.headingWidth!
+      );
       expect(probe.headerReadability.failures).toEqual(
-        expect.arrayContaining([expect.stringContaining("below minimum 160px")])
+        expect.arrayContaining([expect.stringContaining("below minimum")])
       );
       expect(probe.headerReadability.wrapped).toBe(true);
       expect(probe.headerReadability.singleWordGlyphWrapping).toBe(true);
@@ -1600,6 +1938,7 @@ test.serial.skipIf(!chromiumAvailable)(
 
       expect(probe.headerReadability.status).toBe("failed");
       expect(probe.headerReadability.headingWidth).toBe(160);
+      expect(probe.headerReadability.minimumHeadingWidth).toBeGreaterThan(0);
       expect(probe.headerReadability.lineCount).toBe(1);
       expect(probe.headerReadability.cssRect?.right).toBeLessThanOrEqual(width);
       expect(probe.headerReadability.textRangeRects).toEqual(
@@ -2575,16 +2914,16 @@ test.serial.skipIf(!chromiumAvailable)(
       });
       expect(screen.desktop.viewport).toEqual({
         cssWidth: 1280,
-        cssHeight: 32,
+        cssHeight: 800,
         physicalWidth: 2560,
-        physicalHeight: 64,
+        physicalHeight: 1600,
         deviceScaleFactor: 2,
       });
       expect(screen.desktop.mainCssDimensions.width).toBeGreaterThan(1280);
       expect(screen.desktop.mainPhysicalDimensions.width).toBeGreaterThan(2560);
       expect(screen.desktop.comparison).toMatchObject({
         coordinateSpace: "reference-physical-pixels",
-        referencePhysicalPixels: { width: 64, height: 64 },
+        referencePhysicalPixels: { width: 2560, height: 1600 },
         actualCssPixels: screen.desktop.mainCssDimensions,
         actualPhysicalPixels: screen.desktop.mainPhysicalDimensions,
       });
@@ -3134,6 +3473,396 @@ test.serial.skipIf(!chromiumAvailable)(
     } finally {
       await rm(directory, { recursive: true, force: true });
       await rm(adapterDirectory, { recursive: true, force: true });
+    }
+  },
+  120_000
+);
+
+const assertPublicLegalCliRun = async ({
+  adapterPath,
+  label,
+  locale,
+}: {
+  readonly adapterPath: string;
+  readonly label: string;
+  readonly locale: "en-US" | "cs-CZ";
+}) => {
+  await mkdir(outputRoot, { recursive: true });
+  const directory = await mkdtemp(`${outputRoot}/account-visual-public-legal-`);
+  try {
+    const referencesDir = join(directory, "references");
+    await writeRegressionReference(referencesDir);
+    const report = await runRendererCli([
+      "--label",
+      label,
+      "--screen",
+      "legal",
+      "--adapter",
+      adapterPath,
+      "--locale",
+      locale,
+      "--references",
+      referencesDir,
+      "--output",
+      join(directory, "output"),
+    ]);
+    const execution = await Bun.file(
+      join(report.outputDirectory, "execution.json")
+    ).json();
+    const sourceManifest = await Bun.file(
+      join(report.outputDirectory, "source-manifest.json")
+    ).json();
+    const screen = report.screens[0]!;
+
+    expect(report.execution).toMatchObject({ status: "passed" });
+    expect(execution).toMatchObject({ status: "passed", findings: [] });
+    expect(report.scope.bypasses).toEqual([
+      "Build-time @/env alias supplies explicit undefined NEXT_PUBLIC_POSTHOG_HOST and NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN values for visual-only rendering; no real client environment or cookie stub is used.",
+      "The actual local vanilla-cookieconsent library is initialized with createConsentConfig(locale) and autoShow=false; its banner and analytics runtime are omitted, screenshots precede consent interaction with the default state unmutated, and no fake consent state or external network is used.",
+    ]);
+    expect(screen.coverage).toMatchObject({
+      status: "rendered",
+      source: "production-account-shell",
+      selection: "selected",
+      component: "PublicAccountLegal",
+    });
+    expect(screen.coverage.note).toContain(
+      "observed PublicAccountLegal component on the simulated public legal route"
+    );
+    expect(screen.coverage.note).toContain(
+      "this visual fixture does not prove route or authentication behavior"
+    );
+    expect(screen.desktop.routeComponent).toBe("PublicAccountLegal");
+    expect(screen.desktop.selection).toMatchObject({
+      requestedScreen: "legal",
+      status: "selected",
+      method: "desktop-nav-button",
+      selectedValue: "legal",
+      selectedAriaCurrent: "page",
+      targetSelector: "a[href$='/privacy-policy']",
+      targetVisible: true,
+    });
+
+    expect(
+      sourceManifest.bundleInputs.map(({ path }: { path: string }) => path)
+    ).toEqual(
+      expect.arrayContaining([
+        "apps/deskohub-workspace/features/account/components/public-account-legal.tsx",
+        "apps/deskohub-workspace/features/cookie-consent/components/cookie-settings-page.tsx",
+        "apps/deskohub-workspace/features/account/components/linked-account.tsx",
+      ])
+    );
+
+    for (const width of ["320", "375"] as const) {
+      const mobile = screen.mobile[width];
+      expect(mobile.selection).toMatchObject({
+        requestedScreen: "legal",
+        status: "selected",
+        method: "mobile-nav-button",
+        selectedValue: "legal",
+        selectedAriaCurrent: "page",
+        targetSelector: "a[href$='/privacy-policy']",
+        targetVisible: true,
+      });
+      expect(mobile.focusSelection).toMatchObject({
+        requestedScreen: "legal",
+        status: "selected",
+        selectedValue: "legal",
+        selectedAriaCurrent: "page",
+        targetVisible: true,
+      });
+      expect(mobile.sectionNavigation).toEqual({
+        status: "passed",
+        method: "mobile-nav-button",
+        requestedScreen: "legal",
+        alternateScreen: "profile",
+        selectedBefore: "legal",
+        selectedAlternate: "profile",
+        selectedAfter: "legal",
+        failures: [],
+      });
+      expect(mobile.publicLegalNavigation).toEqual({
+        status: "passed",
+        simulation: "visual-fixture-only",
+        authentication: "not-proved",
+        legalPathname: `/${locale}/account/legal`,
+        cookiePreferencesVisible: true,
+        archiveDisabled: true,
+        consentChanges: {
+          analyticsEnabled: true,
+          analyticsDisabled: true,
+          acceptAll: true,
+          rejectAll: true,
+          persistedAfterRouteReturn: true,
+        },
+        returns: [
+          {
+            section: "profile",
+            pathname: `/${locale}/account`,
+            search: "?section=profile",
+            selected: true,
+            targetVisible: true,
+            metadataScreen: "profile",
+          },
+          {
+            section: "billing",
+            pathname: `/${locale}/account`,
+            search: "?section=billing",
+            selected: true,
+            targetVisible: true,
+            metadataScreen: "billing",
+          },
+        ],
+        failures: [],
+      });
+      expect(mobile.draftPersistence).toMatchObject({
+        status: "passed",
+        method: "fresh-real-page-mobile-menu",
+        scope: "private-account-sections",
+        submitted: false,
+        firstName: "Ada Draft",
+        companyName: "Example Draft s.r.o.",
+        failures: [],
+      });
+      expect(mobile.draftPersistence.note).toBe(
+        "Draft persistence is checked only across private account sections; drafts across the public legal route are not claimed."
+      );
+    }
+
+    if (adapterPath.endsWith("populated-adapter.tsx")) {
+      expect(report.nativeValidation).toMatchObject({
+        status: "passed",
+        method: "fresh-browser-context-native-request-submit",
+        context: "fresh-context-after-original-capture",
+      });
+    } else {
+      expect(report.nativeValidation).toBeNull();
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+};
+
+test.serial.skipIf(!chromiumAvailable)(
+  "default adapter captures the public legal route in English",
+  async () => {
+    await assertPublicLegalCliRun({
+      adapterPath: join(import.meta.dir, "default-adapter.tsx"),
+      label: "public-legal-default-en",
+      locale: "en-US",
+    });
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "default adapter captures the public legal route in Czech",
+  async () => {
+    await assertPublicLegalCliRun({
+      adapterPath: join(import.meta.dir, "default-adapter.tsx"),
+      label: "public-legal-default-cs",
+      locale: "cs-CZ",
+    });
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "populated adapter captures the public legal route in English",
+  async () => {
+    await assertPublicLegalCliRun({
+      adapterPath: join(import.meta.dir, "populated-adapter.tsx"),
+      label: "public-legal-populated-en",
+      locale: "en-US",
+    });
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "populated adapter captures the public legal route in Czech",
+  async () => {
+    await assertPublicLegalCliRun({
+      adapterPath: join(import.meta.dir, "populated-adapter.tsx"),
+      label: "public-legal-populated-cs",
+      locale: "cs-CZ",
+    });
+  },
+  120_000
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "useSearchParams stub follows browser history without confusing screen queries",
+  async () => {
+    await mkdir(outputRoot, { recursive: true });
+    const directory = await mkdtemp(
+      `${outputRoot}/account-visual-navigation-stub-`
+    );
+    const server = serveNavigationStubPage();
+    const pageErrors: string[] = [];
+    try {
+      const javascript = await buildNavigationStubBrowserEntry(directory);
+      await withControlledPage(
+        {
+          html: "<div></div>",
+          locale: "en-US",
+          width: 375,
+        },
+        async (page) => {
+          page.on("pageerror", (error) => pageErrors.push(error.message));
+          await page.goto(`${server.baseUrl}/en-US/account?screen=legal`, {
+            timeout: 5_000,
+            waitUntil: "load",
+          });
+          await page.addScriptTag({
+            content: javascript.toString("utf8"),
+            type: "module",
+          });
+          await page.locator("#navigation-search").waitFor({
+            state: "attached",
+            timeout: 5_000,
+          });
+
+          const readState = async () => {
+            const url = new URL(page.url());
+            return {
+              copy:
+                (await page.locator("#navigation-copy").textContent()) ?? "",
+              path: url.pathname,
+              refreshCount:
+                (await page
+                  .locator("#navigation-refresh-count")
+                  .textContent()) ?? "",
+              search:
+                (await page.locator("#navigation-search").textContent()) ?? "",
+              section:
+                (await page.locator("#navigation-section").textContent()) ?? "",
+            } as const;
+          };
+          const waitForState = async (expected: {
+            readonly copy: string;
+            readonly path: string;
+            readonly refreshCount: string;
+            readonly search: string;
+            readonly section: string;
+          }) => {
+            await page.waitForFunction(
+              (state) => {
+                const text = (id: string) =>
+                  document.getElementById(id)?.textContent ?? "";
+                return (
+                  window.location.pathname === state.path &&
+                  window.location.search ===
+                    (state.search === "empty" ? "" : `?${state.search}`) &&
+                  text("navigation-copy") === state.copy &&
+                  text("navigation-refresh-count") === state.refreshCount &&
+                  text("navigation-search") === state.search &&
+                  text("navigation-section") === state.section
+                );
+              },
+              expected,
+              { timeout: 5_000 }
+            );
+            return readState();
+          };
+
+          expect(
+            await waitForState({
+              copy: "none",
+              path: "/en-US/account",
+              refreshCount: "0",
+              search: "screen=legal",
+              section: "missing",
+            })
+          ).toMatchObject({
+            path: "/en-US/account",
+            search: "screen=legal",
+            section: "missing",
+          });
+
+          await page
+            .getByRole("button", { name: "Mutate params copy" })
+            .click();
+          expect(
+            await waitForState({
+              copy: "screen=legal&section=mutated",
+              path: "/en-US/account",
+              refreshCount: "0",
+              search: "screen=legal",
+              section: "missing",
+            })
+          ).toMatchObject({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account",
+            search: "screen=legal",
+            section: "missing",
+          });
+
+          await page.getByRole("button", { name: "Push profile" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account",
+            refreshCount: "0",
+            search: "section=profile",
+            section: "profile",
+          });
+
+          await page.getByRole("button", { name: "Replace billing" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account",
+            refreshCount: "0",
+            search: "section=billing",
+            section: "billing",
+          });
+
+          await page.getByRole("button", { name: "Push legal" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account/legal",
+            refreshCount: "0",
+            search: "empty",
+            section: "missing",
+          });
+
+          await page.getByRole("button", { name: "Back" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account",
+            refreshCount: "0",
+            search: "section=billing",
+            section: "billing",
+          });
+
+          await page.getByRole("button", { name: "Forward" }).click();
+          await waitForState({
+            copy: "screen=legal&section=mutated",
+            path: "/en-US/account/legal",
+            refreshCount: "0",
+            search: "empty",
+            section: "missing",
+          });
+
+          await page.getByRole("button", { name: "Refresh" }).click();
+          expect(
+            await waitForState({
+              copy: "screen=legal&section=mutated",
+              path: "/en-US/account/legal",
+              refreshCount: "1",
+              search: "empty",
+              section: "missing",
+            })
+          ).toMatchObject({
+            path: "/en-US/account/legal",
+            search: "empty",
+            section: "missing",
+          });
+        }
+      );
+      expect(pageErrors).toEqual([]);
+    } finally {
+      server.server.stop(true);
+      await rm(directory, { recursive: true, force: true });
     }
   },
   120_000

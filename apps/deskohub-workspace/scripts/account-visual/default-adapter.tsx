@@ -1,5 +1,5 @@
-import { AccountPage } from "@/features/account/components/account-page";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
+import { AccountVisualRoute } from "./account-route";
 import {
   type AccountVisualAdapterProps,
   defaultAccountVisualAdapterMetadata,
@@ -24,7 +24,7 @@ export const accountVisualFixture = linkedFixture;
 export const accountVisualAdapterMetadata = defaultAccountVisualAdapterMetadata;
 
 export function DefaultAccountAdapter({ locale }: AccountVisualAdapterProps) {
-  return <AccountPage locale={locale} state={linkedFixture} />;
+  return <AccountVisualRoute locale={locale} state={linkedFixture} />;
 }
 
 export default DefaultAccountAdapter;
