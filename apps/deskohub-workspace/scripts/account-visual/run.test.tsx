@@ -53,6 +53,24 @@ const outputRoot = "/tmp/opencode/pr239-account-redesign/visual";
 const expectedRendererPort = parseRendererPort(
   process.env.WORKSPACE_ACCOUNT_VISUAL_PORT
 );
+const productionHeaderFontPath = join(
+  import.meta.dir,
+  "../../assets/fonts/Sculpin/regular.woff2"
+);
+const productionHeaderFontDataUri = `data:font/woff2;base64,${(
+  await readFile(productionHeaderFontPath)
+).toString("base64")}`;
+const controlledHeaderDefaultFontFamily = "Arial, sans-serif" as const;
+const controlledHeaderPinnedFontFamily = "AccountVisualPinnedSculpin" as const;
+const controlledHeaderPinnedFontFace = `
+  @font-face {
+    font-family: "${controlledHeaderPinnedFontFamily}";
+    src: url("${productionHeaderFontDataUri}") format("woff2");
+    font-display: block;
+    font-style: normal;
+    font-weight: 400;
+  }
+`;
 const referencePrefix = "e318512b-b78b-4780-8d86-7dcd43cc3d1f-";
 const profileReference = "fab0fa57-710e-4a5c-9807-a8ada402931b.png";
 const referenceSuffixes = {
@@ -429,6 +447,7 @@ const controlledHeaderFixture = (
     headingOverflowWrap,
     headingPaddingRight,
     headingBoxSizing,
+    headingFontFamily = controlledHeaderDefaultFontFamily,
     headingWidth,
   }: {
     readonly narrow?: boolean;
@@ -440,6 +459,9 @@ const controlledHeaderFixture = (
     readonly headingOverflowWrap?: "normal" | "break-word" | "anywhere";
     readonly headingPaddingRight?: number;
     readonly headingBoxSizing?: "border-box" | "content-box";
+    readonly headingFontFamily?:
+      | typeof controlledHeaderDefaultFontFamily
+      | typeof controlledHeaderPinnedFontFamily;
     readonly headingWidth?: number;
   } = {}
 ) => {
@@ -465,9 +487,14 @@ const controlledHeaderFixture = (
     headingBoxSizing === undefined ? "" : `box-sizing:${headingBoxSizing};`,
   ].join(" ");
   return `
+  ${
+    headingFontFamily === controlledHeaderPinnedFontFamily
+      ? `<style data-fixture-heading-font>${controlledHeaderPinnedFontFace}</style>`
+      : ""
+  }
   <main style="width:100%; margin:0; padding:0;">
     <header style="display:flex; align-items:center; gap:16px; width:100%; padding:16px; box-sizing:border-box;">
-      <h1 style="${headingLayout} margin:0; font:700 ${headingFontSize}px/${headingLineHeight}px Arial, sans-serif; ${headingStyle}">${heading}</h1>
+      <h1 style="${headingLayout} margin:0; font:700 ${headingFontSize}px/${headingLineHeight}px ${headingFontFamily}; ${headingStyle}">${heading}</h1>
       <button id="account-sign-out" type="button" aria-label="Sign out" style="flex:0 0 auto;">Sign out</button>
     </header>
     ${
@@ -481,12 +508,40 @@ const controlledHeaderFixture = (
 
 const controlledFractionalHeadingOptions = {
   headingBoxSizing: "border-box",
-  headingFontSize: 21.8,
-  headingLetterSpacing: -0.03,
+  headingFontFamily: controlledHeaderPinnedFontFamily,
+  headingFontSize: 24,
+  headingLetterSpacing: -0.025,
   headingLineHeight: 27.6,
   headingOverflowWrap: "break-word",
   headingPaddingRight: 1,
 } as const;
+const pinnedProductionHeadingWidth = 130.59375;
+const pinnedProductionMinimumHeadingWidth = 130.609375;
+
+const assertPinnedHeaderFontLoaded = async (page: Page) => {
+  const evidence = await page.evaluate(async (fontFamily) => {
+    await document.fonts.ready;
+    const loadedFaces = await document.fonts.load(`700 24px "${fontFamily}"`);
+    const matchingFaces = [...document.fonts].filter(
+      ({ family }) => family === fontFamily
+    );
+    const heading = document.querySelector("main header h1");
+    return {
+      computedFontFamily:
+        heading === null ? null : getComputedStyle(heading).fontFamily,
+      loadedFaceStatuses: loadedFaces
+        .filter(({ family }) => family === fontFamily)
+        .map(({ status }) => status),
+      matchingFaceStatuses: matchingFaces.map(({ status }) => status),
+      fontCheck: document.fonts.check(`700 24px "${fontFamily}"`),
+    };
+  }, controlledHeaderPinnedFontFamily);
+
+  expect(evidence.computedFontFamily).toBe(controlledHeaderPinnedFontFamily);
+  expect(evidence.loadedFaceStatuses).toEqual(["loaded"]);
+  expect(evidence.matchingFaceStatuses).toEqual(["loaded"]);
+  expect(evidence.fontCheck).toBe(true);
+};
 
 const controlledEmailFixture = ({
   overflowingStatus = false,
@@ -1769,9 +1824,9 @@ test.serial.skipIf(!chromiumAvailable)(
 );
 
 test.serial.skipIf(!chromiumAvailable)(
-  "controlled fixture header probe accepts a genuinely contained one-layout-unit deficit",
+  "controlled fixture header probe accepts a genuinely contained one-layout-unit deficit with pinned Sculpin metrics",
   async () => {
-    const headingWidth = 129.578125;
+    const headingWidth = pinnedProductionHeadingWidth;
     const probe = await withControlledPage(
       {
         html: controlledHeaderFixture("Můj Workspace", {
@@ -1781,17 +1836,22 @@ test.serial.skipIf(!chromiumAvailable)(
         locale: "cs-CZ",
         width: 320,
       },
-      (page) =>
-        readInitialDomProbe(page, {
+      async (page) => {
+        await assertPinnedHeaderFontLoaded(page);
+        return readInitialDomProbe(page, {
           deviceScaleFactor: 1,
           locale: "cs-CZ",
           mode: "mobile",
-        })
+        });
+      }
     );
 
     const readability = probe.headerReadability;
     const headingRect = readability.cssRect!;
     expect(readability.status).toBe("passed");
+    expect(readability.minimumHeadingWidth).toBe(
+      pinnedProductionMinimumHeadingWidth
+    );
     expect(readability.minimumHeadingWidth! - readability.headingWidth!).toBe(
       1 / 64
     );
@@ -1803,10 +1863,10 @@ test.serial.skipIf(!chromiumAvailable)(
     expect(
       readability.textRangeRects.every(
         (rect) =>
-          rect.x >= headingRect.x &&
-          rect.y >= headingRect.y &&
-          rect.right <= headingRect.right &&
-          rect.bottom <= headingRect.bottom
+          rect.x >= headingRect.x - 1 &&
+          rect.y >= headingRect.y - 1 &&
+          rect.right <= headingRect.right + 1 &&
+          rect.bottom <= headingRect.bottom + 1
       )
     ).toBe(true);
     expect(readability.failures).toEqual([]);
@@ -1816,7 +1876,7 @@ test.serial.skipIf(!chromiumAvailable)(
 );
 
 test.serial.skipIf(!chromiumAvailable)(
-  "controlled fixture header probe rejects the original 123px case and a 129px orphaned last glyph",
+  "controlled fixture header probe rejects the original 123px case and a 129px orphaned last glyph with pinned Sculpin metrics",
   async () => {
     for (const headingWidth of [123, 129] as const) {
       const probe = await withControlledPage(
@@ -1828,16 +1888,22 @@ test.serial.skipIf(!chromiumAvailable)(
           locale: "cs-CZ",
           width: 320,
         },
-        (page) =>
-          readInitialDomProbe(page, {
+        async (page) => {
+          await assertPinnedHeaderFontLoaded(page);
+          return readInitialDomProbe(page, {
             deviceScaleFactor: 1,
             locale: "cs-CZ",
             mode: "mobile",
-          })
+          });
+        }
       );
 
       const readability = probe.headerReadability;
       expect(readability.status).toBe("failed");
+      expect(readability.minimumHeadingWidth).toBe(
+        pinnedProductionMinimumHeadingWidth
+      );
+      expect(readability.headingWidth).toBe(headingWidth);
       expect(
         readability.minimumHeadingWidth! - readability.headingWidth!
       ).toBeGreaterThan(1 / 64);

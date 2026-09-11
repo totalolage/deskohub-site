@@ -101,6 +101,22 @@ const validTargets = [
     fullPage: true,
   },
   {
+    filename: "public-legal-desktop.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "public-legal-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "public-legal-mobile.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "public-legal-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
     filename: "linked-danger-desktop.png",
     path: "/en-US/account",
     query: "",
@@ -618,6 +634,16 @@ describe("account review screenshot capture", () => {
       name: "linked legal at a foreign origin",
       target: "linked-legal-desktop",
       url: "https://other.example.test/en-US/account/legal",
+    },
+    {
+      name: "public legal at a foreign origin",
+      target: "public-legal-desktop",
+      url: "https://other.example.test/en-US/account/legal",
+    },
+    {
+      name: "public legal with a credential query",
+      target: "public-legal-desktop",
+      url: `${baseUrl}/en-US/account/legal?token=synthetic-secret-token`,
     },
     {
       name: "linked legal with a hash",

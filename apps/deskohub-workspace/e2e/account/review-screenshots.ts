@@ -15,6 +15,8 @@ export type AccountReviewTarget =
   | "linked-profile-desktop"
   | "linked-billing-desktop"
   | "linked-legal-desktop"
+  | "public-legal-desktop"
+  | "public-legal-mobile"
   | "linked-danger-desktop"
   | "support-desktop"
   | "sign-in-accepted-desktop"
@@ -81,6 +83,16 @@ const accountReviewTargetMetadata = {
     filename: "linked-legal-desktop.png",
     path: "/en-US/account/legal",
     viewport: { height: 1000, width: 1440 },
+  },
+  "public-legal-desktop": {
+    filename: "public-legal-desktop.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 1000, width: 1440 },
+  },
+  "public-legal-mobile": {
+    filename: "public-legal-mobile.png",
+    path: "/en-US/account/legal",
+    viewport: { height: 900, width: 375 },
   },
   "linked-danger-desktop": {
     filename: "linked-danger-desktop.png",

@@ -1,5 +1,6 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
+import { captureAccountReview } from "../account/review-screenshots";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { enablePreviewAccess, requireBaseUrl } from "./navigation-test-helpers";
 
@@ -24,6 +25,10 @@ const viewports = [
   { height: 1_000, name: "desktop", width: 1_440 },
   { height: 900, name: "mobile 375", width: 375 },
 ] as const;
+const publicLegalReviewTargetByViewport = {
+  desktop: "public-legal-desktop",
+  "mobile 375": "public-legal-mobile",
+} as const;
 
 test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
@@ -47,6 +52,11 @@ for (const viewport of viewports) {
 
     await dismissConsentModal(page);
     await expectPublicAccountLegal(page);
+    await captureAccountReview(
+      page,
+      requireBaseUrl(baseURL),
+      publicLegalReviewTargetByViewport[viewport.name]
+    );
   });
 }
 
