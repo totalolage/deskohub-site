@@ -40,6 +40,23 @@ function MockNextLink({
 
 mock.module("next/link", () => ({ default: MockNextLink }));
 
+mock.module("@/features/legal/components/marketing-preferences-form", () => ({
+  MarketingPreferencesForm: ({
+    accountsEnabled,
+    state,
+  }: {
+    readonly accountsEnabled?: boolean;
+    readonly state: { readonly status: string };
+  }) => (
+    <section
+      data-marketing-preferences-accounts-enabled={String(accountsEnabled)}
+      data-testid="legal-marketing-preferences"
+    >
+      {state.status}
+    </section>
+  ),
+}));
+
 let acceptedCategories = ["necessary"];
 let onConsentChange: (() => void) | undefined;
 
@@ -225,4 +242,52 @@ test("keeps consent controls wrapped and free of page-only shells", () => {
   }).parentElement;
   expect(actions?.className).toContain("flex-wrap");
   expect(actions?.className).toContain("min-w-0");
+});
+
+test("defaults the optional marketing preference state to unavailable", () => {
+  const view = renderLegalScreen("en-US");
+
+  expect(view.getByTestId("legal-marketing-preferences").textContent).toBe(
+    "unavailable"
+  );
+});
+
+test("passes account availability to the marketing preference form", () => {
+  const view = render(
+    <>
+      <CookieConsentProvider locale="en-US" />
+      <LegalScreen
+        accountsEnabled={false}
+        locale="en-US"
+        strings={legalScreenCopy["en-US"]}
+      />
+    </>
+  );
+
+  expect(
+    view
+      .getByTestId("legal-marketing-preferences")
+      .getAttribute("data-marketing-preferences-accounts-enabled")
+  ).toBe("false");
+});
+
+test("passes the rendered marketing preference state through", async () => {
+  const view = render(
+    <>
+      <CookieConsentProvider locale="cs-CZ" />
+      <LegalScreen
+        locale="cs-CZ"
+        marketingPreferences={{
+          context: "synthetic-link-context",
+          source: "link",
+          status: "active",
+        }}
+        strings={legalScreenCopy["cs-CZ"]}
+      />
+    </>
+  );
+
+  expect(view.getByTestId("legal-marketing-preferences").textContent).toBe(
+    "active"
+  );
 });
