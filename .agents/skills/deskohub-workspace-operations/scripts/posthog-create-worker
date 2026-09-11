@@ -3,6 +3,7 @@ set -euo pipefail
 
 issue_number="${1:?Usage: posthog-create-worker <issue-number>}"
 [[ "$issue_number" =~ ^[1-9][0-9]*$ ]]
+"${POSTHOG_ISSUE_OPEN:-/home/dev/.local/libexec/deskohub-posthog-issue-open}" "$issue_number"
 
 t3_bin="${T3_BIN:-/home/dev/.local/bin/t3}"
 t3_base_dir="${T3_BASE_DIR:-/home/dev/.t3}"
