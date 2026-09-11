@@ -6,6 +6,17 @@ CREATE TABLE "customer_account_links" (
 	CONSTRAINT "customer_account_links_customer_check" CHECK (btrim("dotypos_customer_id") <> '')
 );
 --> statement-breakpoint
+CREATE TABLE "customer_marketing_management_tokens" (
+	"token_hash" text PRIMARY KEY,
+	"dotypos_customer_id" text NOT NULL,
+	"purpose" text NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	"revoked_at" timestamp with time zone,
+	CONSTRAINT "customer_marketing_management_tokens_token_hash_check" CHECK ("token_hash" ~ '^[0-9a-f]{64}$'),
+	CONSTRAINT "customer_marketing_management_tokens_customer_check" CHECK (btrim("dotypos_customer_id") <> ''),
+	CONSTRAINT "customer_marketing_management_tokens_purpose_check" CHECK ("purpose" in ('link', 'session'))
+);
+--> statement-breakpoint
 CREATE TABLE "auth"."account" (
 	"id" text PRIMARY KEY,
 	"issuer" text NOT NULL,

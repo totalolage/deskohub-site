@@ -9,14 +9,17 @@ import {
 } from "@/features/account/components/shell/account-shell";
 import { SignOutButton } from "@/features/account/components/sign-out-button";
 import { type Locale, m } from "@/features/i18n";
+import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 
 type PublicAccountLegalProps = {
   readonly locale: Locale;
+  readonly marketingPreferences?: MarketingPreferencesState;
   readonly signedIn: boolean;
 };
 
 export function PublicAccountLegal({
   locale,
+  marketingPreferences,
   signedIn,
 }: PublicAccountLegalProps) {
   const router = useRouter();
@@ -38,7 +41,11 @@ export function PublicAccountLegal({
       signOut={signedIn ? <SignOutButton locale={locale} /> : null}
       title={m.accountTitle({}, { locale })}
     >
-      <LegalScreen locale={locale} strings={copy.legal} />
+      <LegalScreen
+        locale={locale}
+        marketingPreferences={marketingPreferences}
+        strings={copy.legal}
+      />
     </AccountShell>
   );
 }

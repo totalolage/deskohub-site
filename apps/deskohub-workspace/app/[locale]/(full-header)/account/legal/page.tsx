@@ -7,6 +7,7 @@ import { AccountLoading } from "@/features/account/components/account-loading";
 import { PublicAccountLegal } from "@/features/account/components/public-account-legal";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { getMarketingPreferences } from "@/features/legal/marketing-preferences.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -41,6 +42,13 @@ async function PublicAccountLegalPageContent({
     runWorkspaceEffect("account.legal", { boundary: "page" })
   );
   const signedIn = Result.isSuccess(session) && session.success !== null;
+  const marketingPreferences = await getMarketingPreferences(locale);
 
-  return <PublicAccountLegal locale={locale} signedIn={signedIn} />;
+  return (
+    <PublicAccountLegal
+      locale={locale}
+      marketingPreferences={marketingPreferences}
+      signedIn={signedIn}
+    />
+  );
 }

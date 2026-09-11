@@ -23,10 +23,21 @@ mock.module("@/features/account/auth.client", () => ({
 
 mock.module("@/features/account/components/legal/legal-screen", () => ({
   LegalScreen: ({
+    marketingPreferences,
     strings,
   }: {
+    readonly marketingPreferences?: {
+      readonly status: string;
+    };
     readonly strings: { readonly title: string };
-  }) => <h2>{strings.title}</h2>,
+  }) => (
+    <>
+      <h2>{strings.title}</h2>
+      <output data-testid="public-account-marketing-preferences">
+        {marketingPreferences?.status ?? "unavailable"}
+      </output>
+    </>
+  ),
 }));
 
 function getDesktopSectionNavigation(view: {
@@ -148,6 +159,25 @@ describe("PublicAccountLegal", () => {
       expect(workspaceRouterPush).not.toHaveBeenCalled();
     }
   );
+
+  test("passes an optional marketing preference state to LegalScreen", async () => {
+    const { PublicAccountLegal } = await import("./public-account-legal");
+    const view = render(
+      <PublicAccountLegal
+        locale="en-US"
+        marketingPreferences={{
+          context: "synthetic-account-context",
+          source: "account",
+          status: "active",
+        }}
+        signedIn
+      />
+    );
+
+    expect(
+      view.getByTestId("public-account-marketing-preferences").textContent
+    ).toBe("active");
+  });
 
   test.each(["en-US", "cs-CZ"] as const)(
     "routes signed-in %s visitors to the private account sections",

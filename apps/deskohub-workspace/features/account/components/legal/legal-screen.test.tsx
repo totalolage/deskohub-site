@@ -40,6 +40,16 @@ function MockNextLink({
 
 mock.module("next/link", () => ({ default: MockNextLink }));
 
+mock.module("@/features/legal/components/marketing-preferences-form", () => ({
+  MarketingPreferencesForm: ({
+    state,
+  }: {
+    readonly state: { readonly status: string };
+  }) => (
+    <section data-testid="legal-marketing-preferences">{state.status}</section>
+  ),
+}));
+
 let acceptedCategories = ["necessary"];
 let onConsentChange: (() => void) | undefined;
 
@@ -225,4 +235,33 @@ test("keeps consent controls wrapped and free of page-only shells", () => {
   }).parentElement;
   expect(actions?.className).toContain("flex-wrap");
   expect(actions?.className).toContain("min-w-0");
+});
+
+test("defaults the optional marketing preference state to unavailable", () => {
+  const view = renderLegalScreen("en-US");
+
+  expect(view.getByTestId("legal-marketing-preferences").textContent).toBe(
+    "unavailable"
+  );
+});
+
+test("passes the rendered marketing preference state through", async () => {
+  const view = render(
+    <>
+      <CookieConsentProvider locale="cs-CZ" />
+      <LegalScreen
+        locale="cs-CZ"
+        marketingPreferences={{
+          context: "synthetic-link-context",
+          source: "link",
+          status: "active",
+        }}
+        strings={legalScreenCopy["cs-CZ"]}
+      />
+    </>
+  );
+
+  expect(view.getByTestId("legal-marketing-preferences").textContent).toBe(
+    "active"
+  );
 });

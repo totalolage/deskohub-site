@@ -7,12 +7,12 @@ export const legalScreenCopy = {
     title: "Legal, privacy & GDPR consents",
     analyticsTitle: "Web & usage analytics",
     analyticsDescription:
-      "Analytics preferences cannot be viewed or changed from your account.",
+      "Manage analytics and marketing cookies for this browser in cookie settings. These browser settings are separate from marketing communications consent.",
     marketingTitle: "Marketing & community communications",
     marketingDescription:
-      "Communications consent cannot be viewed or changed from your account.",
+      "Manage marketing communications for the customer on the account privacy page when your verified account is linked to that customer record. A dedicated customer-specific link in a future marketing message can also let you opt in or withdraw. Contact support if neither option is available.",
     preferencesUnavailable:
-      "Account consent settings are not available here. Use cookie settings to manage this browser's cookies.",
+      "Manage this browser's cookies in cookie settings. Manage marketing communications on the account privacy page when your verified account is linked to the customer record, through a dedicated customer-specific link in a future marketing message, or by contacting support.",
     unavailable: "Unavailable",
     archiveTitle: "Your personal data archive",
     archiveDescription:
@@ -24,12 +24,12 @@ export const legalScreenCopy = {
     title: "Právní informace, soukromí a souhlasy GDPR",
     analyticsTitle: "Analytika webu a používání",
     analyticsDescription:
-      "Nastavení analytiky nelze v účtu zobrazit ani změnit.",
+      "Analytické a marketingové cookies tohoto prohlížeče spravujte v nastavení cookies. Nastavení prohlížeče je oddělené od souhlasu s marketingovou komunikací.",
     marketingTitle: "Marketingová a komunitní sdělení",
     marketingDescription:
-      "Souhlas se zasíláním sdělení nelze v účtu zobrazit ani změnit.",
+      "Marketingová sdělení pro zákazníka můžete spravovat na stránce ochrany osobních údajů v účtu, pokud je váš ověřený účet propojený s tímto záznamem zákazníka. Vyhrazený odkaz pro konkrétního zákazníka v budoucím marketingovém sdělení vám také může umožnit souhlas udělit nebo odvolat. Pokud žádná možnost není dostupná, kontaktujte podporu.",
     preferencesUnavailable:
-      "Nastavení souhlasů v účtu zde není dostupné. Soubory cookie tohoto prohlížeče můžete spravovat v nastavení cookies.",
+      "Cookies tohoto prohlížeče spravujte v nastavení cookies. Marketingová sdělení spravujte na stránce ochrany osobních údajů v účtu, pokud je váš ověřený účet propojený se záznamem zákazníka, prostřednictvím vyhrazeného odkazu pro konkrétního zákazníka v budoucím marketingovém sdělení nebo kontaktováním podpory.",
     unavailable: "Nedostupné",
     archiveTitle: "Archiv vašich osobních údajů",
     archiveDescription:
