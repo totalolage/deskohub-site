@@ -1434,6 +1434,144 @@ describe("ProfileForm", () => {
     expect(view.getByLabelText("City")).toBeTruthy();
   });
 
+  test("keeps billing address controls in responsive grid cells", async () => {
+    updateCustomerProfile.mockImplementationOnce(() =>
+      Promise.resolve({
+        validationErrors: {
+          formErrors: [],
+          fieldErrors: {
+            billing: [
+              "companyName",
+              "companyId",
+              "vatId",
+              "addressLine1",
+              "addressLine2",
+              "city",
+              "zip",
+              "country",
+            ],
+          },
+        },
+      })
+    );
+    const { ProfileForm } = await import("./profile-form");
+
+    const view = render(
+      <ProfileForm
+        mode="edit"
+        locale="en-US"
+        email="ada@example.test"
+        profile={businessProfile}
+      />
+    );
+    const form = view.container.querySelector(
+      "#account-profile-form"
+    ) as HTMLFormElement;
+
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    const fields = [
+      [
+        "Company name",
+        "account-profile-billing-company-name",
+        "billingCompanyName",
+        "Original Company",
+      ],
+      [
+        "Company ID",
+        "account-profile-billing-company-id",
+        "billingCompanyId",
+        "12345678",
+      ],
+      ["VAT ID", "account-profile-billing-vat-id", "billingVatId", ""],
+      [
+        "Street and number",
+        "account-profile-billing-address-line1",
+        "billingAddressLine1",
+        "Original Street 1",
+      ],
+      [
+        "Apartment, suite",
+        "account-profile-billing-address-line2",
+        "billingAddressLine2",
+        "",
+      ],
+      ["City", "account-profile-billing-city", "billingCity", "Prague"],
+      ["Postal code", "account-profile-billing-zip", "billingZip", "11000"],
+      [
+        "Country code",
+        "account-profile-billing-country",
+        "billingCountry",
+        "CZ",
+      ],
+    ] as const;
+
+    expect(
+      Array.from(
+        view.container.querySelectorAll<HTMLInputElement>(
+          "input[name^='billing']"
+        ),
+        (input) => input.name
+      )
+    ).toEqual(fields.map(([, , name]) => name));
+
+    for (const [label, id, name, value] of fields) {
+      const input = view.getByLabelText(label) as HTMLInputElement;
+      expect(view.container.querySelectorAll(`#${id}`)).toHaveLength(1);
+      expect(input.id).toBe(id);
+      expect(input.name).toBe(name);
+      expect(input.value).toBe(value);
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(input.getAttribute("aria-describedby")).toBe(`${id}-error`);
+      expect(view.container.querySelectorAll(`#${id}-error`)).toHaveLength(1);
+    }
+    expect(
+      (view.getByLabelText("Country code") as HTMLInputElement).getAttribute(
+        "autocomplete"
+      )
+    ).toBe("country");
+
+    const addressLine1 = view.getByLabelText(
+      "Street and number"
+    ) as HTMLInputElement;
+    const addressLine2 = view.getByLabelText(
+      "Apartment, suite"
+    ) as HTMLInputElement;
+    const city = view.getByLabelText("City") as HTMLInputElement;
+    const zip = view.getByLabelText("Postal code") as HTMLInputElement;
+    const country = view.getByLabelText("Country code") as HTMLInputElement;
+    const addressLine1Wrapper = addressLine1.parentElement!;
+    const addressLine2Wrapper = addressLine2.parentElement!;
+    const cityWrapper = city.parentElement!;
+    const zipWrapper = zip.parentElement!;
+    const countryWrapper = country.parentElement!;
+    const outerGrid = addressLine1Wrapper.parentElement!;
+    const zipCountryGrid = zipWrapper.parentElement!;
+
+    expect(addressLine1Wrapper.classList.contains("sm:col-span-2")).toBe(false);
+    expect(addressLine2Wrapper.classList.contains("sm:col-span-2")).toBe(false);
+    expect(addressLine1Wrapper.classList.contains("min-w-0")).toBe(true);
+    expect(addressLine2Wrapper.classList.contains("min-w-0")).toBe(true);
+    expect(addressLine1Wrapper.parentElement).toBe(outerGrid);
+    expect(addressLine2Wrapper.parentElement).toBe(outerGrid);
+    expect(addressLine1Wrapper.nextElementSibling).toBe(addressLine2Wrapper);
+    expect(outerGrid.classList.contains("grid")).toBe(true);
+    expect(outerGrid.classList.contains("sm:grid-cols-2")).toBe(true);
+    expect(outerGrid.classList.contains("grid-cols-2")).toBe(false);
+    expect(cityWrapper.nextElementSibling).toBe(zipCountryGrid);
+    expect(zipCountryGrid.parentElement).toBe(outerGrid);
+    expect(zipCountryGrid.classList.contains("min-w-0")).toBe(true);
+    expect(zipCountryGrid.classList.contains("grid")).toBe(true);
+    expect(zipCountryGrid.classList.contains("gap-5")).toBe(true);
+    expect(zipCountryGrid.classList.contains("sm:grid-cols-2")).toBe(true);
+    expect(zipCountryGrid.classList.contains("grid-cols-2")).toBe(false);
+    expect(zipWrapper.parentElement).toBe(zipCountryGrid);
+    expect(countryWrapper.parentElement).toBe(zipCountryGrid);
+  });
+
   test("blocks internal navigation after changing the profile", async () => {
     const { ProfileForm } = await import("./profile-form");
     const { UnsavedChangesProvider } = await import(

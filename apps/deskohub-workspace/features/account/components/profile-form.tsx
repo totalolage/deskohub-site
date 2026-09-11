@@ -712,7 +712,7 @@ function BillingFields({
               </div>
             </>
           ) : null}
-          <div className="space-y-2 sm:col-span-2">
+          <div className="min-w-0 space-y-2">
             <Label htmlFor="account-profile-billing-address-line1">
               {m.accountProfileAddressLine1Label({}, { locale })}
             </Label>
@@ -733,7 +733,7 @@ function BillingFields({
             />
             {renderFieldError("addressLine1")}
           </div>
-          <div className="space-y-2 sm:col-span-2">
+          <div className="min-w-0 space-y-2">
             <Label htmlFor="account-profile-billing-address-line2">
               {m.accountProfileAddressLine2Label({}, { locale })}
             </Label>
@@ -773,46 +773,48 @@ function BillingFields({
             />
             {renderFieldError("city")}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="account-profile-billing-zip">
-              {m.accountProfileZipLabel({}, { locale })}
-            </Label>
-            <Input
-              id="account-profile-billing-zip"
-              name="billingZip"
-              value={billingValues.zip}
-              onInput={(event) =>
-                onBillingValueChange("zip", event.currentTarget.value)
-              }
-              aria-invalid={hasFieldError("zip")}
-              aria-describedby={
-                hasFieldError("zip") ? billingFieldErrorId("zip") : undefined
-              }
-              maxLength={20}
-            />
-            {renderFieldError("zip")}
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="account-profile-billing-country">
-              {m.accountProfileCountryLabel({}, { locale })}
-            </Label>
-            <Input
-              id="account-profile-billing-country"
-              name="billingCountry"
-              value={billingValues.country}
-              onInput={(event) =>
-                onBillingValueChange("country", event.currentTarget.value)
-              }
-              aria-invalid={hasFieldError("country")}
-              aria-describedby={
-                hasFieldError("country")
-                  ? billingFieldErrorId("country")
-                  : undefined
-              }
-              maxLength={2}
-              autoComplete="country"
-            />
-            {renderFieldError("country")}
+          <div className="min-w-0 grid gap-5 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="account-profile-billing-zip">
+                {m.accountProfileZipLabel({}, { locale })}
+              </Label>
+              <Input
+                id="account-profile-billing-zip"
+                name="billingZip"
+                value={billingValues.zip}
+                onInput={(event) =>
+                  onBillingValueChange("zip", event.currentTarget.value)
+                }
+                aria-invalid={hasFieldError("zip")}
+                aria-describedby={
+                  hasFieldError("zip") ? billingFieldErrorId("zip") : undefined
+                }
+                maxLength={20}
+              />
+              {renderFieldError("zip")}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="account-profile-billing-country">
+                {m.accountProfileCountryLabel({}, { locale })}
+              </Label>
+              <Input
+                id="account-profile-billing-country"
+                name="billingCountry"
+                value={billingValues.country}
+                onInput={(event) =>
+                  onBillingValueChange("country", event.currentTarget.value)
+                }
+                aria-invalid={hasFieldError("country")}
+                aria-describedby={
+                  hasFieldError("country")
+                    ? billingFieldErrorId("country")
+                    : undefined
+                }
+                maxLength={2}
+                autoComplete="country"
+              />
+              {renderFieldError("country")}
+            </div>
           </div>
         </>
       ) : null}
