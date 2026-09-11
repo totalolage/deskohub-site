@@ -14,10 +14,30 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
-const signOut = mock(() => Promise.resolve({ error: null }));
-const getSession = mock(() => Promise.resolve({ data: null, error: null }));
+const analyticsEvents: string[] = [];
+const beginAnalyticsAccountTransition = mock(() => {
+  analyticsEvents.push("begin");
+});
+const completeAnalyticsAccountSignOut = mock(() => {
+  analyticsEvents.push("complete");
+});
+const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
+const signOut = mock(() => {
+  analyticsEvents.push("request");
+  return Promise.resolve({ error: null });
+});
 const confirmDiscardChanges = mock(() => true);
-const allowNextUnload = mock(() => {});
+const allowNextUnload = mock(() => {
+  analyticsEvents.push("allow");
+});
+
+mock.module("@/features/account/analytics-identity", () => ({
+  beginAnalyticsAccountTransition,
+  completeAnalyticsAccountSignOut,
+  getAnalyticsAccountIdentity: () => ({ status: "anonymous" }),
+  refreshAnalyticsAccountIdentity,
+  subscribeAnalyticsAccountIdentity: () => () => undefined,
+}));
 
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
@@ -25,7 +45,6 @@ mock.module("@/features/account/auth.client", () => ({
       magicLink: signInMagicLink,
     },
     signOut,
-    getSession,
   },
 }));
 
@@ -41,6 +60,10 @@ describe("account components", () => {
 
   afterEach(() => {
     cleanup();
+    analyticsEvents.length = 0;
+    beginAnalyticsAccountTransition.mockClear();
+    completeAnalyticsAccountSignOut.mockClear();
+    refreshAnalyticsAccountIdentity.mockClear();
     signInMagicLink.mockClear();
     signOut.mockClear();
     confirmDiscardChanges.mockClear();
@@ -199,6 +222,8 @@ describe("account components", () => {
       });
 
       expect(confirmDiscardChanges).toHaveBeenCalledWith();
+      expect(beginAnalyticsAccountTransition).not.toHaveBeenCalled();
+      expect(completeAnalyticsAccountSignOut).not.toHaveBeenCalled();
       expect(signOut).not.toHaveBeenCalled();
       expect(assigned).toBeNull();
     } finally {
@@ -212,6 +237,7 @@ describe("account components", () => {
     let assigned: string | null = null;
     const originalAssign = window.location.assign;
     window.location.assign = ((href: string) => {
+      analyticsEvents.push("navigation");
       assigned = href;
     }) as typeof window.location.assign;
 
@@ -227,6 +253,16 @@ describe("account components", () => {
 
       expect(confirmDiscardChanges).toHaveBeenCalledWith();
       expect(signOut).toHaveBeenCalledTimes(1);
+      expect(analyticsEvents).toEqual([
+        "begin",
+        "request",
+        "complete",
+        "allow",
+        "navigation",
+      ]);
+      expect(beginAnalyticsAccountTransition).toHaveBeenCalledTimes(1);
+      expect(completeAnalyticsAccountSignOut).toHaveBeenCalledTimes(1);
+      expect(refreshAnalyticsAccountIdentity).not.toHaveBeenCalled();
       expect(allowNextUnload).toHaveBeenCalledTimes(1);
       expect(assigned).toBe("/cs-CZ");
     } finally {

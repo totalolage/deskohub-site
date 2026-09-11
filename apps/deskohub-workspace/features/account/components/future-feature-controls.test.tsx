@@ -49,6 +49,7 @@ mock.module("next/link", () => ({ default: MockNextLink }));
 
 const routerRefresh = mock(() => undefined);
 mock.module("next/navigation", () => ({
+  usePathname: () => "/en-US/account",
   useRouter: () => ({ refresh: routerRefresh }),
 }));
 
@@ -78,6 +79,14 @@ mock.module("@/features/account/actions", () => ({
 
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
 const signOut = mock(() => Promise.resolve({ error: null }));
+
+mock.module("@/features/account/analytics-identity", () => ({
+  beginAnalyticsAccountTransition: () => undefined,
+  completeAnalyticsAccountSignOut: () => undefined,
+  getAnalyticsAccountIdentity: () => ({ status: "anonymous" }),
+  refreshAnalyticsAccountIdentity: () => Promise.resolve(),
+  subscribeAnalyticsAccountIdentity: () => () => undefined,
+}));
 
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
