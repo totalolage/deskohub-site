@@ -38,8 +38,6 @@ export function getAccountScreenCopy(locale: Locale) {
         {},
         { locale }
       ),
-      languageUnavailableDescription:
-        m.accountProfileScreenLanguageUnavailableDescription({}, { locale }),
     } satisfies ProfileScreenCopy,
     billing: {
       title: m.accountSectionBilling({}, { locale }),

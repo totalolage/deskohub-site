@@ -63,7 +63,6 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
       verified: "This email has been successfully verified.",
     },
     languageLabel: "Preferred communication language",
-    languageUnavailableDescription: "Language preferences are not saved yet.",
     languageUnavailableValue: "Not set",
     memberFallback: "Workspace member",
     title: "Profile & identity",

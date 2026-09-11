@@ -69,7 +69,6 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
         verified: "This email has been successfully verified.",
       },
       languageLabel: "Preferred communication language",
-      languageUnavailableDescription: "Language preferences are not saved yet.",
       languageUnavailableValue: "Not set",
       memberFallback: "Workspace member",
       title: "Profile & identity",
