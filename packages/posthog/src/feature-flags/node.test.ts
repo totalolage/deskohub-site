@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
+import type { FeatureFlagResult, FlagEvaluationOptions } from "posthog-node";
 import { PostHogDistinctId } from "../identifiers";
 import { definePostHogFeatureFlags } from "./contract";
 
@@ -22,8 +23,12 @@ const getAllFlagsAndPayloads = mock((_distinctId: string, _options?: unknown) =>
   })
 );
 const getFeatureFlagResult = mock(
-  (_key: string, _distinctId: string, _options?: unknown) =>
-    Promise.resolve({
+  (
+    _key: string,
+    _distinctId: string,
+    _options?: FlagEvaluationOptions
+  ): Promise<FeatureFlagResult | undefined> =>
+    Promise.resolve<FeatureFlagResult>({
       enabled: true,
       key: "meeting_room_page",
       payload: undefined,
@@ -72,7 +77,7 @@ mock.module("posthog-node", () => ({
       getFeatureFlagResult: async (
         key: string,
         distinctId: string,
-        evaluationOptions?: unknown
+        evaluationOptions?: FlagEvaluationOptions
       ) => {
         const result = await getFeatureFlagResult(
           key,
@@ -309,6 +314,62 @@ describe("makePostHogNodeFeatureFlagService", () => {
     await Effect.runPromise(featureFlags.shutdown);
 
     expect(shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  test("reports an absent SDK result through the Effect error channel", async () => {
+    const {
+      makePostHogNodeFeatureFlagService,
+      PostHogFeatureFlagEvaluationError,
+    } = await import("./node");
+    getFeatureFlagResult.mockResolvedValueOnce(undefined);
+    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
+      projectToken: "phc_test",
+    });
+
+    const error = await Effect.runPromise(
+      featureFlags
+        .isEnabled({
+          key: "meeting_room_page",
+          subject: {
+            distinctId: visitorId,
+            sendFeatureFlagEvents: true,
+          },
+        })
+        .pipe(Effect.flip)
+    );
+
+    expect(error).toBeInstanceOf(PostHogFeatureFlagEvaluationError);
+    expect(error.message).toBe("Could not evaluate the PostHog feature flag.");
+    expect(error.cause).toBeUndefined();
+
+    await Effect.runPromise(featureFlags.shutdown);
+  });
+
+  test("returns false for an explicitly disabled SDK result", async () => {
+    const { makePostHogNodeFeatureFlagService } = await import("./node");
+    getFeatureFlagResult.mockResolvedValueOnce({
+      enabled: false,
+      key: "meeting_room_page",
+      payload: undefined,
+      variant: undefined,
+    });
+    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
+      projectToken: "phc_test",
+    });
+
+    const enabled = await Effect.runPromise(
+      featureFlags.isEnabled({
+        key: "meeting_room_page",
+        subject: {
+          distinctId: visitorId,
+          sendFeatureFlagEvents: true,
+        },
+      })
+    );
+
+    expect(enabled).toBeFalse();
+
+    await Effect.runPromise(featureFlags.shutdown);
   });
 
   test("applies fixed overrides once when the lazy SDK client is created", async () => {
