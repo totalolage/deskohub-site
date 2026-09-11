@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, beforeAll, expect, spyOn, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
@@ -12,7 +12,12 @@ import {
 } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { chromium, type Page } from "@playwright/test";
+import {
+  type Browser,
+  type BrowserContext,
+  chromium,
+  type Page,
+} from "@playwright/test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getAccountScreenCopy } from "../../features/account/components/account-screen-copy";
 import { ProfileScreen } from "../../features/account/components/profile/profile-screen";
@@ -48,6 +53,29 @@ const chromiumAvailable = await access(
 )
   .then(() => true)
   .catch(() => false);
+
+let sharedBrowser: Browser | undefined;
+
+beforeAll(async () => {
+  if (!chromiumAvailable) return;
+  sharedBrowser = await chromium.launch({
+    headless: true,
+    timeout: 20_000,
+  });
+});
+
+afterAll(async () => {
+  const browser = sharedBrowser;
+  sharedBrowser = undefined;
+  if (browser === undefined) return;
+
+  try {
+    expect(browser.contexts()).toHaveLength(0);
+  } finally {
+    await browser.close();
+  }
+  expect(browser.isConnected()).toBe(false);
+});
 
 const outputRoot = "/tmp/opencode/pr239-account-redesign/visual";
 const expectedRendererPort = parseRendererPort(
@@ -329,13 +357,18 @@ const withControlledPage = async <T,>(
   },
   check: (page: Page) => Promise<T>
 ): Promise<T> => {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    locale,
-    viewport: { width, height: 360 },
-  });
-  const page = await context.newPage();
+  const browser = sharedBrowser;
+  if (browser === undefined) {
+    throw new Error("Account visual browser was not initialized");
+  }
+
+  let context: BrowserContext | undefined;
   try {
+    context = await browser.newContext({
+      locale,
+      viewport: { width, height: 360 },
+    });
+    const page = await context.newPage();
     const rendererCss = await readFile(
       join(import.meta.dir, "renderer.css"),
       "utf8"
@@ -349,10 +382,135 @@ const withControlledPage = async <T,>(
     );
     return await check(page);
   } finally {
-    await context.close();
-    await browser.close();
+    await context?.close();
   }
 };
+
+test.serial.skipIf(!chromiumAvailable)(
+  "controlled pages reuse the file browser while isolating contexts",
+  async () => {
+    const browser = sharedBrowser;
+    if (browser === undefined) {
+      throw new Error("Account visual browser was not initialized");
+    }
+
+    const newContext = spyOn(browser, "newContext");
+    try {
+      expect(browser.contexts()).toHaveLength(0);
+
+      const first = await withControlledPage(
+        {
+          html: '<main data-lifecycle-first="true">First context</main>',
+          locale: "en-US",
+          width: 320,
+        },
+        async (page) => {
+          await page.evaluate(() => {
+            document.body.dataset.lifecycleMarker = "first-context-only";
+          });
+          await page.context().addCookies([
+            {
+              domain: "account-visual.test",
+              name: "account_visual_context",
+              path: "/",
+              value: "first-context-only",
+            },
+          ]);
+          return {
+            cookie: (await page.context().cookies()).find(
+              ({ name }) => name === "account_visual_context"
+            )?.value,
+            firstMarkerCount: await page
+              .locator('[data-lifecycle-first="true"]')
+              .count(),
+          };
+        }
+      );
+      expect(first).toEqual({
+        cookie: "first-context-only",
+        firstMarkerCount: 1,
+      });
+      expect(browser.contexts()).toHaveLength(0);
+
+      const second = await withControlledPage(
+        {
+          html: '<main data-lifecycle-second="true">Second context</main>',
+          locale: "en-US",
+          width: 320,
+        },
+        async (page) => ({
+          cookie: (await page.context().cookies()).find(
+            ({ name }) => name === "account_visual_context"
+          )?.value,
+          firstMarkerCount: await page
+            .locator('[data-lifecycle-first="true"]')
+            .count(),
+          lifecycleMarker: await page.evaluate(
+            () => document.body.dataset.lifecycleMarker ?? null
+          ),
+          secondMarkerCount: await page
+            .locator('[data-lifecycle-second="true"]')
+            .count(),
+        })
+      );
+      expect(second).toEqual({
+        cookie: undefined,
+        firstMarkerCount: 0,
+        lifecycleMarker: null,
+        secondMarkerCount: 1,
+      });
+      expect(browser.contexts()).toHaveLength(0);
+      expect(newContext).toHaveBeenCalledTimes(2);
+    } finally {
+      newContext.mockRestore();
+    }
+  }
+);
+
+test.serial.skipIf(!chromiumAvailable)(
+  "controlled page cleanup closes a context when newPage fails",
+  async () => {
+    const browser = sharedBrowser;
+    if (browser === undefined) {
+      throw new Error("Account visual browser was not initialized");
+    }
+
+    let actualContext: BrowserContext | undefined;
+    let restoreNewPage: (() => void) | undefined;
+    const originalNewContext = browser.newContext.bind(browser);
+    const newContext = spyOn(browser, "newContext").mockImplementation(
+      async (options) => {
+        const context = await originalNewContext(options);
+        actualContext = context;
+        const newPage = spyOn(context, "newPage");
+        newPage.mockRejectedValue(new Error("synthetic newPage failure"));
+        restoreNewPage = () => newPage.mockRestore();
+        return context;
+      }
+    );
+
+    try {
+      await expect(
+        withControlledPage(
+          {
+            html: "<main>unused after newPage failure</main>",
+            locale: "en-US",
+            width: 320,
+          },
+          async () => "unreachable"
+        )
+      ).rejects.toThrow("synthetic newPage failure");
+
+      expect(newContext).toHaveBeenCalledTimes(1);
+      expect(actualContext).toBeDefined();
+      expect(actualContext?.isClosed()).toBe(true);
+      expect(browser.contexts()).toHaveLength(0);
+    } finally {
+      restoreNewPage?.();
+      newContext.mockRestore();
+    }
+  }
+);
 
 const productionProfileEmail = "ada@example.test";
 const productionProfileEmailFieldSelector =
