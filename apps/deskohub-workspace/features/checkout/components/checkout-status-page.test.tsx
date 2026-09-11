@@ -4,18 +4,50 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
+  mock,
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
+import type { ComponentProps, ReactNode } from "react";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { CheckoutStatusPage } from "./checkout-status-page";
 import { CheckoutStatusPageSkeleton } from "./checkout-status-page-skeleton";
+
+type CapturedLink = {
+  readonly href: string;
+  readonly prefetch: boolean | null | undefined;
+};
+
+const capturedLinks: CapturedLink[] = [];
+
+mock.module("next/link", () => ({
+  default: ({
+    children,
+    href,
+    prefetch,
+    ...props
+  }: Omit<ComponentProps<"a">, "href"> & {
+    readonly children?: ReactNode;
+    readonly href: string | URL;
+    readonly prefetch?: boolean | null;
+  }) => {
+    const stringHref = href.toString();
+    capturedLinks.push({ href: stringHref, prefetch });
+    return (
+      <a data-next-link="" href={stringHref} {...props}>
+        {children}
+      </a>
+    );
+  },
+}));
+
+const { CheckoutStatusPage } = await import("./checkout-status-page");
 
 const baseStatus: CheckoutStatusViewModel = {
   kind: "cowork",
@@ -42,6 +74,10 @@ const reconstructedCoworkStatus: CheckoutStatusViewModel = {
 describe("CheckoutStatusPage", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
+  });
+
+  beforeEach(() => {
+    capturedLinks.length = 0;
   });
 
   afterEach(() => {
@@ -282,6 +318,45 @@ describe("CheckoutStatusPage", () => {
     expect(accessLink.getAttribute("href")).toBe(
       "/en-US/reservation/access/reservation-status-page"
     );
+  });
+
+  test("uses soft navigation for access only in modal presentation", () => {
+    const accessHref = "/en-US/reservation/access/reservation-status-page";
+    const modalView = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        presentation="modal"
+        status={baseStatus}
+      />
+    );
+
+    expect(
+      modalView
+        .getByRole("link", { name: "Show access code" })
+        .getAttribute("href")
+    ).toBe(accessHref);
+    expect(capturedLinks).toContainEqual({
+      href: accessHref,
+      prefetch: false,
+    });
+    cleanup();
+    capturedLinks.length = 0;
+
+    const canonicalView = render(
+      <CheckoutStatusPage locale="en-US" status={baseStatus} />
+    );
+
+    expect(
+      canonicalView
+        .getByRole("link", { name: "Show access code" })
+        .getAttribute("href")
+    ).toBe(accessHref);
+    expect(capturedLinks.some(({ href }) => href === accessHref)).toBe(false);
+    expect(
+      canonicalView
+        .getByRole("link", { name: "Show access code" })
+        .getAttribute("data-next-link")
+    ).toBeNull();
   });
 
   test("keeps the generic meeting-room start when exact duration is unavailable", () => {

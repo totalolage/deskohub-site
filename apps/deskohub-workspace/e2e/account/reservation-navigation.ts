@@ -26,6 +26,14 @@ export type WorkspaceE2EReservationHistorySubstage =
   | "modal-close-url"
   | "modal-close-click"
   | "modal-close-dialog"
+  | "status-access-open-url"
+  | "status-access-open-click"
+  | "status-access-dialog"
+  | "status-access-content"
+  | "access-status-return-url"
+  | "access-status-return-click"
+  | "access-status-return-dialog"
+  | "access-status-return-content"
   | "canonical-direct-load"
   | "canonical-direct-dialog"
   | "canonical-direct-content"
@@ -39,6 +47,7 @@ export type WorkspaceE2EReservationHistorySubstage =
   | "history-back-url"
   | "history-back-action"
   | "history-back-dialog"
+  | "history-back-content"
   | "history-forward-url"
   | "history-forward-action"
   | "history-forward-dialog"
@@ -47,6 +56,17 @@ export type WorkspaceE2EReservationHistorySubstage =
   | "details-assert-dialog"
   | "details-assert-content"
   | "details-capture"
+  | "canonical-access-load"
+  | "canonical-access-dialog"
+  | "canonical-access-content"
+  | "canonical-access-reload"
+  | "canonical-access-reload-dialog"
+  | "canonical-access-reload-content"
+  | "canonical-access-status-return-hydration"
+  | "canonical-access-status-return-url"
+  | "canonical-access-status-return-click"
+  | "canonical-access-status-return-dialog"
+  | "canonical-access-status-return-content"
   | "access-open-url"
   | "access-open-click"
   | "access-open-assert"
@@ -197,11 +217,32 @@ const expectFulfilledStatus = async (
 ) => {
   const root =
     mode === "modal" ? page.getByRole("dialog") : page.getByRole("main");
+  if (mode === "modal") {
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await expect(page.getByRole("main")).toHaveCount(1);
+  }
   await expect(root).toBeVisible();
   await expect(
     root.getByText(fixture.reservationId, { exact: true })
   ).toBeVisible();
   await expect(root.locator("#checkout-status-access")).toBeVisible();
+  await expect(page.locator("[data-reservation-access-code]")).toHaveCount(0);
+};
+
+const expectReservationAccessPresentation = async (
+  page: Page,
+  mode: WorkspaceE2EReservationStatusPresentation
+) => {
+  const root =
+    mode === "modal" ? page.getByRole("dialog") : page.getByRole("main");
+  if (mode === "modal") {
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    await expect(page.getByRole("main")).toHaveCount(1);
+  } else {
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  }
+  await expect(root).toBeVisible();
+  await expect(root.locator("[data-reservation-access]")).toBeVisible();
   await expect(page.locator("[data-reservation-access-code]")).toHaveCount(0);
 };
 
@@ -495,6 +536,52 @@ export const verifyWorkspaceE2EReservationHistoryNavigation = async (
     "assertion"
   );
 
+  const modalAccessLink = input.page
+    .getByRole("dialog")
+    .locator("#checkout-status-access");
+  await runReservationHistoryNavigationPair({
+    action: () =>
+      modalAccessLink.click({ timeout: workspaceE2ETimeouts.browserAction }),
+    actionStage: "status-access-open-click",
+    page: input.page,
+    url: urls.accessUrl,
+    urlStage: "status-access-open-url",
+  });
+  await runReservationHistoryStage(
+    "status-access-dialog",
+    () => expect(input.page.getByRole("dialog")).toHaveCount(1),
+    "assertion"
+  );
+  await runReservationHistoryStage(
+    "status-access-content",
+    () => expectReservationAccessPresentation(input.page, "modal"),
+    "assertion"
+  );
+
+  const accessModalStatusLink = input.page
+    .getByRole("dialog")
+    .locator(`a[href="${urls.statusPath}"]`);
+  await runReservationHistoryNavigationPair({
+    action: () =>
+      accessModalStatusLink.click({
+        timeout: workspaceE2ETimeouts.browserAction,
+      }),
+    actionStage: "access-status-return-click",
+    page: input.page,
+    url: urls.statusUrl,
+    urlStage: "access-status-return-url",
+  });
+  await runReservationHistoryStage(
+    "access-status-return-dialog",
+    () => expect(input.page.getByRole("dialog")).toHaveCount(1),
+    "assertion"
+  );
+  await runReservationHistoryStage(
+    "access-status-return-content",
+    () => expectFulfilledStatus(input.page, input.fixture, "modal"),
+    "assertion"
+  );
+
   await runReservationHistoryNavigationPair({
     action: () =>
       input.page.goBack({
@@ -503,12 +590,17 @@ export const verifyWorkspaceE2EReservationHistoryNavigation = async (
       }),
     actionStage: "history-back-action",
     page: input.page,
-    url: urls.accountUrl,
+    url: urls.accessUrl,
     urlStage: "history-back-url",
   });
   await runReservationHistoryStage(
     "history-back-dialog",
-    () => expect(input.page.getByRole("dialog")).toHaveCount(0),
+    () => expect(input.page.getByRole("dialog")).toHaveCount(1),
+    "assertion"
+  );
+  await runReservationHistoryStage(
+    "history-back-content",
+    () => expectReservationAccessPresentation(input.page, "modal"),
     "assertion"
   );
 
@@ -525,7 +617,7 @@ export const verifyWorkspaceE2EReservationHistoryNavigation = async (
   });
   await runReservationHistoryStage(
     "history-forward-dialog",
-    () => expect(input.page.getByRole("dialog")).toBeVisible(),
+    () => expect(input.page.getByRole("dialog")).toHaveCount(1),
     "assertion"
   );
   await runReservationHistoryStage(
@@ -595,6 +687,66 @@ export const verifyWorkspaceE2EReservationHistoryNavigation = async (
   );
   await runReservationHistoryStage(
     "access-details-return-content",
+    () => expectFulfilledStatus(input.page, input.fixture, "page"),
+    "assertion"
+  );
+
+  await runReservationHistoryStage("canonical-access-load", () =>
+    input.page.goto(urls.accessUrl, {
+      timeout: workspaceE2ETimeouts.browserNavigation,
+      waitUntil: "load",
+    })
+  );
+  await runReservationHistoryStage(
+    "canonical-access-dialog",
+    () => expect(input.page.getByRole("dialog")).toHaveCount(0),
+    "assertion"
+  );
+  await runReservationHistoryStage(
+    "canonical-access-content",
+    () => expectUnavailableAccess(input.page),
+    "assertion"
+  );
+  await runReservationHistoryStage("canonical-access-reload", () =>
+    input.page.reload({
+      timeout: workspaceE2ETimeouts.browserNavigation,
+      waitUntil: "load",
+    })
+  );
+  await runReservationHistoryStage(
+    "canonical-access-reload-dialog",
+    () => expect(input.page.getByRole("dialog")).toHaveCount(0),
+    "assertion"
+  );
+  await runReservationHistoryStage(
+    "canonical-access-reload-content",
+    () => expectUnavailableAccess(input.page),
+    "assertion"
+  );
+
+  const canonicalAccessStatusLink = pageReservationLink(
+    input.page,
+    urls.statusPath
+  );
+  await runReservationHistoryStage(
+    "canonical-access-status-return-dialog",
+    () => expect(canonicalAccessStatusLink).toHaveCount(1),
+    "assertion"
+  );
+  await runReservationHistoryStage(
+    "canonical-access-status-return-hydration",
+    () => waitForReservationStatusLinkHydration(input.page, urls.statusPath)
+  );
+  await runReservationHistoryStage("canonical-access-status-return-click", () =>
+    canonicalAccessStatusLink.click({
+      timeout: workspaceE2ETimeouts.browserAction,
+    })
+  );
+  await runReservationHistoryStage("canonical-access-status-return-url", () =>
+    input.page.waitForURL(urls.statusUrl)
+  );
+  await runReservationHistoryStage(
+    "canonical-access-status-return-content",
     () => expectFulfilledStatus(input.page, input.fixture, "page"),
     "assertion"
   );
