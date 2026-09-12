@@ -82,9 +82,12 @@ async function navigateToAccount(
         await expectPublicSiteShell(page);
         const status = page.getByRole("status", { name: accountStatusName });
         await expect(status).toBeVisible();
-        await expect(status).toHaveAttribute("aria-busy", "true");
+        await expect(status).not.toHaveAttribute("aria-busy", "true");
+        const busyContent = status.locator('[aria-busy="true"]');
+        await expect(busyContent).toHaveCount(1);
+        await expect(busyContent).toBeVisible();
         await expect(
-          status.locator('[data-slot="skeleton"]').first()
+          busyContent.locator('[data-slot="skeleton"]').first()
         ).toBeVisible();
         await captureAccountReview(
           page,
