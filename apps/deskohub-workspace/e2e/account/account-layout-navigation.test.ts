@@ -13,8 +13,16 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { verifyAccountLayoutNavigation } from "./account-layout-navigation";
-import { accountSectionLabels } from "./account-sections";
+import { WorkspaceE2EError } from "../errors";
+import {
+  accountLayoutNavigationPhases,
+  runAccountLayoutNavigationPhase,
+  verifyAccountLayoutNavigation,
+} from "./account-layout-navigation";
+import {
+  accountSectionLabels,
+  accountSectionLandmarks,
+} from "./account-sections";
 
 const sections = [
   "reservations",
@@ -117,6 +125,13 @@ type FakeLocator = {
   readonly waitFor: (options?: { readonly state?: string }) => Promise<void>;
 };
 
+type FakePageOptions = {
+  readonly onSetViewport?: (viewport: {
+    readonly height: number;
+    readonly width: number;
+  }) => void;
+};
+
 const desktopBreakpoint = 768;
 
 const elementIsVisible = (element: Element): boolean => {
@@ -147,13 +162,13 @@ const fakeLocator = (element: Element): FakeLocator => ({
     fireEvent.click(element);
   },
   isVisible: async () => elementIsVisible(element),
-  waitFor: async (options = {}) => {
-    if (options.state === "visible" && !elementIsVisible(element))
+  waitFor: async (waitOptions = {}) => {
+    if (waitOptions.state === "visible" && !elementIsVisible(element))
       throw new Error("fake target did not become visible");
   },
 });
 
-const makeFakePage = (): Page => {
+const makeFakePage = (options: FakePageOptions = {}): Page => {
   let viewport = { height: 900, width: 1024 };
   Object.defineProperty(window, "innerWidth", {
     configurable: true,
@@ -162,13 +177,13 @@ const makeFakePage = (): Page => {
 
   const getByRole = (
     role: "button",
-    options: { readonly exact?: boolean; readonly name?: string } = {}
+    roleOptions: { readonly exact?: boolean; readonly name?: string } = {}
   ) => {
     const candidates = Array.from(
       document.querySelectorAll<HTMLElement>("button")
     );
-    const name = options.name ?? "";
-    const exact = options.exact !== false;
+    const name = roleOptions.name ?? "";
+    const exact = roleOptions.exact !== false;
     const element = candidates.find((candidate) => {
       if (!elementIsVisible(candidate)) return false;
       const accessibleName =
@@ -201,6 +216,7 @@ const makeFakePage = (): Page => {
       height: number;
       width: number;
     }) => {
+      options.onSetViewport?.(nextViewport);
       viewport = { ...nextViewport };
       Object.defineProperty(window, "innerWidth", {
         configurable: true,
@@ -314,4 +330,168 @@ test("navigates every rendered account section across desktop and mobile layouts
   } finally {
     restoreLayoutGeometry();
   }
+});
+
+const accountLayoutFailureMarker =
+  "https://private.example.test/account?email=secret@example.test&token=secret-token";
+const accountLayoutFailure = new Error(accountLayoutFailureMarker, {
+  cause: accountLayoutFailureMarker,
+});
+const diagnosticViewport = { height: 900, width: 375 } as const;
+
+test("keeps every account layout phase diagnostic-safe", async () => {
+  for (const phase of accountLayoutNavigationPhases) {
+    const failure = await runAccountLayoutNavigationPhase(
+      phase,
+      "legal",
+      diagnosticViewport,
+      async () => {
+        throw accountLayoutFailure;
+      },
+      phase === "geometry"
+        ? async () => ({
+            activeButtonCount: 1,
+            contentLeft: 312,
+            contentWidth: 1_100,
+            hasHorizontalOverflow: false,
+            navigationLeft: 16,
+            navigationRight: 280,
+            navigationWidth: 264,
+            visibleLandmarkSelectors: [accountSectionLandmarks.legal],
+          })
+        : undefined
+    ).then(
+      () => {
+        throw new Error("expected account layout phase to fail");
+      },
+      (cause) => cause
+    );
+
+    expect(failure).toBeInstanceOf(WorkspaceE2EError);
+    if (!(failure instanceof WorkspaceE2EError))
+      throw new Error("expected a Workspace E2E error");
+
+    expect(failure.message).toContain(`at ${phase}`);
+    expect(failure.message).toContain("for legal");
+    expect(failure.message).toContain("at viewport 375x900");
+    expect(failure.message).not.toContain(accountLayoutFailureMarker);
+    expect(failure.operation).toBe("verify account layout navigation");
+    expect(failure.cause).toBeUndefined();
+    expect(failure.causes).toBeUndefined();
+    expect(String(failure)).not.toContain(accountLayoutFailureMarker);
+    expect(JSON.stringify(failure)).not.toContain(accountLayoutFailureMarker);
+    expect(failure.message.length).toBeLessThan(500);
+
+    if (phase === "geometry") {
+      expect(failure.message).toContain("activeButtonCount=1");
+      expect(failure.message).toContain(
+        `visibleLandmarkSelectors=${accountSectionLandmarks.legal}`
+      );
+    }
+  }
+});
+
+const runLayoutVerificationFailure = async (
+  options: FakePageOptions,
+  captureSection?: (section: AccountSection) => Promise<void>
+) => {
+  const restoreLayoutGeometry = installLayoutGeometry();
+  try {
+    render(createElement(AccountShellHarness));
+    return await verifyAccountLayoutNavigation(
+      makeFakePage(options),
+      captureSection
+    );
+  } catch (cause) {
+    return cause;
+  } finally {
+    restoreLayoutGeometry();
+  }
+};
+
+const expectGenericAccountLayoutFailure = (
+  failure: unknown,
+  marker: string
+) => {
+  expect(failure).toBeInstanceOf(WorkspaceE2EError);
+  if (!(failure instanceof WorkspaceE2EError))
+    throw new Error("expected a Workspace E2E error");
+  expect(failure.message).toBe("verify account layout navigation failed");
+  expect(failure.operation).toBe("verify account layout navigation");
+  expect(failure.cause).toBeUndefined();
+  expect(failure.causes).toBeUndefined();
+  expect(failure.message).not.toContain(marker);
+  expect(failure.operation).not.toContain(marker);
+  expect(String(failure)).not.toContain(marker);
+  expect(JSON.stringify(failure)).not.toContain(marker);
+};
+
+test("uses a fixed generic diagnostic when changing the viewport fails", async () => {
+  let setViewportCalls = 0;
+  const failureMarker =
+    "https://private.example.test/account/viewport?token=viewport-secret";
+  const failure = await runLayoutVerificationFailure({
+    onSetViewport: () => {
+      setViewportCalls += 1;
+      if (setViewportCalls === 1) throw new Error(failureMarker);
+    },
+  });
+
+  expectGenericAccountLayoutFailure(failure, failureMarker);
+  expect(setViewportCalls).toBe(2);
+});
+
+test("uses a fixed generic diagnostic when final viewport reset fails", async () => {
+  let setViewportCalls = 0;
+  const failureMarker =
+    "https://private.example.test/account/reset?token=reset-secret";
+  const failure = await runLayoutVerificationFailure({
+    onSetViewport: () => {
+      setViewportCalls += 1;
+      if (setViewportCalls === 4) throw new Error(failureMarker);
+    },
+  });
+
+  expectGenericAccountLayoutFailure(failure, failureMarker);
+  expect(setViewportCalls).toBe(4);
+});
+
+test("preserves the phase diagnostic when final viewport reset also fails", async () => {
+  let setViewportCalls = 0;
+  const captureFailureMarker =
+    "https://private.example.test/account/capture?email=secretA@example.test&token=secretA";
+  const restoreFailureMarker =
+    "https://private.example.test/account/restore?email=secretB@example.test&token=secretB";
+  const failure = await runLayoutVerificationFailure(
+    {
+      onSetViewport: () => {
+        setViewportCalls += 1;
+        if (setViewportCalls === 2)
+          throw new Error(restoreFailureMarker, {
+            cause: restoreFailureMarker,
+          });
+      },
+    },
+    async () => {
+      throw new Error(captureFailureMarker, { cause: captureFailureMarker });
+    }
+  );
+
+  expect(failure).toBeInstanceOf(WorkspaceE2EError);
+  if (!(failure instanceof WorkspaceE2EError))
+    throw new Error("expected a Workspace E2E error");
+  expect(failure.message).toContain("at capture");
+  expect(failure.message).toContain("for reservations");
+  expect(failure.message).toContain("at viewport 1440x1000");
+  expect(failure.message).not.toContain(captureFailureMarker);
+  expect(failure.message).not.toContain(restoreFailureMarker);
+  expect(failure.operation).toBe("verify account layout navigation");
+  expect(failure.cause).toBeUndefined();
+  expect(failure.causes).toBeUndefined();
+  expect(String(failure)).not.toContain(captureFailureMarker);
+  expect(String(failure)).not.toContain(restoreFailureMarker);
+  expect(JSON.stringify(failure)).not.toContain(captureFailureMarker);
+  expect(JSON.stringify(failure)).not.toContain(restoreFailureMarker);
+  expect(failure.message.length).toBeLessThan(500);
+  expect(setViewportCalls).toBe(2);
 });

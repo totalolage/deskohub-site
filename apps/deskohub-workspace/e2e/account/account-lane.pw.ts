@@ -6,7 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import type { AccountSection } from "@/features/account/components/shell/account-shell";
-import { workspaceE2EError } from "../errors";
+import { WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import type { E2EDatabase } from "../integrations/database.service";
 import { runtimeTest } from "../playwright-checkout/runtime-fixtures";
@@ -210,10 +210,15 @@ for (const caseId of workspaceE2EAccountCaseIds) {
           execute: Effect.gen(function* () {
             const page = getOwnedPage();
             yield* Effect.tryPromise({
-              catch: () =>
-                workspaceE2EError("verify account layout navigation failed", {
-                  operation: "verify account layout navigation",
-                }),
+              catch: (cause) =>
+                cause instanceof WorkspaceE2EError
+                  ? cause
+                  : workspaceE2EError(
+                      "verify account layout navigation failed",
+                      {
+                        operation: "verify account layout navigation",
+                      }
+                    ),
               try: () =>
                 verifyAccountLayoutNavigation(page, async (section) => {
                   await captureAccountReview(
