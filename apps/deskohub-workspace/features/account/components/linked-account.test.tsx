@@ -12,6 +12,7 @@ import {
   cleanup,
   fireEvent,
   render,
+  waitFor,
   within,
 } from "@testing-library/react";
 import React from "react";
@@ -156,8 +157,10 @@ mock.module("@/features/account/components/account-screen-copy", () => ({
 
 mock.module("@/features/account/components/legal/legal-screen", () => ({
   LegalScreen: ({
+    locale,
     strings,
   }: {
+    readonly locale: string;
     readonly strings: { readonly title: string };
   }) => {
     React.useEffect(() => {
@@ -167,7 +170,17 @@ mock.module("@/features/account/components/legal/legal-screen", () => ({
       };
     }, []);
 
-    return <h2>{strings.title}</h2>;
+    return (
+      <>
+        <h2>{strings.title}</h2>
+        <a
+          data-testid="privacy-policy-anchor"
+          href={`/${locale}/privacy-policy`}
+        >
+          Privacy policy
+        </a>
+      </>
+    );
   },
 }));
 
@@ -252,13 +265,27 @@ const history = {
   },
 };
 
-const { AccountLayoutShell } = await import("./account-layout-shell");
+const { AccountLayoutShell, useAccountLayout } = await import(
+  "./account-layout-shell"
+);
 
 function withAccountLayout(children: React.ReactNode) {
   return (
     <AccountLayoutShell accountsEnabled locale="en-US" signedIn>
       {children}
     </AccountLayoutShell>
+  );
+}
+
+function ActivityAccountSectionProbe() {
+  const { activeSection } = useAccountLayout();
+  return (
+    <output
+      data-active-section={activeSection}
+      data-testid="activity-account-section"
+    >
+      {activeSection}
+    </output>
   );
 }
 
@@ -453,6 +480,78 @@ describe("LinkedAccount", () => {
 
     expect(legalScreenMountCount).toBe(1);
   });
+
+  test.each([
+    ["en-US", "/en-US/account", "/en-US/account/legal/"],
+    ["cs-CZ", "/cs-CZ/account/", "/cs-CZ/account/legal"],
+  ] as const)(
+    "does not retain private legal content when public legal replaces it for %s",
+    async (locale, privatePathname, publicLegalPathname) => {
+      const { LinkedAccount } = await import("./linked-account");
+      const { PublicAccountLegal } = await import("./public-account-legal");
+
+      workspacePathname = privatePathname;
+      workspaceUseSearchParams.mockReturnValue(
+        new URLSearchParams("section=profile")
+      );
+      const privateAccount = (
+        <div data-testid="cached-private-account">
+          <LinkedAccount
+            email="ada@example.test"
+            history={history}
+            locale={locale}
+            profile={profile}
+          />
+          <ActivityAccountSectionProbe />
+        </div>
+      );
+      const view = render(
+        withAccountLayout(
+          <>
+            <React.Activity mode="visible">{privateAccount}</React.Activity>
+            <div data-testid="public-account-legal-peer" />
+          </>
+        )
+      );
+
+      workspacePathname = publicLegalPathname;
+      workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
+      view.rerender(
+        withAccountLayout(
+          <>
+            <React.Activity mode="hidden">{privateAccount}</React.Activity>
+            <div data-testid="public-account-legal-peer">
+              <PublicAccountLegal accountsEnabled locale={locale} />
+            </div>
+          </>
+        )
+      );
+
+      await waitFor(() => {
+        expect(
+          view
+            .getByTestId("activity-account-section")
+            .getAttribute("data-active-section")
+        ).toBe("legal");
+      });
+
+      const privacyPolicySelector =
+        "a[data-testid='privacy-policy-anchor'][href$='/privacy-policy']";
+      expect(
+        view.container.querySelectorAll(privacyPolicySelector)
+      ).toHaveLength(1);
+      expect(
+        view
+          .getByTestId("cached-private-account")
+          .querySelectorAll(privacyPolicySelector)
+      ).toHaveLength(0);
+      expect(
+        view
+          .getByTestId("public-account-legal-peer")
+          .querySelectorAll(privacyPolicySelector)
+      ).toHaveLength(1);
+    }
+  );
 
   test("confirms legal navigation before leaving a dirty profile form", async () => {
     const { UnsavedChangesProvider } = await import(

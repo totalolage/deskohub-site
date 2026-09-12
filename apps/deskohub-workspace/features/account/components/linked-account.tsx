@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import type { CustomerProfile } from "@/features/account/backend/customer-dotypos-adapter.service";
 import { useAccountLayout } from "@/features/account/components/account-layout-shell";
@@ -24,8 +25,12 @@ export function LinkedAccount({
   locale,
   profile,
 }: LinkedAccountProps) {
+  const pathname = usePathname();
   const { activeSection, changeSection, setReservationCount } =
     useAccountLayout();
+  const normalizedPathname =
+    pathname === null ? null : pathname.replace(/\/+$/, "") || "/";
+  const isPrivateAccountPathname = normalizedPathname === `/${locale}/account`;
   const profileSection = activeSection === "billing" ? "billing" : "profile";
   const copy = getAccountScreenCopy(locale);
   const reservationCount =
@@ -57,7 +62,7 @@ export function LinkedAccount({
         />
       </div>
 
-      {activeSection === "legal" && (
+      {activeSection === "legal" && isPrivateAccountPathname && (
         <LegalScreen locale={locale} strings={copy.legal} />
       )}
 
