@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { AccountLoading } from "@/features/account/components/account-loading";
+import { AccountContentLoading } from "@/features/account/components/account-loading";
 import { AccountPage } from "@/features/account/components/account-page";
 import { loadCustomerAccountPage } from "@/features/account/page-data.server";
 import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
@@ -19,7 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function CustomerAccountPageRoute() {
   return runWithRequestLocale((locale) => (
-    <Suspense fallback={<AccountLoading locale={locale} />}>
+    <Suspense fallback={<AccountContentLoading locale={locale} />}>
       <CustomerAccountPageContent locale={locale} />
     </Suspense>
   ));

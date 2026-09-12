@@ -1,3 +1,4 @@
+import { AccountLayoutShell } from "@/features/account/components/account-layout-shell";
 import type { CustomerAccountPageState } from "@/features/account/page-data.server";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { AccountVisualRoute } from "./account-route";
@@ -95,7 +96,11 @@ export const accountVisualAdapterMetadata = {
 } as const;
 
 export function PopulatedAccountAdapter({ locale }: AccountVisualAdapterProps) {
-  return <AccountVisualRoute locale={locale} state={populatedFixture} />;
+  return (
+    <AccountLayoutShell accountsEnabled locale={locale} signedIn>
+      <AccountVisualRoute locale={locale} state={populatedFixture} />
+    </AccountLayoutShell>
+  );
 }
 
 export default PopulatedAccountAdapter;

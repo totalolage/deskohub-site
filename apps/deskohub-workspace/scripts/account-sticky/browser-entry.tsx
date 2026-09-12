@@ -1,22 +1,14 @@
 import { type ReactNode, useLayoutEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { getAccountScreenCopy } from "@/features/account/components/account-screen-copy";
 import {
   type AccountSection,
   AccountShell,
 } from "@/features/account/components/shell/account-shell";
+import { type Locale, m } from "@/features/i18n";
 import "../../app/globals.css";
 
-const labels = {
-  navigation: "Account navigation",
-  mobileSection: "Account section",
-  sections: {
-    billing: "Billing and invoices",
-    danger: "Danger zone",
-    legal: "Legal and privacy",
-    profile: "Profile and identity",
-    reservations: "Reservations",
-  },
-} as const;
+const fixtureLocales = ["en-US", "cs-CZ"] as const satisfies readonly Locale[];
 
 type ContentVariant = "short" | "tall";
 type SidebarVariant = "normal" | "tall";
@@ -56,16 +48,29 @@ const readVariant = <T extends string>(
 
 const readFixtureVariants = () => ({
   content: readVariant("content", ["short", "tall"], "short"),
+  locale: readVariant("locale", fixtureLocales, "en-US"),
   sidebar: readVariant("sidebar", ["normal", "tall"], "normal"),
 });
 
+type AccountScreenCopy = ReturnType<typeof getAccountScreenCopy>;
+
 function SyntheticContent({
   activeSection,
+  copy,
   variant,
 }: {
   readonly activeSection: AccountSection;
+  readonly copy: AccountScreenCopy;
   readonly variant: ContentVariant;
 }) {
+  const description = {
+    billing: copy.billing.paymentMethodsUnavailable,
+    danger: copy.legal.archiveDescription,
+    legal: copy.legal.analyticsDescription,
+    profile: copy.profile.avatarUnavailableDescription,
+    reservations: copy.reservations.unsupportedDescription,
+  }[activeSection];
+
   return (
     <section
       aria-labelledby="account-sticky-content-heading"
@@ -79,21 +84,20 @@ function SyntheticContent({
       }}
     >
       <h2 id="account-sticky-content-heading">
-        {labels.sections[activeSection]}
+        {copy.shell.sections[activeSection]}
       </h2>
       {contentLines[variant].map((line) => (
-        <p key={line}>
-          Synthetic account content {line}. This content exists only to exercise
-          the document scroll geometry.
-        </p>
+        <p key={line}>{description}</p>
       ))}
     </section>
   );
 }
 
 function SyntheticSidebarFooter({
+  locale,
   variant,
 }: {
+  readonly locale: Locale;
   readonly variant: SidebarVariant;
 }) {
   return (
@@ -111,21 +115,24 @@ function SyntheticSidebarFooter({
         padding: "16px",
       }}
     >
-      <h2 style={{ margin: 0 }}>Need help?</h2>
+      <h2 style={{ margin: 0 }}>{m.accountHelpTitle({}, { locale })}</h2>
       <p style={{ margin: 0 }}>
-        These buttons are synthetic sidebar footer controls.
+        {m.accountHelpBody(
+          { contact: m.accountHelpContact({}, { locale }) },
+          { locale }
+        )}
       </p>
       <button id="account-sticky-sidebar-help" type="button">
-        Sidebar help button
+        {m.accountHelpContact({}, { locale })}
       </button>
       <button id="account-sticky-sidebar-final" type="button">
-        Final sidebar footer button
+        {m.accountHelpTitle({}, { locale })}
       </button>
     </div>
   );
 }
 
-function SyntheticSiteHeader() {
+function SyntheticSiteHeader({ locale }: { readonly locale: Locale }) {
   return (
     <header
       data-account-sticky-site-header
@@ -143,12 +150,12 @@ function SyntheticSiteHeader() {
         zIndex: 10,
       }}
     >
-      Synthetic site header
+      {m.accountTitle({}, { locale })}
     </header>
   );
 }
 
-function SyntheticPageFooter() {
+function SyntheticPageFooter({ locale }: { readonly locale: Locale }) {
   return (
     <footer
       id="account-sticky-page-footer"
@@ -160,47 +167,60 @@ function SyntheticPageFooter() {
         padding: "32px 24px",
       }}
     >
-      <h2 id="account-sticky-page-footer-heading">Public page footer</h2>
+      <h2 id="account-sticky-page-footer-heading">
+        {m.footerLegalLabel({}, { locale })}
+      </h2>
       <a href="#account-sticky-page-footer" style={{ color: "white" }}>
-        Public page footer link
+        {m.footerPrivacyLink({}, { locale })}
       </a>
     </footer>
   );
 }
 
 function Fixture() {
-  const { content, sidebar } = readFixtureVariants();
+  const { content, locale, sidebar } = readFixtureVariants();
+  const copy = getAccountScreenCopy(locale);
   const [activeSection, setActiveSection] = useState<AccountSection>("profile");
 
   useLayoutEffect(() => {
+    document.documentElement.lang = locale;
     document.documentElement.dataset.accountStickyReady = "true";
-  }, []);
+  }, [locale]);
 
   const children: ReactNode = (
-    <SyntheticContent activeSection={activeSection} variant={content} />
+    <SyntheticContent
+      activeSection={activeSection}
+      copy={copy}
+      variant={content}
+    />
   );
 
   return (
     <>
-      <SyntheticSiteHeader />
+      <SyntheticSiteHeader locale={locale} />
       <div
         data-account-sticky-fixture
         data-content-variant={content}
+        data-locale={locale}
         data-sidebar-variant={sidebar}
       >
         <AccountShell
           activeSection={activeSection}
-          labels={labels}
+          labels={copy.shell}
           onSectionChange={setActiveSection}
           reservationCount={2}
-          signOut={<button type="button">Synthetic sign out</button>}
-          sidebarFooter={<SyntheticSidebarFooter variant={sidebar} />}
-          title="Synthetic workspace account"
+          signOut={
+            <button type="button">{m.accountSignOut({}, { locale })}</button>
+          }
+          sidebarFooter={
+            <SyntheticSidebarFooter locale={locale} variant={sidebar} />
+          }
+          title={m.accountTitle({}, { locale })}
         >
           {children}
         </AccountShell>
       </div>
-      <SyntheticPageFooter />
+      <SyntheticPageFooter locale={locale} />
     </>
   );
 }

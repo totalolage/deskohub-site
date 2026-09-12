@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Suspense } from "react";
+import { type ReactElement, Suspense } from "react";
 
 const events: string[] = [];
 const notFound = mock(() => {
@@ -11,7 +11,7 @@ const loadCustomerAccountPage = mock(() =>
   Promise.resolve({ kind: "unavailable" as const })
 );
 const AccountPage = mock(() => null);
-const AccountLoading = mock(() => null);
+const AccountContentLoading = mock(() => null);
 
 mock.module("next/navigation", () => ({ notFound }));
 mock.module("next/server", () => ({ connection }));
@@ -25,7 +25,7 @@ mock.module("@/features/account/components/account-page", () => ({
   AccountPage,
 }));
 mock.module("@/features/account/components/account-loading", () => ({
-  AccountLoading,
+  AccountContentLoading,
 }));
 mock.module("@/features/i18n", () => ({ m: {} }));
 mock.module("@/features/i18n/server/request-locale", () => ({
@@ -72,10 +72,10 @@ describe("customer account route boundary", () => {
     expect(pageSource).toContain("robots: { index: false, follow: false }");
     expect(pageSource).toContain('import { Suspense } from "react";');
     expect(pageSource).toContain(
-      'import { AccountLoading } from "@/features/account/components/account-loading";'
+      'import { AccountContentLoading } from "@/features/account/components/account-loading";'
     );
     expect(pageSource).toContain(
-      "<Suspense fallback={<AccountLoading locale={locale} />}>"
+      "<Suspense fallback={<AccountContentLoading locale={locale} />}>"
     );
     expect(pageSource).toContain(
       "<CustomerAccountPageContent locale={locale} />"
@@ -98,8 +98,13 @@ describe("customer account route boundary", () => {
   test("checks the account gate after connection and before loading private account data", async () => {
     const { default: CustomerAccountPageRoute } = await import("./page");
 
-    const route = await CustomerAccountPageRoute();
+    const route = (await CustomerAccountPageRoute()) as ReactElement<{
+      readonly children: ReactElement<{ readonly locale: "en-US" }>;
+      readonly fallback: ReactElement<{ readonly locale: "en-US" }>;
+    }>;
     expect(route.type).toBe(Suspense);
+    expect(route.props.fallback.type).toBe(AccountContentLoading);
+    expect(route.props.fallback.props.locale).toBe("en-US");
     expect(events).toEqual([]);
     expect(areAccountsEnabled).not.toHaveBeenCalled();
     expect(connection).not.toHaveBeenCalled();
