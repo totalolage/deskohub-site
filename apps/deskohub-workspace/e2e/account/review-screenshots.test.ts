@@ -31,6 +31,18 @@ const privateLinkedAccountQueries = [
   "?section=billing",
   "?section=danger",
 ] as const;
+const marketingReviewTargets = [
+  "account-marketing-withdrawn-desktop",
+  "account-marketing-active-mobile",
+  "marketing-link-pending-desktop",
+  "marketing-link-pending-mobile",
+  "marketing-link-active-desktop",
+  "marketing-link-active-mobile",
+  "marketing-link-withdrawn-desktop",
+  "marketing-link-withdrawn-mobile",
+  "marketing-link-invalid-desktop",
+  "marketing-link-invalid-mobile",
+] as const;
 
 const validTargets = [
   {
@@ -98,6 +110,86 @@ const validTargets = [
     query: "",
     target: "linked-legal-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "account-marketing-withdrawn-desktop.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "account-marketing-withdrawn-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "account-marketing-active-mobile.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "account-marketing-active-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "marketing-link-pending-desktop.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "marketing-link-pending-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "marketing-link-pending-mobile.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "marketing-link-pending-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "marketing-link-active-desktop.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "marketing-link-active-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "marketing-link-active-mobile.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "marketing-link-active-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "marketing-link-withdrawn-desktop.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "marketing-link-withdrawn-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "marketing-link-withdrawn-mobile.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "marketing-link-withdrawn-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
+    filename: "marketing-link-invalid-desktop.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "marketing-link-invalid-desktop",
+    viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "marketing-link-invalid-mobile.png",
+    path: "/en-US/account/legal",
+    query: "",
+    target: "marketing-link-invalid-mobile",
+    viewport: { height: 900, width: 375 },
     fullPage: true,
   },
   {
@@ -650,6 +742,23 @@ describe("account review screenshot capture", () => {
       target: "linked-legal-desktop",
       url: `${baseUrl}/en-US/account/legal#review-state`,
     },
+    ...marketingReviewTargets.flatMap((target) => [
+      {
+        name: `${target} with a token query`,
+        target,
+        url: `${baseUrl}/en-US/account/legal?token=synthetic-secret-token`,
+      },
+      {
+        name: `${target} with another query`,
+        target,
+        url: `${baseUrl}/en-US/account/legal?review-state=synthetic-query`,
+      },
+      {
+        name: `${target} with a hash`,
+        target,
+        url: `${baseUrl}/en-US/account/legal#review-state`,
+      },
+    ]),
   ] as const;
 
   for (const invalidPage of invalidPages) {

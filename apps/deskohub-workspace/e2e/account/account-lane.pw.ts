@@ -33,6 +33,7 @@ import {
   type WorkspaceE2EAccountJournal,
   writeWorkspaceE2EAccountJournal,
 } from "./journal";
+import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";
 import { verifyProfileNavigation } from "./profile-navigation";
 import { makeMagicLinkRateBudget } from "./rate-budget";
 import { withWorkspaceE2EReservationHistoryFixture } from "./reservation-history-fixture";
@@ -247,6 +248,13 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                 }
               );
             }
+            yield* verifyWorkspaceE2EMarketingPreferences({
+              baseUrl: accountLane.config.baseUrl,
+              browser,
+              bypassSecret: accountLane.config.bypassSecret,
+              customerId: DotyposCustomerIdSchema.make(customerId),
+              page: getOwnedPage(),
+            });
             const [firstReservationId, secondReservationId] =
               accountLane.journalRef.journal.dotyposReservationIds;
             if (!firstReservationId || !secondReservationId) {

@@ -1,6 +1,10 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import { m } from "@/features/i18n";
 import { captureAccountReview } from "../account/review-screenshots";
+import {
+  dismissLegalCookieConsent,
+  hasReactClickHandler,
+} from "../legal-cookie-consent";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { enablePreviewAccess, requireBaseUrl } from "./navigation-test-helpers";
 
@@ -19,8 +23,6 @@ const accountSectionLabels = {
   profile: m.accountSectionProfile({}, { locale }),
   reservations: m.accountSectionReservations({}, { locale }),
 } as const;
-const consentModalNecessaryOnlyLabel =
-  m.cookieConsentConsentModalAcceptNecessaryBtn({}, { locale });
 const viewports = [
   { height: 1_000, name: "desktop", width: 1_440 },
   { height: 900, name: "mobile 375", width: 375 },
@@ -50,7 +52,7 @@ for (const viewport of viewports) {
       new URL(publicAccountLegalPath, requireBaseUrl(baseURL)).toString()
     );
 
-    await dismissConsentModal(page);
+    await dismissLegalCookieConsent(page, locale);
     await expectPublicAccountLegal(page);
     await captureAccountReview(
       page,
@@ -74,7 +76,7 @@ test("redirects legacy cookie settings to public account legal", async ({
     new URL(publicAccountLegalPath, requireBaseUrl(baseURL)).toString()
   );
 
-  await dismissConsentModal(page);
+  await dismissLegalCookieConsent(page, locale);
   await expectPublicAccountLegal(page);
 });
 
@@ -90,7 +92,7 @@ test("persists and restores the anonymous analytics choice across reload", async
       timeout: workspaceE2ETimeouts.browserNavigation,
       waitUntil: "load",
     });
-    await dismissConsentModal(page);
+    await dismissLegalCookieConsent(page, locale);
 
     const analyticsCheckbox = page.locator(analyticsCheckboxSelector);
     await expect(analyticsCheckbox).toBeVisible();
@@ -108,7 +110,7 @@ test("persists and restores the anonymous analytics choice across reload", async
       timeout: workspaceE2ETimeouts.browserNavigation,
       waitUntil: "load",
     });
-    await dismissConsentModal(page);
+    await dismissLegalCookieConsent(page, locale);
     await expect(analyticsCheckbox).toHaveAttribute("aria-checked", "true");
 
     await waitForAnalyticsCheckboxHandler(page);
@@ -124,35 +126,6 @@ async function expectNoAuthSessionCookie(context: BrowserContext) {
     name.includes("session_token")
   );
   expect(authCookies.length).toBe(0);
-}
-
-async function dismissConsentModal(page: Page) {
-  const necessaryOnlyButton = page.getByRole("button", {
-    exact: true,
-    name: consentModalNecessaryOnlyLabel,
-  });
-
-  await expect
-    .poll(
-      async () =>
-        (await necessaryOnlyButton.isVisible()) ||
-        ((await page.locator(analyticsCheckboxSelector).isVisible()) &&
-          (await page.evaluate(
-            hasReactClickHandler,
-            analyticsCheckboxSelector
-          ))),
-      { timeout: workspaceE2ETimeouts.uiTransition }
-    )
-    .toBe(true);
-
-  if (await necessaryOnlyButton.isVisible()) {
-    await necessaryOnlyButton.click({
-      timeout: workspaceE2ETimeouts.browserAction,
-    });
-    await expect(necessaryOnlyButton).toBeHidden({
-      timeout: workspaceE2ETimeouts.browserAction,
-    });
-  }
 }
 
 async function expectPublicAccountLegal(page: Page) {
@@ -290,25 +263,4 @@ async function waitForAnalyticsCheckboxHandler(page: Page) {
   await page.waitForFunction(hasReactClickHandler, analyticsCheckboxSelector, {
     timeout: workspaceE2ETimeouts.uiTransition,
   });
-}
-
-function hasReactClickHandler(selector: string): boolean {
-  const element = document.querySelector(selector);
-  if (element === null) return false;
-
-  const reactPropsKey = Object.keys(element).find((key) =>
-    key.startsWith("__reactProps$")
-  );
-  if (reactPropsKey === undefined) return false;
-
-  const reactProps = Object.getOwnPropertyDescriptor(
-    element,
-    reactPropsKey
-  )?.value;
-  if (typeof reactProps !== "object" || reactProps === null) return false;
-
-  return (
-    "onClick" in reactProps &&
-    typeof (reactProps as { readonly onClick?: unknown }).onClick === "function"
-  );
 }
