@@ -1,12 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { Context, Effect, Layer } from "effect";
-import { type ReactElement, Suspense } from "react";
-
-type TestSession = {
-  readonly accountId: string;
-  readonly email: string;
-  readonly deletionRequested: boolean;
-};
+import { createElement, type ReactElement, Suspense } from "react";
 
 type TestMarketingPreferences = {
   readonly context?: string;
@@ -18,32 +11,16 @@ type PublicAccountLegalProps = {
   readonly accountsEnabled: boolean;
   readonly locale: "en-US";
   readonly marketingPreferences: TestMarketingPreferences;
-  readonly signedIn: boolean;
 };
 
-let currentUserEffect: Effect.Effect<TestSession | null, unknown> =
-  Effect.succeed(null);
-let currentUserReads = 0;
-let accountFlagEnabled = true;
-let marketingPreferences: TestMarketingPreferences = {
-  status: "unavailable",
+const AccountContentLoading = mock(() => null);
+const PublicAccountLegal = (props: PublicAccountLegalProps) =>
+  createElement("public-account-legal", props);
+const accountFlagEnabled = { value: true };
+const marketingPreferences = {
+  value: { status: "unavailable" } as TestMarketingPreferences,
 };
 const callOrder: string[] = [];
-
-const Authentication = Context.Service<
-  Authentication,
-  { readonly currentUser: typeof currentUserEffect }
->()("@test/PublicAccountAuthentication");
-
-const AuthenticationLayer = Layer.effect(
-  Authentication,
-  Effect.succeed({
-    get currentUser() {
-      return currentUserEffect;
-    },
-  })
-);
-Object.assign(Authentication, { Default: AuthenticationLayer });
 
 const connection = mock(() => {
   callOrder.push("connection");
@@ -51,34 +28,31 @@ const connection = mock(() => {
 });
 const areAccountsEnabled = mock(() => {
   callOrder.push("flag");
-  return Promise.resolve(accountFlagEnabled);
+  return Promise.resolve(accountFlagEnabled.value);
 });
 const getMarketingPreferences = mock((_locale: "en-US") => {
   callOrder.push("marketing-preferences");
-  return Promise.resolve(marketingPreferences);
+  return Promise.resolve(marketingPreferences.value);
 });
+const runWithRequestLocale = mock(
+  (callback: (locale: "en-US") => unknown): unknown => callback("en-US")
+);
 
 mock.module("next/server", () => ({ connection }));
+mock.module("@/features/account/components/account-loading", () => ({
+  AccountContentLoading,
+}));
 mock.module("@/features/account/server/account-feature-flag.server", () => ({
   areAccountsEnabled,
 }));
-mock.module(
-  "@/features/account/backend/customer-authentication.service",
-  () => ({ CustomerAuthentication: Authentication })
-);
 mock.module("@/features/account/components/public-account-legal", () => ({
-  PublicAccountLegal: (_props: PublicAccountLegalProps) => null,
+  PublicAccountLegal,
 }));
 mock.module("@/features/legal/marketing-preferences.server", () => ({
   getMarketingPreferences,
 }));
 mock.module("@/features/i18n/server/request-locale", () => ({
-  runWithRequestLocale: (callback: (locale: "en-US") => unknown): unknown =>
-    callback("en-US"),
-}));
-mock.module("@/shared/backend/workspace-effect", () => ({
-  runWorkspaceEffect: () => (effect: Effect.Effect<unknown, unknown, never>) =>
-    Effect.runPromise(effect),
+  runWithRequestLocale,
 }));
 
 const pageSource = await Bun.file(
@@ -87,25 +61,22 @@ const pageSource = await Bun.file(
 
 describe("public account legal route boundary", () => {
   afterEach(() => {
+    AccountContentLoading.mockClear();
     connection.mockClear();
     areAccountsEnabled.mockClear();
     getMarketingPreferences.mockClear();
+    runWithRequestLocale.mockClear();
     callOrder.length = 0;
-    currentUserReads = 0;
-    accountFlagEnabled = true;
-    marketingPreferences = { status: "unavailable" };
-    currentUserEffect = Effect.succeed(null);
+    accountFlagEnabled.value = true;
+    marketingPreferences.value = { status: "unavailable" };
   });
 
-  test("reads only the authoritative session before rendering the legal screen", () => {
+  test("keeps the localized public content behind its request-boundary fallback", () => {
     expect(pageSource).toContain('import { Suspense } from "react";');
     expect(pageSource).toContain(
-      'import { AccountLoading } from "@/features/account/components/account-loading";'
+      'import { AccountContentLoading } from "@/features/account/components/account-loading";'
     );
     expect(pageSource).toContain('import { connection } from "next/server";');
-    expect(pageSource).toContain(
-      'import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";'
-    );
     expect(pageSource).toContain(
       'import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";'
     );
@@ -116,34 +87,29 @@ describe("public account legal route boundary", () => {
       'import { runWithRequestLocale } from "@/features/i18n/server/request-locale";'
     );
     expect(pageSource).toContain(
-      "export default function PublicAccountLegalPage()"
-    );
-    expect(pageSource).not.toContain(
-      "export default async function PublicAccountLegalPage()"
+      "export async function generateMetadata(): Promise<Metadata>"
     );
     expect(pageSource).toContain(
-      "<Suspense fallback={<AccountLoading locale={locale} />}>"
+      "export default function PublicAccountLegalPage()"
+    );
+    expect(pageSource).toContain(
+      "<Suspense fallback={<AccountContentLoading locale={locale} />}>"
     );
     expect(pageSource).toContain(
       "<PublicAccountLegalPageContent locale={locale} />"
     );
     expect(pageSource).toMatch(
-      /async function PublicAccountLegalPageContent[\s\S]*await connection\(\)[\s\S]*Effect\.flatMap/
+      /async function PublicAccountLegalPageContent[\s\S]*await connection\(\)[\s\S]*const accountsEnabled = await areAccountsEnabled\(\)[\s\S]*const marketingPreferences = await getMarketingPreferences\(locale\)/
     );
-    expect(pageSource).toMatch(
-      /Effect\.flatMap\(\s*CustomerAuthentication,\s*\(authentication\) => authentication\.currentUser/
-    );
-    expect(pageSource).toContain(
-      "Effect.provide(CustomerAuthentication.Default)"
-    );
-    expect(pageSource).toContain("<PublicAccountLegal");
     expect(pageSource).toContain("accountsEnabled={accountsEnabled}");
     expect(pageSource).toContain("marketingPreferences={marketingPreferences}");
-    expect(pageSource).toMatch(
-      /await connection\(\)[\s\S]*const accountsEnabled = await areAccountsEnabled\(\)/
-    );
+    expect(pageSource).toContain("robots: { index: false, follow: false }");
 
     for (const forbiddenReference of [
+      "CustomerAuthentication",
+      "Effect",
+      "Result",
+      "runWorkspaceEffect",
       "loadCustomerAccountPage",
       "resolveCurrentCustomerAccount",
       "CustomerProfileService",
@@ -151,6 +117,8 @@ describe("public account legal route boundary", () => {
       "Dotypos",
       "profile",
       "history",
+      "AccountShell",
+      "signedIn",
     ]) {
       expect(pageSource).not.toContain(forbiddenReference);
     }
@@ -161,66 +129,49 @@ describe("public account legal route boundary", () => {
     expect(routeSource.slice(0, boundaryStart)).not.toContain(
       "await connection()"
     );
+    expect(routeSource.slice(0, boundaryStart)).not.toContain(
+      "getMarketingPreferences"
+    );
   });
 
-  test.each([
-    ["anonymous", Effect.succeed(null), false],
-    [
-      "signed-in",
-      Effect.succeed({
-        accountId: "account-1",
-        email: "ada@example.test",
-        deletionRequested: false,
-      }),
-      true,
-    ],
-    ["auth failure", Effect.fail(new Error("synthetic auth failure")), false],
-  ] as const)(
-    "executes the localized suspense route for %s without private account services",
-    async (_state, sessionEffect, expectedSignedIn) => {
-      currentUserEffect = sessionEffect;
-      const { default: PublicAccountLegalPage } = await import("./page");
-      const route = PublicAccountLegalPage() as ReactElement<{
-        readonly children: ReactElement<{ readonly locale: "en-US" }>;
-        readonly fallback: ReactElement;
-      }>;
+  test("checks request connection before the account flag and preference data", async () => {
+    const { default: PublicAccountLegalPage } = await import("./page");
+    const route = PublicAccountLegalPage() as ReactElement<{
+      readonly children: ReactElement<{ readonly locale: "en-US" }>;
+      readonly fallback: ReactElement;
+    }>;
 
-      expect(route.type).toBe(Suspense);
-      expect(route.props.fallback).toBeTruthy();
-      expect(connection).not.toHaveBeenCalled();
+    expect(route.type).toBe(Suspense);
+    expect(route.props.fallback).toBeTruthy();
+    expect(callOrder).toEqual([]);
 
-      const content = route.props.children;
-      const Content = content.type as (props: {
-        readonly locale: "en-US";
-      }) => Promise<ReactElement<PublicAccountLegalProps>>;
-      const output = await Content(content.props);
+    const content = route.props.children;
+    const Content = content.type as (props: {
+      readonly locale: "en-US";
+    }) => Promise<ReactElement<PublicAccountLegalProps>>;
+    const output = await Content(content.props);
 
-      expect(connection).toHaveBeenCalledTimes(1);
-      expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
-      expect(output.props).toEqual({
+    expect(callOrder).toEqual(["connection", "flag", "marketing-preferences"]);
+    expect(connection).toHaveBeenCalledTimes(1);
+    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
+    expect(getMarketingPreferences).toHaveBeenCalledWith("en-US");
+    expect(output).toMatchObject({
+      type: PublicAccountLegal,
+      props: {
         accountsEnabled: true,
         locale: "en-US",
         marketingPreferences: { status: "unavailable" },
-        signedIn: expectedSignedIn,
-      });
-    }
-  );
+      },
+    });
+  });
 
-  test("keeps a signed-in session authoritative when the account flag is off", async () => {
-    accountFlagEnabled = false;
-    marketingPreferences = {
+  test("keeps public legal content available when accounts are disabled and forwards preferences", async () => {
+    accountFlagEnabled.value = false;
+    marketingPreferences.value = {
       context: "synthetic-account-context",
       source: "account",
       status: "active",
     };
-    currentUserEffect = Effect.sync(() => {
-      currentUserReads += 1;
-      return {
-        accountId: "account-1",
-        email: "ada@example.test",
-        deletionRequested: false,
-      };
-    });
 
     const { default: PublicAccountLegalPage } = await import("./page");
     const route = PublicAccountLegalPage() as ReactElement<{
@@ -233,17 +184,18 @@ describe("public account legal route boundary", () => {
     }) => Promise<ReactElement<PublicAccountLegalProps>>;
     const output = await Content(content.props);
 
-    expect(currentUserReads).toBe(1);
-    expect(areAccountsEnabled).toHaveBeenCalledTimes(1);
-    expect(getMarketingPreferences).toHaveBeenCalledWith("en-US");
-    expect(callOrder.indexOf("connection")).toBeLessThan(
-      callOrder.indexOf("flag")
-    );
-    expect(output.props).toEqual({
-      accountsEnabled: false,
-      locale: "en-US",
-      marketingPreferences,
-      signedIn: true,
+    expect(callOrder).toEqual(["connection", "flag", "marketing-preferences"]);
+    expect(output).toMatchObject({
+      type: PublicAccountLegal,
+      props: {
+        accountsEnabled: false,
+        locale: "en-US",
+        marketingPreferences: {
+          context: "synthetic-account-context",
+          source: "account",
+          status: "active",
+        },
+      },
     });
   });
 });

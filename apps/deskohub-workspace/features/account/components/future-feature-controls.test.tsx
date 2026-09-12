@@ -51,6 +51,9 @@ const routerRefresh = mock(() => undefined);
 mock.module("next/navigation", () => ({
   usePathname: () => "/en-US/account",
   useRouter: () => ({ refresh: routerRefresh }),
+  unstable_rethrow: (cause: unknown) => {
+    throw cause;
+  },
 }));
 
 type ActionResult = {
@@ -75,6 +78,37 @@ mock.module("@/features/account/actions", () => ({
   completeCustomerProfile,
   deleteCustomerAccount,
   updateCustomerProfile,
+}));
+
+type MarketingPreferenceSaveInput = {
+  readonly confirmed: true;
+  readonly context: string;
+  readonly granted: boolean;
+  readonly locale: Locale;
+  readonly source: "link" | "account";
+};
+
+type MarketingManagementInput = {
+  readonly context: string;
+};
+
+const saveMarketingPreferencesAction = mock(
+  (_input: MarketingPreferenceSaveInput): Promise<ActionResult> =>
+    Promise.resolve({ data: { status: "saved" } })
+);
+const confirmMarketingManagementAction = mock(
+  (_input: MarketingManagementInput): Promise<ActionResult> =>
+    Promise.resolve({ data: { status: "confirmed" } })
+);
+const clearMarketingManagementAction = mock(
+  (_input: MarketingManagementInput): Promise<ActionResult> =>
+    Promise.resolve({ data: { status: "cleared" } })
+);
+
+mock.module("@/features/legal/actions", () => ({
+  clearMarketingManagementAction,
+  confirmMarketingManagementAction,
+  saveMarketingPreferencesAction,
 }));
 
 const signInMagicLink = mock(() => Promise.resolve({ error: null }));
@@ -544,7 +578,17 @@ describe("account future-feature controls", () => {
     ];
     for (const view of loadingViews) {
       expect(view.container.querySelectorAll("[tabindex='0']")).toHaveLength(0);
-      expect(view.container.querySelectorAll("button")).toHaveLength(0);
+      const loadingButtons = Array.from(
+        view.container.querySelectorAll("button")
+      );
+      expect(
+        loadingButtons.filter(
+          (button) => !(button as HTMLButtonElement).disabled
+        )
+      ).toHaveLength(0);
+      for (const button of loadingButtons) {
+        expect((button as HTMLButtonElement).disabled).toBe(true);
+      }
       view.unmount();
     }
 

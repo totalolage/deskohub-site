@@ -24,7 +24,9 @@ export default async function FullHeaderLayout({
       <SkipLink label={m.skipToMainContent({}, { locale })} />
       <SiteHeader currentLocale={locale} {...siteHeaderConfig} />
       <div id="main-content" tabIndex={-1}>
-        <PageNavigationBoundary>{children}</PageNavigationBoundary>
+        <PageNavigationBoundary persistentSegments={["account"]}>
+          {children}
+        </PageNavigationBoundary>
       </div>
       <PublicSiteFooter />
     </>

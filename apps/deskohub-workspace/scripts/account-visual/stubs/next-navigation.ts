@@ -65,7 +65,7 @@ export function useNavigationState() {
 
 export function usePathname() {
   useNavigationState();
-  return globalThis.window === undefined ? "/" : window.location.pathname;
+  return globalThis.window === undefined ? null : window.location.pathname;
 }
 
 export function useSearchParams() {
