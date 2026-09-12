@@ -14,7 +14,7 @@ import {
   makeE2ERunContext,
 } from "../services/telemetry";
 import { makeE2ETelemetryRuntime, runE2EEffect } from "../telemetry-runtime";
-import { writeWorkspaceE2ERunContext } from "./run-plan";
+import { writeWorkspaceE2ERunContext } from "./run-context";
 import { readExternalParentSpan } from "./trace-parent";
 
 test("validate workspace preview readiness", async () => {

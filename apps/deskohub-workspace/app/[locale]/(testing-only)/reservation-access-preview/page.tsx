@@ -48,6 +48,7 @@ export default async function ReservationAccessPreviewPage({
     <ReservationAccessPage
       access={getPreviewAccess(state ?? "available")}
       locale={locale}
+      orderId="reservation-access-preview"
     />
   ));
 }

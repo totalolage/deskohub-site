@@ -9,7 +9,7 @@ import type { WorkspaceE2ECaseService } from "../services/cases";
 import { makeWorkspaceE2ECaseRuntimeLive } from "../services/runner";
 import type { E2ETelemetryService } from "../services/telemetry";
 import { makeE2ETelemetryRuntime, runE2EEffect } from "../telemetry-runtime";
-import { readWorkspaceE2ERunContext } from "./run-plan";
+import { readWorkspaceE2ERunContext } from "./run-context";
 import { readExternalParentSpan } from "./trace-parent";
 
 type WorkspaceE2ERuntimeServices =

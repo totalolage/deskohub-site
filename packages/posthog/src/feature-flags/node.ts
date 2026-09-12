@@ -114,7 +114,16 @@ export const makePostHogNodeFeatureFlagService = <
               }),
           })
         ),
-        Effect.map((result) => result?.enabled ?? false)
+        Effect.flatMap((result) =>
+          result
+            ? Effect.succeed(result.enabled)
+            : Effect.fail(
+                new PostHogFeatureFlagEvaluationError({
+                  message: "Could not evaluate the PostHog feature flag.",
+                  cause: undefined,
+                })
+              )
+        )
       )
   );
 

@@ -1,17 +1,25 @@
 import { fileURLToPath } from "node:url";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Effect, Layer } from "effect";
+import type { Pool } from "pg";
 import {
   WorkspaceDatabase,
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
-import { makeDatabaseClient, makeDatabasePool } from "@/db/database-client";
+import {
+  makeDatabaseClient,
+  makeDatabasePool,
+  makeNodePostgresDatabase,
+} from "@/db/database-client";
 import { databasePoolTimeouts } from "@/db/database-pool-timeouts";
 
 export interface WorkspacePostgresTestDatabase {
   readonly db: WorkspaceDatabaseClient;
   readonly layer: Layer.Layer<WorkspaceDatabase>;
+  readonly pool: Pool;
+  readonly nodePostgresDb: NodePgDatabase;
   readonly close: () => Promise<void>;
 }
 
@@ -58,6 +66,8 @@ const connectWorkspacePostgres =
     return {
       db,
       layer: Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db })),
+      pool,
+      nodePostgresDb: makeNodePostgresDatabase(pool),
       close: () => pool.end(),
     };
   };

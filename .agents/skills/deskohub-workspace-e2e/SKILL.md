@@ -31,6 +31,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   naming convention, environment switch, or case-specific database allowlist
   for those assertions.
 - Treat email-provider secrets that exist only in Vercel as intentionally unavailable to local E2E. Validate delivery through Vercel runtime or webhook evidence, and validate email body content with the fake transport renderer.
+- Treat exact immutable-preview runtime transport evidence as the authority for provider isolation: reservation checkout may use the Console email provider while the auth boundary remains direct Resend. An `EMAIL_PROVIDER` fallback, including Resend when `EMAIL_API_KEY` exists, is not evidence that checkout used Console. The stale `.env.example` Preview-Resend instruction is not the current checkout policy. The historic replay quiet cooldown justified by Resend cases remains a safeguard, not an assertion that the current target uses Resend.
 - Run full E2E only against the ordinary protected Vercel Git preview for the exact committed and pushed SHA. Use the immutable deployment URL from `vercel.deployment.success` or an explicitly supplied workflow-dispatch input; never scrape the PR comment or substitute a mutable branch/custom-domain alias. For manual dispatch, fail before the test job unless GitHub deployment metadata records that origin as a successful Workspace deployment for the exact target SHA.
 - Treat `WORKSPACE_E2E_BASE_URL` and its integration-created Neon preview branch as one target. Resolve and migrate the validated `preview/<internal-head-ref>` branch after the preview succeeds, pass its pooled URL to runtime checks and its direct URL to migrations, assertions, and the allowlist, and fail closed rather than falling back to production or shared development.
 - Do not deploy or mutate Vercel from the E2E runner. Uncommitted local code has no externally reachable Git preview and must not be described as tested through a previously built preview.
@@ -115,6 +116,38 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   Deduplicate cleanup targets and cancel independent Dotypos reservations
   concurrently while collecting every cleanup exit. Preserve parallel payment
   coverage unless exact-run evidence demonstrates a concurrency-specific failure.
+- Playwright dependency phases are barriers: they await every project in a
+  topological phase before advancing. Keep the long serial account lane in the
+  same phase as `checkout-non-payment` and `checkout-payment-1` through
+  `checkout-payment-3` by depending on `checkout-plan`; require real scheduler
+  regression evidence, not only a graph assertion.
+  Keep the bounded evidence in [account scheduling runtime](references/account-scheduling-runtime.json)
+  and reproduce its synthetic harness with `bun run test scripts/workspace-e2e-scheduling.test.ts`
+  from `apps/deskohub-workspace`. The package command supplies the preload and
+  `--parallel=1` isolation. Load the actual config in a fresh bounded Bun
+  process, validate projects and controls JSON, and do not change the actual
+  scheduler. Run `bun turbo test --filter=deskohub-workspace` to prepare
+  generated dependencies before package tests; the Turbo task owns that
+  prerequisite generation. Runs without that generated-dependency step are not
+  valid full verification. Synthetic results are not deployed-run evidence.
+- For an account-lane runtime candidate, prove the local optimization with
+  the actual `makeWorkspaceE2EAccountCases` builder, the real
+  `makeMagicLinkRateBudget`, a fake external boundary, and a fixed clock.
+  Execute each selected case rather than only inspecting source, assert the
+  budgeted operation ledger and lifecycle handoffs, and keep this synthetic
+  evidence separate from deployed evidence. Reuse the first accepted
+  main-recipient link and the already-authenticated synthetic account and
+  provider profile; cover active, expired, and duplicate provider-link states
+  with exact unlink/relink transitions instead of extra auth links or
+  identities. Keep the callback screenshot review on
+  `account-session-lifecycle` when it consumes the handed-off
+  reauthentication link; the marker case only issues it. For a candidate that
+  removes quiet windows, the repository-root operator must deploy the exact
+  committed SHA and benchmark the entire protected E2E job—setup, suite, and
+  cleanup—against the 600-second limit before claiming the target. Keep
+  production limits and headroom unchanged, and perform no production auth
+  fabrication, rate-limit clearing, Resend configuration changes, or automatic
+  provider work.
 - Treat a successful Dotypos cancellation response as issued, not converged.
   Before suite cleanup releases the sandbox boundary, poll the same active
   reservation inventory consumed by availability until every successfully

@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { reconcileWorkspaceE2EAccountLane } from "../account/reconcile";
 import { cleanupCheckoutFlowStates } from "../cleanup";
 import { getDatasourceConfig } from "../config";
 import { E2ETelemetryService } from "../services/telemetry";
@@ -16,10 +17,14 @@ test("reconcile workspace checkout reservations", async ({
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
       return yield* telemetry.tracePhase({
-        effect: cleanupCheckoutFlowStates({
-          datasourceConfig,
-          flowStates,
-          workflowError: undefined,
+        effect: Effect.gen(function* () {
+          const checkoutError = yield* cleanupCheckoutFlowStates({
+            datasourceConfig,
+            flowStates,
+            workflowError: undefined,
+          });
+          yield* reconcileWorkspaceE2EAccountLane(datasourceConfig);
+          return checkoutError;
         }),
         phaseId: "suite-cleanup",
       });

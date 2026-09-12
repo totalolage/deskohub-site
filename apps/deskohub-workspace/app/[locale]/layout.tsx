@@ -8,6 +8,7 @@ import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/cons
 import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
 import { PostHogProvider } from "@/features/cookie-consent/components/posthog-analytics";
 import { isLocale, locales } from "@/features/i18n";
+import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
 import "../globals.css";
 
 const sculpin = localFont({
@@ -70,7 +71,7 @@ export default async function LocaleLayout({
               posthogEnvironment={env.VERCEL_ENV}
             />
           </Suspense>
-          {children}
+          <UnsavedChangesProvider>{children}</UnsavedChangesProvider>
         </PostHogProvider>
       </body>
     </html>

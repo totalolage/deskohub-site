@@ -23,6 +23,7 @@ import { formatReservationDisplayDate } from "@/features/reservation/reservation
 import {
   getCoworkReservationPath,
   getReservationStartPath,
+  reservationAccessPath,
 } from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
@@ -32,6 +33,7 @@ import { WorkspaceTableMapView } from "./workspace-table-map-view";
 
 type CheckoutStatusPageProps = {
   readonly locale: Locale;
+  readonly presentation?: "page" | "modal";
   readonly status: CheckoutStatusViewModel;
 };
 
@@ -238,6 +240,7 @@ const getFulfillmentFailedContactHref = (
 
 export function CheckoutStatusPage({
   locale,
+  presentation = "page",
   status,
 }: CheckoutStatusPageProps) {
   const copy = getStatusCopy(status.status, locale);
@@ -257,131 +260,171 @@ export function CheckoutStatusPage({
     repeatReservationSearchParams
   );
   const showSupportButton = !!supportContactHref;
+  const reservationAccessHref =
+    status.status === "fulfilled"
+      ? `/${locale}${reservationAccessPath}/${encodeURIComponent(status.orderId)}`
+      : undefined;
   const Icon = copy.Icon;
+  const showPageActions = presentation === "page";
 
-  return (
-    <CheckoutFlowLayout activeStepKey="access" locale={locale}>
-      <div className="rounded-[2.25rem] border border-white/55 bg-white/94 p-6 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm sm:p-10">
-        <output className="sr-only" aria-live="polite" aria-atomic>
-          {m.checkoutStatusEyebrow({}, { locale })}: {copy.title}
-        </output>
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
-          <div className={statusIconWrapperVariants({ tone: copy.tone })}>
-            <Icon className="h-9 w-9" aria-hidden="true" />
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-burned-orange">
-              {m.checkoutStatusEyebrow({}, { locale })}
-            </p>
-            <h1 className="mt-4 text-balance text-4xl leading-none sm:text-5xl">
-              {copy.title}
-            </h1>
-            <p
-              className={cn(
-                "mt-5 text-lg leading-8 text-navy-blue/70",
-                showSupportButton &&
-                  "after:content-['_↴'] after:text-4xl after:leading-0"
-              )}
-            >
-              {copy.lead}
-            </p>
-          </div>
+  const content = (
+    <div
+      className={
+        presentation === "modal"
+          ? "bg-white p-6 text-navy-blue sm:p-10"
+          : "rounded-[2.25rem] border border-white/55 bg-white/94 p-6 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm sm:p-10"
+      }
+    >
+      <output className="sr-only" aria-live="polite" aria-atomic>
+        {m.checkoutStatusEyebrow({}, { locale })}: {copy.title}
+      </output>
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+        <div className={statusIconWrapperVariants({ tone: copy.tone })}>
+          <Icon className="h-9 w-9" aria-hidden="true" />
         </div>
 
-        {showSupportButton && (
-          <Button asChild className="h-12 px-6 mt-6 w-full">
-            <Link
-              href={supportContactHref}
-              id="checkout-status-support-contact"
-              prefetch={false}
-            >
-              {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
-            </Link>
-          </Button>
-        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-burned-orange">
+            {m.checkoutStatusEyebrow({}, { locale })}
+          </p>
+          <h1 className="mt-4 text-balance text-4xl leading-none sm:text-5xl">
+            {copy.title}
+          </h1>
+          <p
+            className={cn(
+              "mt-5 text-lg leading-8 text-navy-blue/70",
+              showSupportButton &&
+                "after:content-['_↴'] after:text-4xl after:leading-0"
+            )}
+          >
+            {copy.lead}
+          </p>
+        </div>
+      </div>
 
-        {showReservationDetails && (
-          <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
-            <h2 className="text-xl text-navy-blue">
-              {m.checkoutStatusSummaryTitle({}, { locale })}
-            </h2>
+      {showSupportButton && (
+        <Button asChild className="h-12 px-6 mt-6 w-full">
+          <Link
+            href={supportContactHref}
+            id="checkout-status-support-contact"
+            prefetch={false}
+          >
+            {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
+          </Link>
+        </Button>
+      )}
 
-            <dl className="mt-5 grid gap-3">
-              <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
+      {showReservationDetails && (
+        <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
+          <h2 className="text-xl text-navy-blue">
+            {m.checkoutStatusSummaryTitle({}, { locale })}
+          </h2>
+
+          <dl className="mt-5 grid gap-3">
+            <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
+              <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
+                {m.checkoutStatusOrderIdLabel({}, { locale })}
+              </dt>
+              <dd className="break-all font-mono text-sm font-semibold text-navy-blue">
+                {status.orderId}
+              </dd>
+            </div>
+            {summaryRows.map((row) => (
+              <div
+                key={row.label}
+                className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4"
+              >
                 <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
-                  {m.checkoutStatusOrderIdLabel({}, { locale })}
+                  {row.label}
                 </dt>
-                <dd className="break-all font-mono text-sm font-semibold text-navy-blue">
-                  {status.orderId}
+                <dd className="text-base font-semibold text-navy-blue">
+                  {row.value}
                 </dd>
               </div>
-              {summaryRows.map((row) => (
-                <div
-                  key={row.label}
-                  className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4"
-                >
-                  <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
-                    {row.label}
-                  </dt>
-                  <dd className="text-base font-semibold text-navy-blue">
-                    {row.value}
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            ))}
+          </dl>
 
-            {summaryRows.length === 0 && (
-              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
-                {m.checkoutStatusMissingSummary({}, { locale })}
+          {summaryRows.length === 0 && (
+            <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
+              {m.checkoutStatusMissingSummary({}, { locale })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {showReservationDetails && status.tableMap && (
+        <div className="mt-8 rounded-[1.6rem] border border-navy-blue/10 bg-white/88 p-5 sm:p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-xl text-navy-blue">
+                {m.checkoutStatusTableMapTitle({}, { locale })}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-navy-blue/64">
+                {m.checkoutStatusTableMapLead({}, { locale })}
+              </p>
+            </div>
+            {status.tableMap.roomName && (
+              <p className="rounded-full border border-navy-blue/10 bg-navy-blue/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/60">
+                {m.checkoutStatusTableMapRoomLabel({}, { locale })}:{" "}
+                {status.tableMap.roomName}
               </p>
             )}
           </div>
-        )}
 
-        {showReservationDetails && status.tableMap && (
-          <div className="mt-8 rounded-[1.6rem] border border-navy-blue/10 bg-white/88 p-5 sm:p-6">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-xl text-navy-blue">
-                  {m.checkoutStatusTableMapTitle({}, { locale })}
-                </h2>
-                <p className="mt-2 text-sm leading-6 text-navy-blue/64">
-                  {m.checkoutStatusTableMapLead({}, { locale })}
-                </p>
-              </div>
-              {status.tableMap.roomName && (
-                <p className="rounded-full border border-navy-blue/10 bg-navy-blue/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/60">
-                  {m.checkoutStatusTableMapRoomLabel({}, { locale })}:{" "}
-                  {status.tableMap.roomName}
-                </p>
-              )}
-            </div>
-
-            <div className="mt-5 overflow-hidden rounded-[1.2rem] border border-navy-blue/8 bg-linear-to-br from-aquamarine-green/8 to-white p-3 [&>svg]:h-[min(58vh,28rem)] [&>svg]:min-h-72 [&>svg]:w-full [&_text]:font-bold">
-              <WorkspaceTableMapView
-                ariaLabel={m.checkoutStatusTableMapTitle({}, { locale })}
-                tableMap={status.tableMap}
-              />
-            </div>
+          <div className="mt-5 overflow-hidden rounded-[1.2rem] border border-navy-blue/8 bg-linear-to-br from-aquamarine-green/8 to-white p-3 [&>svg]:h-[min(58vh,28rem)] [&>svg]:min-h-72 [&>svg]:w-full [&_text]:font-bold">
+            <WorkspaceTableMapView
+              ariaLabel={m.checkoutStatusTableMapTitle({}, { locale })}
+              tableMap={status.tableMap}
+            />
           </div>
-        )}
-
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          <Button asChild className="h-12 px-6">
-            <a href={reserveAgainPath} id="checkout-status-reserve-again">
-              {repeatReservationSearchParams
-                ? m.checkoutStatusBookAgain({}, { locale })
-                : m.checkoutStatusReserveAgain({}, { locale })}
-            </a>
-          </Button>
-          <Button asChild variant="secondary" className="h-12 px-6">
-            <Link href={`/${locale}`} prefetch={false}>
-              {m.checkoutStatusBackHome({}, { locale })}
-            </Link>
-          </Button>
         </div>
-      </div>
+      )}
+
+      {(showPageActions || reservationAccessHref) && (
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          {showPageActions && (
+            <>
+              <Button asChild className="h-12 px-6">
+                <a href={reserveAgainPath} id="checkout-status-reserve-again">
+                  {repeatReservationSearchParams
+                    ? m.checkoutStatusBookAgain({}, { locale })
+                    : m.checkoutStatusReserveAgain({}, { locale })}
+                </a>
+              </Button>
+              <Button asChild variant="secondary" className="h-12 px-6">
+                <Link href={`/${locale}`} prefetch={false}>
+                  {m.checkoutStatusBackHome({}, { locale })}
+                </Link>
+              </Button>
+            </>
+          )}
+          {reservationAccessHref && (
+            <Button asChild variant="secondary" className="h-12 px-6">
+              {presentation === "modal" ? (
+                <Link
+                  href={reservationAccessHref}
+                  id="checkout-status-access"
+                  prefetch={false}
+                >
+                  {m.checkoutEmailCustomerAccessButton({}, { locale })}
+                </Link>
+              ) : (
+                <a href={reservationAccessHref} id="checkout-status-access">
+                  {m.checkoutEmailCustomerAccessButton({}, { locale })}
+                </a>
+              )}
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  return presentation === "modal" ? (
+    content
+  ) : (
+    <CheckoutFlowLayout activeStepKey="access" locale={locale}>
+      {content}
     </CheckoutFlowLayout>
   );
 }

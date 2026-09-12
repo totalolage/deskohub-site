@@ -1,19 +1,22 @@
 "use client";
 
-import { Menu, X } from "lucide-react";
-import Link from "next/link";
+import { Menu, UserRound, X } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
+import { GuardedLink as Link } from "@/shared/components/guarded-link";
 import {
   LocaleSwitcherLabels,
   LocaleSwitcherLinks,
 } from "@/shared/components/locale-switcher-links";
-import { HorizontalLogo } from "@/shared/components/logo";
+import { HorizontalLogo, Logo } from "@/shared/components/logo";
 import type { SiteHeaderMenuItem } from "@/shared/components/site-header-config";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
 type SiteHeaderProps = {
+  accountHref?: string;
+  accountLabel?: string;
   currentLocale: Locale;
   languageLabels: Record<Locale, string>;
   links: SiteHeaderMenuItem[];
@@ -26,7 +29,52 @@ type SiteHeaderProps = {
   primaryNavigationLabel: string;
 };
 
+type AccountLinkProps = {
+  readonly active?: boolean;
+  readonly href: string;
+  readonly label: string;
+  readonly mobile?: boolean;
+  readonly onClick?: () => void;
+};
+
+function AccountLink({
+  active = false,
+  href,
+  label,
+  mobile = false,
+  onClick,
+}: AccountLinkProps) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      aria-label={mobile ? undefined : label}
+      title={mobile ? undefined : label}
+      className={cn(
+        mobile
+          ? "flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm uppercase tracking-[0.12em] transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
+          : "inline-flex size-10 items-center justify-center rounded-full border transition-colors hover:border-sunset-yellow/55 hover:text-sunset-yellow",
+        active &&
+          "border-sunset-yellow/55 bg-sunset-yellow/10 text-sunset-yellow",
+        !active && mobile && "border-white/8 bg-white/5 text-white/80",
+        !active && !mobile && "border-white/12 bg-white/6 text-white/82"
+      )}
+      onClick={onClick}
+    >
+      <UserRound aria-hidden className={mobile ? "size-4" : "size-4.5"} />
+      {mobile && label}
+    </Link>
+  );
+}
+
+function ActiveAccountLink(props: Omit<AccountLinkProps, "active">) {
+  const pathname = usePathname();
+  return <AccountLink {...props} active={pathname === props.href} />;
+}
+
 export function SiteHeader({
+  accountHref,
+  accountLabel,
   currentLocale,
   languageLabels,
   links,
@@ -44,16 +92,26 @@ export function SiteHeader({
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-(--site-header-height) border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
-      <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-full w-full max-w-8xl items-center justify-between gap-3 px-3 sm:gap-4 sm:px-6 lg:px-8">
         <Link
           href={`/${currentLocale}`}
+          aria-label="Deskohub Workspace"
           className="shrink-0"
           onClick={closeMenu}
         >
-          <HorizontalLogo
-            styling={{ color: "dark", variant: "color" }}
-            className="scale-80"
-          />
+          <span className="block sm:hidden">
+            <Logo
+              styling={{ color: "dark", variant: "color" }}
+              alt=""
+              height={48}
+            />
+          </span>
+          <span className="hidden sm:block">
+            <HorizontalLogo
+              styling={{ color: "dark", variant: "color" }}
+              className="scale-80"
+            />
+          </span>
         </Link>
 
         <nav
@@ -71,10 +129,28 @@ export function SiteHeader({
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3 xl:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3 xl:gap-3">
+          {accountHref !== undefined && accountLabel !== undefined && (
+            <Suspense
+              fallback={
+                <AccountLink
+                  href={accountHref}
+                  label={accountLabel}
+                  onClick={closeMenu}
+                />
+              }
+            >
+              <ActiveAccountLink
+                href={accountHref}
+                label={accountLabel}
+                onClick={closeMenu}
+              />
+            </Suspense>
+          )}
+
           <Link
             href={contactHref}
-            className="rounded-full border border-white/12 bg-white px-3 py-2 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-navy-blue transition-colors hover:bg-sunset-yellow sm:px-4 sm:text-xs sm:tracking-[0.14em]"
+            className="shrink-0 whitespace-nowrap rounded-full border border-white/12 bg-white px-3 py-2 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-navy-blue transition-colors hover:bg-sunset-yellow sm:px-4 sm:text-xs sm:tracking-[0.14em]"
             onClick={closeMenu}
           >
             {contactLabel}
@@ -134,6 +210,25 @@ export function SiteHeader({
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <nav aria-label={mobilePrimaryNavigationLabel} className="grid gap-2">
+            {accountHref !== undefined && accountLabel !== undefined && (
+              <Suspense
+                fallback={
+                  <AccountLink
+                    href={accountHref}
+                    label={accountLabel}
+                    mobile
+                    onClick={closeMenu}
+                  />
+                }
+              >
+                <ActiveAccountLink
+                  href={accountHref}
+                  label={accountLabel}
+                  mobile
+                  onClick={closeMenu}
+                />
+              </Suspense>
+            )}
             {links.map((link) => (
               <Link
                 key={link.id}

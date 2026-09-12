@@ -5,7 +5,14 @@ export const workspaceE2ETimeouts = {
   accessCodeActionBarrier: 40 * SECOND,
   accessCodeCase: 3 * MINUTE,
   accessCodeStaleBarrier: 60 * SECOND,
+  // Original 8-minute account work budget plus one full 10-minute magic-link
+  // quiet window: the limiter resets only after a full window of inactivity
+  // since the last allowed request, so a case can spend that entire window
+  // waiting before a rate-limited semantic operation starts
+  // (see account/rate-budget.ts).
+  accountCase: 18 * MINUTE,
   artifactCapture: 60 * SECOND,
+  authDelivery: 2 * MINUTE,
   browserAction: 30 * SECOND,
   browserNavigation: 60 * SECOND,
   checkoutCase: 6 * MINUTE,
@@ -21,11 +28,23 @@ export const workspaceE2ETimeouts = {
   zeroTotalCheckoutCase: 5 * MINUTE,
 } as const;
 
-export const workspaceE2EPlaywrightCheckoutTimeout =
+// Keep the Playwright watchdog outside the longest semantic case plus the
+// artifact-capture and cleanup budgets, for both the checkout lanes and the
+// serial account lane whose cases also wait out the magic-link rate window.
+const checkoutWatchdogRequirement =
   workspaceE2ETimeouts.checkoutCase * 2 +
   workspaceE2ETimeouts.artifactCapture +
   workspaceE2ETimeouts.cleanupAction +
   workspaceE2ETimeouts.datasource;
+const accountWatchdogRequirement =
+  workspaceE2ETimeouts.accountCase +
+  workspaceE2ETimeouts.artifactCapture +
+  workspaceE2ETimeouts.cleanupAction;
+
+export const workspaceE2EPlaywrightCheckoutTimeout = Math.max(
+  checkoutWatchdogRequirement,
+  accountWatchdogRequirement
+);
 
 // The action-completion barrier aligns with the enforced sub-40-second provider
 // bound; the stale barrier matches the application's 60-second attempt stale

@@ -23,10 +23,20 @@ test("registers every checkout case once in a Playwright-owned lane", () => {
 });
 
 test("keeps the Playwright watchdog outside the longest semantic case", () => {
-  const longestSemanticCase = workspaceE2ETimeouts.checkoutCase * 2;
+  const checkoutRequirement =
+    workspaceE2ETimeouts.checkoutCase * 2 +
+    workspaceE2ETimeouts.artifactCapture +
+    workspaceE2ETimeouts.cleanupAction +
+    workspaceE2ETimeouts.datasource;
   expect(workspaceE2EPlaywrightCheckoutTimeout).toBeGreaterThanOrEqual(
-    longestSemanticCase +
-      workspaceE2ETimeouts.artifactCapture +
-      workspaceE2ETimeouts.cleanupAction
+    checkoutRequirement
+  );
+
+  const accountRequirement =
+    workspaceE2ETimeouts.accountCase +
+    workspaceE2ETimeouts.artifactCapture +
+    workspaceE2ETimeouts.cleanupAction;
+  expect(workspaceE2EPlaywrightCheckoutTimeout).toBeGreaterThanOrEqual(
+    accountRequirement
   );
 });

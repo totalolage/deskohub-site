@@ -79,7 +79,7 @@ test("serves the reservation access shell on direct navigation", async ({
     page,
     async () => {
       await page.goto(
-        "/en-US/reservation/access/instant-navigation-missing-order?accessToken=synthetic"
+        "/en-US/reservation/access/instant-navigation-missing-order"
       );
 
       await expectReservationSteps(page);
@@ -92,6 +92,31 @@ test("serves the reservation access shell on direct navigation", async ({
     },
     { baseURL: requireBaseUrl(baseURL) }
   );
+});
+
+test("rejects an invalid reservation capability with a private 404", async ({
+  baseURL,
+  context,
+}) => {
+  const response = await context.request.get(
+    new URL(
+      "/en-US/reservation/access/instant-navigation-missing-order?accessToken=invalid",
+      requireBaseUrl(baseURL)
+    ).toString(),
+    { maxRedirects: 0 }
+  );
+
+  try {
+    expect(response.status()).toBe(404);
+    const headers = response.headers();
+    expect(headers["cache-control"]).toBe("private, no-store");
+    expect(headers["referrer-policy"]).toBe("no-referrer");
+    expect(Object.hasOwn(headers, "location")).toBe(false);
+    expect(Object.hasOwn(headers, "set-cookie")).toBe(false);
+    expect((await response.body()).byteLength).toBe(0);
+  } finally {
+    await response.dispose();
+  }
 });
 
 const clientNavigationCases = [

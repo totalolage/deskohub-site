@@ -152,12 +152,13 @@ export class ReservationAccessService extends Context.Service<
                 })
             )
           ),
-        confirmProviderCredentialRemoved: (reservationId) =>
-          repository
+        confirmProviderCredentialRemoved: (reservationId) => {
+          const reconciledAt = Temporal.Now.instant();
+          return repository
             .reconcileUncertain({
               reservationId,
-              reconciledAt: Temporal.Now.instant(),
-              provisioningStaleBefore: Temporal.Now.instant().subtract({
+              reconciledAt,
+              provisioningStaleBefore: reconciledAt.subtract({
                 milliseconds:
                   reservationAccessProvisioningStaleAfterMilliseconds,
               }),
@@ -173,7 +174,8 @@ export class ReservationAccessService extends Context.Service<
                     cause,
                   })
               )
-            ),
+            );
+        },
         issueForReservation: Effect.fn(
           "ReservationAccessService.issueForReservation"
         )(function* (input) {

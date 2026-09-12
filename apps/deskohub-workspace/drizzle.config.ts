@@ -15,9 +15,10 @@ const { DATABASE_URL, DATABASE_URL_UNPOOLED } = Schema.decodeUnknownSync(
 });
 
 export default defineConfig({
-  schema: "./db/schema/index.ts",
+  schema: ["./db/schema/index.ts", "./db/schema/auth.ts"],
   out: "./db/migrations",
   dialect: "postgresql",
+  schemaFilter: ["public", "auth"],
   dbCredentials: {
     url: normalizePostgresConnectionUrl(DATABASE_URL_UNPOOLED ?? DATABASE_URL),
   },

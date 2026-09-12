@@ -38092,24 +38092,29 @@ var fromPool = /* @__PURE__ */ fnUntraced2(function* (options) {
     if (client !== undefined) {
       return callback2((resume) => {
         f(client, resume);
-        return makeCancel(pool, client);
+        return sync3(() => destroyLease(client));
       });
     }
     return callback2((resume) => {
       let done4 = false;
-      let cancel = undefined;
       let client2 = undefined;
       function onError4(cause) {
-        cleanup(cause);
+        settle(cause);
         resume(fail5(new SqlError({
           reason: classifyError(cause, "Connection error", "acquireConnection")
         })));
       }
-      function cleanup(cause) {
-        if (!done4)
-          client2?.release(cause);
+      function settle(cause) {
+        if (done4)
+          return;
         done4 = true;
         client2?.off("error", onError4);
+        const victim = client2;
+        if (victim === undefined)
+          return;
+        if (victim.__effectSqlLeaseDestroyed)
+          return;
+        victim.release(cause);
       }
       pool.connect((cause, client_) => {
         if (cause) {
@@ -38130,18 +38135,14 @@ var fromPool = /* @__PURE__ */ fnUntraced2(function* (options) {
         }
         client2 = client_;
         client2.once("error", onError4);
-        cancel = makeCancel(pool, client2);
         f(client2, (eff) => {
-          cleanup();
+          settle();
           resume(eff);
         });
       });
-      return suspend3(() => {
-        if (!cancel) {
-          cleanup();
-          return void_3;
-        }
-        return ensuring2(cancel, sync3(cleanup));
+      return sync3(() => {
+        destroyLease(client2);
+        settle();
       });
     });
   }, client ? succeed6(client) : reserveRaw);
@@ -38169,6 +38170,8 @@ var fromPool = /* @__PURE__ */ fnUntraced2(function* (options) {
       client.on("error", onError4);
       resume(as2(addFinalizer2(scope3, sync3(() => {
         client.off("error", onError4);
+        if (client.__effectSqlLeaseDestroyed)
+          return;
         release(cause);
       })), client));
     });
@@ -38276,6 +38279,8 @@ class ConnectionImpl {
     return this.runWithClient((client, resume) => {
       client.query(query, params, (err, result3) => {
         if (err) {
+          if (!isServerSqlState(err.code))
+            destroyLease(client);
           resume(fail5(new SqlError({
             reason: classifyError(err, "Failed to execute statement", "execute")
           })));
@@ -38292,6 +38297,8 @@ class ConnectionImpl {
     return this.runWithClient((client, resume) => {
       client.query(sql, params, (err, result3) => {
         if (err) {
+          if (!isServerSqlState(err.code))
+            destroyLease(client);
           resume(fail5(new SqlError({
             reason: classifyError(err, "Failed to execute statement", "execute")
           })));
@@ -38312,6 +38319,8 @@ class ConnectionImpl {
         values: params
       }, (err, result3) => {
         if (err) {
+          if (!isServerSqlState(err.code))
+            destroyLease(client);
           resume(fail5(new SqlError({
             reason: classifyError(err, "Failed to execute statement", "execute")
           })));
@@ -38346,21 +38355,14 @@ class ConnectionImpl {
     })));
   }
 }
-var cancelEffects = /* @__PURE__ */ new WeakMap;
-var makeCancel = (pool, client) => {
-  if (cancelEffects.has(client)) {
-    return cancelEffects.get(client);
-  }
-  const processId = client.processID;
-  const eff = processId !== undefined ? callback2((resume) => {
-    if (pool.ending)
-      return resume(void_3);
-    pool.query(`SELECT pg_cancel_backend(${processId})`, () => {
-      resume(void_3);
-    });
-  }).pipe(interruptible2, timeoutOption2(5000)) : undefined;
-  cancelEffects.set(client, eff);
-  return eff;
+var isServerSqlState = (code) => typeof code === "string" && /^[0-9A-Z]{5}$/.test(code);
+var destroyLease = (client) => {
+  if (client === undefined || client.__effectSqlLeaseDestroyed)
+    return;
+  client.__effectSqlLeaseDestroyed = true;
+  try {
+    client.release(new Error("effect-sql-pg: statement lease destroyed"));
+  } catch {}
 };
 var layerFrom = (acquire) => effectContext(map9(acquire, (client) => make5(PgClient, client).pipe(add(SqlClient, client)))).pipe(provide2(layer));
 var layer2 = (config) => layerFrom(make29(config));

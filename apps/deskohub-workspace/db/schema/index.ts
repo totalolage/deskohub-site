@@ -8,7 +8,9 @@ export {
   cliMutationRequests,
   cliSessions,
 } from "./cli-authentication";
+export { customerAccountLinks } from "./customer-account-links";
 export { customerMarketingConsents } from "./customer-marketing-consents";
+export { customerMarketingManagementTokens } from "./customer-marketing-management-tokens";
 export {
   type DiscountCodeClaimState,
   type DiscountCodeRedemption,

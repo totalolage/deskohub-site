@@ -1,8 +1,7 @@
 "use client";
 
 import L from "leaflet";
-import { useEffect } from "react";
-import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
+import { useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
 import { workspaceSiteConstants } from "@/shared/utils";
 
@@ -14,10 +13,34 @@ function getMarkerViewportOffset(size: L.Point, desktopFraming: boolean) {
     : L.point(0, Math.round(size.y * 0.3));
 }
 
-function MapFramingController() {
-  const map = useMap();
+const workspaceMarkerIcon = L.divIcon({
+  className: "",
+  html: `<svg aria-hidden="true" width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M20 1C12.82 1 7 6.82 7 14C7 23.5 20 39 20 39C20 39 33 23.5 33 14C33 6.82 27.18 1 20 1Z" fill="#b83b06"/>
+    <circle cx="20" cy="14" r="5.5" fill="#f4f1ea"/>
+  </svg>`,
+  iconAnchor: [20, 39],
+  iconSize: [40, 40],
+});
+
+export function LandingPageInteractiveMap() {
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const map = L.map(mapContainerRef.current!, {
+      dragging: false,
+      scrollWheelZoom: false,
+    }).setView([workspaceCoordinates.lat, workspaceCoordinates.lng], 17);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+    L.marker([workspaceCoordinates.lat, workspaceCoordinates.lng], {
+      icon: workspaceMarkerIcon,
+      interactive: false,
+      keyboard: false,
+    }).addTo(map);
+
     const desktopFraming = window.matchMedia("(min-width: 64rem)");
 
     const frameMarker = () => {
@@ -50,42 +73,9 @@ function MapFramingController() {
     return () => {
       map.off("resize", frameMarker);
       desktopFraming.removeEventListener("change", frameMarker);
+      map.remove();
     };
-  }, [map]);
+  }, []);
 
-  return null;
-}
-
-const workspaceMarkerIcon = L.divIcon({
-  className: "",
-  html: `<svg aria-hidden="true" width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M20 1C12.82 1 7 6.82 7 14C7 23.5 20 39 20 39C20 39 33 23.5 33 14C33 6.82 27.18 1 20 1Z" fill="#b83b06"/>
-    <circle cx="20" cy="14" r="5.5" fill="#f4f1ea"/>
-  </svg>`,
-  iconAnchor: [20, 39],
-  iconSize: [40, 40],
-});
-
-export function LandingPageInteractiveMap() {
-  return (
-    <MapContainer
-      center={[workspaceCoordinates.lat, workspaceCoordinates.lng]}
-      className="h-full w-full"
-      dragging={false}
-      scrollWheelZoom={false}
-      zoom={17}
-    >
-      <MapFramingController />
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <Marker
-        icon={workspaceMarkerIcon}
-        interactive={false}
-        keyboard={false}
-        position={[workspaceCoordinates.lat, workspaceCoordinates.lng]}
-      />
-    </MapContainer>
-  );
+  return <div ref={mapContainerRef} className="h-full w-full" />;
 }

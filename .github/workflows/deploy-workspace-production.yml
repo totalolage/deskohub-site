@@ -23,8 +23,9 @@ concurrency:
 
 jobs:
   deploy:
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     environment:
       name: Production – deskohub-workspace-site
       url: ${{ steps.deploy.outputs.url }}
@@ -43,6 +44,11 @@ jobs:
           bun-version: 1.3.14
 
       - run: bun install --frozen-lockfile
+
+      - name: Verify the production baseline before building
+        id: rollback-target
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts resolve-previous
 
       - name: Build staged production deployment
         id: deploy
@@ -65,5 +71,38 @@ jobs:
             DATABASE_URL_UNPOOLED="$database_url" \
             bun run db:migrate
 
+      - name: Probe staged deployment auth readiness
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts probe --url "${{ steps.deploy.outputs.url }}"
+
+      - name: Verify registered workspace crons
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts verify-crons
+
       - name: Promote production deployment
-        run: bunx vercel@54.9.1 promote "${{ steps.deploy.outputs.url }}" --scope filip-kalny-projects --yes --timeout 10m --token "$VERCEL_TOKEN"
+        id: promote
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts promote --url "${{ steps.deploy.outputs.url }}"
+
+      - name: Probe canonical production after promotion
+        id: canonical-smoke
+        if: always() && steps.promote.outputs.promoted == 'true'
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts verify-canonical
+
+      - name: Restore the pre-request production baseline
+        if: >-
+          always() &&
+          (steps.promote.outputs.promotion_state == 'possibly-started' ||
+            steps.promote.outputs.promotion_state == 'recovery-needed' ||
+            (steps.promote.outputs.promoted == 'true' && steps.canonical-smoke.outcome != 'success'))
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/production-release.ts rollback --url "${{ steps.promote.outputs.baseline_url }}" --id "${{ steps.promote.outputs.baseline_id }}"
+
+      - name: Fail the release after rollback
+        if: always() && failure()
+        run: |
+          echo "The production release failed around promotion; production must never keep a promoted untested release" >&2
+          exit 1

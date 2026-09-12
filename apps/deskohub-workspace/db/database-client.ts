@@ -1,12 +1,14 @@
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { EffectCache } from "drizzle-orm/cache/core/cache-effect";
 import { type EffectPgDatabase, make } from "drizzle-orm/effect-postgres";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Effect, Layer } from "effect";
 import { Pool, type PoolConfig } from "pg";
 import { DatabaseQueryLoggerLive } from "@/shared/backend/logging/database-query-logger";
 import { normalizePostgresConnectionUrl } from "./postgres-connection-url";
 import { drizzleRawTypeParsers } from "./postgres-type-parsers";
 import { relations } from "./relations";
+import { authRelations } from "./schema/auth";
 
 export type DatabaseClient = EffectPgDatabase<typeof relations>;
 
@@ -32,3 +34,9 @@ export const makeDatabaseClient = (pool: Pool) =>
       )
     )
   );
+
+export const makeNodePostgresDatabase = (pool: Pool) =>
+  drizzle({
+    client: pool,
+    relations: { ...relations, ...authRelations },
+  });

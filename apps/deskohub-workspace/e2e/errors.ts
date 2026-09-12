@@ -34,9 +34,24 @@ export const workspaceE2ERunnerDiagnosticCodes = [
   "postgres_local_pii_validation_failed",
 ] as const;
 
+export const workspaceE2EAccountDiagnosticCodes = [
+  "auth_delivery_request_rejected",
+  "auth_delivery_message_not_observed",
+  "auth_delivery_message_ambiguous",
+  "auth_delivery_message_retrieve_failed",
+  "auth_delivery_message_invalid",
+  "auth_link_origin_mismatch",
+  "auth_verification_failed",
+  "auth_session_not_established",
+  "postgres_account_fixture_assertion_failed",
+  "postgres_account_fixture_convergence_failed",
+  "dotypos_account_fixture_mutation_failed",
+] as const;
+
 export const workspaceE2EDiagnosticCodes = [
   ...nexiWebhookDiagnosticCodes,
   ...workspaceE2ERunnerDiagnosticCodes,
+  ...workspaceE2EAccountDiagnosticCodes,
 ] as const;
 
 export type WorkspaceE2EDiagnosticCode =

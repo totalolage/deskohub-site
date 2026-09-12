@@ -210,7 +210,7 @@ test("waits briefly for the provider session row to converge after redirect", as
           {
             intervalMs: 1,
             onRow: (row) => observedRows.push(row),
-            timeoutMs: 50,
+            timeoutMs: 2_000,
           }
         )
       );
@@ -327,41 +327,44 @@ test.each([
   ["nexi_webhook_fulfillment_failed", "nexi_webhook_fulfillment_failed"],
   ["postgres_checkout_row_assertion_failed", undefined],
   ["provider-payload-value", undefined],
-] as const)("keeps webhook failure diagnostics on the fixed allowlist for %s", async (responseCode, expectedDiagnosticCode) => {
-  const fetchMock = mock(async () =>
-    Response.json(
-      { code: responseCode, payload: "provider payload must stay private" },
-      { status: 500 }
-    )
-  );
-  const httpClientLayer = FetchHttpClient.layer.pipe(
-    Layer.provide(
-      Layer.succeed(
-        FetchHttpClient.Fetch,
-        fetchMock as unknown as typeof globalThis.fetch
+] as const)(
+  "keeps webhook failure diagnostics on the fixed allowlist for %s",
+  async (responseCode, expectedDiagnosticCode) => {
+    const fetchMock = mock(async () =>
+      Response.json(
+        { code: responseCode, payload: "provider payload must stay private" },
+        { status: 500 }
       )
-    )
-  );
+    );
+    const httpClientLayer = FetchHttpClient.layer.pipe(
+      Layer.provide(
+        Layer.succeed(
+          FetchHttpClient.Fetch,
+          fetchMock as unknown as typeof globalThis.fetch
+        )
+      )
+    );
 
-  const exit = await Effect.runPromiseExit(
-    replayNexiWebhook(makeConfig(), makeCheckoutRow()).pipe(
-      Effect.provide(httpClientLayer)
-    )
-  );
+    const exit = await Effect.runPromiseExit(
+      replayNexiWebhook(makeConfig(), makeCheckoutRow()).pipe(
+        Effect.provide(httpClientLayer)
+      )
+    );
 
-  expect(Exit.isFailure(exit)).toBe(true);
-  if (Exit.isSuccess(exit)) return;
-  const error = Cause.squash(exit.cause);
-  expect(error).toMatchObject({
-    message: "Nexi webhook replay failed with 500",
-  });
-  expect((error as { readonly diagnosticCode?: unknown }).diagnosticCode).toBe(
-    expectedDiagnosticCode
-  );
-  expect(JSON.stringify(error)).not.toContain(
-    "provider payload must stay private"
-  );
-});
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) return;
+    const error = Cause.squash(exit.cause);
+    expect(error).toMatchObject({
+      message: "Nexi webhook replay failed with 500",
+    });
+    expect(
+      (error as { readonly diagnosticCode?: unknown }).diagnosticCode
+    ).toBe(expectedDiagnosticCode);
+    expect(JSON.stringify(error)).not.toContain(
+      "provider payload must stay private"
+    );
+  }
+);
 
 test("accepts automatic discounts stacked before the redeemed zero-total code", () => {
   expect(() =>
