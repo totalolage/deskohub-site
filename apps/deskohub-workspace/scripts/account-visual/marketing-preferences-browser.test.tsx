@@ -15,6 +15,7 @@ import {
   chromium,
   type Page,
 } from "@playwright/test";
+import { Predicate } from "effect";
 import { marketingPreferencesFormCopy } from "../../features/legal/components/marketing-preferences-form.copy";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
@@ -149,10 +150,130 @@ type BrowserProblems = {
 };
 
 type BuildOutput = { readonly path: string };
+type BuildMessagePosition = {
+  readonly column?: number;
+  readonly file?: string;
+  readonly line?: number;
+};
+type BuildMessage = {
+  readonly message: string;
+  readonly position?: BuildMessagePosition;
+};
 type BuildResult = {
-  readonly logs?: readonly { readonly message: string }[];
+  readonly logs?: readonly BuildMessage[];
   readonly outputs: readonly BuildOutput[];
   readonly success: boolean;
+};
+
+const diagnosticRedactedValue = "[REDACTED]";
+const diagnosticUrlCredentialsPattern = /((?:https?:)?\/\/)[^/\s@]+@/gi;
+const diagnosticQueryCredentialsPattern =
+  /([?&][^=&#\s]*(?:access[-_]?token|api[-_]?key|apikey|auth(?:orization)?|code|credential(?:s)?|key|password|passwd|pwd|secret|session|signature|state|token)[^=&#\s]*=)[^&#\s]*/gi;
+const diagnosticEnvironmentAssignmentPattern =
+  /\b([A-Z][A-Z0-9_]{2,})=[^\r\n]*/g;
+
+const sanitizeBuildDiagnosticString = (value: string): string =>
+  value
+    .replace(diagnosticUrlCredentialsPattern, `$1${diagnosticRedactedValue}@`)
+    .replace(diagnosticQueryCredentialsPattern, `$1${diagnosticRedactedValue}`)
+    .replace(
+      diagnosticEnvironmentAssignmentPattern,
+      `$1=${diagnosticRedactedValue}`
+    );
+
+const readBuildProperty = (cause: unknown, key: string): unknown => {
+  if (!Predicate.isObject(cause)) return undefined;
+  try {
+    return Reflect.get(cause, key);
+  } catch {
+    return undefined;
+  }
+};
+
+const readBuildMessage = (cause: unknown): BuildMessage | undefined => {
+  if (!Predicate.isObject(cause)) return undefined;
+  const message = readBuildProperty(cause, "message");
+  if (!Predicate.isString(message)) return undefined;
+
+  const rawPosition = readBuildProperty(cause, "position");
+  if (!Predicate.isObject(rawPosition)) return { message };
+
+  const file = readBuildProperty(rawPosition, "file");
+  const line = readBuildProperty(rawPosition, "line");
+  const column = readBuildProperty(rawPosition, "column");
+  return {
+    message,
+    position: {
+      column:
+        Predicate.isNumber(column) && Number.isFinite(column)
+          ? column
+          : undefined,
+      file: Predicate.isString(file) ? file : undefined,
+      line:
+        Predicate.isNumber(line) && Number.isFinite(line) ? line : undefined,
+    },
+  };
+};
+
+const formatBuildMessage = ({ message, position }: BuildMessage): string => {
+  const file = position?.file
+    ? sanitizeBuildDiagnosticString(position.file)
+    : undefined;
+  const line = position?.line === undefined ? undefined : String(position.line);
+  const column =
+    position?.column === undefined ? undefined : String(position.column);
+  let location = "";
+  if (file) {
+    location = file;
+    if (line !== undefined) {
+      location += `:${line}`;
+      if (column !== undefined) location += `:${column}`;
+    }
+  } else if (line !== undefined) {
+    location = `line ${line}`;
+    if (column !== undefined) location += `:${column}`;
+  } else if (column !== undefined) {
+    location = `column ${column}`;
+  }
+
+  const text = sanitizeBuildDiagnosticString(message);
+  return location ? `${location}: ${text}` : text;
+};
+
+const formatBuildDiagnostics = (cause: unknown): string => {
+  const seen = new Set<object>();
+  const format = (cause: unknown): string => {
+    if (cause instanceof AggregateError) {
+      if (seen.has(cause)) return "[circular build diagnostic]";
+      seen.add(cause);
+      const details = cause.errors.map(format).filter(Boolean).join("\n");
+      return details || sanitizeBuildDiagnosticString(cause.message);
+    }
+
+    if (Array.isArray(cause)) {
+      if (seen.has(cause)) return "[circular build diagnostic]";
+      seen.add(cause);
+      return cause.map(format).filter(Boolean).join("\n");
+    }
+
+    const buildMessage = readBuildMessage(cause);
+    if (buildMessage) return formatBuildMessage(buildMessage);
+    if (cause instanceof Error)
+      return sanitizeBuildDiagnosticString(cause.message);
+
+    if (
+      cause === null ||
+      Predicate.isString(cause) ||
+      Predicate.isNumber(cause) ||
+      Predicate.isBoolean(cause)
+    ) {
+      return sanitizeBuildDiagnosticString(String(cause));
+    }
+
+    return "[unknown build diagnostic]";
+  };
+
+  return format(cause);
 };
 
 const controlledActionsSource = `
@@ -380,19 +501,15 @@ const buildBundle = async () => {
       target: "browser",
     })) as BuildResult;
   } catch (error) {
-    throw new Error(
-      `Marketing preferences browser bundle threw: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error }
-    );
+    const details = formatBuildDiagnostics(error);
+    throw new Error(`Marketing preferences browser bundle threw: ${details}`);
   }
   if (!result.success) {
+    const details = formatBuildDiagnostics(result.logs ?? []);
     throw new Error(
-      [
-        "Marketing preferences browser bundle failed",
-        ...(result.logs?.map(({ message }) => message) ?? []),
-      ].join("\n")
+      ["Marketing preferences browser bundle failed", details]
+        .filter(Boolean)
+        .join("\n")
     );
   }
   const outputPaths = result.outputs.map((output) =>
@@ -1316,6 +1433,121 @@ const runAccountsDisabledChecks = async ({
     await context.close();
   }
 };
+
+test("formats nested build diagnostics without attached payloads", () => {
+  const output = formatBuildDiagnostics(
+    new AggregateError([
+      new AggregateError([
+        {
+          lineText: "synthetic line text",
+          message:
+            "Could not resolve the controlled renderer DATABASE_URL=synthetic-environment-value",
+          position: {
+            column: 4,
+            file: "https://synthetic-user:synthetic-password@example.test/entry.tsx?token=synthetic-query-value",
+            line: 17,
+            lineText: "synthetic position line text",
+          },
+          token: "synthetic attached token value",
+        },
+      ]),
+    ])
+  );
+
+  expect(output).toContain(
+    "https://[REDACTED]@example.test/entry.tsx?token=[REDACTED]:17:4: Could not resolve the controlled renderer DATABASE_URL=[REDACTED]"
+  );
+  expect(output).not.toContain("synthetic line text");
+  expect(output).not.toContain("synthetic attached token value");
+  expect(output).not.toContain("synthetic-password");
+  expect(output).not.toContain("synthetic-query-value");
+  expect(output).not.toContain("synthetic-environment-value");
+});
+
+test("uses a safe fallback for unknown build diagnostics", () => {
+  expect(
+    formatBuildDiagnostics({
+      toString: () => "synthetic unknown payload",
+      unexpected: "synthetic unknown value",
+    })
+  ).toBe("[unknown build diagnostic]");
+  expect(formatBuildDiagnostics("synthetic build failure")).toBe(
+    "synthetic build failure"
+  );
+});
+
+test("redacts build diagnostic environment assignment tails without crossing lines", () => {
+  const output = formatBuildDiagnostics([
+    {
+      message: "DATABASE_URL=synthetic-environment-value, comma suffix",
+    },
+    {
+      message: String.raw`API_KEY=synthetic-api-value, escaped quote \"suffix\"`,
+    },
+    {
+      message:
+        "MULTILINE=synthetic-multiline-value, hidden suffix\nnext diagnostic line is retained",
+    },
+  ]);
+
+  expect(output).toContain(
+    "DATABASE_URL=[REDACTED]\nAPI_KEY=[REDACTED]\nMULTILINE=[REDACTED]\nnext diagnostic line is retained"
+  );
+  expect(output).not.toContain("comma suffix");
+  expect(output).not.toContain("escaped quote");
+  expect(output).not.toContain("hidden suffix");
+  expect(output).not.toContain("synthetic-environment-value");
+  expect(output).not.toContain("synthetic-api-value");
+  expect(output).not.toContain("synthetic-multiline-value");
+});
+
+test("formats native Bun build diagnostics with a source location", async () => {
+  const diagnosticNamespace = "marketing-preferences-diagnostic";
+  const diagnosticEntry = "virtual-marketing-preferences-diagnostic-entry";
+  const missingModule = "./__missing_marketing_preferences_diagnostic__";
+  let thrown: unknown;
+
+  try {
+    await Bun.build({
+      entrypoints: [diagnosticEntry],
+      format: "esm",
+      plugins: [
+        {
+          name: "marketing-preferences-diagnostic",
+          setup(build) {
+            build.onResolve(
+              { filter: /^virtual-marketing-preferences-diagnostic-entry$/ },
+              () => ({
+                namespace: diagnosticNamespace,
+                path: diagnosticEntry,
+              })
+            );
+            build.onLoad(
+              {
+                filter: /^virtual-marketing-preferences-diagnostic-entry$/,
+                namespace: diagnosticNamespace,
+              },
+              () => ({
+                contents: `import ${JSON.stringify(missingModule)};`,
+                loader: "js",
+                resolveDir: import.meta.dir,
+              })
+            );
+          },
+        },
+      ],
+    });
+  } catch (cause) {
+    thrown = cause;
+  }
+
+  expect(thrown).toBeInstanceOf(AggregateError);
+  if (!(thrown instanceof AggregateError)) return;
+
+  const output = formatBuildDiagnostics(thrown);
+  expect(output).toContain(missingModule);
+  expect(output).toMatch(new RegExp(`${diagnosticEntry}:\\d+:\\d+:`));
+});
 
 test.serial.skipIf(!chromiumAvailable)(
   "renders marketing preference states and exercises controlled browser flows",
