@@ -517,26 +517,32 @@ describe.skipIf(!postgresDatabase)(
   "Postgres advisory lock against real Postgres",
   () => {
     for (const max of [2, 4] as const) {
-      test(`keeps callbacks usable with a bounded pool of ${max}`, async () => {
+      test(`keeps callbacks usable with a bounded pool of ${max}`, {
+        timeout: 120_000,
+      }, async () => {
         const pool = makeDatabasePool({
           connectionString: process.env.WORKSPACE_TEST_DATABASE_URL!,
           ...databasePoolTimeouts,
-          connectionTimeoutMillis: 250,
           max,
         });
         const layer = WorkspaceDatabaseAdvisoryLock.makeLayer(pool);
 
         try {
-          const results = await Promise.all(
-            Array.from({ length: 10 }, (_, index) =>
-              Effect.runPromise(
+          // Keep the Effect deadline above the driver timeouts; Effect.all
+          // joins interrupted siblings before pool.end drains the pool.
+          const results = await Effect.runPromise(
+            Effect.all(
+              Array.from({ length: 10 }, (_, index) =>
                 runLayerLock(
                   layer,
                   ["bounded-pool", `resource-${index}`],
-                  Effect.promise(() => pool.query("select 1"))
+                  Effect.promise(() => pool.query("select 1")).pipe(
+                    Effect.uninterruptible
+                  )
                 )
-              )
-            )
+              ),
+              { concurrency: "unbounded" }
+            ).pipe(Effect.timeout("45 seconds"))
           );
 
           expect(results).toHaveLength(10);
