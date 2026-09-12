@@ -136,6 +136,7 @@ const expectedOwnedSourcePaths = [
   "apps/deskohub-workspace/scripts/account-visual/default-adapter.tsx",
   "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-adapter.tsx",
   "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-browser.test.tsx",
+  "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-fixture.ts",
   "apps/deskohub-workspace/scripts/account-visual/metrics.test.ts",
   "apps/deskohub-workspace/scripts/account-visual/metrics.ts",
   "apps/deskohub-workspace/scripts/account-visual/populated-adapter.tsx",

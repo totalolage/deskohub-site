@@ -1,22 +1,28 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import {
   access,
   constants,
   mkdir,
+  mkdtemp,
   readFile,
   rm,
+  stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import {
   type Browser,
   type BrowserContext,
   chromium,
   type Page,
 } from "@playwright/test";
-import { Predicate } from "effect";
 import { marketingPreferencesFormCopy } from "../../features/legal/components/marketing-preferences-form.copy";
+import {
+  compileMarketingPreferencesFixture,
+  formatBuildDiagnostics,
+} from "./marketing-preferences-fixture";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
 const appRoot = resolve(import.meta.dir, "../..");
@@ -31,14 +37,8 @@ const productionCopyPath = join(
   "features/legal/components/marketing-preferences-form.copy.ts"
 );
 const rendererCssPath = join(import.meta.dir, "renderer.css");
-const globalsCssPath = join(appRoot, "app/globals.css");
 const regularFontPath = join(appRoot, "assets/fonts/Sculpin/regular.woff2");
 const italicFontPath = join(appRoot, "assets/fonts/Sculpin/italic.woff2");
-const nextNavigationStubPath = join(
-  import.meta.dir,
-  "stubs/next-navigation.ts"
-);
-const appRequire = createRequire(join(appRoot, "package.json"));
 
 const chromiumAvailable = await access(
   chromium.executablePath(),
@@ -48,17 +48,6 @@ const chromiumAvailable = await access(
   .catch(() => false);
 
 let browser: Browser | undefined;
-
-beforeAll(async () => {
-  if (!chromiumAvailable) return;
-  browser = await chromium.launch({ headless: true, timeout: 20_000 });
-});
-
-afterAll(async () => {
-  const runningBrowser = browser;
-  browser = undefined;
-  await runningBrowser?.close();
-});
 
 const locales = ["en-US", "cs-CZ"] as const;
 type Locale = (typeof locales)[number];
@@ -149,382 +138,6 @@ type BrowserProblems = {
   readonly pageErrors: string[];
 };
 
-type BuildOutput = { readonly path: string };
-type BuildMessagePosition = {
-  readonly column?: number;
-  readonly file?: string;
-  readonly line?: number;
-};
-type BuildMessage = {
-  readonly message: string;
-  readonly position?: BuildMessagePosition;
-};
-type BuildResult = {
-  readonly logs?: readonly BuildMessage[];
-  readonly outputs: readonly BuildOutput[];
-  readonly success: boolean;
-};
-
-const diagnosticRedactedValue = "[REDACTED]";
-const diagnosticUrlCredentialsPattern = /((?:https?:)?\/\/)[^/\s@]+@/gi;
-const diagnosticQueryCredentialsPattern =
-  /([?&][^=&#\s]*(?:access[-_]?token|api[-_]?key|apikey|auth(?:orization)?|code|credential(?:s)?|key|password|passwd|pwd|secret|session|signature|state|token)[^=&#\s]*=)[^&#\s]*/gi;
-const diagnosticEnvironmentAssignmentPattern =
-  /\b([A-Z][A-Z0-9_]{2,})=[^\r\n]*/g;
-
-const sanitizeBuildDiagnosticString = (value: string): string =>
-  value
-    .replace(diagnosticUrlCredentialsPattern, `$1${diagnosticRedactedValue}@`)
-    .replace(diagnosticQueryCredentialsPattern, `$1${diagnosticRedactedValue}`)
-    .replace(
-      diagnosticEnvironmentAssignmentPattern,
-      `$1=${diagnosticRedactedValue}`
-    );
-
-const readBuildProperty = (cause: unknown, key: string): unknown => {
-  if (!Predicate.isObject(cause)) return undefined;
-  try {
-    return Reflect.get(cause, key);
-  } catch {
-    return undefined;
-  }
-};
-
-const readBuildMessage = (cause: unknown): BuildMessage | undefined => {
-  if (!Predicate.isObject(cause)) return undefined;
-  const message = readBuildProperty(cause, "message");
-  if (!Predicate.isString(message)) return undefined;
-
-  const rawPosition = readBuildProperty(cause, "position");
-  if (!Predicate.isObject(rawPosition)) return { message };
-
-  const file = readBuildProperty(rawPosition, "file");
-  const line = readBuildProperty(rawPosition, "line");
-  const column = readBuildProperty(rawPosition, "column");
-  return {
-    message,
-    position: {
-      column:
-        Predicate.isNumber(column) && Number.isFinite(column)
-          ? column
-          : undefined,
-      file: Predicate.isString(file) ? file : undefined,
-      line:
-        Predicate.isNumber(line) && Number.isFinite(line) ? line : undefined,
-    },
-  };
-};
-
-const formatBuildMessage = ({ message, position }: BuildMessage): string => {
-  const file = position?.file
-    ? sanitizeBuildDiagnosticString(position.file)
-    : undefined;
-  const line = position?.line === undefined ? undefined : String(position.line);
-  const column =
-    position?.column === undefined ? undefined : String(position.column);
-  let location = "";
-  if (file) {
-    location = file;
-    if (line !== undefined) {
-      location += `:${line}`;
-      if (column !== undefined) location += `:${column}`;
-    }
-  } else if (line !== undefined) {
-    location = `line ${line}`;
-    if (column !== undefined) location += `:${column}`;
-  } else if (column !== undefined) {
-    location = `column ${column}`;
-  }
-
-  const text = sanitizeBuildDiagnosticString(message);
-  return location ? `${location}: ${text}` : text;
-};
-
-const formatBuildDiagnostics = (cause: unknown): string => {
-  const seen = new Set<object>();
-  const format = (cause: unknown): string => {
-    if (cause instanceof AggregateError) {
-      if (seen.has(cause)) return "[circular build diagnostic]";
-      seen.add(cause);
-      const details = cause.errors.map(format).filter(Boolean).join("\n");
-      return details || sanitizeBuildDiagnosticString(cause.message);
-    }
-
-    if (Array.isArray(cause)) {
-      if (seen.has(cause)) return "[circular build diagnostic]";
-      seen.add(cause);
-      return cause.map(format).filter(Boolean).join("\n");
-    }
-
-    const buildMessage = readBuildMessage(cause);
-    if (buildMessage) return formatBuildMessage(buildMessage);
-    if (cause instanceof Error)
-      return sanitizeBuildDiagnosticString(cause.message);
-
-    if (
-      cause === null ||
-      Predicate.isString(cause) ||
-      Predicate.isNumber(cause) ||
-      Predicate.isBoolean(cause)
-    ) {
-      return sanitizeBuildDiagnosticString(String(cause));
-    }
-
-    return "[unknown build diagnostic]";
-  };
-
-  return format(cause);
-};
-
-const controlledActionsSource = `
-type ActionName = "clear" | "confirm" | "save";
-type ActionInput = Record<string, unknown>;
-type ActionResult = {
-  readonly data?: unknown;
-  readonly validationErrors?: unknown;
-};
-type ActionLog = { readonly events: Array<{ action: ActionName; input: ActionInput }> };
-type ControlledGlobal = typeof globalThis & {
-  readonly __marketingPreferencesActionLog?: ActionLog;
-};
-
-const scope = globalThis as ControlledGlobal;
-const actionLog = scope.__marketingPreferencesActionLog ?? { events: [] };
-if (scope.__marketingPreferencesActionLog === undefined) {
-  Object.defineProperty(scope, "__marketingPreferencesActionLog", {
-    configurable: false,
-    enumerable: false,
-    value: actionLog,
-    writable: false,
-  });
-}
-
-const outcomeFor = (action: ActionName) => {
-  const params = new URLSearchParams(globalThis.location.search);
-  return (params.get(action + "Outcome") ?? params.get("outcome")) === "error"
-    ? "error"
-    : "success";
-};
-
-const delayFor = () => {
-  const value = Number.parseInt(
-    new URLSearchParams(globalThis.location.search).get("delay") ?? "24",
-    10
-  );
-  return Number.isFinite(value) && value >= 0 ? value : 24;
-};
-
-const execute = async (action: ActionName, input: ActionInput): Promise<ActionResult> => {
-  actionLog.events.push({ action, input });
-  await new Promise<void>((resolve) => setTimeout(resolve, delayFor()));
-  if (outcomeFor(action) === "error") {
-    return { validationErrors: { controlled: true } };
-  }
-  return { data: { status: action + "-complete" } };
-};
-
-export const clearMarketingManagementAction = (input: ActionInput) =>
-  execute("clear", input);
-export const confirmMarketingManagementAction = (input: ActionInput) =>
-  execute("confirm", input);
-export const saveMarketingPreferencesAction = (input: ActionInput) =>
-  execute("save", input);
-`;
-
-const controlledHookSource = `
-import { useState } from "react";
-
-type ActionResult = {
-  readonly data?: unknown;
-  readonly serverError?: string;
-  readonly validationErrors?: unknown;
-};
-type Action = (input: Record<string, unknown>) => Promise<ActionResult>;
-type ActionOptions = {
-  readonly onError?: (args: { readonly error: unknown }) => void;
-  readonly onSuccess?: (args: { readonly data?: unknown }) => void;
-  readonly onTransportError?: (args: {
-    readonly error: unknown;
-    readonly input: unknown;
-  }) => void;
-};
-
-export function useWorkspaceAction(action: Action, options: ActionOptions) {
-  const [result, setResult] = useState<ActionResult>({});
-  const [isExecuting, setIsExecuting] = useState(false);
-
-  const reset = () => setResult({});
-  const executeAsync = async (input: Record<string, unknown>) => {
-    setIsExecuting(true);
-    try {
-      const nextResult = await action(input);
-      setResult(nextResult);
-      setIsExecuting(false);
-      if (nextResult.serverError || nextResult.validationErrors) {
-        options.onError?.({ error: nextResult });
-      } else {
-        options.onSuccess?.({ data: nextResult.data });
-      }
-      return nextResult;
-    } catch (error) {
-      setIsExecuting(false);
-      options.onTransportError?.({ error, input });
-      throw error;
-    }
-  };
-  const execute = (input: Record<string, unknown>) => {
-    void executeAsync(input).catch(() => undefined);
-  };
-
-  return { execute, executeAsync, isExecuting, reset, result };
-}
-`;
-
-const fileExists = async (path: string) =>
-  Bun.file(path)
-    .exists()
-    .catch(() => false);
-
-const resolveModulePath = async (basePath: string) => {
-  const extensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
-  const candidates = [
-    basePath,
-    ...extensions.map((extension) => `${basePath}${extension}`),
-    ...extensions.map((extension) => join(basePath, `index${extension}`)),
-  ];
-  for (const candidate of candidates) {
-    if (await fileExists(candidate)) return candidate;
-  }
-  throw new Error(`Could not resolve app module ${basePath}`);
-};
-
-const makeEntry = () => `
-import { createElement } from "react";
-import { createRoot } from "react-dom/client";
-import ${JSON.stringify(globalsCssPath)};
-import Adapter, { accountVisualAdapterMetadata } from ${JSON.stringify(adapterPath)};
-
-const root = document.getElementById("marketing-preferences-browser-root");
-if (!root) throw new Error("Marketing preferences browser root is missing");
-const locale = new URLSearchParams(window.location.search).get("locale") === "cs-CZ" ? "cs-CZ" : "en-US";
-createRoot(root).render(
-  createElement(
-    "div",
-    {
-      "data-account-visual-adapter-fixture": accountVisualAdapterMetadata.fixture,
-      "data-account-visual-adapter-owner": accountVisualAdapterMetadata.owner,
-      "data-account-visual-mode": "component-only",
-      "data-account-visual-ready": "true",
-      "data-account-visual-screen": "legal",
-    },
-    createElement(Adapter, { locale, screen: "legal" })
-  )
-);
-`;
-
-const makeBuildPlugin = (): Bun.BunPlugin => {
-  const virtualNamespace = "marketing-preferences-controlled-renderer";
-  const actionModulePath = "controlled-actions";
-  const hookModulePath = "controlled-hook";
-
-  return {
-    name: "marketing-preferences-controlled-renderer",
-    setup(build) {
-      build.onResolve({ filter: /^@\/features\/legal\/actions$/ }, () => ({
-        namespace: virtualNamespace,
-        path: actionModulePath,
-      }));
-      build.onResolve(
-        { filter: /^@\/shared\/utils\/use-workspace-action$/ },
-        () => ({ namespace: virtualNamespace, path: hookModulePath })
-      );
-      build.onResolve({ filter: /^next\/navigation$/ }, () => ({
-        path: nextNavigationStubPath,
-      }));
-      build.onLoad(
-        { filter: /^controlled-actions$/, namespace: virtualNamespace },
-        () => ({ contents: controlledActionsSource, loader: "ts" })
-      );
-      build.onLoad(
-        { filter: /^controlled-hook$/, namespace: virtualNamespace },
-        () => ({ contents: controlledHookSource, loader: "ts" })
-      );
-      build.onResolve({ filter: /^@\// }, async (args) => ({
-        path: await resolveModulePath(join(appRoot, args.path.slice(2))),
-      }));
-      build.onResolve(
-        { filter: /^(?!@\/)(?!node:)(?:@[^/]+\/)?[^./]/ },
-        (args) => {
-          try {
-            return { path: appRequire.resolve(args.path) };
-          } catch {
-            return undefined;
-          }
-        }
-      );
-      build.onLoad({ filter: /\/app\/globals\.css$/ }, async (args) => {
-        if (resolve(args.path) !== globalsCssPath) return undefined;
-        const postcss = await import("postcss");
-        const loadPostCssConfig = await import("postcss-load-config");
-        const config = await loadPostCssConfig.default({}, appRoot);
-        const source = await readFile(globalsCssPath, "utf8");
-        const transformed = await postcss
-          .default(config.plugins)
-          .process(source, {
-            from: globalsCssPath,
-          });
-        return {
-          contents: transformed.css,
-          loader: "css",
-          resolveDir: appRoot,
-        };
-      });
-    },
-  };
-};
-
-const buildBundle = async () => {
-  const buildDirectory = join(artifactRoot, "build");
-  await mkdir(buildDirectory, { recursive: true });
-  const entryPath = join(artifactRoot, "entry.tsx");
-  await writeFile(entryPath, makeEntry(), "utf8");
-  let result: BuildResult;
-  try {
-    result = (await Bun.build({
-      define: { "process.env.NODE_ENV": JSON.stringify("production") },
-      entrypoints: [entryPath],
-      format: "esm",
-      minify: false,
-      outdir: buildDirectory,
-      plugins: [makeBuildPlugin()],
-      sourcemap: "none",
-      target: "browser",
-    })) as BuildResult;
-  } catch (error) {
-    const details = formatBuildDiagnostics(error);
-    throw new Error(`Marketing preferences browser bundle threw: ${details}`);
-  }
-  if (!result.success) {
-    const details = formatBuildDiagnostics(result.logs ?? []);
-    throw new Error(
-      ["Marketing preferences browser bundle failed", details]
-        .filter(Boolean)
-        .join("\n")
-    );
-  }
-  const outputPaths = result.outputs.map((output) =>
-    resolve(buildDirectory, output.path)
-  );
-  const javascriptPath = outputPaths.find((path) => extname(path) === ".js");
-  const cssPath = outputPaths.find((path) => extname(path) === ".css");
-  if (!javascriptPath || !cssPath) {
-    throw new Error(
-      "Marketing preferences browser bundle did not emit JavaScript and CSS"
-    );
-  }
-  return { cssPath, entryPath, javascriptPath } as const;
-};
-
 const makeHtml = (javascriptPath: string, cssPath: string) => `<!doctype html>
 <html lang="en-US">
   <head>
@@ -540,7 +153,9 @@ const makeHtml = (javascriptPath: string, cssPath: string) => `<!doctype html>
 </html>
 `;
 
-const serveBundle = async (bundle: Awaited<ReturnType<typeof buildBundle>>) => {
+const serveBundle = async (
+  bundle: Awaited<ReturnType<typeof compileMarketingPreferencesFixture>>
+) => {
   const assets = new Map<
     string,
     { readonly body: Uint8Array; readonly type: string }
@@ -599,6 +214,53 @@ const serveBundle = async (bundle: Awaited<ReturnType<typeof buildBundle>>) => {
   });
   return { baseUrl: `http://127.0.0.1:${server.port}`, server } as const;
 };
+
+const fixtureChildScript = (stdout: string, exitCode = 0): string =>
+  `process.stdout.write(${JSON.stringify(stdout)}); process.exitCode = ${exitCode};`;
+
+const withMockedFixtureChild = async <T,>(
+  script: string,
+  check: () => Promise<T>
+): Promise<T> => {
+  const originalSpawn = Bun.spawn.bind(Bun);
+  let child: Bun.Subprocess | undefined;
+  const spawn = spyOn(Bun, "spawn").mockImplementation((_command, options) => {
+    child = originalSpawn([process.execPath, "-e", script], options);
+    return child;
+  });
+
+  try {
+    return await check();
+  } finally {
+    spawn.mockRestore();
+    await child?.exited.catch(() => undefined);
+  }
+};
+
+const writeMockFixtureOutputs = async (outputDirectory: string) => {
+  await mkdir(outputDirectory, { recursive: true });
+  const schedulerPath = createRequire(join(appRoot, "package.json")).resolve(
+    "scheduler"
+  );
+  const schedulerBytes = await readFile(schedulerPath);
+  const cssPath = join(outputDirectory, "entry.css");
+  const entryPath = join(outputDirectory, "entry.tsx");
+  const javascriptPath = join(outputDirectory, "entry.js");
+  await writeFile(cssPath, "/* synthetic CSS */\n", "utf8");
+  await writeFile(entryPath, "export {};\n", "utf8");
+  await writeFile(javascriptPath, "const syntheticBundle = true;\n", "utf8");
+  return {
+    bunVersion: Bun.version,
+    cssPath,
+    entryPath,
+    javascriptPath,
+    scheduler: { bytes: schedulerBytes.byteLength, path: schedulerPath },
+    status: "ok" as const,
+  };
+};
+
+const errorMessage = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
 
 const readGeometry = async (page: Page): Promise<Geometry> =>
   page.evaluate(() => {
@@ -1549,12 +1211,388 @@ test("formats native Bun build diagnostics with a source location", async () => 
   expect(output).toMatch(new RegExp(`${diagnosticEntry}:\\d+:\\d+:`));
 });
 
+test.serial(
+  "rejects an invalid marketing preferences child app root without leaking its path",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-invalid-app-root-")
+    );
+    const rawSentinel = "synthetic-invalid-app-root-sentinel";
+    try {
+      let thrown: unknown;
+      try {
+        await compileMarketingPreferencesFixture({
+          appRoot: join(directory, `missing-DATABASE_URL=${rawSentinel}`),
+          outputDirectory: join(directory, "output"),
+        });
+      } catch (cause) {
+        thrown = cause;
+      }
+
+      expect(errorMessage(thrown)).toBe(
+        "Could not launch marketing preferences fixture child"
+      );
+      expect(errorMessage(thrown)).not.toContain(rawSentinel);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+test.serial(
+  "sanitizes an actual marketing preferences child compiler fault",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-build-failure-")
+    );
+    const rawSentinel = "synthetic-build-diagnostic";
+    const invalidAppRoot = join(directory, `app-DATABASE_URL=${rawSentinel}`);
+    try {
+      await mkdir(join(invalidAppRoot, "app"), { recursive: true });
+      await mkdir(join(invalidAppRoot, "scripts/account-visual"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(invalidAppRoot, "package.json"),
+        JSON.stringify({
+          name: "synthetic-marketing-preferences-app",
+          type: "module",
+        }),
+        "utf8"
+      );
+      await symlink(
+        join(appRoot, "node_modules"),
+        join(invalidAppRoot, "node_modules"),
+        "dir"
+      );
+      await writeFile(
+        join(invalidAppRoot, "app/globals.css"),
+        "body { margin: 0; }\n",
+        "utf8"
+      );
+      await writeFile(
+        join(invalidAppRoot, "postcss.config.mjs"),
+        "export default { plugins: {} };\n",
+        "utf8"
+      );
+      await writeFile(
+        join(
+          invalidAppRoot,
+          "scripts/account-visual/marketing-preferences-adapter.tsx"
+        ),
+        `import "DATABASE_URL=${rawSentinel}";\nexport default function InvalidAdapter() { return null; }\n`,
+        "utf8"
+      );
+
+      let thrown: unknown;
+      try {
+        await compileMarketingPreferencesFixture({
+          appRoot: invalidAppRoot,
+          outputDirectory: join(directory, "output"),
+        });
+      } catch (cause) {
+        thrown = cause;
+      }
+
+      const message = errorMessage(thrown);
+      expect(message).toContain("Marketing preferences fixture child failed");
+      expect(message).toContain("DATABASE_URL=[REDACTED]");
+      expect(message).not.toContain(rawSentinel);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+test.serial(
+  "kills and awaits a timed-out marketing preferences fixture child",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-timeout-")
+    );
+    let child: Bun.Subprocess | undefined;
+    const originalSpawn = Bun.spawn.bind(Bun);
+    const spawn = spyOn(Bun, "spawn").mockImplementation((command, options) => {
+      child = originalSpawn(command, options);
+      return child;
+    });
+
+    try {
+      await expect(
+        compileMarketingPreferencesFixture({
+          appRoot,
+          outputDirectory: join(directory, "output"),
+          timeoutMs: 1,
+        })
+      ).rejects.toThrow(
+        "Marketing preferences fixture child timed out after 1ms"
+      );
+
+      expect(spawn).toHaveBeenCalledTimes(1);
+      const launchedChild = child;
+      expect(launchedChild).toBeDefined();
+      if (launchedChild === undefined) return;
+      expect(launchedChild.pid).toBeGreaterThan(0);
+      expect(launchedChild.killed).toBe(true);
+      expect(await launchedChild.exited).not.toBe(0);
+    } finally {
+      spawn.mockRestore();
+      await child?.exited.catch(() => undefined);
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+test.serial(
+  "rejects malformed fixture-child stdout without leaking its raw sentinel",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-malformed-stdout-")
+    );
+    const rawSentinel = "synthetic-malformed-stdout-sentinel";
+    try {
+      await withMockedFixtureChild(
+        fixtureChildScript(rawSentinel),
+        async () => {
+          let thrown: unknown;
+          try {
+            await compileMarketingPreferencesFixture({
+              appRoot,
+              outputDirectory: join(directory, "output"),
+            });
+          } catch (cause) {
+            thrown = cause;
+          }
+
+          expect(errorMessage(thrown)).toBe(
+            "Marketing preferences fixture child returned malformed JSON"
+          );
+          expect(errorMessage(thrown)).not.toContain(rawSentinel);
+        }
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+test.serial(
+  "rejects a nonzero fixture child even with a valid success response",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-nonzero-")
+    );
+    try {
+      const outputDirectory = join(directory, "output");
+      const result = await writeMockFixtureOutputs(outputDirectory);
+      await withMockedFixtureChild(
+        fixtureChildScript(JSON.stringify(result), 23),
+        async () => {
+          await expect(
+            compileMarketingPreferencesFixture({
+              appRoot,
+              outputDirectory,
+            })
+          ).rejects.toThrow(
+            "Marketing preferences fixture child exited with code 23"
+          );
+        }
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+test.serial(
+  "rejects a fixture child success response whose JavaScript path escapes",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-path-containment-")
+    );
+    const rawSentinel = "synthetic-escaping-javascript-path";
+    try {
+      const outputDirectory = join(directory, "output");
+      const result = await writeMockFixtureOutputs(outputDirectory);
+      const escapingJavascriptPath = join(directory, `${rawSentinel}.js`);
+      await writeFile(
+        escapingJavascriptPath,
+        "const outside = true;\n",
+        "utf8"
+      );
+      await withMockedFixtureChild(
+        fixtureChildScript(
+          JSON.stringify({ ...result, javascriptPath: escapingJavascriptPath })
+        ),
+        async () => {
+          let thrown: unknown;
+          try {
+            await compileMarketingPreferencesFixture({
+              appRoot,
+              outputDirectory,
+            });
+          } catch (cause) {
+            thrown = cause;
+          }
+
+          expect(errorMessage(thrown)).toBe(
+            "Marketing preferences JavaScript output path escapes the output directory"
+          );
+          expect(errorMessage(thrown)).not.toContain(rawSentinel);
+        }
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+test.serial(
+  "rejects fixture-child stdout overflow without leaking its raw sentinel",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-stdout-overflow-")
+    );
+    const rawSentinel = "synthetic-stdout-overflow-sentinel";
+    try {
+      await withMockedFixtureChild(
+        `process.stdout.write("x".repeat(${64 * 1024 + 1}) + ${JSON.stringify(rawSentinel)});`,
+        async () => {
+          let thrown: unknown;
+          try {
+            await compileMarketingPreferencesFixture({
+              appRoot,
+              outputDirectory: join(directory, "output"),
+            });
+          } catch (cause) {
+            thrown = cause;
+          }
+
+          expect(errorMessage(thrown)).toBe(
+            "Marketing preferences fixture child stdout failed"
+          );
+          expect(errorMessage(thrown)).not.toContain(rawSentinel);
+        }
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+test.serial("sanitizes a structured fixture-child error response", async () => {
+  await mkdir(artifactRoot, { recursive: true });
+  const directory = await mkdtemp(
+    join(artifactRoot, "marketing-preferences-structured-error-")
+  );
+  const rawValues = [
+    "synthetic-structured-password",
+    "synthetic-structured-query",
+    "synthetic-structured-environment",
+  ];
+  try {
+    const structuredMessage =
+      `https://synthetic-user:${rawValues[0]}@example.test/?token=${rawValues[1]}\n` +
+      `DATABASE_URL=${rawValues[2]}`;
+    await withMockedFixtureChild(
+      fixtureChildScript(
+        JSON.stringify({ message: structuredMessage, status: "error" }),
+        1
+      ),
+      async () => {
+        let thrown: unknown;
+        try {
+          await compileMarketingPreferencesFixture({
+            appRoot,
+            outputDirectory: join(directory, "output"),
+          });
+        } catch (cause) {
+          thrown = cause;
+        }
+
+        const message = errorMessage(thrown);
+        expect(message).toContain(
+          "https://[REDACTED]@example.test/?token=[REDACTED]"
+        );
+        expect(message).toContain("DATABASE_URL=[REDACTED]");
+        for (const rawValue of rawValues) {
+          expect(message).not.toContain(rawValue);
+        }
+      }
+    );
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test.serial(
+  "compiles the marketing preferences fixture in an isolated child process",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const outputDirectory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-child-boundary-")
+    );
+    const parentBuild = spyOn(Bun, "build").mockImplementation(async () => {
+      throw new AggregateError(
+        [
+          {
+            message:
+              "parent DATABASE_URL=synthetic-parent-compiler-fault should never be observed",
+            position: {
+              column: 2,
+              file: "https://synthetic-user:synthetic-password@example.test/parent.tsx?token=synthetic-query-value",
+              line: 7,
+            },
+          },
+        ],
+        "synthetic parent compiler fault"
+      );
+    });
+
+    try {
+      const fixture = await compileMarketingPreferencesFixture({
+        appRoot,
+        outputDirectory,
+      });
+      const javascript = await readFile(fixture.javascriptPath, "utf8");
+      const css = await readFile(fixture.cssPath);
+      const schedulerStats = await stat(fixture.scheduler.path);
+      const schedulerBytes = await readFile(fixture.scheduler.path);
+      const schedulerMarker = "unstable_scheduleCallback";
+      const schedulerSource = await readFile(
+        join(appRoot, "node_modules/scheduler/cjs/scheduler.production.js"),
+        "utf8"
+      );
+
+      expect(parentBuild).not.toHaveBeenCalled();
+      expect(schedulerStats.isFile()).toBe(true);
+      expect(schedulerBytes.byteLength).toBe(fixture.scheduler.bytes);
+      expect(schedulerSource).toContain(schedulerMarker);
+      expect(javascript).toContain(schedulerMarker);
+      expect(css.byteLength).toBeGreaterThan(0);
+    } finally {
+      parentBuild.mockRestore();
+      await rm(outputDirectory, { force: true, recursive: true });
+    }
+  }
+);
+
 test.serial.skipIf(!chromiumAvailable)(
   "renders marketing preference states and exercises controlled browser flows",
   async () => {
     await rm(artifactRoot, { force: true, recursive: true });
     await mkdir(artifactRoot, { recursive: true });
-    const bundle = await buildBundle();
+    const bundle = await compileMarketingPreferencesFixture({
+      appRoot,
+      outputDirectory: artifactRoot,
+    });
     const staticServer = await serveBundle(bundle);
     const problems: BrowserProblems = {
       consoleErrors: [],
@@ -1570,6 +1608,7 @@ test.serial.skipIf(!chromiumAvailable)(
       `server=${staticServer.baseUrl} (ephemeral localhost port)`,
     ];
     try {
+      browser = await chromium.launch({ headless: true, timeout: 20_000 });
       for (const locale of locales) {
         for (const viewport of viewports) {
           for (const scenario of scenarios) {
@@ -1719,12 +1758,21 @@ test.serial.skipIf(!chromiumAvailable)(
         "utf8"
       );
     } finally {
-      await staticServer.server.stop(true);
-      await writeFile(
-        join(artifactRoot, "browser.log"),
-        `${logLines.join("\n")}\n`,
-        "utf8"
-      );
+      const runningBrowser = browser;
+      try {
+        try {
+          await staticServer.server.stop(true);
+        } finally {
+          await writeFile(
+            join(artifactRoot, "browser.log"),
+            `${logLines.join("\n")}\n`,
+            "utf8"
+          );
+        }
+      } finally {
+        browser = undefined;
+        await runningBrowser?.close();
+      }
     }
   },
   300_000
