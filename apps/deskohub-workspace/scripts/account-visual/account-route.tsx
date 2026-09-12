@@ -103,6 +103,7 @@ export function AccountVisualRoute({
     >
       {isPublicLegal ? (
         <PublicAccountLegal
+          accountsEnabled={true}
           locale={locale}
           signedIn={state.kind === "linked"}
         />

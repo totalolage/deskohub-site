@@ -756,7 +756,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           yield* Effect.gen(function* () {
             const documents = yield* getLegalAcceptanceSnapshot(input.locale);
             const consents = yield* CustomerMarketingConsentRepository;
-            yield* consents.grant({
+            yield* consents.grantInitial({
               dotyposCustomerId,
               documentHash: documents.marketingCommunications.hash,
               locale: input.locale,

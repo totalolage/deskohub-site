@@ -9,21 +9,26 @@ import {
 } from "@/features/account/components/shell/account-shell";
 import { SignOutButton } from "@/features/account/components/sign-out-button";
 import { type Locale, m } from "@/features/i18n";
+import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 
 type PublicAccountLegalProps = {
+  readonly accountsEnabled: boolean;
   readonly locale: Locale;
+  readonly marketingPreferences?: MarketingPreferencesState;
   readonly signedIn: boolean;
 };
 
 export function PublicAccountLegal({
+  accountsEnabled,
   locale,
+  marketingPreferences,
   signedIn,
 }: PublicAccountLegalProps) {
   const router = useRouter();
   const copy = getAccountScreenCopy(locale);
 
   const changeSection = (section: AccountSection) => {
-    if (!signedIn || section === "legal") return;
+    if (!accountsEnabled || !signedIn || section === "legal") return;
     router.push(`/${locale}/account?section=${section}`);
   };
 
@@ -31,14 +36,21 @@ export function PublicAccountLegal({
     <AccountShell
       activeSection="legal"
       disabledSections={
-        signedIn ? [] : ["reservations", "profile", "billing", "danger"]
+        accountsEnabled && signedIn
+          ? []
+          : ["reservations", "profile", "billing", "danger"]
       }
       labels={copy.shell}
       onSectionChange={changeSection}
       signOut={signedIn ? <SignOutButton locale={locale} /> : null}
       title={m.accountTitle({}, { locale })}
     >
-      <LegalScreen locale={locale} strings={copy.legal} />
+      <LegalScreen
+        accountsEnabled={accountsEnabled}
+        locale={locale}
+        marketingPreferences={marketingPreferences}
+        strings={copy.legal}
+      />
     </AccountShell>
   );
 }

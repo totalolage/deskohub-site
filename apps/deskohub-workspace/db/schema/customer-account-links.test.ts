@@ -6,7 +6,7 @@ import { customerAccountLinks } from "./customer-account-links";
 const readMigration = () =>
   Bun.file(
     new URL(
-      "../migrations/20260903094459_regular_wolverine/migration.sql",
+      "../migrations/20260911214518_military_typhoid_mary/migration.sql",
       import.meta.url
     )
   ).text();
@@ -70,7 +70,10 @@ describe("customer account links", () => {
     const migration = await readMigration();
 
     expect(migration).toContain('CREATE SCHEMA "auth";');
-    expect(migration.match(/CREATE TABLE/g)?.length).toBe(6);
+    expect(migration.match(/CREATE TABLE/g)?.length).toBe(7);
+    expect(migration).toContain(
+      'CREATE TABLE "customer_marketing_management_tokens" ('
+    );
     expect(migration).toContain(
       'ADD CONSTRAINT "customer_account_links_customer_account_id_user_id_fkey" FOREIGN KEY ("customer_account_id") REFERENCES "auth"."user"("id") ON DELETE CASCADE'
     );

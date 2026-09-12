@@ -2,6 +2,8 @@ import { Download } from "lucide-react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
 import { CookieSettings } from "@/features/cookie-consent/components/cookie-settings-page";
 import { type Locale, m } from "@/features/i18n";
+import { MarketingPreferencesForm } from "@/features/legal/components/marketing-preferences-form";
+import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
@@ -21,11 +23,18 @@ export interface LegalScreenStrings {
 }
 
 export interface LegalScreenProps {
+  readonly accountsEnabled?: boolean;
   readonly locale: Locale;
+  readonly marketingPreferences?: MarketingPreferencesState;
   readonly strings: LegalScreenStrings;
 }
 
-export function LegalScreen({ locale, strings }: LegalScreenProps) {
+export function LegalScreen({
+  accountsEnabled = true,
+  locale,
+  marketingPreferences,
+  strings,
+}: LegalScreenProps) {
   const localePath = `/${locale}`;
 
   return (
@@ -59,6 +68,12 @@ export function LegalScreen({ locale, strings }: LegalScreenProps) {
       </div>
 
       <CookieSettings locale={locale} />
+
+      <MarketingPreferencesForm
+        accountsEnabled={accountsEnabled}
+        locale={locale}
+        state={marketingPreferences ?? { status: "unavailable" }}
+      />
 
       <div className="mt-8 border-t border-[#e5e9ef] pt-6">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

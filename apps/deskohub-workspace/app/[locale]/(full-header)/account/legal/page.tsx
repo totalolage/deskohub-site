@@ -5,8 +5,10 @@ import { Suspense } from "react";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
 import { AccountLoading } from "@/features/account/components/account-loading";
 import { PublicAccountLegal } from "@/features/account/components/public-account-legal";
+import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { getMarketingPreferences } from "@/features/legal/marketing-preferences.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -32,6 +34,7 @@ async function PublicAccountLegalPageContent({
 }) {
   await connection();
 
+  const accountsEnabled = await areAccountsEnabled();
   const session = await Effect.flatMap(
     CustomerAuthentication,
     (authentication) => authentication.currentUser
@@ -41,6 +44,14 @@ async function PublicAccountLegalPageContent({
     runWorkspaceEffect("account.legal", { boundary: "page" })
   );
   const signedIn = Result.isSuccess(session) && session.success !== null;
+  const marketingPreferences = await getMarketingPreferences(locale);
 
-  return <PublicAccountLegal locale={locale} signedIn={signedIn} />;
+  return (
+    <PublicAccountLegal
+      accountsEnabled={accountsEnabled}
+      locale={locale}
+      marketingPreferences={marketingPreferences}
+      signedIn={signedIn}
+    />
+  );
 }

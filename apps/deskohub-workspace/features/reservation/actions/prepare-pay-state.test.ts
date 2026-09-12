@@ -289,7 +289,7 @@ const runReusableReservationScenario = async (input: {
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
-  readonly grantMarketingConsent?: ReturnType<typeof mock>;
+  readonly grantInitialMarketingConsent?: ReturnType<typeof mock>;
   readonly findOrCreateCustomer?: ReturnType<typeof mock>;
   readonly reservation?:
     | typeof reservation
@@ -319,8 +319,11 @@ const runReusableReservationScenario = async (input: {
 
   const enqueueCleanup = mock(() => Effect.void);
   const updateReservationDetails = mock(() => Effect.void);
-  const grantMarketingConsent =
-    input.grantMarketingConsent ?? mock(() => Effect.void);
+  const grantInitialMarketingConsent =
+    input.grantInitialMarketingConsent ?? mock(() => Effect.void);
+  const grantMarketingConsent = mock(() => Effect.void);
+  const getMarketingConsent = mock(() => Effect.succeed(null));
+  const withdrawMarketingConsent = mock(() => Effect.void);
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
@@ -395,7 +398,10 @@ const runReusableReservationScenario = async (input: {
       markCancellationFailed,
     }),
     Layer.mock(CustomerMarketingConsentRepository, {
+      grantInitial: grantInitialMarketingConsent,
       grant: grantMarketingConsent,
+      get: getMarketingConsent,
+      withdraw: withdrawMarketingConsent,
     } satisfies ICustomerMarketingConsentRepository),
     Layer.mock(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
@@ -431,6 +437,7 @@ const runReusableReservationScenario = async (input: {
     guardEvents: accountAuthority.events,
     enqueueCleanup,
     updateReservationDetails,
+    grantInitialMarketingConsent,
     grantMarketingConsent,
     ensureAvailable,
     createDraft,
@@ -566,7 +573,10 @@ const runMeetingRoomNewHoldScenario = async (
       markCancellationFailed: mock(() => Effect.void),
     }),
     Layer.mock(CustomerMarketingConsentRepository, {
+      grantInitial: mock(() => Effect.void),
       grant: mock(() => Effect.void),
+      get: mock(() => Effect.succeed(null)),
+      withdraw: mock(() => Effect.void),
     } satisfies ICustomerMarketingConsentRepository),
     WorkspaceTableAssignmentServiceMock({ assignTableId }),
     Layer.mock(ReservationHoldCleanupScheduleService, {
@@ -864,6 +874,7 @@ describe("prepareWorkspacePayState", () => {
         eventOrder.push("enqueue");
       })
     );
+    const grantInitialMarketingConsent = mock(() => Effect.void);
     const grantMarketingConsent = mock(() => Effect.void);
     const createReservation = mock(() =>
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
@@ -925,7 +936,10 @@ describe("prepareWorkspacePayState", () => {
         markCancellationFailed: mock(() => Effect.void),
       }),
       Layer.mock(CustomerMarketingConsentRepository, {
+        grantInitial: grantInitialMarketingConsent,
         grant: grantMarketingConsent,
+        get: mock(() => Effect.succeed(null)),
+        withdraw: mock(() => Effect.void),
       } satisfies ICustomerMarketingConsentRepository),
       WorkspaceTableAssignmentServiceMock({
         assignTableId,
@@ -986,7 +1000,7 @@ describe("prepareWorkspacePayState", () => {
     expect(verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
     });
-    expect(grantMarketingConsent).not.toHaveBeenCalled();
+    expect(grantInitialMarketingConsent).not.toHaveBeenCalled();
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") throw new Error("Expected ready result");
@@ -1069,12 +1083,13 @@ describe("prepareWorkspacePayState", () => {
     });
 
     expect(result.result.status).toBe("ready");
-    expect(result.grantMarketingConsent).toHaveBeenCalledWith({
+    expect(result.grantInitialMarketingConsent).toHaveBeenCalledWith({
       dotyposCustomerId: "customer-id",
       documentHash: "marketing-hash",
       locale: "en-US",
       grantedAt: expect.any(Temporal.Instant),
     });
+    expect(result.grantMarketingConsent).not.toHaveBeenCalled();
   });
 
   test("fails checkout when an explicit marketing opt-in cannot be stored", async () => {
@@ -1087,7 +1102,7 @@ describe("prepareWorkspacePayState", () => {
     const { error } = await runReusableReservationScenario({
       findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
       marketingConsent: true,
-      grantMarketingConsent: mock(() => Effect.fail(persistenceFailure)),
+      grantInitialMarketingConsent: mock(() => Effect.fail(persistenceFailure)),
     });
 
     expect(error).toMatchObject({
@@ -1202,7 +1217,7 @@ describe("prepareWorkspacePayState", () => {
     expect(scenario.guardEvents).toEqual([]);
     expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
     expect(scenario.createDraft).not.toHaveBeenCalled();
-    expect(scenario.grantMarketingConsent).not.toHaveBeenCalled();
+    expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
   });
 
   test("stops a deletion-marked authenticated preparation before any mutation", async () => {
@@ -1233,7 +1248,7 @@ describe("prepareWorkspacePayState", () => {
     ]);
     expect(scenario.findOrCreateCustomer).not.toHaveBeenCalled();
     expect(scenario.createDraft).not.toHaveBeenCalled();
-    expect(scenario.grantMarketingConsent).not.toHaveBeenCalled();
+    expect(scenario.grantInitialMarketingConsent).not.toHaveBeenCalled();
   });
 
   test("stops preparation when the account row disappears during the authority window", async () => {

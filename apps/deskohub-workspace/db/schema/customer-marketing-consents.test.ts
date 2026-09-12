@@ -31,7 +31,7 @@ describe("customer marketing consent persistence", () => {
     ]);
   });
 
-  test("only reactivates a previously withdrawn consent", async () => {
+  test("distinguishes initial and explicit consent grants", async () => {
     const source = await Bun.file(
       new URL(
         "../../features/legal/backend/customer-marketing-consent.repository.ts",
@@ -39,14 +39,28 @@ describe("customer marketing consent persistence", () => {
       )
     ).text();
 
-    expect(source).toContain(
+    const initialGrantStart = source.indexOf(
+      "CustomerMarketingConsentRepository.grantInitial"
+    );
+    const explicitGrantStart = source.indexOf(
+      'CustomerMarketingConsentRepository.grant"'
+    );
+
+    expect(initialGrantStart).toBeGreaterThanOrEqual(0);
+    expect(explicitGrantStart).toBeGreaterThan(initialGrantStart);
+    expect(source.slice(initialGrantStart, explicitGrantStart)).toContain(
+      ".onConflictDoNothing()"
+    );
+
+    const explicitGrant = source.slice(explicitGrantStart);
+    expect(explicitGrant).toContain(
       "target: customerMarketingConsents.dotyposCustomerId"
     );
-    expect(source).toContain(
+    expect(explicitGrant).toContain("withdrawnAt: null");
+    expect(explicitGrant).toContain(".onConflictDoUpdate({");
+    expect(source).not.toContain(
       "setWhere: isNotNull(customerMarketingConsents.withdrawnAt)"
     );
-    expect(source).toContain("withdrawnAt: null");
-    expect(source).not.toContain("onConflictDoNothing");
   });
 
   test("creates the customer table without a historical backfill", async () => {

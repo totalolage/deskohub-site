@@ -7,7 +7,13 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { m } from "@/features/i18n";
 import { workspaceRouterPush } from "@/shared/testing/workspace-component-module-mocks";
 import {
@@ -15,19 +21,42 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
+const authClientSignOut = mock(() => Promise.resolve({ error: null }));
+const beginAnalyticsAccountTransition = mock(() => undefined);
+const completeAnalyticsAccountSignOut = mock(() => undefined);
+const refreshAnalyticsAccountIdentity = mock(() => Promise.resolve());
+
+mock.module("@/features/account/analytics-identity", () => ({
+  beginAnalyticsAccountTransition,
+  completeAnalyticsAccountSignOut,
+  refreshAnalyticsAccountIdentity,
+}));
 mock.module("@/features/account/auth.client", () => ({
   authClient: {
-    signOut: mock(() => Promise.resolve({ error: null })),
+    signOut: authClientSignOut,
   },
 }));
 
 mock.module("@/features/account/components/legal/legal-screen", () => ({
   LegalScreen: ({
+    marketingPreferences,
     strings,
   }: {
+    readonly marketingPreferences?: {
+      readonly status: string;
+    };
     readonly strings: { readonly title: string };
-  }) => <h2>{strings.title}</h2>,
+  }) => (
+    <>
+      <h2>{strings.title}</h2>
+      <output data-testid="public-account-marketing-preferences">
+        {marketingPreferences?.status ?? "unavailable"}
+      </output>
+    </>
+  ),
 }));
+
+let originalLocationAssign: typeof window.location.assign;
 
 function getDesktopSectionNavigation(view: {
   readonly container: HTMLElement;
@@ -50,21 +79,36 @@ function getMobileSectionNavigation(
 }
 
 describe("PublicAccountLegal", () => {
-  beforeAll(registerWorkspaceComponentTestEnv);
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+    originalLocationAssign = window.location.assign;
+  });
 
   afterEach(() => {
     cleanup();
     workspaceRouterPush.mockClear();
+    authClientSignOut.mockClear();
+    beginAnalyticsAccountTransition.mockClear();
+    completeAnalyticsAccountSignOut.mockClear();
+    refreshAnalyticsAccountIdentity.mockClear();
+    window.location.assign = originalLocationAssign;
   });
 
-  afterAll(unregisterWorkspaceComponentTestEnv);
+  afterAll(() => {
+    window.location.assign = originalLocationAssign;
+    unregisterWorkspaceComponentTestEnv();
+  });
 
   test.each(["en-US", "cs-CZ"] as const)(
     "renders legal content for anonymous %s visitors without account access",
     async (locale) => {
       const { PublicAccountLegal } = await import("./public-account-legal");
       const view = render(
-        <PublicAccountLegal locale={locale} signedIn={false} />
+        <PublicAccountLegal
+          accountsEnabled={true}
+          locale={locale}
+          signedIn={false}
+        />
       );
       const mobileSectionNavigation = getMobileSectionNavigation(view, locale);
       const desktopSectionNavigation = getDesktopSectionNavigation(view);
@@ -150,10 +194,107 @@ describe("PublicAccountLegal", () => {
   );
 
   test.each(["en-US", "cs-CZ"] as const)(
+    "keeps legal available but disables private navigation for signed-in %s visitors when accounts are off",
+    async (locale) => {
+      let assigned: string | undefined;
+      window.location.assign = ((href: string) => {
+        assigned = href;
+      }) as typeof window.location.assign;
+
+      const { PublicAccountLegal } = await import("./public-account-legal");
+      const view = render(
+        <PublicAccountLegal accountsEnabled={false} locale={locale} signedIn />
+      );
+      const mobileSectionNavigation = getMobileSectionNavigation(view, locale);
+      const desktopSectionNavigation = getDesktopSectionNavigation(view);
+      const sectionLabels = {
+        billing: m.accountSectionBilling({}, { locale }),
+        danger: m.accountSectionDanger({}, { locale }),
+        legal: m.accountSectionLegal({}, { locale }),
+        profile: m.accountSectionProfile({}, { locale }),
+        reservations: m.accountSectionReservations({}, { locale }),
+      } as const;
+
+      expect(
+        view.getByRole("heading", {
+          level: 2,
+          name: m.accountLegalTitle({}, { locale }),
+        })
+      ).toBeTruthy();
+
+      for (const section of [
+        "reservations",
+        "profile",
+        "billing",
+        "danger",
+      ] as const) {
+        const label = sectionLabels[section];
+        const mobileButton = mobileSectionNavigation.getByRole("button", {
+          name: label,
+        }) as HTMLButtonElement;
+        const desktopButton = desktopSectionNavigation.getByRole("button", {
+          name: label,
+        }) as HTMLButtonElement;
+
+        expect(mobileButton.disabled).toBe(true);
+        expect(desktopButton.disabled).toBe(true);
+        fireEvent.click(mobileButton);
+        fireEvent.click(desktopButton);
+      }
+
+      const legalLabel = sectionLabels.legal;
+      const mobileLegalButton = mobileSectionNavigation.getByRole("button", {
+        name: legalLabel,
+      }) as HTMLButtonElement;
+      const desktopLegalButton = desktopSectionNavigation.getByRole("button", {
+        name: legalLabel,
+      }) as HTMLButtonElement;
+      expect(mobileLegalButton.disabled).toBe(false);
+      expect(desktopLegalButton.disabled).toBe(false);
+      fireEvent.click(mobileLegalButton);
+      fireEvent.click(desktopLegalButton);
+      expect(workspaceRouterPush).not.toHaveBeenCalled();
+
+      const signOutButton = view.getByRole("button", {
+        name: m.accountSignOut({}, { locale }),
+      });
+      fireEvent.click(signOutButton);
+
+      await waitFor(() => {
+        expect(authClientSignOut).toHaveBeenCalledTimes(1);
+        expect(assigned).toBe(`/${locale}`);
+      });
+      expect(workspaceRouterPush).not.toHaveBeenCalled();
+    }
+  );
+
+  test("passes an optional marketing preference state to LegalScreen", async () => {
+    const { PublicAccountLegal } = await import("./public-account-legal");
+    const view = render(
+      <PublicAccountLegal
+        accountsEnabled={true}
+        locale="en-US"
+        marketingPreferences={{
+          context: "synthetic-account-context",
+          source: "account",
+          status: "active",
+        }}
+        signedIn
+      />
+    );
+
+    expect(
+      view.getByTestId("public-account-marketing-preferences").textContent
+    ).toBe("active");
+  });
+
+  test.each(["en-US", "cs-CZ"] as const)(
     "routes signed-in %s visitors to the private account sections",
     async (locale) => {
       const { PublicAccountLegal } = await import("./public-account-legal");
-      const view = render(<PublicAccountLegal locale={locale} signedIn />);
+      const view = render(
+        <PublicAccountLegal accountsEnabled={true} locale={locale} signedIn />
+      );
       const mobileSectionNavigation = getMobileSectionNavigation(view, locale);
       const desktopSectionNavigation = getDesktopSectionNavigation(view);
 
