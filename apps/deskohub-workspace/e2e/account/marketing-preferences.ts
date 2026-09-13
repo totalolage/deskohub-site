@@ -420,6 +420,153 @@ const consentHasState = (
     ? consent.withdrawnAt === null
     : consent.withdrawnAt !== null);
 
+export type WorkspaceE2EMarketingConsentPersistenceReason =
+  | "document_hash_mismatch"
+  | "locale_mismatch"
+  | "matched"
+  | "row_missing"
+  | "withdrawn_state_mismatch";
+
+export type WorkspaceE2EMarketingConsentPersistenceClassification = {
+  readonly documentHashMatches: boolean;
+  readonly localeMatches: boolean;
+  readonly reason: WorkspaceE2EMarketingConsentPersistenceReason;
+  readonly rowExists: boolean;
+  readonly withdrawnStateMatches: boolean;
+};
+
+/**
+ * Classifies only the closed requirements used by the persisted-consent wait.
+ * It deliberately returns no consent values, identifiers, or timestamps so
+ * the result is safe to use as E2E log metadata.
+ */
+export const classifyWorkspaceE2EMarketingConsentPersistence = (input: {
+  readonly consent: MarketingConsentRow | null;
+  readonly documentHash: string;
+  readonly expectedStatus: MarketingPreferenceStatus;
+}): WorkspaceE2EMarketingConsentPersistenceClassification => {
+  const { consent } = input;
+  const rowExists = consent !== null;
+  const documentHashMatches =
+    consent !== null && consent.documentHash === input.documentHash;
+  const localeMatches = consent !== null && consent.locale === "en-US";
+  const withdrawnStateMatches =
+    consent !== null &&
+    (input.expectedStatus === "active"
+      ? consent.withdrawnAt === null
+      : consent.withdrawnAt !== null);
+
+  let reason: WorkspaceE2EMarketingConsentPersistenceReason;
+  if (!rowExists) {
+    reason = "row_missing";
+  } else if (!documentHashMatches) {
+    reason = "document_hash_mismatch";
+  } else if (!localeMatches) {
+    reason = "locale_mismatch";
+  } else if (!withdrawnStateMatches) {
+    reason = "withdrawn_state_mismatch";
+  } else {
+    reason = "matched";
+  }
+
+  return {
+    documentHashMatches,
+    localeMatches,
+    reason,
+    rowExists,
+    withdrawnStateMatches,
+  };
+};
+
+type WorkspaceE2EMarketingConsentPollOptions = {
+  readonly intervalMs: number;
+  readonly label: string;
+  readonly timeoutMs: number;
+};
+
+export type WorkspaceE2EMarketingConsentPoller = <A, E, R>(
+  effect: Effect.Effect<A | undefined, E, R>,
+  options: WorkspaceE2EMarketingConsentPollOptions
+) => Effect.Effect<A, E | WorkspaceE2EError, R>;
+
+type WorkspaceE2EMarketingConsentPersistenceWaitInput<R, E> = {
+  readonly documentHash: string;
+  readonly expectedStatus: MarketingPreferenceStatus;
+  readonly log?: (
+    classification: WorkspaceE2EMarketingConsentPersistenceClassification
+  ) => Effect.Effect<void>;
+  readonly poll?: WorkspaceE2EMarketingConsentPoller;
+  readonly read: Effect.Effect<MarketingConsentRow | null, E, R>;
+};
+
+const sameMarketingConsentPersistenceClassification = (
+  left: WorkspaceE2EMarketingConsentPersistenceClassification,
+  right: WorkspaceE2EMarketingConsentPersistenceClassification
+): boolean =>
+  left.documentHashMatches === right.documentHashMatches &&
+  left.localeMatches === right.localeMatches &&
+  left.reason === right.reason &&
+  left.rowExists === right.rowExists &&
+  left.withdrawnStateMatches === right.withdrawnStateMatches;
+
+const logMarketingConsentPersistenceClassification = (
+  classification: WorkspaceE2EMarketingConsentPersistenceClassification
+): Effect.Effect<void> =>
+  Effect.logInfo(
+    "Marketing preference persistence classification",
+    classification
+  );
+
+/**
+ * Polls the existing consent read while logging only the first and changed
+ * closed classifications. The poll and log seams keep this behavior
+ * executable without a database in focused tests.
+ */
+export const waitForWorkspaceE2EMarketingConsentPersistence = <
+  R,
+  E = WorkspaceE2EError,
+>(
+  input: WorkspaceE2EMarketingConsentPersistenceWaitInput<R, E>
+): Effect.Effect<void, E | WorkspaceE2EError, R> => {
+  let lastClassification:
+    | WorkspaceE2EMarketingConsentPersistenceClassification
+    | undefined;
+  const log = input.log ?? logMarketingConsentPersistenceClassification;
+  const observedConsent = input.read.pipe(
+    Effect.tap((consent) => {
+      const classification = classifyWorkspaceE2EMarketingConsentPersistence({
+        consent,
+        documentHash: input.documentHash,
+        expectedStatus: input.expectedStatus,
+      });
+      const classificationChanged =
+        lastClassification === undefined ||
+        !sameMarketingConsentPersistenceClassification(
+          lastClassification,
+          classification
+        );
+      const logEffect = classificationChanged
+        ? Effect.sync(() => {
+            lastClassification = classification;
+          }).pipe(Effect.andThen(log(classification)))
+        : Effect.void;
+
+      return logEffect;
+    }),
+    Effect.map((consent) =>
+      consentHasState(consent, input.expectedStatus, input.documentHash)
+        ? consent
+        : undefined
+    )
+  );
+
+  return (input.poll ?? pollUntil)(observedConsent, {
+    intervalMs: workspaceE2EPollIntervalMs.datasource,
+    label: `marketing preference ${input.expectedStatus} persisted`,
+    timeoutMs: workspaceE2ETimeouts.datasource,
+  }).pipe(Effect.asVoid);
+};
+
 const managedPreferenceSelector = (
   status: MarketingPreferenceStatus,
   source: MarketingPreferenceSource
@@ -895,20 +1042,11 @@ const waitForPersistedConsentStatus = (
   fixture: WorkspaceE2EMarketingPreferencesFixture,
   expectedStatus: MarketingPreferenceStatus
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
-  pollUntil(
-    readMarketingConsent(fixture.customerId).pipe(
-      Effect.map((consent) =>
-        consentHasState(consent, expectedStatus, fixture.documentHash)
-          ? consent
-          : undefined
-      )
-    ),
-    {
-      intervalMs: workspaceE2EPollIntervalMs.datasource,
-      label: `marketing preference ${expectedStatus} persisted`,
-      timeoutMs: workspaceE2ETimeouts.datasource,
-    }
-  ).pipe(Effect.asVoid);
+  waitForWorkspaceE2EMarketingConsentPersistence({
+    documentHash: fixture.documentHash,
+    expectedStatus,
+    read: readMarketingConsent(fixture.customerId),
+  });
 
 const assertExactTokenHashes = (
   actual: readonly string[],

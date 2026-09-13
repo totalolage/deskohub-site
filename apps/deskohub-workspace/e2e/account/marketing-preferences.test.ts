@@ -5,12 +5,17 @@ import { createHash } from "node:crypto";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { Page } from "@playwright/test";
 import { Cause, Effect, Exit, Fiber } from "effect";
+import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
+  classifyWorkspaceE2EMarketingConsentPersistence,
   makeWorkspaceE2EMarketingPreferencesSeedRow,
   navigateAuthenticatedWorkspaceE2EMarketingPreferences,
   navigateWorkspaceE2EMarketingPreferences,
   runWorkspaceE2EMarketingBrowserOperation,
   verifyWorkspaceE2EMarketingPreferences,
+  type WorkspaceE2EMarketingConsentPersistenceClassification,
+  type WorkspaceE2EMarketingConsentPoller,
+  waitForWorkspaceE2EMarketingConsentPersistence,
 } from "./marketing-preferences";
 
 const baseUrl = "https://deskohub-workspace-marketing.example.test";
@@ -79,6 +84,25 @@ type SyntheticMarketingFixtureState = {
   tokenHashes: string[];
 };
 
+type MarketingConsentRow = NonNullable<
+  Parameters<
+    typeof classifyWorkspaceE2EMarketingConsentPersistence
+  >[0]["consent"]
+>;
+
+const expectedConsentDocumentHash = "synthetic-expected-document-hash";
+
+const makeMarketingConsentRow = (
+  overrides: Partial<MarketingConsentRow> = {}
+): MarketingConsentRow => ({
+  dotyposCustomerId: customerId,
+  documentHash: expectedConsentDocumentHash,
+  grantedAt: now,
+  locale: "en-US",
+  withdrawnAt: null,
+  ...overrides,
+});
+
 const cloneSyntheticMarketingFixtureState = (
   state: SyntheticMarketingFixtureState
 ): SyntheticMarketingFixtureState => ({
@@ -142,6 +166,362 @@ describe("workspace marketing preferences helper", () => {
 
     expect(row.purpose).toBe("link");
     expect(row.revokedAt).toBeNull();
+  });
+
+  test.each([
+    {
+      consent: null,
+      expected: {
+        documentHashMatches: false,
+        localeMatches: false,
+        reason: "row_missing",
+        rowExists: false,
+        withdrawnStateMatches: false,
+      },
+      expectedStatus: "active" as const,
+      name: "a missing row",
+    },
+    {
+      consent: makeMarketingConsentRow({
+        documentHash: "synthetic-actual-document-hash",
+      }),
+      expected: {
+        documentHashMatches: false,
+        localeMatches: true,
+        reason: "document_hash_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      expectedStatus: "active" as const,
+      name: "a document hash mismatch",
+    },
+    {
+      consent: makeMarketingConsentRow({ locale: "cs-CZ" }),
+      expected: {
+        documentHashMatches: true,
+        localeMatches: false,
+        reason: "locale_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      expectedStatus: "active" as const,
+      name: "a locale mismatch",
+    },
+    {
+      consent: makeMarketingConsentRow(),
+      expected: {
+        documentHashMatches: true,
+        localeMatches: true,
+        reason: "matched",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      expectedStatus: "active" as const,
+      name: "an active consent",
+    },
+    {
+      consent: makeMarketingConsentRow({
+        withdrawnAt: now.add({ hours: 1 }),
+      }),
+      expected: {
+        documentHashMatches: true,
+        localeMatches: true,
+        reason: "withdrawn_state_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: false,
+      },
+      expectedStatus: "active" as const,
+      name: "an active-state mismatch",
+    },
+    {
+      consent: makeMarketingConsentRow({
+        withdrawnAt: now.add({ hours: 1 }),
+      }),
+      expected: {
+        documentHashMatches: true,
+        localeMatches: true,
+        reason: "matched",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      expectedStatus: "withdrawn" as const,
+      name: "a withdrawn consent",
+    },
+    {
+      consent: makeMarketingConsentRow(),
+      expected: {
+        documentHashMatches: true,
+        localeMatches: true,
+        reason: "withdrawn_state_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: false,
+      },
+      expectedStatus: "withdrawn" as const,
+      name: "a withdrawn-state mismatch",
+    },
+  ])(
+    "classifies $name using only persisted consent requirements",
+    ({ consent, expected, expectedStatus }) => {
+      expect(
+        classifyWorkspaceE2EMarketingConsentPersistence({
+          consent,
+          documentHash: expectedConsentDocumentHash,
+          expectedStatus,
+        })
+      ).toEqual(expected);
+    }
+  );
+
+  test("logs only changed persisted-consent classifications through a fake poll", async () => {
+    const actualDocumentHash = "synthetic-actual-document-hash";
+    const observations: Array<MarketingConsentRow | null> = [
+      null,
+      makeMarketingConsentRow({ documentHash: actualDocumentHash }),
+      makeMarketingConsentRow({
+        documentHash: actualDocumentHash,
+        grantedAt: now.add({ hours: 2 }),
+      }),
+      makeMarketingConsentRow({ locale: "cs-CZ" }),
+      makeMarketingConsentRow({ withdrawnAt: now.add({ hours: 1 }) }),
+      makeMarketingConsentRow(),
+    ];
+    const logRecords: WorkspaceE2EMarketingConsentPersistenceClassification[] =
+      [];
+    const timeline: string[] = [];
+    const pollCalls: Array<{
+      readonly intervalMs: number;
+      readonly label: string;
+      readonly timeoutMs: number;
+    }> = [];
+    let readCount = 0;
+    const poll: WorkspaceE2EMarketingConsentPoller = (effect, options) =>
+      Effect.gen(function* () {
+        pollCalls.push(options);
+        timeline.push("poll-start");
+        while (true) {
+          const consent = yield* effect;
+          timeline.push(`observation:${readCount}`);
+          if (consent !== undefined) return consent;
+        }
+      });
+
+    await Effect.runPromise(
+      waitForWorkspaceE2EMarketingConsentPersistence({
+        documentHash: expectedConsentDocumentHash,
+        expectedStatus: "active",
+        log: (classification) =>
+          Effect.sync(() => {
+            timeline.push(`log:${classification.reason}`);
+            logRecords.push(classification);
+          }),
+        poll,
+        read: Effect.sync(() => {
+          const consent = observations[readCount];
+          readCount += 1;
+          timeline.push(`read:${readCount}`);
+          if (consent === undefined) {
+            throw new Error("synthetic fake poll exhausted");
+          }
+          return consent;
+        }),
+      })
+    );
+
+    expect(readCount).toBe(observations.length);
+    expect(timeline).toEqual([
+      "poll-start",
+      "read:1",
+      "log:row_missing",
+      "observation:1",
+      "read:2",
+      "log:document_hash_mismatch",
+      "observation:2",
+      "read:3",
+      "observation:3",
+      "read:4",
+      "log:locale_mismatch",
+      "observation:4",
+      "read:5",
+      "log:withdrawn_state_mismatch",
+      "observation:5",
+      "read:6",
+      "log:matched",
+      "observation:6",
+    ]);
+    expect(pollCalls).toEqual([
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        label: "marketing preference active persisted",
+        timeoutMs: workspaceE2ETimeouts.datasource,
+      },
+    ]);
+    expect(logRecords).toEqual([
+      {
+        documentHashMatches: false,
+        localeMatches: false,
+        reason: "row_missing",
+        rowExists: false,
+        withdrawnStateMatches: false,
+      },
+      {
+        documentHashMatches: false,
+        localeMatches: true,
+        reason: "document_hash_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      {
+        documentHashMatches: true,
+        localeMatches: false,
+        reason: "locale_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      {
+        documentHashMatches: true,
+        localeMatches: true,
+        reason: "withdrawn_state_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: false,
+      },
+      {
+        documentHashMatches: true,
+        localeMatches: true,
+        reason: "matched",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+    ]);
+
+    const serializedLogs = JSON.stringify(logRecords);
+    for (const sensitiveSentinel of [
+      actualDocumentHash,
+      expectedConsentDocumentHash,
+      customerId,
+      "cs-CZ",
+      now.toString(),
+      rawLinkToken,
+      baseUrl,
+      "synthetic fake poll exhausted",
+    ]) {
+      expect(serializedLogs).not.toContain(sensitiveSentinel);
+    }
+  });
+
+  test("retains the last mismatch when a pending consent poll is interrupted", async () => {
+    const actualDocumentHash = "synthetic-actual-document-hash";
+    const observations: Array<MarketingConsentRow | null> = [
+      null,
+      makeMarketingConsentRow({ documentHash: actualDocumentHash }),
+    ];
+    const logRecords: WorkspaceE2EMarketingConsentPersistenceClassification[] =
+      [];
+    const timeline: string[] = [];
+    const pollWaiting = makePromiseGate();
+    const pendingPoll = makePromiseGate();
+    let readCount = 0;
+    let pollAdvancedPastPending = false;
+    const poll: WorkspaceE2EMarketingConsentPoller = (effect) =>
+      Effect.gen(function* () {
+        timeline.push("poll-start");
+        yield* effect;
+        timeline.push("observation:1");
+        yield* effect;
+        timeline.push("observation:2");
+        pollWaiting.resolve();
+        yield* Effect.promise(() => pendingPoll.promise);
+        pollAdvancedPastPending = true;
+        yield* Effect.never;
+      });
+    const operation = waitForWorkspaceE2EMarketingConsentPersistence({
+      documentHash: expectedConsentDocumentHash,
+      expectedStatus: "active",
+      log: (classification) =>
+        Effect.sync(() => {
+          timeline.push(`log:${classification.reason}`);
+          logRecords.push(classification);
+        }),
+      poll,
+      read: Effect.sync(() => {
+        const consent = observations[readCount];
+        readCount += 1;
+        timeline.push(`read:${readCount}`);
+        if (consent === undefined) {
+          throw new Error("synthetic pending poll exhausted");
+        }
+        return consent;
+      }),
+    });
+
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(operation);
+          yield* Effect.promise(() => pollWaiting.promise);
+
+          expect(timeline).toEqual([
+            "poll-start",
+            "read:1",
+            "log:row_missing",
+            "observation:1",
+            "read:2",
+            "log:document_hash_mismatch",
+            "observation:2",
+          ]);
+          expect(logRecords).toEqual([
+            {
+              documentHashMatches: false,
+              localeMatches: false,
+              reason: "row_missing",
+              rowExists: false,
+              withdrawnStateMatches: false,
+            },
+            {
+              documentHashMatches: false,
+              localeMatches: true,
+              reason: "document_hash_mismatch",
+              rowExists: true,
+              withdrawnStateMatches: true,
+            },
+          ]);
+
+          const interruption = yield* Effect.forkChild(Fiber.interrupt(fiber));
+          yield* Fiber.join(interruption);
+          const exit = yield* Fiber.await(fiber);
+          expect(Exit.isFailure(exit)).toBe(true);
+          if (Exit.isFailure(exit)) {
+            expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+          }
+        })
+      );
+    } finally {
+      pendingPoll.resolve();
+      await flushMicrotasks();
+    }
+
+    expect(pollAdvancedPastPending).toBe(false);
+    expect(readCount).toBe(2);
+    expect(logRecords.at(-1)).toEqual({
+      documentHashMatches: false,
+      localeMatches: true,
+      reason: "document_hash_mismatch",
+      rowExists: true,
+      withdrawnStateMatches: true,
+    });
+
+    const serializedLogs = JSON.stringify(logRecords);
+    for (const sensitiveSentinel of [
+      actualDocumentHash,
+      expectedConsentDocumentHash,
+      customerId,
+      "cs-CZ",
+      now.toString(),
+      rawLinkToken,
+      baseUrl,
+      "synthetic pending poll exhausted",
+    ]) {
+      expect(serializedLogs).not.toContain(sensitiveSentinel);
+    }
   });
 
   test("waits for interrupted browser preparation before fixture cleanup", async () => {
