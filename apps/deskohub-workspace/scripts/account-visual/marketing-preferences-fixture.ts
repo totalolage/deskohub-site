@@ -1,7 +1,33 @@
-import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { expect } from "bun:test";
+import {
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { createRequire } from "node:module";
-import { extname, isAbsolute, join, relative, resolve } from "node:path";
+import {
+  basename,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+} from "node:path";
+import {
+  clearTimeout as clearNativeTimeout,
+  setTimeout as setNativeTimeout,
+} from "node:timers";
+import {
+  type Browser,
+  type BrowserContext,
+  chromium,
+  type Page,
+} from "@playwright/test";
 import { Predicate, Schema } from "effect";
+import { marketingPreferencesFormCopy } from "../../features/legal/components/marketing-preferences-form.copy";
 
 type BuildOutput = { readonly path: string };
 type BuildMessagePosition = {
@@ -55,9 +81,17 @@ const fixtureErrorSchema = Schema.Struct({
   message: Schema.NonEmptyString,
   status: Schema.Literal("error"),
 });
+const browserSuccessSchema = Schema.Struct({
+  bunVersion: Schema.NonEmptyString,
+  logPath: Schema.NonEmptyString,
+  reportPath: Schema.NonEmptyString,
+  status: Schema.Literal("ok"),
+});
 type FixtureSuccessMessage = Schema.Schema.Type<typeof fixtureSuccessSchema>;
 type FixtureErrorMessage = Schema.Schema.Type<typeof fixtureErrorSchema>;
 type FixtureMessage = FixtureSuccessMessage | FixtureErrorMessage;
+type BrowserSuccessMessage = Schema.Schema.Type<typeof browserSuccessSchema>;
+type BrowserMessage = BrowserSuccessMessage | FixtureErrorMessage;
 type JsonObject = Schema.JsonObject;
 const jsonObjectSchema = Schema.Record(Schema.String, Schema.Json);
 
@@ -496,6 +530,1255 @@ export async function buildMarketingPreferencesFixture({
   return { cssPath, entryPath, javascriptPath, scheduler };
 }
 
+const browserRepoRoot = resolve(import.meta.dir, "../../../..");
+
+const browserLocales = ["en-US", "cs-CZ"] as const;
+type BrowserLocale = (typeof browserLocales)[number];
+
+const browserViewports = [
+  { height: 900, name: "320", width: 320 },
+  { height: 900, name: "375", width: 375 },
+  { height: 900, name: "desktop", width: 1280 },
+] as const;
+type BrowserViewport = (typeof browserViewports)[number];
+
+const browserScenarios = [
+  "pending-link",
+  "account-absent",
+  "account-active",
+  "account-withdrawn",
+  "link-absent",
+  "link-active",
+  "link-withdrawn",
+  "unavailable",
+  "invalid-link",
+] as const;
+type BrowserScenario = (typeof browserScenarios)[number];
+
+type BrowserRect = {
+  readonly bottom: number;
+  readonly height: number;
+  readonly right: number;
+  readonly width: number;
+  readonly x: number;
+  readonly y: number;
+};
+
+type BrowserInteractiveElement = {
+  readonly disabled: boolean;
+  readonly id: string;
+  readonly label: string;
+  readonly tag: string;
+  readonly visible: boolean;
+};
+
+type BrowserGeometry = {
+  readonly bodyScrollWidth: number;
+  readonly documentScrollWidth: number;
+  readonly interactive: readonly BrowserInteractiveElement[];
+  readonly main: BrowserRect | null;
+  readonly offenders: readonly {
+    readonly id: string;
+    readonly rect: BrowserRect;
+    readonly tag: string;
+  }[];
+  readonly section: BrowserRect | null;
+  readonly viewport: { readonly height: number; readonly width: number };
+};
+
+type BrowserFocusTarget = {
+  readonly id: string;
+  readonly label: string;
+  readonly role: string | null;
+  readonly tag: string;
+};
+
+type BrowserActionEvent = {
+  readonly action: "clear" | "confirm" | "save";
+  readonly input: {
+    readonly confirmed?: boolean;
+    readonly context?: string;
+    readonly granted?: boolean;
+    readonly locale?: BrowserLocale;
+    readonly source?: "account" | "link";
+  };
+};
+
+type BrowserScreenshotEvidence = {
+  readonly actions: readonly BrowserActionEvent[];
+  readonly focusSequence: readonly BrowserFocusTarget[];
+  readonly geometry: BrowserGeometry;
+  readonly locale: BrowserLocale;
+  readonly phase: string;
+  readonly scenario: BrowserScenario;
+  readonly screenshot: string;
+  readonly viewport: string;
+};
+
+type BrowserProblems = {
+  readonly consoleErrors: string[];
+  readonly externalRequests: string[];
+  readonly pageErrors: string[];
+};
+
+type BrowserFixturePaths = {
+  readonly adapterPath: string;
+  readonly artifactRoot: string;
+  readonly italicFontPath: string;
+  readonly productionCopyPath: string;
+  readonly productionFormPath: string;
+  readonly regularFontPath: string;
+  readonly rendererCssPath: string;
+  readonly repoRoot: string;
+};
+
+type BrowserFixtureRunContext = BrowserFixturePaths & {
+  readonly baseUrl: string;
+  readonly browser: Browser;
+};
+
+export type MarketingPreferencesBrowserFixture = {
+  readonly logPath: string;
+  readonly reportPath: string;
+};
+
+type MarketingPreferencesBrowserFixtureOptions =
+  MarketingPreferencesFixtureOptions & {
+    readonly timeoutMs?: number;
+  };
+
+const makeBrowserHtml = (
+  javascriptPath: string,
+  cssPath: string
+) => `<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="/${basename(cssPath)}">
+    <link rel="stylesheet" href="/renderer.css">
+  </head>
+  <body>
+    <div id="marketing-preferences-browser-root"></div>
+    <script type="module" src="/${basename(javascriptPath)}"></script>
+  </body>
+</html>
+`;
+
+const serveBrowserBundle = async (
+  bundle: Awaited<ReturnType<typeof buildMarketingPreferencesFixture>>,
+  paths: BrowserFixturePaths
+) => {
+  const assets = new Map<
+    string,
+    { readonly body: Uint8Array; readonly type: string }
+  >([
+    [
+      `/${basename(bundle.javascriptPath)}`,
+      {
+        body: await readFile(bundle.javascriptPath),
+        type: "text/javascript; charset=utf-8",
+      },
+    ],
+    [
+      `/${basename(bundle.cssPath)}`,
+      { body: await readFile(bundle.cssPath), type: "text/css; charset=utf-8" },
+    ],
+    [
+      "/renderer.css",
+      {
+        body: await readFile(paths.rendererCssPath),
+        type: "text/css; charset=utf-8",
+      },
+    ],
+    [
+      "/__account-visual-fonts/sculpin-regular.woff2",
+      { body: await readFile(paths.regularFontPath), type: "font/woff2" },
+    ],
+    [
+      "/__account-visual-fonts/sculpin-italic.woff2",
+      { body: await readFile(paths.italicFontPath), type: "font/woff2" },
+    ],
+  ]);
+  const html = makeBrowserHtml(bundle.javascriptPath, bundle.cssPath);
+  const server = Bun.serve({
+    fetch(request) {
+      if (request.method !== "GET") return new Response(null, { status: 405 });
+      const url = new URL(request.url);
+      if (url.pathname === "/" || url.pathname === "/index.html") {
+        return new Response(html, {
+          headers: {
+            "Cache-Control": "no-store",
+            "Content-Type": "text/html; charset=utf-8",
+          },
+        });
+      }
+      const asset = assets.get(url.pathname);
+      if (!asset) return new Response(null, { status: 404 });
+      return new Response(Buffer.from(asset.body), {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type": asset.type,
+        },
+      });
+    },
+    hostname: "127.0.0.1",
+    port: 0,
+  });
+  return { baseUrl: `http://127.0.0.1:${server.port}`, server } as const;
+};
+
+const readBrowserGeometry = async (page: Page): Promise<BrowserGeometry> =>
+  page.evaluate(() => {
+    const isVisible = (element: Element) => {
+      const htmlElement = element as HTMLElement;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return (
+        !htmlElement.hidden &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        style.opacity !== "0" &&
+        rect.width > 0 &&
+        rect.height > 0
+      );
+    };
+    const rect = (element: Element | null) => {
+      if (!element) return null;
+      const value = element.getBoundingClientRect();
+      return {
+        bottom: value.bottom,
+        height: value.height,
+        right: value.right,
+        width: value.width,
+        x: value.x,
+        y: value.y,
+      };
+    };
+    const accessibleLabel = (element: HTMLElement) => {
+      const ariaLabel = element.getAttribute("aria-label")?.trim();
+      if (ariaLabel) return ariaLabel;
+      const labelledBy = element.getAttribute("aria-labelledby");
+      if (labelledBy) {
+        const value = labelledBy
+          .split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent?.trim() ?? "")
+          .filter(Boolean)
+          .join(" ");
+        if (value) return value;
+      }
+      if (element.id) {
+        const label = document.querySelector<HTMLLabelElement>(
+          `label[for="${CSS.escape(element.id)}"]`
+        );
+        if (label?.textContent?.trim()) return label.textContent.trim();
+      }
+      return element.textContent?.trim().replace(/\s+/g, " ") ?? "";
+    };
+    const interactive = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        "button, a, input, select, textarea, [role='checkbox']"
+      )
+    ).map((element) => ({
+      disabled:
+        element instanceof HTMLButtonElement ||
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLSelectElement ||
+        element instanceof HTMLTextAreaElement
+          ? element.disabled
+          : element.getAttribute("aria-disabled") === "true",
+      id: element.id,
+      label: accessibleLabel(element),
+      tag: element.tagName.toLowerCase(),
+      visible: isVisible(element),
+    }));
+    const viewportWidth = document.documentElement.clientWidth;
+    const offenders = Array.from(
+      document.querySelectorAll<HTMLElement>(
+        "[data-account-visual-mode] main, [data-account-visual-mode] main *"
+      )
+    )
+      .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+      .filter(
+        ({ element, rect }) =>
+          isVisible(element) &&
+          (rect.left < -1 || rect.right > viewportWidth + 1)
+      )
+      .slice(0, 50)
+      .map(({ element, rect }) => ({
+        id: element.id,
+        rect: {
+          bottom: rect.bottom,
+          height: rect.height,
+          right: rect.right,
+          width: rect.width,
+          x: rect.x,
+          y: rect.y,
+        },
+        tag: element.tagName.toLowerCase(),
+      }));
+    const main = document.querySelector("main");
+    const section = document.querySelector("[data-marketing-preferences]");
+    return {
+      bodyScrollWidth: document.body.scrollWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      interactive,
+      main: rect(main),
+      offenders,
+      section: rect(section),
+      viewport: { height: window.innerHeight, width: viewportWidth },
+    };
+  });
+
+const readBrowserActionLog = async (
+  page: Page
+): Promise<readonly BrowserActionEvent[]> =>
+  page.evaluate(() => {
+    const scope = globalThis as typeof globalThis & {
+      readonly __marketingPreferencesActionLog?: {
+        readonly events?: readonly BrowserActionEvent[];
+      };
+    };
+    return [...(scope.__marketingPreferencesActionLog?.events ?? [])];
+  });
+
+const readBrowserFocusTarget = async (
+  page: Page
+): Promise<BrowserFocusTarget | null> =>
+  page.evaluate(() => {
+    const element = document.activeElement;
+    if (!(element instanceof HTMLElement) || element === document.body)
+      return null;
+    const label =
+      element.getAttribute("aria-label")?.trim() ??
+      (element.id
+        ? document
+            .querySelector<HTMLLabelElement>(
+              `label[for="${CSS.escape(element.id)}"]`
+            )
+            ?.textContent?.trim()
+        : undefined) ??
+      element.textContent?.trim().replace(/\s+/g, " ") ??
+      "";
+    return {
+      id: element.id,
+      label,
+      role: element.getAttribute("role"),
+      tag: element.tagName.toLowerCase(),
+    };
+  });
+
+const readBrowserKeyboardEvidence = async (page: Page) => {
+  const sequence: BrowserFocusTarget[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < 32; index += 1) {
+    await page.keyboard.press("Tab");
+    const target = await readBrowserFocusTarget(page);
+    if (!target || target.label.length === 0) continue;
+    const key = `${target.tag}|${target.id}|${target.role ?? ""}|${target.label}`;
+    if (seen.has(key)) break;
+    seen.add(key);
+    sequence.push(target);
+  }
+  return sequence;
+};
+
+const browserScenarioStatus = (scenario: BrowserScenario) => {
+  if (scenario === "pending-link") return "pending-link";
+  if (scenario === "unavailable") return "unavailable";
+  if (scenario === "invalid-link") return "invalid-link";
+  return scenario.split("-")[1];
+};
+
+const browserContextFor = (scenario: BrowserScenario, suffix = "a") =>
+  `synthetic-${scenario}-context-${suffix}`;
+
+const browserDismissalContextFor = (scenario: BrowserScenario, suffix = "a") =>
+  `synthetic-${scenario}-dismissal-context-${suffix}`;
+
+const browserQueryFor = (
+  locale: BrowserLocale,
+  scenario: BrowserScenario,
+  extra: Readonly<Record<string, string>> = {}
+) => {
+  const params = new URLSearchParams({ case: scenario, locale, ...extra });
+  return `/?${params.toString()}`;
+};
+
+const waitForBrowserBodyText = async (page: Page, text: string) => {
+  await page.waitForFunction(
+    (expected) => document.body.textContent?.includes(expected) ?? false,
+    text,
+    { timeout: 5_000 }
+  );
+};
+
+const addBrowserPageDiagnostics = (page: Page, problems: BrowserProblems) => {
+  page.on("pageerror", (error) => problems.pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") problems.consoleErrors.push(message.text());
+  });
+};
+
+const loadBrowserPage = async (
+  context: BrowserContext,
+  baseUrl: string,
+  locale: BrowserLocale,
+  scenario: BrowserScenario,
+  problems: BrowserProblems,
+  extra: Readonly<Record<string, string>> = {}
+) => {
+  const page = await context.newPage();
+  addBrowserPageDiagnostics(page, problems);
+  await page.goto(`${baseUrl}${browserQueryFor(locale, scenario, extra)}`, {
+    timeout: 15_000,
+    waitUntil: "load",
+  });
+  await page
+    .locator(
+      `[data-marketing-preferences="${browserScenarioStatus(scenario)}"]`
+    )
+    .waitFor({ state: "visible", timeout: 15_000 });
+  await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    );
+  });
+  return page;
+};
+
+const assertBrowserGeometryAndKeyboard = async (
+  page: Page
+): Promise<{
+  readonly focusSequence: readonly BrowserFocusTarget[];
+  readonly geometry: BrowserGeometry;
+}> => {
+  const geometry = await readBrowserGeometry(page);
+  expect(geometry.documentScrollWidth).toBeLessThanOrEqual(
+    geometry.viewport.width + 1
+  );
+  expect(geometry.bodyScrollWidth).toBeLessThanOrEqual(
+    geometry.viewport.width + 1
+  );
+  expect(geometry.offenders).toEqual([]);
+  expect(geometry.main?.right ?? 0).toBeLessThanOrEqual(
+    geometry.viewport.width + 1
+  );
+  expect(geometry.section?.right ?? 0).toBeLessThanOrEqual(
+    geometry.viewport.width + 1
+  );
+  expect(
+    geometry.interactive.filter(({ label, visible }) => visible && !label)
+  ).toEqual([]);
+
+  const focusSequence = await readBrowserKeyboardEvidence(page);
+  const enabledLabels = geometry.interactive
+    .filter(({ disabled, label, visible }) => visible && !disabled && label)
+    .map(({ label }) => label);
+  for (const label of enabledLabels) {
+    expect(
+      focusSequence.map(({ label: focusedLabel }) => focusedLabel)
+    ).toContain(label);
+  }
+  return { focusSequence, geometry } as const;
+};
+
+const browserScreenshot = async ({
+  context,
+  locale,
+  phase,
+  scenario,
+  viewport,
+  page,
+}: {
+  readonly context: BrowserFixtureRunContext;
+  readonly locale: BrowserLocale;
+  readonly phase: string;
+  readonly scenario: BrowserScenario;
+  readonly viewport: BrowserViewport;
+  readonly page: Page;
+}): Promise<BrowserScreenshotEvidence> => {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const path = join(
+    context.artifactRoot,
+    `${phase}-${locale}-${viewport.name}-${scenario}.png`
+  );
+  await page.screenshot({ animations: "disabled", path });
+  const { focusSequence, geometry } =
+    await assertBrowserGeometryAndKeyboard(page);
+  return {
+    actions: await readBrowserActionLog(page),
+    focusSequence,
+    geometry,
+    locale,
+    phase,
+    scenario,
+    screenshot: relative(context.repoRoot, path),
+    viewport: viewport.name,
+  } satisfies BrowserScreenshotEvidence;
+};
+
+const assertBrowserInitialState = async (
+  page: Page,
+  locale: BrowserLocale,
+  scenario: BrowserScenario
+) => {
+  const copy = marketingPreferencesFormCopy[locale];
+  const section = page.locator(
+    `[data-marketing-preferences="${browserScenarioStatus(scenario)}"]`
+  );
+  expect(await section.count()).toBe(1);
+
+  if (scenario === "pending-link") {
+    expect(
+      await page.getByRole("button", { name: copy.continueAction }).count()
+    ).toBe(1);
+    expect(
+      await page.getByRole("button", { name: copy.clearAction }).count()
+    ).toBe(1);
+    expect(await page.getByRole("checkbox").count()).toBe(0);
+    expect(await page.getByText(copy.pendingDescription).count()).toBe(1);
+    return;
+  }
+
+  if (scenario === "unavailable") {
+    expect(await page.getByText(copy.unavailableNextStep).count()).toBe(1);
+    expect(await page.getByText(copy.unavailableSignInNextStep).count()).toBe(
+      1
+    );
+    expect(
+      await page
+        .getByRole("link", { name: copy.signInAction })
+        .getAttribute("href")
+    ).toBe(`/${locale}/auth/sign-in`);
+    expect(await page.getByRole("checkbox").count()).toBe(0);
+    expect(
+      await page.getByRole("button", { name: copy.continueAction }).count()
+    ).toBe(0);
+    return;
+  }
+
+  if (scenario === "invalid-link") {
+    expect(await page.getByText(copy.invalidLinkDescription).count()).toBe(1);
+    expect(
+      await page.getByRole("link", { name: copy.signInAction }).count()
+    ).toBe(0);
+    expect(await page.getByRole("checkbox").count()).toBe(0);
+    expect(
+      await page.getByRole("button", { name: copy.continueAction }).count()
+    ).toBe(0);
+    expect(
+      await page.getByRole("button", { name: copy.clearAction }).count()
+    ).toBe(1);
+    return;
+  }
+
+  const source = scenario.startsWith("link-") ? "link" : "account";
+  const status = scenario.split("-")[1];
+  const expectedAction =
+    status === "active" ? copy.withdrawAction : copy.grantAction;
+  expect(await page.getByRole("checkbox").count()).toBe(1);
+  expect(
+    await page.getByRole("button", { name: expectedAction }).isDisabled()
+  ).toBe(true);
+  expect(
+    await page
+      .getByText(source === "link" ? copy.linkContext : copy.accountContext)
+      .count()
+  ).toBe(1);
+  expect(
+    await page
+      .getByText(source === "link" ? copy.accountContext : copy.linkContext)
+      .count()
+  ).toBe(0);
+  if (source === "link") {
+    expect(
+      await page.getByRole("button", { name: copy.clearAction }).count()
+    ).toBe(1);
+  } else {
+    expect(
+      await page.getByRole("button", { name: copy.clearAction }).count()
+    ).toBe(0);
+  }
+};
+
+const assertBrowserActionEvent = (
+  event: BrowserActionEvent | undefined,
+  expected: {
+    readonly action: BrowserActionEvent["action"];
+    readonly input?: Partial<BrowserActionEvent["input"]>;
+  }
+) => {
+  expect(event).toBeDefined();
+  expect(event).toMatchObject(expected);
+};
+
+const createBrowserContext = async (
+  runningBrowser: Browser,
+  baseUrl: string,
+  viewport: BrowserViewport,
+  locale: BrowserLocale,
+  problems: BrowserProblems
+) => {
+  const context = await runningBrowser.newContext({
+    deviceScaleFactor: 1,
+    locale,
+    reducedMotion: "reduce",
+    viewport: { height: viewport.height, width: viewport.width },
+  });
+  await context.route("**/*", async (route) => {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.origin !== baseUrl) {
+      problems.externalRequests.push(requestUrl.origin);
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+  return context;
+};
+
+const runBrowserInitialCapture = async ({
+  context,
+  locale,
+  problems,
+  scenario,
+  viewport,
+}: {
+  readonly context: BrowserFixtureRunContext;
+  readonly locale: BrowserLocale;
+  readonly problems: BrowserProblems;
+  readonly scenario: BrowserScenario;
+  readonly viewport: BrowserViewport;
+}) => {
+  const pageContext = await createBrowserContext(
+    context.browser,
+    context.baseUrl,
+    viewport,
+    locale,
+    problems
+  );
+  const page = await loadBrowserPage(
+    pageContext,
+    context.baseUrl,
+    locale,
+    scenario,
+    problems
+  );
+  try {
+    await assertBrowserInitialState(page, locale, scenario);
+    return await browserScreenshot({
+      context,
+      locale,
+      page,
+      phase: "state",
+      scenario,
+      viewport,
+    });
+  } finally {
+    await page.close();
+    await pageContext.close();
+  }
+};
+
+const runBrowserPendingTransitions = async ({
+  context,
+  locale,
+  problems,
+  viewport,
+}: {
+  readonly context: BrowserFixtureRunContext;
+  readonly locale: BrowserLocale;
+  readonly problems: BrowserProblems;
+  readonly viewport: BrowserViewport;
+}) => {
+  const evidence: BrowserScreenshotEvidence[] = [];
+  const pageContext = await createBrowserContext(
+    context.browser,
+    context.baseUrl,
+    viewport,
+    locale,
+    problems
+  );
+  try {
+    const successPage = await loadBrowserPage(
+      pageContext,
+      context.baseUrl,
+      locale,
+      "pending-link",
+      problems,
+      { confirmOutcome: "success" }
+    );
+    try {
+      await successPage
+        .getByRole("button", {
+          name: marketingPreferencesFormCopy[locale].continueAction,
+        })
+        .click();
+      await waitForBrowserBodyText(
+        successPage,
+        marketingPreferencesFormCopy[locale].confirmed
+      );
+      assertBrowserActionEvent((await readBrowserActionLog(successPage))[0], {
+        action: "confirm",
+        input: { context: browserContextFor("pending-link") },
+      });
+      evidence.push(
+        await browserScreenshot({
+          context,
+          locale,
+          page: successPage,
+          phase: "pending-continue-success",
+          scenario: "pending-link",
+          viewport,
+        })
+      );
+    } finally {
+      await successPage.close();
+    }
+
+    const errorPage = await loadBrowserPage(
+      pageContext,
+      context.baseUrl,
+      locale,
+      "pending-link",
+      problems,
+      { confirmOutcome: "error" }
+    );
+    try {
+      const copy = marketingPreferencesFormCopy[locale];
+      await errorPage
+        .getByRole("button", { name: copy.continueAction })
+        .click();
+      await errorPage
+        .getByRole("alert")
+        .waitFor({ state: "visible", timeout: 5_000 });
+      expect(await errorPage.getByText(copy.pendingDescription).count()).toBe(
+        1
+      );
+      expect(await errorPage.getByRole("checkbox").count()).toBe(0);
+      assertBrowserActionEvent((await readBrowserActionLog(errorPage))[0], {
+        action: "confirm",
+        input: { context: browserContextFor("pending-link") },
+      });
+      evidence.push(
+        await browserScreenshot({
+          context,
+          locale,
+          page: errorPage,
+          phase: "pending-continue-error",
+          scenario: "pending-link",
+          viewport,
+        })
+      );
+    } finally {
+      await errorPage.close();
+    }
+  } finally {
+    await pageContext.close();
+  }
+  return evidence;
+};
+
+const runBrowserSaveTransitions = async ({
+  context,
+  locale,
+  problems,
+  scenario,
+  viewport,
+}: {
+  readonly context: BrowserFixtureRunContext;
+  readonly locale: BrowserLocale;
+  readonly problems: BrowserProblems;
+  readonly scenario: "account-absent" | "account-active" | "account-withdrawn";
+  readonly viewport: BrowserViewport;
+}) => {
+  const evidence: BrowserScreenshotEvidence[] = [];
+  const pageContext = await createBrowserContext(
+    context.browser,
+    context.baseUrl,
+    viewport,
+    locale,
+    problems
+  );
+  try {
+    const source = "account" as const;
+    const granted = scenario !== "account-active";
+    const expectedAction = granted
+      ? marketingPreferencesFormCopy[locale].grantAction
+      : marketingPreferencesFormCopy[locale].withdrawAction;
+    for (const outcome of ["success", "error"] as const) {
+      const page = await loadBrowserPage(
+        pageContext,
+        context.baseUrl,
+        locale,
+        scenario,
+        problems,
+        { saveOutcome: outcome }
+      );
+      try {
+        const copy = marketingPreferencesFormCopy[locale];
+        const checkbox = page.getByRole("checkbox");
+        expect(await readBrowserActionLog(page)).toEqual([]);
+        await checkbox.click();
+        const saveButton = page.getByRole("button", { name: expectedAction });
+        expect(await saveButton.isDisabled()).toBe(false);
+        await saveButton.click();
+        if (outcome === "success") {
+          await waitForBrowserBodyText(page, copy.saved);
+        } else {
+          await page
+            .getByRole("alert")
+            .waitFor({ state: "visible", timeout: 5_000 });
+          await waitForBrowserBodyText(page, copy.saveError);
+        }
+        assertBrowserActionEvent((await readBrowserActionLog(page))[0], {
+          action: "save",
+          input: {
+            context: browserContextFor(scenario),
+            granted,
+            source,
+          },
+        });
+        evidence.push(
+          await browserScreenshot({
+            context,
+            locale,
+            page,
+            phase: `account-${scenario}-save-${outcome}`,
+            scenario,
+            viewport,
+          })
+        );
+      } finally {
+        await page.close();
+      }
+    }
+  } finally {
+    await pageContext.close();
+  }
+  return evidence;
+};
+
+const runBrowserLinkClearTransitions = async ({
+  context,
+  locale,
+  problems,
+  viewport,
+}: {
+  readonly context: BrowserFixtureRunContext;
+  readonly locale: BrowserLocale;
+  readonly problems: BrowserProblems;
+  readonly viewport: BrowserViewport;
+}) => {
+  const evidence: BrowserScreenshotEvidence[] = [];
+  const pageContext = await createBrowserContext(
+    context.browser,
+    context.baseUrl,
+    viewport,
+    locale,
+    problems
+  );
+  try {
+    for (const outcome of ["success", "error"] as const) {
+      const page = await loadBrowserPage(
+        pageContext,
+        context.baseUrl,
+        locale,
+        "link-active",
+        problems,
+        { clearOutcome: outcome }
+      );
+      try {
+        const copy = marketingPreferencesFormCopy[locale];
+        await page.getByRole("button", { name: copy.clearAction }).click();
+        if (outcome === "success") {
+          await waitForBrowserBodyText(page, copy.cleared);
+        } else {
+          await page
+            .getByRole("alert")
+            .waitFor({ state: "visible", timeout: 5_000 });
+          await waitForBrowserBodyText(page, copy.clearError);
+        }
+        assertBrowserActionEvent((await readBrowserActionLog(page))[0], {
+          action: "clear",
+          input: {
+            context: browserDismissalContextFor("link-active"),
+          },
+        });
+        evidence.push(
+          await browserScreenshot({
+            context,
+            locale,
+            page,
+            phase: `link-active-clear-${outcome}`,
+            scenario: "link-active",
+            viewport,
+          })
+        );
+      } finally {
+        await page.close();
+      }
+    }
+  } finally {
+    await pageContext.close();
+  }
+  return evidence;
+};
+
+const runBrowserContextReplacement = async ({
+  context,
+  locale,
+  problems,
+  viewport,
+}: {
+  readonly context: BrowserFixtureRunContext;
+  readonly locale: BrowserLocale;
+  readonly problems: BrowserProblems;
+  readonly viewport: BrowserViewport;
+}) => {
+  const pageContext = await createBrowserContext(
+    context.browser,
+    context.baseUrl,
+    viewport,
+    locale,
+    problems
+  );
+  const page = await loadBrowserPage(
+    pageContext,
+    context.baseUrl,
+    locale,
+    "link-absent",
+    problems,
+    { context: "a" }
+  );
+  try {
+    const copy = marketingPreferencesFormCopy[locale];
+    const checkbox = page.getByRole("checkbox");
+    await checkbox.click();
+    expect(await checkbox.getAttribute("aria-checked")).toBe("true");
+    const before = await browserScreenshot({
+      context,
+      locale,
+      page,
+      phase: "context-replacement-confirmed",
+      scenario: "link-absent",
+      viewport,
+    });
+    await page
+      .getByRole("button", { name: "Replace synthetic context" })
+      .click();
+    await page.waitForFunction(
+      () => new URL(window.location.href).searchParams.get("context") === "b",
+      undefined,
+      { timeout: 5_000 }
+    );
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("[role='checkbox']")
+          ?.getAttribute("aria-checked") === "false",
+      undefined,
+      { timeout: 5_000 }
+    );
+    expect(
+      await page.getByRole("button", { name: copy.grantAction }).isDisabled()
+    ).toBe(true);
+    expect(await readBrowserActionLog(page)).toEqual([]);
+    const after = await browserScreenshot({
+      context,
+      locale,
+      page,
+      phase: "context-replacement-reset",
+      scenario: "link-absent",
+      viewport,
+    });
+    return [before, after] as const;
+  } finally {
+    await page.close();
+    await pageContext.close();
+  }
+};
+
+const runBrowserAccountsDisabledChecks = async ({
+  context,
+  locale,
+  problems,
+  viewport,
+}: {
+  readonly context: BrowserFixtureRunContext;
+  readonly locale: BrowserLocale;
+  readonly problems: BrowserProblems;
+  readonly viewport: BrowserViewport;
+}) => {
+  const pageContext = await createBrowserContext(
+    context.browser,
+    context.baseUrl,
+    viewport,
+    locale,
+    problems
+  );
+  try {
+    const unavailablePage = await loadBrowserPage(
+      pageContext,
+      context.baseUrl,
+      locale,
+      "unavailable",
+      problems,
+      { accountsEnabled: "false" }
+    );
+    try {
+      const copy = marketingPreferencesFormCopy[locale];
+      expect(
+        await unavailablePage.getByText(copy.unavailableNextStep).count()
+      ).toBe(1);
+      expect(
+        await unavailablePage.getByText(copy.unavailableSignInNextStep).count()
+      ).toBe(0);
+      expect(
+        await unavailablePage
+          .getByRole("link", { name: copy.signInAction })
+          .count()
+      ).toBe(0);
+    } finally {
+      await unavailablePage.close();
+    }
+
+    const pendingPage = await loadBrowserPage(
+      pageContext,
+      context.baseUrl,
+      locale,
+      "pending-link",
+      problems,
+      { accountsEnabled: "false", confirmOutcome: "success" }
+    );
+    try {
+      const copy = marketingPreferencesFormCopy[locale];
+      const continueButton = pendingPage.getByRole("button", {
+        name: copy.continueAction,
+      });
+      expect(await continueButton.count()).toBe(1);
+      await continueButton.click();
+      await waitForBrowserBodyText(pendingPage, copy.confirmed);
+      assertBrowserActionEvent((await readBrowserActionLog(pendingPage))[0], {
+        action: "confirm",
+        input: { context: browserContextFor("pending-link") },
+      });
+    } finally {
+      await pendingPage.close();
+    }
+  } finally {
+    await pageContext.close();
+  }
+};
+
+const runMarketingPreferencesBrowserFixture = async ({
+  appRoot,
+  outputDirectory,
+}: MarketingPreferencesFixtureOptions): Promise<MarketingPreferencesBrowserFixture> => {
+  const paths: BrowserFixturePaths = {
+    adapterPath: join(import.meta.dir, "marketing-preferences-adapter.tsx"),
+    artifactRoot: outputDirectory,
+    italicFontPath: join(appRoot, "assets/fonts/Sculpin/italic.woff2"),
+    productionCopyPath: join(
+      appRoot,
+      "features/legal/components/marketing-preferences-form.copy.ts"
+    ),
+    productionFormPath: join(
+      appRoot,
+      "features/legal/components/marketing-preferences-form.tsx"
+    ),
+    regularFontPath: join(appRoot, "assets/fonts/Sculpin/regular.woff2"),
+    rendererCssPath: join(import.meta.dir, "renderer.css"),
+    repoRoot: browserRepoRoot,
+  };
+  const reportPath = join(outputDirectory, "report.json");
+  const logPath = join(outputDirectory, "browser.log");
+  await rm(outputDirectory, { force: true, recursive: true });
+  await mkdir(outputDirectory, { recursive: true });
+  const bundle = await compileMarketingPreferencesFixture({
+    appRoot,
+    outputDirectory,
+  });
+  const staticServer = await serveBrowserBundle(bundle, paths);
+  const problems: BrowserProblems = {
+    consoleErrors: [],
+    externalRequests: [],
+    pageErrors: [],
+  };
+  const screenshots: BrowserScreenshotEvidence[] = [];
+  const logLines: string[] = [
+    "scope=component-only controlled renderer",
+    "authorization=not-proved",
+    "cookies=not-proved",
+    "tokens=not-proved",
+    `server=${staticServer.baseUrl} (ephemeral localhost port)`,
+  ];
+  let browser: Browser | undefined;
+  try {
+    browser = await chromium.launch({ headless: true, timeout: 20_000 });
+    const context: BrowserFixtureRunContext = {
+      ...paths,
+      baseUrl: staticServer.baseUrl,
+      browser,
+    };
+    for (const locale of browserLocales) {
+      for (const viewport of browserViewports) {
+        for (const scenario of browserScenarios) {
+          const evidence = await runBrowserInitialCapture({
+            context,
+            locale,
+            problems,
+            scenario,
+            viewport,
+          });
+          screenshots.push(evidence);
+          logLines.push(
+            `${evidence.phase} ${locale}/${viewport.name}/${scenario} ${evidence.screenshot}`
+          );
+        }
+        if (viewport.name === "320") {
+          await runBrowserAccountsDisabledChecks({
+            context,
+            locale,
+            problems,
+            viewport,
+          });
+        }
+        for (const evidence of await runBrowserPendingTransitions({
+          context,
+          locale,
+          problems,
+          viewport,
+        })) {
+          screenshots.push(evidence);
+          logLines.push(
+            `${evidence.phase} ${locale}/${viewport.name}/${evidence.scenario} ${evidence.screenshot}`
+          );
+        }
+        for (const scenario of [
+          "account-absent",
+          "account-active",
+          "account-withdrawn",
+        ] as const) {
+          for (const evidence of await runBrowserSaveTransitions({
+            context,
+            locale,
+            problems,
+            scenario,
+            viewport,
+          })) {
+            screenshots.push(evidence);
+            logLines.push(
+              `${evidence.phase} ${locale}/${viewport.name}/${evidence.scenario} ${evidence.screenshot}`
+            );
+          }
+        }
+        for (const evidence of await runBrowserLinkClearTransitions({
+          context,
+          locale,
+          problems,
+          viewport,
+        })) {
+          screenshots.push(evidence);
+          logLines.push(
+            `${evidence.phase} ${locale}/${viewport.name}/${evidence.scenario} ${evidence.screenshot}`
+          );
+        }
+        for (const evidence of await runBrowserContextReplacement({
+          context,
+          locale,
+          problems,
+          viewport,
+        })) {
+          screenshots.push(evidence);
+          logLines.push(
+            `${evidence.phase} ${locale}/${viewport.name}/${evidence.scenario} ${evidence.screenshot}`
+          );
+        }
+      }
+    }
+    expect(problems.externalRequests).toEqual([]);
+    expect(problems.pageErrors).toEqual([]);
+    expect(problems.consoleErrors).toEqual([]);
+    expect(screenshots).toHaveLength(126);
+    expect(
+      screenshots.every(
+        ({ geometry }) =>
+          geometry.documentScrollWidth <= geometry.viewport.width + 1 &&
+          geometry.bodyScrollWidth <= geometry.viewport.width + 1 &&
+          geometry.offenders.length === 0
+      )
+    ).toBe(true);
+
+    const report = {
+      schemaVersion: 1,
+      status: "passed",
+      scope: {
+        kind: "component-only-controlled-renderer",
+        authorization: "not-proved",
+        backend: "not-proved",
+        cookieState: "not-proved",
+        externalNetwork: "blocked-and-none-observed",
+        tokenState: "not-proved",
+      },
+      renderer: {
+        adapter: relative(paths.repoRoot, paths.adapterPath),
+        productionComponent: relative(paths.repoRoot, paths.productionFormPath),
+        productionCopy: relative(paths.repoRoot, paths.productionCopyPath),
+        controlledModules: [
+          "@/features/legal/actions",
+          "@/shared/utils/use-workspace-action",
+        ],
+        bundle: {
+          entry: relative(paths.repoRoot, bundle.entryPath),
+          javascript: relative(paths.repoRoot, bundle.javascriptPath),
+          css: relative(paths.repoRoot, bundle.cssPath),
+        },
+      },
+      browser: {
+        engine: "Chromium",
+        version: browser?.version() ?? "unknown",
+        bunVersion: Bun.version,
+        viewports: browserViewports,
+        locales: browserLocales,
+      },
+      syntheticScenarios: browserScenarios,
+      checks: {
+        pendingContinue: true,
+        managedStatuses: ["absent", "active", "withdrawn"],
+        explicitConfirmation: true,
+        successAndError: true,
+        invalidAndUnavailable: true,
+        accountsDisabledHidesSignInAndKeepsPendingLink: true,
+        dismissalContextForClear: true,
+        linkAndAccountSourceCopy: true,
+        contextReplacementResetsConfirmation: true,
+        noHorizontalOverflow: true,
+        keyboardAccessibleLabels: true,
+      },
+      problems,
+      screenshots,
+    };
+    await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
+    await writeFile(logPath, `${logLines.join("\n")}\n`, "utf8");
+  } finally {
+    const runningBrowser = browser;
+    try {
+      try {
+        await staticServer.server.stop(true);
+      } finally {
+        await writeFile(logPath, `${logLines.join("\n")}\n`, "utf8");
+      }
+    } finally {
+      browser = undefined;
+      await runningBrowser?.close();
+    }
+  }
+  return { logPath, reportPath };
+};
+
 const maxFixtureStdoutBytes = 64 * 1024;
 const defaultFixtureTimeoutMs = 60_000;
 
@@ -622,6 +1905,60 @@ const parseFixtureMessage = (stdout: string): FixtureMessage => {
   }
 };
 
+const parseBrowserMessage = (stdout: string): BrowserMessage => {
+  let value: JsonObject;
+  try {
+    value = Schema.decodeUnknownSync(jsonObjectSchema)(JSON.parse(stdout));
+  } catch {
+    throw new Error(
+      "Marketing preferences browser child returned malformed JSON"
+    );
+  }
+  if (!Predicate.isString(value.status)) {
+    throw new Error(
+      "Marketing preferences browser child returned an invalid result"
+    );
+  }
+
+  if (value.status === "error") {
+    if (!hasExactKeys(value, ["status", "message"])) {
+      throw new Error(
+        "Marketing preferences browser child returned an invalid error result"
+      );
+    }
+    try {
+      const result = Schema.decodeUnknownSync(fixtureErrorSchema)(value);
+      return {
+        message: formatBuildDiagnostics(result.message),
+        status: result.status,
+      };
+    } catch {
+      throw new Error(
+        "Marketing preferences browser child returned an invalid error result"
+      );
+    }
+  }
+
+  if (value.status !== "ok") {
+    throw new Error(
+      "Marketing preferences browser child returned an unknown result status"
+    );
+  }
+  if (!hasExactKeys(value, ["status", "bunVersion", "reportPath", "logPath"])) {
+    throw new Error(
+      "Marketing preferences browser child returned an invalid success result"
+    );
+  }
+
+  try {
+    return Schema.decodeUnknownSync(browserSuccessSchema)(value);
+  } catch {
+    throw new Error(
+      "Marketing preferences browser child returned an invalid success result"
+    );
+  }
+};
+
 const readRegularNonEmptyFile = async (
   path: string,
   label: string
@@ -737,6 +2074,38 @@ const validateFixtureSuccess = async (
   };
 };
 
+const validateBrowserSuccess = async (
+  message: BrowserSuccessMessage,
+  outputDirectory: string
+): Promise<MarketingPreferencesBrowserFixture> => {
+  if (message.bunVersion !== Bun.version) {
+    throw new Error("Marketing preferences browser Bun version mismatch");
+  }
+  let outputDirectoryRealPath: string;
+  try {
+    outputDirectoryRealPath = await realpath(resolve(outputDirectory));
+  } catch {
+    throw new Error(
+      "Marketing preferences browser output directory is missing"
+    );
+  }
+  await validateOutputFile({
+    extension: ".json",
+    label: "Marketing preferences browser report",
+    outputDirectory,
+    outputDirectoryRealPath,
+    path: message.reportPath,
+  });
+  await validateOutputFile({
+    extension: ".log",
+    label: "Marketing preferences browser log",
+    outputDirectory,
+    outputDirectoryRealPath,
+    path: message.logPath,
+  });
+  return { logPath: message.logPath, reportPath: message.reportPath };
+};
+
 const terminateFixtureChild = async (
   child: Bun.Subprocess,
   exitPromise: Promise<number>
@@ -749,39 +2118,45 @@ const terminateFixtureChild = async (
   await exitPromise.catch(() => undefined);
 };
 
-export async function compileMarketingPreferencesFixture({
-  appRoot,
-  outputDirectory,
+type FixtureChildMessages = {
+  readonly exitFailed: string;
+  readonly invalidTimeout: string;
+  readonly launch: string;
+  readonly stdoutFailed: string;
+  readonly stdoutUnavailable: string;
+  readonly timeout: (timeoutMs: number) => string;
+};
+
+type FixtureChildResult = {
+  readonly exitCode: number;
+  readonly stdout: string;
+};
+
+const runBoundedFixtureChild = async ({
+  args,
+  cwd,
+  messages,
   timeoutMs,
-}: MarketingPreferencesFixtureOptions & {
-  readonly timeoutMs?: number;
-}): Promise<MarketingPreferencesFixture> {
-  const deadline = timeoutMs ?? defaultFixtureTimeoutMs;
-  if (!Number.isFinite(deadline) || deadline < 0) {
-    throw new Error("Marketing preferences fixture timeout is invalid");
+}: {
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly messages: FixtureChildMessages;
+  readonly timeoutMs: number;
+}): Promise<FixtureChildResult> => {
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
+    throw new Error(messages.invalidTimeout);
   }
 
   let child: Bun.Subprocess;
   try {
-    child = Bun.spawn(
-      [
-        process.execPath,
-        "run",
-        import.meta.path,
-        "--app-root",
-        appRoot,
-        "--output-directory",
-        outputDirectory,
-      ],
-      {
-        cwd: appRoot,
-        stderr: "ignore",
-        stdin: "ignore",
-        stdout: "pipe",
-      }
-    );
+    child = Bun.spawn([process.execPath, "run", import.meta.path, ...args], {
+      cwd,
+      stderr: "ignore",
+      stdin: "ignore",
+      stdout: "pipe",
+    });
   } catch {
-    throw new Error("Could not launch marketing preferences fixture child");
+    throw new Error(messages.launch);
   }
 
   const exitPromise = child.exited;
@@ -795,16 +2170,14 @@ export async function compileMarketingPreferencesFixture({
     await terminateFixtureChild(child, exitPromise);
   };
   let timedOut = false;
-  const timer = setTimeout(() => {
+  const timer = setNativeTimeout(() => {
     timedOut = true;
     void terminate();
-  }, deadline);
+  }, timeoutMs);
   if (!(child.stdout instanceof ReadableStream)) {
-    clearTimeout(timer);
+    clearNativeTimeout(timer);
     await terminate();
-    throw new Error(
-      "Marketing preferences fixture child stdout was unavailable"
-    );
+    throw new Error(messages.stdoutUnavailable);
   }
   const stdoutPromise = readBoundedStdout(child.stdout).catch(async (error) => {
     await terminate();
@@ -814,40 +2187,61 @@ export async function compileMarketingPreferencesFixture({
     stdoutPromise,
     exitPromise,
   ]);
-  clearTimeout(timer);
+  clearNativeTimeout(timer);
 
-  if (timedOut) {
-    throw new Error(
-      `Marketing preferences fixture child timed out after ${deadline}ms`
-    );
-  }
+  if (timedOut) throw new Error(messages.timeout(timeoutMs));
   if (stdoutResult.status === "rejected") {
-    throw new Error("Marketing preferences fixture child stdout failed");
+    throw new Error(messages.stdoutFailed);
   }
   if (exitResult.status === "rejected") {
     await terminate();
-    throw new Error("Marketing preferences fixture child exit failed");
+    throw new Error(messages.exitFailed);
   }
+  return { exitCode: exitResult.value, stdout: stdoutResult.value };
+};
+
+export async function compileMarketingPreferencesFixture({
+  appRoot,
+  outputDirectory,
+  timeoutMs,
+}: MarketingPreferencesFixtureOptions & {
+  readonly timeoutMs?: number;
+}): Promise<MarketingPreferencesFixture> {
+  const deadline = timeoutMs ?? defaultFixtureTimeoutMs;
+  const { exitCode, stdout } = await runBoundedFixtureChild({
+    args: ["--app-root", appRoot, "--output-directory", outputDirectory],
+    cwd: appRoot,
+    messages: {
+      exitFailed: "Marketing preferences fixture child exit failed",
+      invalidTimeout: "Marketing preferences fixture timeout is invalid",
+      launch: "Could not launch marketing preferences fixture child",
+      stdoutFailed: "Marketing preferences fixture child stdout failed",
+      stdoutUnavailable:
+        "Marketing preferences fixture child stdout was unavailable",
+      timeout: (duration) =>
+        `Marketing preferences fixture child timed out after ${duration}ms`,
+    },
+    timeoutMs: deadline,
+  });
 
   let message: FixtureMessage;
   try {
-    message = parseFixtureMessage(stdoutResult.value);
+    message = parseFixtureMessage(stdout);
   } catch (error) {
-    if (exitResult.value !== 0) {
+    if (exitCode !== 0)
       throw new Error(
-        `Marketing preferences fixture child exited with code ${exitResult.value}`
+        `Marketing preferences fixture child exited with code ${exitCode}`
       );
-    }
     throw error;
   }
-  if (exitResult.value !== 0) {
+  if (exitCode !== 0) {
     if (message.status === "error") {
       throw new Error(
         `Marketing preferences fixture child failed: ${message.message}`
       );
     }
     throw new Error(
-      `Marketing preferences fixture child exited with code ${exitResult.value}`
+      `Marketing preferences fixture child exited with code ${exitCode}`
     );
   }
   if (message.status === "error") {
@@ -856,6 +2250,64 @@ export async function compileMarketingPreferencesFixture({
     );
   }
   return validateFixtureSuccess(message, outputDirectory);
+}
+
+const defaultBrowserFixtureTimeoutMs = 295_000;
+
+export async function verifyMarketingPreferencesBrowserFixture({
+  appRoot,
+  outputDirectory,
+  timeoutMs,
+}: MarketingPreferencesBrowserFixtureOptions): Promise<MarketingPreferencesBrowserFixture> {
+  const deadline = timeoutMs ?? defaultBrowserFixtureTimeoutMs;
+  const { exitCode, stdout } = await runBoundedFixtureChild({
+    args: [
+      "--browser",
+      "--app-root",
+      appRoot,
+      "--output-directory",
+      outputDirectory,
+    ],
+    cwd: appRoot,
+    messages: {
+      exitFailed: "Marketing preferences browser child exit failed",
+      invalidTimeout: "Marketing preferences browser timeout is invalid",
+      launch: "Could not launch marketing preferences browser child",
+      stdoutFailed: "Marketing preferences browser child stdout failed",
+      stdoutUnavailable:
+        "Marketing preferences browser child stdout was unavailable",
+      timeout: (duration) =>
+        `Marketing preferences browser child timed out after ${duration}ms`,
+    },
+    timeoutMs: deadline,
+  });
+
+  let message: BrowserMessage;
+  try {
+    message = parseBrowserMessage(stdout);
+  } catch (error) {
+    if (exitCode !== 0)
+      throw new Error(
+        `Marketing preferences browser child exited with code ${exitCode}`
+      );
+    throw error;
+  }
+  if (exitCode !== 0) {
+    if (message.status === "error") {
+      throw new Error(
+        `Marketing preferences browser child failed: ${message.message}`
+      );
+    }
+    throw new Error(
+      `Marketing preferences browser child exited with code ${exitCode}`
+    );
+  }
+  if (message.status === "error") {
+    throw new Error(
+      `Marketing preferences browser child failed: ${message.message}`
+    );
+  }
+  return validateBrowserSuccess(message, outputDirectory);
 }
 
 const parseCliArguments = (
@@ -881,17 +2333,30 @@ const parseCliArguments = (
 
 if (import.meta.main) {
   try {
-    const options = parseCliArguments(process.argv.slice(2));
-    const fixture = await buildMarketingPreferencesFixture(options);
-    const result: FixtureSuccessMessage = {
-      status: "ok",
-      bunVersion: Bun.version,
-      cssPath: fixture.cssPath,
-      entryPath: fixture.entryPath,
-      javascriptPath: fixture.javascriptPath,
-      scheduler: fixture.scheduler,
-    };
-    process.stdout.write(`${JSON.stringify(result)}\n`);
+    const args = process.argv.slice(2);
+    if (args[0] === "--browser") {
+      const options = parseCliArguments(args.slice(1));
+      const fixture = await runMarketingPreferencesBrowserFixture(options);
+      const result: BrowserSuccessMessage = {
+        status: "ok",
+        bunVersion: Bun.version,
+        reportPath: fixture.reportPath,
+        logPath: fixture.logPath,
+      };
+      process.stdout.write(`${JSON.stringify(result)}\n`);
+    } else {
+      const options = parseCliArguments(args);
+      const fixture = await buildMarketingPreferencesFixture(options);
+      const result: FixtureSuccessMessage = {
+        status: "ok",
+        bunVersion: Bun.version,
+        cssPath: fixture.cssPath,
+        entryPath: fixture.entryPath,
+        javascriptPath: fixture.javascriptPath,
+        scheduler: fixture.scheduler,
+      };
+      process.stdout.write(`${JSON.stringify(result)}\n`);
+    }
   } catch (cause) {
     const result: FixtureErrorMessage = {
       status: "error",
