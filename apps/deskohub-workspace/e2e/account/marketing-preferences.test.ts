@@ -14,6 +14,7 @@ import {
   runWorkspaceE2EMarketingBrowserOperation,
   verifyWorkspaceE2EMarketingPreferences,
   type WorkspaceE2EMarketingConsentPersistenceClassification,
+  type WorkspaceE2EMarketingConsentPersistenceDiagnostic,
   type WorkspaceE2EMarketingConsentPoller,
   waitForWorkspaceE2EMarketingConsentPersistence,
 } from "./marketing-preferences";
@@ -102,6 +103,79 @@ const makeMarketingConsentRow = (
   withdrawnAt: null,
   ...overrides,
 });
+
+const expectedHexDocumentHash = "b".repeat(64);
+const persistedHexDocumentHash = "a".repeat(64);
+const changedHexDocumentHash = "c".repeat(64);
+const syntheticSensitiveDocumentHash = "synthetic-sensitive-document-hash";
+
+/**
+ * Deliberately injects a runtime-corrupted hash value into an otherwise
+ * typed synthetic consent row, exercising the projection against row data
+ * the static type cannot describe without asserting past the signature.
+ */
+const injectSyntheticConsentDocumentHash = (
+  documentHash: unknown
+): MarketingConsentRow => {
+  const row = makeMarketingConsentRow();
+  Object.defineProperty(row, "documentHash", {
+    configurable: true,
+    enumerable: true,
+    value: documentHash,
+    writable: true,
+  });
+  return row;
+};
+
+type MarketingConsentPersistenceScenario = {
+  readonly documentHash: string;
+  readonly observations: ReadonlyArray<MarketingConsentRow | null>;
+};
+
+const runMarketingConsentPersistenceScenario = async (
+  input: MarketingConsentPersistenceScenario
+): Promise<{
+  readonly logRecords: WorkspaceE2EMarketingConsentPersistenceDiagnostic[];
+  readonly readCount: number;
+  readonly timeline: string[];
+}> => {
+  const logRecords: WorkspaceE2EMarketingConsentPersistenceDiagnostic[] = [];
+  const timeline: string[] = [];
+  let readCount = 0;
+  const poll: WorkspaceE2EMarketingConsentPoller = (effect) =>
+    Effect.gen(function* () {
+      timeline.push("poll-start");
+      while (true) {
+        const consent = yield* effect;
+        timeline.push(`observation:${readCount}`);
+        if (consent !== undefined) return consent;
+      }
+    });
+
+  await Effect.runPromise(
+    waitForWorkspaceE2EMarketingConsentPersistence({
+      documentHash: input.documentHash,
+      expectedStatus: "active",
+      log: (diagnostic) =>
+        Effect.sync(() => {
+          timeline.push(`log:${diagnostic.reason}`);
+          logRecords.push(diagnostic);
+        }),
+      poll,
+      read: Effect.sync(() => {
+        const consent = input.observations[readCount];
+        readCount += 1;
+        timeline.push(`read:${readCount}`);
+        if (consent === undefined) {
+          throw new Error("synthetic scenario poll exhausted");
+        }
+        return consent;
+      }),
+    })
+  );
+
+  return { logRecords, readCount, timeline };
+};
 
 const cloneSyntheticMarketingFixtureState = (
   state: SyntheticMarketingFixtureState
@@ -406,6 +480,281 @@ describe("workspace marketing preferences helper", () => {
     ]) {
       expect(serializedLogs).not.toContain(sensitiveSentinel);
     }
+  });
+
+  test("logs both document digests on a valid-hex document hash mismatch", async () => {
+    const { logRecords, readCount } =
+      await runMarketingConsentPersistenceScenario({
+        documentHash: expectedHexDocumentHash,
+        observations: [
+          makeMarketingConsentRow({ documentHash: persistedHexDocumentHash }),
+          makeMarketingConsentRow({ documentHash: expectedHexDocumentHash }),
+        ],
+      });
+
+    expect(logRecords).toEqual([
+      {
+        documentHashMatches: false,
+        expectedDocumentHash: expectedHexDocumentHash,
+        localeMatches: true,
+        persistedDocumentHash: persistedHexDocumentHash,
+        reason: "document_hash_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      {
+        documentHashMatches: true,
+        localeMatches: true,
+        reason: "matched",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+    ]);
+    expect(readCount).toBe(2);
+  });
+
+  test.each([
+    {
+      hash: 12345,
+      name: "a nonstring persisted hash",
+      sentinel: "12345",
+    },
+    {
+      hash: null,
+      name: "a null persisted hash",
+      sentinel: "null",
+    },
+    {
+      hash: undefined,
+      name: "an undefined persisted hash",
+      sentinel: "undefined",
+    },
+    {
+      hash: { intruder: true },
+      name: "an object persisted hash",
+      sentinel: "intruder",
+    },
+    {
+      hash: `${"a".repeat(64)}\n`,
+      name: "a valid-hex persisted hash with a trailing newline",
+      sentinel: `${"a".repeat(64)}\n`,
+    },
+    {
+      hash: `${"a".repeat(64)}\r`,
+      name: "a valid-hex persisted hash with a trailing carriage return",
+      sentinel: `${"a".repeat(64)}\r`,
+    },
+    {
+      hash: `${"a".repeat(64)}\r\n`,
+      name: "a valid-hex persisted hash with a trailing CRLF",
+      sentinel: `${"a".repeat(64)}\r\n`,
+    },
+    {
+      hash: "a".repeat(65),
+      name: "a 65-character persisted hash",
+      sentinel: "a".repeat(65),
+    },
+    {
+      hash: "g".repeat(64),
+      name: "a nonhex persisted hash",
+      sentinel: "g".repeat(64),
+    },
+    {
+      hash: syntheticSensitiveDocumentHash,
+      name: "a synthetic sensitive persisted hash",
+      sentinel: syntheticSensitiveDocumentHash,
+    },
+  ])(
+    "omits both digests for $name on a document hash mismatch",
+    async ({ hash, sentinel }) => {
+      const { logRecords } = await runMarketingConsentPersistenceScenario({
+        documentHash: expectedHexDocumentHash,
+        observations: [
+          injectSyntheticConsentDocumentHash(hash),
+          makeMarketingConsentRow({ documentHash: expectedHexDocumentHash }),
+        ],
+      });
+
+      expect(logRecords).toHaveLength(2);
+      expect(logRecords[0]).not.toHaveProperty("persistedDocumentHash");
+      expect(logRecords[0]).not.toHaveProperty("expectedDocumentHash");
+      expect(logRecords[0]?.reason).toBe("document_hash_mismatch");
+      expect(logRecords[1]?.reason).toBe("matched");
+      const serializedLogs = JSON.stringify(logRecords);
+      expect(serializedLogs).not.toContain(sentinel);
+    }
+  );
+
+  test.each([
+    {
+      hash: "a".repeat(65),
+      name: "a 65-character expected hash",
+      sentinel: "a".repeat(65),
+    },
+    {
+      hash: "g".repeat(64),
+      name: "a nonhex expected hash",
+      sentinel: "g".repeat(64),
+    },
+    {
+      hash: `${"b".repeat(64)}\n`,
+      name: "a valid-hex expected hash with a trailing newline",
+      sentinel: `${"b".repeat(64)}\n`,
+    },
+    {
+      hash: `${"b".repeat(64)}\r`,
+      name: "a valid-hex expected hash with a trailing carriage return",
+      sentinel: `${"b".repeat(64)}\r`,
+    },
+    {
+      hash: `${"b".repeat(64)}\r\n`,
+      name: "a valid-hex expected hash with a trailing CRLF",
+      sentinel: `${"b".repeat(64)}\r\n`,
+    },
+    {
+      hash: syntheticSensitiveDocumentHash,
+      name: "a synthetic sensitive expected hash",
+      sentinel: syntheticSensitiveDocumentHash,
+    },
+  ])(
+    "omits both digests for $name while the persisted hash is valid",
+    async ({ hash, sentinel }) => {
+      const { logRecords } = await runMarketingConsentPersistenceScenario({
+        documentHash: hash,
+        observations: [
+          makeMarketingConsentRow({ documentHash: persistedHexDocumentHash }),
+          makeMarketingConsentRow({ documentHash: hash }),
+        ],
+      });
+
+      expect(logRecords).toHaveLength(2);
+      expect(logRecords[0]).not.toHaveProperty("persistedDocumentHash");
+      expect(logRecords[0]).not.toHaveProperty("expectedDocumentHash");
+      expect(logRecords[0]?.reason).toBe("document_hash_mismatch");
+      expect(logRecords[1]?.reason).toBe("matched");
+      const serializedLogs = JSON.stringify(logRecords);
+      expect(serializedLogs).not.toContain(sentinel);
+    }
+  );
+
+  test("omits both digest keys when the row is missing or matched", async () => {
+    const classifierKeys = [
+      "documentHashMatches",
+      "localeMatches",
+      "reason",
+      "rowExists",
+      "withdrawnStateMatches",
+    ];
+    const { logRecords } = await runMarketingConsentPersistenceScenario({
+      documentHash: expectedHexDocumentHash,
+      observations: [
+        null,
+        makeMarketingConsentRow({ documentHash: expectedHexDocumentHash }),
+      ],
+    });
+
+    expect(logRecords).toHaveLength(2);
+    expect(logRecords.map((record) => Object.keys(record).sort())).toEqual([
+      classifierKeys,
+      classifierKeys,
+    ]);
+  });
+
+  test("logs a changed valid digest again under the same mismatch classification", async () => {
+    const { logRecords } = await runMarketingConsentPersistenceScenario({
+      documentHash: expectedHexDocumentHash,
+      observations: [
+        makeMarketingConsentRow({ documentHash: persistedHexDocumentHash }),
+        makeMarketingConsentRow({ documentHash: persistedHexDocumentHash }),
+        makeMarketingConsentRow({ documentHash: changedHexDocumentHash }),
+        makeMarketingConsentRow({ documentHash: expectedHexDocumentHash }),
+      ],
+    });
+
+    expect(logRecords).toEqual([
+      {
+        documentHashMatches: false,
+        expectedDocumentHash: expectedHexDocumentHash,
+        localeMatches: true,
+        persistedDocumentHash: persistedHexDocumentHash,
+        reason: "document_hash_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      {
+        documentHashMatches: false,
+        expectedDocumentHash: expectedHexDocumentHash,
+        localeMatches: true,
+        persistedDocumentHash: changedHexDocumentHash,
+        reason: "document_hash_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+      {
+        documentHashMatches: true,
+        localeMatches: true,
+        reason: "matched",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+    ]);
+  });
+
+  test("retains a valid-digest mismatch diagnostic when a poll is interrupted", async () => {
+    const logRecords: WorkspaceE2EMarketingConsentPersistenceDiagnostic[] = [];
+    const pollStarted = makePromiseGate();
+    const releasePending = makePromiseGate();
+    const poll: WorkspaceE2EMarketingConsentPoller = (effect) =>
+      Effect.gen(function* () {
+        yield* effect;
+        pollStarted.resolve();
+        yield* Effect.promise(() => releasePending.promise);
+        yield* Effect.never;
+      });
+    const operation = waitForWorkspaceE2EMarketingConsentPersistence({
+      documentHash: expectedHexDocumentHash,
+      expectedStatus: "active",
+      log: (diagnostic) =>
+        Effect.sync(() => {
+          logRecords.push(diagnostic);
+        }),
+      poll,
+      read: Effect.sync(() =>
+        makeMarketingConsentRow({ documentHash: persistedHexDocumentHash })
+      ),
+    });
+
+    try {
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.forkChild(operation);
+          yield* Effect.promise(() => pollStarted.promise);
+
+          const interruption = yield* Effect.forkChild(Fiber.interrupt(fiber));
+          yield* Fiber.join(interruption);
+          const exit = yield* Fiber.await(fiber);
+          expect(Exit.isFailure(exit)).toBe(true);
+          if (Exit.isFailure(exit)) {
+            expect(Cause.hasInterruptsOnly(exit.cause)).toBe(true);
+          }
+        })
+      );
+    } finally {
+      releasePending.resolve();
+      await flushMicrotasks();
+    }
+
+    expect(logRecords).toEqual([
+      {
+        documentHashMatches: false,
+        expectedDocumentHash: expectedHexDocumentHash,
+        localeMatches: true,
+        persistedDocumentHash: persistedHexDocumentHash,
+        reason: "document_hash_mismatch",
+        rowExists: true,
+        withdrawnStateMatches: true,
+      },
+    ]);
   });
 
   test("retains the last mismatch when a pending consent poll is interrupted", async () => {

@@ -436,6 +436,42 @@ export type WorkspaceE2EMarketingConsentPersistenceClassification = {
 };
 
 /**
+ * Log-only diagnostic projection of a persisted-consent classification. The
+ * two document digests are emitted only when the persisted and expected
+ * values are both well-formed SHA-256 hex strings on a document hash
+ * mismatch, so runtime-corrupted or unclassified values never enter logs.
+ */
+export type WorkspaceE2EMarketingConsentPersistenceDiagnostic =
+  WorkspaceE2EMarketingConsentPersistenceClassification & {
+    readonly expectedDocumentHash?: string;
+    readonly persistedDocumentHash?: string;
+  };
+
+const sha256HexPattern = /^[0-9a-f]{64}$/;
+
+const isSha256Hex = (value: unknown): value is string =>
+  typeof value === "string" &&
+  value.length === 64 &&
+  sha256HexPattern.test(value);
+
+const projectMarketingConsentPersistenceDiagnostic = (
+  classification: WorkspaceE2EMarketingConsentPersistenceClassification,
+  hashes: {
+    readonly expectedDocumentHash: unknown;
+    readonly persistedDocumentHash: unknown;
+  }
+): WorkspaceE2EMarketingConsentPersistenceDiagnostic =>
+  classification.reason === "document_hash_mismatch" &&
+  isSha256Hex(hashes.expectedDocumentHash) &&
+  isSha256Hex(hashes.persistedDocumentHash)
+    ? {
+        ...classification,
+        expectedDocumentHash: hashes.expectedDocumentHash,
+        persistedDocumentHash: hashes.persistedDocumentHash,
+      }
+    : classification;
+
+/**
  * Classifies only the closed requirements used by the persisted-consent wait.
  * It deliberately returns no consent values, identifiers, or timestamps so
  * the result is safe to use as E2E log metadata.
@@ -493,34 +529,34 @@ type WorkspaceE2EMarketingConsentPersistenceWaitInput<R, E> = {
   readonly documentHash: string;
   readonly expectedStatus: MarketingPreferenceStatus;
   readonly log?: (
-    classification: WorkspaceE2EMarketingConsentPersistenceClassification
+    diagnostic: WorkspaceE2EMarketingConsentPersistenceDiagnostic
   ) => Effect.Effect<void>;
   readonly poll?: WorkspaceE2EMarketingConsentPoller;
   readonly read: Effect.Effect<MarketingConsentRow | null, E, R>;
 };
 
-const sameMarketingConsentPersistenceClassification = (
-  left: WorkspaceE2EMarketingConsentPersistenceClassification,
-  right: WorkspaceE2EMarketingConsentPersistenceClassification
+const sameMarketingConsentPersistenceDiagnostic = (
+  left: WorkspaceE2EMarketingConsentPersistenceDiagnostic,
+  right: WorkspaceE2EMarketingConsentPersistenceDiagnostic
 ): boolean =>
   left.documentHashMatches === right.documentHashMatches &&
+  left.expectedDocumentHash === right.expectedDocumentHash &&
   left.localeMatches === right.localeMatches &&
+  left.persistedDocumentHash === right.persistedDocumentHash &&
   left.reason === right.reason &&
   left.rowExists === right.rowExists &&
   left.withdrawnStateMatches === right.withdrawnStateMatches;
 
 const logMarketingConsentPersistenceClassification = (
-  classification: WorkspaceE2EMarketingConsentPersistenceClassification
+  diagnostic: WorkspaceE2EMarketingConsentPersistenceDiagnostic
 ): Effect.Effect<void> =>
-  Effect.logInfo(
-    "Marketing preference persistence classification",
-    classification
-  );
+  Effect.logInfo("Marketing preference persistence classification", diagnostic);
 
 /**
  * Polls the existing consent read while logging only the first and changed
- * closed classifications. The poll and log seams keep this behavior
- * executable without a database in focused tests.
+ * closed classifications, with validated document digests on hash mismatches.
+ * The poll and log seams keep this behavior executable without a database in
+ * focused tests.
  */
 export const waitForWorkspaceE2EMarketingConsentPersistence = <
   R,
@@ -528,27 +564,30 @@ export const waitForWorkspaceE2EMarketingConsentPersistence = <
 >(
   input: WorkspaceE2EMarketingConsentPersistenceWaitInput<R, E>
 ): Effect.Effect<void, E | WorkspaceE2EError, R> => {
-  let lastClassification:
-    | WorkspaceE2EMarketingConsentPersistenceClassification
+  let lastDiagnostic:
+    | WorkspaceE2EMarketingConsentPersistenceDiagnostic
     | undefined;
   const log = input.log ?? logMarketingConsentPersistenceClassification;
   const observedConsent = input.read.pipe(
     Effect.tap((consent) => {
-      const classification = classifyWorkspaceE2EMarketingConsentPersistence({
-        consent,
-        documentHash: input.documentHash,
-        expectedStatus: input.expectedStatus,
-      });
-      const classificationChanged =
-        lastClassification === undefined ||
-        !sameMarketingConsentPersistenceClassification(
-          lastClassification,
-          classification
-        );
-      const logEffect = classificationChanged
+      const diagnostic = projectMarketingConsentPersistenceDiagnostic(
+        classifyWorkspaceE2EMarketingConsentPersistence({
+          consent,
+          documentHash: input.documentHash,
+          expectedStatus: input.expectedStatus,
+        }),
+        {
+          expectedDocumentHash: input.documentHash,
+          persistedDocumentHash: consent?.documentHash,
+        }
+      );
+      const diagnosticChanged =
+        lastDiagnostic === undefined ||
+        !sameMarketingConsentPersistenceDiagnostic(lastDiagnostic, diagnostic);
+      const logEffect = diagnosticChanged
         ? Effect.sync(() => {
-            lastClassification = classification;
-          }).pipe(Effect.andThen(log(classification)))
+            lastDiagnostic = diagnostic;
+          }).pipe(Effect.andThen(log(diagnostic)))
         : Effect.void;
 
       return logEffect;
