@@ -24,6 +24,14 @@ bun turbo dev --filter=<package-name>
 
 The Next.js applications use the same default development port. Set `PORT` when running them together. The portal uses its own Astro development address.
 
+## Patched dependencies
+
+`@effect/sql-pg` is pinned through `patchedDependencies` in the root `package.json` (`patches/@effect%2Fsql-pg@4.0.0-beta.85.patch`). The patch eliminates pooled `pg_cancel_backend` entirely: an interrupted statement, or one that fails without a server SQLSTATE code (for example pg's `Query read timeout`), destroys its connection lease, so the pool removes and ends the connection, the backend terminates by session teardown (bounded by `statement_timeout`), and the connection can never be handed to another fiber or leak an open transaction. Server-classified SQLSTATE failures keep the connection. The `Database pool cancellation against real Postgres` seam in `apps/deskohub-workspace/db/database-pool-cancellation.test.ts` guards the behavior against a production-style external pool with `query_timeout` shorter than `statement_timeout`; rerun it (and re-apply or drop the patch) whenever `@effect/sql-pg` is upgraded, since a version change invalidates the patch key.
+
+## Branch integration
+
+Before delegating a merge, the orchestrator inspects each conflict and decides the exact combined behavior. Assign each worker one file or tightly coupled production-and-test pair, the prescribed resolution, and one focused check. Keep lockfile reconciliation and generated-file cleanup separate. The orchestrator verifies the combined result and requests its review; a worker assignment is not "integrate main" or "resolve all conflicts".
+
 ## Checks
 
 Prefer focused checks first, then the affected application or package suite:
@@ -59,6 +67,7 @@ The independent `i18n:compile` task may exclude `NEXT_PUBLIC_VERCEL_*` because i
 
 ## CI boundaries
 
+- Monitor an active GitHub run with `timeout <seconds> gh run watch <run-id> --exit-status --interval <seconds>`. Use `gh run view` for a one-time status inspection, not a `sleep`-then-inspect polling loop. A local watch timeout does not cancel the remote workflow.
 - Workspace tests cover changes to Workspace, shared packages, and root build inputs.
 - Workspace E2E starts from the successful immutable protected preview for the exact commit.
 - The `dhw` CLI and its shared administration contract have a release-producing commit requirement. Read the Workspace administration reference before changing that boundary.

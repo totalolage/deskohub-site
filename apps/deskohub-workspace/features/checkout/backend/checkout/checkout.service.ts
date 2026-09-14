@@ -11,6 +11,7 @@ import {
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { OptionalAccountActivityGuard } from "@/features/account";
 import {
   type AccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
@@ -178,6 +179,7 @@ export class CheckoutService extends Context.Service<
   static Default = makeCheckoutServiceLayer(this);
 
   static Live = this.Default.pipe(
+    Layer.provide(OptionalAccountActivityGuard.Live),
     Layer.provide(WorkspacePaidFulfillmentService.Live),
     Layer.provide(PayableReservationService.Default),
     Layer.provide(LegalEvidenceEventRepository.Default),
@@ -482,6 +484,7 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
       const posthogEvents = yield* PostHogEventService;
       const pricing = yield* CheckoutPricingService;
       const payableReservations = yield* PayableReservationService;
+      const accountActivity = yield* OptionalAccountActivityGuard;
 
       const handleHostedPaymentPageCreationFailure = Effect.fn(
         "checkout.handleHostedPaymentPageCreationFailure"
@@ -1012,162 +1015,186 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
               });
             }
 
-            yield* reservations.updateReservationDetails({
-              id: reservation.id,
-              reservationDetails: getStoredWorkspaceReservationDetails(data),
-              locale,
-            });
-
-            const acceptedAt = contractAt.toString();
-            const legalDocuments =
-              yield* getCheckoutLegalAcceptanceSnapshot(locale);
-            const legalEvidence = getCheckoutLegalEvidence({
-              acceptedAt,
-              earlyPerformanceRequested: earlyPerformanceRequired,
-              locale,
-              legalDocuments,
-            });
-            const checkoutDetails = getCheckoutDetails(
-              prepared,
-              locale,
-              legalEvidence
-            );
-            yield* Effect.annotateLogsScoped({
-              acceptedDocumentCount: Object.keys(legalEvidence).length,
-              earlyPerformanceRequested: earlyPerformanceRequired,
-            });
-            yield* Effect.logInfo(
-              "Hosted payment checkout legal evidence recording started"
-            );
-            yield* legalEvidenceEvents.recordMany(
-              Object.values(checkoutDetails.legal).map((evidence) => ({
-                workspaceReservationId: reservation.id,
-                evidence,
-              }))
-            );
-            yield* Effect.logInfo(
-              "Hosted payment checkout legal evidence recorded"
-            );
-
-            const dotyposReservationId = reservation.dotyposReservationId;
-            if (!dotyposReservationId) {
-              return yield* new CheckoutError({
-                code: "checkout_failed",
-                message:
-                  "Held reservation is missing its Dotypos reservation ID.",
-              });
-            }
-
-            yield* dotypos.updateReservation({
-              reservationId: dotyposReservationId,
-              note: formatWorkspaceReservationNote({
-                paymentOrderId: reservation.id,
-                checkoutDetails,
-                reservation: checkoutDetails.reservation,
-              }),
-            });
-            yield* Effect.logInfo(
-              "Hosted payment checkout Dotypos reservation note updated"
-            );
-
-            yield* ensureReservationHasNotEnded(state.reservation);
-            const accountingSnapshot = makeAccountingDocumentSnapshot({
-              workspaceReservationId: reservation.id,
-              dotyposReservationId,
-              dotyposCustomerId,
-              locale,
-              prepared,
-            });
-            const expectedPrice = prepared.quote.payment.expectedPrice;
-            const startPayment =
-              expectedPrice.value === 0
-                ? completeInternalPayment({
-                    workspaceReservationId: reservation.id,
-                    checkoutSessionId: state.checkoutSessionId,
-                    locale,
-                    total: expectedPrice,
-                    commitment: prepared.commitment,
-                    accountingSnapshot,
-                  })
-                : startProviderSession({
-                    workspaceReservationId: reservation.id,
-                    correlationId: reservation.correlationId,
-                    checkoutSessionId: state.checkoutSessionId,
-                    locale,
-                    total: expectedPrice,
-                    commitment: prepared.commitment,
-                    customer: getNexiHostedPaymentCustomer({
-                      id: dotyposCustomerId,
-                      name: data.name,
-                      email: data.email,
-                      phone: data.phone,
-                    }),
-                    accountingSnapshot,
-                  });
-
-            return yield* startPayment.pipe(
-              Effect.catchTag("DiscountClaimError", (cause) =>
+            // The full state-creating section runs inside the account
+            // advisory lock: authority is re-checked under the lock and
+            // the same lock is held until the section completes, so
+            // deletion cannot interleave with the reservation update,
+            // legal evidence, or payment start. Idempotent recovery
+            // paths above stay reachable without the lock.
+            return yield* accountActivity
+              .guardStateCreation(
                 Effect.gen(function* () {
-                  yield* Effect.logError(
-                    "Accepted discount claim admission changed the payable price",
-                    {
-                      discountBoundary: "claim_admission",
-                      discountOperation: cause.operation,
-                      discountErrorReason: cause.reason,
-                    }
-                  );
-                  const refreshed = yield* pricing.affirmForPayment({
-                    ...state,
-                    dotyposCustomerId,
+                  yield* reservations.updateReservationDetails({
+                    id: reservation.id,
+                    reservationDetails:
+                      getStoredWorkspaceReservationDetails(data),
                     locale,
                   });
-                  const refreshedSummary = Match.value(refreshed).pipe(
-                    Match.discriminatorsExhaustive("kind")({
-                      cowork: ({ quote, reservation }) =>
-                        getCoworkCheckoutSummary(reservation, quote),
-                      "meeting-room": ({ quote }) =>
-                        getMeetingRoomCheckoutSummary(quote),
-                      office: ({ quote }) => getOfficeCheckoutSummary(quote),
-                    })
-                  );
-                  const changedKeys = getCheckoutSummaryChangedKeys(
-                    acceptedSummary,
-                    refreshedSummary
-                  );
-                  const refreshedCheckoutDetails = getCheckoutDetails(
-                    refreshed,
+
+                  const acceptedAt = contractAt.toString();
+                  const legalDocuments =
+                    yield* getCheckoutLegalAcceptanceSnapshot(locale);
+                  const legalEvidence = getCheckoutLegalEvidence({
+                    acceptedAt,
+                    earlyPerformanceRequested: earlyPerformanceRequired,
+                    locale,
+                    legalDocuments,
+                  });
+                  const checkoutDetails = getCheckoutDetails(
+                    prepared,
                     locale,
                     legalEvidence
                   );
+                  yield* Effect.annotateLogsScoped({
+                    acceptedDocumentCount: Object.keys(legalEvidence).length,
+                    earlyPerformanceRequested: earlyPerformanceRequired,
+                  });
+                  yield* Effect.logInfo(
+                    "Hosted payment checkout legal evidence recording started"
+                  );
+                  yield* legalEvidenceEvents.recordMany(
+                    Object.values(checkoutDetails.legal).map((evidence) => ({
+                      workspaceReservationId: reservation.id,
+                      evidence,
+                    }))
+                  );
+                  yield* Effect.logInfo(
+                    "Hosted payment checkout legal evidence recorded"
+                  );
+
+                  const dotyposReservationId = reservation.dotyposReservationId;
+                  if (!dotyposReservationId) {
+                    return yield* new CheckoutError({
+                      code: "checkout_failed",
+                      message:
+                        "Held reservation is missing its Dotypos reservation ID.",
+                    });
+                  }
+
                   yield* dotypos.updateReservation({
                     reservationId: dotyposReservationId,
                     note: formatWorkspaceReservationNote({
                       paymentOrderId: reservation.id,
-                      checkoutDetails: refreshedCheckoutDetails,
-                      reservation: refreshedCheckoutDetails.reservation,
+                      checkoutDetails,
+                      reservation: checkoutDetails.reservation,
                     }),
                   });
-                  const freshPayUrl = yield* getFreshPayUrl({
-                    ...refreshed,
-                    locale,
-                    orderId: reservation.id,
-                    checkoutSessionId: state.checkoutSessionId,
-                    ...getSignedPayStateSubmittedCode(
-                      state,
-                      refreshed.quote.payment.discounts
-                    ),
-                    changedKeys,
-                  });
+                  yield* Effect.logInfo(
+                    "Hosted payment checkout Dotypos reservation note updated"
+                  );
 
-                  return {
-                    status: "pricing_changed" as const,
-                    changedKeys,
-                    freshSummary: refreshedSummary,
-                    freshPayUrl,
-                  };
+                  yield* ensureReservationHasNotEnded(state.reservation);
+                  const accountingSnapshot = makeAccountingDocumentSnapshot({
+                    workspaceReservationId: reservation.id,
+                    dotyposReservationId,
+                    dotyposCustomerId,
+                    locale,
+                    prepared,
+                  });
+                  const expectedPrice = prepared.quote.payment.expectedPrice;
+                  const startPayment =
+                    expectedPrice.value === 0
+                      ? completeInternalPayment({
+                          workspaceReservationId: reservation.id,
+                          checkoutSessionId: state.checkoutSessionId,
+                          locale,
+                          total: expectedPrice,
+                          commitment: prepared.commitment,
+                          accountingSnapshot,
+                        })
+                      : startProviderSession({
+                          workspaceReservationId: reservation.id,
+                          correlationId: reservation.correlationId,
+                          checkoutSessionId: state.checkoutSessionId,
+                          locale,
+                          total: expectedPrice,
+                          commitment: prepared.commitment,
+                          customer: getNexiHostedPaymentCustomer({
+                            id: dotyposCustomerId,
+                            name: data.name,
+                            email: data.email,
+                            phone: data.phone,
+                          }),
+                          accountingSnapshot,
+                        });
+
+                  return yield* startPayment.pipe(
+                    Effect.catchTag("DiscountClaimError", (cause) =>
+                      Effect.gen(function* () {
+                        yield* Effect.logError(
+                          "Accepted discount claim admission changed the payable price",
+                          {
+                            discountBoundary: "claim_admission",
+                            discountOperation: cause.operation,
+                            discountErrorReason: cause.reason,
+                          }
+                        );
+                        const refreshed = yield* pricing.affirmForPayment({
+                          ...state,
+                          dotyposCustomerId,
+                          locale,
+                        });
+                        const refreshedSummary = Match.value(refreshed).pipe(
+                          Match.discriminatorsExhaustive("kind")({
+                            cowork: ({ quote, reservation }) =>
+                              getCoworkCheckoutSummary(reservation, quote),
+                            "meeting-room": ({ quote }) =>
+                              getMeetingRoomCheckoutSummary(quote),
+                            office: ({ quote }) =>
+                              getOfficeCheckoutSummary(quote),
+                          })
+                        );
+                        const changedKeys = getCheckoutSummaryChangedKeys(
+                          acceptedSummary,
+                          refreshedSummary
+                        );
+                        const refreshedCheckoutDetails = getCheckoutDetails(
+                          refreshed,
+                          locale,
+                          legalEvidence
+                        );
+                        yield* dotypos.updateReservation({
+                          reservationId: dotyposReservationId,
+                          note: formatWorkspaceReservationNote({
+                            paymentOrderId: reservation.id,
+                            checkoutDetails: refreshedCheckoutDetails,
+                            reservation: refreshedCheckoutDetails.reservation,
+                          }),
+                        });
+                        const freshPayUrl = yield* getFreshPayUrl({
+                          ...refreshed,
+                          locale,
+                          orderId: reservation.id,
+                          checkoutSessionId: state.checkoutSessionId,
+                          ...getSignedPayStateSubmittedCode(
+                            state,
+                            refreshed.quote.payment.discounts
+                          ),
+                          changedKeys,
+                        });
+
+                        return {
+                          status: "pricing_changed" as const,
+                          changedKeys,
+                          freshSummary: refreshedSummary,
+                          freshPayUrl,
+                        };
+                      })
+                    )
+                  );
                 })
               )
-            );
+              .pipe(
+                Effect.catchTag(
+                  "CustomerAccountAccessError",
+                  () =>
+                    new CheckoutError({
+                      code: "checkout_failed",
+                      message:
+                        "Reservation checkout is unavailable for this account.",
+                    })
+                )
+              );
           },
           (effect, input, locale) =>
             effect.pipe(

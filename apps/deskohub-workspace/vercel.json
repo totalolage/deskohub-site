@@ -9,6 +9,10 @@
     {
       "path": "/api/cron/workspace/reservation-holds",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/workspace/auth-cleanup",
+      "schedule": "17 3 * * *"
     }
   ],
   "functions": {

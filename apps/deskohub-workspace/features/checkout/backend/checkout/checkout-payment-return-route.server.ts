@@ -1,7 +1,10 @@
-import { Effect, type Layer, Option, Ref, Schedule, Schema } from "effect";
+import { Effect, Layer, Option, Ref, Schedule, Schema } from "effect";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import type { Locale } from "@/features/i18n";
 import { getLocalizedParamsDecoder } from "@/features/i18n/server/route-params";
+import { readReservationAccessCookie } from "@/features/reservation/backend/reservation-access-cookie";
+import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
@@ -102,12 +105,26 @@ const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
 
 const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
   function* (request: Request, input: CheckoutPaymentReturn) {
+    const cookieStore = yield* Effect.promise(() => cookies());
+    const authorization = yield* ReservationAuthorizationService;
+    const authorized = yield* authorization.isAuthorized({
+      accessCookie: readReservationAccessCookie(cookieStore, input.orderId),
+      locale: input.locale,
+      orderId: input.orderId,
+    });
+    if (!authorized) {
+      const response = new NextResponse(null, { status: 404 });
+      response.headers.set("Cache-Control", "private, no-store");
+      response.headers.set("Referrer-Policy", "no-referrer");
+      return response;
+    }
+
     yield* refreshCheckoutStatusWithBriefRetry({
       orderId: input.orderId,
       returnOutcome: input.outcome,
     });
 
-    return NextResponse.redirect(
+    const response = NextResponse.redirect(
       new URL(
         getReservationStatusPath({
           locale: input.locale,
@@ -118,11 +135,15 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
         request.url
       )
     );
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    return response;
   }
 );
 
 export const makeCheckoutPaymentReturnGet = (
-  statusServiceLayer: Layer.Layer<CheckoutStatusService, unknown>
+  statusServiceLayer: Layer.Layer<CheckoutStatusService, unknown>,
+  authorizationLayer: Layer.Layer<ReservationAuthorizationService, unknown>
 ) =>
   defineWorkspaceRoute(
     {
@@ -135,7 +156,9 @@ export const makeCheckoutPaymentReturnGet = (
           decoded.pipe(
             Option.map((input) =>
               handleCheckoutPaymentReturn(request, input).pipe(
-                Effect.provide(statusServiceLayer),
+                Effect.provide(
+                  Layer.mergeAll(statusServiceLayer, authorizationLayer)
+                ),
                 Effect.mapError(
                   WorkspaceRouteFailure.internal(
                     "Checkout status could not be refreshed"

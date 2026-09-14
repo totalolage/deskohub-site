@@ -9,6 +9,7 @@ import {
 import { makeUrl } from "./urls";
 
 export const previewTileReferrerPolicy = "strict-origin-when-cross-origin";
+export const previewAuthSessionCacheControl = "private, no-store";
 
 export const assertPreviewEndpointsReady = (
   config: WorkspaceE2EConfig
@@ -19,36 +20,85 @@ export const assertPreviewEndpointsReady = (
       assertPreviewEndpointReady(config, "/api/webhooks/resend"),
       assertPreviewHomepageTilesReady(config),
       assertPreviewJpegReady(config, "/workspace-location-map.jpeg"),
+      assertPreviewAuthSessionReady(config),
     ],
     { concurrency: "unbounded", discard: true }
   );
 
+/**
+ * Anonymous Better Auth readiness: the exact protected preview must answer
+ * an unauthenticated session probe with a healthy null session, marked
+ * private/no-store by the official handler.
+ */
+export const assertPreviewAuthSessionReady = Effect.fn(
+  "previewReadiness.assertAuthSessionReady"
+)(function* (config: WorkspaceE2EConfig) {
+  const path = "/api/auth/get-session";
+  const operation = `check ${path} preview auth session`;
+  const response = yield* requestPreviewEndpoint(config, path);
+
+  yield* Effect.succeed(response).pipe(
+    Effect.filterOrFail(
+      ({ status }) => status === 200,
+      ({ status }) =>
+        workspaceE2EError(
+          `${path} preview auth session check failed with ${status}`,
+          { operation }
+        )
+    ),
+    Effect.filterOrFail(
+      ({ headers }) =>
+        headers["cache-control"] === previewAuthSessionCacheControl,
+      ({ headers }) =>
+        workspaceE2EError(
+          `${path} preview auth session sent Cache-Control ${headers["cache-control"] ?? "without a policy"} instead of ${previewAuthSessionCacheControl}`,
+          { operation }
+        )
+    )
+  );
+
+  const body = yield* response.text.pipe(
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError(`read ${path} auth session body`, cause)
+    )
+  );
+  yield* Effect.succeed(body).pipe(
+    Effect.filterOrFail(
+      (body) => body.trim() === "null",
+      () =>
+        workspaceE2EError(
+          `${path} preview auth session did not return a healthy null session`,
+          { operation }
+        )
+    )
+  );
+});
+
 export const assertPreviewHomepageTilesReady = Effect.fn(
   "previewReadiness.assertHomepageTilesReady"
 )(function* (config: WorkspaceE2EConfig) {
-    const path = "/en-US";
-    const operation = `check ${path} preview homepage`;
-    const response = yield* requestPreviewEndpoint(config, path);
+  const path = "/en-US";
+  const operation = `check ${path} preview homepage`;
+  const response = yield* requestPreviewEndpoint(config, path);
 
-    yield* Effect.succeed(response).pipe(
-      Effect.filterOrFail(
-        ({ status }) => status >= 200 && status < 300,
-        ({ status }) =>
-          workspaceE2EError(
-            `${path} preview homepage check failed with ${status}`,
-            { operation }
-          )
-      ),
-      Effect.filterOrFail(
-        ({ headers }) =>
-          headers["referrer-policy"] === previewTileReferrerPolicy,
-        ({ headers }) =>
-          workspaceE2EError(
-            `${path} preview homepage sent Referrer-Policy ${headers["referrer-policy"] ?? "without a policy"} instead of ${previewTileReferrerPolicy}; OpenStreetMap browser tiles require a Referer`,
-            { operation }
-          )
-      )
-    );
+  yield* Effect.succeed(response).pipe(
+    Effect.filterOrFail(
+      ({ status }) => status >= 200 && status < 300,
+      ({ status }) =>
+        workspaceE2EError(
+          `${path} preview homepage check failed with ${status}`,
+          { operation }
+        )
+    ),
+    Effect.filterOrFail(
+      ({ headers }) => headers["referrer-policy"] === previewTileReferrerPolicy,
+      ({ headers }) =>
+        workspaceE2EError(
+          `${path} preview homepage sent Referrer-Policy ${headers["referrer-policy"] ?? "without a policy"} instead of ${previewTileReferrerPolicy}; OpenStreetMap browser tiles require a Referer`,
+          { operation }
+        )
+    )
+  );
 });
 
 export const isPreviewPageAvailable = (
@@ -81,11 +131,9 @@ export const isPreviewPageAvailable = (
       return false;
     }
 
-    return yield* Effect.fail(
-      workspaceE2EError(
-        `${path} preview page did not render its expected content`,
-        { operation: `check ${path} preview page` }
-      )
+    return yield* workspaceE2EError(
+      `${path} preview page did not render its expected content`,
+      { operation: `check ${path} preview page` }
     );
   });
 

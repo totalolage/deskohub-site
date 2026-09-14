@@ -1,9 +1,9 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { Context, Effect, Layer, Result, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/reservation/access-code.service";
 import type { Locale } from "@/features/i18n";
-import { openReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
+import { ReservationAuthorizationService } from "@/features/reservation/backend/reservation-authorization.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -17,21 +17,23 @@ export type ReservationAccessViewModel =
       readonly accessStartsAt: Temporal.Instant;
       readonly accessEndsAt: Temporal.Instant;
     }
+  | { readonly state: "invalid_link" }
   | { readonly state: "unavailable" };
 
 export interface IReservationAccessService {
   readonly getAccess: (input: {
     readonly orderId: WorkspaceReservationId;
     readonly locale: Locale;
+    readonly accessCookie?: string;
     readonly accessToken?: ReservationAccessToken;
   }) => Effect.Effect<ReservationAccessViewModel>;
 }
 
-const unavailableAccess: ReservationAccessViewModel = {
-  state: "unavailable",
-};
+const invalidLinkAccess: ReservationAccessViewModel = { state: "invalid_link" };
+const unavailableAccess: ReservationAccessViewModel = { state: "unavailable" };
 const implementation = Effect.gen(function* () {
   const reservations = yield* WorkspaceReservationRepository;
+  const authorization = yield* ReservationAuthorizationService;
   const dotypos = yield* DotyposService;
   const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
 
@@ -39,10 +41,11 @@ const implementation = Effect.gen(function* () {
     function* (input: {
       readonly orderId: WorkspaceReservationId;
       readonly locale: Locale;
+      readonly accessCookie?: string;
       readonly accessToken?: ReservationAccessToken;
     }) {
-      const authorized = yield* authorizeAccess(input);
-      if (!authorized) return unavailableAccess;
+      const authorized = yield* authorization.isAuthorized(input);
+      if (!authorized) return invalidLinkAccess;
 
       const reservation = yield* reservations.findById(input.orderId).pipe(
         Effect.tapError(() =>
@@ -50,7 +53,7 @@ const implementation = Effect.gen(function* () {
         ),
         Effect.orElseSucceed(() => undefined)
       );
-      if (!reservation || reservation.locale !== input.locale) {
+      if (!reservation) {
         return unavailableAccess;
       }
       if (
@@ -114,6 +117,7 @@ const implementation = Effect.gen(function* () {
         Effect.annotateLogs({
           orderId: input.orderId,
           locale: input.locale,
+          hasAccessCookie: input.accessCookie !== undefined,
           hasAccessToken: input.accessToken !== undefined,
         })
       )
@@ -130,30 +134,9 @@ export class ReservationAccessService extends Context.Service<
 
   static Live = this.Default.pipe(
     Layer.provide(WorkspaceReservationRepository.Default),
+    Layer.provide(ReservationAuthorizationService.Live),
     Layer.provide(WorkspaceDatabase.Default),
     Layer.provide(WorkspaceDotyposLayer),
     Layer.provide(WorkspaceCheckoutAccessCodeService.Live)
   );
 }
-
-const authorizeAccess = Effect.fn("ReservationAccessService.authorizeAccess")(
-  function* (input: {
-    readonly orderId: WorkspaceReservationId;
-    readonly locale: Locale;
-    readonly accessToken?: ReservationAccessToken;
-  }) {
-    if (!input.accessToken) return false;
-
-    const result = yield* openReservationAccessToken({
-      token: input.accessToken,
-      orderId: input.orderId,
-      locale: input.locale,
-    }).pipe(Effect.result);
-    if (Result.isFailure(result)) {
-      yield* Effect.logWarning("Reservation access token rejected", {
-        code: result.failure.code,
-      });
-    }
-    return Result.isSuccess(result);
-  }
-);

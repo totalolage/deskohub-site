@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { coordinateReturnWindow } from "@/shared/browser/return-window";
 
 const getCheckoutStatusLockName = () =>
   `deskohub:checkout-status:${window.location.pathname}`;
@@ -34,45 +35,11 @@ export function CheckoutPaymentWindowCoordinator() {
       ownsStatusWindowRef.current ??
       consumeCheckoutStatusWindowOwner(window.location.pathname);
     ownsStatusWindowRef.current = ownsStatusWindow;
-    if (!navigator.locks) return;
-
-    let active = true;
-    let releaseLock: () => void = () => undefined;
-    const holdLock = new Promise<void>((resolve) => {
-      releaseLock = resolve;
+    return coordinateReturnWindow({
+      key: getCheckoutStatusLockName(),
+      onDuplicate: () => window.close(),
+      owner: ownsStatusWindow,
     });
-
-    navigator.locks
-      .request(
-        getCheckoutStatusLockName(),
-        ownsStatusWindow
-          ? { mode: "exclusive", steal: true }
-          : { ifAvailable: true, mode: "exclusive" },
-        (lock) => {
-          if (!active) return;
-          if (!lock) {
-            window.close();
-            return;
-          }
-
-          return holdLock;
-        }
-      )
-      .catch((cause) => {
-        if (
-          active &&
-          !ownsStatusWindow &&
-          cause instanceof DOMException &&
-          cause.name === "AbortError"
-        ) {
-          window.close();
-        }
-      });
-
-    return () => {
-      active = false;
-      releaseLock();
-    };
   }, []);
 
   return null;

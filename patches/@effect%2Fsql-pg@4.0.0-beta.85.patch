@@ -1,0 +1,130 @@
+diff --git a/node_modules/@effect/sql-pg/.bun-tag-fc96d9e9fca37cc2 b/.bun-tag-fc96d9e9fca37cc2
+new file mode 100644
+index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
+diff --git a/dist/PgClient.js b/dist/PgClient.js
+index 6687fdf67ec6ab0a3060db20d29a596992ff25c9..cb3ce1bbdcf251d40652212c2d8cd6864e6ffe77 100644
+--- a/dist/PgClient.js
++++ b/dist/PgClient.js
+@@ -158,23 +158,26 @@ export const fromPool = /*#__PURE__*/Effect.fnUntraced(function* (options) {
+     if (client !== undefined) {
+       return Effect.callback(resume => {
+         f(client, resume);
+-        return makeCancel(pool, client);
++        return Effect.sync(() => destroyLease(client));
+       });
+     }
+     return Effect.callback(resume => {
+       let done = false;
+-      let cancel = undefined;
+       let client = undefined;
+       function onError(cause) {
+-        cleanup(cause);
++        settle(cause);
+         resume(Effect.fail(new SqlError({
+           reason: classifyError(cause, "Connection error", "acquireConnection")
+         })));
+       }
+-      function cleanup(cause) {
+-        if (!done) client?.release(cause);
++      function settle(cause) {
++        if (done) return;
+         done = true;
+         client?.off("error", onError);
++        const victim = client;
++        if (victim === undefined) return;
++        if (victim.__effectSqlLeaseDestroyed) return;
++        victim.release(cause);
+       }
+       pool.connect((cause, client_) => {
+         if (cause) {
+@@ -195,18 +198,16 @@ export const fromPool = /*#__PURE__*/Effect.fnUntraced(function* (options) {
+         }
+         client = client_;
+         client.once("error", onError);
+-        cancel = makeCancel(pool, client);
+         f(client, eff => {
+-          cleanup();
++          settle();
+           resume(eff);
+         });
+       });
+-      return Effect.suspend(() => {
+-        if (!cancel) {
+-          cleanup();
+-          return Effect.void;
+-        }
+-        return Effect.ensuring(cancel, Effect.sync(cleanup));
++      return Effect.sync(() => {
++        // the interrupted statement may still run server-side: destroy the
++        // lease instead of recycling a connection whose backend state is unknown
++        destroyLease(client);
++        settle();
+       });
+     });
+   }, client ? Effect.succeed(client) : reserveRaw);
+@@ -234,6 +235,7 @@ export const fromPool = /*#__PURE__*/Effect.fnUntraced(function* (options) {
+       client.on("error", onError);
+       resume(Effect.as(Scope.addFinalizer(scope, Effect.sync(() => {
+         client.off("error", onError);
++        if (client.__effectSqlLeaseDestroyed) return;
+         release(cause);
+       })), client));
+     });
+@@ -399,6 +401,7 @@ class ConnectionImpl {
+     return this.runWithClient((client, resume) => {
+       client.query(query, params, (err, result) => {
+         if (err) {
++          if (!isServerSqlState(err.code)) destroyLease(client);
+           resume(Effect.fail(new SqlError({
+             reason: classifyError(err, "Failed to execute statement", "execute")
+           })));
+@@ -416,6 +419,7 @@ class ConnectionImpl {
+     return this.runWithClient((client, resume) => {
+       client.query(sql, params, (err, result) => {
+         if (err) {
++          if (!isServerSqlState(err.code)) destroyLease(client);
+           resume(Effect.fail(new SqlError({
+             reason: classifyError(err, "Failed to execute statement", "execute")
+           })));
+@@ -436,6 +440,7 @@ class ConnectionImpl {
+         values: params
+       }, (err, result) => {
+         if (err) {
++          if (!isServerSqlState(err.code)) destroyLease(client);
+           resume(Effect.fail(new SqlError({
+             reason: classifyError(err, "Failed to execute statement", "execute")
+           })));
+@@ -472,22 +477,18 @@ class ConnectionImpl {
+     })));
+   }
+ }
+-const cancelEffects = /*#__PURE__*/new WeakMap();
+-const makeCancel = (pool, client) => {
+-  if (cancelEffects.has(client)) {
+-    return cancelEffects.get(client);
++const isServerSqlState = code => typeof code === "string" && /^[0-9A-Z]{5}$/.test(code);
++// destroy a leased connection whose backend state is unknown: the pool removes
++// and ends it, so the session teardown kills any still-running statement and
++// the connection can never be handed to another fiber
++const destroyLease = client => {
++  if (client === undefined || client.__effectSqlLeaseDestroyed) return;
++  client.__effectSqlLeaseDestroyed = true;
++  try {
++    client.release(new Error("effect-sql-pg: statement lease destroyed"));
++  } catch {
++    // not pooled, or the lease already settled elsewhere
+   }
+-  const processId = client.processID;
+-  const eff = processId !== undefined
+-  // query cancelation is best-effort, so we don't fail if it doesn't work
+-  ? Effect.callback(resume => {
+-    if (pool.ending) return resume(Effect.void);
+-    pool.query(`SELECT pg_cancel_backend(${processId})`, () => {
+-      resume(Effect.void);
+-    });
+-  }).pipe(Effect.interruptible, Effect.timeoutOption(5000)) : undefined;
+-  cancelEffects.set(client, eff);
+-  return eff;
+ };
+ /**
+  * Creates a layer from an effect that acquires a `PgClient`, providing both `PgClient` and `SqlClient`.

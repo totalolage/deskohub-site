@@ -2,6 +2,12 @@ import { Effect, Match } from "effect";
 import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { m } from "@/features/i18n";
 import type { SubmitReservationInput } from "@/features/reservation/actions/submit-reservation-input";
+import {
+  createReservationAccessCookieCapability,
+  parseCanonicalReservationStatusUrl,
+  ReservationAccessCookieError,
+} from "@/features/reservation/backend/reservation-access-cookie";
+import { ReservationAccessCookieWriter } from "@/features/reservation/backend/reservation-access-cookie.server";
 import { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
@@ -16,6 +22,7 @@ export const submitWorkspaceReservation = Effect.fn(
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
     const service = yield* CheckoutService;
+    const cookieWriter = yield* ReservationAccessCookieWriter;
     const checkout = yield* service.createHostedPaymentCheckout(
       {
         payStateToken: input.payStateToken,
@@ -24,6 +31,25 @@ export const submitWorkspaceReservation = Effect.fn(
       },
       locale
     );
+
+    if (checkout.status === "redirect") {
+      const orderId = parseCanonicalReservationStatusUrl(
+        checkout.statusUrl ?? checkout.redirectUrl,
+        locale
+      );
+      if (!orderId) {
+        return yield* new ReservationAccessCookieError({
+          code: "invalid-cookie",
+          message: "Checkout returned an invalid reservation status URL.",
+        });
+      }
+
+      const capability = yield* createReservationAccessCookieCapability({
+        orderId,
+        locale,
+      });
+      yield* cookieWriter.write({ orderId, capability });
+    }
 
     yield* Effect.logInfo("Workspace checkout started");
 
@@ -46,6 +72,8 @@ export const submitWorkspaceReservation = Effect.fn(
                 BotDetectedError: () =>
                   m.reservationRateLimitMessage({}, { locale: input.locale }),
                 BotVerificationError: () =>
+                  m.reservationErrorMessage({}, { locale: input.locale }),
+                ReservationAccessCookieError: () =>
                   m.reservationErrorMessage({}, { locale: input.locale }),
                 CheckoutError: (checkoutError) =>
                   Match.value(checkoutError.code).pipe(
