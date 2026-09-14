@@ -1,13 +1,23 @@
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  mock,
+  spyOn,
+  test,
+} from "bun:test";
 import * as fsPromises from "node:fs/promises";
 import { resolve } from "node:path";
 import type * as Playwright from "@playwright/test";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { withCallbackHandoffReview } from "./callback-handoff";
 
 const baseUrl = "https://deskohub-workspace-review.example.test";
 const accountUrl = `${baseUrl}/en-US/account?_rsc=synthetic-cache-key`;
 const callbackUrl = `${baseUrl}/en-US/auth/callback`;
+const attemptUuid = "0f0a9c1e-7b62-4c8d-9e21-53ab2f0d4c7a";
+const fakeMainFrame = {} as Playwright.Frame;
+const fakeSubFrame = {} as Playwright.Frame;
 const callbackHandoffFailureMessage =
   "Account callback handoff verification failed";
 const initialViewport = { height: 768, width: 1024 } as const;
@@ -16,6 +26,74 @@ const accountReviewArtifactDirectory = resolve(
   import.meta.dir,
   "../../e2e-artifacts/account-review"
 );
+
+/**
+ * Adapter seam control: the receipt-backed document review is mocked so the
+ * wrapper's document branch can be exercised without a CDP session, while the
+ * RSC branch keeps its locator-based fakes.
+ */
+const documentReviewControl = {
+  captureCalls: 0,
+  disposeCalls: 0,
+  failCapture: false,
+  failValidate: false,
+  failValidateFromCall: Number.POSITIVE_INFINITY as number,
+  pixels: Buffer.from("adapter-document-png"),
+  prepareCalls: 0,
+  preparedViewport: null as Playwright.ViewportSize | null,
+  timeline: [] as string[],
+  validateCalls: 0,
+  reset: () => {
+    documentReviewControl.captureCalls = 0;
+    documentReviewControl.disposeCalls = 0;
+    documentReviewControl.failCapture = false;
+    documentReviewControl.failValidate = false;
+    documentReviewControl.failValidateFromCall = Number.POSITIVE_INFINITY;
+    documentReviewControl.prepareCalls = 0;
+    documentReviewControl.preparedViewport = null;
+    documentReviewControl.timeline = [];
+    documentReviewControl.validateCalls = 0;
+  },
+};
+
+mock.module("./callback-document-review", () => ({
+  callbackDocumentReviewViewport: { width: 1440, height: 1000 },
+  prepareCallbackDocumentReview: async (
+    page: Playwright.Page,
+    _baseOrigin: string,
+    viewport: Playwright.ViewportSize
+  ) => {
+    documentReviewControl.prepareCalls += 1;
+    documentReviewControl.preparedViewport = { ...viewport };
+    documentReviewControl.timeline.push("adapter-prepare");
+    await page.setViewportSize(viewport);
+    return {
+      validate: (): void => {
+        documentReviewControl.validateCalls += 1;
+        documentReviewControl.timeline.push("adapter-validate");
+        if (
+          documentReviewControl.failValidate ||
+          documentReviewControl.validateCalls >=
+            documentReviewControl.failValidateFromCall
+        )
+          throw new Error("receipt is not valid");
+      },
+      capture: async (): Promise<Buffer> => {
+        documentReviewControl.captureCalls += 1;
+        documentReviewControl.timeline.push("adapter-capture");
+        if (documentReviewControl.failCapture)
+          throw new Error("adapter capture failed");
+        return documentReviewControl.pixels;
+      },
+      dispose: async (): Promise<void> => {
+        documentReviewControl.disposeCalls += 1;
+        documentReviewControl.timeline.push("adapter-dispose");
+      },
+    };
+  },
+}));
+
+const { withCallbackHandoffReview } = await import("./callback-handoff");
 
 type CallbackFakePageOptions = {
   readonly continueError?: Error;
@@ -38,8 +116,12 @@ type CallbackFakePage = {
   readonly dispatch: (
     url: string,
     options?: {
+      readonly frame?: Playwright.Frame;
       readonly headers?: Record<string, string>;
+      readonly isNavigationRequest?: boolean;
       readonly method?: string;
+      readonly pageUrl?: string;
+      readonly resourceType?: string;
     }
   ) => Promise<boolean>;
   readonly events: () => readonly string[];
@@ -193,6 +275,7 @@ const makeCallbackFakePage = (
     },
     url: () => currentUrl,
     viewportSize: () => currentViewport,
+    mainFrame: () => fakeMainFrame,
   });
 
   const dispatch: CallbackFakePage["dispatch"] = async (
@@ -211,12 +294,15 @@ const makeCallbackFakePage = (
       },
     });
     const request = Object.assign({} as Playwright.Request, {
+      frame: () => requestOptions.frame ?? fakeMainFrame,
       headers: () => requestOptions.headers ?? { rsc: "1" },
+      isNavigationRequest: () => requestOptions.isNavigationRequest ?? false,
       method: () => requestOptions.method ?? "GET",
+      resourceType: () => requestOptions.resourceType ?? "fetch",
     });
     if (!routeHandler)
       throw new Error("callback handoff route was not installed");
-    currentUrl = callbackUrl;
+    currentUrl = requestOptions.pageUrl ?? callbackUrl;
     await routeHandler(route, request);
     return true;
   };
@@ -337,6 +423,7 @@ describe("account callback handoff review", () => {
 
   beforeEach(() => {
     writeFileSpy = createWriteFileSpy();
+    documentReviewControl.reset();
   });
 
   afterEach(() => {
@@ -488,6 +575,274 @@ describe("account callback handoff review", () => {
     expect(fakePage.continueCallCount()).toBe(7);
     expect(fakePage.unrouteCallCount()).toBe(1);
   });
+
+  for (const [name, requestOverrides] of [
+    [
+      "a contradictory RSC navigation document",
+      {
+        headers: { rsc: "1" },
+        isNavigationRequest: true,
+        resourceType: "document",
+      },
+    ],
+    [
+      "a subframe document navigation",
+      {
+        frame: fakeSubFrame,
+        headers: {},
+        isNavigationRequest: true,
+        resourceType: "document",
+      },
+    ],
+    ["a plain fetch without rsc", { headers: {}, resourceType: "fetch" }],
+    [
+      "a prefetched document navigation",
+      {
+        headers: { "next-router-prefetch": "1" },
+        isNavigationRequest: true,
+        resourceType: "document",
+      },
+    ],
+  ] as const) {
+    test(`rejects ${name}`, async () => {
+      const fakePage = makeCallbackFakePage();
+
+      await expect(
+        withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+          await fakePage.dispatch(accountUrl, requestOverrides);
+        })
+      ).rejects.toThrow(callbackHandoffFailureMessage);
+
+      expect(fakePage.screenshotCalls).toHaveLength(0);
+      expect(fakePage.continueCallCount()).toBe(1);
+      expect(fakePage.unrouteCallCount()).toBe(1);
+    });
+  }
+
+  test("reviews a held main-frame document through the adapter before forwarding", async () => {
+    const fakePage = makeCallbackFakePage();
+    documentReviewControl.timeline = fakePage.events() as string[];
+
+    await withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+      documentReviewControl.timeline.push("run-case");
+      await fakePage.dispatch(accountUrl, {
+        headers: {},
+        isNavigationRequest: true,
+        resourceType: "document",
+      });
+    });
+
+    expect(documentReviewControl.prepareCalls).toBe(1);
+    expect(documentReviewControl.preparedViewport).toEqual({
+      width: 1440,
+      height: 1000,
+    });
+    const timeline = fakePage.events();
+    expect(timeline.indexOf("adapter-prepare")).toBeLessThan(
+      timeline.indexOf("run-case")
+    );
+    expect(timeline.indexOf("adapter-validate")).toBeLessThan(
+      timeline.indexOf("adapter-capture")
+    );
+    expect(timeline.indexOf("adapter-capture")).toBeLessThan(
+      timeline.indexOf("continue")
+    );
+    expect(timeline.indexOf("continue")).toBeLessThan(
+      timeline.indexOf("adapter-dispose")
+    );
+    expect(documentReviewControl.captureCalls).toBe(1);
+    expect(documentReviewControl.disposeCalls).toBe(1);
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        documentReviewControl.pixels,
+      ],
+    ]);
+    expect(fakePage.continueCallCount()).toBe(1);
+    expect(fakePage.unrouteCallCount()).toBe(1);
+  });
+
+  test("fails closed on a failed adapter receipt and still forwards once", async () => {
+    const fakePage = makeCallbackFakePage();
+    documentReviewControl.failValidate = true;
+    documentReviewControl.timeline = fakePage.events() as string[];
+
+    await expect(
+      withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+        await fakePage.dispatch(accountUrl, {
+          headers: {},
+          isNavigationRequest: true,
+          resourceType: "document",
+        });
+      })
+    ).rejects.toThrow(callbackHandoffFailureMessage);
+
+    expect(fakePage.events().indexOf("continue")).toBeLessThan(
+      fakePage.events().indexOf("adapter-dispose")
+    );
+    expect(documentReviewControl.validateCalls).toBeGreaterThan(0);
+    expect(documentReviewControl.captureCalls).toBe(0);
+    expect(documentReviewControl.disposeCalls).toBe(1);
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    expect(fakePage.continueCallCount()).toBe(1);
+    expect(fakePage.unrouteCallCount()).toBe(1);
+  });
+
+  test("does not persist when the context is invalidated between capture and persistence", async () => {
+    const fakePage = makeCallbackFakePage();
+    documentReviewControl.failValidateFromCall = 2;
+    documentReviewControl.timeline = fakePage.events() as string[];
+
+    await expect(
+      withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+        await fakePage.dispatch(accountUrl, {
+          headers: {},
+          isNavigationRequest: true,
+          resourceType: "document",
+        });
+      })
+    ).rejects.toThrow(callbackHandoffFailureMessage);
+
+    expect(documentReviewControl.validateCalls).toBeGreaterThanOrEqual(2);
+    expect(documentReviewControl.captureCalls).toBe(1);
+    expect(fakePage.events().indexOf("continue")).toBeLessThan(
+      fakePage.events().indexOf("adapter-dispose")
+    );
+    expect(documentReviewControl.disposeCalls).toBe(1);
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    expect(fakePage.continueCallCount()).toBe(1);
+    expect(fakePage.unrouteCallCount()).toBe(1);
+  });
+
+  test("does not persist when the context is invalidated between mkdir and write", async () => {
+    const fakePage = makeCallbackFakePage();
+    documentReviewControl.failValidateFromCall = 3;
+    documentReviewControl.timeline = fakePage.events() as string[];
+
+    await expect(
+      withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+        await fakePage.dispatch(accountUrl, {
+          headers: {},
+          isNavigationRequest: true,
+          resourceType: "document",
+        });
+      })
+    ).rejects.toThrow(callbackHandoffFailureMessage);
+
+    // Calls 1-2 passed (pre-capture and pre-mkdir); only the final
+    // revalidation before the write observes the invalidated context.
+    expect(documentReviewControl.validateCalls).toBe(3);
+    expect(documentReviewControl.captureCalls).toBe(1);
+    expect(fakePage.events().indexOf("continue")).toBeLessThan(
+      fakePage.events().indexOf("adapter-dispose")
+    );
+    expect(documentReviewControl.disposeCalls).toBe(1);
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    expect(fakePage.continueCallCount()).toBe(1);
+    expect(fakePage.unrouteCallCount()).toBe(1);
+  });
+
+  test("fails closed on an adapter capture failure and still forwards once", async () => {
+    const fakePage = makeCallbackFakePage();
+    documentReviewControl.failCapture = true;
+    documentReviewControl.timeline = fakePage.events() as string[];
+
+    await expect(
+      withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+        await fakePage.dispatch(accountUrl, {
+          headers: {},
+          isNavigationRequest: true,
+          resourceType: "document",
+        });
+      })
+    ).rejects.toThrow(callbackHandoffFailureMessage);
+
+    expect(fakePage.events().indexOf("continue")).toBeLessThan(
+      fakePage.events().indexOf("adapter-dispose")
+    );
+    expect(documentReviewControl.captureCalls).toBe(1);
+    expect(documentReviewControl.disposeCalls).toBe(1);
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+    expect(fakePage.continueCallCount()).toBe(1);
+    expect(fakePage.unrouteCallCount()).toBe(1);
+  });
+
+  test("preserves the run case failure over document review failure", async () => {
+    const fakePage = makeCallbackFakePage();
+    documentReviewControl.failValidate = true;
+    const runCaseFailure = new Error("original run case failure");
+
+    await expect(
+      withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+        await fakePage.dispatch(accountUrl, {
+          headers: {},
+          isNavigationRequest: true,
+          resourceType: "document",
+        });
+        throw runCaseFailure;
+      })
+    ).rejects.toBe(runCaseFailure);
+
+    expect(fakePage.continueCallCount()).toBe(1);
+    expect(documentReviewControl.disposeCalls).toBe(1);
+    expect(fakePage.unrouteCallCount()).toBe(1);
+  });
+
+  test("accepts a callback URL with exactly one canonical attempt parameter", async () => {
+    const fakePage = makeCallbackFakePage();
+
+    await withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+      await fakePage.dispatch(accountUrl, {
+        pageUrl: `${callbackUrl}?attempt=${attemptUuid}`,
+      });
+    });
+
+    expect(fakePage.screenshotCalls).toHaveLength(1);
+    expect(fakePage.continueCallCount()).toBe(1);
+    expect(fakePage.unrouteCallCount()).toBe(1);
+  });
+
+  for (const [name, pageUrl] of [
+    ["a malformed attempt UUID", `${callbackUrl}?attempt=not-a-uuid`],
+    [
+      "a non-canonical uppercase attempt UUID",
+      `${callbackUrl}?attempt=${attemptUuid.toUpperCase()}`,
+    ],
+    ["an unknown parameter", `${callbackUrl}?unknown=synthetic-value`],
+    ["a token parameter", `${callbackUrl}?token=synthetic-secret-token`],
+    [
+      "a duplicated attempt parameter",
+      `${callbackUrl}?attempt=${attemptUuid}&attempt=${attemptUuid}`,
+    ],
+    [
+      "an attempt parameter with an extra parameter",
+      `${callbackUrl}?attempt=${attemptUuid}&extra=1`,
+    ],
+    ["a fragment", `${callbackUrl}#review-state`],
+    [
+      "a foreign origin",
+      `https://other.example.test/en-US/auth/callback?attempt=${attemptUuid}`,
+    ],
+  ] as const) {
+    test(`rejects ${name} before capture`, async () => {
+      const fakePage = makeCallbackFakePage();
+
+      await expect(
+        withCallbackHandoffReview(fakePage.page, baseUrl, async () => {
+          await fakePage.dispatch(accountUrl, { pageUrl });
+        })
+      ).rejects.toThrow(callbackHandoffFailureMessage);
+
+      expect(fakePage.screenshotCalls).toHaveLength(0);
+      expect(fakePage.continueCallCount()).toBe(1);
+      expect(fakePage.unrouteCallCount()).toBe(1);
+    });
+  }
 
   test("fails closed when no qualifying request is observed", async () => {
     const fakePage = makeCallbackFakePage();

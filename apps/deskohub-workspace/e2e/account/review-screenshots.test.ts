@@ -9,6 +9,7 @@ import {
   type AccountReviewTarget,
   captureAccountReview,
   captureReservationStatusReview,
+  persistCallbackDocumentReview,
   withSignInPendingReview,
 } from "./review-screenshots";
 
@@ -24,6 +25,7 @@ const accountReviewArtifactDirectory = resolve(
   "../../e2e-artifacts/account-review"
 );
 const captureFailureMessage = "Account review screenshot capture failed";
+const attemptUuid = "0f0a9c1e-7b62-4c8d-9e21-53ab2f0d4c7a";
 const privateLinkedAccountQueries = [
   "",
   "?section=reservations",
@@ -65,6 +67,7 @@ const validTargets = [
     filename: "callback-loading-desktop.png",
     path: "/en-US/auth/callback",
     query: "",
+    queries: ["", `?attempt=${attemptUuid}`],
     target: "callback-loading-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
@@ -708,6 +711,31 @@ describe("account review screenshot capture", () => {
       url: `${baseUrl}/en-US/auth/callback?_rsc=synthetic-cache-key`,
     },
     {
+      name: "a callback loading attempt UUID that is malformed",
+      target: "callback-loading-desktop",
+      url: `${baseUrl}/en-US/auth/callback?attempt=not-a-uuid`,
+    },
+    {
+      name: "a callback loading attempt UUID that is not canonical",
+      target: "callback-loading-desktop",
+      url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid.toUpperCase()}`,
+    },
+    {
+      name: "a callback loading attempt UUID with an extra parameter",
+      target: "callback-loading-desktop",
+      url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}&extra=1`,
+    },
+    {
+      name: "a callback loading token parameter",
+      target: "callback-loading-desktop",
+      url: `${baseUrl}/en-US/auth/callback?token=synthetic-secret-token`,
+    },
+    {
+      name: "a callback loading duplicated attempt parameter",
+      target: "callback-loading-desktop",
+      url: `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}&attempt=${attemptUuid}`,
+    },
+    {
       name: "a callback hash",
       target: "callback-loading-desktop",
       url: `${baseUrl}/en-US/auth/callback#review-state`,
@@ -1053,6 +1081,112 @@ describe("account review screenshot capture", () => {
         expect(writeFileSpy?.mock.calls).toHaveLength(0);
       });
     });
+  });
+
+  test("persists the fixed callback target with the supplied held-document validator", async () => {
+    const fakePage = makeFakePage(
+      `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}`
+    );
+    let validatorCalls = 0;
+    const pixels = Buffer.from("held-document-png");
+
+    await persistCallbackDocumentReview(fakePage.page, baseUrl, pixels, () => {
+      validatorCalls += 1;
+    });
+
+    expect(validatorCalls).toBe(2);
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(fakePage.viewportChanges).toHaveLength(0);
+    expect(fakePage.fontReadyCalls()).toBe(0);
+    expect(writeFileSpy?.mock.calls).toEqual([
+      [
+        resolve(accountReviewArtifactDirectory, "callback-loading-desktop.png"),
+        pixels,
+      ],
+    ]);
+  });
+
+  test("does not write when the supplied held-document validator fails", async () => {
+    const fakePage = makeFakePage(
+      `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}`
+    );
+
+    await expect(
+      persistCallbackDocumentReview(
+        fakePage.page,
+        baseUrl,
+        screenshotBuffer,
+        () => {
+          throw new Error("receipt is not valid");
+        }
+      )
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+  });
+
+  test("keeps the shared URL checks before the held-document validator", async () => {
+    const fakePage = makeFakePage(
+      `${baseUrl}/en-US/auth/callback?attempt=not-a-uuid`
+    );
+
+    await expect(
+      persistCallbackDocumentReview(
+        fakePage.page,
+        baseUrl,
+        screenshotBuffer,
+        () => undefined
+      )
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+  });
+
+  test("does not write after an aborted persistence", async () => {
+    const fakePage = makeFakePage(
+      `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}`
+    );
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      persistCallbackDocumentReview(
+        fakePage.page,
+        baseUrl,
+        screenshotBuffer,
+        () => undefined,
+        { signal: controller.signal }
+      )
+    ).rejects.toThrow(captureFailureMessage);
+
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
+  });
+
+  test("revalidates before the write and does not write after mid-preparation invalidation", async () => {
+    const fakePage = makeFakePage(
+      `${baseUrl}/en-US/auth/callback?attempt=${attemptUuid}`
+    );
+    let validatorCalls = 0;
+
+    await expect(
+      persistCallbackDocumentReview(
+        fakePage.page,
+        baseUrl,
+        screenshotBuffer,
+        () => {
+          validatorCalls += 1;
+          if (validatorCalls >= 2) throw new Error("context was invalidated");
+        }
+      )
+    ).rejects.toThrow(captureFailureMessage);
+
+    // The generic persistence preparation invokes the validator twice: once
+    // before the mkdir and once between the mkdir and the write. The second
+    // invocation observed the invalidated context, so nothing was written.
+    expect(validatorCalls).toBe(2);
+    expect(fakePage.screenshotCalls).toHaveLength(0);
+    expect(writeFileSpy?.mock.calls).toHaveLength(0);
   });
 
   test("does not write when the callback loading status is removed after capture", async () => {

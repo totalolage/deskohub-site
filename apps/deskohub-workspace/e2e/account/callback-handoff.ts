@@ -1,9 +1,17 @@
 import type * as Playwright from "@playwright/test";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { captureAccountReview } from "./review-screenshots";
+import { isExactCallbackUrl } from "./callback-url";
+import {
+  callbackDocumentReviewViewport,
+  prepareCallbackDocumentReview,
+  type CallbackDocumentReview,
+} from "./callback-document-review";
+import {
+  captureAccountReview,
+  persistCallbackDocumentReview,
+} from "./review-screenshots";
 
 const accountPath = "/en-US/account";
-const callbackPath = "/en-US/auth/callback";
 const callbackLoadingName = "Loading sign-in…";
 const callbackLoadingSelector =
   '[data-slot="auth-callback-loading"][role="status"][aria-busy="true"]';
@@ -64,27 +72,49 @@ const waitForCallbackOperation = async <A>(
   }
 };
 
-const isExactCallbackUrl = (page: Playwright.Page, baseOrigin: string) => {
-  try {
-    const url = new URL(page.url());
-    return (
-      url.origin === baseOrigin &&
-      url.pathname === callbackPath &&
-      url.search === "" &&
-      url.hash === ""
-    );
-  } catch {
-    return false;
-  }
-};
+const hasCallbackPrefetchSignal = (headers: Record<string, string>): boolean =>
+  headers["next-router-prefetch"] !== undefined ||
+  headers.purpose === "prefetch";
 
-const isQualifyingAccountRequest = (request: Playwright.Request) => {
+/**
+ * The qualifying main-frame document navigation is reviewed through the
+ * receipt-backed document adapter because a held document request blocks every
+ * Playwright page-DOM protocol operation. The legitimate RSC data fetch for
+ * the callback page keeps the locator-based review flow.
+ */
+const isMainDocumentRequest = (request: Playwright.Request): boolean =>
+  request.resourceType() === "document" && request.headers().rsc === undefined;
+
+/**
+ * The production callback hands off through `window.location.replace`, so the
+ * genuine qualifying request is a GET main-frame document navigation. The
+ * legitimate RSC data fetch for the callback page keeps qualifying so the
+ * review flow covers the client-router request too. Everything else fails:
+ * POST, prefetches, subframe documents, plain fetches without `rsc`, and
+ * contradictory shapes such as an RSC navigation document.
+ */
+const isQualifyingAccountRequest = (
+  request: Playwright.Request,
+  page: Playwright.Page
+): boolean => {
   const headers = request.headers();
+  if (headers.rsc !== undefined) {
+    // Retained RSC branch: only a legitimate GET rsc1 fetch request.
+    return (
+      request.method() === "GET" &&
+      headers.rsc === "1" &&
+      request.resourceType() === "fetch" &&
+      !request.isNavigationRequest() &&
+      !hasCallbackPrefetchSignal(headers)
+    );
+  }
+  // Main-qualifying branch: the real main-frame document navigation.
   return (
     request.method() === "GET" &&
-    headers.rsc === "1" &&
-    headers["next-router-prefetch"] === undefined &&
-    headers.purpose !== "prefetch"
+    request.resourceType() === "document" &&
+    request.isNavigationRequest() &&
+    request.frame() === page.mainFrame() &&
+    !hasCallbackPrefetchSignal(headers)
   );
 };
 
@@ -239,6 +269,7 @@ export const withCallbackHandoffReview = async (
   let qualifyingRoute: Playwright.Route | undefined;
   let cleanupDeadline: number | undefined;
   let continuationPromise: Promise<void> | undefined;
+  let documentReview: CallbackDocumentReview | undefined;
   const handlerPromises: Promise<void>[] = [];
 
   const beginCleanup = () => {
@@ -269,7 +300,7 @@ export const withCallbackHandoffReview = async (
   const handleAccountRoute: AccountRouteHandler = (route, request) => {
     let isQualifying = false;
     try {
-      isQualifying = isQualifyingAccountRequest(request);
+      isQualifying = isQualifyingAccountRequest(request, page);
     } catch {
       reviewFailed = true;
     }
@@ -282,29 +313,62 @@ export const withCallbackHandoffReview = async (
 
     observedQualifyingRequest = true;
     qualifyingRoute = route;
+    const documentQualifying = isMainDocumentRequest(request);
     const handlerPromise = (async () => {
       try {
         const deadline = Date.now() + workspaceE2ETimeouts.browserAction;
-        const loadingElement = await waitForCallbackLoading(
-          page,
-          baseOrigin,
-          deadline,
-          abortController.signal
-        );
-        await captureAccountReview(page, baseUrl, "callback-loading-desktop", {
-          deadline,
-          signal: abortController.signal,
-        });
-        if (!isExactCallbackUrl(page, baseOrigin))
-          throw callbackHandoffFailure();
-        if (
-          !(await waitForCallbackOperation(
-            () => loadingElementIsVisible(loadingElement),
+        if (documentQualifying) {
+          // Held document: validate and capture through the receipt-backed
+          // adapter; no page-DOM protocol operation runs while the request is
+          // held.
+          const review = documentReview;
+          if (!review) throw callbackHandoffFailure();
+          review.validate();
+          const pixels = await review.capture({
+            deadline,
+            signal: abortController.signal,
+          });
+          // The receipt stays valid across capture, so every write
+          // preparation revalidates through the adapter, and the strict
+          // callback URL grammar is rechecked explicitly as well.
+          await persistCallbackDocumentReview(
+            page,
+            baseUrl,
+            pixels,
+            () => {
+              review.validate();
+              if (!isExactCallbackUrl(page, baseOrigin))
+                throw callbackHandoffFailure();
+            },
+            { deadline, signal: abortController.signal }
+          );
+        } else {
+          const loadingElement = await waitForCallbackLoading(
+            page,
+            baseOrigin,
             deadline,
             abortController.signal
-          ))
-        )
-          throw callbackHandoffFailure();
+          );
+          await captureAccountReview(
+            page,
+            baseUrl,
+            "callback-loading-desktop",
+            {
+              deadline,
+              signal: abortController.signal,
+            }
+          );
+          if (!isExactCallbackUrl(page, baseOrigin))
+            throw callbackHandoffFailure();
+          if (
+            !(await waitForCallbackOperation(
+              () => loadingElementIsVisible(loadingElement),
+              deadline,
+              abortController.signal
+            ))
+          )
+            throw callbackHandoffFailure();
+        }
       } catch {
         reviewFailed = true;
       } finally {
@@ -321,6 +385,17 @@ export const withCallbackHandoffReview = async (
     await waitForCallbackOperation(
       () => page.route(accountRouteMatcher, handleAccountRoute),
       Date.now() + workspaceE2ETimeouts.browserAction
+    );
+    // The document review adapter is prepared before the case can navigate so
+    // its init script and CDP binding exist before the held document request.
+    documentReview = await prepareCallbackDocumentReview(
+      page,
+      baseUrl,
+      { ...callbackDocumentReviewViewport },
+      {
+        deadline: Date.now() + workspaceE2ETimeouts.browserAction,
+        signal: abortController.signal,
+      }
     );
     try {
       await runCase();
@@ -348,6 +423,19 @@ export const withCallbackHandoffReview = async (
       try {
         await waitForCallbackOperation(
           () => handlerPromise,
+          sharedCleanupDeadline
+        );
+      } catch {
+        reviewFailed = true;
+      }
+    }
+    // Disposed only after the held-route continuation and every handler
+    // promise have settled.
+    if (documentReview) {
+      const review = documentReview;
+      try {
+        await waitForCallbackOperation(
+          () => review.dispose(),
           sharedCleanupDeadline
         );
       } catch {

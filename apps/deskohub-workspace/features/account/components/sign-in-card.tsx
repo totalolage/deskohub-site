@@ -1,9 +1,9 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { authClient } from "@/features/account/auth.client";
+import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -17,17 +17,19 @@ type SignInCardProps = {
 export function SignInCard({ locale }: SignInCardProps) {
   const [requested, setRequested] = useState(false);
   const [failed, setFailed] = useState(false);
+  const authReturn = useMemo(
+    () => createAuthReturnLifecycle({ locale }),
+    [locale]
+  );
+
+  useEffect(() => authReturn.cancel, [authReturn]);
 
   const requestLink = async (formData: FormData) => {
     const email = String(formData.get("email") ?? "").trim();
     if (!email) return;
     setFailed(false);
     try {
-      const result = await authClient.signIn.magicLink({
-        email,
-        callbackURL: `/${locale}/auth/callback`,
-        metadata: { locale },
-      });
+      const result = await authReturn.sendMagicLink(email);
       if (result.error) {
         setFailed(true);
         return;
@@ -52,7 +54,10 @@ export function SignInCard({ locale }: SignInCardProps) {
             type="button"
             variant="secondary"
             className="mt-8"
-            onClick={() => setRequested(false)}
+            onClick={() => {
+              authReturn.cancel();
+              setRequested(false);
+            }}
           >
             {m.accountSignInAcceptedAgain({}, { locale })}
           </Button>

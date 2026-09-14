@@ -5,6 +5,7 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { workspaceDir } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
+import { isExactCallbackUrlString } from "./callback-url";
 
 export type AccountReviewTarget =
   | "completion-mobile375x900"
@@ -314,6 +315,11 @@ const validateAccountReviewPage = (
     (isPrivateLinkedAccountTarget(target) &&
       isAllowedPrivateLinkedAccountQuery(pageUrl.search)) ||
     (!isPrivateLinkedAccountTarget(target) && pageUrl.search === "") ||
+    // The callback-loading capture reuses the shared callback URL grammar so a
+    // canonical attempt parameter stays allowed; all other callback queries
+    // keep failing closed.
+    (target === "callback-loading-desktop" &&
+      isExactCallbackUrlString(page.url(), base.origin)) ||
     (target === "callback-failed-desktop" &&
       pageUrl.search === "?error=INVALID_TOKEN");
   const allowedPaths =
@@ -419,6 +425,17 @@ const validateCallbackLoadingCapture = async (
   remainingAccountReviewBudget(deadline);
 };
 
+/**
+ * A capture validator for the held callback document. The default validates
+ * the loading landmarks through Playwright DOM operations; receipt-backed
+ * callers supply the adapter validator instead.
+ */
+type CallbackCaptureValidator = (
+  page: Playwright.Page,
+  deadline: number,
+  signal?: AbortSignal
+) => Promise<void> | void;
+
 const persistAccountReview = async (
   page: Playwright.Page,
   baseUrl: string,
@@ -426,14 +443,20 @@ const persistAccountReview = async (
   metadata: AccountReviewTargetMetadata,
   screenshot: Buffer,
   deadline: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  validateCallbackCapture: CallbackCaptureValidator = validateCallbackLoadingCapture
 ): Promise<void> => {
   const validateBeforeWrite = async () => {
     throwIfAccountReviewAborted(signal);
     remainingAccountReviewBudget(deadline);
     validateAccountReviewPage(page, baseUrl, target, metadata);
-    if (target === "callback-loading-desktop")
-      await validateCallbackLoadingCapture(page, deadline, signal);
+    if (target === "callback-loading-desktop") {
+      try {
+        await validateCallbackCapture(page, deadline, signal);
+      } catch {
+        throw accountReviewCaptureFailure();
+      }
+    }
     throwIfAccountReviewAborted(signal);
     remainingAccountReviewBudget(deadline);
   };
@@ -520,6 +543,41 @@ const captureAccountReviewWithMetadata = async (
   }
 
   if (captureFailed) throw accountReviewCaptureFailure();
+};
+
+/**
+ * Persistence for the receipt-backed callback document review. The target is
+ * fixed to the callback-loading-desktop review artifact; the caller supplies
+ * the synchronous held-document validator, so no Playwright DOM operation runs
+ * while the qualifying request is held. The shared URL checks and revalidation
+ * before the mkdir/write still apply; there is no generic public bypass.
+ */
+export const persistCallbackDocumentReview = async (
+  page: Playwright.Page,
+  baseUrl: string,
+  pixels: Buffer,
+  validate: () => void,
+  options: {
+    readonly deadline?: number;
+    readonly signal?: AbortSignal;
+  } = {}
+): Promise<void> => {
+  const metadata = accountReviewTargetMetadata["callback-loading-desktop"];
+  if (!metadata) throw accountReviewCaptureFailure();
+  const deadline =
+    options.deadline ?? Date.now() + workspaceE2ETimeouts.browserAction;
+  await persistAccountReview(
+    page,
+    baseUrl,
+    "callback-loading-desktop",
+    metadata,
+    pixels,
+    deadline,
+    options.signal,
+    () => {
+      validate();
+    }
+  );
 };
 
 export const captureAccountReview = async (

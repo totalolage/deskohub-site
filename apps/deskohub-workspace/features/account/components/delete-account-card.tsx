@@ -2,14 +2,14 @@
 
 import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { deleteCustomerAccount } from "@/features/account/actions";
 import {
   beginAnalyticsAccountTransition,
   completeAnalyticsAccountSignOut,
   refreshAnalyticsAccountIdentity,
 } from "@/features/account/analytics-identity";
-import { authClient } from "@/features/account/auth.client";
+import { createAuthReturnLifecycle } from "@/features/account/auth-return";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -54,6 +54,16 @@ export function DeleteAccountCard({
   const [reauthSending, setReauthSending] = useState(false);
   const [reauthFailed, setReauthFailed] = useState(false);
   const allowNextUnload = useAllowNextUnload();
+  const authReturn = useMemo(
+    () =>
+      createAuthReturnLifecycle({
+        locale,
+        requireFreshSession: true,
+      }),
+    [locale]
+  );
+
+  useEffect(() => authReturn.cancel, [authReturn]);
 
   const { execute, isExecuting, result, reset } = useWorkspaceAction(
     deleteCustomerAccount,
@@ -92,11 +102,7 @@ export function DeleteAccountCard({
     setReauthFailed(false);
     setReauthSending(true);
     try {
-      const linkResult = await authClient.signIn.magicLink({
-        email,
-        callbackURL: `/${locale}/auth/callback`,
-        metadata: { locale },
-      });
+      const linkResult = await authReturn.sendMagicLink(email);
       if (linkResult.error) {
         setReauthFailed(true);
         return;
@@ -112,6 +118,7 @@ export function DeleteAccountCard({
   const closeDialog = (nextOpen: boolean) => {
     setOpen(nextOpen);
     if (!nextOpen) {
+      authReturn.cancel();
       setConfirmed(false);
       setReauthRequired(false);
       setReauthLinkSent(false);
