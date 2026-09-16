@@ -66,7 +66,7 @@ export function ProfileScreen({
   return (
     <section
       aria-labelledby={titleId}
-      className="min-w-0 rounded-2xl border border-[#dfe4ec] bg-white p-5 sm:p-8 [&_input]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))] [&_select]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]"
+      className="-mx-4 min-w-0 rounded-none border-y border-[#dfe4ec] bg-white p-5 sm:-mx-6 sm:p-8 md:mx-0 md:rounded-2xl md:border [&_input]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))] [&_select]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]"
       data-slot="profile-screen"
     >
       <h2

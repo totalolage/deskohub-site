@@ -67,12 +67,15 @@ export function LegalScreen({
         </nav>
       </div>
 
-      <CookieSettings locale={locale} />
-
-      <MarketingPreferencesForm
-        accountsEnabled={accountsEnabled}
+      <CookieSettings
+        additionalPreferences={
+          <MarketingPreferencesForm
+            accountsEnabled={accountsEnabled}
+            locale={locale}
+            state={marketingPreferences ?? { status: "unavailable" }}
+          />
+        }
         locale={locale}
-        state={marketingPreferences ?? { status: "unavailable" }}
       />
 
       <div className="mt-8 border-t border-[#e5e9ef] pt-6">

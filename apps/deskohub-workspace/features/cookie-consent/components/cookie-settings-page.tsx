@@ -1,12 +1,12 @@
 "use client";
 
+import { type ReactNode, useRef, useState } from "react";
 import {
   type ConsentCategory,
   useCookieConsent,
 } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
-import { Button } from "@/shared/components/ui/button";
-import { Checkbox } from "@/shared/components/ui/checkbox";
+import { Switch } from "@/shared/components/ui/switch";
 
 const consentCategories: ConsentCategory[] = [
   "necessary",
@@ -36,30 +36,46 @@ const categoryMessageGetters = {
 
 export interface CookieSettingsProps {
   readonly locale: Locale;
+  readonly additionalPreferences?: ReactNode;
 }
 
-export function CookieSettings({ locale }: CookieSettingsProps) {
-  const { acceptAll, rejectAll, acceptCategory, rejectCategory, isAccepted } =
-    useCookieConsent();
+export function CookieSettings({
+  locale,
+  additionalPreferences,
+}: CookieSettingsProps) {
+  const { acceptCategory, rejectCategory, isAccepted } = useCookieConsent();
   const preferences = {
     necessary: true,
     analytics: isAccepted("analytics"),
     marketing: isAccepted("marketing"),
     preferences: isAccepted("preferences"),
   } satisfies Record<ConsentCategory, boolean>;
+  const [pendingCategories, setPendingCategories] = useState<
+    ReadonlySet<ConsentCategory>
+  >(() => new Set<ConsentCategory>());
+  const [erroredCategory, setErroredCategory] =
+    useState<ConsentCategory | null>(null);
+  const pendingCategoriesRef = useRef(new Set<ConsentCategory>());
 
-  const handleToggle = (
-    category: ConsentCategory,
-    checked: boolean | "indeterminate"
-  ) => {
+  const handleToggle = (category: ConsentCategory, nextChecked: boolean) => {
     if (category === "necessary") return;
+    if (pendingCategoriesRef.current.has(category)) return;
 
-    if (checked === true) {
-      acceptCategory(category);
-      return;
-    }
-
-    rejectCategory(category);
+    setErroredCategory(null);
+    pendingCategoriesRef.current.add(category);
+    setPendingCategories(new Set(pendingCategoriesRef.current));
+    void Promise.resolve().then(async () => {
+      try {
+        await (nextChecked
+          ? acceptCategory(category)
+          : rejectCategory(category));
+      } catch {
+        setErroredCategory(category);
+      } finally {
+        pendingCategoriesRef.current.delete(category);
+        setPendingCategories(new Set(pendingCategoriesRef.current));
+      }
+    });
   };
 
   return (
@@ -70,27 +86,13 @@ export function CookieSettings({ locale }: CookieSettingsProps) {
           category={category}
           locale={locale}
           checked={preferences[category]}
+          pending={pendingCategories.has(category)}
+          errored={erroredCategory === category}
           onToggle={(nextChecked) => handleToggle(category, nextChecked)}
         />
       ))}
 
-      <div className="flex min-w-0 flex-wrap gap-4 pt-2">
-        <Button
-          onClick={acceptAll}
-          type="button"
-          className="h-12 max-w-full whitespace-normal px-6 text-left text-xs uppercase tracking-[0.16em]"
-        >
-          {m.cookieSettingsAcceptAll({}, { locale })}
-        </Button>
-        <Button
-          onClick={rejectAll}
-          type="button"
-          variant="secondary"
-          className="h-12 max-w-full whitespace-normal px-6 text-left text-xs uppercase tracking-[0.16em]"
-        >
-          {m.cookieSettingsRejectAll({}, { locale })}
-        </Button>
-      </div>
+      {additionalPreferences}
     </div>
   );
 }
@@ -99,24 +101,27 @@ type CookieCategoryCardProps = {
   category: ConsentCategory;
   locale: Locale;
   checked: boolean;
-  onToggle: (checked: boolean | "indeterminate") => void;
+  pending: boolean;
+  errored: boolean;
+  onToggle: (checked: boolean) => void;
 };
 
 function CookieCategoryCard({
   category,
   locale,
   checked,
+  pending,
+  errored,
   onToggle,
 }: CookieCategoryCardProps) {
   const messages = categoryMessageGetters[category];
-  const checkboxId = `cookie-category-${category}`;
-  const descriptionId = `${checkboxId}-description`;
-  const stateId = `${checkboxId}-state`;
-  const titleId = `${checkboxId}-title`;
+  const switchId = `cookie-category-${category}`;
+  const descriptionId = `${switchId}-description`;
+  const titleId = `${switchId}-title`;
 
   return (
-    <article className="flex min-w-0 flex-col gap-5 rounded-[1.5rem] border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
-      <div className="min-w-0 max-w-2xl space-y-2">
+    <article className="flex min-w-0 items-start justify-between gap-5 rounded-2xl border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:p-6">
+      <div className="min-w-0 flex-1 space-y-2">
         <h2 id={titleId} className="break-words text-2xl leading-tight">
           {messages.title({}, { locale })}
         </h2>
@@ -126,27 +131,24 @@ function CookieCategoryCard({
         >
           {messages.description({}, { locale })}
         </p>
+        {errored && (
+          <p
+            role="alert"
+            className="text-sm font-semibold leading-6 text-red-700"
+          >
+            {m.errorPageTitle({}, { locale })}
+          </p>
+        )}
       </div>
 
-      <div className="inline-flex max-w-full min-w-0 flex-wrap items-center gap-3 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue">
-        <Checkbox
-          id={checkboxId}
-          checked={checked}
-          onCheckedChange={onToggle}
-          disabled={category === "necessary"}
-          aria-describedby={descriptionId}
-          aria-labelledby={`${titleId} ${stateId}`}
-        />
-        <label
-          id={stateId}
-          htmlFor={checkboxId}
-          className="cursor-pointer break-words"
-        >
-          {checked
-            ? m.cookieSettingsToggleEnabled({}, { locale })
-            : m.cookieSettingsToggleDisabled({}, { locale })}
-        </label>
-      </div>
+      <Switch
+        id={switchId}
+        checked={checked}
+        onCheckedChange={onToggle}
+        disabled={category === "necessary" || pending}
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+      />
     </article>
   );
 }

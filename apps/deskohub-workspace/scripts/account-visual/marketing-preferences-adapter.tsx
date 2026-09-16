@@ -1,5 +1,6 @@
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
+import { CookieSettings } from "@/features/cookie-consent/components/cookie-settings-page";
 import { MarketingPreferencesForm } from "@/features/legal/components/marketing-preferences-form";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { useNavigationState } from "./stubs/next-navigation";
@@ -97,7 +98,7 @@ const isContextReplaceable = (
 export const accountVisualAdapterMetadata = {
   owner: "marketing preferences controlled browser adapter",
   fixture:
-    "synthetic marketing-preferences states with local controlled actions; component-only evidence",
+    "synthetic marketing-preferences states inside real CookieSettings via additionalPreferences slot with local controlled actions; component-only evidence",
 } as const;
 
 export function MarketingPreferencesAdapter({
@@ -131,21 +132,28 @@ export function MarketingPreferencesAdapter({
         </h1>
       </header>
       <div className="mx-auto min-w-0 max-w-3xl">
-        <MarketingPreferencesForm
-          accountsEnabled={accountsEnabled}
+        <CookieSettings
+          additionalPreferences={
+            <>
+              <MarketingPreferencesForm
+                accountsEnabled={accountsEnabled}
+                locale={locale}
+                state={state}
+              />
+              {isContextReplaceable(state) && (
+                <button
+                  className="mt-6 h-auto max-w-full whitespace-normal rounded-full border border-navy-blue/20 bg-white px-4 py-2 text-left text-sm font-semibold leading-5 text-navy-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
+                  data-marketing-preferences-replace-context
+                  onClick={replaceContext}
+                  type="button"
+                >
+                  Replace synthetic context
+                </button>
+              )}
+            </>
+          }
           locale={locale}
-          state={state}
         />
-        {isContextReplaceable(state) && (
-          <button
-            className="mt-6 h-auto max-w-full whitespace-normal rounded-full border border-navy-blue/20 bg-white px-4 py-2 text-left text-sm font-semibold leading-5 text-navy-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
-            data-marketing-preferences-replace-context
-            onClick={replaceContext}
-            type="button"
-          >
-            Replace synthetic context
-          </button>
-        )}
       </div>
     </main>
   );

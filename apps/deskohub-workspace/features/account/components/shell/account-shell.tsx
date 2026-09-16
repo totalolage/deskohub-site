@@ -149,7 +149,7 @@ export function AccountShell({
                   return (
                     <Button
                       aria-current={isActive ? "page" : undefined}
-                      className={`min-h-[44px] shrink-0 snap-start whitespace-nowrap rounded-2xl px-3 text-[15px] font-semibold focus-visible:ring-inset focus-visible:ring-offset-0 ${buttonStateClassName}`}
+                      className={`min-h-[44px] shrink-0 snap-start whitespace-nowrap rounded-none md:rounded-2xl px-3 text-[15px] font-semibold focus-visible:ring-inset focus-visible:ring-offset-0 ${buttonStateClassName}`}
                       data-account-section={section.key}
                       disabled={disabledSections.includes(section.key)}
                       key={section.key}

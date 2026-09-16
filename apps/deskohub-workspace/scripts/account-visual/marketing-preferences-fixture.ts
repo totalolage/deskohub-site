@@ -233,7 +233,9 @@ const outcomeFor = (action: ActionName) => {
   const params = new URLSearchParams(globalThis.location.search);
   return (params.get(action + "Outcome") ?? params.get("outcome")) === "error"
     ? "error"
-    : "success";
+    : (params.get(action + "Outcome") ?? params.get("outcome")) === "transport"
+      ? "transport"
+      : "success";
 };
 
 const delayFor = () => {
@@ -247,6 +249,9 @@ const delayFor = () => {
 const execute = async (action: ActionName, input: ActionInput): Promise<ActionResult> => {
   actionLog.events.push({ action, input });
   await new Promise<void>((resolve) => setTimeout(resolve, delayFor()));
+  if (outcomeFor(action) === "transport") {
+    throw new Error("synthetic " + action + " transport failure");
+  }
   if (outcomeFor(action) === "error") {
     return { validationErrors: { controlled: true } };
   }
@@ -259,6 +264,103 @@ export const confirmMarketingManagementAction = (input: ActionInput) =>
   execute("confirm", input);
 export const saveMarketingPreferencesAction = (input: ActionInput) =>
   execute("save", input);
+`;
+
+const controlledCookieConsentSource = `
+import { useCallback, useState } from "react";
+
+export type ConsentCategory =
+  | "necessary"
+  | "analytics"
+  | "marketing"
+  | "preferences";
+
+const optionalCategories = ["analytics", "marketing", "preferences"];
+const cookieSearchParam = (category: ConsentCategory) =>
+  "cookie" + category[0].toUpperCase() + category.slice(1);
+
+const readInitialAcceptedCategories = (): ConsentCategory[] => {
+  if (globalThis.window === undefined) return ["necessary"];
+  const params = new URLSearchParams(globalThis.location.search);
+  const accepted: ConsentCategory[] = ["necessary"];
+  for (const category of optionalCategories) {
+    if (params.get(cookieSearchParam(category)) === "on") accepted.push(category);
+  }
+  return accepted;
+};
+
+const cookieActionDelayMs = () => {
+  const value = Number.parseInt(
+    new URLSearchParams(globalThis.location.search).get("cookieDelay") ?? "24",
+    10
+  );
+  return Number.isFinite(value) && value >= 0 ? value : 24;
+};
+
+const cookieActionOutcome = () =>
+  new URLSearchParams(globalThis.location.search).get("cookieOutcome") ===
+  "error"
+    ? "error"
+    : "success";
+
+const runCookieAction = async () => {
+  await new Promise<void>((resolve) => setTimeout(resolve, cookieActionDelayMs()));
+  if (cookieActionOutcome() === "error") {
+    throw new Error("synthetic cookie consent action failure");
+  }
+};
+
+export function useCookieConsent() {
+  const [acceptedCategories, setAcceptedCategories] =
+    useState<ConsentCategory[]>(readInitialAcceptedCategories);
+
+  const setCategoryAccepted = (category: ConsentCategory, accepted: boolean) => {
+    setAcceptedCategories((current) =>
+      current.includes(category) === accepted
+        ? current
+        : accepted
+          ? [...current, category]
+          : current.filter((item) => item !== category)
+    );
+  };
+
+  const acceptCategory = async (category: ConsentCategory) => {
+    if (category === "necessary") return;
+    setCategoryAccepted(category, true);
+    await runCookieAction();
+  };
+
+  const rejectCategory = async (category: ConsentCategory) => {
+    if (category === "necessary") return;
+    setCategoryAccepted(category, false);
+    await runCookieAction();
+  };
+
+  const acceptAll = async () => {
+    setAcceptedCategories(["necessary", ...optionalCategories]);
+    await runCookieAction();
+  };
+
+  const rejectAll = async () => {
+    setAcceptedCategories(["necessary"]);
+    await runCookieAction();
+  };
+
+  const showPreferences = () => undefined;
+
+  const isAccepted = (category: ConsentCategory) =>
+    acceptedCategories.includes(category);
+
+  return {
+    acceptedCategories,
+    acceptAll,
+    rejectAll,
+    showPreferences,
+    acceptCategory,
+    rejectCategory,
+    isAccepted,
+  };
+}
 `;
 
 const controlledHookSource = `
@@ -298,6 +400,15 @@ export function useWorkspaceAction(action: Action, options: ActionOptions) {
       return nextResult;
     } catch (error) {
       setIsExecuting(false);
+      const logScope = globalThis as typeof globalThis & {
+        readonly __marketingPreferencesActionLog?: {
+          readonly events?: unknown[];
+        };
+      };
+      logScope.__marketingPreferencesActionLog?.events?.push({
+        action: "transport-error",
+        input: {},
+      });
       options.onTransportError?.({ error, input });
       throw error;
     }
@@ -372,6 +483,7 @@ const makeBuildPlugin = ({
   const virtualNamespace = "marketing-preferences-controlled-renderer";
   const actionModulePath = "controlled-actions";
   const hookModulePath = "controlled-hook";
+  const cookieHookModulePath = "controlled-cookie-consent";
 
   return {
     name: "marketing-preferences-controlled-renderer",
@@ -384,6 +496,10 @@ const makeBuildPlugin = ({
         { filter: /^@\/shared\/utils\/use-workspace-action$/ },
         () => ({ namespace: virtualNamespace, path: hookModulePath })
       );
+      build.onResolve({ filter: /^@\/features\/cookie-consent$/ }, () => ({
+        namespace: virtualNamespace,
+        path: cookieHookModulePath,
+      }));
       build.onResolve({ filter: /^next\/navigation$/ }, () => ({
         path: nextNavigationStubPath,
       }));
@@ -394,6 +510,10 @@ const makeBuildPlugin = ({
       build.onLoad(
         { filter: /^controlled-hook$/, namespace: virtualNamespace },
         () => ({ contents: controlledHookSource, loader: "ts" })
+      );
+      build.onLoad(
+        { filter: /^controlled-cookie-consent$/, namespace: virtualNamespace },
+        () => ({ contents: controlledCookieConsentSource, loader: "ts" })
       );
       build.onResolve({ filter: /^@\// }, async (args) => ({
         path: await resolveModulePath(join(appRoot, args.path.slice(2))),
@@ -538,6 +658,7 @@ type BrowserLocale = (typeof browserLocales)[number];
 const browserViewports = [
   { height: 900, name: "320", width: 320 },
   { height: 900, name: "375", width: 375 },
+  { height: 900, name: "480", width: 480 },
   { height: 900, name: "desktop", width: 1280 },
 ] as const;
 type BrowserViewport = (typeof browserViewports)[number];
@@ -594,7 +715,7 @@ type BrowserFocusTarget = {
 };
 
 type BrowserActionEvent = {
-  readonly action: "clear" | "confirm" | "save";
+  readonly action: "clear" | "confirm" | "save" | "transport-error";
   readonly input: {
     readonly confirmed?: boolean;
     readonly context?: string;
@@ -607,6 +728,7 @@ type BrowserActionEvent = {
 type BrowserScreenshotEvidence = {
   readonly actions: readonly BrowserActionEvent[];
   readonly focusSequence: readonly BrowserFocusTarget[];
+  readonly fullPage: true;
   readonly geometry: BrowserGeometry;
   readonly locale: BrowserLocale;
   readonly phase: string;
@@ -626,6 +748,7 @@ type BrowserFixturePaths = {
   readonly artifactRoot: string;
   readonly italicFontPath: string;
   readonly productionCopyPath: string;
+  readonly productionCookieSettingsPath: string;
   readonly productionFormPath: string;
   readonly regularFontPath: string;
   readonly rendererCssPath: string;
@@ -777,7 +900,7 @@ const readBrowserGeometry = async (page: Page): Promise<BrowserGeometry> =>
     };
     const interactive = Array.from(
       document.querySelectorAll<HTMLElement>(
-        "button, a, input, select, textarea, [role='checkbox']"
+        "button, a, input, select, textarea, [role='checkbox'], [role='switch']"
       )
     ).map((element) => ({
       disabled:
@@ -849,15 +972,26 @@ const readBrowserFocusTarget = async (
     const element = document.activeElement;
     if (!(element instanceof HTMLElement) || element === document.body)
       return null;
+    const labelledBy = element.getAttribute("aria-labelledby");
+    const labelledByLabel = labelledBy
+      ? labelledBy
+          .split(/\s+/)
+          .map((id) => document.getElementById(id)?.textContent?.trim() ?? "")
+          .filter(Boolean)
+          .join(" ")
+      : "";
     const label =
-      element.getAttribute("aria-label")?.trim() ??
-      (element.id
-        ? document
-            .querySelector<HTMLLabelElement>(
-              `label[for="${CSS.escape(element.id)}"]`
-            )
-            ?.textContent?.trim()
-        : undefined) ??
+      (
+        element.getAttribute("aria-label")?.trim() ||
+        labelledByLabel ||
+        (element.id
+          ? document
+              .querySelector<HTMLLabelElement>(
+                `label[for="${CSS.escape(element.id)}"]`
+              )
+              ?.textContent?.trim()
+          : undefined)
+      )?.replace(/\s+/g, " ") ??
       element.textContent?.trim().replace(/\s+/g, " ") ??
       "";
     return {
@@ -1004,12 +1138,17 @@ const browserScreenshot = async ({
     context.artifactRoot,
     `${phase}-${locale}-${viewport.name}-${scenario}.png`
   );
-  await page.screenshot({ animations: "disabled", path });
+  await page.screenshot({
+    animations: "disabled",
+    fullPage: true,
+    path,
+  });
   const { focusSequence, geometry } =
     await assertBrowserGeometryAndKeyboard(page);
   return {
     actions: await readBrowserActionLog(page),
     focusSequence,
+    fullPage: true,
     geometry,
     locale,
     phase,
@@ -1017,6 +1156,22 @@ const browserScreenshot = async ({
     screenshot: relative(context.repoRoot, path),
     viewport: viewport.name,
   } satisfies BrowserScreenshotEvidence;
+};
+
+const marketingSwitchFor = (page: Page) =>
+  page.locator("#marketing-preferences-switch");
+
+const assertCookieCategorySwitches = async (page: Page) => {
+  const necessary = page.locator("#cookie-category-necessary");
+  expect(await necessary.count()).toBe(1);
+  expect(await necessary.getAttribute("aria-checked")).toBe("true");
+  expect(await necessary.isDisabled()).toBe(true);
+  for (const category of ["analytics", "marketing", "preferences"]) {
+    const locator = page.locator(`#cookie-category-${category}`);
+    expect(await locator.count()).toBe(1);
+    expect(await locator.isDisabled()).toBe(false);
+    expect(await locator.getAttribute("aria-checked")).toBe("false");
+  }
 };
 
 const assertBrowserInitialState = async (
@@ -1029,6 +1184,8 @@ const assertBrowserInitialState = async (
     `[data-marketing-preferences="${browserScenarioStatus(scenario)}"]`
   );
   expect(await section.count()).toBe(1);
+  await assertCookieCategorySwitches(page);
+  const marketingSwitchCount = await marketingSwitchFor(page).count();
 
   if (scenario === "pending-link") {
     expect(
@@ -1037,7 +1194,7 @@ const assertBrowserInitialState = async (
     expect(
       await page.getByRole("button", { name: copy.clearAction }).count()
     ).toBe(1);
-    expect(await page.getByRole("checkbox").count()).toBe(0);
+    expect(marketingSwitchCount).toBe(0);
     expect(await page.getByText(copy.pendingDescription).count()).toBe(1);
     return;
   }
@@ -1052,7 +1209,7 @@ const assertBrowserInitialState = async (
         .getByRole("link", { name: copy.signInAction })
         .getAttribute("href")
     ).toBe(`/${locale}/auth/sign-in`);
-    expect(await page.getByRole("checkbox").count()).toBe(0);
+    expect(marketingSwitchCount).toBe(0);
     expect(
       await page.getByRole("button", { name: copy.continueAction }).count()
     ).toBe(0);
@@ -1064,7 +1221,7 @@ const assertBrowserInitialState = async (
     expect(
       await page.getByRole("link", { name: copy.signInAction }).count()
     ).toBe(0);
-    expect(await page.getByRole("checkbox").count()).toBe(0);
+    expect(marketingSwitchCount).toBe(0);
     expect(
       await page.getByRole("button", { name: copy.continueAction }).count()
     ).toBe(0);
@@ -1076,23 +1233,24 @@ const assertBrowserInitialState = async (
 
   const source = scenario.startsWith("link-") ? "link" : "account";
   const status = scenario.split("-")[1];
-  const expectedAction =
-    status === "active" ? copy.withdrawAction : copy.grantAction;
-  expect(await page.getByRole("checkbox").count()).toBe(1);
+  expect(marketingSwitchCount).toBe(1);
+  expect(await marketingSwitchFor(page).getAttribute("aria-checked")).toBe(
+    status === "active" ? "true" : "false"
+  );
+  expect(await marketingSwitchFor(page).isDisabled()).toBe(false);
   expect(
-    await page.getByRole("button", { name: expectedAction }).isDisabled()
-  ).toBe(true);
+    await page.getByRole("button", { name: copy.grantAction }).count()
+  ).toBe(0);
   expect(
-    await page
-      .getByText(source === "link" ? copy.linkContext : copy.accountContext)
-      .count()
-  ).toBe(1);
+    await page.getByRole("button", { name: copy.withdrawAction }).count()
+  ).toBe(0);
   expect(
     await page
       .getByText(source === "link" ? copy.accountContext : copy.linkContext)
       .count()
   ).toBe(0);
   if (source === "link") {
+    expect(await page.getByText(copy.linkContext).count()).toBe(1);
     expect(
       await page.getByRole("button", { name: copy.clearAction }).count()
     ).toBe(1);
@@ -1257,7 +1415,7 @@ const runBrowserPendingTransitions = async ({
       expect(await errorPage.getByText(copy.pendingDescription).count()).toBe(
         1
       );
-      expect(await errorPage.getByRole("checkbox").count()).toBe(0);
+      expect(await marketingSwitchFor(errorPage).count()).toBe(0);
       assertBrowserActionEvent((await readBrowserActionLog(errorPage))[0], {
         action: "confirm",
         input: { context: browserContextFor("pending-link") },
@@ -1305,35 +1463,40 @@ const runBrowserSaveTransitions = async ({
   try {
     const source = "account" as const;
     const granted = scenario !== "account-active";
-    const expectedAction = granted
-      ? marketingPreferencesFormCopy[locale].grantAction
-      : marketingPreferencesFormCopy[locale].withdrawAction;
-    for (const outcome of ["success", "error"] as const) {
+    for (const outcome of ["success", "error", "transport"] as const) {
       const page = await loadBrowserPage(
         pageContext,
         context.baseUrl,
         locale,
         scenario,
         problems,
-        { saveOutcome: outcome }
+        { delay: "200", saveOutcome: outcome }
       );
       try {
         const copy = marketingPreferencesFormCopy[locale];
-        const checkbox = page.getByRole("checkbox");
+        const marketingSwitch = marketingSwitchFor(page);
+        const initialChecked =
+          await marketingSwitch.getAttribute("aria-checked");
         expect(await readBrowserActionLog(page)).toEqual([]);
-        await checkbox.click();
-        const saveButton = page.getByRole("button", { name: expectedAction });
-        expect(await saveButton.isDisabled()).toBe(false);
-        await saveButton.click();
+        await marketingSwitch.click();
+        expect(await marketingSwitch.isDisabled()).toBe(true);
         if (outcome === "success") {
           await waitForBrowserBodyText(page, copy.saved);
+          expect(await marketingSwitch.getAttribute("aria-checked")).toBe(
+            granted ? "true" : "false"
+          );
         } else {
           await page
             .getByRole("alert")
             .waitFor({ state: "visible", timeout: 5_000 });
           await waitForBrowserBodyText(page, copy.saveError);
+          expect(await marketingSwitch.getAttribute("aria-checked")).toBe(
+            initialChecked
+          );
         }
-        assertBrowserActionEvent((await readBrowserActionLog(page))[0], {
+        expect(await marketingSwitch.isDisabled()).toBe(false);
+        const actionEvents = await readBrowserActionLog(page);
+        assertBrowserActionEvent(actionEvents[0], {
           action: "save",
           input: {
             context: browserContextFor(scenario),
@@ -1341,6 +1504,15 @@ const runBrowserSaveTransitions = async ({
             source,
           },
         });
+        if (outcome === "transport") {
+          expect(
+            actionEvents.some(({ action }) => action === "transport-error")
+          ).toBe(true);
+        } else if (outcome === "error") {
+          expect(
+            actionEvents.some(({ action }) => action === "transport-error")
+          ).toBe(false);
+        }
         evidence.push(
           await browserScreenshot({
             context,
@@ -1455,9 +1627,10 @@ const runBrowserContextReplacement = async ({
   );
   try {
     const copy = marketingPreferencesFormCopy[locale];
-    const checkbox = page.getByRole("checkbox");
-    await checkbox.click();
-    expect(await checkbox.getAttribute("aria-checked")).toBe("true");
+    const marketingSwitch = marketingSwitchFor(page);
+    await marketingSwitch.click();
+    await waitForBrowserBodyText(page, copy.saved);
+    expect(await marketingSwitch.getAttribute("aria-checked")).toBe("true");
     const before = await browserScreenshot({
       context,
       locale,
@@ -1477,15 +1650,19 @@ const runBrowserContextReplacement = async ({
     await page.waitForFunction(
       () =>
         document
-          .querySelector("[role='checkbox']")
+          .querySelector("#marketing-preferences-switch")
           ?.getAttribute("aria-checked") === "false",
       undefined,
       { timeout: 5_000 }
     );
-    expect(
-      await page.getByRole("button", { name: copy.grantAction }).isDisabled()
-    ).toBe(true);
-    expect(await readBrowserActionLog(page)).toEqual([]);
+    expect(await marketingSwitchFor(page).count()).toBe(1);
+    expect(await marketingSwitchFor(page).isDisabled()).toBe(false);
+    const eventsAfterReplacement = await readBrowserActionLog(page);
+    expect(eventsAfterReplacement).toHaveLength(1);
+    assertBrowserActionEvent(eventsAfterReplacement[0], {
+      action: "save",
+      input: { granted: true, source: "link" },
+    });
     const after = await browserScreenshot({
       context,
       locale,
@@ -1499,6 +1676,93 @@ const runBrowserContextReplacement = async ({
     await page.close();
     await pageContext.close();
   }
+};
+
+const runBrowserCookieToggleTransitions = async ({
+  context,
+  locale,
+  problems,
+  viewport,
+}: {
+  readonly context: BrowserFixtureRunContext;
+  readonly locale: BrowserLocale;
+  readonly problems: BrowserProblems;
+  readonly viewport: BrowserViewport;
+}) => {
+  const evidence: BrowserScreenshotEvidence[] = [];
+  const pageContext = await createBrowserContext(
+    context.browser,
+    context.baseUrl,
+    viewport,
+    locale,
+    problems
+  );
+  const page = await loadBrowserPage(
+    pageContext,
+    context.baseUrl,
+    locale,
+    "account-absent",
+    problems,
+    { cookieDelay: "250" }
+  );
+  try {
+    const marketingCookieSwitch = page.locator("#cookie-category-marketing");
+    const necessarySwitch = page.locator("#cookie-category-necessary");
+    const messagesSwitch = marketingSwitchFor(page);
+    expect(await marketingCookieSwitch.getAttribute("aria-checked")).toBe(
+      "false"
+    );
+    expect(await messagesSwitch.getAttribute("aria-checked")).toBe("false");
+    expect(await readBrowserActionLog(page)).toEqual([]);
+    await marketingCookieSwitch.click();
+    expect(await marketingCookieSwitch.isDisabled()).toBe(true);
+    expect(await marketingCookieSwitch.getAttribute("aria-checked")).toBe(
+      "true"
+    );
+    expect(await necessarySwitch.getAttribute("aria-checked")).toBe("true");
+    expect(await necessarySwitch.isDisabled()).toBe(true);
+    evidence.push(
+      await browserScreenshot({
+        context,
+        locale,
+        page,
+        phase: "cookie-toggle-pending",
+        scenario: "account-absent",
+        viewport,
+      })
+    );
+    await page.waitForFunction(
+      () =>
+        !(
+          document.getElementById(
+            "cookie-category-marketing"
+          ) as HTMLButtonElement | null
+        )?.disabled,
+      undefined,
+      { timeout: 5_000 }
+    );
+    expect(await marketingCookieSwitch.getAttribute("aria-checked")).toBe(
+      "true"
+    );
+    expect(await messagesSwitch.getAttribute("aria-checked")).toBe("false");
+    expect(await necessarySwitch.getAttribute("aria-checked")).toBe("true");
+    expect(await necessarySwitch.isDisabled()).toBe(true);
+    expect(await readBrowserActionLog(page)).toEqual([]);
+    evidence.push(
+      await browserScreenshot({
+        context,
+        locale,
+        page,
+        phase: "cookie-toggle-done",
+        scenario: "account-absent",
+        viewport,
+      })
+    );
+  } finally {
+    await page.close();
+    await pageContext.close();
+  }
+  return evidence;
 };
 
 const runBrowserAccountsDisabledChecks = async ({
@@ -1588,6 +1852,10 @@ const runMarketingPreferencesBrowserFixture = async ({
     productionFormPath: join(
       appRoot,
       "features/legal/components/marketing-preferences-form.tsx"
+    ),
+    productionCookieSettingsPath: join(
+      appRoot,
+      "features/cookie-consent/components/cookie-settings-page.tsx"
     ),
     regularFontPath: join(appRoot, "assets/fonts/Sculpin/regular.woff2"),
     rendererCssPath: join(import.meta.dir, "renderer.css"),
@@ -1697,12 +1965,24 @@ const runMarketingPreferencesBrowserFixture = async ({
             `${evidence.phase} ${locale}/${viewport.name}/${evidence.scenario} ${evidence.screenshot}`
           );
         }
+        for (const evidence of await runBrowserCookieToggleTransitions({
+          context,
+          locale,
+          problems,
+          viewport,
+        })) {
+          screenshots.push(evidence);
+          logLines.push(
+            `${evidence.phase} ${locale}/${viewport.name}/${evidence.scenario} ${evidence.screenshot}`
+          );
+        }
       }
     }
     expect(problems.externalRequests).toEqual([]);
     expect(problems.pageErrors).toEqual([]);
     expect(problems.consoleErrors).toEqual([]);
-    expect(screenshots).toHaveLength(126);
+    expect(screenshots).toHaveLength(208);
+    expect(screenshots.every(({ fullPage }) => fullPage)).toBe(true);
     expect(
       screenshots.every(
         ({ geometry }) =>
@@ -1726,10 +2006,15 @@ const runMarketingPreferencesBrowserFixture = async ({
       renderer: {
         adapter: relative(paths.repoRoot, paths.adapterPath),
         productionComponent: relative(paths.repoRoot, paths.productionFormPath),
+        productionCookieSettings: relative(
+          paths.repoRoot,
+          paths.productionCookieSettingsPath
+        ),
         productionCopy: relative(paths.repoRoot, paths.productionCopyPath),
         controlledModules: [
           "@/features/legal/actions",
           "@/shared/utils/use-workspace-action",
+          "@/features/cookie-consent",
         ],
         bundle: {
           entry: relative(paths.repoRoot, bundle.entryPath),
@@ -1757,6 +2042,12 @@ const runMarketingPreferencesBrowserFixture = async ({
         contextReplacementResetsConfirmation: true,
         noHorizontalOverflow: true,
         keyboardAccessibleLabels: true,
+        cookieSettingsComposition: true,
+        necessaryCategoryLockedOn: true,
+        cookieTogglesImmediateAndDisabledPending: true,
+        marketingMessagesSwitchDistinctFromCookieSwitches: true,
+        marketingSaveFailureRetainsChecked: true,
+        marketingSaveDisabledWhileInFlight: true,
       },
       problems,
       screenshots,
@@ -2252,7 +2543,7 @@ export async function compileMarketingPreferencesFixture({
   return validateFixtureSuccess(message, outputDirectory);
 }
 
-const defaultBrowserFixtureTimeoutMs = 295_000;
+const defaultBrowserFixtureTimeoutMs = 480_000;
 
 export async function verifyMarketingPreferencesBrowserFixture({
   appRoot,

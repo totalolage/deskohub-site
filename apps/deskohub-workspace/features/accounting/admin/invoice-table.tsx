@@ -8,11 +8,11 @@ import { AdministrationLink as Link } from "@/features/administration/admin-link
 import {
   AdministrationAlert,
   AdministrationDataTable,
-  AdministrationStatusBadge,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
 import { getAdministrationTableSortHref } from "@/features/administration/table-sort";
 import { Button } from "@/shared/components/ui/button";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { retryAdministrationInvoice } from "./actions";
 import type {
@@ -98,26 +98,18 @@ function InvoiceDeliveryBadge({
 }) {
   if (invoice.needsAttention) {
     return (
-      <AdministrationStatusBadge tone="attention">
+      <StatusBadge tone="attention">
         <CircleAlert aria-hidden className="size-3.5" /> Needs resend
-      </AdministrationStatusBadge>
+      </StatusBadge>
     );
   }
   if (
     invoice.delivery.customer === "accepted" &&
     invoice.delivery.internal === "accepted"
   ) {
-    return (
-      <AdministrationStatusBadge tone="positive">
-        Sent
-      </AdministrationStatusBadge>
-    );
+    return <StatusBadge tone="positive">Sent</StatusBadge>;
   }
-  return (
-    <AdministrationStatusBadge tone="neutral">
-      Sending
-    </AdministrationStatusBadge>
-  );
+  return <StatusBadge tone="neutral">Sending</StatusBadge>;
 }
 
 export function InvoiceAdministrationTable({

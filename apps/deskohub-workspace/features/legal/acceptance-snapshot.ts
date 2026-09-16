@@ -1,11 +1,11 @@
 import "server-only";
 
 import { createHash } from "node:crypto";
-import { Data, Effect, Predicate } from "effect";
-import { Children, isValidElement, type ReactNode } from "react";
+import { Data, Effect } from "effect";
 import type { Locale } from "@/features/i18n";
 import { getWorkspaceCanonicalUrl } from "@/shared/utils";
-import { getLegalDocument, type LegalDocumentContent } from "./content";
+import { getCanonicalLegalDocument } from "./canonical-document";
+import { getLegalDocument } from "./content";
 
 type CheckoutLegalDocumentKey =
   | "terms-and-conditions"
@@ -34,38 +34,6 @@ export class LegalAcceptanceSnapshotError extends Data.TaggedError(
 )<{
   readonly cause: unknown;
 }> {}
-
-function reactNodeToCanonicalText(node: ReactNode): string {
-  if (node === null || node === undefined || Predicate.isBoolean(node)) {
-    return "";
-  }
-
-  if (Predicate.isString(node) || Predicate.isNumber(node)) {
-    return String(node);
-  }
-
-  if (Array.isArray(node)) {
-    return Children.toArray(node).map(reactNodeToCanonicalText).join("");
-  }
-
-  if (isValidElement<{ children?: ReactNode }>(node)) {
-    return reactNodeToCanonicalText(node.props.children);
-  }
-
-  return "";
-}
-
-function getCanonicalLegalDocument(document: LegalDocumentContent): string {
-  return JSON.stringify({
-    title: document.title,
-    lead: document.lead,
-    updatedAt: document.updatedAt,
-    sections: document.sections.map((section) => ({
-      heading: section.heading,
-      body: section.body.map(reactNodeToCanonicalText),
-    })),
-  });
-}
 
 const createLegalDocumentHash = Effect.fn("createLegalDocumentHash")(
   (canonicalDocument: string) =>

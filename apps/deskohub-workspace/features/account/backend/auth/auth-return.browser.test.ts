@@ -19,14 +19,14 @@ import {
 } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { magicLink } from "better-auth/plugins";
-import { withCallbackHandoffReview } from "../../e2e/account/callback-handoff";
+import { withCallbackHandoffReview } from "../../../../e2e/account/callback-handoff";
 
-const APP_ROOT = resolve(import.meta.dir, "../..");
-const AUTH_RETURN_SOURCE = resolve(import.meta.dir, "auth-return.ts");
-const AUTH_CLIENT_SOURCE = resolve(import.meta.dir, "auth.client.ts");
+const APP_ROOT = resolve(import.meta.dir, "../../../..");
+const AUTH_RETURN_SOURCE = resolve(import.meta.dir, "../../auth-return.ts");
+const AUTH_CLIENT_SOURCE = resolve(import.meta.dir, "../../auth.client.ts");
 const CALLBACK_REDIRECT_SOURCE = resolve(
   import.meta.dir,
-  "components/auth-callback-redirect.tsx"
+  "../../components/auth-callback-redirect.tsx"
 );
 const REACT_SOURCE = resolve(APP_ROOT, "node_modules/react/index.js");
 const REACT_DOM_CLIENT_SOURCE = resolve(

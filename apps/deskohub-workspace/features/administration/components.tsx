@@ -57,10 +57,6 @@ export {
 } from "./reservation-table";
 export { AdministrationSortHead } from "./sort-head";
 export {
-  AdministrationStatusBadge,
-  type AdministrationStatusTone,
-} from "./status-badge";
-export {
   AdministrationResponsiveTable,
   AdministrationTableFrame,
 } from "./table-frame";

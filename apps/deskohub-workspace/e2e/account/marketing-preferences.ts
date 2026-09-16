@@ -5,12 +5,10 @@ import type { DotyposCustomerId } from "@deskohub/dotypos";
 import type { Browser, BrowserContext, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
-import { Effect, Predicate } from "effect";
-import { Children, isValidElement, type ReactNode } from "react";
+import { Effect } from "effect";
 import { customerMarketingConsents } from "@/db/schema/customer-marketing-consents";
 import { customerMarketingManagementTokens } from "@/db/schema/customer-marketing-management-tokens";
 import { marketingPreferencesFormCopy } from "@/features/legal/components/marketing-preferences-form.copy";
-import { getLegalDocument } from "@/features/legal/content";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
@@ -18,6 +16,7 @@ import { dismissLegalCookieConsent } from "../legal-cookie-consent";
 import { pollUntil } from "../polling";
 import { addRedaction, assert } from "../runtime";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
+import { getWorkspaceE2EMarketingDocumentHash } from "./marketing-document-hash";
 import {
   type AccountReviewTarget,
   captureAccountReview,
@@ -211,44 +210,12 @@ export const navigateWorkspaceE2EMarketingPreferences = async (
 const hashOpaqueToken = (token: string): string =>
   createHash("sha256").update(token, "utf8").digest("hex");
 
-const reactNodeToCanonicalText = (node: ReactNode): string => {
-  if (node === null || node === undefined || Predicate.isBoolean(node)) {
-    return "";
-  }
-
-  if (Predicate.isString(node) || Predicate.isNumber(node)) {
-    return String(node);
-  }
-
-  if (Array.isArray(node)) {
-    return Children.toArray(node).map(reactNodeToCanonicalText).join("");
-  }
-
-  if (isValidElement<{ readonly children?: ReactNode }>(node)) {
-    return reactNodeToCanonicalText(node.props.children);
-  }
-
-  return "";
-};
-
 const marketingCommunicationsDocumentHash = Effect.try({
   catch: () =>
     workspaceE2EError("Read marketing communications document hash failed", {
       operation: "read marketing communications document hash",
     }),
-  try: () => {
-    const document = getLegalDocument("en-US", "marketing-communications");
-    const canonicalDocument = JSON.stringify({
-      title: document.title,
-      lead: document.lead,
-      updatedAt: document.updatedAt,
-      sections: document.sections.map((section) => ({
-        heading: section.heading,
-        body: section.body.map(reactNodeToCanonicalText),
-      })),
-    });
-    return createHash("sha256").update(canonicalDocument).digest("hex");
-  },
+  try: () => getWorkspaceE2EMarketingDocumentHash(),
 });
 
 const rawMarketingLinkToken = Effect.try({
@@ -606,11 +573,20 @@ export const waitForWorkspaceE2EMarketingConsentPersistence = <
   }).pipe(Effect.asVoid);
 };
 
-const managedPreferenceSelector = (
+export const managedPreferenceSelector = (
   status: MarketingPreferenceStatus,
   source: MarketingPreferenceSource
 ) =>
   `[data-marketing-preferences=${JSON.stringify(status)}][data-marketing-preferences-source=${JSON.stringify(source)}]`;
+
+/**
+ * Status-independent managed-preference section locator. State transitions
+ * flip `data-marketing-preferences`, so a transition must target the section
+ * by source alone or the locator loses its target mid-save.
+ */
+export const managedPreferenceSourceSelector = (
+  source: MarketingPreferenceSource
+) => `[data-marketing-preferences-source=${JSON.stringify(source)}]`;
 
 const pendingPreferenceSelector = '[data-marketing-preferences="pending-link"]';
 const invalidPreferenceSelector = '[data-marketing-preferences="invalid-link"]';
@@ -636,47 +612,27 @@ const requireManagedPreference = async (
   await expect(section).toBeVisible({
     timeout: workspaceE2ETimeouts.uiTransition,
   });
-  const statusCopy =
-    status === "active"
-      ? marketingPreferencesCopy.statusActive
-      : marketingPreferencesCopy.statusWithdrawn;
-  const contextCopy =
-    source === "link"
-      ? marketingPreferencesCopy.linkContext
-      : marketingPreferencesCopy.accountContext;
-  const otherContextCopy =
-    source === "link"
-      ? marketingPreferencesCopy.accountContext
-      : marketingPreferencesCopy.linkContext;
-  const confirmationCopy =
-    status === "active"
-      ? marketingPreferencesCopy.withdrawConfirmation
-      : marketingPreferencesCopy.grantConfirmation;
-  const actionCopy =
-    status === "active"
-      ? marketingPreferencesCopy.withdrawAction
-      : marketingPreferencesCopy.grantAction;
-  await expect(section.getByText(statusCopy, { exact: true })).toHaveCount(1, {
+  const marketingSwitch = section.getByRole("switch", {
+    exact: true,
+    name: marketingPreferencesCopy.rowTitle,
+  });
+  // The form renders the link-context sentence only for link management; the
+  // status is expressed by the server-authoritative checked state, not copy.
+  await expect(
+    section.getByText(marketingPreferencesCopy.linkContext, { exact: true })
+  ).toHaveCount(source === "link" ? 1 : 0, {
     timeout: workspaceE2ETimeouts.uiTransition,
   });
-  await expect(section.getByText(contextCopy, { exact: true })).toHaveCount(1, {
+  await expect(marketingSwitch).toHaveCount(1, {
     timeout: workspaceE2ETimeouts.uiTransition,
   });
-  await expect(
-    section.getByText(otherContextCopy, { exact: true })
-  ).toHaveCount(0);
-  await expect(
-    section.getByRole("checkbox", {
-      exact: true,
-      name: confirmationCopy,
-    })
-  ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
-  await expect(
-    section.getByRole("button", {
-      exact: true,
-      name: actionCopy,
-    })
-  ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
+  await expect(marketingSwitch).toBeEnabled({
+    timeout: workspaceE2ETimeouts.uiTransition,
+  });
+  await expect(marketingSwitch).toBeChecked({
+    checked: status === "active",
+    timeout: workspaceE2ETimeouts.uiTransition,
+  });
   await expect(
     section.getByRole("button", {
       exact: true,
@@ -741,7 +697,7 @@ const requireInvalidLinkPreference = async (page: Page): Promise<Locator> => {
   await expect(
     section.locator("[data-marketing-preferences-source]")
   ).toHaveCount(0);
-  await expect(section.getByRole("checkbox", { exact: true })).toHaveCount(0);
+  await expect(section.getByRole("switch", { exact: true })).toHaveCount(0);
   await expect(section.locator("form")).toHaveCount(0);
   await expect(
     section.getByRole("button", {
@@ -788,7 +744,7 @@ const requireUnavailablePreference = async (page: Page): Promise<Locator> => {
   await expect(
     section.locator("[data-marketing-preferences-source]")
   ).toHaveCount(0);
-  await expect(section.getByRole("checkbox", { exact: true })).toHaveCount(0);
+  await expect(section.getByRole("switch", { exact: true })).toHaveCount(0);
   await expect(section.locator("form")).toHaveCount(0);
   await expect(
     section.getByRole("button", {
@@ -828,7 +784,7 @@ const requireRejectedReplayPreference = async (page: Page): Promise<void> => {
     }
   );
   await expect(section.locator("form")).toHaveCount(0);
-  await expect(section.getByRole("checkbox")).toHaveCount(0);
+  await expect(section.getByRole("switch", { exact: true })).toHaveCount(0);
   await expect(section.locator('button[type="submit"]')).toHaveCount(0);
 };
 
@@ -864,54 +820,34 @@ const submitManagedPreference = async ({
   readonly source: MarketingPreferenceSource;
   readonly status: MarketingPreferenceStatus;
 }): Promise<void> => {
-  const section = await requireManagedPreference(page, status, source);
-  const selector = managedPreferenceSelector(status, source);
-  const form = section.locator("form");
-  const confirmationCopy =
-    status === "active"
-      ? marketingPreferencesCopy.withdrawConfirmation
-      : marketingPreferencesCopy.grantConfirmation;
-  const actionCopy =
-    status === "active"
-      ? marketingPreferencesCopy.withdrawAction
-      : marketingPreferencesCopy.grantAction;
-  const checkbox = form.getByRole("checkbox", {
+  const sourceSelector = managedPreferenceSourceSelector(source);
+  const sourceSection = page.locator(sourceSelector);
+  const marketingSwitch = sourceSection.getByRole("switch", {
     exact: true,
-    name: confirmationCopy,
-  });
-  const submit = form.getByRole("button", {
-    exact: true,
-    name: actionCopy,
+    name: marketingPreferencesCopy.rowTitle,
   });
 
-  await expect(form).toHaveCount(1);
-  await expect(checkbox).toHaveCount(1);
-  await expect(submit).toHaveCount(1);
-  await waitForReactHandler(page, `${selector} form`, "onSubmit");
+  await expect(sourceSection).toHaveCount(1);
+  await expect(marketingSwitch).toHaveCount(1);
+  await expect(marketingSwitch).toBeEnabled();
   await waitForReactHandler(
     page,
-    `${selector} form [role="checkbox"]`,
+    `${sourceSelector} [role="switch"]`,
     "onClick"
   );
   signal.throwIfAborted();
 
-  const initialChecked = await checkbox.getAttribute("aria-checked");
-  if (initialChecked !== "false") {
-    throw new Error(
-      "Marketing preference confirmation did not start unchecked"
-    );
-  }
-
-  signal.throwIfAborted();
-  await checkbox.click({ timeout: workspaceE2ETimeouts.browserAction });
-  await expect(checkbox).toHaveAttribute("aria-checked", "true", {
-    timeout: workspaceE2ETimeouts.browserAction,
-  });
-  await expect(submit).toBeEnabled({
-    timeout: workspaceE2ETimeouts.browserAction,
+  // The switch is server-authoritative: it starts reflecting the persisted
+  // status and only settles on the new state after the immediate save lands.
+  await expect(marketingSwitch).toBeChecked({
+    checked: status === "active",
   });
   signal.throwIfAborted();
-  await submit.click({ timeout: workspaceE2ETimeouts.browserAction });
+  await marketingSwitch.click({ timeout: workspaceE2ETimeouts.browserAction });
+  await expect(marketingSwitch).toBeChecked({
+    checked: desiredStatus === "active",
+    timeout: workspaceE2ETimeouts.browserAction,
+  });
   await requireManagedPreference(page, desiredStatus, source);
 };
 

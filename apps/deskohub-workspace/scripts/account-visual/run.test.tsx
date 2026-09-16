@@ -42,6 +42,7 @@ import {
   makeComparisonMetadata,
   parseCliArgs,
   parseRendererPort,
+  planConsentInteractions,
   readInitialDomProbe,
   readSelectedEmailProbe,
 } from "./run";
@@ -341,6 +342,153 @@ const runRendererCli = async (argumentsList: readonly string[]) => {
   const summary = JSON.parse(stdout) as { readonly outputDirectory: string };
   return Bun.file(join(summary.outputDirectory, "report.json")).json();
 };
+
+test("consent interaction plans visit each optional switch against observed state", () => {
+  const initial = {
+    necessary: true,
+    analytics: false,
+    marketing: false,
+    preferences: false,
+  };
+
+  expect(planConsentInteractions(initial, true)).toEqual([
+    {
+      category: "analytics",
+      expectedState: {
+        necessary: true,
+        analytics: true,
+        marketing: false,
+        preferences: false,
+      },
+    },
+    {
+      category: "marketing",
+      expectedState: {
+        necessary: true,
+        analytics: true,
+        marketing: true,
+        preferences: false,
+      },
+    },
+    {
+      category: "preferences",
+      expectedState: {
+        necessary: true,
+        analytics: true,
+        marketing: true,
+        preferences: true,
+      },
+    },
+  ]);
+
+  const allEnabled = {
+    necessary: true,
+    analytics: true,
+    marketing: true,
+    preferences: true,
+  };
+  expect(planConsentInteractions(allEnabled, false)).toEqual([
+    {
+      category: "analytics",
+      expectedState: {
+        necessary: true,
+        analytics: false,
+        marketing: true,
+        preferences: true,
+      },
+    },
+    {
+      category: "marketing",
+      expectedState: {
+        necessary: true,
+        analytics: false,
+        marketing: false,
+        preferences: true,
+      },
+    },
+    {
+      category: "preferences",
+      expectedState: {
+        necessary: true,
+        analytics: false,
+        marketing: false,
+        preferences: false,
+      },
+    },
+  ]);
+});
+
+test("consent interaction plans only visit switches whose observed state differs", () => {
+  expect(
+    planConsentInteractions(
+      {
+        necessary: true,
+        analytics: true,
+        marketing: true,
+        preferences: true,
+      },
+      true
+    )
+  ).toEqual([]);
+
+  const partiallyEnabled = {
+    necessary: true,
+    analytics: true,
+    marketing: false,
+    preferences: false,
+  };
+  expect(planConsentInteractions(partiallyEnabled, true)).toEqual([
+    {
+      category: "marketing",
+      expectedState: {
+        necessary: true,
+        analytics: true,
+        marketing: true,
+        preferences: false,
+      },
+    },
+    {
+      category: "preferences",
+      expectedState: {
+        necessary: true,
+        analytics: true,
+        marketing: true,
+        preferences: true,
+      },
+    },
+  ]);
+
+  expect(
+    planConsentInteractions(
+      {
+        necessary: true,
+        analytics: true,
+        marketing: true,
+        preferences: false,
+      },
+      false
+    )
+  ).toEqual([
+    {
+      category: "analytics",
+      expectedState: {
+        necessary: true,
+        analytics: false,
+        marketing: true,
+        preferences: false,
+      },
+    },
+    {
+      category: "marketing",
+      expectedState: {
+        necessary: true,
+        analytics: false,
+        marketing: false,
+        preferences: false,
+      },
+    },
+  ]);
+});
 
 test("renderer CLI failures propagate through the subprocess seam", async () => {
   await expect(

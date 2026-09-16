@@ -20,7 +20,6 @@ import {
 import { AdministrationLink as Link } from "@/features/administration/admin-link";
 import { AdministrationDataTable } from "@/features/administration/data-table";
 import { AdministrationAlert } from "@/features/administration/notice";
-import { AdministrationStatusBadge } from "@/features/administration/status-badge";
 import {
   formatWorkspaceMoney,
   type WorkspaceMoney,
@@ -36,6 +35,7 @@ import { generatePromotionCode } from "@/features/discounts/promotion-code";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import {
   defaultWorkspaceCurrency,
   findWorkspaceCurrencyDefinition,
@@ -140,11 +140,9 @@ export function DiscountCodesAdminTable({
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <AdministrationStatusBadge
-            tone={row.original.enabled ? "positive" : "neutral"}
-          >
+          <StatusBadge tone={row.original.enabled ? "positive" : "neutral"}>
             {row.original.enabled ? "Enabled" : "Disabled"}
-          </AdministrationStatusBadge>
+          </StatusBadge>
         ),
       },
       {
@@ -252,11 +250,9 @@ export function VouchersAdminTable({
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <AdministrationStatusBadge
-            tone={row.original.enabled ? "positive" : "neutral"}
-          >
+          <StatusBadge tone={row.original.enabled ? "positive" : "neutral"}>
             {row.original.enabled ? "Enabled" : "Disabled"}
-          </AdministrationStatusBadge>
+          </StatusBadge>
         ),
       },
       {
@@ -423,9 +419,7 @@ export function CalendarSalesAdminTable({
         accessorKey: "status",
         header: "Calendar status",
         cell: ({ row }) => (
-          <AdministrationStatusBadge tone="neutral">
-            {row.original.status}
-          </AdministrationStatusBadge>
+          <StatusBadge tone="neutral">{row.original.status}</StatusBadge>
         ),
       },
       {
@@ -521,9 +515,7 @@ function CalendarAssociationBadge({
   if (association.kind === "associated") {
     return (
       <div>
-        <AdministrationStatusBadge tone="positive">
-          Associated
-        </AdministrationStatusBadge>
+        <StatusBadge tone="positive">Associated</StatusBadge>
         <p className="mt-1 max-w-48 truncate text-xs text-navy-blue/70">
           {association.discountLabel}
         </p>
@@ -531,24 +523,12 @@ function CalendarAssociationBadge({
     );
   }
   if (association.kind === "missing-discount") {
-    return (
-      <AdministrationStatusBadge tone="attention">
-        Discount not found
-      </AdministrationStatusBadge>
-    );
+    return <StatusBadge tone="attention">Discount not found</StatusBadge>;
   }
   if (association.kind === "invalid-description") {
-    return (
-      <AdministrationStatusBadge tone="attention">
-        Invalid description
-      </AdministrationStatusBadge>
-    );
+    return <StatusBadge tone="attention">Invalid description</StatusBadge>;
   }
-  return (
-    <AdministrationStatusBadge tone="neutral">
-      No discount ID
-    </AdministrationStatusBadge>
-  );
+  return <StatusBadge tone="neutral">No discount ID</StatusBadge>;
 }
 
 export function CreateDiscountForm({

@@ -162,6 +162,33 @@ describe("ProfileScreen", () => {
     expect(markup).not.toMatch(/name="(?:email|language)"/);
   });
 
+  test("runs the outer boundary edge-to-edge below md and keeps desktop card radii", () => {
+    const markup = renderProfile();
+    const sectionClass = markup
+      .match(/<section[^>]*class="([^"]*)"/)?.[1]
+      ?.replaceAll("&amp;", "&");
+
+    expect(sectionClass).toBeDefined();
+    expect(sectionClass).toContain("-mx-4");
+    expect(sectionClass).toContain("sm:-mx-6");
+    expect(sectionClass).toContain("md:mx-0");
+    expect(sectionClass).toContain("rounded-none");
+    expect(sectionClass).toContain("md:rounded-2xl");
+    expect(sectionClass).toContain("border-y");
+    expect(sectionClass).toContain("md:border");
+    expect(sectionClass).not.toMatch(/(^| )border( |$)/);
+    expect(sectionClass).not.toContain("rounded-2xl border");
+    expect(sectionClass).toContain("p-5");
+    expect(sectionClass).toContain("sm:p-8");
+    expect(sectionClass).toContain("bg-white");
+    const selectTriggerRadius =
+      /<button[^>]*data-slot="select-trigger"[^>]*class="([^"]*)"/.exec(
+        markup
+      )?.[1];
+    expect(selectTriggerRadius).toContain("rounded-2xl");
+    expect(selectTriggerRadius).toContain("border");
+  });
+
   test("keeps a provided footer in one sticky, opaque, safe-area wrapper", () => {
     const markup = renderProfile({
       footer: <span data-footer-marker="profile-footer">Save profile</span>,

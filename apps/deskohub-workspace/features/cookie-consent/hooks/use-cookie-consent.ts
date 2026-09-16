@@ -75,10 +75,16 @@ export function useCookieConsent() {
   }, []);
 
   const acceptCategory = useCallback((category: ConsentCategory) => {
-    CookieConsent.acceptCategory(category);
+    const preferences = CookieConsent.getUserPreferences();
+    const current = (preferences?.acceptedCategories ||
+      []) as ConsentCategory[];
+    CookieConsent.acceptCategory([
+      ...new Set(["necessary", ...current, category]),
+    ]);
   }, []);
 
   const rejectCategory = useCallback((category: ConsentCategory) => {
+    if (category === "necessary") return;
     const preferences = CookieConsent.getUserPreferences();
     const current = (preferences?.acceptedCategories ||
       []) as ConsentCategory[];

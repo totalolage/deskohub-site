@@ -17,7 +17,6 @@ import {
   reservationStatusPath,
 } from "@/features/reservation/routes";
 import { GuardedLink } from "@/shared/components/guarded-link";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
 import {
   Card,
@@ -25,6 +24,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
+import {
+  StatusBadge,
+  type StatusTone,
+} from "@/shared/components/ui/status-badge";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { isMidnight } from "@/shared/utils/temporal";
 
@@ -74,16 +77,18 @@ const getStatusLabel = (status: CustomerReservationStatus, locale: Locale) => {
   }
 };
 
-const getStatusClassName = (status: CustomerReservationStatus) => {
+const getReservationStatusTone = (
+  status: CustomerReservationStatus
+): StatusTone => {
   switch (status) {
     case "confirmed":
-      return "border-aquamarine-green/35 bg-aquamarine-green/18 text-aquamarine-ink";
+      return "positive";
     case "cancelled":
-      return "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/55";
+      return "neutral";
     case "requires-attention":
-      return "border-red-700/20 bg-red-50 text-red-800";
+      return "attention";
     case "pending":
-      return "border-sunset-yellow/35 bg-sunset-yellow/18 text-navy-blue";
+      return "progress";
   }
 };
 
@@ -271,12 +276,13 @@ function FeaturedReservationItem({
       <Card className="min-w-0 overflow-hidden rounded-2xl border-[#e9b8a7] bg-white shadow-[0_18px_40px_-28px_rgba(0,2,79,0.35)]">
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-3 p-6 xl:py-4">
           <div className="flex min-w-0 max-w-full flex-1 flex-wrap items-center gap-3">
-            <Badge
-              className={`max-w-full min-w-0 break-words whitespace-normal ${getStatusClassName(reservation.status)}`}
+            <StatusBadge
+              className="max-w-full min-w-0 break-words whitespace-normal"
               data-account-reservation-status={reservation.status}
+              tone={getReservationStatusTone(reservation.status)}
             >
               {getStatusLabel(reservation.status, locale)}
-            </Badge>
+            </StatusBadge>
             <code className="min-w-0 max-w-full break-all font-mono text-sm text-[#64748b]">
               {reservation.id}
             </code>
@@ -494,12 +500,13 @@ function CompactReservationItem({
 
           <div className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center">
             <span className="sr-only">{copy.status}: </span>
-            <Badge
+            <StatusBadge
               className="max-w-full min-w-0 self-start break-words whitespace-normal"
               data-account-reservation-status={reservation.status}
+              tone={getReservationStatusTone(reservation.status)}
             >
               {getStatusLabel(reservation.status, locale)}
-            </Badge>
+            </StatusBadge>
             <ReservationDetailLink
               copy={copy}
               locale={locale}
@@ -640,12 +647,13 @@ function PastReservationTable({
                   <span className="block shrink-0 text-xs font-semibold uppercase tracking-[0.08em] text-[#64748b] xl:hidden">
                     {copy.status}
                   </span>
-                  <Badge
+                  <StatusBadge
                     className="max-w-full min-w-0 break-words whitespace-normal"
                     data-account-reservation-status={reservation.status}
+                    tone={getReservationStatusTone(reservation.status)}
                   >
                     {getStatusLabel(reservation.status, locale)}
-                  </Badge>
+                  </StatusBadge>
                 </div>
               </td>
               <td className="block min-w-0 px-0 pt-3 align-top text-right xl:table-cell xl:w-[16%] xl:px-3 xl:py-4">

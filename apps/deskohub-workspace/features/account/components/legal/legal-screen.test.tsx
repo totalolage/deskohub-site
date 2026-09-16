@@ -89,6 +89,26 @@ mock.module("vanilla-cookieconsent", () => ({
   showPreferences: () => undefined,
 }));
 
+// Register the consent hook explicitly so this suite cannot inherit another
+// test file's `@/features/cookie-consent` mock when bun collects suites in
+// one process; the hook delegates to the same state the provider mock above
+// drives.
+mock.module("@/features/cookie-consent", () => ({
+  useCookieConsent: () => ({
+    acceptCategory: (category: string) => {
+      acceptedCategories = [...new Set(getAcceptedCategories(category))];
+      onConsentChange?.();
+    },
+    isAccepted: (category: string) => acceptedCategories.includes(category),
+    rejectCategory: (category: string) => {
+      acceptedCategories = acceptedCategories.filter(
+        (accepted) => accepted !== category
+      );
+      onConsentChange?.();
+    },
+  }),
+}));
+
 const { CookieConsentProvider } = await import(
   "@/features/cookie-consent/components/cookie-consent-provider"
 );
@@ -158,13 +178,13 @@ test("renders immutable necessary consent and functional optional controls", asy
   const locale = "en-US" as const;
   const strings = legalScreenCopy[locale];
   const view = renderLegalScreen(locale);
-  const checkboxFor = (title: string) =>
-    view.getByRole("checkbox", { name: new RegExp(`^${title}`) });
+  const switchFor = (title: string) =>
+    view.getByRole("switch", { name: new RegExp(`^${title}`) });
 
-  const necessary = checkboxFor(m.cookieSettingsNecessaryTitle({}, { locale }));
-  const analytics = checkboxFor(m.cookieSettingsAnalyticsTitle({}, { locale }));
-  const marketing = checkboxFor(m.cookieSettingsMarketingTitle({}, { locale }));
-  const preferences = checkboxFor(
+  const necessary = switchFor(m.cookieSettingsNecessaryTitle({}, { locale }));
+  const analytics = switchFor(m.cookieSettingsAnalyticsTitle({}, { locale }));
+  const marketing = switchFor(m.cookieSettingsMarketingTitle({}, { locale }));
+  const preferences = switchFor(
     m.cookieSettingsPreferencesTitle({}, { locale })
   );
 
@@ -172,6 +192,16 @@ test("renders immutable necessary consent and functional optional controls", asy
   expect((necessary as HTMLButtonElement).disabled).toBe(true);
   expect(
     view.queryByRole("button", { name: strings.savePreferences })
+  ).toBeNull();
+  expect(
+    view.queryByRole("button", {
+      name: m.cookieSettingsAcceptAll({}, { locale }),
+    })
+  ).toBeNull();
+  expect(
+    view.queryByRole("button", {
+      name: m.cookieSettingsRejectAll({}, { locale }),
+    })
   ).toBeNull();
   expect(view.queryByRole("button", { name: strings.unavailable })).toBeNull();
   expect(view.queryByText(strings.analyticsDescription)).toBeNull();
@@ -186,9 +216,9 @@ test("renders immutable necessary consent and functional optional controls", asy
     view.container.querySelectorAll("[role='group'][tabindex='0']")
   ).toHaveLength(1);
 
-  for (const checkbox of [analytics, marketing, preferences]) {
-    expect(checkbox.getAttribute("aria-checked")).toBe("false");
-    expect((checkbox as HTMLButtonElement).disabled).toBe(false);
+  for (const optionalSwitch of [analytics, marketing, preferences]) {
+    expect(optionalSwitch.getAttribute("aria-checked")).toBe("false");
+    expect((optionalSwitch as HTMLButtonElement).disabled).toBe(false);
   }
 
   fireEvent.click(analytics);
@@ -201,27 +231,9 @@ test("renders immutable necessary consent and functional optional controls", asy
     expect(analytics.getAttribute("aria-checked")).toBe("false");
   });
 
-  fireEvent.click(
-    view.getByRole("button", {
-      name: m.cookieSettingsAcceptAll({}, { locale }),
-    })
-  );
+  fireEvent.click(marketing);
   await waitFor(() => {
-    for (const checkbox of [analytics, marketing, preferences]) {
-      expect(checkbox.getAttribute("aria-checked")).toBe("true");
-    }
-  });
-
-  fireEvent.click(
-    view.getByRole("button", {
-      name: m.cookieSettingsRejectAll({}, { locale }),
-    })
-  );
-  await waitFor(() => {
-    expect(necessary.getAttribute("aria-checked")).toBe("true");
-    for (const checkbox of [analytics, marketing, preferences]) {
-      expect(checkbox.getAttribute("aria-checked")).toBe("false");
-    }
+    expect(marketing.getAttribute("aria-checked")).toBe("true");
   });
 });
 
@@ -236,12 +248,18 @@ test("keeps consent controls wrapped and free of page-only shells", () => {
     expect(category.className).toContain("min-w-0");
     expect(category.querySelector("p")?.className).toContain("break-words");
   }
+});
 
-  const actions = view.getByRole("button", {
-    name: m.cookieSettingsAcceptAll({}, { locale: "en-US" }),
-  }).parentElement;
-  expect(actions?.className).toContain("flex-wrap");
-  expect(actions?.className).toContain("min-w-0");
+test("renders the marketing preferences block inside the shared cookie settings rows", () => {
+  const view = renderLegalScreen("en-US");
+
+  const marketing = view.getByTestId("legal-marketing-preferences");
+  const cookieRows = view.container.querySelectorAll("article");
+  expect(cookieRows).toHaveLength(4);
+  for (const row of cookieRows) {
+    expect(row.parentElement).toBe(marketing.parentElement);
+  }
+  expect(marketing.parentElement?.lastElementChild).toBe(marketing);
 });
 
 test("defaults the optional marketing preference state to unavailable", () => {

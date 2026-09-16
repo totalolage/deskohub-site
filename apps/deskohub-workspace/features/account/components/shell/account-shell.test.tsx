@@ -583,8 +583,14 @@ describe("AccountShell", () => {
       expect(button.className).toContain("shrink-0");
       expect(button.className).toContain("snap-start");
       expect(button.className).toContain("whitespace-nowrap");
+      expect(button.className).toContain("rounded-none md:rounded-2xl");
       expect(button.className).toContain("focus-visible:ring-inset");
       expect(button.className).toContain("focus-visible:ring-offset-0");
+    }
+    for (const section of sectionKeys) {
+      const desktopButton = getDesktopButton(view, section);
+      expect(desktopButton.className).toContain("rounded-2xl");
+      expect(desktopButton.className).not.toContain("rounded-none");
     }
     expect(navigation.querySelector('[role="tablist"]')).toBeNull();
     expect(navigation.querySelector('[role="tab"]')).toBeNull();

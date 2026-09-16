@@ -152,10 +152,17 @@ function renderForm(
   );
 }
 
-function getForm(view: ReturnType<typeof render>) {
-  const form = view.container.querySelector("form");
-  if (!form) throw new Error("Marketing preference form was not rendered");
-  return form;
+function getSwitch(
+  view: ReturnType<typeof render>,
+  name: string = marketingPreferencesFormCopy["en-US"].rowTitle
+) {
+  return view.getByRole("switch", { name });
+}
+
+function getArticle(view: ReturnType<typeof render>) {
+  const article = view.container.querySelector("article");
+  if (!article) throw new Error("Marketing preference row was not rendered");
+  return article;
 }
 
 test("renders every localized preference state", () => {
@@ -198,9 +205,9 @@ test("renders every localized preference state", () => {
       ).toBeTruthy();
 
       const stateCopy = {
-        absent: copy.statusAbsent,
-        active: copy.statusActive,
-        withdrawn: copy.statusWithdrawn,
+        absent: copy.rowTitle,
+        active: copy.rowTitle,
+        withdrawn: copy.rowTitle,
         "pending-link": copy.pendingDescription,
         unavailable: copy.unavailableDescription,
         "invalid-link": copy.invalidLinkDescription,
@@ -211,7 +218,7 @@ test("renders every localized preference state", () => {
   }
 });
 
-test("keeps a dedicated-link submission on link source and requires confirmation", async () => {
+test("saves a grant immediately without a confirmation gate", async () => {
   const copy = marketingPreferencesFormCopy["en-US"];
   const context = "synthetic-link-save-context";
   const view = renderForm({
@@ -220,16 +227,10 @@ test("keeps a dedicated-link submission on link source and requires confirmation
     status: "absent",
     source: "link",
   });
-  const saveButton = view.getByRole("button", { name: copy.grantAction });
-  const form = getForm(view);
+  const marketingSwitch = getSwitch(view, copy.rowTitle);
 
-  expect((saveButton as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.submit(form);
-  expect(saveMarketingPreferencesAction).not.toHaveBeenCalled();
-
-  fireEvent.click(view.getByRole("checkbox", { name: copy.grantConfirmation }));
-  expect((saveButton as HTMLButtonElement).disabled).toBe(false);
-  fireEvent.submit(form);
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(marketingSwitch);
 
   await waitFor(() => {
     expect(saveMarketingPreferencesAction).toHaveBeenCalledWith({
@@ -241,21 +242,31 @@ test("keeps a dedicated-link submission on link source and requires confirmation
     });
   });
   expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(view.getByText(copy.saved)).toBeTruthy();
+  await waitFor(() => {
+    expect(view.getByText(copy.saved)).toBeTruthy();
+    expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
+      "true"
+    );
+  });
 });
 
 test.each([
-  ["active", false, "Withdraw marketing communications"],
-  ["withdrawn", true, "Allow marketing communications"],
-] as const)("saves the rendered %s choice", async (status, granted, label) => {
+  ["active", false],
+  ["withdrawn", true],
+] as const)("saves the rendered %s choice", async (status, granted) => {
+  const copy = marketingPreferencesFormCopy["en-US"];
   const view = renderForm({
     context: `synthetic-${status}-context`,
     dismissalContext: `synthetic-${status}-dismissal-context`,
     source: "link",
     status,
   });
-  fireEvent.click(view.getByRole("checkbox"));
-  fireEvent.submit(getForm(view));
+  const marketingSwitch = getSwitch(view, copy.rowTitle);
+
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe(
+    status === "active" ? "true" : "false"
+  );
+  fireEvent.click(marketingSwitch);
 
   await waitFor(() => {
     expect(saveMarketingPreferencesAction).toHaveBeenCalledWith({
@@ -266,10 +277,125 @@ test.each([
       source: "link",
     });
   });
-  expect(view.getByRole("button", { name: label })).toBeTruthy();
 });
 
-test("continues a pending dedicated-link context with its exact opaque context", async () => {
+test("keeps a deferred save single-flight and announces the pending state", async () => {
+  const copy = marketingPreferencesFormCopy["en-US"];
+  let resolveSave!: (result: ActionResult) => void;
+  saveMarketingPreferencesAction.mockImplementationOnce(
+    () =>
+      new Promise<ActionResult>((resolve) => {
+        resolveSave = resolve;
+      })
+  );
+  const view = renderForm({
+    context: "synthetic-account-context",
+    source: "account",
+    status: "absent",
+  });
+  const marketingSwitch = getSwitch(view, copy.rowTitle);
+
+  fireEvent.click(marketingSwitch);
+  fireEvent.click(marketingSwitch);
+
+  await waitFor(() => {
+    expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
+    expect(getArticle(view).getAttribute("aria-busy")).toBe("true");
+  });
+  expect(marketingSwitch.hasAttribute("disabled")).toBe(true);
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+  expect(view.getByRole("status").textContent).toBe(copy.savingStatus);
+
+  resolveSave({ data: { status: "saved" } });
+  await waitFor(() => {
+    expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
+      "true"
+    );
+  });
+});
+
+test("preserves the server-authoritative switch on a save failure and allows retry", async () => {
+  const copy = marketingPreferencesFormCopy["en-US"];
+  let rejectFirst!: (result: ActionResult) => void;
+  saveMarketingPreferencesAction.mockImplementationOnce(
+    () =>
+      new Promise<ActionResult>((resolve) => {
+        rejectFirst = resolve;
+      })
+  );
+  const context = "synthetic-account-context";
+  const view = renderForm({
+    context,
+    source: "account",
+    status: "absent",
+  });
+  const marketingSwitch = getSwitch(view, copy.rowTitle);
+
+  fireEvent.click(marketingSwitch);
+  rejectFirst({ serverError: "Synthetic preference save failure" });
+
+  await waitFor(() => {
+    expect(view.getByRole("alert").textContent).toContain(
+      "Synthetic preference save failure"
+    );
+  });
+  expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
+    "false"
+  );
+  expect(getSwitch(view, copy.rowTitle).hasAttribute("disabled")).toBe(false);
+
+  fireEvent.click(getSwitch(view, copy.rowTitle));
+  await waitFor(() => {
+    expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
+      confirmed: true,
+      context,
+      granted: true,
+      locale: "en-US",
+      source: "account",
+    });
+  });
+});
+
+test("announces a rejected save request with localized copy and allows a successful retry", async () => {
+  const copy = marketingPreferencesFormCopy["en-US"];
+  const context = "synthetic-account-context";
+  saveMarketingPreferencesAction.mockImplementationOnce(() =>
+    Promise.reject(new Error("Synthetic transport failure"))
+  );
+  const view = renderForm({
+    context,
+    source: "account",
+    status: "absent",
+  });
+  const marketingSwitch = getSwitch(view, copy.rowTitle);
+
+  fireEvent.click(marketingSwitch);
+
+  await waitFor(() => {
+    expect(view.getByRole("alert").textContent).toBe(copy.saveError);
+  });
+  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
+  expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
+  expect(routerRefresh).not.toHaveBeenCalled();
+
+  fireEvent.click(getSwitch(view, copy.rowTitle));
+  await waitFor(() => {
+    expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
+      confirmed: true,
+      context,
+      granted: true,
+      locale: "en-US",
+      source: "account",
+    });
+    expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
+      "true"
+    );
+    expect(routerRefresh).toHaveBeenCalledTimes(1);
+  });
+  expect(view.getByText(copy.saved)).toBeTruthy();
+});
+
+test("keeps a pending dedicated-link context inaccessible until Continue and prevents duplicate requests", async () => {
   const copy = marketingPreferencesFormCopy["en-US"];
   const context = "synthetic-pending-confirm-context";
   const view = renderForm({
@@ -281,8 +407,11 @@ test("continues a pending dedicated-link context with its exact opaque context",
     name: copy.continueAction,
   });
 
-  expect(view.queryByRole("checkbox")).toBeNull();
-  expect(view.queryByRole("button", { name: copy.grantAction })).toBeNull();
+  expect(
+    view.queryByRole("switch", {
+      name: copy.rowTitle,
+    })
+  ).toBeNull();
   fireEvent.click(continueButton);
 
   await waitFor(() => {
@@ -291,41 +420,6 @@ test("continues a pending dedicated-link context with its exact opaque context",
   expect(routerRefresh).toHaveBeenCalledTimes(1);
   expect(view.getByText(copy.confirmed)).toBeTruthy();
   expect(view.container.textContent).not.toContain(context);
-});
-
-test("keeps a pending context inaccessible until Continue and prevents duplicate requests", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
-  let resolveConfirm!: (result: ActionResult) => void;
-  confirmMarketingManagementAction.mockImplementationOnce(
-    () =>
-      new Promise<ActionResult>((resolve) => {
-        resolveConfirm = resolve;
-      })
-  );
-  const view = renderForm({
-    context: "synthetic-pending-confirm-context",
-    dismissalContext: "synthetic-pending-dismissal-context",
-    status: "pending-link",
-  });
-  const continueButton = view.getByRole("button", {
-    name: copy.continueAction,
-  });
-
-  fireEvent.click(continueButton);
-  fireEvent.click(continueButton);
-
-  await waitFor(() => {
-    expect(confirmMarketingManagementAction).toHaveBeenCalledTimes(1);
-    expect(
-      view
-        .getByRole("button", { name: copy.confirming })
-        .getAttribute("aria-busy")
-    ).toBe("true");
-  });
-  expect((continueButton as HTMLButtonElement).disabled).toBe(true);
-
-  resolveConfirm({ data: { status: "confirmed" } });
-  await waitFor(() => expect(view.getByText(copy.confirmed)).toBeTruthy());
 });
 
 test("keeps a pending context after a continuation failure", async () => {
@@ -348,10 +442,14 @@ test("keeps a pending context after a continuation failure", async () => {
   });
   expect(routerRefresh).not.toHaveBeenCalled();
   expect(view.getByText(copy.pendingDescription)).toBeTruthy();
-  expect(view.queryByRole("checkbox")).toBeNull();
+  expect(
+    view.queryByRole("switch", {
+      name: copy.rowTitle,
+    })
+  ).toBeNull();
 });
 
-test("uses signed-in account copy and no email-management control for account source", () => {
+test("uses signed-in account copy and no link-clear control for account source", () => {
   const copy = marketingPreferencesFormCopy["en-US"];
   const view = renderForm({
     context: "synthetic-account-context",
@@ -359,45 +457,53 @@ test("uses signed-in account copy and no email-management control for account so
     status: "absent",
   });
 
-  expect(view.getByText(copy.accountContext)).toBeTruthy();
+  expect(view.queryByText(copy.accountContext)).toBeNull();
   expect(view.queryByText(copy.linkContext)).toBeNull();
   expect(view.queryByRole("button", { name: copy.clearAction })).toBeNull();
 });
 
-test("resets confirmation when the dismissal context changes", () => {
+test("resets a stale save error when the dismissal context changes", async () => {
   const copy = marketingPreferencesFormCopy["en-US"];
+  saveMarketingPreferencesAction.mockImplementationOnce(() =>
+    Promise.resolve({ serverError: "Synthetic stale save failure" })
+  );
   const context = "synthetic-save-context";
-  const firstDismissalContext = "synthetic-first-dismissal-context";
-  const secondDismissalContext = "synthetic-second-dismissal-context";
   const view = renderForm({
     context,
-    dismissalContext: firstDismissalContext,
+    dismissalContext: "synthetic-first-dismissal-context",
     source: "link",
     status: "absent",
   });
 
-  fireEvent.click(view.getByRole("checkbox", { name: copy.grantConfirmation }));
-  expect(view.getByRole("checkbox").getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(getSwitch(view, copy.rowTitle));
+  await waitFor(() => {
+    expect(view.getByRole("alert").textContent).toContain(
+      "Synthetic stale save failure"
+    );
+  });
 
   view.rerender(
     <MarketingPreferencesForm
       locale="en-US"
       state={{
         context,
-        dismissalContext: secondDismissalContext,
+        dismissalContext: "synthetic-second-dismissal-context",
         source: "link",
         status: "absent",
       }}
     />
   );
 
-  expect(view.getByRole("checkbox").getAttribute("aria-checked")).toBe("false");
-  expect(
-    (view.getByRole("button", { name: copy.grantAction }) as HTMLButtonElement)
-      .disabled
-  ).toBe(true);
-  expect(view.container.textContent).not.toContain(firstDismissalContext);
-  expect(view.container.textContent).not.toContain(secondDismissalContext);
+  expect(view.queryByRole("alert")).toBeNull();
+  expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
+    "false"
+  );
+  expect(view.container.textContent).not.toContain(
+    "synthetic-first-dismissal-context"
+  );
+  expect(view.container.textContent).not.toContain(
+    "synthetic-second-dismissal-context"
+  );
 });
 
 test("renders unavailable guidance without presenting account availability as a flag", () => {
@@ -409,8 +515,11 @@ test("renders unavailable guidance without presenting account availability as a 
   expect(
     view.getByRole("link", { name: copy.signInAction }).getAttribute("href")
   ).toBe("/en-US/auth/sign-in");
-  expect(view.queryByRole("checkbox")).toBeNull();
-  expect(view.queryByRole("button", { name: copy.grantAction })).toBeNull();
+  expect(
+    view.queryByRole("switch", {
+      name: copy.rowTitle,
+    })
+  ).toBeNull();
   expect(view.queryByText(copy.accountContext)).toBeNull();
 });
 
@@ -451,16 +560,9 @@ test.each(["en-US", "cs-CZ"] as const)(
     expect(
       view.container.querySelector('[data-marketing-preferences-source="link"]')
     ).toBeTruthy();
-    const checkbox = view.getByRole("checkbox", {
-      name: copy.grantConfirmation,
-    });
-    const saveButton = view.getByRole("button", { name: copy.grantAction });
-    expect((checkbox as HTMLButtonElement).disabled).toBe(false);
-    expect((saveButton as HTMLButtonElement).disabled).toBe(true);
+    expect(getSwitch(view, copy.rowTitle).hasAttribute("disabled")).toBe(false);
 
-    fireEvent.click(checkbox);
-    expect((saveButton as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.submit(getForm(view));
+    fireEvent.click(getSwitch(view, copy.rowTitle));
 
     await waitFor(() => {
       expect(saveMarketingPreferencesAction).toHaveBeenCalledWith({
@@ -470,8 +572,8 @@ test.each(["en-US", "cs-CZ"] as const)(
         locale,
         source: "link",
       });
+      expect(routerRefresh).toHaveBeenCalledTimes(1);
     });
-    expect(routerRefresh).toHaveBeenCalledTimes(1);
     expect(view.getByText(copy.saved)).toBeTruthy();
   }
 );
@@ -507,8 +609,18 @@ test("keeps an invalid dedicated link out of the account flow without a fallback
 
   expect(view.getByText(copy.invalidLinkDescription)).toBeTruthy();
   expect(view.getByText(copy.invalidLinkNextStep)).toBeTruthy();
+  const invalidClearButton = view.getByRole("button", {
+    name: copy.clearAction,
+  });
+  expect(invalidClearButton.className).toContain("!whitespace-normal");
+  expect(invalidClearButton.className).toContain("max-w-full");
+  expect(invalidClearButton.className).toContain("min-w-0");
   expect(view.queryByRole("link", { name: copy.signInAction })).toBeNull();
-  expect(view.queryByRole("checkbox")).toBeNull();
+  expect(
+    view.queryByRole("switch", {
+      name: copy.rowTitle,
+    })
+  ).toBeNull();
   expect(view.queryByRole("button", { name: copy.continueAction })).toBeNull();
   expect(view.getByRole("button", { name: copy.clearAction })).toBeTruthy();
 });
@@ -522,6 +634,14 @@ test("offers an explicit clear action for a valid dedicated-link context", async
     status: "active",
     source: "link",
   });
+  const clearButton = view.getByRole("button", { name: copy.clearAction });
+  expect(clearButton.className).toContain("!whitespace-normal");
+  expect(clearButton.className).toContain("max-w-full");
+  expect(clearButton.className).toContain("min-w-0");
+  expect(clearButton.parentElement?.className).toContain("flex-1");
+  expect(
+    getArticle(view).querySelector(":scope > button[role='switch']")
+  ).toBeTruthy();
 
   fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
   await waitFor(() => {
@@ -563,6 +683,12 @@ test("clears a pending dedicated-link context with its dismissal context", async
     dismissalContext,
     status: "pending-link",
   });
+  const pendingClearButton = view.getByRole("button", {
+    name: copy.clearAction,
+  });
+  expect(pendingClearButton.className).toContain("!whitespace-normal");
+  expect(pendingClearButton.className).toContain("max-w-full");
+  expect(pendingClearButton.className).toContain("min-w-0");
 
   fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
 
@@ -721,57 +847,12 @@ test.each([
   expect(Object.values(copy).join(" ")).not.toContain(forbidden);
 });
 
-test("announces loading, success, and server errors accessibly", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
-  let resolveSave!: (result: ActionResult) => void;
-  saveMarketingPreferencesAction.mockImplementationOnce(
-    () =>
-      new Promise<ActionResult>((resolve) => {
-        resolveSave = resolve;
-      })
-  );
-
-  const view = renderForm({
-    context: "synthetic-account-context",
-    status: "absent",
-    source: "account",
-  });
-  fireEvent.click(view.getByRole("checkbox"));
-  fireEvent.submit(getForm(view));
-  fireEvent.submit(getForm(view));
-
-  await waitFor(() => {
-    expect(
-      view.getByRole("button", { name: copy.saving }).getAttribute("aria-busy")
-    ).toBe("true");
-  });
-
-  resolveSave({ data: { status: "saved" } });
-  await waitFor(() => expect(view.getByText(copy.saved)).toBeTruthy());
-
-  saveMarketingPreferencesAction.mockImplementationOnce(() =>
-    Promise.resolve({ serverError: "Synthetic preference save failure" })
-  );
-  fireEvent.click(view.getByRole("checkbox"));
-  fireEvent.click(view.getByRole("checkbox"));
-  fireEvent.submit(getForm(view));
-  await waitFor(() => {
-    expect(view.getByRole("alert").textContent).toContain(
-      "Synthetic preference save failure"
-    );
-  });
-  expect(view.queryByText(copy.saved)).toBeNull();
-  expect(routerRefresh).toHaveBeenCalledTimes(1);
-});
-
 test("wraps long localized copy without fixed-width controls", () => {
   const copy = marketingPreferencesFormCopy["cs-CZ"];
   const longCopy: MarketingPreferencesFormCopy = {
     ...copy,
-    description: `${copy.description} ${"Dlouhý popis. ".repeat(12)}`,
-    grantAction: `${copy.grantAction} ${"s rozšířeným vysvětlením ".repeat(5)}`,
-    grantConfirmation: `${copy.grantConfirmation} ${"Další potvrzení. ".repeat(8)}`,
-    title: `${copy.title} ${"a další podrobnosti".repeat(4)}`,
+    rowDescription: `${copy.rowDescription} ${"Dlouhý popis. ".repeat(12)}`,
+    rowTitle: `${copy.rowTitle} ${"a další podrobnosti".repeat(4)}`,
   };
   const view = renderForm(
     {
@@ -785,10 +866,7 @@ test("wraps long localized copy without fixed-width controls", () => {
 
   const section = view.container.querySelector("section");
   expect(section?.className).toContain("min-w-0");
+  expect(section?.querySelector("article")?.className).toContain("min-w-0");
   expect(section?.querySelector("h3")?.className).toContain("break-words");
-  expect(section?.querySelector("form")?.className).toContain("min-w-0");
-  expect(section?.querySelector("button[type='submit']")?.className).toContain(
-    "whitespace-normal"
-  );
-  expect(section?.querySelector("label")?.className).toContain("break-words");
+  expect(getSwitch(view, longCopy.rowTitle).className).toContain("shrink-0");
 });

@@ -1,18 +1,17 @@
 import type { Locale } from "@/features/i18n";
 
 export interface MarketingPreferencesFormCopy {
-  readonly title: string;
-  readonly description: string;
+  readonly rowTitle: string;
+  readonly rowDescription: string;
+  readonly savingStatus: string;
   readonly accountContext: string;
   readonly linkContext: string;
-  readonly statusAbsent: string;
   readonly statusActive: string;
   readonly statusWithdrawn: string;
   readonly grantConfirmation: string;
   readonly withdrawConfirmation: string;
   readonly grantAction: string;
   readonly withdrawAction: string;
-  readonly saving: string;
   readonly saved: string;
   readonly saveError: string;
   readonly pendingDescription: string;
@@ -34,14 +33,14 @@ export interface MarketingPreferencesFormCopy {
 
 export const marketingPreferencesFormCopy = {
   "en-US": {
-    title: "Marketing communications preference",
-    description:
-      "Choose whether Deskohub may send you future marketing and community communications.",
+    rowTitle: "Marketing messages",
+    rowDescription:
+      "Turn on to allow Deskohub to send you future marketing and community communications.",
+    savingStatus: "Saving your marketing preference…",
     accountContext:
       "Managing the customer preference for this signed-in account.",
     linkContext:
       "Managing the customer preference with this dedicated marketing-preference link, not your signed-in account.",
-    statusAbsent: "No marketing preference is saved yet.",
     statusActive: "Marketing communications are currently enabled.",
     statusWithdrawn: "Marketing communications are currently withdrawn.",
     grantConfirmation:
@@ -50,7 +49,6 @@ export const marketingPreferencesFormCopy = {
       "I confirm that I want to withdraw from future marketing and community communications.",
     grantAction: "Allow marketing communications",
     withdrawAction: "Withdraw marketing communications",
-    saving: "Saving preference…",
     saved: "Your marketing preference was saved.",
     saveError: "We could not save your marketing preference. Please try again.",
     pendingDescription:
@@ -78,14 +76,14 @@ export const marketingPreferencesFormCopy = {
       "No account preference was changed. This link cannot be used to manage a preference.",
   },
   "cs-CZ": {
-    title: "Nastavení marketingových sdělení",
-    description:
-      "Zvolte, zda vám může Deskohub v budoucnu zasílat marketingová a komunitní sdělení.",
+    rowTitle: "Marketingová sdělení",
+    rowDescription:
+      "Zapnutím povolíte Deskohubu zasílat vám budoucí marketingová a komunitní sdělení.",
+    savingStatus: "Ukládáme vaši marketingovou preferenci…",
     accountContext:
       "Spravujete zákaznickou preferenci pro tento přihlášený účet.",
     linkContext:
       "Spravujete zákaznickou preferenci pomocí tohoto vyhrazeného odkazu pro marketingová sdělení, nikoli z přihlášeného účtu.",
-    statusAbsent: "Marketingová preference zatím není uložená.",
     statusActive: "Marketingová sdělení jsou nyní povolená.",
     statusWithdrawn: "Zasílání marketingových sdělení je nyní odvolané.",
     grantConfirmation:
@@ -94,7 +92,6 @@ export const marketingPreferencesFormCopy = {
       "Potvrzuji, že chci odvolat zasílání budoucích marketingových a komunitních sdělení.",
     grantAction: "Povolit marketingová sdělení",
     withdrawAction: "Odvolat marketingová sdělení",
-    saving: "Ukládání preference…",
     saved: "Vaše marketingová preference byla uložena.",
     saveError:
       "Marketingovou preferenci se nepodařilo uložit. Zkuste to prosím znovu.",

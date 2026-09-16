@@ -3,16 +3,16 @@ import {
   getProviderOrderAbandonmentState,
   hasProviderPaymentActivity,
 } from "@/features/checkout/provider-order-abandonment";
+import {
+  StatusBadge,
+  type StatusTone,
+} from "@/shared/components/ui/status-badge";
 import { EmptyState } from "./empty-state";
 import { formatAdministrationDateTime } from "./formatters";
 import { NexiOrderLink } from "./nexi-order-link";
 import { AdministrationAlert } from "./notice";
 import type { AdministrationOrder } from "./payment-administration.service";
 import { getProviderValueLabel } from "./payment-presentation";
-import {
-  AdministrationStatusBadge,
-  type AdministrationStatusTone,
-} from "./status-badge";
 
 export const formatProviderMoney = (
   amount: string | undefined,
@@ -68,14 +68,10 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
     "THREEDS_FAILED",
     "VOIDED",
   ].includes(normalized);
-  let tone: AdministrationStatusTone = "neutral";
+  let tone: StatusTone = "neutral";
   if (positive) tone = "positive";
   else if (warning) tone = "attention";
-  return (
-    <AdministrationStatusBadge tone={tone}>
-      {getProviderValueLabel(value)}
-    </AdministrationStatusBadge>
-  );
+  return <StatusBadge tone={tone}>{getProviderValueLabel(value)}</StatusBadge>;
 }
 
 export function ReservationOrderList({

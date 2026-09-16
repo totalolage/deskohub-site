@@ -449,6 +449,49 @@ type PublicLegalConsentState = Record<
   boolean
 >;
 
+type PublicLegalCookieCategory = (typeof publicLegalCookieCategories)[number];
+
+type OptionalPublicLegalCookieCategory = Exclude<
+  PublicLegalCookieCategory,
+  "necessary"
+>;
+
+const optionalPublicLegalCookieCategories = [
+  "analytics",
+  "marketing",
+  "preferences",
+] as const satisfies readonly OptionalPublicLegalCookieCategory[];
+
+export type ConsentInteractionStep = {
+  readonly category: OptionalPublicLegalCookieCategory;
+  readonly expectedState: PublicLegalConsentState;
+};
+
+export const planConsentInteractions = (
+  observed: PublicLegalConsentState,
+  desiredChecked: boolean
+): readonly ConsentInteractionStep[] => {
+  const expected: PublicLegalConsentState = { ...observed, necessary: true };
+  const steps: ConsentInteractionStep[] = [];
+  for (const category of optionalPublicLegalCookieCategories) {
+    if (expected[category] === desiredChecked) continue;
+    expected[category] = desiredChecked;
+    steps.push({ category, expectedState: { ...expected } });
+  }
+  return steps;
+};
+
+type PublicLegalCategoryTitleGetter = typeof m.cookieSettingsAnalyticsTitle;
+
+const publicLegalCategoryTitleGetters = {
+  analytics: m.cookieSettingsAnalyticsTitle,
+  marketing: m.cookieSettingsMarketingTitle,
+  preferences: m.cookieSettingsPreferencesTitle,
+} satisfies Record<
+  OptionalPublicLegalCookieCategory,
+  PublicLegalCategoryTitleGetter
+>;
+
 const waitForPublicLegalConsentState = async (
   page: Page,
   expected: PublicLegalConsentState
@@ -2292,36 +2335,106 @@ const runPublicLegalNavigationCheck = async ({
       );
     }
 
-    const acceptAllButton = page
-      .getByRole("button", {
-        name: m.cookieSettingsAcceptAll({}, { locale }),
-        exact: true,
-      })
-      .first();
-    if (
-      await clickConsentControl(
-        acceptAllButton,
-        "Accept-all consent interaction"
-      )
-    ) {
+    const toggleConsentCategory = async (
+      category: OptionalPublicLegalCookieCategory,
+      expected: PublicLegalConsentState,
+      phase: string
+    ): Promise<boolean> => {
+      if (!page) {
+        failures.push(`${phase}: consent page is missing`);
+        return false;
+      }
+      const titleGetter = publicLegalCategoryTitleGetters[category];
+      const control = page
+        .getByRole("switch", {
+          name: titleGetter({}, { locale }),
+          exact: true,
+        })
+        .first();
+      try {
+        await expect
+          .poll(() => control.isEnabled(), { timeout: 5_000 })
+          .toBe(true);
+      } catch (error) {
+        failures.push(
+          `${phase}: consent switch was not enabled before click: ${error instanceof Error ? error.message : String(error)}`
+        );
+        return false;
+      }
+      if (!(await clickConsentControl(control, `${phase} interaction`))) {
+        return false;
+      }
+      return assertConsentState(expected, `${phase} state`);
+    };
+
+    const readPublicLegalConsentState =
+      async (): Promise<PublicLegalConsentState | null> => {
+        if (!page) return null;
+        try {
+          return await page.evaluate(
+            (categories) => {
+              const observed: PublicLegalConsentState = {
+                necessary: true,
+                analytics: false,
+                marketing: false,
+                preferences: false,
+              };
+              for (const category of categories) {
+                const control = document.getElementById(
+                  `cookie-category-${category}`
+                );
+                if (!(control instanceof HTMLButtonElement)) return null;
+                if (category === "necessary") continue;
+                observed[category] =
+                  control.getAttribute("aria-checked") === "true";
+              }
+              return observed;
+            },
+            [...publicLegalCookieCategories]
+          );
+        } catch {
+          return null;
+        }
+      };
+
+    const setOptionalConsent = async (
+      desiredChecked: boolean,
+      phasePrefix: string
+    ): Promise<boolean> => {
+      const observed = await readPublicLegalConsentState();
+      if (!observed) {
+        failures.push(
+          `${phasePrefix}: could not read observed consent switch states`
+        );
+        return false;
+      }
+      for (const step of planConsentInteractions(observed, desiredChecked)) {
+        const matched = await toggleConsentCategory(
+          step.category,
+          step.expectedState,
+          `${phasePrefix} (${step.category})`
+        );
+        if (!matched) return false;
+      }
+      return true;
+    };
+
+    consentChanges.acceptAll = await setOptionalConsent(
+      true,
+      "Accept-all consent"
+    );
+    if (consentChanges.acceptAll) {
       consentChanges.acceptAll = await assertConsentState(
         allConsentState,
         "Accept-all consent state"
       );
     }
 
-    const rejectAllButton = page
-      .getByRole("button", {
-        name: m.cookieSettingsRejectAll({}, { locale }),
-        exact: true,
-      })
-      .first();
-    if (
-      await clickConsentControl(
-        rejectAllButton,
-        "Reject-all consent interaction"
-      )
-    ) {
+    consentChanges.rejectAll = await setOptionalConsent(
+      false,
+      "Reject-all consent"
+    );
+    if (consentChanges.rejectAll) {
       consentChanges.rejectAll = await assertConsentState(
         initialConsentState,
         "Reject-all consent state"

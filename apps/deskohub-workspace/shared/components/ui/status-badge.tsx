@@ -1,20 +1,16 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/shared/utils";
 
-export type AdministrationStatusTone =
-  | "attention"
-  | "neutral"
-  | "positive"
-  | "progress";
+export type StatusTone = "attention" | "neutral" | "positive" | "progress";
 
-export function AdministrationStatusBadge({
+export function StatusBadge({
   children,
   className,
   tone,
-}: {
+  ...props
+}: HTMLAttributes<HTMLSpanElement> & {
   readonly children: ReactNode;
-  readonly className?: string;
-  readonly tone: AdministrationStatusTone;
+  readonly tone: StatusTone;
 }) {
   return (
     <span
@@ -31,6 +27,7 @@ export function AdministrationStatusBadge({
         }[tone],
         className
       )}
+      {...props}
     >
       {children}
     </span>

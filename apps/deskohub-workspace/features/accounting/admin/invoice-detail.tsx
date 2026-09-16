@@ -3,11 +3,9 @@
 import { Download, RotateCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import {
-  AdministrationAlert,
-  AdministrationStatusBadge,
-} from "@/features/administration/components";
+import { AdministrationAlert } from "@/features/administration/components";
 import { Button } from "@/shared/components/ui/button";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { retryAdministrationInvoice } from "./actions";
 import type { InvoiceAdministrationDetail } from "./invoice-administration.service";
@@ -18,7 +16,7 @@ export function InvoicePaymentStatusBadge({
   readonly status: InvoiceAdministrationDetail["paymentStatus"];
 }) {
   return (
-    <AdministrationStatusBadge
+    <StatusBadge
       tone={
         {
           paid: "positive",
@@ -33,7 +31,7 @@ export function InvoicePaymentStatusBadge({
           status
         ]
       }
-    </AdministrationStatusBadge>
+    </StatusBadge>
   );
 }
 
@@ -105,7 +103,7 @@ export function InvoiceDeliverySummary({
         >
           <dt className="text-sm capitalize text-navy-blue/60">{audience}</dt>
           <dd className="mt-2">
-            <AdministrationStatusBadge
+            <StatusBadge
               tone={
                 {
                   accepted: "positive",
@@ -116,7 +114,7 @@ export function InvoiceDeliverySummary({
               }
             >
               {delivery[audience]}
-            </AdministrationStatusBadge>
+            </StatusBadge>
           </dd>
         </div>
       ))}

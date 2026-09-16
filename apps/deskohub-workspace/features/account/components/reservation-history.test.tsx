@@ -324,6 +324,46 @@ describe("ReservationHistory", () => {
     expect(view.container.textContent).not.toContain("password");
   });
 
+  test("renders reservation statuses through the shared status badge tones", () => {
+    const view = renderHistory("en-US", {
+      kind: "available",
+      groups: {
+        current: [
+          reservation({ id: "tone-confirmed", status: "confirmed" }),
+          reservation({ id: "tone-pending", status: "pending" }),
+          reservation({ id: "tone-cancelled", status: "cancelled" }),
+          reservation({
+            id: "tone-attention",
+            status: "requires-attention",
+          }),
+        ],
+        past: [],
+        unavailable: [],
+      },
+    });
+
+    expect(
+      view.container.querySelector(
+        '[data-account-reservation-status="confirmed"]'
+      )?.className
+    ).toContain("bg-aquamarine-green/12");
+    expect(
+      view.container.querySelector(
+        '[data-account-reservation-status="pending"]'
+      )?.className
+    ).toContain("bg-sunset-yellow/15");
+    expect(
+      view.container.querySelector(
+        '[data-account-reservation-status="cancelled"]'
+      )?.className
+    ).toContain("bg-navy-blue/5");
+    expect(
+      view.container.querySelector(
+        '[data-account-reservation-status="requires-attention"]'
+      )?.className
+    ).toContain("bg-burned-orange/10");
+  });
+
   test.each(["en-US", "cs-CZ"] as const)(
     "renders account-owned availability copy in %s",
     (locale) => {

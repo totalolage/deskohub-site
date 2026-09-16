@@ -585,7 +585,12 @@ type MarketingPreferencesBrowserReport = {
     readonly pageErrors: readonly string[];
   };
   readonly screenshots: readonly {
+    readonly fullPage: boolean;
+    readonly geometry: {
+      readonly section?: { readonly bottom: number } | null;
+    };
     readonly locale: string;
+    readonly screenshot: string;
     readonly viewport: string;
   }[];
   readonly status: string;
@@ -822,7 +827,21 @@ test.serial.skipIf(!chromiumAvailable)(
     expect(reportBytes.length).toBeGreaterThan(0);
     expect(log.length).toBeGreaterThan(0);
     expect(report.status).toBe("passed");
-    expect(report.screenshots).toHaveLength(126);
+    expect(report.screenshots).toHaveLength(208);
+    expect(report.screenshots.map(({ fullPage }) => fullPage)).toEqual(
+      new Array(report.screenshots.length).fill(true)
+    );
+    const viewportWidth = (viewport: string) =>
+      viewport === "desktop" ? 1280 : Number.parseInt(viewport, 10);
+    for (const entry of report.screenshots) {
+      const png = await readFile(join(repoRoot, entry.screenshot));
+      const pngWidth = png.readUInt32BE(16);
+      const pngHeight = png.readUInt32BE(20);
+      expect(pngWidth).toBe(viewportWidth(entry.viewport));
+      expect(pngHeight).toBeGreaterThanOrEqual(
+        entry.geometry.section?.bottom ?? 0
+      );
+    }
     expect([...new Set(report.browser.locales)].sort()).toEqual([
       "cs-CZ",
       "en-US",
@@ -831,13 +850,13 @@ test.serial.skipIf(!chromiumAvailable)(
       [...new Set(report.browser.viewports.map(({ width }) => width))].sort(
         (left, right) => left - right
       )
-    ).toEqual([320, 375, 1280]);
+    ).toEqual([320, 375, 480, 1280]);
     expect(
       [...new Set(report.screenshots.map(({ locale }) => locale))].sort()
     ).toEqual(["cs-CZ", "en-US"]);
     expect(
       [...new Set(report.screenshots.map(({ viewport }) => viewport))].sort()
-    ).toEqual(["320", "375", "desktop"]);
+    ).toEqual(["320", "375", "480", "desktop"]);
     expect(report.problems).toEqual({
       consoleErrors: [],
       externalRequests: [],
@@ -845,9 +864,14 @@ test.serial.skipIf(!chromiumAvailable)(
     });
     expect(log).toContain("scope=component-only controlled renderer");
     expect(log).toContain("state en-US/320/pending-link");
+    expect(log).toContain("state en-US/480/pending-link");
+    expect(log).toContain("cookie-toggle-pending en-US/375/account-absent");
+    expect(log).toContain("cookie-toggle-done cs-CZ/480/account-absent");
+    expect(log).toContain("save-transport en-US/320/account-absent");
+    expect(log).toContain("save-transport cs-CZ/desktop/account-withdrawn");
     expect(log).toContain(
       "context-replacement-reset cs-CZ/desktop/link-absent"
     );
   },
-  300_000
+  600_000
 );

@@ -10,6 +10,7 @@ import {
 } from "bun:test";
 import { NexiOrderIdSchema } from "@deskohub/nexi";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import { StatusBadge } from "@/shared/components/ui/status-badge";
 import {
   workspaceRouterPush,
   workspaceRouterRefresh,
@@ -21,7 +22,6 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import { AdministrationBreadcrumbs } from "./admin-shell";
 import {
-  AdministrationStatusBadge,
   AdministrationTableCount,
   AdministrationTableToolbar,
   BookingTable,
@@ -110,11 +110,7 @@ describe("administration reservation components", () => {
   });
 
   test("uses one status badge foundation for domain-specific states", () => {
-    const view = render(
-      <AdministrationStatusBadge tone="positive">
-        Active
-      </AdministrationStatusBadge>
-    );
+    const view = render(<StatusBadge tone="positive">Active</StatusBadge>);
 
     expect(view.getByText("Active").className).toContain(
       "bg-aquamarine-green/12"

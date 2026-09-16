@@ -1,8 +1,7 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Locale } from "@/features/i18n";
 import {
   clearMarketingManagementAction,
@@ -11,8 +10,7 @@ import {
 } from "@/features/legal/actions";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { Button } from "@/shared/components/ui/button";
-import { Checkbox } from "@/shared/components/ui/checkbox";
-import { Label } from "@/shared/components/ui/label";
+import { Switch } from "@/shared/components/ui/switch";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
   type MarketingPreferencesFormCopy,
@@ -25,11 +23,6 @@ export interface MarketingPreferencesFormProps {
   readonly state: MarketingPreferencesState;
   readonly copy?: MarketingPreferencesFormCopy;
 }
-
-type ManagedMarketingPreferencesState = Extract<
-  MarketingPreferencesState,
-  { readonly status: "absent" | "active" | "withdrawn" }
->;
 
 export function MarketingPreferencesForm({
   accountsEnabled = true,
@@ -60,14 +53,6 @@ function MarketingPreferencesFormContent({
   readonly state: MarketingPreferencesState;
 }) {
   const router = useRouter();
-  const [confirmed, setConfirmed] = useState(false);
-  const [saveSucceeded, setSaveSucceeded] = useState(false);
-  const [saveFailed, setSaveFailed] = useState(false);
-  const [confirmSucceeded, setConfirmSucceeded] = useState(false);
-  const [confirmFailed, setConfirmFailed] = useState(false);
-  const [clearSucceeded, setClearSucceeded] = useState(false);
-  const [clearFailed, setClearFailed] = useState(false);
-
   const managedState =
     state.status === "absent" ||
     state.status === "active" ||
@@ -79,9 +64,18 @@ function MarketingPreferencesFormContent({
   const dismissalContext =
     "dismissalContext" in state ? state.dismissalContext : undefined;
   const source = managedState?.source;
-  const granted =
-    managedState !== undefined && managedState.status !== "active";
   const isLinkManagement = source === "link";
+
+  // The switch is server-authoritative: it reflects the saved consent and
+  // only moves after a successful save, so a failure leaves it untouched.
+  const [checked, setChecked] = useState(managedState?.status === "active");
+  const requestedCheckedRef = useRef(managedState?.status === "active");
+  const [saveErrored, setSaveErrored] = useState(false);
+  const [saveSucceeded, setSaveSucceeded] = useState(false);
+  const [confirmSucceeded, setConfirmSucceeded] = useState(false);
+  const [confirmFailed, setConfirmFailed] = useState(false);
+  const [clearSucceeded, setClearSucceeded] = useState(false);
+  const [clearFailed, setClearFailed] = useState(false);
 
   const {
     execute: executeSave,
@@ -91,17 +85,18 @@ function MarketingPreferencesFormContent({
   } = useWorkspaceAction(saveMarketingPreferencesAction, {
     actionName: "legal.marketing-preferences.save",
     onSuccess: () => {
-      setSaveFailed(false);
+      setSaveErrored(false);
       setSaveSucceeded(true);
+      setChecked(requestedCheckedRef.current);
       router.refresh();
     },
     onError: () => {
       setSaveSucceeded(false);
-      setSaveFailed(true);
+      setSaveErrored(true);
     },
     onTransportError: () => {
       setSaveSucceeded(false);
-      setSaveFailed(true);
+      setSaveErrored(true);
     },
   });
   const {
@@ -159,7 +154,7 @@ function MarketingPreferencesFormContent({
     resetConfirm();
     resetClear();
     setSaveSucceeded(false);
-    setSaveFailed(false);
+    setSaveErrored(false);
     setConfirmSucceeded(false);
     setConfirmFailed(false);
     setClearSucceeded(false);
@@ -167,7 +162,7 @@ function MarketingPreferencesFormContent({
   };
 
   const saveError =
-    saveResult.serverError || saveResult.validationErrors || saveFailed;
+    saveResult.serverError || saveResult.validationErrors || saveErrored;
   const confirmError =
     confirmResult.serverError ||
     confirmResult.validationErrors ||
@@ -193,10 +188,9 @@ function MarketingPreferencesFormContent({
     clearFeedback = clearResult.serverError || copy.clearError;
   }
   const titleId = "marketing-preferences-title";
-  const statusId = "marketing-preferences-status";
+  const descriptionId = "marketing-preferences-description";
+  const switchId = "marketing-preferences-switch";
   const feedbackId = "marketing-preferences-feedback";
-  const confirmationId = "marketing-preferences-confirmation";
-  const checkboxId = "marketing-preferences-confirm";
   const hasContextState =
     context !== undefined || dismissalContext !== undefined;
   const hasFeedback =
@@ -205,111 +199,128 @@ function MarketingPreferencesFormContent({
 
   return (
     <section
-      aria-labelledby={titleId}
-      className="mt-8 min-w-0 border-t border-[#e5e9ef] pt-6"
+      aria-labelledby={managedState ? titleId : undefined}
+      className="mt-8 min-w-0"
       data-marketing-preferences={state.status}
       data-marketing-preferences-source={source}
     >
-      <div className="min-w-0 max-w-3xl">
-        <h3
-          className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]"
-          id={titleId}
+      {state.status === "unavailable" && (
+        <UnavailableState
+          accountsEnabled={accountsEnabled}
+          copy={copy}
+          locale={locale}
+        />
+      )}
+      {state.status === "invalid-link" && (
+        <InvalidLinkState
+          copy={copy}
+          isClearing={isClearing}
+          onClear={clearManagement}
+        />
+      )}
+      {pendingState && (
+        <PendingLinkState
+          busy={busy}
+          copy={copy}
+          isClearing={isClearing}
+          isConfirming={isConfirming}
+          onClear={clearManagement}
+          onContinue={continueManagement}
+        />
+      )}
+      {managedState && (
+        <article
+          aria-busy={isSaving}
+          className="flex min-w-0 items-start justify-between gap-5 rounded-2xl border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:p-6"
         >
-          {copy.title}
-        </h3>
-        <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
-          {copy.description}
-        </p>
-
-        {state.status === "unavailable" && (
-          <UnavailableState
-            accountsEnabled={accountsEnabled}
-            copy={copy}
-            locale={locale}
-          />
-        )}
-        {state.status === "invalid-link" && (
-          <InvalidLinkState
-            copy={copy}
-            isClearing={isClearing}
-            onClear={clearManagement}
-          />
-        )}
-        {pendingState && (
-          <PendingLinkState
-            busy={busy}
-            copy={copy}
-            isClearing={isClearing}
-            isConfirming={isConfirming}
-            onClear={clearManagement}
-            onContinue={continueManagement}
-          />
-        )}
-        {managedState && (
-          <ManagedPreferenceState
-            checkboxId={checkboxId}
-            confirmationId={confirmationId}
-            copy={copy}
-            granted={granted}
-            isClearing={isClearing}
-            isSaving={isSaving}
-            isLinkManagement={isLinkManagement}
-            onClear={clearManagement}
-            onSubmit={handleSubmit}
-            onToggleConfirmation={setConfirmed}
-            source={managedState.source}
-            statusId={statusId}
-            state={managedState}
-            confirmed={confirmed}
-          />
-        )}
-
-        {hasContextState && (
-          <div
-            aria-live={hasFeedback ? "polite" : undefined}
-            className="min-h-5 text-sm"
-            id={feedbackId}
-            role={hasError ? "alert" : undefined}
-          >
-            {confirmFeedback && (
-              <p className={confirmError ? "text-red-700" : "text-emerald-800"}>
-                {confirmFeedback}
-              </p>
-            )}
-            {saveFeedback && (
-              <p className={saveError ? "text-red-700" : "text-emerald-800"}>
-                {saveFeedback}
-              </p>
-            )}
-            {clearFeedback && (
-              <p className={clearError ? "text-red-700" : "text-emerald-800"}>
-                {clearFeedback}
-              </p>
+          <div className="min-w-0 flex-1 space-y-2">
+            <h3
+              className="break-words text-lg font-semibold leading-6 text-[#1f2d43]"
+              id={titleId}
+            >
+              {copy.rowTitle}
+            </h3>
+            <p
+              className="break-words text-base leading-6 text-navy-blue/70"
+              id={descriptionId}
+            >
+              {copy.rowDescription}
+            </p>
+            {isLinkManagement && (
+              <>
+                <p className="break-words text-sm leading-6 text-navy-blue/70">
+                  {copy.linkContext}
+                </p>
+                <Button
+                  aria-busy={isClearing}
+                  className="h-auto min-h-11 min-w-0 max-w-full !whitespace-normal self-start px-4 py-2 leading-5"
+                  disabled={busy}
+                  onClick={clearManagement}
+                  type="button"
+                  variant="secondary"
+                >
+                  {isClearing ? copy.clearing : copy.clearAction}
+                </Button>
+              </>
             )}
           </div>
-        )}
-      </div>
+          <Switch
+            aria-describedby={descriptionId}
+            aria-labelledby={titleId}
+            checked={checked}
+            disabled={busy}
+            id={switchId}
+            onCheckedChange={handleToggle}
+          />
+        </article>
+      )}
+
+      {hasContextState && (
+        <div
+          aria-live={hasFeedback ? "polite" : undefined}
+          className="mt-3 min-h-5 text-sm"
+          id={feedbackId}
+          role={hasError ? "alert" : undefined}
+        >
+          {isSaving && <p role="status">{copy.savingStatus}</p>}
+          {confirmFeedback && (
+            <p className={confirmError ? "text-red-700" : "text-emerald-800"}>
+              {confirmFeedback}
+            </p>
+          )}
+          {saveFeedback && (
+            <p className={saveErrored ? "text-red-700" : "text-emerald-800"}>
+              {saveFeedback}
+            </p>
+          )}
+          {clearFeedback && (
+            <p className={clearError ? "text-red-700" : "text-emerald-800"}>
+              {clearFeedback}
+            </p>
+          )}
+        </div>
+      )}
     </section>
   );
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function handleToggle(nextChecked: boolean) {
     if (
       managedState === undefined ||
       context === undefined ||
-      !confirmed ||
       busy ||
-      actionInFlight.current
+      actionInFlight.current ||
+      nextChecked === checked
     ) {
       return;
     }
 
     actionInFlight.current = true;
     resetFeedback();
+    requestedCheckedRef.current = nextChecked;
     executeSave({
       confirmed: true,
       context,
-      granted,
+      granted: nextChecked,
       locale,
       source: managedState.source,
     });
@@ -348,127 +359,6 @@ function MarketingPreferencesFormContent({
   }
 }
 
-function ManagedPreferenceState({
-  checkboxId,
-  confirmationId,
-  confirmed,
-  copy,
-  granted,
-  isClearing,
-  isLinkManagement,
-  isSaving,
-  onClear,
-  onSubmit,
-  onToggleConfirmation,
-  source,
-  state,
-  statusId,
-}: {
-  readonly checkboxId: string;
-  readonly confirmationId: string;
-  readonly confirmed: boolean;
-  readonly copy: MarketingPreferencesFormCopy;
-  readonly granted: boolean;
-  readonly isClearing: boolean;
-  readonly isLinkManagement: boolean;
-  readonly isSaving: boolean;
-  readonly onClear: () => void;
-  readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  readonly onToggleConfirmation: (confirmed: boolean) => void;
-  readonly source: "link" | "account";
-  readonly state: ManagedMarketingPreferencesState;
-  readonly statusId: string;
-}) {
-  const statusCopy = {
-    absent: copy.statusAbsent,
-    active: copy.statusActive,
-    withdrawn: copy.statusWithdrawn,
-  }[state.status];
-  const choice = granted ? "grant" : "withdraw";
-  const choiceCopy = {
-    grant: {
-      confirmation: copy.grantConfirmation,
-      action: copy.grantAction,
-    },
-    withdraw: {
-      confirmation: copy.withdrawConfirmation,
-      action: copy.withdrawAction,
-    },
-  }[choice];
-  const busy = isSaving || isClearing;
-
-  return (
-    <>
-      <p
-        aria-live="polite"
-        className="mt-4 break-words text-sm leading-6 text-[#1f2d43]"
-        id={statusId}
-        role="status"
-      >
-        <span className="font-semibold">{statusCopy}</span>
-      </p>
-      <p className="mt-2 break-words text-sm leading-6 text-[#586c88]">
-        {{ link: copy.linkContext, account: copy.accountContext }[source]}
-      </p>
-
-      <form
-        aria-busy={busy}
-        aria-describedby={`${statusId} ${confirmationId}`}
-        className="mt-5 min-w-0 space-y-4"
-        onSubmit={onSubmit}
-      >
-        <div className="flex min-w-0 items-start gap-3 rounded-2xl border border-[#dfe4ec] bg-[#f8f6f1] p-4">
-          <Checkbox
-            aria-describedby={confirmationId}
-            checked={confirmed}
-            disabled={busy}
-            id={checkboxId}
-            onCheckedChange={(checked) =>
-              onToggleConfirmation(checked === true)
-            }
-          />
-          <Label
-            className="cursor-pointer break-words text-sm leading-6 text-[#1f2d43]"
-            htmlFor={checkboxId}
-            id={confirmationId}
-          >
-            {choiceCopy.confirmation}
-          </Label>
-        </div>
-
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <Button
-            aria-busy={isSaving}
-            className="h-auto min-h-11 max-w-full whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
-            disabled={!confirmed || busy}
-            type="submit"
-          >
-            {isSaving && (
-              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-            )}
-            {isSaving ? copy.saving : choiceCopy.action}
-          </Button>
-          {isLinkManagement && (
-            <Button
-              aria-busy={isClearing}
-              className="h-auto min-h-11 max-w-full whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
-              disabled={busy}
-              onClick={onClear}
-              type="button"
-              variant="secondary"
-            >
-              {isClearing && (
-                <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-              )}
-              {isClearing ? copy.clearing : copy.clearAction}
-            </Button>
-          )}
-        </div>
-      </form>
-    </>
-  );
-}
-
 function PendingLinkState({
   busy,
   copy,
@@ -485,34 +375,28 @@ function PendingLinkState({
   readonly onContinue: () => void;
 }) {
   return (
-    <div className="mt-4 min-w-0 space-y-3">
-      <p className="break-words text-sm leading-6 text-[#586c88]">
+    <div className="min-w-0 space-y-3">
+      <p className="break-words text-sm leading-6 text-navy-blue/70">
         {copy.pendingDescription}
       </p>
       <div className="flex min-w-0 flex-wrap items-center gap-3">
         <Button
           aria-busy={isConfirming}
-          className="h-auto min-h-11 max-w-full whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
+          className="h-auto min-h-11 min-w-0 max-w-full whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
           disabled={busy}
           onClick={onContinue}
           type="button"
         >
-          {isConfirming && (
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-          )}
           {isConfirming ? copy.confirming : copy.continueAction}
         </Button>
         <Button
           aria-busy={isClearing}
-          className="h-auto min-h-11 max-w-full whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
+          className="h-auto min-h-11 min-w-0 max-w-full !whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
           disabled={busy}
           onClick={onClear}
           type="button"
           variant="secondary"
         >
-          {isClearing && (
-            <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-          )}
           {isClearing ? copy.clearing : copy.clearAction}
         </Button>
       </div>
@@ -530,16 +414,16 @@ function UnavailableState({
   readonly locale: Locale;
 }) {
   return (
-    <div className="mt-4 min-w-0 space-y-2">
-      <p className="break-words text-sm leading-6 text-[#586c88]">
+    <div className="min-w-0 space-y-2">
+      <p className="break-words text-sm leading-6 text-navy-blue/70">
         {copy.unavailableDescription}
       </p>
-      <p className="break-words text-sm leading-6 text-[#586c88]">
+      <p className="break-words text-sm leading-6 text-navy-blue/70">
         {copy.unavailableNextStep}
       </p>
       {accountsEnabled && (
         <>
-          <p className="break-words text-sm leading-6 text-[#586c88]">
+          <p className="break-words text-sm leading-6 text-navy-blue/70">
             {copy.unavailableSignInNextStep}
           </p>
           <a
@@ -564,24 +448,21 @@ function InvalidLinkState({
   readonly onClear: () => void;
 }) {
   return (
-    <div className="mt-4 min-w-0 space-y-3">
-      <p className="break-words text-sm leading-6 text-[#586c88]">
+    <div className="min-w-0 space-y-3">
+      <p className="break-words text-sm leading-6 text-navy-blue/70">
         {copy.invalidLinkDescription}
       </p>
-      <p className="break-words text-sm leading-6 text-[#586c88]">
+      <p className="break-words text-sm leading-6 text-navy-blue/70">
         {copy.invalidLinkNextStep}
       </p>
       <Button
         aria-busy={isClearing}
-        className="h-auto min-h-11 max-w-full whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
+        className="h-auto min-h-11 min-w-0 max-w-full !whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
         disabled={isClearing}
         onClick={onClear}
         type="button"
         variant="secondary"
       >
-        {isClearing && (
-          <Loader2 aria-hidden="true" className="size-4 animate-spin" />
-        )}
         {isClearing ? copy.clearing : copy.clearAction}
       </Button>
     </div>

@@ -8,6 +8,7 @@ import {
   test,
 } from "bun:test";
 import { act, cleanup, render } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -18,7 +19,13 @@ import { CONSENT_UPDATED_STORAGE_KEY } from "../utils/consent-event";
 let preferenceCategories: string[] = ["necessary"];
 
 mock.module("vanilla-cookieconsent", () => ({
-  acceptCategory: mock(() => undefined),
+  // vanilla-cookieconsent 3.1.0 replaces the complete accepted set; a string
+  // argument is stored as a single-element list.
+  acceptCategory: mock((categories: string | string[]) => {
+    preferenceCategories = Array.isArray(categories)
+      ? [...categories]
+      : [categories];
+  }),
   acceptedCategory: (category: string) =>
     preferenceCategories.includes(category),
   getUserPreferences: () => ({ acceptedCategories: preferenceCategories }),
@@ -44,6 +51,27 @@ function ConsentProbe() {
     </output>
   );
 }
+
+type Hook = ReturnType<typeof useCookieConsent>;
+let latest: Hook | undefined;
+
+function HookHarness() {
+  const value = useCookieConsent();
+
+  // Capture after each committed render; assigning during render would
+  // violate the react-hooks rules for rendering purity.
+  useLayoutEffect(() => {
+    latest = value;
+  });
+
+  return null;
+}
+
+const renderHook = () => {
+  const view = render(<HookHarness />);
+
+  return { view, current: () => latest! };
+};
 
 beforeAll(registerWorkspaceComponentTestEnv);
 beforeEach(() => {
@@ -80,4 +108,80 @@ test("reads the current cookie instead of cached preferences after storage notif
   expect(view.getByTestId("consent-state").textContent).toBe(
     "necessary,analytics|true"
   );
+});
+
+test("accepting a category deduplicates it into the authoritative preferences", () => {
+  const { current } = renderHook();
+
+  act(() => current().acceptCategory("analytics"));
+  expect(preferenceCategories).toEqual(["necessary", "analytics"]);
+
+  act(() => current().acceptCategory("analytics"));
+  expect(preferenceCategories).toEqual(["necessary", "analytics"]);
+});
+
+test("accepting categories in sequence preserves earlier accepts and necessary", () => {
+  const { current } = renderHook();
+
+  act(() => current().acceptCategory("analytics"));
+  act(() => current().acceptCategory("marketing"));
+
+  expect(preferenceCategories).toEqual(["necessary", "analytics", "marketing"]);
+});
+
+test("rejecting a category keeps the other accepted categories", () => {
+  preferenceCategories = ["necessary", "analytics", "marketing"];
+  const { current } = renderHook();
+
+  act(() => current().rejectCategory("analytics"));
+
+  expect(preferenceCategories).toEqual(["necessary", "marketing"]);
+});
+
+test("rejecting necessary is a no-op", () => {
+  preferenceCategories = ["necessary", "analytics"];
+  const { current } = renderHook();
+
+  act(() => current().rejectCategory("necessary"));
+
+  expect(preferenceCategories).toEqual(["necessary", "analytics"]);
+});
+
+test("accepting necessary preserves the other accepted categories", () => {
+  preferenceCategories = ["necessary", "analytics"];
+  const { current } = renderHook();
+
+  act(() => current().acceptCategory("necessary"));
+
+  expect(preferenceCategories).toEqual(["necessary", "analytics"]);
+});
+
+test("actions preserve authoritative state changed while the hook snapshot was stale", () => {
+  const { current } = renderHook();
+  expect(preferenceCategories).toEqual(["necessary"]);
+
+  // Another tab updated consent without notifying this document; the React
+  // snapshot stays stale while the provider state is authoritative.
+  preferenceCategories = ["necessary", "analytics"];
+
+  act(() => current().acceptCategory("marketing"));
+  expect(preferenceCategories).toEqual(["necessary", "analytics", "marketing"]);
+
+  act(() => current().rejectCategory("analytics"));
+  expect(preferenceCategories).toEqual(["necessary", "marketing"]);
+});
+
+test("callback identities stay stable across rerenders", () => {
+  const { view, current } = renderHook();
+  const before = current();
+
+  view.rerender(<HookHarness />);
+
+  const after = current();
+  expect(after.acceptAll).toBe(before.acceptAll);
+  expect(after.rejectAll).toBe(before.rejectAll);
+  expect(after.showPreferences).toBe(before.showPreferences);
+  expect(after.acceptCategory).toBe(before.acceptCategory);
+  expect(after.rejectCategory).toBe(before.rejectCategory);
+  expect(after.isAccepted).toBe(before.isAccepted);
 });
