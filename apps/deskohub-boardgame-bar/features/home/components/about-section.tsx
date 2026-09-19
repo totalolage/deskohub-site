@@ -1,11 +1,8 @@
-import Interpolate from "@doist/react-interpolate";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { Gallery } from "@/features/gallery/components/gallery";
 import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
-import { getLocale, m } from "@/features/i18n";
-import { Price } from "@/shared/components/price";
-import { siteConstants } from "@/shared/utils/constants";
-import { formatPricingPolicyDates } from "@/shared/utils/pricing-policy";
+import { m } from "@/features/i18n";
+import { PriceInfo } from "@/shared/components";
 
 /**
  * About section with venue images and pricing information
@@ -38,28 +35,9 @@ export async function AboutSection({
           <div className="mt-6 flex flex-wrap justify-center gap-4">
             <div className="bg-white rounded-lg shadow-sm px-6 py-3">
               <span className="text-gray-700">
-                <Interpolate
-                  string={
-                    showLegacyPricing
-                      ? m["about.priceInfo.legacyForPlayers"](
-                          formatPricingPolicyDates(getLocale())
-                        )
-                      : m["about.priceInfo.forPlayers"]()
-                  }
-                  mapping={{
-                    entryFee: () => (
-                      <Price
-                        amount={siteConstants.pricing.entryFee}
-                        className="text-green-600 font-bold"
-                      />
-                    ),
-                    consumptionCredit: () => (
-                      <Price
-                        amount={siteConstants.pricing.consumptionCredit}
-                        className="text-green-600 font-bold"
-                      />
-                    ),
-                  }}
+                <PriceInfo
+                  showLegacyPricing={showLegacyPricing}
+                  className="text-green-600 font-bold"
                 />
               </span>
             </div>

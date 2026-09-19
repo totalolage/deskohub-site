@@ -1,10 +1,6 @@
-import Interpolate from "@doist/react-interpolate";
-import { getLocale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { OpeningHours } from "@/features/opening-hours";
-import { Hero } from "@/shared/components";
-import { Price } from "@/shared/components/price";
-import { siteConstants } from "@/shared/utils/constants";
-import { formatPricingPolicyDates } from "@/shared/utils/pricing-policy";
+import { Hero, PriceInfo } from "@/shared/components";
 
 export function HomeHero({
   showLegacyPricing,
@@ -29,28 +25,9 @@ export function HomeHero({
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
           <span className="bg-black/60 backdrop-blur-sm rounded-lg px-4 py-2">
-            <Interpolate
-              string={
-                showLegacyPricing
-                  ? m["hero.priceInfo.legacyForPlayers"](
-                      formatPricingPolicyDates(getLocale())
-                    )
-                  : m["hero.priceInfo.forPlayers"]()
-              }
-              mapping={{
-                entryFee: () => (
-                  <Price
-                    amount={siteConstants.pricing.entryFee}
-                    className="text-green-400"
-                  />
-                ),
-                consumptionCredit: () => (
-                  <Price
-                    amount={siteConstants.pricing.consumptionCredit}
-                    className="text-green-400"
-                  />
-                ),
-              }}
+            <PriceInfo
+              showLegacyPricing={showLegacyPricing}
+              className="text-green-400"
             />
           </span>
         </div>
