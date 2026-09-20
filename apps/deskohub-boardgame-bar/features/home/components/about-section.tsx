@@ -6,15 +6,9 @@ import { PriceInfo } from "@/shared/components";
 
 /**
  * About section with venue images and pricing information
- * Used on the homepage to showcase the venue and consumption credit
+ * Used on the homepage to showcase the venue and entrance fee
  */
-export async function AboutSection({
-  showLegacyPricing,
-  tags,
-}: {
-  showLegacyPricing: boolean;
-  tags: CloudinaryTag;
-}) {
+export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
   const imagesPromise = getCloudinaryImages({
     tags: [["galerie", tags]],
   });
@@ -35,10 +29,7 @@ export async function AboutSection({
           <div className="mt-6 flex flex-wrap justify-center gap-4">
             <div className="bg-white rounded-lg shadow-sm px-6 py-3">
               <span className="text-gray-700">
-                <PriceInfo
-                  showLegacyPricing={showLegacyPricing}
-                  className="text-green-600 font-bold"
-                />
+                <PriceInfo className="text-green-600 font-bold" />
               </span>
             </div>
           </div>

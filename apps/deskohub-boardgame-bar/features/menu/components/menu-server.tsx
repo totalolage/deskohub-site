@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import type { LocalizedNextComponent } from "@/features/localization/localized-next-component";
 import { siteConstants } from "@/shared/utils/constants";
-import { isLegacyPricingActive } from "@/shared/utils/pricing-policy";
 import { MenuData } from "../data";
 import { MenuClient } from "./menu-client";
 import { MenuHero } from "./menu-hero";
@@ -11,7 +10,6 @@ import { MenuHero } from "./menu-hero";
 export const MenuPage: LocalizedNextComponent = Effect.fn("MenuPage")(
   function* MenuPage() {
     yield* Effect.promise(connection);
-    const showLegacyPricing = isLegacyPricingActive();
     const { products, categories } = yield* MenuData;
 
     return (
@@ -20,7 +18,6 @@ export const MenuPage: LocalizedNextComponent = Effect.fn("MenuPage")(
         <MenuClient
           products={products}
           categories={categories}
-          showLegacyPricing={showLegacyPricing}
           showPdfDownload={siteConstants.featureFlags.menuPdfDownload}
         />
       </div>

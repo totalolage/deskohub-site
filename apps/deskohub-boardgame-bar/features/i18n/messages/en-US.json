@@ -2,8 +2,37 @@
   "language": "English",
   "priceOnRequest": "Price on request",
   "priceInfo": {
-    "forPlayers": "Without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week.",
-    "legacyForPlayers": "Until {legacyEndDate}: entry <entryFee /> for board game players. Children under 15 and Mondays are free. From {newPolicyStartDate}, without entrance fee: only a single consumption credit of <consumptionCredit /> per person applies for any day of the week."
+    "forPlayers": "Entry <entryFee /> for board game players, or <entryFeeWithoutOrder /> if you do not order anything. Children under 15 and customers visiting on Mondays play for free.",
+    "upcomingTiersForPlayers": "Entry <entryFee /> for board game players, or <entryFeeWithoutOrder /> if you do not order anything. Children under 15 and customers visiting on Mondays play for free. From {tiersStartDate}, the entrance fee depends on what you order: <tiersLink>see the new tiers</tiersLink>.",
+    "tiersForPlayers": "The entrance fee depends on what you order: from free up to <maxTierFee /> per person. <tiersLink>See the tiers</tiersLink>."
+  },
+  "entranceFees": {
+    "pageTitle": "Entrance Fees",
+    "pageDescription": "From January 1, 2027, the entrance fee for board game players at Deskohub depends on what you order. Compare the Newbie, Regular, Elite, and S-tier prices.",
+    "heroTitle": "ENTRANCE FEES",
+    "heroSubtitle": "The more you get, the less you pay",
+    "effectiveFrom": "Effective from {tiersStartDate}",
+    "consumptionLabel": "Food & Drink",
+    "feeLabel": "Entrance fee",
+    "tiers": {
+      "newbie": {
+        "name": "Newbie",
+        "consumption": "No consumption"
+      },
+      "regular": {
+        "name": "Regular",
+        "consumption": "Under 200 CZK"
+      },
+      "elite": {
+        "name": "Elite",
+        "consumption": "From 200 to 399 CZK"
+      },
+      "sTier": {
+        "name": "S-tier",
+        "consumption": "400 CZK or more"
+      },
+      "free": "Free"
+    }
   },
   "siteTitle": "Deskohub",
   "siteDescription": "Board game club and training room - infinity of perspectives. A place where fantasy meets reality in reflections of infinite worlds.",

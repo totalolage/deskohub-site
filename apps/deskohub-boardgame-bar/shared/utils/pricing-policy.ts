@@ -1,16 +1,21 @@
 import type { Locale } from "@/features/i18n";
 import { formatDate } from "./date-formatting";
 
-export const PRICING_POLICY_CUTOVER_AT = Date.UTC(2026, 8, 30, 22);
+export const ENTRANCE_FEE_TIERS_VISIBLE_AT = Date.UTC(2026, 10, 30, 23);
 
-export const isLegacyPricingActive = (nowMs = Date.now()) =>
-  nowMs < PRICING_POLICY_CUTOVER_AT;
+export const ENTRANCE_FEE_TIERS_START_AT = Date.UTC(2026, 11, 31, 23);
 
-export const formatPricingPolicyDates = (locale: Locale) => ({
-  legacyEndDate: formatDate(new Date(PRICING_POLICY_CUTOVER_AT - 1), locale, {
+export type EntranceFeeTiersPhase = "current" | "announced" | "active";
+
+export const getEntranceFeeTiersPhase = (
+  nowMs = Date.now()
+): EntranceFeeTiersPhase => {
+  if (nowMs < ENTRANCE_FEE_TIERS_VISIBLE_AT) return "current";
+  if (nowMs < ENTRANCE_FEE_TIERS_START_AT) return "announced";
+  return "active";
+};
+
+export const formatEntranceFeeTiersStartDate = (locale: Locale) =>
+  formatDate(new Date(ENTRANCE_FEE_TIERS_START_AT), locale, {
     dateStyle: "long",
-  }),
-  newPolicyStartDate: formatDate(new Date(PRICING_POLICY_CUTOVER_AT), locale, {
-    dateStyle: "long",
-  }),
-});
+  });

@@ -2,8 +2,37 @@
   "language": "Česky",
   "priceOnRequest": "Na dotaz",
   "priceInfo": {
-    "forPlayers": "Bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu.",
-    "legacyForPlayers": "Do {legacyEndDate}: vstup <entryFee /> pro deskové hráče. Děti do 15 let a pondělí zdarma. Od {newPolicyStartDate} bez vstupného: každý den v týdnu platí pouze jednorázový konzumační kredit <consumptionCredit /> na osobu."
+    "forPlayers": "Vstupné pro deskové hráče je <entryFee />, nebo <entryFeeWithoutOrder />, pokud nic neobjednáte. Děti do 15 let a návštěvníci v pondělí hrají zdarma.",
+    "upcomingTiersForPlayers": "Vstupné pro deskové hráče je <entryFee />, nebo <entryFeeWithoutOrder />, pokud nic neobjednáte. Děti do 15 let a návštěvníci v pondělí hrají zdarma. Od {tiersStartDate} se vstupné odvíjí od konzumace: <tiersLink>podívejte se na nové cenové stupně</tiersLink>.",
+    "tiersForPlayers": "Vstupné se odvíjí od konzumace: od zdarma až do <maxTierFee /> na osobu. <tiersLink>Podívejte se na cenové stupně</tiersLink>."
+  },
+  "entranceFees": {
+    "pageTitle": "Vstupné",
+    "pageDescription": "Od 1. ledna 2027 se vstupné pro deskové hráče v Deskohubu odvíjí od konzumace. Porovnejte ceny stupňů Newbie, Regular, Elite a S-tier.",
+    "heroTitle": "VSTUPNÉ",
+    "heroSubtitle": "Čím více si objednáte, tím méně zaplatíte",
+    "effectiveFrom": "Platí od {tiersStartDate}",
+    "consumptionLabel": "Jídlo a pití",
+    "feeLabel": "Vstupné",
+    "tiers": {
+      "newbie": {
+        "name": "Newbie",
+        "consumption": "Bez konzumace"
+      },
+      "regular": {
+        "name": "Regular",
+        "consumption": "Pod 200 Kč"
+      },
+      "elite": {
+        "name": "Elite",
+        "consumption": "Od 200 do 399 Kč"
+      },
+      "sTier": {
+        "name": "S-tier",
+        "consumption": "400 Kč a více"
+      },
+      "free": "Zdarma"
+    }
   },
   "siteTitle": "Deskohub",
   "siteDescription": "Deskoherní klub a školící místnost - nekonečno perspektiv. Místo, kde fantazie potkává realitu v odrazech nekonečných světů.",

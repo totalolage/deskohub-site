@@ -1,5 +1,13 @@
 export { PATHNAME_HEADER_NAME as PATHNAME_HEADER } from "@deskohub/i18n/next";
 
+export type EntranceFeeTierId = "newbie" | "regular" | "elite" | "sTier";
+
+export interface EntranceFeeTier {
+  id: EntranceFeeTierId;
+  minConsumption: number;
+  fee: number;
+}
+
 export const siteConstants = {
   // Brand information
   brand: {
@@ -97,9 +105,14 @@ export const siteConstants = {
     youtube: "https://www.youtube.com/@Deskohub",
   },
   pricing: {
-    // TODO: Remove the legacy entrance fee, dated copy, and cutover code after October 1, 2026.
     entryFee: 50,
-    consumptionCredit: 250,
+    entryFeeWithoutOrder: 100,
+    entranceFeeTiers: [
+      { id: "newbie", minConsumption: 0, fee: 150 },
+      { id: "regular", minConsumption: 1, fee: 90 },
+      { id: "elite", minConsumption: 200, fee: 50 },
+      { id: "sTier", minConsumption: 400, fee: 0 },
+    ] satisfies EntranceFeeTier[],
     training: {
       hourly: 900,
       daily: 5500,
