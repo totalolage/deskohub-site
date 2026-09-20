@@ -1,0 +1,40 @@
+diff --git a/dist/JsonSchemaGenerator.js b/dist/JsonSchemaGenerator.js
+index 951b02ae7b34afb752135880f5aaa90972b41f70..e6ae4c8ffa47568a7161af4cd8e025a9098005ed 100644
+--- a/dist/JsonSchemaGenerator.js
++++ b/dist/JsonSchemaGenerator.js
+@@ -178,9 +178,13 @@ const tokenPattern = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+ function collectForwardReferencedRecursives(nonRecursives, recursives) {
+   const recursiveNames = new Set(recursives.map(([name]) => name));
+   const referenced = new Set();
+-  for (const {
+-    code
+-  } of nonRecursives) {
++  // Recursive definitions can also eagerly reference later recursive definitions.
++  // Scan in emission order, retaining only names that are not initialized yet.
++  for (const { $ref, code } of [
++    ...nonRecursives,
++    ...recursives.map(([$ref, code]) => ({ $ref, code }))
++  ]) {
++    recursiveNames.delete($ref);
+     for (const token of code.runtime.matchAll(tokenPattern)) {
+       const identifier = token[0];
+       if (recursiveNames.has(identifier)) {
+diff --git a/src/JsonSchemaGenerator.ts b/src/JsonSchemaGenerator.ts
+index 51ec605dea63c1444690eb03d1a335c246960f10..a0879519c0b07c66575de3e15055f9c1d99973bc 100644
+--- a/src/JsonSchemaGenerator.ts
++++ b/src/JsonSchemaGenerator.ts
+@@ -287,7 +287,13 @@ function collectForwardReferencedRecursives(
+   const recursiveNames = new Set(recursives.map(([name]) => name))
+   const referenced = new Set<string>()
+ 
+-  for (const { code } of nonRecursives) {
++  // Recursive definitions can also eagerly reference later recursive definitions.
++  // Scan in emission order, retaining only names that are not initialized yet.
++  for (const { $ref, code } of [
++    ...nonRecursives,
++    ...recursives.map(([$ref, code]) => ({ $ref, code }))
++  ]) {
++    recursiveNames.delete($ref)
+     for (const token of code.runtime.matchAll(tokenPattern)) {
+       const identifier = token[0]
+       if (recursiveNames.has(identifier)) {
