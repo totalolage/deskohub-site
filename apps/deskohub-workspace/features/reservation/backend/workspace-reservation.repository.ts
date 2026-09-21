@@ -632,8 +632,8 @@ export class WorkspaceReservationRepository extends Context.Service<
         claimAdministrationCancellation: Effect.fn(
           "workspaceReservations.claimAdministrationCancellation"
         )(function* (input) {
-          const transaction = db.transaction((tx) =>
-            Effect.gen(function* () {
+          const transaction = db.transaction(
+            Effect.fn(function* (tx) {
               const now = Temporal.Now.instant();
               const [grant] = yield* tx
                 .select({
@@ -808,8 +808,8 @@ export class WorkspaceReservationRepository extends Context.Service<
         markAdministrationCancelled: Effect.fn(
           "workspaceReservations.markAdministrationCancelled"
         )(function* (input) {
-          const transaction = db.transaction((tx) =>
-            Effect.gen(function* () {
+          const transaction = db.transaction(
+            Effect.fn(function* (tx) {
               const updatedAt = Temporal.Now.instant();
               const updated = yield* tx
                 .update(workspaceReservations)
@@ -850,8 +850,8 @@ export class WorkspaceReservationRepository extends Context.Service<
         completeSupersessionAndCreateDraft: Effect.fn(
           "workspaceReservations.completeSupersessionAndCreateDraft"
         )(function* (input) {
-          const transaction = db.transaction((tx) =>
-            Effect.gen(function* () {
+          const transaction = db.transaction(
+            Effect.fn(function* (tx) {
               const [cancelled] = yield* tx
                 .update(workspaceReservations)
                 .set({

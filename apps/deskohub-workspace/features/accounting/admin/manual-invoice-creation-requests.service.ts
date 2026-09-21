@@ -78,8 +78,8 @@ export class ManualInvoiceCreationRequests extends Context.Service<
             .pipe(Effect.andThen(effect))
         );
 
-      const claim: IManualInvoiceCreationRequests["claim"] = (input) =>
-        Effect.gen(function* () {
+      const claim: IManualInvoiceCreationRequests["claim"] = Effect.fn(
+        function* (input) {
           const activeKey = yield* keys.getActive;
           const requestDigest = getManualInvoiceCreationRequestDigest(
             input.normalizedRequestJson,
@@ -142,7 +142,9 @@ export class ManualInvoiceCreationRequests extends Context.Service<
           return reclaimed.length > 0
             ? ({ kind: "claimed" } as const)
             : ({ kind: "in-progress" } as const);
-        }).pipe(Effect.withTracerEnabled(false));
+        },
+        (effect) => effect.pipe(Effect.withTracerEnabled(false))
+      );
 
       const complete = Effect.fn("ManualInvoiceCreationRequests.complete")(
         (invoiceId: InvoiceId) =>

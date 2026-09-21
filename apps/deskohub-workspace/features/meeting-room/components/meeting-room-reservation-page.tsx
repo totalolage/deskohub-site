@@ -8,16 +8,13 @@ import { createReservationPage } from "@/features/reservation/components/create-
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import {
   getMeetingRoomReservationDefaultValues,
-  meetingRoomReservationDefaultValues,
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
-import {
-  getMeetingRoomReservationDuration,
-  getMeetingRoomReservationDurationKey,
-} from "@/features/reservation/meeting-room-reservation-duration";
-import { getEarliestMeetingRoomStartDateTime } from "@/features/reservation/meeting-room-reservation-time";
+import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
+import { getMeetingRoomReservationDefaultValuesFromSearchParams } from "@/features/reservation/reservation-checkout-query";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import type { SearchParamsRecord } from "@/shared/utils";
 import {
   MeetingRoomReservationForm,
   MeetingRoomReservationFormFallback,
@@ -39,26 +36,26 @@ export async function renderMeetingRoomReservationContent({
   initialReservation,
   locale,
   replacementToken,
+  searchParams,
   submittedCode,
 }: {
   readonly checkoutSessionId?: CheckoutSessionId;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly locale: Locale;
   readonly replacementToken?: string;
+  readonly searchParams: SearchParamsRecord;
   readonly submittedCode?: CanonicalPromotionCode;
 }) {
-  const minimumStartDateTime = getEarliestMeetingRoomStartDateTime(
-    getMeetingRoomReservationDuration(
-      meetingRoomReservationDefaultValues.duration
-    )
-  );
   const restoredInitialValues = initialReservation
     ? getMeetingRoomReservationDefaultValues(initialReservation)
     : undefined;
-  const initialValues = restoredInitialValues ?? {
-    ...meetingRoomReservationDefaultValues,
-    startDateTime: minimumStartDateTime,
-  };
+  // The presence of a signed reservation decides the restored path even when
+  // it has ended: the fallback must not consume public query values.
+  const initialValues =
+    restoredInitialValues ??
+    (initialReservation
+      ? getMeetingRoomReservationDefaultValuesFromSearchParams({})
+      : getMeetingRoomReservationDefaultValuesFromSearchParams(searchParams));
   const initialAdvertisedPrices = await loadAdvertisedPrices(
     getMeetingRoomDurationAdvertisedPriceRequests({
       locale,

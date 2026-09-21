@@ -187,8 +187,8 @@ export class ReservationAdministrationService extends Context.Service<
               yield* dotypos
                 .cancelReservation(details.dotyposReservationId)
                 .pipe(
-                  Effect.catch((cause) =>
-                    Effect.gen(function* () {
+                  Effect.catch(
+                    Effect.fn(function* (cause) {
                       const cancelled = yield* reservationDetails
                         .getReservation(current.id)
                         .pipe(

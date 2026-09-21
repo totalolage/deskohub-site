@@ -347,31 +347,30 @@ export class StandaloneAccessCodeAdministration extends Context.Service<
 
             return yield* Match.value(claimed).pipe(
               Match.discriminatorsExhaustive("kind")({
-                claimed: ({ variance }) =>
-                  Effect.gen(function* () {
-                    const issued = yield* Effect.result(
-                      igloohome.issueHourlyAlgoPin({
-                        deviceId,
-                        variance,
-                        ...providerTimestamps(input.request),
-                        accessName: input.request.name,
-                      })
-                    );
-                    if (Result.isSuccess(issued)) {
-                      return yield* recordCreated({
-                        request: input,
-                        attempt,
-                        variance,
-                        issued: issued.success,
-                      });
-                    }
-                    return yield* recordProviderRejection({
+                claimed: Effect.fn(function* ({ variance }) {
+                  const issued = yield* Effect.result(
+                    igloohome.issueHourlyAlgoPin({
+                      deviceId,
+                      variance,
+                      ...providerTimestamps(input.request),
+                      accessName: input.request.name,
+                    })
+                  );
+                  if (Result.isSuccess(issued)) {
+                    return yield* recordCreated({
                       request: input,
                       attempt,
                       variance,
-                      error: issued.failure,
+                      issued: issued.success,
                     });
-                  }),
+                  }
+                  return yield* recordProviderRejection({
+                    request: input,
+                    attempt,
+                    variance,
+                    error: issued.failure,
+                  });
+                }),
                 created: ({ terminal }) =>
                   Effect.succeed(alreadyCreatedOutcome(input, terminal)),
                 rejected: ({ failureCode }) =>

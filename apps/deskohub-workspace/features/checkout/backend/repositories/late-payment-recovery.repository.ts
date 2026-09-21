@@ -113,8 +113,8 @@ export class LatePaymentRecoveryRepository extends Context.Service<
             readonly completedAt: Temporal.Instant;
           }
         ) {
-          yield* db.transaction((tx) =>
-            Effect.gen(function* () {
+          yield* db.transaction(
+            Effect.fn(function* (tx) {
               const [recovery] = yield* tx
                 .select()
                 .from(latePaymentRecoveries)
@@ -355,8 +355,8 @@ export class LatePaymentRecoveryRepository extends Context.Service<
         findByPaymentAttemptId,
         start: Effect.fn("LatePaymentRecoveryRepository.start")(
           function* (input) {
-            return yield* db.transaction((tx) =>
-              Effect.gen(function* () {
+            return yield* db.transaction(
+              Effect.fn(function* (tx) {
                 const [existing] = yield* tx
                   .select()
                   .from(latePaymentRecoveries)

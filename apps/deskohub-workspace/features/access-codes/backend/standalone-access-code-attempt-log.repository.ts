@@ -266,29 +266,77 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           })
           .returning({ id: events.id });
 
-      const occupiedVariances = (
+      const occupiedVariances = Effect.fn(function* (
         tx: Transaction,
         attempt: StandaloneAccessCodeAttempt
-      ) =>
-        Effect.gen(function* () {
-          const startedEvents = yield* tx
+      ) {
+        const startedEvents = yield* tx
+          .select({
+            attemptId: events.attemptId,
+            variance: events.variance,
+          })
+          .from(events)
+          .where(
+            and(
+              eq(events.deviceId, attempt.deviceId),
+              eq(events.startsAt, attempt.startsAt),
+              eq(events.endsAt, attempt.endsAt),
+              eq(events.eventKind, "started")
+            )
+          );
+        if (startedEvents.length === 0) return [];
+
+        const freedAttempts = yield* tx
+          .selectDistinct({ attemptId: events.attemptId })
+          .from(events)
+          .where(
+            and(
+              inArray(
+                events.attemptId,
+                startedEvents.map((event) => event.attemptId)
+              ),
+              inArray(events.eventKind, ["rejected", "reconciled"])
+            )
+          );
+        const freedAttemptIds = new Set(
+          freedAttempts.map((event) => event.attemptId)
+        );
+
+        return [
+          ...new Set(
+            startedEvents
+              .filter((event) => !freedAttemptIds.has(event.attemptId))
+              .map((event) => event.variance)
+          ),
+        ];
+      });
+
+      const unreconciledAmbiguousAttempts = Effect.fn(function* (
+        tx: Transaction,
+        input: {
+          readonly attempt: StandaloneAccessCodeAttempt;
+          readonly staleBefore: Temporal.Instant;
+        }
+      ) {
+        const startedEvents = yield* tx
+          .select()
+          .from(events)
+          .where(
+            and(
+              eq(events.deviceId, input.attempt.deviceId),
+              eq(events.startsAt, input.attempt.startsAt),
+              eq(events.endsAt, input.attempt.endsAt),
+              eq(events.eventKind, "started")
+            )
+          );
+        if (startedEvents.length === 0) return [];
+
+        const [terminalEvents, reconciledEvents] = yield* Effect.all([
+          tx
             .select({
               attemptId: events.attemptId,
-              variance: events.variance,
+              eventKind: events.eventKind,
             })
-            .from(events)
-            .where(
-              and(
-                eq(events.deviceId, attempt.deviceId),
-                eq(events.startsAt, attempt.startsAt),
-                eq(events.endsAt, attempt.endsAt),
-                eq(events.eventKind, "started")
-              )
-            );
-          if (startedEvents.length === 0) return [];
-
-          const freedAttempts = yield* tx
-            .selectDistinct({ attemptId: events.attemptId })
             .from(events)
             .where(
               and(
@@ -296,114 +344,63 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
                   events.attemptId,
                   startedEvents.map((event) => event.attemptId)
                 ),
-                inArray(events.eventKind, ["rejected", "reconciled"])
+                inArray(
+                  events.eventKind,
+                  standaloneAccessCodeTerminalEventKinds
+                )
               )
-            );
-          const freedAttemptIds = new Set(
-            freedAttempts.map((event) => event.attemptId)
-          );
-
-          return [
-            ...new Set(
-              startedEvents
-                .filter((event) => !freedAttemptIds.has(event.attemptId))
-                .map((event) => event.variance)
             ),
-          ];
-        });
-
-      const unreconciledAmbiguousAttempts = (
-        tx: Transaction,
-        input: {
-          readonly attempt: StandaloneAccessCodeAttempt;
-          readonly staleBefore: Temporal.Instant;
-        }
-      ) =>
-        Effect.gen(function* () {
-          const startedEvents = yield* tx
-            .select()
+          tx
+            .select({ attemptId: events.attemptId })
             .from(events)
             .where(
               and(
-                eq(events.deviceId, input.attempt.deviceId),
-                eq(events.startsAt, input.attempt.startsAt),
-                eq(events.endsAt, input.attempt.endsAt),
-                eq(events.eventKind, "started")
+                inArray(
+                  events.attemptId,
+                  startedEvents.map((event) => event.attemptId)
+                ),
+                eq(events.eventKind, "reconciled")
               )
-            );
-          if (startedEvents.length === 0) return [];
+            ),
+        ]);
+        const ambiguousAttemptIds = new Set(
+          terminalEvents
+            .filter(({ eventKind }) => eventKind === "ambiguous")
+            .map(({ attemptId }) => attemptId)
+        );
+        const terminalAttemptIds = new Set(
+          terminalEvents.map(({ attemptId }) => attemptId)
+        );
+        const reconciledAttemptIds = new Set(
+          reconciledEvents.map((event) => event.attemptId)
+        );
 
-          const [terminalEvents, reconciledEvents] = yield* Effect.all([
-            tx
-              .select({
-                attemptId: events.attemptId,
-                eventKind: events.eventKind,
-              })
-              .from(events)
-              .where(
-                and(
-                  inArray(
-                    events.attemptId,
-                    startedEvents.map((event) => event.attemptId)
-                  ),
-                  inArray(
-                    events.eventKind,
-                    standaloneAccessCodeTerminalEventKinds
-                  )
-                )
-              ),
-            tx
-              .select({ attemptId: events.attemptId })
-              .from(events)
-              .where(
-                and(
-                  inArray(
-                    events.attemptId,
-                    startedEvents.map((event) => event.attemptId)
-                  ),
-                  eq(events.eventKind, "reconciled")
-                )
-              ),
-          ]);
-          const ambiguousAttemptIds = new Set(
-            terminalEvents
-              .filter(({ eventKind }) => eventKind === "ambiguous")
-              .map(({ attemptId }) => attemptId)
-          );
-          const terminalAttemptIds = new Set(
-            terminalEvents.map(({ attemptId }) => attemptId)
-          );
-          const reconciledAttemptIds = new Set(
-            reconciledEvents.map((event) => event.attemptId)
-          );
-
-          const unresolvedCandidates = startedEvents.flatMap((event) => {
-            if (reconciledAttemptIds.has(event.attemptId)) return [];
-            if (ambiguousAttemptIds.has(event.attemptId)) {
-              return [{ prior: event, staleStarted: false }];
-            }
-            const isStale =
-              Temporal.Instant.compare(event.occurredAt, input.staleBefore) <=
-              0;
-            if (isStale && !terminalAttemptIds.has(event.attemptId)) {
-              return [{ prior: event, staleStarted: true }];
-            }
-            return [];
-          });
-          const byOccurrenceThenAttemptId = (
-            left: { readonly prior: StandaloneAccessCodeAttemptEventRow },
-            right: { readonly prior: StandaloneAccessCodeAttemptEventRow }
-          ) => {
-            const byOccurrence = Temporal.Instant.compare(
-              left.prior.occurredAt,
-              right.prior.occurredAt
-            );
-            if (byOccurrence !== 0) return byOccurrence;
-            if (left.prior.attemptId === right.prior.attemptId) return 0;
-            return left.prior.attemptId < right.prior.attemptId ? -1 : 1;
-          };
-          return unresolvedCandidates.sort(byOccurrenceThenAttemptId);
+        const unresolvedCandidates = startedEvents.flatMap((event) => {
+          if (reconciledAttemptIds.has(event.attemptId)) return [];
+          if (ambiguousAttemptIds.has(event.attemptId)) {
+            return [{ prior: event, staleStarted: false }];
+          }
+          const isStale =
+            Temporal.Instant.compare(event.occurredAt, input.staleBefore) <= 0;
+          if (isStale && !terminalAttemptIds.has(event.attemptId)) {
+            return [{ prior: event, staleStarted: true }];
+          }
+          return [];
         });
+        const byOccurrenceThenAttemptId = (
+          left: { readonly prior: StandaloneAccessCodeAttemptEventRow },
+          right: { readonly prior: StandaloneAccessCodeAttemptEventRow }
+        ) => {
+          const byOccurrence = Temporal.Instant.compare(
+            left.prior.occurredAt,
+            right.prior.occurredAt
+          );
+          if (byOccurrence !== 0) return byOccurrence;
+          if (left.prior.attemptId === right.prior.attemptId) return 0;
+          return left.prior.attemptId < right.prior.attemptId ? -1 : 1;
+        };
+        return unresolvedCandidates.sort(byOccurrenceThenAttemptId);
+      });
 
       const insertReconciledEvent = (
         tx: Transaction,
@@ -487,37 +484,33 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           Match.exhaustive
         );
 
-      const appendOrResolveStaleAmbiguous = (
+      const appendOrResolveStaleAmbiguous = Effect.fn(function* (
         tx: Transaction,
         input: {
           readonly prior: StandaloneAccessCodeAttemptEventRow;
           readonly occurredAt: Temporal.Instant;
         }
-      ) =>
-        Effect.gen(function* () {
-          yield* insertTerminalEvent(tx, {
-            attempt: input.prior,
-            variance: input.prior.variance,
-            eventKind: "ambiguous",
-            occurredAt: input.occurredAt,
-            providerCredentialId: null,
-            providerStatusCode: null,
-            failureCode: "standalone_attempt_stale",
-          });
-          const [terminal] = yield* findTerminalEvent(
-            tx,
-            input.prior.attemptId
-          );
-          if (!terminal) {
-            return yield* new StandaloneAccessCodeAttemptLogStorageError({
-              operation: "claim",
-              attemptId: input.prior.attemptId,
-              message:
-                "Conflicting standalone access-code terminal event could not be read.",
-            });
-          }
-          return terminal;
+      ) {
+        yield* insertTerminalEvent(tx, {
+          attempt: input.prior,
+          variance: input.prior.variance,
+          eventKind: "ambiguous",
+          occurredAt: input.occurredAt,
+          providerCredentialId: null,
+          providerStatusCode: null,
+          failureCode: "standalone_attempt_stale",
         });
+        const [terminal] = yield* findTerminalEvent(tx, input.prior.attemptId);
+        if (!terminal) {
+          return yield* new StandaloneAccessCodeAttemptLogStorageError({
+            operation: "claim",
+            attemptId: input.prior.attemptId,
+            message:
+              "Conflicting standalone access-code terminal event could not be read.",
+          });
+        }
+        return terminal;
+      });
 
       const cleanupTargetOf = (
         prior: StandaloneAccessCodeAttemptEventRow
@@ -526,7 +519,7 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
         name: prior.name,
       });
 
-      const resolveReplay = (
+      const resolveReplay = Effect.fn(function* (
         tx: Transaction,
         stored: StandaloneAccessCodeAttemptEventRow,
         input: {
@@ -535,45 +528,44 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           readonly staleBefore: Temporal.Instant;
           readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
         }
-      ) =>
-        Effect.gen(function* () {
-          if (!matchesAttempt(stored, input.attempt)) {
-            return { kind: "mismatch" } as const;
-          }
+      ) {
+        if (!matchesAttempt(stored, input.attempt)) {
+          return { kind: "mismatch" } as const;
+        }
 
-          let terminal = (yield* findTerminalEvent(
-            tx,
-            input.attempt.attemptId
-          ))[0];
-          if (
-            !terminal &&
-            Temporal.Instant.compare(stored.occurredAt, input.staleBefore) <= 0
-          ) {
-            terminal = yield* appendOrResolveStaleAmbiguous(tx, {
-              prior: stored,
-              occurredAt: input.claimedAt,
-            });
-          }
-          if (!terminal) return { kind: "in-progress" } as const;
+        let terminal = (yield* findTerminalEvent(
+          tx,
+          input.attempt.attemptId
+        ))[0];
+        if (
+          !terminal &&
+          Temporal.Instant.compare(stored.occurredAt, input.staleBefore) <= 0
+        ) {
+          terminal = yield* appendOrResolveStaleAmbiguous(tx, {
+            prior: stored,
+            occurredAt: input.claimedAt,
+          });
+        }
+        if (!terminal) return { kind: "in-progress" } as const;
 
-          const resolution = resolveTerminalEvent(terminal);
-          if (resolution.kind === "in-progress") return resolution;
+        const resolution = resolveTerminalEvent(terminal);
+        if (resolution.kind === "in-progress") return resolution;
 
-          if (
-            resolution.kind === "ambiguous" &&
-            input.providerCredentialRemovedAttemptId === input.attempt.attemptId
-          ) {
-            yield* insertReconciledEvent(tx, {
-              attempt: input.attempt,
-              prior: terminal,
-              occurredAt: input.claimedAt,
-            });
-            return { kind: "reconciled" } as const;
-          }
-          return resolution;
-        });
+        if (
+          resolution.kind === "ambiguous" &&
+          input.providerCredentialRemovedAttemptId === input.attempt.attemptId
+        ) {
+          yield* insertReconciledEvent(tx, {
+            attempt: input.attempt,
+            prior: terminal,
+            occurredAt: input.claimedAt,
+          });
+          return { kind: "reconciled" } as const;
+        }
+        return resolution;
+      });
 
-      const claimInTransaction = (
+      const claimInTransaction = Effect.fn(function* (
         tx: Transaction,
         input: {
           readonly attempt: StandaloneAccessCodeAttempt;
@@ -581,86 +573,81 @@ export class StandaloneAccessCodeAttemptLogRepository extends Context.Service<
           readonly staleBefore: Temporal.Instant;
           readonly providerCredentialRemovedAttemptId?: AdministrationStandaloneAccessCodeAttemptId;
         }
-      ) =>
-        Effect.gen(function* () {
-          const [existing] = yield* findStartedEvent(
-            tx,
-            input.attempt.attemptId
-          );
-          if (existing) return yield* resolveReplay(tx, existing, input);
+      ) {
+        const [existing] = yield* findStartedEvent(tx, input.attempt.attemptId);
+        if (existing) return yield* resolveReplay(tx, existing, input);
 
-          const [target] = yield* unreconciledAmbiguousAttempts(tx, {
-            attempt: input.attempt,
-            staleBefore: input.staleBefore,
-          });
-          if (target) {
-            if (
-              input.providerCredentialRemovedAttemptId !==
-              target.prior.attemptId
-            ) {
-              return {
-                kind: "cleanup-required",
-                cleanupTarget: cleanupTargetOf(target.prior),
-              } as const;
-            }
-            if (target.staleStarted) {
-              const terminal = yield* appendOrResolveStaleAmbiguous(tx, {
-                prior: target.prior,
-                occurredAt: input.claimedAt,
-              });
-              if (resolveTerminalEvent(terminal).kind === "ambiguous") {
-                yield* insertReconciledEvent(tx, {
-                  attempt: input.attempt,
-                  prior: target.prior,
-                  occurredAt: input.claimedAt,
-                });
-              }
-            } else {
+        const [target] = yield* unreconciledAmbiguousAttempts(tx, {
+          attempt: input.attempt,
+          staleBefore: input.staleBefore,
+        });
+        if (target) {
+          if (
+            input.providerCredentialRemovedAttemptId !== target.prior.attemptId
+          ) {
+            return {
+              kind: "cleanup-required",
+              cleanupTarget: cleanupTargetOf(target.prior),
+            } as const;
+          }
+          if (target.staleStarted) {
+            const terminal = yield* appendOrResolveStaleAmbiguous(tx, {
+              prior: target.prior,
+              occurredAt: input.claimedAt,
+            });
+            if (resolveTerminalEvent(terminal).kind === "ambiguous") {
               yield* insertReconciledEvent(tx, {
                 attempt: input.attempt,
                 prior: target.prior,
                 occurredAt: input.claimedAt,
               });
             }
-
-            const [next] = yield* unreconciledAmbiguousAttempts(tx, {
+          } else {
+            yield* insertReconciledEvent(tx, {
               attempt: input.attempt,
-              staleBefore: input.staleBefore,
+              prior: target.prior,
+              occurredAt: input.claimedAt,
             });
-            if (next) {
-              return {
-                kind: "cleanup-required",
-                cleanupTarget: cleanupTargetOf(next.prior),
-              } as const;
-            }
           }
 
-          const occupied = yield* occupiedVariances(tx, input.attempt);
-          const variance = standaloneAccessCodeProviderVariances.find(
-            (candidate) => !occupied.includes(candidate)
-          );
-          if (variance === undefined) return { kind: "exhausted" } as const;
-
-          const inserted = yield* insertStartedEvent(tx, {
+          const [next] = yield* unreconciledAmbiguousAttempts(tx, {
             attempt: input.attempt,
-            variance,
-            claimedAt: input.claimedAt,
+            staleBefore: input.staleBefore,
           });
-          if (inserted.length > 0) {
-            return { kind: "claimed", variance } as const;
+          if (next) {
+            return {
+              kind: "cleanup-required",
+              cleanupTarget: cleanupTargetOf(next.prior),
+            } as const;
           }
+        }
 
-          const [raced] = yield* findStartedEvent(tx, input.attempt.attemptId);
-          if (!raced) {
-            return yield* new StandaloneAccessCodeAttemptLogStorageError({
-              operation: "claim",
-              attemptId: input.attempt.attemptId,
-              message:
-                "Concurrent attempt claim could not be read after conflict.",
-            });
-          }
-          return yield* resolveReplay(tx, raced, input);
+        const occupied = yield* occupiedVariances(tx, input.attempt);
+        const variance = standaloneAccessCodeProviderVariances.find(
+          (candidate) => !occupied.includes(candidate)
+        );
+        if (variance === undefined) return { kind: "exhausted" } as const;
+
+        const inserted = yield* insertStartedEvent(tx, {
+          attempt: input.attempt,
+          variance,
+          claimedAt: input.claimedAt,
         });
+        if (inserted.length > 0) {
+          return { kind: "claimed", variance } as const;
+        }
+
+        const [raced] = yield* findStartedEvent(tx, input.attempt.attemptId);
+        if (!raced) {
+          return yield* new StandaloneAccessCodeAttemptLogStorageError({
+            operation: "claim",
+            attemptId: input.attempt.attemptId,
+            message:
+              "Concurrent attempt claim could not be read after conflict.",
+          });
+        }
+        return yield* resolveReplay(tx, raced, input);
+      });
 
       return StandaloneAccessCodeAttemptLogRepository.of({
         claim: Effect.fn("StandaloneAccessCodeAttemptLogRepository.claim")(

@@ -60,13 +60,22 @@ import {
 } from "./payment-terminal";
 import { assertReservationReplacement } from "./reservation-reuse";
 
-const meetingRoomE2EDurations = [
+// The first slots drive the meeting-room checkout cases below; the four
+// trailing one-hour slots are reserved for the reservation-link regression
+// cases in ./reservation-links.ts (three link cases plus a replacement slot).
+export const meetingRoomE2ECoreSlotCount = 6;
+
+export const meetingRoomE2EDurations = [
   { unit: "hour", amount: 1 },
   { unit: "hour", amount: 4 },
   { unit: "hour", amount: 1 },
   { unit: "hour", amount: 4 },
   { unit: "hour", amount: 1 },
   { unit: "day", amount: 1 },
+  { unit: "hour", amount: 1 },
+  { unit: "hour", amount: 1 },
+  { unit: "hour", amount: 1 },
+  { unit: "hour", amount: 1 },
 ] as const satisfies readonly MeetingRoomReservationDuration[];
 
 export type MeetingRoomE2EPreparation = {
@@ -114,7 +123,7 @@ export const makeMeetingRoomE2ECases = ({
       replacementSlot,
       cancelledSlot,
       daySlot,
-    ] = slots;
+    ] = slots.slice(0, meetingRoomE2ECoreSlotCount);
     const requireSlot = (
       slot: (typeof slots)[number] | undefined,
       id: string
@@ -337,7 +346,7 @@ export const makeMeetingRoomE2ECases = ({
     ];
   });
 
-const assertHeldMeetingRoomSlotAvailability = (
+export const assertHeldMeetingRoomSlotAvailability = (
   config: WorkspaceE2EConfig,
   datasourceConfig: DatasourceConfig,
   data: CheckoutData,

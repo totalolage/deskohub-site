@@ -113,36 +113,35 @@ export const makePostHogEventService = ({
         ),
         Option.getOrElse(() => Effect.void)
       ),
-    capture: (input) =>
-      Effect.gen(function* () {
-        if (!client) return;
+    capture: Effect.fn(function* (input) {
+      if (!client) return;
 
-        const spanMetadata = yield* collectSpanMetadata;
-        const properties = compactProperties({
-          ...input.properties,
-          ...spanMetadata,
-          "deployment.environment.name": config.environment,
-          "service.name": config.serviceName,
-          "service.namespace": config.serviceNamespace,
-        });
+      const spanMetadata = yield* collectSpanMetadata;
+      const properties = compactProperties({
+        ...input.properties,
+        ...spanMetadata,
+        "deployment.environment.name": config.environment,
+        "service.name": config.serviceName,
+        "service.namespace": config.serviceNamespace,
+      });
 
-        yield* Effect.tryPromise(() =>
-          client.captureImmediate({
-            distinctId: input.distinctId,
+      yield* Effect.tryPromise(() =>
+        client.captureImmediate({
+          distinctId: input.distinctId,
+          event: input.event,
+          properties,
+          timestamp: temporalInstantToDate(input.timestamp),
+          uuid: input.uuid,
+        })
+      ).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("PostHog lifecycle event capture failed", {
             event: input.event,
-            properties,
-            timestamp: temporalInstantToDate(input.timestamp),
             uuid: input.uuid,
+            cause,
           })
-        ).pipe(
-          Effect.catch((cause) =>
-            Effect.logWarning("PostHog lifecycle event capture failed", {
-              event: input.event,
-              uuid: input.uuid,
-              cause,
-            })
-          )
-        );
-      }),
+        )
+      );
+    }),
   };
 };

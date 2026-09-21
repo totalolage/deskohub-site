@@ -27,7 +27,7 @@ Zero-priced components may appear in the order summary without changing the pric
 
 ## Discount codes
 
-An ordinary code in a reservation URL's `discountCode` query parameter is provisionally included in the advertised price. The anonymous preview excludes vouchers and cannot establish customer-specific eligibility. Reservation submission performs the complete validation after identifying the customer; if the code is unavailable, checkout presents the updated summary without it for acceptance.
+An ordinary code in a reservation URL's `discountCode` query parameter is provisionally included in the advertised price. The anonymous preview excludes vouchers and cannot establish customer-specific eligibility. Reservation submission performs the complete validation after identifying the customer. A code that fails this validation remains in the code input on the payment page for ordinary retry or correction and is never represented as applied; checkout presents the updated summary without it for acceptance.
 
 Entering a discount code on the order summary remains an independent action:
 
@@ -38,6 +38,27 @@ Entering a discount code on the order summary remains an independent action:
 - If the code or another displayed discount can no longer be honored, checkout returns an updated summary before any payment session is created.
 
 Voucher codes follow the same customer flow but resolve to their current stored credit rather than a discount definition. Code entry only quotes that credit. Final payment admission locks and reserves the exact applied amount; terminal failure releases it, and successful payment consumes it permanently.
+
+## Reservation links
+
+The meeting-room reservation page accepts prefill parameters in its URL in every supported locale:
+
+- `name`, `email`, `phone`, and `message` prefill the customer fields.
+- `startDateTime` is a local start in `YYYY-MM-DDTHH:mm` form, interpreted in the Workspace timezone (Europe/Prague). Only whole hours are accepted.
+- `duration` accepts `hour:1`, `hour:4`, or `day:1`.
+- `discountCode` carries an ordinary discount code.
+
+Browsers percent-encode query values, so a leading `+` in a phone number must be sent as `%2B`; a literal `+` decodes as a space.
+
+Each field is decoded on its own. An empty, malformed, past, or daylight-saving-invalid start, or an unsupported duration, falls back to the fresh default for that field alone; valid sibling parameters still apply. When no start is given, the page chooses the earliest whole-hour start for the chosen duration, which may be an interval that has already begun. This choice is not an availability guarantee; only submission checks availability.
+
+A signed checkout-restoration link takes precedence over the public parameters. When the restored checkout has ended, the page uses its fresh defaults and does not carry the public parameters forward. A reservation link never opts the customer into marketing consent or legal acceptance.
+
+Example with synthetic, deliberately non-working values (`example.invalid`, `EXAMPLE_CODE`):
+
+```
+/{locale}/reservation/meeting-room?name=Guest&email=guest%40example.invalid&phone=%2B420123456789&startDateTime=2099-08-12T10%3A00&duration=hour%3A1&discountCode=EXAMPLE_CODE
+```
 
 ## Reservation holds and edits
 

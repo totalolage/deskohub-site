@@ -212,8 +212,8 @@ export class PaymentLifecycleRepository extends Context.Service<
           yield* validateDiscountCommitment(commitment);
 
         return yield* db
-          .transaction((tx) =>
-            Effect.gen(function* () {
+          .transaction(
+            Effect.fn(function* (tx) {
               const [reservation] = yield* tx
                 .select({
                   id: workspaceReservations.id,
@@ -403,8 +403,8 @@ export class PaymentLifecycleRepository extends Context.Service<
         }
 
         return yield* db
-          .transaction((tx) =>
-            Effect.gen(function* () {
+          .transaction(
+            Effect.fn(function* (tx) {
               const [reservation] = yield* tx
                 .select({
                   id: workspaceReservations.id,
@@ -663,8 +663,8 @@ export class PaymentLifecycleRepository extends Context.Service<
           readonly providerStatus?: string;
           readonly paidAt: Temporal.Instant;
         }) {
-          return yield* db.transaction((tx) =>
-            Effect.gen(function* () {
+          return yield* db.transaction(
+            Effect.fn(function* (tx) {
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -769,8 +769,8 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           const terminalAt = Temporal.Now.instant();
 
-          return yield* db.transaction((tx) =>
-            Effect.gen(function* () {
+          return yield* db.transaction(
+            Effect.fn(function* (tx) {
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -1277,38 +1277,36 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
 
     const stored = yield* Match.value(input.claim).pipe(
       Match.discriminatorsExhaustive("kind")({
-        discount_code: (claim) =>
-          Effect.gen(function* () {
-            const rows = yield* input.tx
-              .select({ promotion: promotionCodes, code: discountCodes })
-              .from(discountCodes)
-              .innerJoin(
-                promotionCodes,
-                eq(promotionCodes.id, discountCodes.promotionCodeId)
-              )
-              .where(eq(discountCodes.id, claim.codeId))
-              .limit(1)
-              .for("update");
-            return rows[0]
-              ? ({ kind: "discount_code", claim, ...rows[0] } as const)
-              : undefined;
-          }),
-        voucher: (claim) =>
-          Effect.gen(function* () {
-            const rows = yield* input.tx
-              .select({ promotion: promotionCodes, voucher: vouchers })
-              .from(vouchers)
-              .innerJoin(
-                promotionCodes,
-                eq(promotionCodes.id, vouchers.promotionCodeId)
-              )
-              .where(eq(vouchers.id, claim.voucherId))
-              .limit(1)
-              .for("update");
-            return rows[0]
-              ? ({ kind: "voucher", claim, ...rows[0] } as const)
-              : undefined;
-          }),
+        discount_code: Effect.fn(function* (claim) {
+          const rows = yield* input.tx
+            .select({ promotion: promotionCodes, code: discountCodes })
+            .from(discountCodes)
+            .innerJoin(
+              promotionCodes,
+              eq(promotionCodes.id, discountCodes.promotionCodeId)
+            )
+            .where(eq(discountCodes.id, claim.codeId))
+            .limit(1)
+            .for("update");
+          return rows[0]
+            ? ({ kind: "discount_code", claim, ...rows[0] } as const)
+            : undefined;
+        }),
+        voucher: Effect.fn(function* (claim) {
+          const rows = yield* input.tx
+            .select({ promotion: promotionCodes, voucher: vouchers })
+            .from(vouchers)
+            .innerJoin(
+              promotionCodes,
+              eq(promotionCodes.id, vouchers.promotionCodeId)
+            )
+            .where(eq(vouchers.id, claim.voucherId))
+            .limit(1)
+            .for("update");
+          return rows[0]
+            ? ({ kind: "voucher", claim, ...rows[0] } as const)
+            : undefined;
+        }),
       })
     );
 

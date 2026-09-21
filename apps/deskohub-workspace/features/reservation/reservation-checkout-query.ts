@@ -1,5 +1,5 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
-import { Schema } from "effect";
+import { Predicate, Record, Schema } from "effect";
 import {
   getWorkspaceProductByTier,
   workspaceProductMonitorOptions,
@@ -10,6 +10,20 @@ import {
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
+import {
+  type MeetingRoomReservationInput,
+  meetingRoomReservationDefaultValues,
+  meetingRoomStartDateTimeSchema,
+} from "@/features/reservation/meeting-room-reservation";
+import {
+  getMeetingRoomReservationDuration,
+  getMeetingRoomReservationDurationKey,
+  meetingRoomReservationDurationKeySchema,
+} from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getEarliestMeetingRoomStartDateTime,
+  getMeetingRoomReservationInterval,
+} from "@/features/reservation/meeting-room-reservation-time";
 import {
   getOfficeReservationMaximumDayCount,
   getOfficeReservationMaximumEndsOn,
@@ -70,18 +84,12 @@ const queryOfficeDayCountSchema = Schema.toStandardSchemaV1(
 const queryOfficeSeatsSchema = Schema.toStandardSchemaV1(
   Schema.FiniteFromString.pipe(Schema.decodeTo(officeSeatsSchema))
 );
-const queryNameSchema = Schema.toStandardSchemaV1(
-  reservationCustomerNameSchema
-);
-const queryEmailSchema = Schema.toStandardSchemaV1(
-  reservationCustomerEmailSchema
-);
-const queryPhoneSchema = Schema.toStandardSchemaV1(
-  reservationCustomerPhoneSchema
-);
-const queryMessageSchema = Schema.toStandardSchemaV1(
-  reservationCustomerMessageSchema
-);
+const queryCustomerSchemas = {
+  name: Schema.toStandardSchemaV1(reservationCustomerNameSchema),
+  email: Schema.toStandardSchemaV1(reservationCustomerEmailSchema),
+  phone: Schema.toStandardSchemaV1(reservationCustomerPhoneSchema),
+  message: Schema.toStandardSchemaV1(reservationCustomerMessageSchema),
+};
 
 const getTrimmedSearchParam = (
   searchParams: SupportedSearchParams,
@@ -90,6 +98,18 @@ const getTrimmedSearchParam = (
   const value = getSearchParam(searchParams, key)?.trim();
   return value || undefined;
 };
+
+const decodeReservationCheckoutCustomer = (
+  searchParams: SupportedSearchParams
+): Partial<
+  Pick<ReservationCheckoutQueryValues, keyof typeof queryCustomerSchemas>
+> =>
+  Record.filter(
+    Record.map(queryCustomerSchemas, (schema, key): string | undefined =>
+      decodeStandardSchema(schema, getTrimmedSearchParam(searchParams, key))
+    ),
+    Predicate.isNotUndefined
+  );
 
 const decodeReservationCheckoutQuery = (
   searchParams: SupportedSearchParams
@@ -115,34 +135,12 @@ const decodeReservationCheckoutQuery = (
     getTrimmedSearchParam(searchParams, "monitorOption")
   );
 
-  const name = decodeStandardSchema(
-    queryNameSchema,
-    getTrimmedSearchParam(searchParams, "name")
-  );
-
-  const email = decodeStandardSchema(
-    queryEmailSchema,
-    getTrimmedSearchParam(searchParams, "email")
-  );
-
-  const phone = decodeStandardSchema(
-    queryPhoneSchema,
-    getTrimmedSearchParam(searchParams, "phone")
-  );
-
-  const message = decodeStandardSchema(
-    queryMessageSchema,
-    getTrimmedSearchParam(searchParams, "message")
-  );
   return {
     ...(entryTier !== undefined && { entryTier }),
     ...(date !== undefined && { date }),
     ...(coffee !== undefined && { coffee: coffee === "true" }),
     ...(monitorOption !== undefined && { monitorOption }),
-    ...(name !== undefined && { name }),
-    ...(email !== undefined && { email }),
-    ...(phone !== undefined && { phone }),
-    ...(message !== undefined && { message }),
+    ...decodeReservationCheckoutCustomer(searchParams),
   };
 };
 
@@ -209,6 +207,52 @@ export const getOfficeReservationDefaultValuesFromSearchParams = (
     startsOn: options.startsOn,
     ...(dayCount !== undefined && dayCount <= maximumDayCount && { dayCount }),
     ...(seats !== undefined && seats <= options.seatCapacity && { seats }),
+  };
+};
+
+const queryMeetingRoomStartDateTimeSchema = Schema.toStandardSchemaV1(
+  meetingRoomStartDateTimeSchema
+);
+const queryMeetingRoomDurationKeySchema = Schema.toStandardSchemaV1(
+  meetingRoomReservationDurationKeySchema
+);
+
+export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
+  searchParams: SupportedSearchParams,
+  now = Temporal.Now.instant()
+): MeetingRoomReservationInput => {
+  const durationKey = decodeStandardSchema(
+    queryMeetingRoomDurationKeySchema,
+    getTrimmedSearchParam(searchParams, "duration")
+  );
+  const duration = getMeetingRoomReservationDuration(
+    durationKey ?? meetingRoomReservationDefaultValues.duration
+  );
+
+  const startDateTime = decodeStandardSchema(
+    queryMeetingRoomStartDateTimeSchema,
+    getTrimmedSearchParam(searchParams, "startDateTime")
+  );
+  const startInterval =
+    startDateTime === undefined
+      ? null
+      : getMeetingRoomReservationInterval(startDateTime, duration);
+  // Fresh query decoding rejects any start at or before now, even when the
+  // interval end is still in the future; submission keeps its own end-based
+  // rule inside the reservation schema.
+  const startDateTimeOrEarliest =
+    startDateTime !== undefined &&
+    startInterval !== null &&
+    Temporal.Instant.compare(startInterval.startsAt, now) >= 0
+      ? startDateTime
+      : getEarliestMeetingRoomStartDateTime(duration, now);
+
+  return {
+    ...meetingRoomReservationDefaultValues,
+    ...decodeReservationCheckoutCustomer(searchParams),
+    duration: getMeetingRoomReservationDurationKey(duration),
+    startDateTime: startDateTimeOrEarliest,
+    marketingConsent: false,
   };
 };
 

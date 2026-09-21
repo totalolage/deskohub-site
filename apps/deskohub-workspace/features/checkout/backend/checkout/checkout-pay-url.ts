@@ -53,11 +53,12 @@ export const buildCheckoutPayPath = (
 export const buildFreshCheckoutPayPath = Effect.fn("buildFreshCheckoutPayPath")(
   function* (
     input: BuildSignedPayStateInput,
-    options: CheckoutStateCryptoOptions = {}
+    options: CheckoutStateCryptoOptions = {},
+    pathOptions: CheckoutPayPathOptions = {}
   ) {
     const freshState = yield* buildSignedPayState(input, options);
     const sealedState = yield* sealPayStateForUrl(freshState, options);
-    return buildCheckoutPayPath(input.locale, sealedState);
+    return buildCheckoutPayPath(input.locale, sealedState, pathOptions);
   }
 );
 

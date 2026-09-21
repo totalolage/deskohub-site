@@ -264,8 +264,8 @@ function makeReservationHoldCleanupServiceLayer(
             "Dotypos reservation hold cancellation started"
           );
           yield* dotypos.cancelReservation(claimed.dotyposReservationId).pipe(
-            Effect.tapError((cause) =>
-              Effect.gen(function* () {
+            Effect.tapError(
+              Effect.fn(function* (cause) {
                 yield* Effect.logError(
                   "Dotypos reservation hold cancellation failed",
                   { claimed, cause }
@@ -379,8 +379,9 @@ function makeReservationHoldCleanupServiceLayer(
               yield* Effect.annotateLogsScoped({ order, result });
 
               yield* Match.value(result).pipe(
-                Match.tag("Success", ({ success }) =>
-                  Effect.gen(function* () {
+                Match.tag(
+                  "Success",
+                  Effect.fn(function* ({ success }) {
                     if (success === "cancelled") cancelled += 1;
                     else skipped += 1;
                     yield* Effect.logInfo(
@@ -392,8 +393,9 @@ function makeReservationHoldCleanupServiceLayer(
                     );
                   })
                 ),
-                Match.tag("Failure", ({ failure }) =>
-                  Effect.gen(function* () {
+                Match.tag(
+                  "Failure",
+                  Effect.fn(function* ({ failure }) {
                     failed += 1;
                     yield* Effect.logError(
                       "Expired reservation hold cleanup failed",

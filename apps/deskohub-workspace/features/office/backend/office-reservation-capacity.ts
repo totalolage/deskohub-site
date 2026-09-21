@@ -6,19 +6,18 @@ import {
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation";
 
-export const getOfficeReservationSeatCapacity = (
+export const getOfficeReservationSeatCapacity = Effect.fn(function* (
   tables: readonly DotyposTable[]
-) =>
-  Effect.gen(function* () {
-    const candidates = getWorkspaceTableCandidates(tables, [
-      workspaceOfficeReservationTableTag,
-    ]);
-    if (candidates.length !== 1) {
-      return yield* new ValidationError({
-        message:
-          "Office reservations require exactly one assignable office table.",
-      });
-    }
+) {
+  const candidates = getWorkspaceTableCandidates(tables, [
+    workspaceOfficeReservationTableTag,
+  ]);
+  if (candidates.length !== 1) {
+    return yield* new ValidationError({
+      message:
+        "Office reservations require exactly one assignable office table.",
+    });
+  }
 
-    return yield* getWorkspaceTableSeatCapacity(candidates[0]!);
-  });
+  return yield* getWorkspaceTableSeatCapacity(candidates[0]!);
+});
