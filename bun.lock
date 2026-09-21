@@ -442,6 +442,7 @@
   },
   "patchedDependencies": {
     "@effect/sql-pg@4.0.0-beta.85": "patches/@effect%2Fsql-pg@4.0.0-beta.85.patch",
+    "@effect/openapi-generator@4.0.0-beta.85": "patches/@effect%2Fopenapi-generator@4.0.0-beta.85.patch",
   },
   "overrides": {
     "effect": "4.0.0-beta.85",

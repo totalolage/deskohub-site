@@ -1,0 +1,519 @@
+diff --git a/dist/JsonSchemaGenerator.js b/dist/JsonSchemaGenerator.js
+index 951b02ae7..b498a6915 100644
+--- a/dist/JsonSchemaGenerator.js
++++ b/dist/JsonSchemaGenerator.js
+@@ -54,29 +54,9 @@ export function make() {
+       $ref,
+       code
+     }) => renderSchemaTypeAndRuntime($ref, code, typeOnly));
+-    const recursiveDeclarations = [];
+-    const recursives = [];
+-    if (typeOnly) {
+-      for (const [$ref, code] of recursiveReferences) {
+-        recursives.push(renderSchemaTypeAndRuntime($ref, code, true));
+-      }
+-    } else {
+-      const recursivelyForwardReferenced = collectForwardReferencedRecursives(nonRecursiveReferences, recursiveReferences);
+-      const recursiveInternalNames = makeRecursiveInternalNameMap(recursivelyForwardReferenced, [...nonRecursiveReferences.map(({
+-        $ref
+-      }) => $ref), ...recursiveReferences.map(([$ref]) => $ref), ...generated.nameMap]);
+-      for (const [$ref, code] of recursiveReferences) {
+-        if (recursivelyForwardReferenced.has($ref)) {
+-          const internalName = recursiveInternalNames.get($ref);
+-          recursiveDeclarations.push(renderRecursiveReferenceDeclaration($ref, code, internalName));
+-          recursives.push(`const ${internalName} = ${code.runtime}`);
+-          continue;
+-        }
+-        recursives.push(renderSchemaTypeAndRuntime($ref, code, false));
+-      }
+-    }
++    const recursives = recursiveReferences.map(([$ref, code]) => renderSchemaTypeAndRuntime($ref, code, typeOnly));
+     const codes = generated.codeDocument.codes.map((code, i) => renderSchemaTypeAndRuntime(generated.nameMap[i], code, typeOnly));
+-    return render("recursive declarations", recursiveDeclarations) + render("non-recursive definitions", nonRecursives) + render("recursive definitions", recursives) + render("schemas", codes);
++    return render("non-recursive definitions", nonRecursives) + render("recursive definitions", recursives) + render("schemas", codes);
+   }
+   function generateHttpApi(source, components, options) {
+     const generated = makeCodeDocument(source, components, options);
+@@ -84,28 +64,13 @@ export function make() {
+       return "";
+     }
+     const nonRecursiveReferences = generated.codeDocument.references.nonRecursives;
+-    const recursiveReferences = Object.entries(generated.codeDocument.references.recursives);
+     const nonRecursives = nonRecursiveReferences.map(({
+       $ref,
+       code
+     }) => renderSchemaTypeAndRuntime($ref, code, false, options?.multipartSchemaRefs));
+-    const recursivelyForwardReferenced = collectForwardReferencedRecursives(nonRecursiveReferences, recursiveReferences);
+-    const recursiveInternalNames = makeRecursiveInternalNameMap(recursivelyForwardReferenced, [...nonRecursiveReferences.map(({
+-      $ref
+-    }) => $ref), ...recursiveReferences.map(([$ref]) => $ref), ...generated.nameMap]);
+-    const recursiveDeclarations = [];
+-    const recursives = [];
+-    for (const [$ref, code] of recursiveReferences) {
+-      if (recursivelyForwardReferenced.has($ref)) {
+-        const internalName = recursiveInternalNames.get($ref);
+-        recursiveDeclarations.push(renderRecursiveReferenceDeclaration($ref, code, internalName));
+-        recursives.push(`const ${internalName} = ${code.runtime}`);
+-        continue;
+-      }
+-      recursives.push(renderSchemaTypeAndRuntime($ref, code, false, options?.multipartSchemaRefs));
+-    }
++    const recursives = Object.entries(generated.codeDocument.references.recursives).map(([$ref, code]) => renderSchemaTypeAndRuntime($ref, code, false, options?.multipartSchemaRefs));
+     const codes = generated.codeDocument.codes.map((code, i) => renderSchemaTypeAndRuntime(generated.nameMap[i], code, false, options?.multipartSchemaRefs));
+-    return render("recursive declarations", recursiveDeclarations) + render("non-recursive definitions", nonRecursives) + render("recursive definitions", recursives) + render("schemas", codes);
++    return render("non-recursive definitions", nonRecursives) + render("recursive definitions", recursives) + render("schemas", codes);
+   }
+   function makeCodeDocument(source, components, options) {
+     const nameMap = [];
+@@ -133,9 +98,10 @@ export function make() {
+         return options?.onEnter?.(out) ?? out;
+       }
+     });
++    const recursiveKeys = new Set(Object.keys(topologicalSort(multiDocument.references).recursives));
+     return {
+       nameMap,
+-      codeDocument: SchemaRepresentation.toCodeDocument(multiDocument)
++      codeDocument: SchemaRepresentation.toCodeDocument(deferRecursiveReferences(multiDocument, recursiveKeys))
+     };
+   }
+   return {
+@@ -152,6 +118,108 @@ function fromSchemaOpenApi(source, jsonSchema) {
+       return JsonSchema.fromSchemaOpenApi3_0(jsonSchema);
+   }
+ }
++/**
++ * Defer eager references to recursive component definitions so that every
++ * recursive schema can be rendered as a standalone public declaration.
++ *
++ * `toCodeDocument` renders `Suspend` nodes as `Schema.suspend`, which breaks
++ * initialization cycles at each eager reference edge while the wrapped
++ * `Reference` keeps the sanitized identifier for both the type and the runtime
++ * output. References beneath an existing `Suspend` are already lazy and are
++ * left untouched, and every node's annotations and checks are preserved.
++ *
++ * @since 4.0.0
++ */
++function deferRecursiveReferences(multiDocument, recursiveKeys) {
++  const defer = (s, deferred) => {
++    switch (s._tag) {
++      case "Reference":
++        {
++          if (deferred || !recursiveKeys.has(s.$ref)) {
++            return s;
++          }
++          return {
++            _tag: "Suspend",
++            thunk: s,
++            checks: []
++          };
++        }
++      case "Suspend":
++        return {
++          ...s,
++          thunk: defer(s.thunk, true)
++        };
++      case "Declaration":
++        return {
++          ...s,
++          typeParameters: s.typeParameters.map(p => defer(p, deferred)),
++          encodedSchema: defer(s.encodedSchema, deferred)
++        };
++      case "String":
++        return s.contentSchema === undefined ? s : {
++          ...s,
++          contentSchema: defer(s.contentSchema, deferred)
++        };
++      case "TemplateLiteral":
++        return {
++          ...s,
++          parts: s.parts.map(p => defer(p, deferred))
++        };
++      case "Arrays":
++        return {
++          ...s,
++          elements: s.elements.map(el => ({
++            ...el,
++            type: defer(el.type, deferred)
++          })),
++          rest: s.rest.map(p => defer(p, deferred))
++        };
++      case "Objects":
++        return {
++          ...s,
++          propertySignatures: s.propertySignatures.map(ps => ({
++            ...ps,
++            type: defer(ps.type, deferred)
++          })),
++          indexSignatures: s.indexSignatures.map(is => ({
++            ...is,
++            parameter: defer(is.parameter, deferred),
++            type: defer(is.type, deferred)
++          }))
++        };
++      case "Union":
++        return {
++          ...s,
++          types: s.types.map(p => defer(p, deferred))
++        };
++      case "Null":
++      case "Undefined":
++      case "Void":
++      case "Never":
++      case "Unknown":
++      case "Any":
++      case "Number":
++      case "Boolean":
++      case "BigInt":
++      case "Symbol":
++      case "Literal":
++      case "UniqueSymbol":
++      case "ObjectKeyword":
++      case "Enum":
++        return s;
++      default:
++        {
++          const exhaustive = s;
++          return exhaustive;
++        }
++    }
++  };
++  return {
++    representations: Arr.map(multiDocument.representations, s => defer(s, false)),
++    references: Rec.map(multiDocument.references, s => defer(s, false))
++  };
++}
++const topologicalSort = SchemaRepresentation.topologicalSort;
+ function renderSchemaTypeAndRuntime($ref, code, typeOnly, multipartSchemaRefs) {
+   if (!typeOnly && multipartSchemaRefs !== undefined) {
+     if ($ref === multipartSchemaRefs.singleFile) {
+@@ -167,40 +235,8 @@ function renderSchemaTypeAndRuntime($ref, code, typeOnly, multipartSchemaRefs) {
+   }
+   return strings.join("\n");
+ }
+-function renderRecursiveReferenceDeclaration($ref, code, internalName) {
+-  return [`export type ${$ref} = ${code.Type}`, `export const ${$ref} = Schema.suspend((): Schema.Codec<${$ref}> => ${internalName})`].join("\n");
+-}
+ function render(title, as) {
+   if (as.length === 0) return "";
+   return "// " + title + "\n" + as.join("\n") + "\n";
+ }
+-const tokenPattern = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+-function collectForwardReferencedRecursives(nonRecursives, recursives) {
+-  const recursiveNames = new Set(recursives.map(([name]) => name));
+-  const referenced = new Set();
+-  for (const {
+-    code
+-  } of nonRecursives) {
+-    for (const token of code.runtime.matchAll(tokenPattern)) {
+-      const identifier = token[0];
+-      if (recursiveNames.has(identifier)) {
+-        referenced.add(identifier);
+-      }
+-    }
+-  }
+-  return referenced;
+-}
+-function makeRecursiveInternalNameMap(recursiveNames, existingNames) {
+-  const usedNames = new Set(existingNames);
+-  const internalNames = new Map();
+-  for (const name of recursiveNames) {
+-    let candidate = `__recursive_${name}`;
+-    while (usedNames.has(candidate)) {
+-      candidate = `_${candidate}`;
+-    }
+-    usedNames.add(candidate);
+-    internalNames.set(name, candidate);
+-  }
+-  return internalNames;
+-}
+ //# sourceMappingURL=JsonSchemaGenerator.js.map
+\ No newline at end of file
+diff --git a/src/JsonSchemaGenerator.ts b/src/JsonSchemaGenerator.ts
+index 51ec605de..d986f9b97 100644
+--- a/src/JsonSchemaGenerator.ts
++++ b/src/JsonSchemaGenerator.ts
+@@ -77,45 +77,15 @@ export function make() {
+       renderSchemaTypeAndRuntime($ref, code, typeOnly)
+     )
+ 
+-    const recursiveDeclarations: Array<string> = []
+-    const recursives: Array<string> = []
+-
+-    if (typeOnly) {
+-      for (const [$ref, code] of recursiveReferences) {
+-        recursives.push(renderSchemaTypeAndRuntime($ref, code, true))
+-      }
+-    } else {
+-      const recursivelyForwardReferenced = collectForwardReferencedRecursives(
+-        nonRecursiveReferences,
+-        recursiveReferences
+-      )
+-      const recursiveInternalNames = makeRecursiveInternalNameMap(
+-        recursivelyForwardReferenced,
+-        [
+-          ...nonRecursiveReferences.map(({ $ref }) => $ref),
+-          ...recursiveReferences.map(([$ref]) => $ref),
+-          ...generated.nameMap
+-        ]
+-      )
+-
+-      for (const [$ref, code] of recursiveReferences) {
+-        if (recursivelyForwardReferenced.has($ref)) {
+-          const internalName = recursiveInternalNames.get($ref)!
+-          recursiveDeclarations.push(renderRecursiveReferenceDeclaration($ref, code, internalName))
+-          recursives.push(`const ${internalName} = ${code.runtime}`)
+-          continue
+-        }
+-
+-        recursives.push(renderSchemaTypeAndRuntime($ref, code, false))
+-      }
+-    }
++    const recursives = recursiveReferences.map(([$ref, code]) =>
++      renderSchemaTypeAndRuntime($ref, code, typeOnly)
++    )
+ 
+     const codes = generated.codeDocument.codes.map((code, i) =>
+       renderSchemaTypeAndRuntime(generated.nameMap[i], code, typeOnly)
+     )
+ 
+-    return render("recursive declarations", recursiveDeclarations) +
+-      render("non-recursive definitions", nonRecursives) +
++    return render("non-recursive definitions", nonRecursives) +
+       render("recursive definitions", recursives) +
+       render("schemas", codes)
+   }
+@@ -131,42 +101,20 @@ export function make() {
+     }
+ 
+     const nonRecursiveReferences = generated.codeDocument.references.nonRecursives
+-    const recursiveReferences = Object.entries(generated.codeDocument.references.recursives)
+ 
+     const nonRecursives = nonRecursiveReferences.map(({ $ref, code }) =>
+       renderSchemaTypeAndRuntime($ref, code, false, options?.multipartSchemaRefs)
+     )
+ 
+-    const recursivelyForwardReferenced = collectForwardReferencedRecursives(nonRecursiveReferences, recursiveReferences)
+-    const recursiveInternalNames = makeRecursiveInternalNameMap(
+-      recursivelyForwardReferenced,
+-      [
+-        ...nonRecursiveReferences.map(({ $ref }) => $ref),
+-        ...recursiveReferences.map(([$ref]) => $ref),
+-        ...generated.nameMap
+-      ]
++    const recursives = Object.entries(generated.codeDocument.references.recursives).map(([$ref, code]) =>
++      renderSchemaTypeAndRuntime($ref, code, false, options?.multipartSchemaRefs)
+     )
+ 
+-    const recursiveDeclarations: Array<string> = []
+-    const recursives: Array<string> = []
+-
+-    for (const [$ref, code] of recursiveReferences) {
+-      if (recursivelyForwardReferenced.has($ref)) {
+-        const internalName = recursiveInternalNames.get($ref)!
+-        recursiveDeclarations.push(renderRecursiveReferenceDeclaration($ref, code, internalName))
+-        recursives.push(`const ${internalName} = ${code.runtime}`)
+-        continue
+-      }
+-
+-      recursives.push(renderSchemaTypeAndRuntime($ref, code, false, options?.multipartSchemaRefs))
+-    }
+-
+     const codes = generated.codeDocument.codes.map((code, i) =>
+       renderSchemaTypeAndRuntime(generated.nameMap[i], code, false, options?.multipartSchemaRefs)
+     )
+ 
+-    return render("recursive declarations", recursiveDeclarations) +
+-      render("non-recursive definitions", nonRecursives) +
++    return render("non-recursive definitions", nonRecursives) +
+       render("recursive definitions", recursives) +
+       render("schemas", codes)
+   }
+@@ -210,9 +158,11 @@ export function make() {
+       }
+     })
+ 
++    const recursiveKeys = new Set(Object.keys(topologicalSort(multiDocument.references).recursives))
++
+     return {
+       nameMap,
+-      codeDocument: SchemaRepresentation.toCodeDocument(multiDocument)
++      codeDocument: SchemaRepresentation.toCodeDocument(deferRecursiveReferences(multiDocument, recursiveKeys))
+     }
+   }
+ 
+@@ -228,6 +178,113 @@ function fromSchemaOpenApi(source: Source, jsonSchema: JsonSchema.JsonSchema) {
+   }
+ }
+ 
++/**
++ * Runtime shape returned by `SchemaRepresentation.topologicalSort`, which is
++ * exported by the `effect` runtime but not yet declared in its type surface.
++ */
++interface SortedReferences {
++  readonly nonRecursives: ReadonlyArray<{ readonly $ref: string }>
++  readonly recursives: Readonly<Record<string, SchemaRepresentation.Representation>>
++}
++
++const topologicalSort = (
++  SchemaRepresentation as typeof SchemaRepresentation & {
++    readonly topologicalSort: (
++      references: SchemaRepresentation.References
++    ) => SortedReferences
++  }
++).topologicalSort
++
++/**
++ * Defer eager references to recursive component definitions so that every
++ * recursive schema can be rendered as a standalone public declaration.
++ *
++ * `toCodeDocument` renders `Suspend` nodes as `Schema.suspend`, which breaks
++ * initialization cycles at each eager reference edge while the wrapped
++ * `Reference` keeps the sanitized identifier for both the type and the runtime
++ * output. References beneath an existing `Suspend` are already lazy and are
++ * left untouched, and every node's annotations and checks are preserved.
++ *
++ * @since 4.0.0
++ */
++function deferRecursiveReferences(
++  multiDocument: SchemaRepresentation.MultiDocument,
++  recursiveKeys: ReadonlySet<string>
++): SchemaRepresentation.MultiDocument {
++  const defer = (
++    s: SchemaRepresentation.Representation,
++    deferred: boolean
++  ): SchemaRepresentation.Representation => {
++    switch (s._tag) {
++      case "Reference": {
++        if (deferred || !recursiveKeys.has(s.$ref)) {
++          return s
++        }
++        return { _tag: "Suspend", thunk: s, checks: [] }
++      }
++      case "Suspend":
++        return { ...s, thunk: defer(s.thunk, true) }
++      case "Declaration":
++        return {
++          ...s,
++          typeParameters: s.typeParameters.map((p) => defer(p, deferred)),
++          encodedSchema: defer(s.encodedSchema, deferred)
++        }
++      case "String":
++        return s.contentSchema === undefined
++          ? s
++          : { ...s, contentSchema: defer(s.contentSchema, deferred) }
++      case "TemplateLiteral":
++        return { ...s, parts: s.parts.map((p) => defer(p, deferred)) }
++      case "Arrays":
++        return {
++          ...s,
++          elements: s.elements.map((el) => ({ ...el, type: defer(el.type, deferred) })),
++          rest: s.rest.map((p) => defer(p, deferred))
++        }
++      case "Objects":
++        return {
++          ...s,
++          propertySignatures: s.propertySignatures.map((ps) => ({
++            ...ps,
++            type: defer(ps.type, deferred)
++          })),
++          indexSignatures: s.indexSignatures.map((is) => ({
++            ...is,
++            parameter: defer(is.parameter, deferred),
++            type: defer(is.type, deferred)
++          }))
++        }
++      case "Union":
++        return { ...s, types: s.types.map((p) => defer(p, deferred)) }
++      case "Null":
++      case "Undefined":
++      case "Void":
++      case "Never":
++      case "Unknown":
++      case "Any":
++      case "Number":
++      case "Boolean":
++      case "BigInt":
++      case "Symbol":
++      case "Literal":
++      case "UniqueSymbol":
++      case "ObjectKeyword":
++      case "Enum":
++        return s
++      default: {
++        const exhaustive: never = s
++        return exhaustive
++      }
++    }
++  }
++
++  return {
++    representations: Arr.map(multiDocument.representations, (s) => defer(s, false)),
++    references: Rec.map(multiDocument.references, (s) => defer(s, false))
++  }
++}
++
+ function renderSchemaTypeAndRuntime(
+   $ref: string,
+   code: SchemaRepresentation.Code,
+@@ -259,61 +316,7 @@ function renderSchemaTypeAndRuntime(
+   return strings.join("\n")
+ }
+ 
+-function renderRecursiveReferenceDeclaration(
+-  $ref: string,
+-  code: SchemaRepresentation.Code,
+-  internalName: string
+-): string {
+-  return [
+-    `export type ${$ref} = ${code.Type}`,
+-    `export const ${$ref} = Schema.suspend((): Schema.Codec<${$ref}> => ${internalName})`
+-  ].join("\n")
+-}
+-
+ function render(title: string, as: ReadonlyArray<string>) {
+   if (as.length === 0) return ""
+   return "// " + title + "\n" + as.join("\n") + "\n"
+ }
+-
+-const tokenPattern = /[A-Za-z_$][A-Za-z0-9_$]*/g
+-
+-function collectForwardReferencedRecursives(
+-  nonRecursives: ReadonlyArray<{
+-    readonly $ref: string
+-    readonly code: SchemaRepresentation.Code
+-  }>,
+-  recursives: ReadonlyArray<readonly [string, SchemaRepresentation.Code]>
+-): Set<string> {
+-  const recursiveNames = new Set(recursives.map(([name]) => name))
+-  const referenced = new Set<string>()
+-
+-  for (const { code } of nonRecursives) {
+-    for (const token of code.runtime.matchAll(tokenPattern)) {
+-      const identifier = token[0]
+-      if (recursiveNames.has(identifier)) {
+-        referenced.add(identifier)
+-      }
+-    }
+-  }
+-
+-  return referenced
+-}
+-
+-function makeRecursiveInternalNameMap(
+-  recursiveNames: ReadonlySet<string>,
+-  existingNames: ReadonlyArray<string>
+-): Map<string, string> {
+-  const usedNames = new Set(existingNames)
+-  const internalNames = new Map<string, string>()
+-
+-  for (const name of recursiveNames) {
+-    let candidate = `__recursive_${name}`
+-    while (usedNames.has(candidate)) {
+-      candidate = `_${candidate}`
+-    }
+-    usedNames.add(candidate)
+-    internalNames.set(name, candidate)
+-  }
+-
+-  return internalNames
+-}

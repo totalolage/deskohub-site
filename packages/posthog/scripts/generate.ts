@@ -7,7 +7,6 @@ import {
   HttpClientResponse,
 } from "effect/unstable/http";
 import type { OpenAPISpec } from "effect/unstable/httpapi/OpenApi";
-import { normalizeRecursiveSchemas } from "./normalize-recursive-schemas";
 
 const generatedClientPath = Bun.fileURLToPath(
   new URL("../src/generated/effect.gen.ts", import.meta.url)
@@ -133,8 +132,7 @@ const generatePostHogClient = Effect.gen(function* () {
       name: "PostHogClient",
     }
   );
-  const normalizedClient = yield* normalizeRecursiveSchemas(generatedClient);
-  yield* writeGeneratedClient(normalizedClient);
+  yield* writeGeneratedClient(generatedClient);
 });
 
 if (import.meta.main) {
