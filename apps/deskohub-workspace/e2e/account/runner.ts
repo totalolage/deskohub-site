@@ -32,13 +32,13 @@ export const runWorkspaceE2EAccountCase = ({
   reportFailure,
   session,
   testCase,
-  verifyPage,
+  verifyPages,
 }: {
   readonly journalRef: WorkspaceE2EAccountJournalRef;
   readonly reportFailure?: WorkspaceE2EFailureReporter;
   readonly session: string;
   readonly testCase: WorkspaceE2EAccountCase;
-  readonly verifyPage?: WorkspaceE2EStep<void, E2EDatabase>;
+  readonly verifyPages?: readonly WorkspaceE2EStep<void, E2EDatabase>[];
 }): Effect.Effect<void, WorkspaceE2EError, WorkspaceE2EAccountRequirement> =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -78,7 +78,7 @@ export const runWorkspaceE2EAccountCase = ({
 
       const executeCase = Effect.gen(function* () {
         yield* testCase.execute({ journalRef, runStep, session });
-        if (verifyPage) yield* runStep(verifyPage);
+        for (const verifyPage of verifyPages ?? []) yield* runStep(verifyPage);
       });
 
       const traced = telemetry.traceCase({

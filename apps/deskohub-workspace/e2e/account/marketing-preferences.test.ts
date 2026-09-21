@@ -1221,23 +1221,73 @@ describe("workspace marketing preferences helper", () => {
     const transitionAt = lane.indexOf(
       'caseId === "account-reservation-transitions"'
     );
-    const customerLookupAt = lane.indexOf(
-      "const customerId = yield* findLinkedDotyposCustomerId(userId);",
+    const verifyPagesAt = lane.indexOf("verifyPages = [", transitionAt);
+    const layoutStepAt = lane.indexOf(
+      'id: "checks account layout navigation"',
+      verifyPagesAt
+    );
+    const marketingStepAt = lane.indexOf(
+      'id: "checks account marketing preferences"',
+      layoutStepAt
+    );
+    const historyStepAt = lane.indexOf(
+      'id: "checks reservation history navigation and access privacy"',
+      marketingStepAt
+    );
+    const customerReadHelperAt = lane.indexOf(
+      "const readAccountReservationCustomerId =",
       transitionAt
+    );
+    const marketingCustomerReadAt = lane.indexOf(
+      "yield* readAccountReservationCustomerId();",
+      layoutStepAt
+    );
+    const historyCustomerReadAt = lane.lastIndexOf(
+      "yield* readAccountReservationCustomerId();"
     );
     const marketingVerifierAt = lane.indexOf(
       "yield* verifyWorkspaceE2EMarketingPreferences({",
-      customerLookupAt
+      layoutStepAt
     );
     const reservationFixtureAt = lane.indexOf(
       "yield* withWorkspaceE2EReservationHistoryFixture(",
       marketingVerifierAt
     );
+    const reservationNavigationAt = lane.indexOf(
+      "verifyWorkspaceE2EReservationHistoryNavigation({",
+      reservationFixtureAt
+    );
 
     expect(transitionAt).toBeGreaterThan(-1);
-    expect(customerLookupAt).toBeGreaterThan(transitionAt);
-    expect(marketingVerifierAt).toBeGreaterThan(customerLookupAt);
+    expect(verifyPagesAt).toBeGreaterThan(transitionAt);
+    expect(customerReadHelperAt).toBeGreaterThan(transitionAt);
+    expect(layoutStepAt).toBeGreaterThan(verifyPagesAt);
+    expect(marketingStepAt).toBeGreaterThan(layoutStepAt);
+    expect(historyStepAt).toBeGreaterThan(marketingStepAt);
+    expect(marketingCustomerReadAt).toBeGreaterThan(layoutStepAt);
+    expect(marketingCustomerReadAt).toBeLessThan(marketingStepAt);
+    expect(historyCustomerReadAt).toBeGreaterThan(marketingCustomerReadAt);
+    expect(historyCustomerReadAt).toBeLessThan(historyStepAt);
+    expect(marketingVerifierAt).toBeGreaterThan(marketingCustomerReadAt);
+    expect(marketingVerifierAt).toBeLessThan(historyStepAt);
     expect(reservationFixtureAt).toBeGreaterThan(marketingVerifierAt);
+    expect(reservationFixtureAt).toBeLessThan(historyStepAt);
+    expect(reservationNavigationAt).toBeGreaterThan(reservationFixtureAt);
+    expect(workspaceE2ETimeouts.providerTransition).toBe(90 * 1_000);
+    for (const stepStart of [layoutStepAt, marketingStepAt, historyStepAt]) {
+      expect(
+        lane.indexOf(
+          "timeoutMs: workspaceE2ETimeouts.providerTransition",
+          stepStart
+        )
+      ).toBeGreaterThan(stepStart);
+    }
+    expect(
+      lane.match(/yield\* readAccountReservationCustomerId\(\);/g)
+    ).toHaveLength(2);
+    expect(lane).toContain(
+      "verifyAccountLayoutNavigation(page, async (section)"
+    );
     expect(lane).toContain(
       "customerId: DotyposCustomerIdSchema.make(customerId)"
     );

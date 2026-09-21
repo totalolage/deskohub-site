@@ -184,127 +184,152 @@ for (const caseId of workspaceE2EAccountCaseIds) {
         if (!page) throw new Error(accountReviewCaptureFailureMessage);
         return page;
       };
-      let verifyPage: WorkspaceE2EStep<void, E2EDatabase> | undefined;
+      let verifyPages:
+        | readonly WorkspaceE2EStep<void, E2EDatabase>[]
+        | undefined;
       if (caseId === "account-profile-completion") {
-        verifyPage = {
-          execute: Effect.tryPromise({
-            catch: () =>
-              workspaceE2EError(
-                "verify profile navigation and unsaved changes failed",
-                {
-                  operation: "verify profile navigation and unsaved changes",
-                }
-              ),
-            try: async () => {
-              await verifyProfileNavigation(
-                getOwnedPage(),
-                accountLane.config.baseUrl
-              );
-            },
-          }),
-          id: "checks profile re-entry and unsaved navigation",
-          timeoutMs: workspaceE2ETimeouts.providerTransition,
-        };
-      } else if (caseId === "account-reservation-transitions") {
-        verifyPage = {
-          execute: Effect.gen(function* () {
-            const page = getOwnedPage();
-            yield* Effect.tryPromise({
-              catch: (cause) =>
-                cause instanceof WorkspaceE2EError
-                  ? cause
-                  : workspaceE2EError(
-                      "verify account layout navigation failed",
-                      {
-                        operation: "verify account layout navigation",
-                      }
-                    ),
-              try: () =>
-                verifyAccountLayoutNavigation(page, async (section) => {
-                  await captureAccountReview(
-                    page,
-                    accountLane.config.baseUrl,
-                    accountReviewTargetBySection[section]
-                  );
-                }),
-            });
-
-            const recipient = makeWorkspaceE2EAccountRecipient(
-              accountLane.config,
-              workspaceE2EAccountMainRecipientLabel
-            );
-            const userId = yield* findAuthUserIdByEmail(recipient);
-            if (!userId) {
-              return yield* workspaceE2EError(
-                "The account reservation history fixture has no synthetic user",
-                {
-                  diagnosticCode: "postgres_account_fixture_assertion_failed",
-                  operation: "read account reservation history user",
-                }
-              );
-            }
-            const customerId = yield* findLinkedDotyposCustomerId(userId);
-            if (!customerId) {
-              return yield* workspaceE2EError(
-                "The account reservation history fixture has no linked customer",
-                {
-                  diagnosticCode: "postgres_account_fixture_assertion_failed",
-                  operation: "read account reservation history customer",
-                }
-              );
-            }
-            yield* verifyWorkspaceE2EMarketingPreferences({
-              baseUrl: accountLane.config.baseUrl,
-              browser,
-              bypassSecret: accountLane.config.bypassSecret,
-              customerId: DotyposCustomerIdSchema.make(customerId),
-              page: getOwnedPage(),
-            });
-            const [firstReservationId, secondReservationId] =
-              accountLane.journalRef.journal.dotyposReservationIds;
-            if (!firstReservationId || !secondReservationId) {
-              return yield* workspaceE2EError(
-                "The account reservation history case did not journal both provider reservations",
-                {
-                  diagnosticCode: "postgres_account_fixture_assertion_failed",
-                  operation: "read account reservation history journal",
-                }
-              );
-            }
-
-            yield* withWorkspaceE2EReservationHistoryFixture(
-              {
-                customerId: DotyposCustomerIdSchema.make(customerId),
-                datasourceConfig,
-                dotyposReservationId:
-                  DotyposReservationIdSchema.make(firstReservationId),
+        verifyPages = [
+          {
+            execute: Effect.tryPromise({
+              catch: () =>
+                workspaceE2EError(
+                  "verify profile navigation and unsaved changes failed",
+                  {
+                    operation: "verify profile navigation and unsaved changes",
+                  }
+                ),
+              try: async () => {
+                await verifyProfileNavigation(
+                  getOwnedPage(),
+                  accountLane.config.baseUrl
+                );
               },
-              (fixture) =>
-                Effect.tryPromise({
-                  catch: toWorkspaceE2EReservationHistoryFailure,
-                  try: () =>
-                    verifyWorkspaceE2EReservationHistoryNavigation({
-                      baseUrl: accountLane.config.baseUrl,
-                      browser,
-                      bypassSecret: accountLane.config.bypassSecret,
-                      captureStatusReview: (stage) =>
-                        captureReservationStatusReview(
-                          getOwnedPage(),
-                          accountLane.config.baseUrl,
-                          stage === "modal"
-                            ? "reservation-status-modal-desktop"
-                            : "reservation-status-details-desktop",
-                          fixture.reservationId
-                        ),
-                      fixture,
-                      page: getOwnedPage(),
-                    }),
-                })
+            }),
+            id: "checks profile re-entry and unsaved navigation",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+        ];
+      } else if (caseId === "account-reservation-transitions") {
+        const readAccountReservationCustomerId = Effect.fn(
+          "readAccountReservationCustomerId"
+        )(function* () {
+          const recipient = makeWorkspaceE2EAccountRecipient(
+            accountLane.config,
+            workspaceE2EAccountMainRecipientLabel
+          );
+          const userId = yield* findAuthUserIdByEmail(recipient);
+          if (!userId) {
+            return yield* workspaceE2EError(
+              "The account reservation history fixture has no synthetic user",
+              {
+                diagnosticCode: "postgres_account_fixture_assertion_failed",
+                operation: "read account reservation history user",
+              }
             );
-          }),
-          id: "checks reservation history navigation and access privacy",
-          timeoutMs: workspaceE2ETimeouts.providerTransition,
-        };
+          }
+          const customerId = yield* findLinkedDotyposCustomerId(userId);
+          if (!customerId) {
+            return yield* workspaceE2EError(
+              "The account reservation history fixture has no linked customer",
+              {
+                diagnosticCode: "postgres_account_fixture_assertion_failed",
+                operation: "read account reservation history customer",
+              }
+            );
+          }
+          return customerId;
+        });
+
+        verifyPages = [
+          {
+            execute: Effect.gen(function* () {
+              const page = getOwnedPage();
+              yield* Effect.tryPromise({
+                catch: (cause) =>
+                  cause instanceof WorkspaceE2EError
+                    ? cause
+                    : workspaceE2EError(
+                        "verify account layout navigation failed",
+                        {
+                          operation: "verify account layout navigation",
+                        }
+                      ),
+                try: () =>
+                  verifyAccountLayoutNavigation(page, async (section) => {
+                    await captureAccountReview(
+                      page,
+                      accountLane.config.baseUrl,
+                      accountReviewTargetBySection[section]
+                    );
+                  }),
+              });
+            }),
+            id: "checks account layout navigation",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+          {
+            execute: Effect.gen(function* () {
+              const customerId = yield* readAccountReservationCustomerId();
+              yield* verifyWorkspaceE2EMarketingPreferences({
+                baseUrl: accountLane.config.baseUrl,
+                browser,
+                bypassSecret: accountLane.config.bypassSecret,
+                customerId: DotyposCustomerIdSchema.make(customerId),
+                page: getOwnedPage(),
+              });
+            }),
+            id: "checks account marketing preferences",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+          {
+            execute: Effect.gen(function* () {
+              const customerId = yield* readAccountReservationCustomerId();
+              const [firstReservationId, secondReservationId] =
+                accountLane.journalRef.journal.dotyposReservationIds;
+              if (!firstReservationId || !secondReservationId) {
+                return yield* workspaceE2EError(
+                  "The account reservation history case did not journal both provider reservations",
+                  {
+                    diagnosticCode: "postgres_account_fixture_assertion_failed",
+                    operation: "read account reservation history journal",
+                  }
+                );
+              }
+
+              yield* withWorkspaceE2EReservationHistoryFixture(
+                {
+                  customerId: DotyposCustomerIdSchema.make(customerId),
+                  datasourceConfig,
+                  dotyposReservationId:
+                    DotyposReservationIdSchema.make(firstReservationId),
+                },
+                (fixture) =>
+                  Effect.tryPromise({
+                    catch: toWorkspaceE2EReservationHistoryFailure,
+                    try: () =>
+                      verifyWorkspaceE2EReservationHistoryNavigation({
+                        baseUrl: accountLane.config.baseUrl,
+                        browser,
+                        bypassSecret: accountLane.config.bypassSecret,
+                        captureStatusReview: (stage) =>
+                          captureReservationStatusReview(
+                            getOwnedPage(),
+                            accountLane.config.baseUrl,
+                            stage === "modal"
+                              ? "reservation-status-modal-desktop"
+                              : "reservation-status-details-desktop",
+                            fixture.reservationId
+                          ),
+                        fixture,
+                        page: getOwnedPage(),
+                      }),
+                  })
+              );
+            }),
+            id: "checks reservation history navigation and access privacy",
+            timeoutMs: workspaceE2ETimeouts.providerTransition,
+          },
+        ];
       }
       const runCase = () =>
         runEffect(
@@ -313,7 +338,7 @@ for (const caseId of workspaceE2EAccountCaseIds) {
             reportFailure: writeWorkspaceE2EFailureAnnotation,
             session: accountLane.session,
             testCase: selected,
-            ...(verifyPage ? { verifyPage } : {}),
+            ...(verifyPages ? { verifyPages } : {}),
           })
         );
 
