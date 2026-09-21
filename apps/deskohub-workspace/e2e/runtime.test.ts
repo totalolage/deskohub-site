@@ -143,6 +143,94 @@ test("waits for the document body before taking a snapshot", async () => {
   expect(calls).toEqual(["wait", "snapshot"]);
 });
 
+type ScreenshotOptions = {
+  readonly animations?: string;
+  readonly fullPage?: boolean;
+  readonly path?: string;
+  readonly timeout?: number;
+};
+
+type ScreenshotPageMock = {
+  mainFrame: () => unknown;
+  on: (event: string, listener: () => void) => void;
+  screenshot: (options: ScreenshotOptions) => Promise<void>;
+};
+
+// Screenshot-driver tests only need a context that yields one page, so this
+// narrow test-only factory keeps the Browser cast out of individual tests.
+const makeScreenshotTestBrowser = (page: ScreenshotPageMock): Browser =>
+  ({
+    newContext: async () => ({
+      close: async () => undefined,
+      newPage: async () => page,
+      on: () => undefined,
+    }),
+  }) as Browser;
+
+test("captures a full-page screenshot on the current page with animations disabled", async () => {
+  let screenshotOptions: ScreenshotOptions | undefined;
+  const page: ScreenshotPageMock = {
+    mainFrame: () => ({}),
+    on: () => undefined,
+    screenshot: async (options) => {
+      screenshotOptions = options;
+    },
+  };
+  const run = makePlaywrightBrowserRunner(makeScreenshotTestBrowser(page));
+
+  try {
+    await run(
+      "playwright",
+      [
+        "--session",
+        "screenshot-test",
+        "screenshot",
+        "/tmp/workspace-e2e/final.png",
+      ],
+      { timeoutMs: 5000 }
+    );
+  } finally {
+    await run.close?.();
+  }
+
+  expect(screenshotOptions).toEqual({
+    animations: "disabled",
+    fullPage: true,
+    path: "/tmp/workspace-e2e/final.png",
+    timeout: 5000,
+  });
+});
+
+test("requires a non-empty screenshot path", async () => {
+  let screenshotCount = 0;
+  const page: ScreenshotPageMock = {
+    mainFrame: () => ({}),
+    on: () => undefined,
+    screenshot: async () => {
+      screenshotCount += 1;
+    },
+  };
+  const run = makePlaywrightBrowserRunner(makeScreenshotTestBrowser(page));
+
+  try {
+    await expect(
+      run("playwright", ["--session", "screenshot-empty-test", "screenshot"])
+    ).rejects.toThrow("screenshot path is required");
+    await expect(
+      run("playwright", [
+        "--session",
+        "screenshot-empty-test",
+        "screenshot",
+        "",
+      ])
+    ).rejects.toThrow("screenshot path is required");
+  } finally {
+    await run.close?.();
+  }
+
+  expect(screenshotCount).toBe(0);
+});
+
 test("restores the remaining page when the current popup closes", async () => {
   let registerPopup: ((page: unknown) => void) | undefined;
   let closePopup: (() => void) | undefined;

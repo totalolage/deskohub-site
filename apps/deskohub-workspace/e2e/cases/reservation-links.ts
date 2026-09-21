@@ -15,6 +15,7 @@ import { getMeetingRoomReservationDurationKey } from "@/features/reservation/mee
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
+  captureBrowserScreenshot,
   focusBrowserElement,
   openBrowserPage,
   readBrowserUrl,
@@ -69,6 +70,28 @@ const _reservationLinkSlotCount = 4;
 // Syntactically canonical but never seeded, so the checkout can only treat it
 // as customer intent and never as an applied discount.
 const unknownLinkCode = canonicalPromotionCodeSchema.make("E2E_LINK_UNKNOWN");
+
+// Code-owned screenshot artifact directory and fixed PNG names, relative to
+// the apps/deskohub-workspace cwd; uploaded by the workspace E2E workflow.
+const reservationLinkScreenshotDir = "e2e-artifacts/reservation-links";
+
+const captureLinkScreenshot = ({
+  config,
+  name,
+  run,
+  session,
+}: {
+  readonly config: WorkspaceE2EConfig;
+  readonly name: string;
+  readonly run: Runner;
+  readonly session: string;
+}) =>
+  captureBrowserScreenshot(
+    run,
+    session,
+    `${reservationLinkScreenshotDir}/${name}.png`,
+    { timeoutMs: config.timeouts.browserAction }
+  );
 
 type LinkLocale = CheckoutData["locale"];
 
@@ -320,7 +343,20 @@ const runReservationLinkZeroTotalCase = ({
       timeoutMs: config.timeouts.browserAction,
     });
     yield* runStep({
-      execute: assertAppliedZeroTotalPaySummary({ config, data, run, session }),
+      execute: Effect.gen(function* () {
+        yield* assertAppliedZeroTotalPaySummary({
+          config,
+          data,
+          run,
+          session,
+        });
+        yield* captureLinkScreenshot({
+          config,
+          name: `${locale}-applied-summary`,
+          run,
+          session,
+        });
+      }),
       id: "assert-applied-zero-total-link-pay-summary",
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -514,11 +550,19 @@ const runReservationLinkUnknownCodeCase = ({
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: assertRequestedOnlyDiscountCode({
-        code: unknownLinkCode,
-        config,
-        run,
-        session,
+      execute: Effect.gen(function* () {
+        yield* assertRequestedOnlyDiscountCode({
+          code: unknownLinkCode,
+          config,
+          run,
+          session,
+        });
+        yield* captureLinkScreenshot({
+          config,
+          name: `${data.locale}-unavailable-code`,
+          run,
+          session,
+        });
       }),
       id: "assert-unknown-code-intent-retained",
       timeoutMs: config.timeouts.uiTransition,
@@ -554,6 +598,12 @@ const runReservationLinkUnknownCodeCase = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         yield* assertAppliedZeroTotalPaySummary({ config, data, run, session });
+        yield* captureLinkScreenshot({
+          config,
+          name: `${data.locale}-corrected-summary`,
+          run,
+          session,
+        });
       }),
       id: "reload-fresh-signed-pay-url-and-reassert-summary",
       timeoutMs: config.timeouts.uiTransition,
@@ -607,6 +657,14 @@ const openLinkAndHoldReservation = ({
           getSelectedDurationZeroPriceCondition(data),
           { timeoutMs: config.timeouts.uiTransition }
         );
+        // Valid zero-total cases only: capture the prefilled form after the
+        // readiness assertions and before the native submission.
+        yield* captureLinkScreenshot({
+          config,
+          name: `${data.locale}-prefilled`,
+          run,
+          session,
+        });
       }
       return yield* submitReservationForPayPage({
         onOrderId: (orderId) => {
