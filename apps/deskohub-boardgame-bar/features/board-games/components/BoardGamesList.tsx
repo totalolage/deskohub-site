@@ -4,10 +4,12 @@ import type { Game } from "@deskohub/games";
 import { useMemo, useState } from "react";
 import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
 import { m } from "@/features/i18n";
+import { Badge } from "@/shared/components/ui/badge";
 import { ImageWithFallback } from "@/shared/components/ui/image-with-fallback";
 import {
   type DurationFilter,
   filterBoardGames,
+  type GameLanguage,
 } from "../utils/filter-board-games";
 
 const playerOptions = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -19,6 +21,19 @@ const durationOptions = [
   { id: "over120", label: () => m["boardGames.filters.over120"]() },
 ] as const satisfies ReadonlyArray<{
   id: DurationFilter;
+  label: () => string;
+}>;
+
+const languageOptions = [
+  { id: null, label: () => m["boardGames.filters.allLanguages"]() },
+  { id: "cz", label: () => m["boardGames.filters.czech"]() },
+  { id: "en", label: () => m["boardGames.filters.english"]() },
+  {
+    id: "any",
+    label: () => m["boardGames.filters.languageIndependent"](),
+  },
+] as const satisfies ReadonlyArray<{
+  id: GameLanguage | null;
   label: () => string;
 }>;
 
@@ -36,6 +51,7 @@ interface BoardGamesListProps {
       | "playingTimeMinutes"
       | "rating"
       | "inStock"
+      | "language"
     >
   >;
 }
@@ -43,16 +59,18 @@ interface BoardGamesListProps {
 export function BoardGamesList({ games }: BoardGamesListProps) {
   const [playerCount, setPlayerCount] = useState<number | null>(null);
   const [durations, setDurations] = useState<ReadonlyArray<DurationFilter>>([]);
+  const [language, setLanguage] = useState<GameLanguage | null>(null);
   const [search, setSearch] = useState("");
 
   const filteredGames = useMemo(
-    () => filterBoardGames(games, { playerCount, durations, search }),
-    [games, playerCount, durations, search]
+    () => filterBoardGames(games, { playerCount, durations, language, search }),
+    [games, playerCount, durations, language, search]
   );
 
   const reset = () => {
     setPlayerCount(null);
     setDurations([]);
+    setLanguage(null);
     setSearch("");
   };
 
@@ -113,6 +131,28 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
               ))}
             </div>
           </div>
+
+          <fieldset className="mb-5 border-0 p-0">
+            <legend className="mb-3 font-semibold text-[#b9c2d1] text-xs uppercase tracking-[.14em]">
+              {m["boardGames.filters.languageQuestion"]()}
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {languageOptions.map((languageOption) => {
+                const active = language === languageOption.id;
+                return (
+                  <button
+                    aria-pressed={active}
+                    className="h-auto rounded-full border border-[#3c3a36] bg-transparent px-4 py-2 font-semibold text-[#b9c2d1] text-[13px] transition hover:border-[#4fbba3] hover:bg-transparent hover:text-white aria-pressed:border-[#2e8e7a] aria-pressed:bg-[#2e8e7a] aria-pressed:text-white"
+                    key={languageOption.id ?? "all"}
+                    onClick={() => setLanguage(languageOption.id)}
+                    type="button"
+                  >
+                    {languageOption.label()}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
 
           <div className="flex flex-wrap items-center gap-3 border-[#3c3a36] border-t py-3.5">
             <strong
@@ -180,10 +220,31 @@ export function BoardGamesList({ games }: BoardGamesListProps) {
                     </span>
                   )}
                 </div>
-                {((typeof game.minPlayers === "number" &&
-                  typeof game.maxPlayers === "number") ||
+                {(game.language != null ||
+                  (typeof game.minPlayers === "number" &&
+                    typeof game.maxPlayers === "number") ||
                   typeof game.playingTimeMinutes === "number") && (
                   <div className="flex flex-wrap items-center gap-3.5 text-[#b9c2d1] text-xs">
+                    {game.language != null && (
+                      <Badge
+                        className={
+                          {
+                            any: "rounded-md border-[#d7a84b] bg-transparent px-1.5 py-0.5 font-bold text-[#ffe5a3] text-[10px] tracking-[.08em] uppercase",
+                            cz: "rounded-md border-[#4fbba3] bg-transparent px-1.5 py-0.5 font-bold text-[#a8f0d9] text-[10px] tracking-[.08em] uppercase",
+                            en: "rounded-md border-[#6fa8dc] bg-transparent px-1.5 py-0.5 font-bold text-[#b9d8ff] text-[10px] tracking-[.08em] uppercase",
+                          }[game.language]
+                        }
+                        variant="outline"
+                      >
+                        {
+                          {
+                            any: m["boardGames.filters.languageIndependent"](),
+                            cz: m["boardGames.filters.czech"](),
+                            en: m["boardGames.filters.english"](),
+                          }[game.language]
+                        }
+                      </Badge>
+                    )}
                     {typeof game.minPlayers === "number" &&
                       typeof game.maxPlayers === "number" && (
                         <span className="font-semibold text-[#4fbba3]">
