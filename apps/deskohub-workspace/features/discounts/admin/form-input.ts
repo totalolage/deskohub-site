@@ -79,6 +79,8 @@ export const readDiscountCodeConfigurationForm = (
   ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
   maxUses: readOptionalNumber(formData, "maxUses"),
   maxUsesPerCustomer: readOptionalNumber(formData, "maxUsesPerCustomer"),
+  serviceDateFrom: readOptionalString(formData, "serviceDateFrom"),
+  serviceDateUntil: readOptionalString(formData, "serviceDateUntil"),
 });
 
 export const readVoucherCreditForm = (
@@ -100,6 +102,8 @@ export const readVoucherConfigurationForm = (
   const {
     maxUses: _maxUses,
     maxUsesPerCustomer: _maxUsesPerCustomer,
+    serviceDateFrom: _serviceDateFrom,
+    serviceDateUntil: _serviceDateUntil,
     ...configuration
   } = readDiscountCodeConfigurationForm(formData);
   return configuration;

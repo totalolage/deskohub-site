@@ -1113,6 +1113,7 @@ describe("DiscountService", () => {
 
     expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
       product,
+      reservationDate: paymentInput.reservationDate,
       applications: [
         {
           application: result.quote.discounts[0],
@@ -1168,6 +1169,7 @@ describe("DiscountService", () => {
     expect(result.quote.discounts).toHaveLength(1);
     expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
       product,
+      reservationDate: paymentInput.reservationDate,
       applications: [
         {
           application: result.quote.discounts[0],
@@ -1229,6 +1231,7 @@ describe("DiscountService", () => {
     expect(result.quote.discounts).toEqual([]);
     expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
       product,
+      reservationDate: paymentInput.reservationDate,
       applications: [],
     });
   });

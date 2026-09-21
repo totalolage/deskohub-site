@@ -235,6 +235,7 @@ export const reservationCheckoutPricing = <
     )(function* (input: {
       readonly discountQuote: DiscountQuote;
       readonly locale: Locale;
+      readonly reservationDate: string;
       readonly submittedCode?: CanonicalPromotionCode;
     }) {
       if (!input.submittedCode) return undefined;
@@ -244,6 +245,7 @@ export const reservationCheckoutPricing = <
           .previewDiscountCode({
             baseQuote: input.discountQuote,
             locale: input.locale,
+            reservationDate: input.reservationDate,
             submittedCode: input.submittedCode,
           })
           .pipe(Effect.option)
@@ -275,10 +277,11 @@ export const reservationCheckoutPricing = <
             locale: input.locale,
           })
         ),
-        Effect.bind("preview", ({ discountQuote }) =>
+        Effect.bind("preview", ({ discountQuote, pricing }) =>
           previewSubmittedCode({
             discountQuote,
             locale: input.locale,
+            reservationDate: pricing.discountInput.reservationDate,
             submittedCode: input.submittedCode,
           })
         ),
@@ -313,10 +316,11 @@ export const reservationCheckoutPricing = <
               ),
           })
         ),
-        Effect.bind("preview", ({ discountQuote }) =>
+        Effect.bind("preview", ({ discountQuote, pricing }) =>
           previewSubmittedCode({
             discountQuote,
             locale: input.locale,
+            reservationDate: pricing.discountInput.reservationDate,
             submittedCode: input.submittedCode,
           })
         ),
@@ -345,11 +349,12 @@ export const reservationCheckoutPricing = <
     )((input: ReservationCustomerQuoteInput<CustomerReservation>) =>
       domain.getPricingContext(input.reservation).pipe(
         Effect.bindTo("pricing"),
-        Effect.bind("customerQuote", () =>
+        Effect.bind("customerQuote", ({ pricing }) =>
           discounts.applyCustomerDiscount({
             affirmedAdvertisement: input.affirmedAdvertisement,
             dotyposCustomerId: input.dotyposCustomerId,
             locale: input.locale,
+            reservationDate: pricing.discountInput.reservationDate,
             ...getSubmittedCodeMetadata(input),
           })
         ),
@@ -459,6 +464,7 @@ export const reservationCheckoutPricing = <
         baseQuote: affirmation.quote,
         dotyposCustomerId: input.dotyposCustomerId,
         locale: input.locale,
+        reservationDate: pricing.discountInput.reservationDate,
         submittedCode: input.submittedCode,
       });
       const appliedQuote = yield* domain.buildQuote({

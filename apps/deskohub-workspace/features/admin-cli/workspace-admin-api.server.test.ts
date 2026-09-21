@@ -379,6 +379,8 @@ describe("Workspace Admin API", () => {
       validUntil: null,
       maxUses: null,
       maxUsesPerCustomer: null,
+      serviceDateFrom: null,
+      serviceDateUntil: null,
       audienceSize: 0,
       reservedUses: 0,
       redeemedUses: 0,

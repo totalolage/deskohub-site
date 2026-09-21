@@ -1291,6 +1291,18 @@ const customerIdFlag = Flag.string("customer").pipe(
 );
 
 const discountCodeCreateFlags = {
+  serviceDateFrom: Flag.string("service-date-from").pipe(
+    Flag.optional,
+    Flag.withDescription(
+      "Inclusive reservation start date (YYYY-MM-DD, Prague); requires --service-date-until"
+    )
+  ),
+  serviceDateUntil: Flag.string("service-date-until").pipe(
+    Flag.optional,
+    Flag.withDescription(
+      "Exclusive reservation start date (YYYY-MM-DD, Prague); requires --service-date-from"
+    )
+  ),
   customer: customerIdFlag,
   disabled: Flag.boolean("disabled").pipe(
     Flag.withDescription("Create the code disabled")
@@ -1463,6 +1475,13 @@ const codesUpdateCommand = Command.make(
     ] as const),
     maxUses: discountCodeCreateFlags.maxUses,
     maxUsesPerCustomer: discountCodeCreateFlags.maxUsesPerCustomer,
+    serviceDateFrom: discountCodeCreateFlags.serviceDateFrom,
+    serviceDateUntil: discountCodeCreateFlags.serviceDateUntil,
+    clearServiceDates: Flag.boolean("clear-service-dates").pipe(
+      Flag.withDescription(
+        "Remove the reservation-start-date restriction; omitted date flags preserve it"
+      )
+    ),
     validFrom: discountCodeCreateFlags.validFrom,
     validUntil: discountCodeCreateFlags.validUntil,
   },
@@ -1473,21 +1492,47 @@ const codesUpdateCommand = Command.make(
     enabled,
     maxUses,
     maxUsesPerCustomer,
+    serviceDateFrom,
+    serviceDateUntil,
+    clearServiceDates,
     validFrom,
     validUntil,
   }) =>
-    runDiscountMutation({
-      kind: "update-code",
-      code: {
-        id: codeId,
-        discountId,
-        code,
-        enabled,
-        maxUses: Option.getOrNull(maxUses),
-        maxUsesPerCustomer: Option.getOrNull(maxUsesPerCustomer),
-        validFrom: Option.getOrNull(validFrom),
-        validUntil: Option.getOrNull(validUntil),
-      },
+    Effect.gen(function* () {
+      if (
+        clearServiceDates &&
+        (Option.isSome(serviceDateFrom) || Option.isSome(serviceDateUntil))
+      ) {
+        return yield* new InvalidMutationInputError({
+          message:
+            "Use either --clear-service-dates or a service-date range, not both.",
+        });
+      }
+      return yield* runDiscountMutation({
+        kind: "update-code",
+        code: {
+          id: codeId,
+          discountId,
+          code,
+          enabled,
+          maxUses: Option.getOrNull(maxUses),
+          maxUsesPerCustomer: Option.getOrNull(maxUsesPerCustomer),
+          ...(clearServiceDates
+            ? { serviceDateFrom: null, serviceDateUntil: null }
+            : {
+                ...Option.match(serviceDateFrom, {
+                  onNone: () => ({}),
+                  onSome: (value) => ({ serviceDateFrom: value }),
+                }),
+                ...Option.match(serviceDateUntil, {
+                  onNone: () => ({}),
+                  onSome: (value) => ({ serviceDateUntil: value }),
+                }),
+              }),
+          validFrom: Option.getOrNull(validFrom),
+          validUntil: Option.getOrNull(validUntil),
+        },
+      });
     })
 ).pipe(Command.withDescription("Replace a managed discount code"));
 
@@ -1611,6 +1656,9 @@ const codesListCommand = Command.make("list", {}, () =>
             code.enabled ? "Enabled" : "Disabled",
             `${formatCodeRemaining(code)} globally`,
             `${code.maxUsesPerCustomer ?? "Unlimited"} per customer`,
+            code.serviceDateFrom === null
+              ? "Any service start date"
+              : `Service start: ${code.serviceDateFrom} <= date < ${code.serviceDateUntil} (Prague)`,
           ].join("\t")
         );
       }
@@ -1641,6 +1689,11 @@ const codesGetCommand = Command.make(
         );
         yield* Console.log(
           `Validity\t${detail.code.validFrom ?? "No start"}\t${detail.code.validUntil ?? "No end"}`
+        );
+        yield* Console.log(
+          detail.code.serviceDateFrom === null
+            ? "Service start date\tUnrestricted"
+            : `Service start date (Prague)\t${detail.code.serviceDateFrom} inclusive\t${detail.code.serviceDateUntil} exclusive`
         );
         yield* Console.log(
           detail.customers.length === 0
@@ -2438,6 +2491,8 @@ const makeCreateCodeMutation = (
     readonly disabled: boolean;
     readonly maxUses: Option.Option<number>;
     readonly maxUsesPerCustomer: Option.Option<number>;
+    readonly serviceDateFrom: Option.Option<string>;
+    readonly serviceDateUntil: Option.Option<string>;
     readonly validFrom: Option.Option<
       NonNullable<CreateCodeMutation["code"]["validFrom"]>
     >;
@@ -2452,6 +2507,14 @@ const makeCreateCodeMutation = (
     enabled: !input.disabled,
     maxUses: Option.getOrNull(input.maxUses),
     maxUsesPerCustomer: Option.getOrNull(input.maxUsesPerCustomer),
+    ...Option.match(input.serviceDateFrom, {
+      onNone: () => ({}),
+      onSome: (value) => ({ serviceDateFrom: value }),
+    }),
+    ...Option.match(input.serviceDateUntil, {
+      onNone: () => ({}),
+      onSome: (value) => ({ serviceDateUntil: value }),
+    }),
     validFrom: Option.getOrNull(input.validFrom),
     validUntil: Option.getOrNull(input.validUntil),
   };

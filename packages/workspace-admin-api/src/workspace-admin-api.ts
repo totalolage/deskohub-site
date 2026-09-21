@@ -1378,6 +1378,8 @@ export const AdministrationDiscountCode = Schema.Struct({
   maxUses: Schema.NullOr(Schema.Number),
   maxUsesPerCustomer: Schema.NullOr(Schema.Number),
   remainingUses: Schema.NullOr(Schema.Number),
+  serviceDateFrom: Schema.NullOr(administrationCalendarDate),
+  serviceDateUntil: Schema.NullOr(administrationCalendarDate),
 });
 export type AdministrationDiscountCode = typeof AdministrationDiscountCode.Type;
 
@@ -1575,6 +1577,40 @@ const administrationDiscountCodeWindow = Schema.makeFilter<{
     ) > 0
 );
 
+const administrationDiscountCodeWindowChecks = Schema.makeFilter<{
+  readonly validFrom: string | null;
+  readonly validUntil: string | null;
+  readonly serviceDateFrom?: string | null;
+  readonly serviceDateUntil?: string | null;
+}>((input) => {
+  const instantWindowValid =
+    input.validFrom === null ||
+    input.validUntil === null ||
+    Temporal.Instant.compare(
+      Temporal.Instant.from(input.validUntil),
+      Temporal.Instant.from(input.validFrom)
+    ) > 0;
+  if (!instantWindowValid) return false;
+
+  const serviceDateFrom = input.serviceDateFrom;
+  const serviceDateUntil = input.serviceDateUntil;
+  if (serviceDateFrom === undefined && serviceDateUntil === undefined)
+    return true;
+  if (serviceDateFrom === null && serviceDateUntil === null) return true;
+  if (
+    typeof serviceDateFrom === "string" &&
+    typeof serviceDateUntil === "string"
+  ) {
+    return (
+      Temporal.PlainDate.compare(
+        Temporal.PlainDate.from(serviceDateUntil),
+        Temporal.PlainDate.from(serviceDateFrom)
+      ) > 0
+    );
+  }
+  return false;
+});
+
 export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
   code: AdministrationCanonicalPromotionCode,
   enabled: Schema.Boolean,
@@ -1584,14 +1620,16 @@ export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
   maxUsesPerCustomer: Schema.optional(
     Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0)))
   ),
-}).check(administrationDiscountCodeWindow);
+  serviceDateFrom: Schema.optional(Schema.NullOr(administrationCalendarDate)),
+  serviceDateUntil: Schema.optional(Schema.NullOr(administrationCalendarDate)),
+}).check(administrationDiscountCodeWindowChecks);
 export type AdministrationDiscountCodeConfigurationInput =
   typeof AdministrationDiscountCodeConfigurationInput.Type;
 
 export const AdministrationExistingDiscountCodeCreateInput = Schema.Struct({
   discountId: AdministrationStoredDiscountId,
   ...AdministrationDiscountCodeConfigurationInput.fields,
-}).check(administrationDiscountCodeWindow);
+}).check(administrationDiscountCodeWindowChecks);
 export type AdministrationExistingDiscountCodeCreateInput =
   typeof AdministrationExistingDiscountCodeCreateInput.Type;
 
@@ -1634,7 +1672,7 @@ export const AdministrationDiscountCodeUpdateInput = Schema.Struct({
   id: AdministrationDiscountCodeId,
   discountId: AdministrationStoredDiscountId,
   ...AdministrationDiscountCodeConfigurationInput.fields,
-}).check(administrationDiscountCodeWindow);
+}).check(administrationDiscountCodeWindowChecks);
 export type AdministrationDiscountCodeUpdateInput =
   typeof AdministrationDiscountCodeUpdateInput.Type;
 

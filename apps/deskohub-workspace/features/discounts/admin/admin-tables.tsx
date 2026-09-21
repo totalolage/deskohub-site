@@ -77,6 +77,8 @@ export type DiscountCodeTableItem = {
   readonly validUntil: string | null;
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
+  readonly serviceDateFrom: string | null;
+  readonly serviceDateUntil: string | null;
   readonly audienceSize: number;
   readonly reservedUses: number;
   readonly redeemedUses: number;
@@ -1174,9 +1176,48 @@ export function DiscountCodeConfigurationFields({
         )}
       </div>
       <p className="text-xs leading-5 text-navy-blue/70">
-        Times use the Workspace’s Prague time zone. Both bounds are optional;
-        “valid until” is exclusive.
+        Redemption times use the Workspace’s Prague time zone. Both bounds are
+        optional; “valid until” is exclusive.
       </p>
+      {showMaxUses && (
+        <fieldset className="grid gap-3">
+          <legend className="mb-3 text-sm font-semibold">
+            Reservation start dates
+          </legend>
+          <div className="grid gap-4 md:grid-cols-2">
+            <FormField label="Service date from (inclusive)">
+              <Input
+                defaultValue={
+                  code && "serviceDateFrom" in code
+                    ? (code.serviceDateFrom ?? "")
+                    : ""
+                }
+                id={fieldId("serviceDateFrom", code?.id)}
+                name="serviceDateFrom"
+                type="date"
+              />
+            </FormField>
+            <FormField label="Service date until (exclusive)">
+              <Input
+                defaultValue={
+                  code && "serviceDateUntil" in code
+                    ? (code.serviceDateUntil ?? "")
+                    : ""
+                }
+                id={fieldId("serviceDateUntil", code?.id)}
+                name="serviceDateUntil"
+                type="date"
+              />
+            </FormField>
+          </div>
+          <p className="text-xs leading-5 text-navy-blue/70">
+            Set both dates or leave both blank for unrestricted service dates.
+            Only the reservation’s start date in Prague matters, even when it
+            ends on a later day. For a single day, set the end to the following
+            date.
+          </p>
+        </fieldset>
+      )}
     </div>
   );
 }

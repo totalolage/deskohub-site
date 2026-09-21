@@ -667,6 +667,14 @@ function CodeSummary({
       <SummaryFact label="Valid from" value={formatInstant(code.validFrom)} />
       <SummaryFact label="Valid until" value={formatInstant(code.validUntil)} />
       <SummaryFact
+        label="Service date from (inclusive)"
+        value={code.serviceDateFrom ?? "Unrestricted"}
+      />
+      <SummaryFact
+        label="Service date until (exclusive)"
+        value={code.serviceDateUntil ?? "Unrestricted"}
+      />
+      <SummaryFact
         label="Audience"
         value={
           code.audienceSize === 0

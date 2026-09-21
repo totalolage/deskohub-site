@@ -76,6 +76,8 @@ export class PromotionCodeRepository extends Context.Service<
               discountId: discountCodes.discountId,
               maxUses: discountCodes.maxUses,
               maxUsesPerCustomer: discountCodes.maxUsesPerCustomer,
+              serviceDateFrom: discountCodes.serviceDateFrom,
+              serviceDateUntil: discountCodes.serviceDateUntil,
               voucherId: vouchers.id,
               issuedAmountValue: vouchers.issuedAmountValue,
               issuedAmountExponent: vouchers.issuedAmountExponent,

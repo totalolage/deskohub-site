@@ -82,6 +82,8 @@ const dashboard: DiscountAdminDashboard = {
       validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
       maxUses: 100,
       maxUsesPerCustomer: 2,
+      serviceDateFrom: "2026-08-10",
+      serviceDateUntil: "2026-08-11",
       audienceSize: 2,
       reservedUses: 1,
       redeemedUses: 3,
@@ -318,6 +320,20 @@ describe("discount administration pages", () => {
     ) as HTMLInputElement;
     expect(validFrom.type).toBe("datetime-local");
     expect(validFrom.value).toBe("2026-08-01T10:00");
+    expect(view.getByLabelText("Service date from (inclusive)")).toHaveProperty(
+      "type",
+      "date"
+    );
+    expect(
+      view.getByLabelText("Service date until (exclusive)")
+    ).toHaveProperty("type", "date");
+    expect(view.getByLabelText("Service date from (inclusive)")).toHaveProperty(
+      "value",
+      "2026-08-10"
+    );
+    expect(
+      view.getByLabelText("Service date until (exclusive)")
+    ).toHaveProperty("value", "2026-08-11");
     expect(
       view.container.querySelector(
         "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
@@ -339,6 +355,102 @@ describe("discount administration pages", () => {
       )
     );
     expect(validFrom).toHaveProperty("value", "2026-08-01T10:00");
+  });
+
+  test("creates a code with a bounded reservation-start window", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CodesAdministrationActions } = await import("./components");
+    const view = render(<CodesAdministrationActions dashboard={dashboard} />);
+
+    fireEvent.click(view.getByText("Create a discount code"));
+    const form = view.getByRole("form", { name: "Create discount code" });
+    fireEvent.change(within(form).getByRole("textbox", { name: "Code" }), {
+      target: { value: "summer-august" },
+    });
+    fireEvent.change(
+      within(form).getByLabelText("Service date from (inclusive)"),
+      { target: { value: "2026-08-10" } }
+    );
+    fireEvent.change(
+      within(form).getByLabelText("Service date until (exclusive)"),
+      { target: { value: "2026-08-12" } }
+    );
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    expect(execute).toHaveBeenCalledWith({
+      kind: "create-code",
+      code: {
+        code: "SUMMER-AUGUST",
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+        maxUses: null,
+        maxUsesPerCustomer: null,
+        serviceDateFrom: "2026-08-10",
+        serviceDateUntil: "2026-08-12",
+      },
+      discount: {
+        kind: "existing",
+        discountId: dashboard.discounts[0]!.id,
+      },
+    });
+  });
+
+  test("clears both service-date fields when saving an edited code", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CodesAdministrationCollection } = await import("./components");
+    const view = render(
+      <CodesAdministrationCollection dashboard={dashboard} />
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Edit SUMMER10" }));
+    const form = view
+      .getByRole("button", { name: "Save code" })
+      .closest("form");
+    expect(form).not.toBeNull();
+    if (!form) return;
+    fireEvent.input(
+      within(form).getByLabelText("Service date from (inclusive)"),
+      { target: { value: "" } }
+    );
+    fireEvent.input(
+      within(form).getByLabelText("Service date until (exclusive)"),
+      { target: { value: "" } }
+    );
+    await waitFor(() =>
+      expect(view.getByRole("button", { name: "Save code" })).toHaveProperty(
+        "disabled",
+        false
+      )
+    );
+    await act(async () => {
+      fireEvent.submit(form);
+      await Promise.resolve();
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "update-code",
+        code: expect.objectContaining({
+          id: dashboard.codes[0]!.id,
+          serviceDateFrom: null,
+          serviceDateUntil: null,
+        }),
+      })
+    );
   });
 
   test("lists and updates voucher credit without discount or use fields", async () => {
@@ -381,6 +493,8 @@ describe("discount administration pages", () => {
     expect(credit).toHaveProperty("value", "10000");
     expect(view.queryByRole("combobox", { name: "Discount" })).toBeNull();
     expect(view.queryByRole("spinbutton", { name: "Maximum uses" })).toBeNull();
+    expect(view.queryByLabelText("Service date from (inclusive)")).toBeNull();
+    expect(view.queryByLabelText("Service date until (exclusive)")).toBeNull();
 
     fireEvent.input(credit, { target: { value: "15000" } });
     fireEvent.submit(
@@ -410,6 +524,8 @@ describe("discount administration pages", () => {
     const view = render(<VouchersAdministrationActions />);
 
     fireEvent.click(view.getByRole("button", { name: "Create a voucher" }));
+    expect(view.queryByLabelText("Service date from (inclusive)")).toBeNull();
+    expect(view.queryByLabelText("Service date until (exclusive)")).toBeNull();
     expect(
       view.getByLabelText("Valid from").closest("label")?.parentElement
         ?.className
@@ -1157,6 +1273,8 @@ describe("discount administration pages", () => {
       code: {
         code: "PERSONAL10",
         enabled: true,
+        serviceDateFrom: null,
+        serviceDateUntil: null,
         validFrom: null,
         validUntil: null,
         maxUses: null,

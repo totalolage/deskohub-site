@@ -153,10 +153,12 @@ const commitmentProduct = {
 } as const;
 const emptyCommitment = makeDiscountCommitment({
   product: commitmentProduct,
+  reservationDate: "2026-07-15",
   applications: [],
 });
 const privateCommitment = makeDiscountCommitment({
   product: commitmentProduct,
+  reservationDate: "2026-07-15",
   applications: [
     {
       application,
@@ -172,6 +174,7 @@ const privateCommitment = makeDiscountCommitment({
 });
 const fullyDiscountedCommitment = makeDiscountCommitment({
   product: commitmentProduct,
+  reservationDate: "2026-07-15",
   applications: [
     {
       application: fullyDiscountedApplication,

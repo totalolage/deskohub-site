@@ -10,6 +10,7 @@ Use the authenticated Workspace administration UI or `dhw` commands for ordinary
 - Discount codes and vouchers use separate child tables and claim ledgers. A shared `promotion_codes` registry owns their globally unique entered value, scheduling, enablement, and customer audience.
 - The voucher rollout is an expand/backfill release: `discount_codes` common fields and `discount_code_customers` remain as synchronized compatibility mirrors for overlapping old deployments. Remove those mirrors and their migration triggers only in a later contract release.
 - Global and per-customer use limits belong to the ordinary discount-code child rather than its shared discount. An omitted limit is unlimited in that dimension.
+- Service-date bounds belong to ordinary discount codes, not vouchers. Supply both `YYYY-MM-DD` values as an ordered inclusive-from/exclusive-until pair; two `null` values leave the code unrestricted. Eligibility uses only the reservation start date in the site timezone.
 - An empty audience is unrestricted. Removing the last customer therefore broadens access and requires explicit confirmation.
 - Deleting a discount code or voucher must fail when immutable claims require it for historical attribution. Prefer disabling the promotion.
 - Customer discount-group changes and administration-session changes are explicit confirmed mutations.

@@ -28,6 +28,7 @@ export type PromotionCodeUnavailableReason =
   | "claim_conflict"
   | "customer_ineligible"
   | "product_ineligible"
+  | "service_date_ineligible"
   | "no_eligible_subtotal";
 
 export class PromotionCodeUnavailableError extends Data.TaggedError(
@@ -68,6 +69,7 @@ export type DiscountClaimFailureReason =
   | "already_redeemed"
   | "customer_ineligible"
   | "product_ineligible"
+  | "service_date_ineligible"
   | "malformed_configuration"
   | "claim_conflict"
   | "money_mismatch";
