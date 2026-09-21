@@ -72,6 +72,8 @@ const unknownLinkCode = canonicalPromotionCodeSchema.make("E2E_LINK_UNKNOWN");
 
 type LinkLocale = CheckoutData["locale"];
 
+export type SignedPayUrlOrderIdPolicy = "required" | "optional";
+
 export const makeReservationLinkE2ECases = ({
   config,
   datasourceConfig,
@@ -313,7 +315,7 @@ const runReservationLinkZeroTotalCase = ({
     // The link code applies during the advertisement/customer quote, so the
     // landing pay URL is already final and safe to reload as captured.
     const payUrl = yield* runStep({
-      execute: readSignedPayUrl(run, session, locale, firstOrderId),
+      execute: readSignedPayUrl(run, session, locale, firstOrderId, "required"),
       id: "assert-signed-pay-url",
       timeoutMs: config.timeouts.browserAction,
     });
@@ -473,9 +475,13 @@ const runReservationLinkUnknownCodeCase = ({
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: readSignedPayUrl(run, session, data.locale, orderId).pipe(
-        Effect.asVoid
-      ),
+      execute: readSignedPayUrl(
+        run,
+        session,
+        data.locale,
+        orderId,
+        "required"
+      ).pipe(Effect.asVoid),
       id: "assert-signed-unknown-code-pay-url",
       timeoutMs: config.timeouts.browserAction,
     });
@@ -538,7 +544,7 @@ const runReservationLinkUnknownCodeCase = ({
     // The correction server action re-signs the pay state, so capture the
     // fresh pay URL now and reload exactly that URL.
     const freshPayUrl = yield* runStep({
-      execute: readSignedPayUrl(run, session, data.locale, orderId),
+      execute: readSignedPayUrl(run, session, data.locale, orderId, "optional"),
       id: "read-fresh-signed-pay-url-after-correction",
       timeoutMs: config.timeouts.browserAction,
     });
@@ -622,38 +628,63 @@ const readSignedPayUrl = (
   run: Runner,
   session: string,
   locale: LinkLocale,
-  orderId: WorkspaceReservationId
+  orderId: WorkspaceReservationId,
+  publicOrderIdPolicy: SignedPayUrlOrderIdPolicy
 ): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const url = yield* readBrowserUrl(run, session);
     return yield* tryWorkspaceE2ESync("assert signed pay URL", () => {
-      const parsed = parseUrl(url ?? "");
-      assert(
-        parsed?.pathname === `/${locale}/checkout/pay`,
-        "signed pay URL path mismatch"
-      );
-      assert(parsed?.searchParams.get("payState"), "pay state token missing");
-      assert(
-        parsed?.searchParams.get("orderId") === orderId,
-        "signed pay URL order id mismatch"
-      );
-      for (const key of [
-        discountCodeQueryParam,
-        "duration",
-        "email",
-        "message",
-        "name",
-        "phone",
-        "startDateTime",
-      ]) {
-        assert(
-          !parsed?.searchParams.has(key),
-          `signed pay URL leaked public query parameter ${key}`
-        );
-      }
-      return parsed.toString();
+      return validateSignedPayUrl({
+        locale,
+        orderId,
+        publicOrderIdPolicy,
+        url: url ?? "",
+      });
     });
   });
+
+export const validateSignedPayUrl = ({
+  locale,
+  orderId,
+  publicOrderIdPolicy,
+  url,
+}: {
+  readonly locale: LinkLocale;
+  readonly orderId: WorkspaceReservationId;
+  readonly publicOrderIdPolicy: SignedPayUrlOrderIdPolicy;
+  readonly url: string;
+}) => {
+  const parsed = parseUrl(url);
+  assert(
+    parsed?.pathname === `/${locale}/checkout/pay`,
+    "signed pay URL path mismatch"
+  );
+  assert(parsed?.searchParams.get("payState"), "pay state token missing");
+  const publicOrderId = parsed?.searchParams.get("orderId");
+  if (publicOrderIdPolicy === "required") {
+    assert(publicOrderId === orderId, "signed pay URL order id mismatch");
+  } else {
+    assert(
+      publicOrderId === null || publicOrderId === orderId,
+      "signed pay URL order id mismatch"
+    );
+  }
+  for (const key of [
+    discountCodeQueryParam,
+    "duration",
+    "email",
+    "message",
+    "name",
+    "phone",
+    "startDateTime",
+  ]) {
+    assert(
+      !parsed?.searchParams.has(key),
+      `signed pay URL leaked public query parameter ${key}`
+    );
+  }
+  return parsed.toString();
+};
 
 const assertHeldReservationRow = (
   datasourceConfig: DatasourceConfig,

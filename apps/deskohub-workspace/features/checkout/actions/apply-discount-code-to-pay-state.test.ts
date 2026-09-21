@@ -226,6 +226,7 @@ describe("applyDiscountCodeToPayState", () => {
     expect(freshUrl.searchParams.get("discountCodeError")).toBe("unavailable");
     const freshToken = freshUrl.searchParams.get(payStateTokenQueryParam);
     const freshState = await Effect.runPromise(openPayState(freshToken ?? ""));
+    expect(freshState.orderId).toBe("reservation-id");
     expect(freshState.requestedDiscountCode).toBe("SAVE20");
     expect(freshState.submittedCode).toBeUndefined();
     expect(freshState.submittedCodeDiscountId).toBeUndefined();
