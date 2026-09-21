@@ -70,9 +70,11 @@ import type {
 import { getWorkspaceProductTarget } from "@/features/discounts/product-target";
 import { getPromotionTiming } from "@/features/discounts/promotion-code";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
+import { isReservationServiceDateEligible } from "@/features/discounts/service-date-eligibility";
 import { type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   type PaymentAttempt,
   toPaymentAttempt,
@@ -210,6 +212,9 @@ export class PaymentLifecycleRepository extends Context.Service<
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplication =
           yield* validateDiscountCommitment(commitment);
+        const serviceDate =
+          getAccountingSnapshotServiceDate(accountingSnapshot);
+        yield* validateCommitmentServiceDate(commitment, serviceDate);
 
         return yield* db
           .transaction((tx) =>
@@ -345,6 +350,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 locale: input.locale,
                 reservationCustomerId: reservation.dotyposCustomerId,
                 reservationExpiresAt: reservation.reservationHoldExpiresAt,
+                reservationDate: serviceDate,
               });
 
               return toPaymentAttempt(attemptRow);
@@ -390,6 +396,9 @@ export class PaymentLifecycleRepository extends Context.Service<
           commitment,
           input.amount
         );
+        const serviceDate =
+          getAccountingSnapshotServiceDate(accountingSnapshot);
+        yield* validateCommitmentServiceDate(commitment, serviceDate);
 
         if (input.amount.value !== 0) {
           return yield* lifecycleStateError(
@@ -588,6 +597,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 locale: input.locale,
                 reservationCustomerId: reservation.dotyposCustomerId,
                 reservationExpiresAt: reservation.reservationHoldExpiresAt,
+                reservationDate: serviceDate,
               });
               if (claimedAt) {
                 yield* redeemCodeClaim(tx, attemptRow.id, claimedAt);
@@ -884,6 +894,39 @@ export class PaymentLifecycleRepository extends Context.Service<
 }
 
 type CommitmentPayload = ReturnType<typeof getDiscountCommitmentPayload>;
+
+/**
+ * The canonical start day of the reservation that a validated accounting
+ * snapshot describes. Vouchers and codes are admitted against this day; an
+ * overnight or multi-day reservation's end never gates admission.
+ */
+export const getAccountingSnapshotServiceDate = (
+  snapshot: AccountingDocumentSnapshot
+): string =>
+  Match.value(snapshot.reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (reservation) => reservation.date,
+      "meeting-room": (reservation) =>
+        Temporal.Instant.from(reservation.startsAt)
+          .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+          .toPlainDate()
+          .toString(),
+      office: (reservation) => reservation.startsOn,
+    })
+  );
+
+export const validateCommitmentServiceDate = Effect.fn(
+  "PaymentLifecycle.validateCommitmentServiceDate"
+)(function* (commitment: CommitmentPayload, serviceDate: string) {
+  if (commitment.reservationDate !== serviceDate) {
+    return yield* new DiscountClaimError({
+      operation: "reserve",
+      reason: "claim_conflict",
+      message:
+        "The committed discount no longer matches the reservation service date.",
+    });
+  }
+});
 
 export const validateDiscountCommitment = Effect.fn(
   "PaymentLifecycle.validateDiscountCommitment"
@@ -1227,6 +1270,7 @@ const reserveCommittedCodeClaim = Effect.fn(
   readonly locale: Locale;
   readonly reservationCustomerId: DotyposCustomerId;
   readonly reservationExpiresAt: Temporal.Instant;
+  readonly reservationDate: string;
 }) {
   if (!input.claimedApplication) return;
 
@@ -1252,6 +1296,7 @@ const reserveCommittedCodeClaim = Effect.fn(
     locale: input.locale,
     reservationCustomerId: input.reservationCustomerId,
     reservationExpiresAt: input.reservationExpiresAt,
+    reservationDate: input.reservationDate,
   });
 });
 
@@ -1265,6 +1310,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     readonly locale: Locale;
     readonly reservationCustomerId: DotyposCustomerId;
     readonly reservationExpiresAt: Temporal.Instant;
+    readonly reservationDate: string;
   }) {
     if (input.reservationCustomerId !== input.claim.dotyposCustomerId) {
       return yield* claimError(
@@ -1329,6 +1375,18 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
         "reserve",
         "inactive",
         "The accepted promotion is inactive.",
+        input.claim
+      );
+    }
+
+    if (
+      stored.kind === "discount_code" &&
+      !isReservationServiceDateEligible(stored.code, input.reservationDate)
+    ) {
+      return yield* claimError(
+        "reserve",
+        "service_date_ineligible",
+        "The accepted discount code is no longer valid for the reservation service date.",
         input.claim
       );
     }

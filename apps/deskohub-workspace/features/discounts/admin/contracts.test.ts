@@ -4,8 +4,10 @@ import { workspaceCurrencyDefinitions } from "@/shared/money/currencies";
 import {
   createDiscountAdminInputSchema,
   createDiscountCodeAdminInputSchema,
+  createVoucherAdminInputSchema,
   discountAdminCustomerSearchSchema,
   discountAdminMutationSchema,
+  updateDiscountCodeAdminInputSchema,
 } from "./contracts";
 
 const decodeDiscount = Schema.decodeUnknownSync(
@@ -30,6 +32,14 @@ const decodeCustomerSearch = Schema.decodeUnknownSync(
     onExcessProperty: "error",
   }
 );
+const decodeUpdateCode = Schema.decodeUnknownSync(
+  updateDiscountCodeAdminInputSchema,
+  { errors: "all", onExcessProperty: "error" }
+);
+const decodeVoucher = Schema.decodeUnknownSync(createVoucherAdminInputSchema, {
+  errors: "all",
+  onExcessProperty: "error",
+});
 
 const validDiscount = {
   labels: {
@@ -215,6 +225,64 @@ describe("discount administration inputs", () => {
         customerId: "customer-id",
         code,
         discount: { kind: "existing" },
+      })
+    ).toThrow();
+  });
+
+  test("rejects one-sided, equal, and reversed service-date pairs on create and update", () => {
+    const pairs: readonly [string | null, string | null][] = [
+      ["2026-08-10", null],
+      [null, "2026-08-12"],
+      ["2026-08-12", "2026-08-12"],
+      ["2026-08-12", "2026-08-10"],
+    ];
+    for (const [serviceDateFrom, serviceDateUntil] of pairs) {
+      expect(() =>
+        decodeCode({ ...validCode, serviceDateFrom, serviceDateUntil })
+      ).toThrow();
+      expect(() =>
+        decodeUpdateCode({
+          ...validCode,
+          id: "code-1",
+          serviceDateFrom,
+          serviceDateUntil,
+        })
+      ).toThrow();
+    }
+    expect(() =>
+      decodeCode({
+        ...validCode,
+        serviceDateFrom: "2026-08-10",
+        serviceDateUntil: "2026-08-12",
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeCode({
+        ...validCode,
+        serviceDateFrom: null,
+        serviceDateUntil: null,
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeUpdateCode({
+        ...validCode,
+        id: "code-1",
+        serviceDateFrom: null,
+        serviceDateUntil: null,
+      })
+    ).not.toThrow();
+  });
+
+  test("keeps service-date fields off vouchers", () => {
+    expect(() =>
+      decodeVoucher({
+        code: validCode.code,
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+        credit: { value: 10_000, exponent: 2, currency: "CZK" },
+        serviceDateFrom: "2026-08-10",
+        serviceDateUntil: "2026-08-12",
       })
     ).toThrow();
   });

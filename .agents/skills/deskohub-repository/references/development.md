@@ -35,6 +35,17 @@ bun turbo test --filter=<package-name>
 bun turbo build --filter=<package-name>
 ```
 
+For opt-in local Postgres proof of the payment lifecycle, run this from
+`apps/deskohub-workspace`:
+
+```bash
+WORKSPACE_LOCAL_POSTGRES_TESTS=1 bun test --preload ./shared/testing/workspace-test-env.ts features/checkout/backend/repositories/payment-lifecycle.postgres.test.ts
+```
+
+The test uses an isolated local cluster and defaults to binaries in
+`/usr/lib/postgresql/18/bin`. Set `WORKSPACE_TEST_POSTGRES_BIN` to the Postgres 18
+binary directory when installed elsewhere.
+
 Workspace has additional database and E2E tasks. Read the Workspace operations or E2E skill before running them against any shared or hosted environment.
 
 ## Environment files

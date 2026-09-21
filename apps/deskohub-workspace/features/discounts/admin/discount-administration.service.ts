@@ -65,6 +65,8 @@ import { WorkspaceDotyposLayer } from "@/shared/backend/config/dotypos.config";
 import { WorkspaceGoogleCalendarLayer } from "@/shared/backend/config/google-calendar.config";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { workspaceSiteConstants } from "@/shared/utils";
+import type { PlainDate } from "@/shared/utils/temporal";
+import { plainDateStringSchema } from "@/shared/utils/temporal";
 import type { DiscountAdjustment } from "../contracts";
 import { toDotyposDiscountBasisPoints } from "../dotypos-discount-percentage";
 import {
@@ -106,6 +108,8 @@ export type AdminDiscountCode = {
   readonly validUntil: Temporal.Instant | null;
   readonly maxUses: number | null;
   readonly maxUsesPerCustomer: number | null;
+  readonly serviceDateFrom: PlainDate | null;
+  readonly serviceDateUntil: PlainDate | null;
   readonly audienceSize: number;
   readonly reservedUses: number;
   readonly redeemedUses: number;
@@ -768,6 +772,8 @@ export class DiscountAdministration extends Context.Service<
                   discountId,
                   maxUses: input.code.maxUses,
                   maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+                  serviceDateFrom: toServiceDate(input.code.serviceDateFrom),
+                  serviceDateUntil: toServiceDate(input.code.serviceDateUntil),
                 })
                 .returning({ id: discountCodes.id });
               const codeRow = codeRows[0];
@@ -845,6 +851,8 @@ export class DiscountAdministration extends Context.Service<
                 discountId,
                 maxUses: input.code.maxUses,
                 maxUsesPerCustomer: input.code.maxUsesPerCustomer ?? null,
+                serviceDateFrom: toServiceDate(input.code.serviceDateFrom),
+                serviceDateUntil: toServiceDate(input.code.serviceDateUntil),
               })
               .returning({ id: discountCodes.id });
             const codeRow = codeRows[0];
@@ -887,6 +895,10 @@ export class DiscountAdministration extends Context.Service<
                   maxUses: input.maxUses,
                   ...(input.maxUsesPerCustomer !== undefined && {
                     maxUsesPerCustomer: input.maxUsesPerCustomer,
+                  }),
+                  ...(input.serviceDateFrom !== undefined && {
+                    serviceDateFrom: toServiceDate(input.serviceDateFrom),
+                    serviceDateUntil: toServiceDate(input.serviceDateUntil),
                   }),
                   updatedAt: Temporal.Now.instant(),
                 })
@@ -1765,6 +1777,8 @@ const toAdminDiscountCode = (row: AdminDiscountCodeRow): AdminDiscountCode => {
     validUntil: row.promotion.validUntil,
     maxUses: row.maxUses,
     maxUsesPerCustomer: row.maxUsesPerCustomer,
+    serviceDateFrom: row.serviceDateFrom ?? null,
+    serviceDateUntil: row.serviceDateUntil ?? null,
     audienceSize: row.promotion.customers.length,
     ...usage,
     createdAt: row.promotion.createdAt,
@@ -2030,6 +2044,11 @@ const toPromotionCodeValues = (
   validUntil:
     input.validUntil === null ? null : Temporal.Instant.from(input.validUntil),
 });
+
+const toServiceDate = (value: string | null | undefined): PlainDate | null =>
+  value === null || value === undefined
+    ? null
+    : Schema.decodeSync(plainDateStringSchema)(value);
 
 type TransactionClient = Parameters<
   Parameters<WorkspaceDatabaseClient["transaction"]>[0]

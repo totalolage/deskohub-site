@@ -58,6 +58,7 @@ const input: PromotionCodeProviderInput = {
   locale: "en-US",
   product,
   discountableSubtotal: { value: 35_000, exponent: 2, currency: "CZK" },
+  reservationDate: "2026-07-15",
 };
 
 const configuration = (
@@ -70,6 +71,8 @@ const configuration = (
   enabled: true,
   validFrom: null,
   validUntil: null,
+  serviceDateFrom: null,
+  serviceDateUntil: null,
   maxUses: null,
   maxUsesPerCustomer: null,
   ...overrides,
@@ -183,6 +186,7 @@ const previewInput: PromotionCodePreviewInput = {
   locale: input.locale,
   product,
   discountableSubtotal: input.discountableSubtotal,
+  reservationDate: input.reservationDate,
 };
 
 describe("PromotionCodeProvider", () => {
@@ -403,6 +407,209 @@ describe("PromotionCodeProvider", () => {
     });
 
     expect(result).toHaveLength(1);
+  });
+
+  test("rejects a reservation date outside the service window at a frozen redemption instant", async () => {
+    const result = await runWithProvider(resolve().pipe(Effect.result), {
+      findByCode: () =>
+        Effect.succeed(
+          Option.some(
+            configuration({
+              serviceDateFrom: "2026-07-16",
+              serviceDateUntil: "2026-07-18",
+            })
+          )
+        ),
+      loadAvailability: mock(defaultLoadAvailability),
+      loadDefinition: mock(defaultLoadDefinition),
+    });
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "service_date_ineligible", codeId },
+    });
+  });
+
+  test("resolves the same frozen redemption instant inside the service window", async () => {
+    const result = await runWithProvider(
+      resolve({ reservationDate: "2026-07-16" }),
+      {
+        findByCode: () =>
+          Effect.succeed(
+            Option.some(
+              configuration({
+                serviceDateFrom: "2026-07-16",
+                serviceDateUntil: "2026-07-18",
+              })
+            )
+          ),
+      }
+    );
+
+    expect(result[0]?.claim?.codeId).toBe(codeId);
+  });
+
+  test.each([
+    ["before the window", "2026-07-14"],
+    ["on the exclusive end date", "2026-07-18"],
+    ["after the window", "2026-07-19"],
+  ] as const)(
+    "rejects a reservation date %s",
+    async (_label, reservationDate) => {
+      const result = await runWithProvider(
+        resolve({ reservationDate }).pipe(Effect.result),
+        {
+          findByCode: () =>
+            Effect.succeed(
+              Option.some(
+                configuration({
+                  serviceDateFrom: "2026-07-15",
+                  serviceDateUntil: "2026-07-18",
+                })
+              )
+            ),
+        }
+      );
+
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: { reason: "service_date_ineligible", codeId },
+      });
+    }
+  );
+
+  test("includes the first service date and the day before the end date", async () => {
+    for (const reservationDate of ["2026-07-15", "2026-07-17"]) {
+      const result = await runWithProvider(resolve({ reservationDate }), {
+        findByCode: () =>
+          Effect.succeed(
+            Option.some(
+              configuration({
+                serviceDateFrom: "2026-07-15",
+                serviceDateUntil: "2026-07-18",
+              })
+            )
+          ),
+      });
+
+      expect(result).toHaveLength(1);
+    }
+  });
+
+  test("keeps legacy codes without a service window eligible", async () => {
+    const result = await runWithProvider(resolve(), {
+      findByCode: () =>
+        Effect.succeed(
+          Option.some(
+            configuration({
+              serviceDateFrom: null,
+              serviceDateUntil: null,
+            })
+          )
+        ),
+    });
+
+    expect(result).toHaveLength(1);
+  });
+
+  test("resolves vouchers without a service window constraint", async () => {
+    const result = await runWithProvider(
+      resolve({ reservationDate: "2027-01-01" }),
+      {
+        findByCode: () => Effect.succeed(Option.some(voucherConfiguration())),
+        loadVoucherAvailability: () => Effect.succeed(voucherAvailability()),
+      }
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.claim).toMatchObject({ kind: "voucher", voucherId });
+  });
+
+  test("composes the service date gate with expiry, audience, and usage gates", async () => {
+    const serviceWindow = {
+      serviceDateFrom: "2026-07-15",
+      serviceDateUntil: "2026-07-18",
+    };
+
+    const expired = await runWithProvider(resolve().pipe(Effect.result), {
+      findByCode: () =>
+        Effect.succeed(
+          Option.some(
+            configuration({ ...serviceWindow, validUntil: nowInstant })
+          )
+        ),
+    });
+    expect(expired).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "expired" },
+    });
+
+    const notAllowed = await runWithProvider(resolve().pipe(Effect.result), {
+      findByCode: () =>
+        Effect.succeed(Option.some(configuration({ ...serviceWindow }))),
+      loadAvailability: () =>
+        Effect.succeed(
+          availability({ allowlistSize: 1, customerAllowed: false })
+        ),
+    });
+    expect(notAllowed).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "customer_ineligible" },
+    });
+
+    const exhausted = await runWithProvider(resolve().pipe(Effect.result), {
+      findByCode: () =>
+        Effect.succeed(
+          Option.some(configuration({ ...serviceWindow, maxUses: 2 }))
+        ),
+      loadAvailability: () =>
+        Effect.succeed(
+          availability({ activeUseCount: 2, customerActiveUseCount: 2 })
+        ),
+    });
+    expect(exhausted).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "usage_limit_reached" },
+    });
+
+    const eligible = await runWithProvider(resolve(), {
+      findByCode: () =>
+        Effect.succeed(Option.some(configuration({ ...serviceWindow }))),
+      loadAvailability: () =>
+        Effect.succeed(
+          availability({ allowlistSize: 2, customerAllowed: true })
+        ),
+    });
+    expect(eligible).toHaveLength(1);
+  });
+
+  test("rejects an anonymous preview outside the service window", async () => {
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(now);
+        const provider = yield* PromotionCodeProvider;
+        return yield* provider.preview({
+          ...previewInput,
+          reservationDate: "2026-07-14",
+        });
+      }).pipe(Effect.result),
+      {
+        findByCode: () =>
+          Effect.succeed(
+            Option.some(
+              configuration({
+                serviceDateFrom: "2026-07-15",
+                serviceDateUntil: "2026-07-18",
+              })
+            )
+          ),
+      }
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "service_date_ineligible", codeId },
+    });
   });
 
   test("allows unrestricted and unlimited codes regardless of usage count", async () => {

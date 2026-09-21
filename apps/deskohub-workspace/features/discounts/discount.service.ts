@@ -68,6 +68,7 @@ export type ApplyCustomerDiscountInput = {
   readonly affirmedAdvertisement: AffirmedDiscountAdvertisementQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
+  readonly reservationDate: string;
   readonly submittedCode?: CanonicalPromotionCode;
   readonly submittedCodeDiscountId?: DiscountId;
 };
@@ -81,6 +82,7 @@ export type ApplyDiscountCodeInput = {
   readonly baseQuote: DiscountQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
+  readonly reservationDate: string;
   readonly submittedCode: CanonicalPromotionCode;
 };
 
@@ -375,6 +377,7 @@ export class DiscountService extends Context.Service<
                       input.affirmedAdvertisement.discountableSubtotal,
                     dotyposCustomerId: input.dotyposCustomerId,
                     locale: input.locale,
+                    reservationDate: input.reservationDate,
                     submittedCode: input.submittedCode,
                   }),
               }).pipe(
@@ -441,6 +444,7 @@ export class DiscountService extends Context.Service<
                 product: input.baseQuote.product,
                 discountableSubtotal: input.baseQuote.discountableSubtotal,
                 locale: input.locale,
+                reservationDate: input.reservationDate,
                 submittedCode: input.submittedCode,
               })
             ),
@@ -477,6 +481,7 @@ export class DiscountService extends Context.Service<
               quote: calculation.quote,
               commitment: makeDiscountCommitment({
                 product: calculation.quote.product,
+                reservationDate: input.reservationDate,
                 applications: calculation.applications,
               }),
             }))
@@ -500,6 +505,7 @@ export class DiscountService extends Context.Service<
                 discountableSubtotal: input.baseQuote.discountableSubtotal,
                 dotyposCustomerId: input.dotyposCustomerId,
                 locale: input.locale,
+                reservationDate: input.reservationDate,
                 submittedCode: input.submittedCode,
               })
             ),

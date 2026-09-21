@@ -40,6 +40,8 @@ const discountRow = (
   discountId,
   maxUses: null,
   maxUsesPerCustomer: null,
+  serviceDateFrom: null,
+  serviceDateUntil: null,
   voucherId: null,
   issuedAmountValue: null,
   issuedAmountExponent: null,
@@ -115,6 +117,8 @@ describe("stored promotion configuration", () => {
       enabled: true,
       validFrom: null,
       validUntil: null,
+      serviceDateFrom: null,
+      serviceDateUntil: null,
       maxUses: null,
       maxUsesPerCustomer: null,
     });
@@ -156,6 +160,44 @@ describe("stored promotion configuration", () => {
       discountRow({
         validFrom: Temporal.Instant.from("2026-08-01T00:00:00Z"),
         validUntil: Temporal.Instant.from("2026-07-31T00:00:00Z"),
+      }),
+    ],
+    ["half service-date pair", discountRow({ serviceDateFrom: "2026-07-16" })],
+    [
+      "inverted service-date window",
+      discountRow({
+        serviceDateFrom: "2026-07-18",
+        serviceDateUntil: "2026-07-16",
+      }),
+    ],
+    [
+      "empty service-date window",
+      discountRow({
+        serviceDateFrom: "2026-07-16",
+        serviceDateUntil: "2026-07-16",
+      }),
+    ],
+    [
+      "noncanonical service date",
+      discountRow({
+        serviceDateFrom: "2026-7-16",
+        serviceDateUntil: "2026-07-18",
+      }),
+    ],
+    [
+      "voucher with a service-date window",
+      discountRow({
+        kind: "voucher",
+        discountCodeId: null,
+        discountId: null,
+        maxUses: null,
+        maxUsesPerCustomer: null,
+        serviceDateFrom: "2026-07-16",
+        serviceDateUntil: "2026-07-18",
+        voucherId,
+        issuedAmountValue: 10_000,
+        issuedAmountExponent: 2,
+        issuedAmountCurrency: "CZK",
       }),
     ],
   ])("rejects %s", async (_label, row) => {

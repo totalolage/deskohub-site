@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date,
   foreignKey,
   index,
   integer,
@@ -21,6 +22,7 @@ import type {
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { Locale } from "@/features/i18n";
+import type { PlainDate } from "@/shared/utils/temporal";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 
@@ -171,6 +173,8 @@ export const discountCodes = pgTable(
       .references(() => discounts.id),
     maxUses: integer("max_uses"),
     maxUsesPerCustomer: integer("max_uses_per_customer"),
+    serviceDateFrom: date("service_date_from").$type<PlainDate | null>(),
+    serviceDateUntil: date("service_date_until").$type<PlainDate | null>(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
@@ -193,6 +197,16 @@ export const discountCodes = pgTable(
     check(
       "discount_codes_valid_window_check",
       sql`${t.validFrom} is null or ${t.validUntil} is null or ${t.validUntil} > ${t.validFrom}`
+    ),
+    check(
+      "discount_codes_service_window_check",
+      sql`(
+        ${t.serviceDateFrom} is null and ${t.serviceDateUntil} is null
+      ) or (
+        ${t.serviceDateFrom} is not null
+        and ${t.serviceDateUntil} is not null
+        and ${t.serviceDateUntil} > ${t.serviceDateFrom}
+      )`
     ),
     check(
       "discount_codes_max_uses_check",

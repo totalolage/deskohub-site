@@ -25,12 +25,17 @@ Overlapping valid sales may all participate in pricing. The home-page banner is 
 Codes use uppercase ASCII letters, digits, underscores, and hyphens and contain between 3 and 64 characters. An ordinary discount code owns:
 
 - whether it is enabled;
-- an optional inclusive start and exclusive end;
+- an optional inclusive redemption start and exclusive redemption end;
+- an optional reservation-start-date range, with an inclusive start and exclusive end;
 - an optional positive global-use limit; and
 - an optional positive per-customer-use limit; and
 - an optional customer allowlist.
 
 Omitting either use limit makes that dimension unlimited. Existing codes with a finite global limit retain one use per customer; existing globally unlimited codes remain unlimited per customer. An empty customer allowlist means the code is open to every customer; adding the first customer makes it restricted.
+
+Service-date restrictions require both dates, or neither for unrestricted service dates. Existing codes remain unrestricted. Dates use the Workspace's Prague timezone. Only the reservation's start date determines eligibility; overnight and multi-day reservations may end outside the range. A code for September 21 alone uses September 21 through September 22, exclusive. This does not restrict reservation duration.
+
+The redemption window independently controls when the customer may use the code. A customer may redeem a code today for an eligible future service date. Service-date eligibility is checked in the reservation preview, customer quote, and final payment admission against the current code configuration. An eligibility change requires the customer to review updated pricing.
 
 ## Vouchers
 

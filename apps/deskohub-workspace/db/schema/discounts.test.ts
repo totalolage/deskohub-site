@@ -295,6 +295,7 @@ describe("discount persistence contracts", () => {
       "discount_codes_promotion_kind_check",
       "discount_codes_code_check",
       "discount_codes_valid_window_check",
+      "discount_codes_service_window_check",
       "discount_codes_max_uses_check",
       "discount_codes_max_uses_per_customer_check",
     ]);
@@ -313,6 +314,37 @@ describe("discount persistence contracts", () => {
     );
     expect(voucherConfig.columns.map(({ name }) => name)).not.toContain(
       "discount_id"
+    );
+  });
+
+  test("stores a paired service-date window that rejects half ranges despite SQL NULL logic", async () => {
+    const codeConfig = configOf(discountCodes);
+    const columns = codeConfig.columns.map(({ name, notNull }) => ({
+      name,
+      notNull,
+    }));
+
+    expect(columns).toContainEqual({
+      name: "service_date_from",
+      notNull: false,
+    });
+    expect(columns).toContainEqual({
+      name: "service_date_until",
+      notNull: false,
+    });
+    expect(namesOf(codeConfig.checks)).toContain(
+      "discount_codes_service_window_check"
+    );
+
+    const migrationsDir = new URL("../migrations/", import.meta.url).pathname;
+    const migrationFiles = [
+      ...new Bun.Glob("*/migration.sql").scanSync({ cwd: migrationsDir }),
+    ].sort();
+    const latestMigration = await Bun.file(
+      `${migrationsDir}${migrationFiles.at(-1)}`
+    ).text();
+    expect(latestMigration).toContain(
+      'CONSTRAINT "discount_codes_service_window_check" CHECK ((\n        "service_date_from" is null and "service_date_until" is null\n      ) or (\n        "service_date_from" is not null\n        and "service_date_until" is not null\n        and "service_date_until" > "service_date_from"\n      ))'
     );
   });
 

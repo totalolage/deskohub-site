@@ -33,6 +33,7 @@ const submittedCode = Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
 const emptyCommitment = () =>
   makeDiscountCommitment({
     product: { kind: "cowork", tier: "basic" },
+    reservationDate: "2026-07-15",
     applications: [],
   });
 
@@ -158,6 +159,7 @@ describe("cowork checkout pricing", () => {
     expect(previewDiscountCode).toHaveBeenCalledWith({
       baseQuote,
       locale: "en-US",
+      reservationDate: "2099-07-30",
       submittedCode,
     });
     expect(result).toMatchObject({
@@ -222,6 +224,7 @@ describe("cowork checkout pricing", () => {
       affirmedAdvertisement,
       dotyposCustomerId,
       locale: "en-US",
+      reservationDate: "2099-07-30",
     });
     expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
   });
@@ -328,6 +331,7 @@ describe("cowork checkout pricing", () => {
       baseQuote: affirmedAdvertisement,
       dotyposCustomerId,
       locale: "en-US",
+      reservationDate: "2099-07-30",
       submittedCode,
     });
     expect(result).toMatchObject({
