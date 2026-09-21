@@ -267,8 +267,9 @@ function makeProviderPaymentFinalizationServiceLayer(
                   paidAt: Temporal.Now.instant(),
                 })
                 .pipe(
-                  Effect.catchTag("PaymentLifecycleStateError", (cause) =>
-                    Effect.gen(function* () {
+                  Effect.catchTag(
+                    "PaymentLifecycleStateError",
+                    Effect.fn(function* (cause) {
                       yield* Effect.logWarning(
                         "Payment finalization mark paid returned not_pending",
                         { cause }
@@ -334,8 +335,9 @@ function makeProviderPaymentFinalizationServiceLayer(
                   providerStatus,
                 })
                 .pipe(
-                  Effect.catchTag("PaymentLifecycleStateError", (cause) =>
-                    Effect.gen(function* () {
+                  Effect.catchTag(
+                    "PaymentLifecycleStateError",
+                    Effect.fn(function* (cause) {
                       yield* Effect.logWarning(
                         "Payment finalization mark terminal returned not_pending",
                         { cause }

@@ -1,5 +1,5 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
-import { Schema } from "effect";
+import { Predicate, Record, Schema } from "effect";
 import {
   getWorkspaceProductByTier,
   workspaceProductMonitorOptions,
@@ -84,18 +84,12 @@ const queryOfficeDayCountSchema = Schema.toStandardSchemaV1(
 const queryOfficeSeatsSchema = Schema.toStandardSchemaV1(
   Schema.FiniteFromString.pipe(Schema.decodeTo(officeSeatsSchema))
 );
-const queryNameSchema = Schema.toStandardSchemaV1(
-  reservationCustomerNameSchema
-);
-const queryEmailSchema = Schema.toStandardSchemaV1(
-  reservationCustomerEmailSchema
-);
-const queryPhoneSchema = Schema.toStandardSchemaV1(
-  reservationCustomerPhoneSchema
-);
-const queryMessageSchema = Schema.toStandardSchemaV1(
-  reservationCustomerMessageSchema
-);
+const queryCustomerSchemas = {
+  name: Schema.toStandardSchemaV1(reservationCustomerNameSchema),
+  email: Schema.toStandardSchemaV1(reservationCustomerEmailSchema),
+  phone: Schema.toStandardSchemaV1(reservationCustomerPhoneSchema),
+  message: Schema.toStandardSchemaV1(reservationCustomerMessageSchema),
+};
 
 const getTrimmedSearchParam = (
   searchParams: SupportedSearchParams,
@@ -107,34 +101,15 @@ const getTrimmedSearchParam = (
 
 const decodeReservationCheckoutCustomer = (
   searchParams: SupportedSearchParams
-) => {
-  const name = decodeStandardSchema(
-    queryNameSchema,
-    getTrimmedSearchParam(searchParams, "name")
+): Partial<
+  Pick<ReservationCheckoutQueryValues, keyof typeof queryCustomerSchemas>
+> =>
+  Record.filter(
+    Record.map(queryCustomerSchemas, (schema, key): string | undefined =>
+      decodeStandardSchema(schema, getTrimmedSearchParam(searchParams, key))
+    ),
+    Predicate.isNotUndefined
   );
-
-  const email = decodeStandardSchema(
-    queryEmailSchema,
-    getTrimmedSearchParam(searchParams, "email")
-  );
-
-  const phone = decodeStandardSchema(
-    queryPhoneSchema,
-    getTrimmedSearchParam(searchParams, "phone")
-  );
-
-  const message = decodeStandardSchema(
-    queryMessageSchema,
-    getTrimmedSearchParam(searchParams, "message")
-  );
-
-  return {
-    ...(name !== undefined && { name }),
-    ...(email !== undefined && { email }),
-    ...(phone !== undefined && { phone }),
-    ...(message !== undefined && { message }),
-  };
-};
 
 const decodeReservationCheckoutQuery = (
   searchParams: SupportedSearchParams

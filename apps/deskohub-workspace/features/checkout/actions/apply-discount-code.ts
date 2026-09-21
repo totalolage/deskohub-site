@@ -53,8 +53,6 @@ export async function applyDiscountCodeForm(
   }
 
   if (result.data?.status === "unavailable" && result.data.freshPayUrl) {
-    // The replacement token carries the attempted code as signed intent, so
-    // the correction route must use it instead of the previous state.
     redirect(result.data.freshPayUrl, RedirectType.replace);
   }
 

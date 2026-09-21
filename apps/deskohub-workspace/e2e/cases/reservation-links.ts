@@ -770,7 +770,6 @@ const appliedDiscountMessage = (locale: Locale) =>
     { locale }
   );
 
-// The seeded zero-total fixture label is resolved per reservation locale.
 const zeroTotalDiscountLabels: Record<LinkLocale, string> = {
   "cs-CZ": "E2E sleva 100 %",
   "en-US": "E2E 100% discount",
@@ -992,8 +991,6 @@ const returnToReservationWithConflictingQuery = ({
       getPrefilledReservationConditionScript(data),
       { timeoutMs: config.timeouts.uiTransition }
     );
-    // The signed original code keeps the advertisement discounted before any
-    // deliberate edit; the later replacement submit changes the start itself.
     yield* waitForBrowserCondition(
       run,
       session,

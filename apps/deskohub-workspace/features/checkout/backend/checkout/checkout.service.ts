@@ -492,8 +492,9 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           readonly workspaceReservationId: WorkspaceReservationId;
         }) =>
           Match.value(input.cause).pipe(
-            Match.when(isDefinitiveHostedPaymentPageFailure, () =>
-              Effect.gen(function* () {
+            Match.when(
+              isDefinitiveHostedPaymentPageFailure,
+              Effect.fn(function* () {
                 const transition = yield* paymentLifecycle.markTerminal({
                   id: input.attempt.id,
                   workspaceReservationId: input.workspaceReservationId,
@@ -910,8 +911,6 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 ...state,
                 locale,
                 orderId: reservation.id,
-                // Keep requested intent across changedKeys rebuilds even when
-                // the applied pair no longer round-trips.
                 requestedDiscountCode:
                   state.requestedDiscountCode ?? state.submittedCode,
               });
@@ -1112,8 +1111,9 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                   });
 
             return yield* startPayment.pipe(
-              Effect.catchTag("DiscountClaimError", (cause) =>
-                Effect.gen(function* () {
+              Effect.catchTag(
+                "DiscountClaimError",
+                Effect.fn(function* (cause) {
                   yield* Effect.logError(
                     "Accepted discount claim admission changed the payable price",
                     {

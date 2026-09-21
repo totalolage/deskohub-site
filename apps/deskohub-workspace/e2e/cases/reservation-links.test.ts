@@ -57,15 +57,13 @@ test("exact-total predicate requires exactly one zero total row per locale", asy
   const totalRow = (label: string, amount: string) => `
     <div><span>${label}</span><span>${amount}</span></div>`;
 
-  // Exact en-US zero total passes.
   expect(
     await withBody(
       totalRow("Total to pay", zeroText(enData)),
       getAppliedZeroTotalPaySummaryCondition(enData)
     )
-  ).toBe(false); // applied message missing, total alone is not enough
+  ).toBe(false);
 
-  // Exact cs-CZ total with applied message present passes.
   const csScript = getAppliedZeroTotalPaySummaryCondition(csData);
   const csApplied = m.checkoutDiscountCodeApplied(
     { discount: "100 %" },
@@ -78,7 +76,6 @@ test("exact-total predicate requires exactly one zero total row per locale", asy
     )
   ).toBe(true);
 
-  // A positive total never matches the zero expectation.
   expect(
     await withBody(
       `${totalRow("Total to pay", "100 Kč")}<p>Promotion applied: 100% off 🎉</p>`,
@@ -86,7 +83,6 @@ test("exact-total predicate requires exactly one zero total row per locale", asy
     )
   ).toBe(false);
 
-  // A zero amount on another line with a nonzero total fails.
   expect(
     await withBody(
       `${totalRow("E2E 100% discount", "0 Kč")}${totalRow("Total to pay", "350 Kč")}`,
@@ -94,7 +90,6 @@ test("exact-total predicate requires exactly one zero total row per locale", asy
     )
   ).toBe(false);
 
-  // A duplicated total row fails the exactly-one requirement.
   expect(
     await withBody(
       `${totalRow("Total to pay", zeroText(enData))}${totalRow("Total to pay", zeroText(enData))}`,
@@ -115,7 +110,6 @@ test("discount-listed-once predicate counts the fixture label exactly once", asy
     label: "e2e 100% discount",
   });
 
-  // Exactly one matching discount passes alongside an unrelated discount.
   expect(
     await withBody(
       tooltip(["E2E Calendar sale 20%", "E2E 100% discount 100%"]),
@@ -123,7 +117,6 @@ test("discount-listed-once predicate counts the fixture label exactly once", asy
     )
   ).toBe(true);
 
-  // A duplicated fixture discount fails.
   expect(
     await withBody(
       tooltip(["E2E 100% discount 100%", "E2E 100% discount 100%"]),
@@ -131,12 +124,10 @@ test("discount-listed-once predicate counts the fixture label exactly once", asy
     )
   ).toBe(false);
 
-  // A missing fixture discount fails.
   expect(await withBody(tooltip(["E2E Calendar sale 20%"]), script)).toBe(
     false
   );
 
-  // A missing tooltip fails closed.
   expect(
     await withBody("<ul><li>E2E 100% discount 100%</li></ul>", script)
   ).toBe(false);
@@ -156,7 +147,6 @@ test("czech discount-listed-once predicate tolerates the localized NBSP percent"
   });
   const item = (adjustment: string) => `E2E sleva 100 % ${adjustment}`;
 
-  // Exactly one matching Czech discount passes alongside an unrelated one.
   expect(
     await withBody(
       tooltip(["E2E kalendářová sleva 20%", item(adjustmentText)]),
@@ -164,7 +154,6 @@ test("czech discount-listed-once predicate tolerates the localized NBSP percent"
     )
   ).toBe(true);
 
-  // A duplicated Czech discount fails.
   expect(
     await withBody(
       tooltip([item(adjustmentText), item(adjustmentText)]),
@@ -188,7 +177,6 @@ test("selected-duration predicate demands the exact discounted zero price", asyn
     )
   ).toBe(true);
 
-  // A positive current amount fails even with a zero label elsewhere.
   expect(
     await withBody(
       option("CZK 350", "CZK 350"),
@@ -196,7 +184,6 @@ test("selected-duration predicate demands the exact discounted zero price", asyn
     )
   ).toBe(false);
 
-  // The cs-CZ semantic text must match exactly.
   const csOption = `
     <div data-reservation-type-option="hour:1">
       <del>350 Kč</del>

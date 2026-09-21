@@ -556,28 +556,27 @@ const isMonitorOptionUnavailable = (
     workspaceBookingSeatCount
   ).pipe(Effect.map((available) => !available));
 
-const getDateRange = (from: string, to: string) =>
-  Effect.gen(function* () {
-    const start = yield* parsePlainDate(from);
-    const end = yield* parsePlainDate(to);
+const getDateRange = Effect.fn(function* (from: string, to: string) {
+  const start = yield* parsePlainDate(from);
+  const end = yield* parsePlainDate(to);
 
-    if (Temporal.PlainDate.compare(start, end) > 0) {
-      return yield* new ValidationError({
-        message: "Availability range start must be before range end",
-      });
-    }
+  if (Temporal.PlainDate.compare(start, end) > 0) {
+    return yield* new ValidationError({
+      message: "Availability range start must be before range end",
+    });
+  }
 
-    const dates: Temporal.PlainDate[] = [];
-    for (
-      let cursor = start;
-      Temporal.PlainDate.compare(cursor, end) <= 0;
-      cursor = cursor.add({ days: 1 })
-    ) {
-      dates.push(cursor);
-    }
+  const dates: Temporal.PlainDate[] = [];
+  for (
+    let cursor = start;
+    Temporal.PlainDate.compare(cursor, end) <= 0;
+    cursor = cursor.add({ days: 1 })
+  ) {
+    dates.push(cursor);
+  }
 
-    return dates;
-  });
+  return dates;
+});
 
 const getDateRangeReservationInterval = (
   dates: readonly Temporal.PlainDate[]

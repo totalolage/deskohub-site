@@ -240,8 +240,6 @@ test("constructs reservation-link cases from the reserved preparation partition"
     expect(workspaceE2ENonPaymentCaseIds).toContain(workspaceE2ECase.id);
   }
 
-  // The original and replacement holds are separate cleanup resources: the
-  // en-US case owns both flow states with their own data and order owners.
   const [enCase] = cases;
   expect(enCase.checkoutStates).toHaveLength(2);
   const [originalState, replacementState] = enCase.checkoutStates;
@@ -251,7 +249,6 @@ test("constructs reservation-link cases from the reserved preparation partition"
   );
   expect(originalState.data.email).toBe(replacementState.data.email);
   expect(flowStates).toHaveLength(4);
-  // Both case-owned flow states are registered in the shared cleanup list.
   expect(flowStates[0]).toBe(originalState);
   expect(flowStates[1]).toBe(replacementState);
   expect(flowStates.filter(({ data }) => data.locale === "cs-CZ")).toHaveLength(

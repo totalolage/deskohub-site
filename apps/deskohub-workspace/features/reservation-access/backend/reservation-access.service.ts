@@ -363,8 +363,8 @@ export class ReservationAccessService extends Context.Service<
               accessName: `Deskohub ${input.reservationId}`.slice(0, 60),
             })
             .pipe(
-              Effect.catch((error: IgloohomeRequestError) =>
-                Effect.gen(function* () {
+              Effect.catch(
+                Effect.fn(function* (error: IgloohomeRequestError) {
                   const failedAt = Temporal.Now.instant();
                   const failure = Match.value(error.outcome).pipe(
                     Match.when("ambiguous", () => ({

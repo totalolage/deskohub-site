@@ -91,8 +91,9 @@ export const applyDiscountCodeToPayState = Effect.fn(
       .pipe(
         // A recoverable invalid-code failure keeps the attempted code as signed
         // requested intent on the correction route instead of the old state.
-        Effect.catchTag("PromotionCodeUnavailableError", () =>
-          Effect.gen(function* () {
+        Effect.catchTag(
+          "PromotionCodeUnavailableError",
+          Effect.fn(function* () {
             const freshPayUrl = yield* buildFreshCheckoutPayPath(
               {
                 ...state,
@@ -133,7 +134,6 @@ export const applyDiscountCodeToPayState = Effect.fn(
             checkoutSessionId: state.checkoutSessionId,
             submittedCode,
             submittedCodeDiscountId: applied.submittedCodeDiscountId,
-            // The newly submitted code becomes the carried request intent.
             requestedDiscountCode: submittedCode,
           }),
         pricing_changed: (changed) =>

@@ -15,7 +15,6 @@ import {
 
 const deterministicNow = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
 
-// 10:30 Workspace time; polyfill ZonedDateTime exposes its instant via toInstant().
 const workspaceInstant = (local: string) =>
   Temporal.PlainDateTime.from(local)
     .toZonedDateTime(workspaceSiteConstants.location.timeZone, {
@@ -110,6 +109,33 @@ describe("getReservationDefaultValuesFromSearchParams", () => {
       getReservationDefaultValuesFromSearchParams({ email: "invalid@" }).email
     ).toBe("");
   });
+
+  test("decodes customer fields independently as URLSearchParams", () => {
+    const values = getReservationDefaultValuesFromSearchParams(
+      new URLSearchParams(
+        "name=Ada%20Lovelace&email=invalid@&message=%20%20Window%20seat%20%20"
+      )
+    );
+
+    expect(values.name).toBe("Ada Lovelace");
+    expect(values.email).toBe("");
+    expect(values.message).toBe("Window seat");
+    expect(values.phone).toBe("");
+  });
+
+  test("decodes customer fields independently as plain records", () => {
+    const values = getReservationDefaultValuesFromSearchParams({
+      name: "  ",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "invalid\nmessage\nwith\nnewlines",
+    });
+
+    expect(values.name).toBe("");
+    expect(values.email).toBe("ada@example.com");
+    expect(values.phone).toBe("+420777777777");
+    expect(values.message).toBe("invalid\nmessage\nwith\nnewlines");
+  });
 });
 
 describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
@@ -172,7 +198,6 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
   });
 
   test("falls back for a start that already began, keeping valid siblings", () => {
-    // 10:30 Workspace time; the 10:00 + 1h slot is still running.
     const now = workspaceInstant("2099-07-30T10:30");
 
     expect(
@@ -277,7 +302,6 @@ describe("getMeetingRoomReservationDefaultValuesFromSearchParams", () => {
         )
       ).toMatchObject({ startDateTime: earliest });
 
-      // Nearby valid whole-hour start on the same day is kept, with siblings.
       expect(
         getMeetingRoomReservationDefaultValuesFromSearchParams(
           {

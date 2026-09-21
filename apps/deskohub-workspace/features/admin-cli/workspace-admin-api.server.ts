@@ -76,122 +76,157 @@ import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 export const AdminCliApiHandlers = HttpApiBuilder.group(
   WorkspaceAdminApi,
   "cli",
-  (handlers) =>
-    Effect.gen(function* () {
-      const authentication = yield* CliAuthentication;
-      const admission = yield* CliAuthenticationAdmission;
-      return handlers
-        .handle("getInfo", () =>
-          Effect.succeed({
-            apiVersion: "v1" as const,
-            service: "deskohub-workspace" as const,
-          })
-        )
-        .handle("startAuthentication", ({ payload }) =>
-          Effect.gen(function* () {
-            const allowed =
-              yield* admission.isStartAllowed.pipe(mapServiceFailure);
-            if (!allowed) {
-              return yield* new CliAuthenticationRateLimited({
-                message:
-                  "Too many CLI authentication requests were started. Try again shortly.",
-              });
-            }
-            return yield* authentication.start(payload).pipe(mapServiceFailure);
-          })
-        )
-        .handle("getAuthenticationStatus", ({ query }) =>
-          authentication.status(query.code).pipe(mapServiceFailure)
-        )
-        .handle("exchangeGrant", ({ payload }) =>
-          authentication
-            .exchange(payload)
-            .pipe(
-              Effect.mapError((cause) =>
-                cause instanceof CliGrantRejected
-                  ? cause
-                  : makeServiceUnavailable()
-              )
+  Effect.fn(function* (handlers) {
+    const authentication = yield* CliAuthentication;
+    const admission = yield* CliAuthenticationAdmission;
+    return handlers
+      .handle("getInfo", () =>
+        Effect.succeed({
+          apiVersion: "v1" as const,
+          service: "deskohub-workspace" as const,
+        })
+      )
+      .handle(
+        "startAuthentication",
+        Effect.fn(function* ({ payload }) {
+          const allowed =
+            yield* admission.isStartAllowed.pipe(mapServiceFailure);
+          if (!allowed) {
+            return yield* new CliAuthenticationRateLimited({
+              message:
+                "Too many CLI authentication requests were started. Try again shortly.",
+            });
+          }
+          return yield* authentication.start(payload).pipe(mapServiceFailure);
+        })
+      )
+      .handle("getAuthenticationStatus", ({ query }) =>
+        authentication.status(query.code).pipe(mapServiceFailure)
+      )
+      .handle("exchangeGrant", ({ payload }) =>
+        authentication
+          .exchange(payload)
+          .pipe(
+            Effect.mapError((cause) =>
+              cause instanceof CliGrantRejected
+                ? cause
+                : makeServiceUnavailable()
             )
-        )
-        .handle("getCurrentSession", () => CurrentCliSession);
-    })
+          )
+      )
+      .handle("getCurrentSession", () => CurrentCliSession);
+  })
 );
 
 export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
   WorkspaceAdminApi,
   "administration",
-  (handlers) =>
-    Effect.gen(function* () {
-      const administration = yield* AdministrationService;
-      const reservationAdministration = yield* ReservationAdministrationService;
-      const reservationAccess = yield* ReservationAccessAdministration;
-      const authentication = yield* CliAuthentication;
-      const discounts = yield* DiscountAdministration;
-      const invoices = yield* InvoiceAdministrationService;
-      const standaloneAccessCodes = yield* StandaloneAccessCodeAdministration;
-      const mutationIdempotency = yield* CliMutationIdempotency;
-      return handlers
-        .handle("getOverview", () =>
-          administration.loadOverviewSource().pipe(
-            Effect.flatMap((source) => administration.loadOverview(source)),
-            mapServiceFailure
+  Effect.fn(function* (handlers) {
+    const administration = yield* AdministrationService;
+    const reservationAdministration = yield* ReservationAdministrationService;
+    const reservationAccess = yield* ReservationAccessAdministration;
+    const authentication = yield* CliAuthentication;
+    const discounts = yield* DiscountAdministration;
+    const invoices = yield* InvoiceAdministrationService;
+    const standaloneAccessCodes = yield* StandaloneAccessCodeAdministration;
+    const mutationIdempotency = yield* CliMutationIdempotency;
+    return handlers
+      .handle("getOverview", () =>
+        administration.loadOverviewSource().pipe(
+          Effect.flatMap((source) => administration.loadOverview(source)),
+          mapServiceFailure
+        )
+      )
+      .handle("listReservations", ({ query }) =>
+        administration.listReservations(query).pipe(mapServiceFailure)
+      )
+      .handle("getReservation", ({ params }) =>
+        administration.loadReservation(params.reservationId).pipe(
+          mapServiceFailure,
+          Effect.flatMap((detail) =>
+            detail
+              ? Effect.succeed(detail)
+              : new CliResourceNotFound({
+                  message: "The reservation was not found.",
+                })
           )
         )
-        .handle("listReservations", ({ query }) =>
-          administration.listReservations(query).pipe(mapServiceFailure)
-        )
-        .handle("getReservation", ({ params }) =>
-          administration.loadReservation(params.reservationId).pipe(
-            mapServiceFailure,
-            Effect.flatMap((detail) =>
-              detail
-                ? Effect.succeed(detail)
-                : new CliResourceNotFound({
-                    message: "The reservation was not found.",
-                  })
-            )
-          )
-        )
-        .handle("cancelReservation", ({ params, payload }) =>
-          reservationAdministration
-            .cancel({
-              accessGrantUpdatedAt: payload.accessGrantUpdatedAt,
-              force: payload.force ?? false,
-              providerCredentialRemoved: payload.providerCredentialRemoved,
+      )
+      .handle("cancelReservation", ({ params, payload }) =>
+        reservationAdministration
+          .cancel({
+            accessGrantUpdatedAt: payload.accessGrantUpdatedAt,
+            force: payload.force ?? false,
+            providerCredentialRemoved: payload.providerCredentialRemoved,
+            reservationId: params.reservationId,
+            sendCancellationEmail: payload.sendCancellationEmail,
+          })
+          .pipe(Effect.mapError(mapReservationCancellationFailure))
+      )
+      .handle(
+        "mutateReservationAccess",
+        Effect.fn(function* ({ params, payload }) {
+          const session = yield* CurrentCliSession;
+          const request = {
+            sessionId: session.id,
+            requestId: payload.requestId,
+            mutation: {
+              kind: "reservation-access" as const,
               reservationId: params.reservationId,
-              sendCancellationEmail: payload.sendCancellationEmail,
+              mutation: payload.mutation,
+            },
+          };
+          const claim = yield* mutationIdempotency
+            .claim(request)
+            .pipe(mapServiceFailure);
+          const applyMutation = reservationAccess
+            .mutate({
+              reservationId: params.reservationId,
+              ...payload.mutation,
             })
-            .pipe(Effect.mapError(mapReservationCancellationFailure))
-        )
-        .handle("mutateReservationAccess", ({ params, payload }) =>
-          Effect.gen(function* () {
-            const session = yield* CurrentCliSession;
-            const request = {
-              sessionId: session.id,
-              requestId: payload.requestId,
-              mutation: {
-                kind: "reservation-access" as const,
-                reservationId: params.reservationId,
-                mutation: payload.mutation,
-              },
-            };
-            const claim = yield* mutationIdempotency
-              .claim(request)
-              .pipe(mapServiceFailure);
-            const applyMutation = reservationAccess
-              .mutate({
-                reservationId: params.reservationId,
-                ...payload.mutation,
+            .pipe(
+              Effect.map(toCliReservationAccessGrant),
+              Effect.tapError((cause) =>
+                cause.reason === "recovery_failed"
+                  ? Effect.void
+                  : mutationIdempotency
+                      .release(request)
+                      .pipe(Effect.catch(() => Effect.void))
+              ),
+              Effect.mapError(mapReservationAccessMutationFailure),
+              Effect.tap((result) =>
+                mutationIdempotency
+                  .complete({ ...request, result })
+                  .pipe(mapServiceFailure)
+              )
+            );
+          const resumeInterruptedMutation = Effect.gen(function* () {
+            const reclaimedAt = Temporal.Now.instant();
+            const reclaimed = yield* mutationIdempotency
+              .reclaimStale({
+                ...request,
+                reclaimedAt,
+                staleBefore: reclaimedAt.subtract({
+                  milliseconds:
+                    reservationAccessProvisioningStaleAfterMilliseconds,
+                }),
               })
+              .pipe(mapServiceFailure);
+            if (!reclaimed) {
+              return yield* new CliMutationInProgress({
+                requestId: payload.requestId,
+                message:
+                  "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
+              });
+            }
+            return yield* reservationAccess
+              .resumeInterruptedMutation(params.reservationId)
               .pipe(
                 Effect.map(toCliReservationAccessGrant),
-                Effect.tapError((cause) =>
-                  cause.reason === "recovery_failed"
-                    ? Effect.void
-                    : mutationIdempotency
-                        .release(request)
-                        .pipe(Effect.catch(() => Effect.void))
+                Effect.tapError(() =>
+                  mutationIdempotency
+                    .release(request)
+                    .pipe(Effect.catch(() => Effect.void))
                 ),
                 Effect.mapError(mapReservationAccessMutationFailure),
                 Effect.tap((result) =>
@@ -200,466 +235,430 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
                     .pipe(mapServiceFailure)
                 )
               );
-            const resumeInterruptedMutation = Effect.gen(function* () {
-              const reclaimedAt = Temporal.Now.instant();
-              const reclaimed = yield* mutationIdempotency
-                .reclaimStale({
-                  ...request,
-                  reclaimedAt,
-                  staleBefore: reclaimedAt.subtract({
-                    milliseconds:
-                      reservationAccessProvisioningStaleAfterMilliseconds,
-                  }),
-                })
-                .pipe(mapServiceFailure);
-              if (!reclaimed) {
-                return yield* new CliMutationInProgress({
-                  requestId: payload.requestId,
+          });
+
+          return yield* Match.value(claim).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              claimed: () => applyMutation,
+              completed: ({ result }) =>
+                Schema.decodeUnknownEffect(
+                  AdministrationReservationAccessGrant
+                )(result).pipe(Effect.mapError(makeServiceUnavailable)),
+              "in-progress": () => resumeInterruptedMutation,
+              mismatch: () =>
+                new CliMutationRejected({
                   message:
-                    "This reservation access mutation is still being applied. Retrying with the same request identifier is safe.",
-                });
-              }
-              return yield* reservationAccess
-                .resumeInterruptedMutation(params.reservationId)
-                .pipe(
-                  Effect.map(toCliReservationAccessGrant),
-                  Effect.tapError(() =>
-                    mutationIdempotency
+                    "This mutation request identifier was already used for different input.",
+                }),
+            })
+          );
+        })
+      )
+      .handle("findReservation", ({ query }) =>
+        administration.findReservationId(query.identifier).pipe(
+          Effect.map((reservationId) => ({ reservationId })),
+          mapServiceFailure
+        )
+      )
+      .handle("listBookings", ({ query }) =>
+        administration
+          .listBookings({
+            date: query.date ?? getCurrentWorkspaceDate().toString(),
+            page: query.page,
+          })
+          .pipe(mapServiceFailure)
+      )
+      .handle("getBooking", ({ params }) =>
+        administration.loadBooking(params.bookingId).pipe(
+          mapServiceFailure,
+          Effect.flatMap((detail) =>
+            detail
+              ? Effect.succeed(detail)
+              : new CliResourceNotFound({
+                  message: "The booking was not found.",
+                })
+          )
+        )
+      )
+      .handle("listOrders", ({ query }) => {
+        const range = getAdministrationOrderDateTimeBounds(
+          query.from,
+          query.to
+        );
+        return administration
+          .listOrders({
+            fromTime: range.fromTime,
+            toTime: range.toTime,
+            maxRecords: 50,
+          })
+          .pipe(mapServiceFailure);
+      })
+      .handle("getOrder", ({ params }) =>
+        administration.loadOrder(params.orderId).pipe(mapServiceFailure)
+      )
+      .handle("listOperations", ({ query }) => {
+        const range = getAdministrationPaymentDateTimeBounds(
+          query.from,
+          query.to
+        );
+        const filters = getAdministrationOperationFilters(query);
+        return administration
+          .listOperations({
+            fromTime: range.fromTime,
+            toTime: range.toTime,
+            maxRecords: 100,
+            ...filters,
+          })
+          .pipe(mapServiceFailure);
+      })
+      .handle("getOperation", ({ params }) =>
+        administration.loadOperation(params.operationId).pipe(mapServiceFailure)
+      )
+      .handle("listCustomers", ({ query }) =>
+        administration.listCustomers(query).pipe(mapServiceFailure)
+      )
+      .handle("searchCustomers", ({ query }) =>
+        discounts.searchCustomers(query).pipe(mapServiceFailure)
+      )
+      .handle("getCustomer", ({ params }) =>
+        Effect.all(
+          {
+            activity: administration.loadCustomerActivity(params.customerId),
+            profile: discounts
+              .loadCustomerProfile({
+                customerId: params.customerId,
+              })
+              .pipe(
+                Effect.map(toCliCustomerProfile),
+                Effect.catch(() => Effect.succeed(null))
+              ),
+          },
+          { concurrency: "unbounded" }
+        ).pipe(mapServiceFailure)
+      )
+      .handle("listCustomerReservations", ({ params, query }) =>
+        administration
+          .loadCustomerReservations({
+            customerId: params.customerId,
+            page: query.page,
+          })
+          .pipe(mapServiceFailure)
+      )
+      .handle("getDiscountDashboard", () =>
+        discounts
+          .loadDashboard()
+          .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
+      )
+      .handle("getDiscountCode", ({ params }) =>
+        discounts.loadCodeDetail({ codeId: params.codeId }).pipe(
+          Effect.map(toCliDiscountCodeDetail),
+          Effect.catchTag(
+            "DiscountAdminNotFoundError",
+            () =>
+              new CliResourceNotFound({
+                message: "The discount code was not found.",
+              })
+          ),
+          Effect.mapError((cause) =>
+            cause instanceof CliResourceNotFound
+              ? cause
+              : makeServiceUnavailable()
+          )
+        )
+      )
+      .handle("getVoucher", ({ params }) =>
+        discounts.loadVoucherDetail({ voucherId: params.voucherId }).pipe(
+          Effect.map(toCliVoucherDetail),
+          Effect.catchTag(
+            "DiscountAdminNotFoundError",
+            () =>
+              new CliResourceNotFound({
+                message: "The voucher was not found.",
+              })
+          ),
+          Effect.mapError((cause) =>
+            cause instanceof CliResourceNotFound
+              ? cause
+              : makeServiceUnavailable()
+          )
+        )
+      )
+      .handle("listInvoices", ({ query }) =>
+        invoices.list(query).pipe(mapServiceFailure)
+      )
+      .handle("getInvoice", ({ params }) =>
+        invoices
+          .get(params.invoiceId)
+          .pipe(Effect.mapError(mapInvoiceReadFailure))
+      )
+      .handle("getInvoicePdf", ({ params }) =>
+        invoices.getPdf(params.invoiceId).pipe(
+          Effect.map(({ bytes }) => bytes),
+          Effect.mapError(mapInvoiceReadFailure)
+        )
+      )
+      .handle(
+        "createInvoice",
+        Effect.fn(function* ({ payload }) {
+          const session = yield* CurrentCliSession;
+          if (session.approvedBy === null) {
+            return yield* new CliMutationRejected({
+              message:
+                "This legacy CLI session cannot issue invoices. Run dhw auth again.",
+            });
+          }
+          return yield* invoices
+            .create(payload, {
+              source: "dhw-cli",
+              actor: session.approvedBy,
+            })
+            .pipe(Effect.mapError(mapInvoiceMutationFailure));
+        })
+      )
+      .handle(
+        "createStandaloneAccessCode",
+        Effect.fn(function* ({ payload }) {
+          const session = yield* CurrentCliSession;
+          if (session.approvedBy === null) {
+            return yield* new CliMutationRejected({
+              message:
+                "This legacy CLI session cannot create standalone access codes. Run dhw auth again.",
+            });
+          }
+          const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+            payload.attemptId
+          );
+          const request = {
+            sessionId: session.id,
+            requestId,
+            mutation: {
+              kind: "standalone-access-code" as const,
+              request: payload.input,
+              ...(payload.providerCredentialRemovedAttemptId !== undefined && {
+                providerCredentialRemovedAttemptId:
+                  payload.providerCredentialRemovedAttemptId,
+              }),
+            },
+          };
+          const executeCreation = standaloneAccessCodes
+            .create({
+              attemptId: payload.attemptId,
+              actor: session.approvedBy,
+              source: "dhw-cli",
+              request: payload.input,
+              providerCredentialRemovedAttemptId:
+                payload.providerCredentialRemovedAttemptId,
+            })
+            .pipe(
+              Effect.mapError((cause) =>
+                mapStandaloneAccessCodeCreationFailure(cause, requestId)
+              ),
+              Effect.tapError((cause) =>
+                cause instanceof CliMutationRejected ||
+                cause instanceof CliServiceUnavailable ||
+                cause instanceof CliStandaloneAccessCodeCleanupRequired ||
+                cause instanceof CliStandaloneAccessCodeReconciled
+                  ? mutationIdempotency
                       .release(request)
                       .pipe(Effect.catch(() => Effect.void))
+                  : Effect.void
+              ),
+              Effect.tap((outcome) =>
+                mutationIdempotency
+                  .complete({
+                    ...request,
+                    result: toStandaloneAccessCodeResult(outcome),
+                  })
+                  .pipe(
+                    Effect.catch((cause) =>
+                      Effect.logWarning(
+                        "Standalone access-code mutation-ledger completion failed after creation concluded",
+                        {
+                          requestId,
+                          sessionId: session.id,
+                          outcome: outcome.outcome,
+                          cause,
+                        }
+                      ).pipe(
+                        Effect.andThen(
+                          mutationIdempotency
+                            .release(request)
+                            .pipe(Effect.catch(() => Effect.void))
+                        )
+                      )
+                    )
+                  )
+              )
+            );
+          const resumeInterruptedCreation = Effect.gen(function* () {
+            const reclaimedAt = Temporal.Now.instant();
+            const reclaimed = yield* mutationIdempotency
+              .reclaimStale({
+                ...request,
+                reclaimedAt,
+                staleBefore: reclaimedAt.subtract({
+                  milliseconds:
+                    standaloneAccessCodeAttemptStaleAfterMilliseconds,
+                }),
+              })
+              .pipe(mapServiceFailure);
+            if (!reclaimed) {
+              return yield* new CliMutationInProgress({
+                requestId,
+                message:
+                  "This standalone access-code creation is still being applied. Retrying with the same attempt identifier is safe.",
+              });
+            }
+            return yield* executeCreation;
+          });
+
+          const claim = yield* mutationIdempotency
+            .claim(request)
+            .pipe(mapServiceFailure);
+
+          return yield* Match.value(claim).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              claimed: () => executeCreation,
+              completed: ({ result }) =>
+                Schema.decodeUnknownEffect(
+                  AdministrationStandaloneAccessCodeResult
+                )(result).pipe(
+                  Effect.mapError(makeServiceUnavailable),
+                  Effect.map((safeResult) => ({
+                    outcome: "already-created" as const,
+                    ...safeResult,
+                  }))
+                ),
+              "in-progress": () => resumeInterruptedCreation,
+              mismatch: () =>
+                new CliMutationRejected({
+                  message:
+                    "This mutation request identifier was already used for different input.",
+                }),
+            })
+          );
+        })
+      )
+      .handle("resendInvoice", ({ params }) =>
+        invoices.retry(params.invoiceId).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof InvoiceAdministrationNotFoundError
+              ? new CliResourceNotFound({
+                  message: "The invoice was not found.",
+                })
+              : makeServiceUnavailable()
+          )
+        )
+      )
+      .handle(
+        "listSessions",
+        Effect.fn(function* () {
+          const session = yield* CurrentCliSession;
+          if (session.approvedBy === null) return [];
+          return yield* authentication
+            .listSessions(session.approvedBy)
+            .pipe(mapServiceFailure);
+        })
+      )
+      .handle(
+        "mutateDiscounts",
+        Effect.fn(function* ({ payload }) {
+          const session = yield* CurrentCliSession;
+          const request = {
+            sessionId: session.id,
+            requestId: payload.requestId,
+            mutation: payload.mutation,
+          };
+          const claim = yield* mutationIdempotency
+            .claim(request)
+            .pipe(mapServiceFailure);
+
+          return yield* Match.value(claim).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              claimed: () =>
+                executeDiscountAdminMutation(payload.mutation).pipe(
+                  Effect.provideService(DiscountAdministration, discounts),
+                  Effect.mapError(mapDiscountMutationFailure),
+                  Effect.tap(() =>
+                    refreshCalendarDiscountSourceAfterMutation(payload.mutation)
                   ),
-                  Effect.mapError(mapReservationAccessMutationFailure),
+                  Effect.tapError((cause) =>
+                    cause instanceof CliResourceNotFound ||
+                    cause instanceof CliMutationRejected
+                      ? mutationIdempotency
+                          .release(request)
+                          .pipe(Effect.catch(() => Effect.void))
+                      : Effect.void
+                  ),
                   Effect.tap((result) =>
                     mutationIdempotency
                       .complete({ ...request, result })
                       .pipe(mapServiceFailure)
                   )
-                );
-            });
-
-            return yield* Match.value(claim).pipe(
-              Match.discriminatorsExhaustive("kind")({
-                claimed: () => applyMutation,
-                completed: ({ result }) =>
-                  Schema.decodeUnknownEffect(
-                    AdministrationReservationAccessGrant
-                  )(result).pipe(Effect.mapError(makeServiceUnavailable)),
-                "in-progress": () => resumeInterruptedMutation,
-                mismatch: () =>
-                  new CliMutationRejected({
-                    message:
-                      "This mutation request identifier was already used for different input.",
-                  }),
-              })
-            );
-          })
-        )
-        .handle("findReservation", ({ query }) =>
-          administration.findReservationId(query.identifier).pipe(
-            Effect.map((reservationId) => ({ reservationId })),
-            mapServiceFailure
-          )
-        )
-        .handle("listBookings", ({ query }) =>
-          administration
-            .listBookings({
-              date: query.date ?? getCurrentWorkspaceDate().toString(),
-              page: query.page,
-            })
-            .pipe(mapServiceFailure)
-        )
-        .handle("getBooking", ({ params }) =>
-          administration.loadBooking(params.bookingId).pipe(
-            mapServiceFailure,
-            Effect.flatMap((detail) =>
-              detail
-                ? Effect.succeed(detail)
-                : new CliResourceNotFound({
-                    message: "The booking was not found.",
-                  })
-            )
-          )
-        )
-        .handle("listOrders", ({ query }) => {
-          const range = getAdministrationOrderDateTimeBounds(
-            query.from,
-            query.to
-          );
-          return administration
-            .listOrders({
-              fromTime: range.fromTime,
-              toTime: range.toTime,
-              maxRecords: 50,
-            })
-            .pipe(mapServiceFailure);
-        })
-        .handle("getOrder", ({ params }) =>
-          administration.loadOrder(params.orderId).pipe(mapServiceFailure)
-        )
-        .handle("listOperations", ({ query }) => {
-          const range = getAdministrationPaymentDateTimeBounds(
-            query.from,
-            query.to
-          );
-          const filters = getAdministrationOperationFilters(query);
-          return administration
-            .listOperations({
-              fromTime: range.fromTime,
-              toTime: range.toTime,
-              maxRecords: 100,
-              ...filters,
-            })
-            .pipe(mapServiceFailure);
-        })
-        .handle("getOperation", ({ params }) =>
-          administration
-            .loadOperation(params.operationId)
-            .pipe(mapServiceFailure)
-        )
-        .handle("listCustomers", ({ query }) =>
-          administration.listCustomers(query).pipe(mapServiceFailure)
-        )
-        .handle("searchCustomers", ({ query }) =>
-          discounts.searchCustomers(query).pipe(mapServiceFailure)
-        )
-        .handle("getCustomer", ({ params }) =>
-          Effect.all(
-            {
-              activity: administration.loadCustomerActivity(params.customerId),
-              profile: discounts
-                .loadCustomerProfile({
-                  customerId: params.customerId,
-                })
-                .pipe(
-                  Effect.map(toCliCustomerProfile),
-                  Effect.catch(() => Effect.succeed(null))
                 ),
-            },
-            { concurrency: "unbounded" }
-          ).pipe(mapServiceFailure)
-        )
-        .handle("listCustomerReservations", ({ params, query }) =>
-          administration
-            .loadCustomerReservations({
-              customerId: params.customerId,
-              page: query.page,
-            })
-            .pipe(mapServiceFailure)
-        )
-        .handle("getDiscountDashboard", () =>
-          discounts
-            .loadDashboard()
-            .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
-        )
-        .handle("getDiscountCode", ({ params }) =>
-          discounts.loadCodeDetail({ codeId: params.codeId }).pipe(
-            Effect.map(toCliDiscountCodeDetail),
-            Effect.catchTag(
-              "DiscountAdminNotFoundError",
-              () =>
-                new CliResourceNotFound({
-                  message: "The discount code was not found.",
-                })
-            ),
-            Effect.mapError((cause) =>
-              cause instanceof CliResourceNotFound
-                ? cause
-                : makeServiceUnavailable()
-            )
-          )
-        )
-        .handle("getVoucher", ({ params }) =>
-          discounts.loadVoucherDetail({ voucherId: params.voucherId }).pipe(
-            Effect.map(toCliVoucherDetail),
-            Effect.catchTag(
-              "DiscountAdminNotFoundError",
-              () =>
-                new CliResourceNotFound({
-                  message: "The voucher was not found.",
-                })
-            ),
-            Effect.mapError((cause) =>
-              cause instanceof CliResourceNotFound
-                ? cause
-                : makeServiceUnavailable()
-            )
-          )
-        )
-        .handle("listInvoices", ({ query }) =>
-          invoices.list(query).pipe(mapServiceFailure)
-        )
-        .handle("getInvoice", ({ params }) =>
-          invoices
-            .get(params.invoiceId)
-            .pipe(Effect.mapError(mapInvoiceReadFailure))
-        )
-        .handle("getInvoicePdf", ({ params }) =>
-          invoices.getPdf(params.invoiceId).pipe(
-            Effect.map(({ bytes }) => bytes),
-            Effect.mapError(mapInvoiceReadFailure)
-          )
-        )
-        .handle("createInvoice", ({ payload }) =>
-          Effect.gen(function* () {
-            const session = yield* CurrentCliSession;
-            if (session.approvedBy === null) {
-              return yield* new CliMutationRejected({
-                message:
-                  "This legacy CLI session cannot issue invoices. Run dhw auth again.",
-              });
-            }
-            return yield* invoices
-              .create(payload, {
-                source: "dhw-cli",
-                actor: session.approvedBy,
-              })
-              .pipe(Effect.mapError(mapInvoiceMutationFailure));
-          })
-        )
-        .handle("createStandaloneAccessCode", ({ payload }) =>
-          Effect.gen(function* () {
-            const session = yield* CurrentCliSession;
-            if (session.approvedBy === null) {
-              return yield* new CliMutationRejected({
-                message:
-                  "This legacy CLI session cannot create standalone access codes. Run dhw auth again.",
-              });
-            }
-            const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
-              payload.attemptId
-            );
-            const request = {
-              sessionId: session.id,
-              requestId,
-              mutation: {
-                kind: "standalone-access-code" as const,
-                request: payload.input,
-                ...(payload.providerCredentialRemovedAttemptId !==
-                  undefined && {
-                  providerCredentialRemovedAttemptId:
-                    payload.providerCredentialRemovedAttemptId,
-                }),
-              },
-            };
-            const executeCreation = standaloneAccessCodes
-              .create({
-                attemptId: payload.attemptId,
-                actor: session.approvedBy,
-                source: "dhw-cli",
-                request: payload.input,
-                providerCredentialRemovedAttemptId:
-                  payload.providerCredentialRemovedAttemptId,
-              })
-              .pipe(
-                Effect.mapError((cause) =>
-                  mapStandaloneAccessCodeCreationFailure(cause, requestId)
+              completed: ({ result }) =>
+                Schema.decodeUnknownEffect(
+                  AdministrationDiscountMutationResult
+                )(result).pipe(
+                  Effect.mapError(makeServiceUnavailable),
+                  Effect.tap(() =>
+                    refreshCalendarDiscountSourceAfterMutation(payload.mutation)
+                  )
                 ),
-                Effect.tapError((cause) =>
-                  cause instanceof CliMutationRejected ||
-                  cause instanceof CliServiceUnavailable ||
-                  cause instanceof CliStandaloneAccessCodeCleanupRequired ||
-                  cause instanceof CliStandaloneAccessCodeReconciled
-                    ? mutationIdempotency
-                        .release(request)
-                        .pipe(Effect.catch(() => Effect.void))
-                    : Effect.void
-                ),
-                Effect.tap((outcome) =>
-                  mutationIdempotency
-                    .complete({
-                      ...request,
-                      result: toStandaloneAccessCodeResult(outcome),
-                    })
-                    .pipe(
-                      Effect.catch((cause) =>
-                        Effect.logWarning(
-                          "Standalone access-code mutation-ledger completion failed after creation concluded",
-                          {
-                            requestId,
-                            sessionId: session.id,
-                            outcome: outcome.outcome,
-                            cause,
-                          }
-                        ).pipe(
-                          Effect.andThen(
-                            mutationIdempotency
-                              .release(request)
-                              .pipe(Effect.catch(() => Effect.void))
-                          )
-                        )
-                      )
-                    )
-                )
-              );
-            const resumeInterruptedCreation = Effect.gen(function* () {
-              const reclaimedAt = Temporal.Now.instant();
-              const reclaimed = yield* mutationIdempotency
-                .reclaimStale({
-                  ...request,
-                  reclaimedAt,
-                  staleBefore: reclaimedAt.subtract({
-                    milliseconds:
-                      standaloneAccessCodeAttemptStaleAfterMilliseconds,
-                  }),
-                })
-                .pipe(mapServiceFailure);
-              if (!reclaimed) {
-                return yield* new CliMutationInProgress({
-                  requestId,
+              "in-progress": () =>
+                new CliMutationInProgress({
+                  requestId: payload.requestId,
                   message:
-                    "This standalone access-code creation is still being applied. Retrying with the same attempt identifier is safe.",
-                });
-              }
-              return yield* executeCreation;
+                    "This mutation is still being applied. Retrying with the same request identifier is safe.",
+                }),
+              mismatch: () =>
+                new CliMutationRejected({
+                  message:
+                    "This mutation request identifier was already used for different input.",
+                }),
+            })
+          );
+        })
+      )
+      .handle(
+        "renameSession",
+        Effect.fn(function* ({ params, payload }) {
+          const session = yield* CurrentCliSession;
+          if (session.approvedBy === null) {
+            return yield* new CliResourceNotFound({
+              message: "The CLI session was not found.",
             });
-
-            const claim = yield* mutationIdempotency
-              .claim(request)
-              .pipe(mapServiceFailure);
-
-            return yield* Match.value(claim).pipe(
-              Match.discriminatorsExhaustive("kind")({
-                claimed: () => executeCreation,
-                completed: ({ result }) =>
-                  Schema.decodeUnknownEffect(
-                    AdministrationStandaloneAccessCodeResult
-                  )(result).pipe(
-                    Effect.mapError(makeServiceUnavailable),
-                    Effect.map((safeResult) => ({
-                      outcome: "already-created" as const,
-                      ...safeResult,
-                    }))
-                  ),
-                "in-progress": () => resumeInterruptedCreation,
-                mismatch: () =>
-                  new CliMutationRejected({
-                    message:
-                      "This mutation request identifier was already used for different input.",
-                  }),
-              })
-            );
-          })
-        )
-        .handle("resendInvoice", ({ params }) =>
-          invoices.retry(params.invoiceId).pipe(
-            Effect.mapError((cause) =>
-              cause instanceof InvoiceAdministrationNotFoundError
-                ? new CliResourceNotFound({
-                    message: "The invoice was not found.",
-                  })
-                : makeServiceUnavailable()
-            )
-          )
-        )
-        .handle("listSessions", () =>
-          Effect.gen(function* () {
-            const session = yield* CurrentCliSession;
-            if (session.approvedBy === null) return [];
-            return yield* authentication
-              .listSessions(session.approvedBy)
-              .pipe(mapServiceFailure);
-          })
-        )
-        .handle("mutateDiscounts", ({ payload }) =>
-          Effect.gen(function* () {
-            const session = yield* CurrentCliSession;
-            const request = {
-              sessionId: session.id,
-              requestId: payload.requestId,
-              mutation: payload.mutation,
-            };
-            const claim = yield* mutationIdempotency
-              .claim(request)
-              .pipe(mapServiceFailure);
-
-            return yield* Match.value(claim).pipe(
-              Match.discriminatorsExhaustive("kind")({
-                claimed: () =>
-                  executeDiscountAdminMutation(payload.mutation).pipe(
-                    Effect.provideService(DiscountAdministration, discounts),
-                    Effect.mapError(mapDiscountMutationFailure),
-                    Effect.tap(() =>
-                      refreshCalendarDiscountSourceAfterMutation(
-                        payload.mutation
-                      )
-                    ),
-                    Effect.tapError((cause) =>
-                      cause instanceof CliResourceNotFound ||
-                      cause instanceof CliMutationRejected
-                        ? mutationIdempotency
-                            .release(request)
-                            .pipe(Effect.catch(() => Effect.void))
-                        : Effect.void
-                    ),
-                    Effect.tap((result) =>
-                      mutationIdempotency
-                        .complete({ ...request, result })
-                        .pipe(mapServiceFailure)
-                    )
-                  ),
-                completed: ({ result }) =>
-                  Schema.decodeUnknownEffect(
-                    AdministrationDiscountMutationResult
-                  )(result).pipe(
-                    Effect.mapError(makeServiceUnavailable),
-                    Effect.tap(() =>
-                      refreshCalendarDiscountSourceAfterMutation(
-                        payload.mutation
-                      )
-                    )
-                  ),
-                "in-progress": () =>
-                  new CliMutationInProgress({
-                    requestId: payload.requestId,
-                    message:
-                      "This mutation is still being applied. Retrying with the same request identifier is safe.",
-                  }),
-                mismatch: () =>
-                  new CliMutationRejected({
-                    message:
-                      "This mutation request identifier was already used for different input.",
-                  }),
-              })
-            );
-          })
-        )
-        .handle("renameSession", ({ params, payload }) =>
-          Effect.gen(function* () {
-            const session = yield* CurrentCliSession;
-            if (session.approvedBy === null) {
-              return yield* new CliResourceNotFound({
-                message: "The CLI session was not found.",
-              });
-            }
-            const changed = yield* authentication
-              .renameSession({
-                owner: session.approvedBy,
-                sessionId: params.sessionId,
-                clientName: payload.clientName,
-              })
-              .pipe(mapServiceFailure);
-            if (!changed) {
-              return yield* new CliResourceNotFound({
-                message: "The CLI session was not found.",
-              });
-            }
-            return { changed };
-          })
-        )
-        .handle("revokeSession", ({ params }) =>
-          Effect.gen(function* () {
-            const session = yield* CurrentCliSession;
-            if (session.approvedBy === null) return { changed: false };
-            const changed = yield* authentication
-              .revoke({
-                owner: session.approvedBy,
-                sessionId: params.sessionId,
-              })
-              .pipe(mapServiceFailure);
-            return { changed };
-          })
-        );
-    })
+          }
+          const changed = yield* authentication
+            .renameSession({
+              owner: session.approvedBy,
+              sessionId: params.sessionId,
+              clientName: payload.clientName,
+            })
+            .pipe(mapServiceFailure);
+          if (!changed) {
+            return yield* new CliResourceNotFound({
+              message: "The CLI session was not found.",
+            });
+          }
+          return { changed };
+        })
+      )
+      .handle(
+        "revokeSession",
+        Effect.fn(function* ({ params }) {
+          const session = yield* CurrentCliSession;
+          if (session.approvedBy === null) return { changed: false };
+          const changed = yield* authentication
+            .revoke({
+              owner: session.approvedBy,
+              sessionId: params.sessionId,
+            })
+            .pipe(mapServiceFailure);
+          return { changed };
+        })
+      );
+  })
 );
 
 const CliBearerAuthenticationLive = Layer.effect(

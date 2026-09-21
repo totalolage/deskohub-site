@@ -90,8 +90,6 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
     ...getSubmittedCodeMetadata(affirmed),
-    // Requested intent travels separately from the applied pair above; a
-    // customer quote that drops the applied metadata keeps the request.
     requestedDiscountCode: state.requestedDiscountCode ?? state.submittedCode,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(

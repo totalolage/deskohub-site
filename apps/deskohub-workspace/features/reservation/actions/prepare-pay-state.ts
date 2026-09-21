@@ -186,9 +186,6 @@ const quotePreparedReservation = Effect.fn(
 
   return {
     ...prepared,
-    // Requested intent from the advertisement token rides on the quote
-    // result so the signed pay state keeps it even when customer validation
-    // drops the applied submitted-code pair.
     requestedDiscountCode: input.advertisement.requestedDiscountCode,
     changedKeys,
   };
@@ -959,8 +956,8 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             );
 
             yield* dotypos.cancelReservation(dotyposReservationId).pipe(
-              Effect.catch((cancelCause) =>
-                Effect.gen(function* () {
+              Effect.catch(
+                Effect.fn(function* (cancelCause) {
                   yield* Effect.logFatal(
                     "Workspace reservation hold attach cleanup failed",
                     {

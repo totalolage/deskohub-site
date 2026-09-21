@@ -329,8 +329,8 @@ export class CliAuthentication extends Context.Service<
         const tokenHash = yield* digestSecret(accessToken);
         const sessionId = CliSessionId.make(yield* crypto.randomUUIDv7);
 
-        const session = yield* db.transaction((tx) =>
-          Effect.gen(function* () {
+        const session = yield* db.transaction(
+          Effect.fn(function* (tx) {
             yield* tx.insert(cliSessions).values({
               id: sessionId,
               approvedBy,

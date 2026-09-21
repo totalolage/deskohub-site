@@ -647,8 +647,8 @@ export class DiscountAdministration extends Context.Service<
 
       const createDiscount = Effect.fn("DiscountAdministration.createDiscount")(
         (input: CreateDiscountAdminInput) =>
-          db.transaction((tx) =>
-            Effect.gen(function* () {
+          db.transaction(
+            Effect.fn(function* (tx) {
               const rows = yield* tx
                 .insert(discounts)
                 .values(toDiscountValues(input))
@@ -669,8 +669,8 @@ export class DiscountAdministration extends Context.Service<
 
       const updateDiscount = Effect.fn("DiscountAdministration.updateDiscount")(
         (input: UpdateDiscountAdminInput) =>
-          db.transaction((tx) =>
-            Effect.gen(function* () {
+          db.transaction(
+            Effect.fn(function* (tx) {
               const rows = yield* tx
                 .update(discounts)
                 .set({
@@ -708,8 +708,8 @@ export class DiscountAdministration extends Context.Service<
 
       const createCode = Effect.fn("DiscountAdministration.createCode")(
         (input: CreateManagedDiscountCodeAdminInput) =>
-          db.transaction((tx) =>
-            Effect.gen(function* () {
+          db.transaction(
+            Effect.fn(function* (tx) {
               const discountId = yield* Match.value(input.discount).pipe(
                 Match.discriminatorsExhaustive("kind")({
                   existing: ({ discountId }) =>
@@ -727,25 +727,24 @@ export class DiscountAdministration extends Context.Service<
                         ),
                         Effect.as(discountId)
                       ),
-                  new: ({ discount }) =>
-                    Effect.gen(function* () {
-                      const rows = yield* tx
-                        .insert(discounts)
-                        .values(toDiscountValues(discount))
-                        .returning({ id: discounts.id });
-                      const row = rows[0];
-                      if (!row) {
-                        return yield* Effect.die(
-                          new Error("Discount insert returned no identifier.")
-                        );
-                      }
-                      yield* tx
-                        .insert(discountProductTargets)
-                        .values(
-                          toDiscountProductTargetRows(row.id, discount.products)
-                        );
-                      return row.id;
-                    }),
+                  new: Effect.fn(function* ({ discount }) {
+                    const rows = yield* tx
+                      .insert(discounts)
+                      .values(toDiscountValues(discount))
+                      .returning({ id: discounts.id });
+                    const row = rows[0];
+                    if (!row) {
+                      return yield* Effect.die(
+                        new Error("Discount insert returned no identifier.")
+                      );
+                    }
+                    yield* tx
+                      .insert(discountProductTargets)
+                      .values(
+                        toDiscountProductTargetRows(row.id, discount.products)
+                      );
+                    return row.id;
+                  }),
                 })
               );
               const [promotion] = yield* tx
@@ -785,8 +784,8 @@ export class DiscountAdministration extends Context.Service<
       )(function* (input: CreateCustomerDiscountCodeAdminInput) {
         yield* loadActiveCustomer(input.customerId);
 
-        return yield* db.transaction((tx) =>
-          Effect.gen(function* () {
+        return yield* db.transaction(
+          Effect.fn(function* (tx) {
             const discountId = yield* Match.value(input.discount).pipe(
               Match.discriminatorsExhaustive("kind")({
                 existing: ({ discountId }) =>
@@ -804,25 +803,24 @@ export class DiscountAdministration extends Context.Service<
                       ),
                       Effect.as(discountId)
                     ),
-                new: ({ discount }) =>
-                  Effect.gen(function* () {
-                    const rows = yield* tx
-                      .insert(discounts)
-                      .values(toDiscountValues(discount))
-                      .returning({ id: discounts.id });
-                    const row = rows[0];
-                    if (!row) {
-                      return yield* Effect.die(
-                        new Error("Discount insert returned no identifier.")
-                      );
-                    }
-                    yield* tx
-                      .insert(discountProductTargets)
-                      .values(
-                        toDiscountProductTargetRows(row.id, discount.products)
-                      );
-                    return row.id;
-                  }),
+                new: Effect.fn(function* ({ discount }) {
+                  const rows = yield* tx
+                    .insert(discounts)
+                    .values(toDiscountValues(discount))
+                    .returning({ id: discounts.id });
+                  const row = rows[0];
+                  if (!row) {
+                    return yield* Effect.die(
+                      new Error("Discount insert returned no identifier.")
+                    );
+                  }
+                  yield* tx
+                    .insert(discountProductTargets)
+                    .values(
+                      toDiscountProductTargetRows(row.id, discount.products)
+                    );
+                  return row.id;
+                }),
               })
             );
             const [promotion] = yield* tx
@@ -864,8 +862,8 @@ export class DiscountAdministration extends Context.Service<
 
       const updateCode = Effect.fn("DiscountAdministration.updateCode")(
         (input: UpdateDiscountCodeAdminInput) =>
-          db.transaction((tx) =>
-            Effect.gen(function* () {
+          db.transaction(
+            Effect.fn(function* (tx) {
               const rows = yield* tx
                 .select({
                   id: discountCodes.id,
@@ -1029,8 +1027,8 @@ export class DiscountAdministration extends Context.Service<
         "DiscountAdministration.createCustomerVoucher"
       )(function* (input: CreateCustomerVoucherAdminInput) {
         yield* loadActiveCustomer(input.customerId);
-        return yield* db.transaction((tx) =>
-          Effect.gen(function* () {
+        return yield* db.transaction(
+          Effect.fn(function* (tx) {
             const created = yield* insertVoucher(tx, input);
             yield* tx.insert(promotionCodeCustomers).values({
               promotionCodeId: created.promotionCodeId,
@@ -1043,8 +1041,8 @@ export class DiscountAdministration extends Context.Service<
 
       const updateVoucher = Effect.fn("DiscountAdministration.updateVoucher")(
         (input: UpdateVoucherAdminInput) =>
-          db.transaction((tx) =>
-            Effect.gen(function* () {
+          db.transaction(
+            Effect.fn(function* (tx) {
               const row = yield* tx
                 .select()
                 .from(vouchers)
@@ -1307,8 +1305,8 @@ export class DiscountAdministration extends Context.Service<
       }) {
         yield* loadActiveCustomer(input.customerId);
 
-        yield* db.transaction((tx) =>
-          Effect.gen(function* () {
+        yield* db.transaction(
+          Effect.fn(function* (tx) {
             const codeRows = yield* tx
               .select({
                 id: discountCodes.id,
@@ -1339,8 +1337,8 @@ export class DiscountAdministration extends Context.Service<
           readonly codeId: DiscountCodeId;
           readonly customerId: DotyposCustomerId;
         }) =>
-          db.transaction((tx) =>
-            Effect.gen(function* () {
+          db.transaction(
+            Effect.fn(function* (tx) {
               const codeRows = yield* tx
                 .select({
                   id: discountCodes.id,
@@ -1404,8 +1402,8 @@ export class DiscountAdministration extends Context.Service<
       const makeCodeUnrestricted = Effect.fn(
         "DiscountAdministration.makeCodeUnrestricted"
       )((input: { readonly codeId: DiscountCodeId }) =>
-        db.transaction((tx) =>
-          Effect.gen(function* () {
+        db.transaction(
+          Effect.fn(function* (tx) {
             const codeRows = yield* tx
               .select({
                 id: discountCodes.id,
@@ -1475,8 +1473,8 @@ export class DiscountAdministration extends Context.Service<
           readonly voucherId: VoucherId;
           readonly customerId: DotyposCustomerId;
         }) =>
-          db.transaction((tx) =>
-            Effect.gen(function* () {
+          db.transaction(
+            Effect.fn(function* (tx) {
               const promotionCodeId = yield* loadVoucherPromotionId(
                 tx,
                 input.voucherId
