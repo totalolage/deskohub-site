@@ -11,9 +11,9 @@ import {
 } from "./case-catalog";
 
 test("registers every checkout case once in a Playwright-owned lane", () => {
-  expect(workspaceE2ECaseIds).toHaveLength(36);
-  expect(new Set(workspaceE2ECaseIds).size).toBe(36);
-  expect(workspaceE2ENonPaymentCaseIds).toHaveLength(18);
+  expect(workspaceE2ECaseIds).toHaveLength(39);
+  expect(new Set(workspaceE2ECaseIds).size).toBe(39);
+  expect(workspaceE2ENonPaymentCaseIds).toHaveLength(21);
   expect(workspaceE2EPaymentCaseLanes.map((lane) => lane.length)).toEqual([
     6, 6, 5,
   ]);

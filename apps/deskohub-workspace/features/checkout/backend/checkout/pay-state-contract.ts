@@ -28,6 +28,7 @@ export const signedPayStateEnvelopeSchema = Schema.Struct({
   acceptedTotal: nonNegativeWorkspaceMoneyCodec,
   submittedCode: Schema.optional(canonicalPromotionCodeSchema),
   submittedCodeDiscountId: Schema.optional(discountIdSchema),
+  requestedDiscountCode: Schema.optional(canonicalPromotionCodeSchema),
   changedKeys: Schema.optional(checkoutSummaryChangedKeysSchema),
 });
 
@@ -37,6 +38,7 @@ type BuildSignedPayStateBaseInput = {
   readonly locale: Locale;
   readonly orderId: typeof workspaceReservationIdSchema.Type;
   readonly checkoutSessionId?: typeof checkoutSessionIdSchema.Type;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly ttlMilliseconds?: number;
 };
@@ -68,6 +70,7 @@ export const buildSignedPayStateEnvelope = (
     | "checkoutSessionId"
     | "submittedCode"
     | "submittedCodeDiscountId"
+    | "requestedDiscountCode"
     | "changedKeys"
   >,
   input: BuildSignedPayStateCommonInput,
@@ -83,6 +86,9 @@ export const buildSignedPayStateEnvelope = (
   }),
   ...(input.submittedCodeDiscountId !== undefined && {
     submittedCodeDiscountId: input.submittedCodeDiscountId,
+  }),
+  ...(input.requestedDiscountCode !== undefined && {
+    requestedDiscountCode: input.requestedDiscountCode,
   }),
   ...(input.changedKeys !== undefined && {
     changedKeys: {

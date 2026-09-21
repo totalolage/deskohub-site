@@ -184,7 +184,14 @@ const quotePreparedReservation = Effect.fn(
       ? getCheckoutSummaryChangedKeys(advertisedSummary, preparedSummary)
       : undefined;
 
-  return { ...prepared, changedKeys };
+  return {
+    ...prepared,
+    // Requested intent from the advertisement token rides on the quote
+    // result so the signed pay state keeps it even when customer validation
+    // drops the applied submitted-code pair.
+    requestedDiscountCode: input.advertisement.requestedDiscountCode,
+    changedKeys,
+  };
 });
 
 const DotyposEntityWithIdSchema = Schema.Struct({

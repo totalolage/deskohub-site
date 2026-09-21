@@ -910,6 +910,10 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 ...state,
                 locale,
                 orderId: reservation.id,
+                // Keep requested intent across changedKeys rebuilds even when
+                // the applied pair no longer round-trips.
+                requestedDiscountCode:
+                  state.requestedDiscountCode ?? state.submittedCode,
               });
               return {
                 status: "pricing_changed" as const,
@@ -974,6 +978,8 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 locale,
                 orderId: reservation.id,
                 checkoutSessionId: state.checkoutSessionId,
+                requestedDiscountCode:
+                  state.requestedDiscountCode ?? state.submittedCode,
                 ...getSignedPayStateSubmittedCode(
                   state,
                   prepared.quote.payment.discounts
@@ -1152,6 +1158,8 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                     locale,
                     orderId: reservation.id,
                     checkoutSessionId: state.checkoutSessionId,
+                    requestedDiscountCode:
+                      state.requestedDiscountCode ?? state.submittedCode,
                     ...getSignedPayStateSubmittedCode(
                       state,
                       refreshed.quote.payment.discounts

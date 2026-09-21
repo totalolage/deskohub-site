@@ -33,7 +33,9 @@ const checkoutSessionId = "checkout-session-id";
 const submittedCodeDiscountId =
   Schema.decodeUnknownSync(discountIdSchema)("code-discount");
 
-const makePayStateToken = async () => {
+const makePayStateToken = async (input?: {
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
+}) => {
   const state = await Effect.runPromise(
     buildSignedPayState({
       locale: "en-US",
@@ -41,6 +43,7 @@ const makePayStateToken = async () => {
       quote,
       orderId: "reservation-id",
       checkoutSessionId,
+      requestedDiscountCode: input?.requestedDiscountCode,
     })
   );
 
@@ -53,6 +56,7 @@ const runSubmission = async (input?: {
   readonly activePaymentAttemptId?: string;
   readonly activePaymentAttemptIdAfterPricing?: string;
   readonly payableReservationUnavailableAt?: 1 | 2;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 }) => {
   const [
     { applyDiscountCodeToPayState },
@@ -98,7 +102,9 @@ const runSubmission = async (input?: {
         quote,
       })
     );
-  const payStateToken = await makePayStateToken();
+  const payStateToken = await makePayStateToken({
+    requestedDiscountCode: input?.requestedDiscountCode,
+  });
   const result = await applyDiscountCodeToPayState({
     locale: "en-US",
     payStateToken,
@@ -157,6 +163,7 @@ describe("applyDiscountCodeToPayState", () => {
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe("SAVE20");
     expect(freshState.submittedCodeDiscountId).toBe(submittedCodeDiscountId);
+    expect(freshState.requestedDiscountCode).toBe("SAVE20");
     expect(freshState.changedKeys).toBeUndefined();
     expect(scenario.result.freshPayUrl).not.toContain("SAVE20");
     expect(JSON.stringify(scenario.result)).not.toContain("SAVE20");
@@ -166,7 +173,10 @@ describe("applyDiscountCodeToPayState", () => {
   test("returns one unavailable result for invalid syntax without loading checkout state", async () => {
     const scenario = await runSubmission({ submittedCode: "not valid!" });
 
-    expect(scenario.result).toEqual({ status: "unavailable" });
+    expect(scenario.result).toEqual({
+      status: "unavailable",
+      freshPayUrl: undefined,
+    });
     expect(scenario.requireCurrent).not.toHaveBeenCalled();
     expect(scenario.applyDiscountCode).not.toHaveBeenCalled();
     await expect(
@@ -174,7 +184,24 @@ describe("applyDiscountCodeToPayState", () => {
     ).resolves.toMatchObject({ orderId: "reservation-id" });
   });
 
-  test("maps a specific backend eligibility reason to the generic field result", async () => {
+  test.each(["", "   "])(
+    "returns plain unavailable for empty or whitespace input %j without lookups or pricing",
+    async (submittedCode) => {
+      const scenario = await runSubmission({ submittedCode });
+
+      expect(scenario.result).toEqual({
+        status: "unavailable",
+        freshPayUrl: undefined,
+      });
+      expect(scenario.requireCurrent).not.toHaveBeenCalled();
+      expect(scenario.applyDiscountCode).not.toHaveBeenCalled();
+      await expect(
+        Effect.runPromise(openPayState(scenario.payStateToken))
+      ).resolves.toMatchObject({ orderId: "reservation-id" });
+    }
+  );
+
+  test("maps a specific backend eligibility reason to the generic field result while retaining the attempt", async () => {
     const applyDiscountCode = mock(() =>
       Effect.fail(
         new PromotionCodeUnavailableError({
@@ -185,8 +212,33 @@ describe("applyDiscountCodeToPayState", () => {
     );
     const scenario = await runSubmission({ applyDiscountCode });
 
-    expect(scenario.result).toEqual({ status: "unavailable" });
+    expect(scenario.result.status).toBe("unavailable");
     expect(applyDiscountCode).toHaveBeenCalledTimes(1);
+    if (scenario.result.status !== "unavailable") {
+      throw new Error("Expected unavailable result");
+    }
+    expect(scenario.result.freshPayUrl).toBeTruthy();
+
+    const freshUrl = new URL(
+      scenario.result.freshPayUrl ?? "",
+      "https://deskohub.test"
+    );
+    expect(freshUrl.searchParams.get("discountCodeError")).toBe("unavailable");
+    const freshToken = freshUrl.searchParams.get(payStateTokenQueryParam);
+    const freshState = await Effect.runPromise(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe("SAVE20");
+    expect(freshState.submittedCode).toBeUndefined();
+    expect(freshState.submittedCodeDiscountId).toBeUndefined();
+    expect(scenario.result.freshPayUrl).not.toContain("SAVE20");
+  });
+
+  test("applies a new code when the signed state only carries a requested code", async () => {
+    const scenario = await runSubmission({
+      requestedDiscountCode: "CAMPAIGN10",
+    });
+
+    expect(scenario.applyDiscountCode).toHaveBeenCalledTimes(1);
+    expect(scenario.result.status).toBe("applied");
   });
 
   test("returns a refreshed pricing_changed state before applying the code", async () => {
@@ -218,6 +270,7 @@ describe("applyDiscountCodeToPayState", () => {
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.changedKeys).toEqual(changedKeys);
     expect(freshState.submittedCode).toBeUndefined();
+    expect(freshState.requestedDiscountCode).toBe("SAVE20");
   });
 
   test("does not reprice after a payment attempt has become active", async () => {

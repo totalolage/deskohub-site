@@ -61,7 +61,7 @@ type LocalizedReservationPageProps = {
   readonly searchParams: Promise<SearchParamsRecord>;
 };
 
-const loadRestoredReservation = Effect.fn(
+export const loadRestoredReservation = Effect.fn(
   "reservationPage.loadRestoredReservation"
 )(function* <Kind extends ReservationKind>(
   token: string | undefined,
@@ -85,7 +85,9 @@ const loadRestoredReservation = Effect.fn(
     checkoutSessionId: payState.checkoutSessionId,
     initialReservation: payState.reservation as ReservationForKind<Kind>,
     replacementToken: token,
-    submittedCode: payState.submittedCode,
+    // Restored requested intent (or the applied code on older tokens) wins
+    // over a fresh public discount-code query parameter.
+    submittedCode: payState.requestedDiscountCode ?? payState.submittedCode,
   };
 });
 

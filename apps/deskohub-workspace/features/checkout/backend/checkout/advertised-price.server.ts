@@ -28,6 +28,9 @@ export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
     const state = yield* buildAdvertisedPriceState({
       ...advertised,
       locale: input.locale,
+      // Record the requested code as intent even when the anonymous preview
+      // could not apply it; the applied pair stays independent downstream.
+      requestedDiscountCode: input.submittedCode,
     });
     const advertisedPriceToken = yield* sealAdvertisedPriceState(state);
     const summary = Match.value(advertised).pipe(

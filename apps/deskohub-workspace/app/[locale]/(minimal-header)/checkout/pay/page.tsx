@@ -249,6 +249,7 @@ async function CheckoutPayContent({
         discountCodeForm={
           <CheckoutDiscountCodeForm
             appliedAdjustment={submittedCodeApplication?.discount.adjustment}
+            defaultCode={state.requestedDiscountCode ?? state.submittedCode}
             enabled={
               discountCodeEntryEnabled && state.submittedCode === undefined
             }

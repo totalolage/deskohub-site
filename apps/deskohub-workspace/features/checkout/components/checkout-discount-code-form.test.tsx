@@ -65,6 +65,111 @@ describe("CheckoutDiscountCodeForm", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
+  test("prefills the requested code without disabling Apply", async () => {
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        defaultCode="SUMMER10"
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    const codeInput = view.getByRole("textbox") as HTMLInputElement;
+    expect(codeInput.value).toBe("SUMMER10");
+    const applyButton = view.getByRole("button", {
+      name: m.checkoutDiscountCodeApply({}, { locale: "en-US" }),
+    });
+    expect(applyButton).toHaveProperty("disabled", false);
+  });
+
+  test("refreshes the uncontrolled prefill when a new signed state requests another code", async () => {
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        defaultCode="SUMMER10"
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    view.rerender(
+      <CheckoutDiscountCodeForm
+        defaultCode="WINTER20"
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    expect((view.getByRole("textbox") as HTMLInputElement).value).toBe(
+      "WINTER20"
+    );
+  });
+
+  test("keeps local edits while the requested code stays unchanged", async () => {
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        defaultCode="SUMMER10"
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    const codeInput = view.getByRole("textbox") as HTMLInputElement;
+    fireEvent.change(codeInput, { target: { value: "MYCODE" } });
+    view.rerender(
+      <CheckoutDiscountCodeForm
+        defaultCode="SUMMER10"
+        enabled
+        fieldError={false}
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    expect((view.getByRole("textbox") as HTMLInputElement).value).toBe(
+      "MYCODE"
+    );
+  });
+
+  test("shows the applied adjustment instead of a prefilled code field", async () => {
+    const { CheckoutDiscountCodeForm } = await import(
+      "./checkout-discount-code-form"
+    );
+    const view = render(
+      <CheckoutDiscountCodeForm
+        appliedAdjustment={{ kind: "percentage", basisPoints: 2000 }}
+        defaultCode="SUMMER10"
+        enabled={false}
+        fieldError={false}
+        locale="en-US"
+        payStateToken="signed-state"
+      />
+    );
+
+    expect(
+      view.getByText(
+        m.checkoutDiscountCodeApplied({ discount: "20%" }, { locale: "en-US" })
+      )
+    ).toBeDefined();
+    expect(view.queryByRole("textbox")).toBeNull();
+  });
+
   test("stays hidden while its server-evaluated release gate is disabled", async () => {
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"

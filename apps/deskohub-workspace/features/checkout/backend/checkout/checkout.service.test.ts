@@ -193,6 +193,7 @@ const buildPayStateToken = (input: {
   readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalPromotionCode;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
   Effect.runSync(
@@ -208,6 +209,7 @@ const buildPayStateToken = (input: {
           submittedCode: input.submittedCode,
           submittedCodeDiscountId: application.discount.id,
         }),
+        requestedDiscountCode: input.requestedDiscountCode,
         changedKeys: input.changedKeys,
         ttlMilliseconds: 10 * 60 * 1000,
       });
@@ -426,6 +428,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly acceptedQuote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalPromotionCode;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly reservationOverrides?: ReservationOverrides;
   readonly requireCurrent?: ReturnType<typeof mock>;
@@ -592,6 +595,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             quote: options.acceptedQuote,
             checkoutSessionId: options.checkoutSessionId,
             submittedCode: options.submittedCode,
+            requestedDiscountCode: options.requestedDiscountCode,
             changedKeys: options.changedKeys,
           }),
         legalConsent: options.legalConsent ?? true,
@@ -1575,6 +1579,70 @@ describe("CheckoutService", () => {
     expect(freshState.checkoutSessionId).toBe(
       "reservation-label-edited-session-id"
     );
+  });
+
+  test("keeps requested intent when final validation drops the applied pair", async () => {
+    const requestedCode = canonicalCode("CAMPAIGN10");
+    const submittedCode = canonicalCode("SUMMER50");
+    const affirm = mock(() =>
+      Effect.succeed({
+        quote: buildCoworkReservationQuote(reservationData, {
+          discountQuote: undiscountedQuote,
+        }),
+        commitment: emptyCommitment,
+      })
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-requested-intent-drop",
+      acceptedQuote: buildCoworkReservationQuote(reservationData, {
+        discountQuote: discountedQuote,
+      }),
+      submittedCode,
+      requestedDiscountCode: requestedCode,
+      affirm,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result.status).toBe("pricing_changed");
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
+    expect(freshState.submittedCode).toBeUndefined();
+    expect(freshState.submittedCodeDiscountId).toBeUndefined();
+  });
+
+  test("keeps requested intent on a changedKeys review rebuild without an applied pair", async () => {
+    const requestedCode = canonicalCode("CAMPAIGN10");
+    const changedKeys = {
+      sectionKeys: ["order", "total"] as const,
+      itemKeys: ["product:cowork:profi", "total:final"] as const,
+    };
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-requested-intent-review",
+      requestedDiscountCode: requestedCode,
+      changedKeys,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result.status).toBe("pricing_changed");
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
+    expect(freshState.submittedCode).toBeUndefined();
   });
 
   test("returns pricing_changed when an accepted discount disappears before payment", async () => {

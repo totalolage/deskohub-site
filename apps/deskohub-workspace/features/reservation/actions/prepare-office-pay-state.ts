@@ -13,6 +13,7 @@ import type { OfficeReservationQuote } from "@/features/checkout/reservation-quo
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
+import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
@@ -32,12 +33,14 @@ export type PreparedOfficeAdvertisement = PayStateSubmittedCodeMetadata & {
   readonly advertisedQuote: OfficeReservationQuote;
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 };
 
 export type PreparedOfficePayState = PayStateSubmittedCodeMetadata & {
   readonly kind: "office";
   readonly reservation: NormalizedOfficeReservationOrder;
   readonly quote: OfficeReservationQuote;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 };
 
 export const prepareOfficeAdvertisement = Effect.fn(
@@ -87,6 +90,9 @@ export const prepareOfficeAdvertisement = Effect.fn(
     advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
     ...getSubmittedCodeMetadata(affirmed),
+    // Requested intent travels separately from the applied pair above; a
+    // customer quote that drops the applied metadata keeps the request.
+    requestedDiscountCode: state.requestedDiscountCode ?? state.submittedCode,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getOfficeCheckoutSummary(state.quote),

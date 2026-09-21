@@ -11,6 +11,20 @@ import {
 } from "@/features/reservation/cowork-reservation";
 import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import {
+  type MeetingRoomReservationInput,
+  meetingRoomReservationDefaultValues,
+  meetingRoomStartDateTimeSchema,
+} from "@/features/reservation/meeting-room-reservation";
+import {
+  getMeetingRoomReservationDuration,
+  getMeetingRoomReservationDurationKey,
+  meetingRoomReservationDurationKeySchema,
+} from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getEarliestMeetingRoomStartDateTime,
+  getMeetingRoomReservationInterval,
+} from "@/features/reservation/meeting-room-reservation-time";
+import {
   getOfficeReservationMaximumDayCount,
   getOfficeReservationMaximumEndsOn,
   type OfficeReservationInput,
@@ -91,6 +105,37 @@ const getTrimmedSearchParam = (
   return value || undefined;
 };
 
+const decodeReservationCheckoutCustomer = (
+  searchParams: SupportedSearchParams
+) => {
+  const name = decodeStandardSchema(
+    queryNameSchema,
+    getTrimmedSearchParam(searchParams, "name")
+  );
+
+  const email = decodeStandardSchema(
+    queryEmailSchema,
+    getTrimmedSearchParam(searchParams, "email")
+  );
+
+  const phone = decodeStandardSchema(
+    queryPhoneSchema,
+    getTrimmedSearchParam(searchParams, "phone")
+  );
+
+  const message = decodeStandardSchema(
+    queryMessageSchema,
+    getTrimmedSearchParam(searchParams, "message")
+  );
+
+  return {
+    ...(name !== undefined && { name }),
+    ...(email !== undefined && { email }),
+    ...(phone !== undefined && { phone }),
+    ...(message !== undefined && { message }),
+  };
+};
+
 const decodeReservationCheckoutQuery = (
   searchParams: SupportedSearchParams
 ): Partial<ReservationCheckoutQueryValues> => {
@@ -115,34 +160,12 @@ const decodeReservationCheckoutQuery = (
     getTrimmedSearchParam(searchParams, "monitorOption")
   );
 
-  const name = decodeStandardSchema(
-    queryNameSchema,
-    getTrimmedSearchParam(searchParams, "name")
-  );
-
-  const email = decodeStandardSchema(
-    queryEmailSchema,
-    getTrimmedSearchParam(searchParams, "email")
-  );
-
-  const phone = decodeStandardSchema(
-    queryPhoneSchema,
-    getTrimmedSearchParam(searchParams, "phone")
-  );
-
-  const message = decodeStandardSchema(
-    queryMessageSchema,
-    getTrimmedSearchParam(searchParams, "message")
-  );
   return {
     ...(entryTier !== undefined && { entryTier }),
     ...(date !== undefined && { date }),
     ...(coffee !== undefined && { coffee: coffee === "true" }),
     ...(monitorOption !== undefined && { monitorOption }),
-    ...(name !== undefined && { name }),
-    ...(email !== undefined && { email }),
-    ...(phone !== undefined && { phone }),
-    ...(message !== undefined && { message }),
+    ...decodeReservationCheckoutCustomer(searchParams),
   };
 };
 
@@ -209,6 +232,52 @@ export const getOfficeReservationDefaultValuesFromSearchParams = (
     startsOn: options.startsOn,
     ...(dayCount !== undefined && dayCount <= maximumDayCount && { dayCount }),
     ...(seats !== undefined && seats <= options.seatCapacity && { seats }),
+  };
+};
+
+const queryMeetingRoomStartDateTimeSchema = Schema.toStandardSchemaV1(
+  meetingRoomStartDateTimeSchema
+);
+const queryMeetingRoomDurationKeySchema = Schema.toStandardSchemaV1(
+  meetingRoomReservationDurationKeySchema
+);
+
+export const getMeetingRoomReservationDefaultValuesFromSearchParams = (
+  searchParams: SupportedSearchParams,
+  now = Temporal.Now.instant()
+): MeetingRoomReservationInput => {
+  const durationKey = decodeStandardSchema(
+    queryMeetingRoomDurationKeySchema,
+    getTrimmedSearchParam(searchParams, "duration")
+  );
+  const duration = getMeetingRoomReservationDuration(
+    durationKey ?? meetingRoomReservationDefaultValues.duration
+  );
+
+  const startDateTime = decodeStandardSchema(
+    queryMeetingRoomStartDateTimeSchema,
+    getTrimmedSearchParam(searchParams, "startDateTime")
+  );
+  const startInterval =
+    startDateTime === undefined
+      ? null
+      : getMeetingRoomReservationInterval(startDateTime, duration);
+  // Fresh query decoding rejects any start at or before now, even when the
+  // interval end is still in the future; submission keeps its own end-based
+  // rule inside the reservation schema.
+  const startDateTimeOrEarliest =
+    startDateTime !== undefined &&
+    startInterval !== null &&
+    Temporal.Instant.compare(startInterval.startsAt, now) >= 0
+      ? startDateTime
+      : getEarliestMeetingRoomStartDateTime(duration, now);
+
+  return {
+    ...meetingRoomReservationDefaultValues,
+    ...decodeReservationCheckoutCustomer(searchParams),
+    duration: getMeetingRoomReservationDurationKey(duration),
+    startDateTime: startDateTimeOrEarliest,
+    marketingConsent: false,
   };
 };
 

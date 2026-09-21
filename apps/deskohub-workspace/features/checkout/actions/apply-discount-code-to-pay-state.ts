@@ -1,4 +1,5 @@
-import { Effect, Match, Schema } from "effect";
+import { randomUUID } from "node:crypto";
+import { Effect, Match, Option, Schema } from "effect";
 import {
   buildFreshCheckoutPayPath,
   CheckoutPricingService,
@@ -9,7 +10,6 @@ import {
 import {
   DiscountProviderError,
   normalizeSubmittedPromotionCode,
-  PromotionCodeUnavailableError,
 } from "@/features/discounts";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
@@ -18,7 +18,15 @@ import type { ApplyDiscountCodeInput } from "./apply-discount-code-input";
 export type ApplyDiscountCodeResult =
   | { readonly status: "applied"; readonly freshPayUrl: string }
   | { readonly status: "pricing_changed"; readonly freshPayUrl: string }
-  | { readonly status: "unavailable" };
+  | {
+      readonly status: "unavailable";
+      /**
+       * Signed replacement carrying the attempted code as requested intent;
+       * the correction route must use it so the attempt survives the failure
+       * instead of falling back to the previous token.
+       */
+      readonly freshPayUrl?: string;
+    };
 
 export const applyDiscountCodeToPayState = Effect.fn(
   "checkout.applyDiscountCodeToPayState"
@@ -39,27 +47,28 @@ export const applyDiscountCodeToPayState = Effect.fn(
     }
 
     if (state.changedKeys || state.submittedCode) {
-      return { status: "unavailable" as const };
+      return { status: "unavailable" as const, freshPayUrl: undefined };
     }
 
+    // A non-canonical attempt cannot be sealed as intent, so syntax failures
+    // keep the plain unavailable result.
     const submittedCode = yield* normalizeSubmittedPromotionCode({
       submittedCode: input.submittedCode,
     }).pipe(
-      Effect.flatMap(Effect.fromOption),
-      Effect.mapError(
-        () =>
-          new PromotionCodeUnavailableError({
-            reason: "invalid_syntax",
-            message: "A discount code is required.",
-          })
+      Effect.map(Option.getOrUndefined),
+      Effect.catchTag("PromotionCodeUnavailableError", () =>
+        Effect.succeed(undefined)
       )
     );
+    if (submittedCode === undefined) {
+      return { status: "unavailable" as const, freshPayUrl: undefined };
+    }
     const reservation = yield* payableReservations.requireCurrent({
       orderId: state.orderId,
       checkoutSessionId: state.checkoutSessionId,
     });
     if (reservation.activePaymentAttemptId) {
-      return { status: "unavailable" as const };
+      return { status: "unavailable" as const, freshPayUrl: undefined };
     }
 
     const dotyposCustomerId = yield* Schema.decodeUnknownEffect(
@@ -72,18 +81,46 @@ export const applyDiscountCodeToPayState = Effect.fn(
         })
       )
     );
-    const result = yield* pricing.applyDiscountCode({
-      ...state,
-      dotyposCustomerId,
-      locale: input.locale,
-      submittedCode,
-    });
+    const result = yield* pricing
+      .applyDiscountCode({
+        ...state,
+        dotyposCustomerId,
+        locale: input.locale,
+        submittedCode,
+      })
+      .pipe(
+        // A recoverable invalid-code failure keeps the attempted code as signed
+        // requested intent on the correction route instead of the old state.
+        Effect.catchTag("PromotionCodeUnavailableError", () =>
+          Effect.gen(function* () {
+            const freshPayUrl = yield* buildFreshCheckoutPayPath(
+              {
+                ...state,
+                locale: input.locale,
+                orderId: state.orderId,
+                checkoutSessionId: state.checkoutSessionId,
+                requestedDiscountCode: submittedCode,
+              },
+              {},
+              {
+                discountCodeError: "unavailable",
+                discountCodeErrorId: randomUUID(),
+              }
+            );
+            return { status: "unavailable" as const, freshPayUrl };
+          })
+        )
+      );
     const currentReservation = yield* payableReservations.requireCurrent({
       orderId: state.orderId,
       checkoutSessionId: state.checkoutSessionId,
     });
     if (currentReservation.activePaymentAttemptId) {
-      return { status: "unavailable" as const };
+      return { status: "unavailable" as const, freshPayUrl: undefined };
+    }
+
+    if (result.status === "unavailable") {
+      return result;
     }
 
     const freshPayUrl = yield* Match.value(result).pipe(
@@ -96,6 +133,8 @@ export const applyDiscountCodeToPayState = Effect.fn(
             checkoutSessionId: state.checkoutSessionId,
             submittedCode,
             submittedCodeDiscountId: applied.submittedCodeDiscountId,
+            // The newly submitted code becomes the carried request intent.
+            requestedDiscountCode: submittedCode,
           }),
         pricing_changed: (changed) =>
           buildFreshCheckoutPayPath({
@@ -104,6 +143,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
             orderId: state.orderId,
             checkoutSessionId: state.checkoutSessionId,
             changedKeys: changed.changedKeys,
+            requestedDiscountCode: submittedCode,
           }),
       })
     );
@@ -113,12 +153,16 @@ export const applyDiscountCodeToPayState = Effect.fn(
   (effect) =>
     effect.pipe(
       Effect.catchTags({
-        PromotionCodeUnavailableError: () =>
-          Effect.succeed({ status: "unavailable" as const }),
         DiscountProviderError: () =>
-          Effect.succeed({ status: "unavailable" as const }),
+          Effect.succeed({
+            status: "unavailable" as const,
+            freshPayUrl: undefined,
+          }),
         PayableReservationUnavailableError: () =>
-          Effect.succeed({ status: "unavailable" as const }),
+          Effect.succeed({
+            status: "unavailable" as const,
+            freshPayUrl: undefined,
+          }),
       })
     )
 );

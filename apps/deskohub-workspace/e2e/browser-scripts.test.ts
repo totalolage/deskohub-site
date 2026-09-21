@@ -1017,6 +1017,57 @@ test("asserts restored whole-day meeting-room state and reset marketing consent"
   }
 });
 
+test("asserts meeting-room prefills without locale-specific labels", async () => {
+  const interval = getTestMeetingRoomInterval(
+    "2099-09-01T10:00",
+    oneHourMeetingRoomDuration
+  );
+  expect(interval).toBeDefined();
+  const data = makeMeetingRoomCheckoutData(
+    "https://workspace.example.test",
+    {
+      date: "2099-09-01",
+      duration: oneHourMeetingRoomDuration,
+      startDateTime: "2099-09-01T10:00",
+      ...interval!,
+    },
+    "meeting-room-prefill"
+  );
+  const assertion = getAssertPrefilledReservationScript(data);
+  expect(assertion).toContain('input[type="time"]');
+  expect(assertion).not.toContain("Meeting room start time");
+
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/cs-CZ/reservation/meeting-room",
+  });
+  try {
+    document.body.innerHTML = `
+      <input name="startDateTime" value="2099-09-01" />
+      <input type="time" value="10:00" aria-label="Začátek rezervace" />
+      <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />
+      <input name="email" value="${data.email}" />
+      <input name="phone" value="${data.phone}" />
+      <input name="name" value="${data.name}" />
+      <textarea name="message">${data.message}</textarea>
+      <button id="reservation-marketing-consent" aria-checked="false"></button>
+    `;
+    const run = new Function(
+      "document",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      `return (${assertion})`
+    );
+
+    expect(
+      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement)
+    ).toBe(true);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
 test("prepares a multi-day office reservation with selected seats", async () => {
   const data = makeOfficeCheckoutData(
     "https://workspace.example.test",
