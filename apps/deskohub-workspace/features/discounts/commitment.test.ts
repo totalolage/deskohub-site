@@ -16,13 +16,27 @@ describe("DiscountCommitment", () => {
 
     const commitment = makeDiscountCommitment({
       product,
+      reservationDate: "2026-07-15",
       applications: [],
     });
 
     expect(getDiscountCommitmentPayload(commitment)).toEqual({
       product: { kind: "cowork", tier: "basic" },
+      reservationDate: "2026-07-15",
       applications: [],
     });
     expect(Reflect.ownKeys(commitment)).toEqual([]);
+  });
+
+  test("carries the affirmed reservation service date in its private payload", () => {
+    const commitment = makeDiscountCommitment({
+      product: { kind: "cowork", tier: "basic" },
+      reservationDate: "2026-07-15",
+      applications: [],
+    });
+
+    expect(getDiscountCommitmentPayload(commitment).reservationDate).toBe(
+      "2026-07-15"
+    );
   });
 });

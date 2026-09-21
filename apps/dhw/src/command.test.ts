@@ -1176,6 +1176,66 @@ describe("dhw mutation commands", () => {
     ]);
   });
 
+  test("maps a service date range and preserves or explicitly clears it on update", async () => {
+    const { layer, mutations } = makeCommandLayer();
+    const discountId = "01980000-0000-7000-8000-000000000002";
+    await runCommand(
+      [
+        "--json",
+        "codes",
+        "create",
+        "existing",
+        "DAY10",
+        discountId,
+        "--service-date-from",
+        "2026-09-21",
+        "--service-date-until",
+        "2026-09-22",
+      ],
+      layer
+    ).pipe(Effect.runPromise);
+    expect(mutations[0]).toMatchObject({
+      code: { serviceDateFrom: "2026-09-21", serviceDateUntil: "2026-09-22" },
+    });
+    const update = [
+      "--json",
+      "codes",
+      "update",
+      "01980000-0000-7000-8000-000000000003",
+      "DAY10",
+      discountId,
+      "--enabled",
+      "true",
+    ];
+    await runCommand(update, layer).pipe(Effect.runPromise);
+    expect(mutations[1]).toMatchObject({ kind: "update-code" });
+    expect(mutations[1]).not.toHaveProperty("code.serviceDateFrom");
+    expect(mutations[1]).not.toHaveProperty("code.serviceDateUntil");
+    await runCommand([...update, "--clear-service-dates"], layer).pipe(
+      Effect.runPromise
+    );
+    expect(mutations[2]).toMatchObject({
+      code: { serviceDateFrom: null, serviceDateUntil: null },
+    });
+    await expect(
+      runCommand(
+        [
+          ...update,
+          "--clear-service-dates",
+          "--service-date-from",
+          "2026-09-21",
+        ],
+        layer
+      ).pipe(Effect.runPromise)
+    ).rejects.toBeDefined();
+    await expect(
+      runCommand([...update, "--service-date-from", "2026-09-21"], layer).pipe(
+        Effect.runPromise
+      )
+    ).rejects.toBeDefined();
+    expect(mutations).toHaveLength(3);
+  });
+
   test("rejects duplicate product flags before making a request", async () => {
     const { layer, mutations } = makeCommandLayer();
 

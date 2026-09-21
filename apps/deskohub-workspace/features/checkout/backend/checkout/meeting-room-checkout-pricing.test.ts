@@ -24,7 +24,11 @@ const meetingRoomProduct = {
   duration: meetingRoomDuration,
 } as const;
 const emptyCommitment = () =>
-  makeDiscountCommitment({ product: meetingRoomProduct, applications: [] });
+  makeDiscountCommitment({
+    product: meetingRoomProduct,
+    reservationDate: "2026-07-15",
+    applications: [],
+  });
 const money = getWorkspaceMeetingRoomPriceForDuration(meetingRoomDuration);
 const discountId = Schema.decodeUnknownSync(discountIdSchema)("summer-sale");
 const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
@@ -169,6 +173,7 @@ describe("meeting-room checkout pricing", () => {
       affirmedAdvertisement,
       dotyposCustomerId,
       locale: "en-US",
+      reservationDate: "2099-06-10",
     });
     expect(result.quote.payment.discounts).toEqual(
       affirmedAdvertisement.discounts
@@ -304,6 +309,7 @@ describe("meeting-room checkout pricing", () => {
       baseQuote: affirmedAdvertisement,
       dotyposCustomerId,
       locale: "en-US",
+      reservationDate: "2099-06-10",
       submittedCode,
     });
     expect(result).toMatchObject({
