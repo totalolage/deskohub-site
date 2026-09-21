@@ -20,6 +20,7 @@ import {
   type BrowserContext,
   type BrowserContextOptions,
   chromium,
+  expect as expectLocator,
   type Locator,
   type Page,
   type Route,
@@ -28,6 +29,14 @@ import postcss from "postcss";
 import loadPostCssConfig from "postcss-load-config";
 import { type Locale, m } from "@/features/i18n";
 import { marketingPreferencesFormCopy } from "@/features/legal/components/marketing-preferences-form.copy";
+import {
+  type CookieCategory,
+  expectNoAuthSessionCookie,
+  expectPublicAccountLegal,
+  preparePublicLegalBrowser,
+  waitForCookieSwitchHandler,
+} from "./instant-navigation/public-account-legal-assertions";
+import { dismissLegalCookieConsent } from "./legal-cookie-consent";
 
 const accountLegalPort = 3168;
 const fixtureParent = "/tmp/opencode";
@@ -155,10 +164,14 @@ const nextConfig = {
 export default nextConfig;
 `;
 
-const localeLayout = `
+const localeLayout = (realCookieConsent: boolean) => `
 import type { ReactNode } from "react";
 import { FixtureHydration } from "@/fixture/hydration";
-import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
+${
+  realCookieConsent
+    ? 'import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";\n'
+    : ""
+}import { UnsavedChangesProvider } from "@/shared/components/unsaved-changes-guard";
 import "../globals.css";
 
 export const instant = false;
@@ -181,7 +194,9 @@ export default async function LocaleLayout({
   return (
     <html lang={locale} data-scroll-behavior="smooth">
       <body>
-        <UnsavedChangesProvider>
+${
+  realCookieConsent ? "        <CookieConsentProvider locale={locale} />\n" : ""
+}        <UnsavedChangesProvider>
           <FixtureHydration>{children}</FixtureHydration>
         </UnsavedChangesProvider>
       </body>
@@ -190,7 +205,21 @@ export default async function LocaleLayout({
 }
 `;
 
-const fixtureSiteHeaderConfig = `
+const syntheticConsentWaypointPage = `
+import Link from "next/link";
+
+export default function ConsentWaypointPage() {
+  return (
+    <main className="flex flex-col gap-4 px-6 pb-16 pt-40">
+      <h1>Synthetic consent waypoint</h1>
+      <p>Synthetic public navigation waypoint with no duplicated account UI.</p>
+      <Link href="/en-US/account/legal">Back to public legal</Link>
+    </main>
+  );
+}
+`;
+
+const fixtureSiteHeaderConfig = (contactHrefExpression: string) => `
 import type { Locale } from "@/features/i18n";
 
 export type SiteHeaderMenuItemId =
@@ -232,7 +261,7 @@ export async function getSiteHeaderConfig(locale: Locale) {
     accountHref: localePath + "/account",
     accountLabel: "Account",
     closeNavigationMenuLabel: "Close navigation menu",
-    contactHref: localePath + "/contact",
+    contactHref: ${contactHrefExpression},
     contactLabel: "Contact",
     languageLabels: {
       "cs-CZ": "Čeština",
@@ -434,22 +463,41 @@ export default function AccountModal() {
 }
 `;
 
-const writeFixture = async (fixtureRoot: string) => {
+type AccountLegalFixtureOptions = {
+  readonly realCookieConsent?: boolean;
+};
+
+const writeFixture = async (
+  fixtureRoot: string,
+  { realCookieConsent = false }: AccountLegalFixtureOptions = {}
+) => {
   const fixtureFiles: Readonly<Record<string, string>> = {
     "app/[locale]/(full-header)/account/@modal/default.tsx": nullModalPage,
     "app/[locale]/(full-header)/account/@modal/page.tsx": nullModalPage,
     "app/[locale]/(full-header)/account/@modal/[...not-found]/page.tsx":
       nullModalPage,
     "app/[locale]/(full-header)/account/page.tsx": privatePage,
-    "app/[locale]/layout.tsx": localeLayout,
+    ...(realCookieConsent
+      ? {
+          "app/[locale]/(full-header)/consent-waypoint/page.tsx":
+            syntheticConsentWaypointPage,
+        }
+      : {}),
+    "app/[locale]/layout.tsx": localeLayout(realCookieConsent),
     "fixture/account-feature-flag.server.ts": fixtureAccountFeatureFlag,
     "fixture/customer-authentication.service.ts": fixtureAuthentication,
-    "fixture/cookie-consent.ts": fixtureCookieConsent,
+    ...(realCookieConsent
+      ? {}
+      : { "fixture/cookie-consent.ts": fixtureCookieConsent }),
     "fixture/env.ts": fixtureEnv,
     "fixture/hydration.tsx": fixtureHydration,
     "fixture/marketing-actions.ts": fixtureMarketingActions,
     "fixture/marketing-preferences.server.ts": fixtureMarketingPreferences,
-    "fixture/site-header-config.ts": fixtureSiteHeaderConfig,
+    "fixture/site-header-config.ts": fixtureSiteHeaderConfig(
+      realCookieConsent
+        ? 'localePath + "/consent-waypoint"'
+        : 'localePath + "/contact"'
+    ),
     "fixture/workspace-effect.ts": fixtureWorkspaceEffect,
     "instrumentation.ts": "export function register() {}",
     "next.config.mjs": nextConfig,
@@ -481,7 +529,9 @@ const writeFixture = async (fixtureRoot: string) => {
           "./fixture/customer-authentication.service.ts",
         ],
         "@/env": ["./fixture/env.ts"],
-        "@/features/cookie-consent": ["./fixture/cookie-consent.ts"],
+        ...(realCookieConsent
+          ? {}
+          : { "@/features/cookie-consent": ["./fixture/cookie-consent.ts"] }),
         "@/features/legal/marketing-preferences.server": [
           "./fixture/marketing-preferences.server.ts",
         ],
@@ -571,11 +621,15 @@ const waitForServerToStop = async (url: string) => {
   throw new Error("account legal fixture server did not release its port");
 };
 
-const warmFixtureRoutes = async (serverUrl: string) => {
+const warmFixtureRoutes = async (
+  serverUrl: string,
+  extraRoutes: readonly string[] = []
+) => {
   for (const locale of supportedLocales) {
     for (const route of [
       `/${locale}/account?section=profile`,
       `/${locale}/account/legal`,
+      ...extraRoutes,
     ]) {
       const response = await fetch(`${serverUrl}${route}`, {
         headers: { [accountFixtureAuthHeader]: "private" },
@@ -1382,7 +1436,9 @@ const assertSignedInRolloutOffLegalRoute = async (
 const accountFixtureStartupTimeout = 180_000;
 const accountFixtureCaseTimeout = 90_000;
 
-const startAccountLegalFixture = async (): Promise<AccountLegalFixture> => {
+const startAccountLegalFixture = async ({
+  realCookieConsent = false,
+}: AccountLegalFixtureOptions = {}): Promise<AccountLegalFixture> => {
   await mkdir(fixtureParent, { recursive: true });
   const fixtureRoot = await mkdtemp(
     join(fixtureParent, "deskohub-account-legal-")
@@ -1422,7 +1478,7 @@ const startAccountLegalFixture = async (): Promise<AccountLegalFixture> => {
   };
 
   try {
-    await writeFixture(fixtureRoot);
+    await writeFixture(fixtureRoot, { realCookieConsent });
     const nextCli = resolve(appRoot, "node_modules/next/dist/bin/next");
     server = Bun.spawn(
       ["node", nextCli, "dev", "--webpack", "--port", String(accountLegalPort)],
@@ -1447,7 +1503,12 @@ const startAccountLegalFixture = async (): Promise<AccountLegalFixture> => {
       accountFixtureStartupTimeout
     );
     serverReady = true;
-    await warmFixtureRoutes(serverUrl);
+    await warmFixtureRoutes(
+      serverUrl,
+      realCookieConsent
+        ? supportedLocales.map((locale) => `/${locale}/consent-waypoint`)
+        : []
+    );
     const launchedBrowser = await chromium.launch({ headless: true });
     browser = launchedBrowser;
 
@@ -1516,6 +1577,279 @@ describe("account legal continuity browser fixture", () => {
       timeout: accountFixtureCaseTimeout,
     }, async () => {
       await assertSignedInRolloutOffLegalRoute(requireFixture(fixture), locale);
+    });
+  }
+});
+
+const realCookieConsentLocale = "en-US" as const;
+const realCookieConsentViewports = [
+  { height: 900, name: "desktop 1440", width: 1440 },
+  { height: 900, name: "mobile 375", width: 375 },
+] as const;
+const realCookieConsentCategoryTitles = {
+  necessary: m.cookieSettingsNecessaryTitle(
+    {},
+    { locale: realCookieConsentLocale }
+  ),
+  analytics: m.cookieSettingsAnalyticsTitle(
+    {},
+    { locale: realCookieConsentLocale }
+  ),
+  marketing: m.cookieSettingsMarketingTitle(
+    {},
+    { locale: realCookieConsentLocale }
+  ),
+  preferences: m.cookieSettingsPreferencesTitle(
+    {},
+    { locale: realCookieConsentLocale }
+  ),
+} as const;
+const realCookieBrowserActionTimeout = 15_000;
+
+const realCookieSwitch = (page: Page, category: CookieCategory) =>
+  page.getByRole("switch", {
+    exact: true,
+    name: realCookieConsentCategoryTitles[category],
+  });
+
+const expectRealCookieSwitchState = async (
+  page: Page,
+  category: CookieCategory,
+  checked: boolean
+) => {
+  await expectLocator(realCookieSwitch(page, category)).toHaveAttribute(
+    "aria-checked",
+    checked ? "true" : "false"
+  );
+};
+
+const toggleRealCookieCategory = async (
+  page: Page,
+  category: Exclude<CookieCategory, "necessary">,
+  checked: boolean
+) => {
+  const categorySwitch = realCookieSwitch(page, category);
+  const expectedChecked = checked ? "true" : "false";
+
+  // A click can be lost when it lands while the previous consent update is
+  // still re-rendering the category cards; retry against the fresh node.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForCookieSwitchHandler(page, category);
+    await expectLocator(categorySwitch).toBeEnabled();
+    // Playwright's locator activation sends a trusted browser interaction;
+    // no evaluated DOM click or consent-cookie value is written here.
+    await categorySwitch.click({
+      timeout: realCookieBrowserActionTimeout,
+    });
+    try {
+      await expectLocator(categorySwitch).toHaveAttribute(
+        "aria-checked",
+        expectedChecked,
+        { timeout: 5_000 }
+      );
+      break;
+    } catch (error) {
+      if (attempt === 2) throw error;
+    }
+  }
+
+  // Settle: the card's pending state has cleared and the handler is reattached
+  // before the next trusted click.
+  await waitForCookieSwitchHandler(page, category);
+  await expectLocator(categorySwitch).toBeEnabled();
+};
+
+const navigateToConsentWaypointAndBack = async (
+  page: Page,
+  serverUrl: string
+) => {
+  const localePath = `/${realCookieConsentLocale}`;
+  const mobileMenuButton = page.getByRole("button", {
+    exact: true,
+    name: m.openNavigationMenuLabel({}, { locale: realCookieConsentLocale }),
+  });
+  if (await mobileMenuButton.isVisible()) {
+    await mobileMenuButton.click({
+      timeout: realCookieBrowserActionTimeout,
+    });
+  }
+
+  const contactLink = page.getByRole("banner").getByRole("link", {
+    exact: true,
+    name: "Contact",
+  });
+  await contactLink.click({ timeout: realCookieBrowserActionTimeout });
+  await page.waitForURL(`${serverUrl}${localePath}/consent-waypoint`);
+  await page
+    .getByRole("heading", { name: "Synthetic consent waypoint" })
+    .waitFor({ state: "visible" });
+
+  const backLink = page.getByRole("link", {
+    exact: true,
+    name: "Back to public legal",
+  });
+  await backLink.click({ timeout: realCookieBrowserActionTimeout });
+  await page.waitForURL(`${serverUrl}${localePath}/account/legal`);
+};
+
+// Local red assertion isolated from the shared helper source: the retired
+// expectation required visible accept-all/reject-all bulk buttons on the
+// public legal screen. Production public legal markup keeps those bulk
+// buttons out of the account legal main content, so this must fail.
+const assertLegacyBulkButtonsVisible = async (page: Page) => {
+  const accountMain = page.getByRole("main");
+  await expectLocator(
+    accountMain.getByRole("button", {
+      exact: true,
+      name: m.cookieSettingsAcceptAll({}, { locale: realCookieConsentLocale }),
+    })
+  ).toBeVisible();
+  await expectLocator(
+    accountMain.getByRole("button", {
+      exact: true,
+      name: m.cookieSettingsRejectAll({}, { locale: realCookieConsentLocale }),
+    })
+  ).toBeVisible();
+};
+
+const expectAssertionFailure = async (
+  assert: () => Promise<void>
+): Promise<string> => {
+  try {
+    await assert();
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  throw new Error("expected legacy assertion to fail against public legal");
+};
+
+const runRealCookieConsentContinuity = async (
+  fixture: AccountLegalFixture,
+  viewport: Viewport
+) => {
+  const context = await openFixtureContext(fixture, { viewport });
+  // Emulate an ordinary browser so the real vendor hydration runs exactly as
+  // it does for human visitors (the vendor skips cookie hydration under
+  // navigator.webdriver); no cookies are injected and no auth is bypassed.
+  await preparePublicLegalBrowser(context);
+  const page = await context.newPage();
+
+  try {
+    await expectNoAuthSessionCookie(context);
+    await page.goto(
+      `${fixture.serverUrl}/${realCookieConsentLocale}/account/legal`,
+      { waitUntil: "domcontentloaded" }
+    );
+    await page
+      .locator('[data-fixture-hydrated="true"]')
+      .waitFor({ state: "attached" });
+    await dismissLegalCookieConsent(page, realCookieConsentLocale);
+    await expectPublicAccountLegal(page);
+
+    await toggleRealCookieCategory(page, "preferences", true);
+    await toggleRealCookieCategory(page, "analytics", true);
+    await toggleRealCookieCategory(page, "marketing", true);
+    await expectRealCookieSwitchState(page, "necessary", true);
+    await expectLocator(realCookieSwitch(page, "necessary")).toBeDisabled();
+
+    await navigateToConsentWaypointAndBack(page, fixture.serverUrl);
+    await page
+      .getByRole("heading", {
+        exact: true,
+        level: 2,
+        name: m.accountLegalTitle({}, { locale: realCookieConsentLocale }),
+      })
+      .waitFor({ state: "visible" });
+    for (const category of ["analytics", "marketing", "preferences"] as const) {
+      await expectRealCookieSwitchState(page, category, true);
+    }
+
+    await page.reload({ waitUntil: "load" });
+    await dismissLegalCookieConsent(page, realCookieConsentLocale);
+    for (const category of ["analytics", "marketing", "preferences"] as const) {
+      await expectRealCookieSwitchState(page, category, true);
+    }
+    await expectRealCookieSwitchState(page, "necessary", true);
+    await expectLocator(realCookieSwitch(page, "necessary")).toBeDisabled();
+
+    await toggleRealCookieCategory(page, "analytics", false);
+    await expectRealCookieSwitchState(page, "marketing", true);
+    await expectRealCookieSwitchState(page, "preferences", true);
+
+    await toggleRealCookieCategory(page, "marketing", false);
+    await expectRealCookieSwitchState(page, "preferences", true);
+
+    await toggleRealCookieCategory(page, "preferences", false);
+    await expectRealCookieSwitchState(page, "necessary", true);
+    await expectLocator(realCookieSwitch(page, "necessary")).toBeDisabled();
+    await expectNoAuthSessionCookie(context);
+  } finally {
+    await closeFixtureContext(fixture, context);
+  }
+};
+
+describe("account legal continuity real cookie consent fixture", () => {
+  let fixture: AccountLegalFixture | undefined;
+
+  beforeAll(async () => {
+    fixture = await startAccountLegalFixture({ realCookieConsent: true });
+  }, accountFixtureStartupTimeout);
+
+  afterEach(async () => {
+    if (fixture) await closeRemainingFixtureContexts(fixture.contexts);
+  });
+
+  afterAll(async () => {
+    const currentFixture = fixture;
+    fixture = undefined;
+    await currentFixture?.close();
+  });
+
+  test("fails the retired bulk-button assertion and passes the migrated helper on real public legal", {
+    timeout: accountFixtureCaseTimeout,
+  }, async () => {
+    const currentFixture = requireFixture(fixture);
+    const context = await openFixtureContext(currentFixture, {
+      viewport: { height: 900, width: 1440 },
+    });
+    // Same ordinary-browser emulation as the migrated preview test so the
+    // real vendor hydrates; no cookies are injected and no auth is bypassed.
+    await preparePublicLegalBrowser(context);
+    const page = await context.newPage();
+
+    try {
+      await page.goto(
+        `${currentFixture.serverUrl}/${realCookieConsentLocale}/account/legal`,
+        { waitUntil: "domcontentloaded" }
+      );
+      await page
+        .locator('[data-fixture-hydrated="true"]')
+        .waitFor({ state: "attached" });
+      await dismissLegalCookieConsent(page, realCookieConsentLocale);
+
+      const legacyFailure = await expectAssertionFailure(() =>
+        assertLegacyBulkButtonsVisible(page)
+      );
+      expectLocator(legacyFailure).toContain(
+        m.cookieSettingsAcceptAll({}, { locale: realCookieConsentLocale })
+      );
+
+      // The migrated shared helper must pass against the same production
+      // public legal markup with the real consent provider mounted.
+      await expectPublicAccountLegal(page);
+    } finally {
+      await closeFixtureContext(currentFixture, context);
+    }
+  });
+
+  for (const { height, name, width } of realCookieConsentViewports) {
+    test(`keeps ${name} real cookie switches persistent across navigation and reload`, {
+      timeout: accountFixtureCaseTimeout,
+    }, async () => {
+      await runRealCookieConsentContinuity(requireFixture(fixture), {
+        height,
+        width,
+      });
     });
   }
 });

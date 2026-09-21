@@ -10,13 +10,12 @@ import {
 } from "../utils/consent-event";
 
 export function useCookieConsent() {
+  // Initialize identically on the server and the client's first render so the
+  // hydrate markup matches SSR even when a consent cookie exists; the
+  // post-mount effect below syncs the authoritative cookie state afterwards.
   const [acceptedCategories, setAcceptedCategories] = useState<
     ConsentCategory[]
-  >(() =>
-    globalThis.document === undefined
-      ? []
-      : getAcceptedConsentCategoriesFromCookie(globalThis.document.cookie)
-  );
+  >([]);
 
   useEffect(() => {
     const syncAcceptedCategories = () => {
