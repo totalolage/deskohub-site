@@ -31,6 +31,69 @@ const marketingBrowserFailureMessage =
 const marketingFixtureConvergenceMessage =
   "Marketing preferences fixture cleanup did not converge";
 
+/**
+ * Fixed allowlist of every `runMarketingBrowserOperation` caller label in this
+ * file. The internal alias requires this union type, so a new or renamed
+ * caller label fails typecheck until it joins the allowlist; the public
+ * wrapper still accepts an arbitrary runtime string and projects it through
+ * this allowlist before a label may appear in a failure message.
+ */
+export const workspaceE2EMarketingBrowserOperationLabels = [
+  "assert account marketing preference",
+  "assert anonymous marketing preferences context",
+  "assert anonymous marketing preferences context after clear",
+  "assert anonymous marketing preferences context after management",
+  "assert invalid marketing management link state",
+  "assert malformed marketing management link redirect",
+  "assert marketing management link redirect",
+  "assert pending marketing management link",
+  "assert replay marketing management link redirect",
+  "assert replay marketing preferences context",
+  "assert replay marketing preferences context after rejection",
+  "assert replay pending marketing management link",
+  "capture active account marketing preference",
+  "capture active marketing management link desktop",
+  "capture active marketing management link mobile",
+  "capture invalid marketing management link desktop",
+  "capture invalid marketing management link mobile",
+  "capture pending marketing management link desktop",
+  "capture pending marketing management link mobile",
+  "capture withdrawn account marketing preference",
+  "capture withdrawn marketing management link desktop",
+  "capture withdrawn marketing management link mobile",
+  "clear malformed marketing management link",
+  "close isolated marketing preferences browser context",
+  "confirm marketing management link",
+  "continue replayed marketing management link",
+  "create isolated marketing preferences browser context",
+  "create isolated marketing preferences browser page",
+  "dismiss marketing preferences legal cookie consent",
+  "dismiss replay marketing preferences legal cookie consent",
+  "navigate authenticated marketing preferences page",
+  "open malformed marketing management link",
+  "open marketing management link",
+  "opt in account marketing preference",
+  "opt in marketing management link preference",
+  "prime anonymous marketing preferences context",
+  "prime replay marketing preferences context",
+  "reload active account marketing preference",
+  "reload withdrawn account marketing preference",
+  "reload withdrawn marketing management link preference",
+  "replay marketing management link",
+  "withdraw account marketing preference",
+  "withdraw marketing management link preference",
+] as const;
+
+export type WorkspaceE2EMarketingBrowserOperationLabel =
+  (typeof workspaceE2EMarketingBrowserOperationLabels)[number];
+
+const projectWorkspaceE2EMarketingBrowserOperationLabel = (
+  operation: string
+): WorkspaceE2EMarketingBrowserOperationLabel | undefined =>
+  workspaceE2EMarketingBrowserOperationLabels.find(
+    (label) => label === operation
+  );
+
 type MarketingPreferenceStatus = "active" | "withdrawn";
 type MarketingPreferenceSource = "account" | "link";
 type MarketingConsentRow = typeof customerMarketingConsents.$inferSelect;
@@ -117,10 +180,16 @@ export const runWorkspaceE2EMarketingBrowserOperation = <A>(
     ),
     (resource) =>
       Effect.tryPromise({
-        catch: () =>
-          workspaceE2EError(marketingBrowserFailureMessage, {
-            operation,
-          }),
+        catch: () => {
+          const label =
+            projectWorkspaceE2EMarketingBrowserOperationLabel(operation);
+          return workspaceE2EError(
+            label === undefined
+              ? marketingBrowserFailureMessage
+              : `${marketingBrowserFailureMessage} during ${label}`,
+            label === undefined ? {} : { operation: label }
+          );
+        },
         try: (signal) => {
           const relayAbort = () => resource.controller.abort();
           signal.addEventListener("abort", relayAbort, { once: true });
@@ -152,7 +221,11 @@ export const runWorkspaceE2EMarketingBrowserOperation = <A>(
       )
   );
 
-const runMarketingBrowserOperation = runWorkspaceE2EMarketingBrowserOperation;
+const runMarketingBrowserOperation = <A>(
+  operation: WorkspaceE2EMarketingBrowserOperationLabel,
+  execute: (signal: AbortSignal) => Promise<A>
+): Effect.Effect<A, WorkspaceE2EError> =>
+  runWorkspaceE2EMarketingBrowserOperation(operation, execute);
 
 const reactHandlerIsInstalled = ({
   handler,

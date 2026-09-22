@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { Page } from "@playwright/test";
 import { Cause, Effect, Exit, Fiber } from "effect";
+import { formatWorkspaceE2EFailure, type WorkspaceE2EError } from "../errors";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
   classifyWorkspaceE2EMarketingConsentPersistence,
@@ -17,6 +18,7 @@ import {
   type WorkspaceE2EMarketingConsentPersistenceDiagnostic,
   type WorkspaceE2EMarketingConsentPoller,
   waitForWorkspaceE2EMarketingConsentPersistence,
+  workspaceE2EMarketingBrowserOperationLabels,
 } from "./marketing-preferences";
 
 const baseUrl = "https://deskohub-workspace-marketing.example.test";
@@ -870,6 +872,75 @@ describe("workspace marketing preferences helper", () => {
       "synthetic pending poll exhausted",
     ]) {
       expect(serializedLogs).not.toContain(sensitiveSentinel);
+    }
+  });
+
+  test("exposes only the allowlisted label when a known browser operation fails", async () => {
+    const knownLabel = "confirm marketing management link";
+    expect(workspaceE2EMarketingBrowserOperationLabels).toContain(knownLabel);
+    const sensitiveCause = new Error(
+      `raw cause with ${rawLinkToken} ${baseUrl} and customer ${customerId}`
+    );
+    const exit = await Effect.runPromiseExit(
+      runWorkspaceE2EMarketingBrowserOperation(knownLabel, () =>
+        Promise.reject(sensitiveCause)
+      )
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const failure = Cause.squash(exit.cause) as WorkspaceE2EError;
+    expect(failure.operation).toBe(knownLabel);
+    expect(failure.cause).toBeUndefined();
+    expect(failure.causes).toBeUndefined();
+    expect(failure.message).toBe(
+      `${browserFailureMessage} during ${knownLabel}`
+    );
+    const formatted = formatWorkspaceE2EFailure(failure);
+    expect(formatted).toContain(
+      `${browserFailureMessage} during ${knownLabel}`
+    );
+    const sensitiveSentinels = [
+      rawLinkToken,
+      baseUrl,
+      customerId,
+      sensitiveCause.message,
+    ];
+    for (const sentinel of sensitiveSentinels) {
+      expect(failure.message).not.toContain(sentinel);
+      expect(formatted).not.toContain(sentinel);
+    }
+  });
+
+  test("yields the generic message for an unknown sensitive operation label", async () => {
+    const sensitiveLabel = `leaks ${rawLinkToken} ${baseUrl}`;
+    const exit = await Effect.runPromiseExit(
+      runWorkspaceE2EMarketingBrowserOperation(sensitiveLabel, () =>
+        Promise.reject(new Error(`raw cause with ${rawLinkToken}`))
+      )
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const failure = Cause.squash(exit.cause) as WorkspaceE2EError;
+    expect(failure.operation).toBeUndefined();
+    expect(failure.cause).toBeUndefined();
+    expect(failure.causes).toBeUndefined();
+    expect(failure.message).toBe(browserFailureMessage);
+    const serializedErrorFields = JSON.stringify({
+      cause: failure.cause,
+      causes: failure.causes,
+      diagnosticCode: failure.diagnosticCode,
+      message: failure.message,
+      operation: failure.operation,
+      reason: failure.reason,
+    });
+    const formatted = formatWorkspaceE2EFailure(failure);
+    expect(formatted).toContain(browserFailureMessage);
+    for (const sentinel of [rawLinkToken, baseUrl, sensitiveLabel]) {
+      expect(failure.message).not.toContain(sentinel);
+      expect(serializedErrorFields).not.toContain(sentinel);
+      expect(formatted).not.toContain(sentinel);
     }
   });
 
