@@ -12,6 +12,7 @@ import {
   officeReservationQuoteSchema,
 } from "@/features/checkout/reservation-quote-office";
 import {
+  type CanonicalPromotionCode,
   canonicalPromotionCodeSchema,
   discountIdSchema,
 } from "@/features/discounts";
@@ -53,11 +54,16 @@ const submittedCodeMetadataSchema = Schema.Struct({
   submittedCodeDiscountId: discountIdSchema,
 });
 
+const requestedDiscountCodeSchemaField = {
+  requestedDiscountCode: Schema.optional(canonicalPromotionCodeSchema),
+};
+
 const coworkAdvertisedPriceStateSchema = Schema.Struct({
   ...workspaceCheckoutPriceStateSchema.fields,
   kind: coworkAdvertisedPriceReservationSchema.fields.kind,
   reservation: coworkAdvertisedPriceReservationSchema,
   quote: coworkReservationQuoteSchema,
+  ...requestedDiscountCodeSchemaField,
 });
 
 const meetingRoomAdvertisedPriceStateSchema = Schema.Struct({
@@ -65,6 +71,7 @@ const meetingRoomAdvertisedPriceStateSchema = Schema.Struct({
   kind: meetingRoomAdvertisedPriceReservationSchema.fields.kind,
   reservation: meetingRoomAdvertisedPriceReservationSchema,
   quote: meetingRoomReservationQuoteSchema,
+  ...requestedDiscountCodeSchemaField,
 });
 
 const officeAdvertisedPriceStateSchema = Schema.Struct({
@@ -72,6 +79,7 @@ const officeAdvertisedPriceStateSchema = Schema.Struct({
   kind: officeAdvertisedPriceReservationSchema.fields.kind,
   reservation: officeAdvertisedPriceReservationSchema,
   quote: officeReservationQuoteSchema,
+  ...requestedDiscountCodeSchemaField,
 });
 
 export const advertisedPriceStateSchema = Schema.Union([
@@ -113,6 +121,7 @@ type AdvertisedPriceStateInput = (
       readonly locale: Locale;
       readonly reservation: CoworkAdvertisedPriceReservation;
       readonly quote: CoworkReservationQuote;
+      readonly requestedDiscountCode?: CanonicalPromotionCode;
       readonly ttlMilliseconds?: number;
     }
   | {
@@ -120,6 +129,7 @@ type AdvertisedPriceStateInput = (
       readonly locale: Locale;
       readonly reservation: MeetingRoomAdvertisedPriceReservation;
       readonly quote: MeetingRoomReservationQuote;
+      readonly requestedDiscountCode?: CanonicalPromotionCode;
       readonly ttlMilliseconds?: number;
     }
   | {
@@ -127,6 +137,7 @@ type AdvertisedPriceStateInput = (
       readonly locale: Locale;
       readonly reservation: OfficeAdvertisedPriceReservation;
       readonly quote: OfficeReservationQuote;
+      readonly requestedDiscountCode?: CanonicalPromotionCode;
       readonly ttlMilliseconds?: number;
     }
 ) &
@@ -185,6 +196,9 @@ export const buildAdvertisedPriceState = Effect.fn(
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
+    ...(input.requestedDiscountCode !== undefined && {
+      requestedDiscountCode: input.requestedDiscountCode,
+    }),
     ...getSubmittedCodeMetadata(input),
   }).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
 });

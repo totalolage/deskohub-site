@@ -79,8 +79,8 @@ const requireAccountsEnabled = (locale: Locale) =>
  * profile input has no email field and the verified login email is read only
  * from the session.
  */
-const saveCustomerProfile = (input: CustomerProfileInput, locale: Locale) =>
-  Effect.gen(function* () {
+const saveCustomerProfile = Effect.fn(
+  function* (input: CustomerProfileInput, _locale: Locale) {
     const user = yield* requireVerifiedSession;
     const resolution = yield* CustomerAccountResolver.pipe(
       Effect.flatMap((resolver) => resolver.resolve),
@@ -103,16 +103,19 @@ const saveCustomerProfile = (input: CustomerProfileInput, locale: Locale) =>
       );
     }
     return yield* failure;
-  }).pipe(
-    Effect.mapError(profileActionError(locale)),
-    Effect.provide(
-      Layer.mergeAll(
-        CustomerAuthentication.Default,
-        CustomerAccountResolver.Live,
-        CustomerProfileService.Live
+  },
+  (effect, _input, locale) =>
+    effect.pipe(
+      Effect.mapError(profileActionError(locale)),
+      Effect.provide(
+        Layer.mergeAll(
+          CustomerAuthentication.Default,
+          CustomerAccountResolver.Live,
+          CustomerProfileService.Live
+        )
       )
     )
-  );
+);
 
 const completeCustomerProfileAction = defineWorkspaceAction(
   {
@@ -168,40 +171,39 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
     schema: deleteCustomerAccountConfirmedSchema,
     logInput: false,
   },
-  (_input, { locale }) =>
-    Effect.gen(function* () {
-      const session = yield* requireVerifiedSession.pipe(
-        Effect.provide(CustomerAuthentication.Default),
-        Effect.result
+  Effect.fn(function* (_input, { locale }) {
+    const session = yield* requireVerifiedSession.pipe(
+      Effect.provide(CustomerAuthentication.Default),
+      Effect.result
+    );
+    if (Result.isFailure(session)) {
+      return yield* revalidateDeletionAuthority(locale).pipe(
+        Effect.as({ status: "reauthentication-required" } as const)
       );
-      if (Result.isFailure(session)) {
-        return yield* revalidateDeletionAuthority(locale).pipe(
-          Effect.as({ status: "reauthentication-required" } as const)
+    }
+
+    const deletion = yield* Effect.promise(() =>
+      deleteCurrentAccountThroughAuthEndpoint()
+    ).pipe(Effect.result);
+
+    yield* revalidateDeletionAuthority(locale);
+
+    if (Result.isSuccess(deletion)) {
+      const result = deletion.success;
+      if (result.status === "failed") {
+        yield* Effect.log("Customer account deletion did not complete").pipe(
+          Effect.annotateLogs({ code: result.code })
         );
+        return { status: "failed" } as const;
       }
+      return result;
+    }
 
-      const deletion = yield* Effect.promise(() =>
-        deleteCurrentAccountThroughAuthEndpoint()
-      ).pipe(Effect.result);
-
-      yield* revalidateDeletionAuthority(locale);
-
-      if (Result.isSuccess(deletion)) {
-        const result = deletion.success;
-        if (result.status === "failed") {
-          yield* Effect.log("Customer account deletion did not complete").pipe(
-            Effect.annotateLogs({ code: result.code })
-          );
-          return { status: "failed" } as const;
-        }
-        return result;
-      }
-
-      yield* Effect.log("Customer account deletion did not complete").pipe(
-        Effect.annotateLogs({ code: "account.delete.unexpected" })
-      );
-      return { status: "failed" } as const;
-    })
+    yield* Effect.log("Customer account deletion did not complete").pipe(
+      Effect.annotateLogs({ code: "account.delete.unexpected" })
+    );
+    return { status: "failed" } as const;
+  })
 );
 
 export const completeCustomerProfile: typeof completeCustomerProfileAction =

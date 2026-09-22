@@ -75,7 +75,7 @@ export type CheckoutData = {
   readonly date: string;
   readonly email: string;
   readonly expectedReservationDetails: StoredWorkspaceReservationDetails;
-  readonly locale: "en-US";
+  readonly locale: "en-US" | "cs-CZ";
   readonly meetingRoom?: {
     readonly duration: MeetingRoomReservationDuration;
     readonly endsAt: ReservationInterval["endsAt"];

@@ -1,16 +1,24 @@
 import type { Game } from "@deskohub/games";
 
+export type GameLanguage = NonNullable<Game["language"]>;
+
 export type DurationFilter = "upTo30" | "upTo60" | "upTo120" | "over120";
 
 type FilterableGame = Pick<
   Game,
-  "name" | "minPlayers" | "maxPlayers" | "playingTimeMinutes" | "inStock"
+  | "name"
+  | "minPlayers"
+  | "maxPlayers"
+  | "playingTimeMinutes"
+  | "inStock"
+  | "language"
 >;
 
 interface BoardGameFilters {
   playerCount: number | null;
   durations: ReadonlyArray<DurationFilter>;
   search: string;
+  language?: GameLanguage | null;
 }
 
 export function filterBoardGames<T extends FilterableGame>(
@@ -21,6 +29,10 @@ export function filterBoardGames<T extends FilterableGame>(
 
   return games.filter((game) => {
     if (!game.inStock) return false;
+
+    if (filters.language != null && game.language !== filters.language) {
+      return false;
+    }
 
     if (filters.playerCount !== null) {
       if (

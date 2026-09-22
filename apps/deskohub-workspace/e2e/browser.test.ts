@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import {
   activateHydratedBrowserElement,
+  captureBrowserScreenshot,
   findEnabledSnapshotRef,
   getSnapshotRef,
   isFrameSnapshotRef,
@@ -11,6 +12,7 @@ import {
   waitForBrowserCondition,
 } from "./browser";
 import type { Runner } from "./runtime";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 test("activates a hydrated element through focus and keyboard input", async () => {
   const calls: Array<{ readonly args: string[]; readonly input?: string }> = [];
@@ -72,6 +74,53 @@ test("accepts Playwright AI snapshot references from the main page and frames", 
   expect(getSnapshotRef('- textbox "Card number" [ref=f1e4]')).toBe("@f1e4");
   expect(isFrameSnapshotRef("@e2")).toBe(false);
   expect(isFrameSnapshotRef("@f1e4")).toBe(true);
+});
+
+test("captures a screenshot through the session runner with the given path", async () => {
+  const calls: Array<{ readonly args: string[]; readonly timeoutMs?: number }> =
+    [];
+  const run: Runner = async (_command, args, options) => {
+    calls.push({ args, timeoutMs: options?.timeoutMs });
+    return { exitCode: 0, stderr: "", stdout: "" };
+  };
+
+  await Effect.runPromise(
+    captureBrowserScreenshot(
+      run,
+      "browser-test",
+      "/tmp/workspace-e2e/final.png",
+      { timeoutMs: workspaceE2ETimeouts.browserAction }
+    )
+  );
+
+  expect(calls).toEqual([
+    {
+      args: [
+        "--session",
+        "browser-test",
+        "screenshot",
+        "/tmp/workspace-e2e/final.png",
+      ],
+      timeoutMs: workspaceE2ETimeouts.browserAction,
+    },
+  ]);
+});
+
+test("fails screenshot capture through the normal workspace e2e error", async () => {
+  const run: Runner = async () => {
+    throw new Error("screenshot failed");
+  };
+
+  const failure = await Effect.runPromise(
+    captureBrowserScreenshot(
+      run,
+      "browser-test",
+      "/tmp/workspace-e2e/final.png",
+      { timeoutMs: workspaceE2ETimeouts.browserAction }
+    ).pipe(Effect.flip)
+  );
+
+  expect(failure.operation).toBe("capture browser screenshot");
 });
 
 test("reads and switches stable browser tabs", async () => {

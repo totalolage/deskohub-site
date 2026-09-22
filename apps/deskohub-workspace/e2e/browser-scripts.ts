@@ -190,7 +190,9 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
   };
 
   if (value('input[name="startDateTime"]', 'start date') !== expected.date) fail('start date');
-  const time = document.querySelector('input[aria-label^="Meeting room start time"]');
+  // The start-time control is matched by type, not by its localized aria label,
+  // so the same predicate asserts en-US and cs-CZ reservation pages.
+  const time = document.querySelector('input[type="time"]');
   if (expected.wholeDay) {
     if (time !== null) fail('hidden start time');
   } else if (!(time instanceof HTMLInputElement) || time.value !== expected.time) {

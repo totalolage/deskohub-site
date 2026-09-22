@@ -53,7 +53,7 @@ export const applyUnavailableDiscountCode = ({
     )
   );
 
-const submitDiscountCode = ({
+export const submitDiscountCode = ({
   code,
   config,
   run,

@@ -87,6 +87,11 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("description")).toBe(true);
   });
 
+  test("redacts normalized discount-code request keys", () => {
+    expect(isSensitiveLogKey("requestedDiscountCode")).toBe(true);
+    expect(isSensitiveLogKey("requesteddiscountcode")).toBe(true);
+  });
+
   test("matches common prefixed camelCase credential key shapes", () => {
     expect(isSensitiveLogKey("stripeApiKey")).toBe(true);
     expect(isSensitiveLogKey("githubAccessToken")).toBe(true);
@@ -166,6 +171,24 @@ describe("censorLogValue", () => {
         },
       },
       cause: { billingDetails: CENSORED_LOG_VALUE, safeStatus: 412 },
+    });
+  });
+
+  test("redacts nested normalized discount-code request keys", () => {
+    const value = censorLogValue({
+      envelope: {
+        requestedDiscountCode: " summer50 ",
+        submittedCode: "summer50",
+        checkoutSessionId: "safe-session-id",
+      },
+    });
+
+    expect(value).toEqual({
+      envelope: {
+        requestedDiscountCode: CENSORED_LOG_VALUE,
+        submittedCode: CENSORED_LOG_VALUE,
+        checkoutSessionId: "safe-session-id",
+      },
     });
   });
 

@@ -223,6 +223,17 @@ class PlaywrightRuntime {
           timeout: timeoutMs,
         });
       }
+      case "screenshot": {
+        const path = requireArgument(commandArgs[0], "screenshot path");
+        assert(path.length > 0, "screenshot path is required");
+        await page().screenshot({
+          animations: "disabled",
+          fullPage: true,
+          path,
+          timeout: timeoutMs,
+        });
+        return "";
+      }
       case "get":
         if (commandArgs[0] === "url") return page().url();
         if (commandArgs[0] === "value")

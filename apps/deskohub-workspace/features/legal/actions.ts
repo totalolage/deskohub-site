@@ -75,119 +75,115 @@ type SaveMarketingPreferencesInput = {
   readonly locale: Locale;
 };
 
-const saveMarketingPreferences = (
+const saveMarketingPreferences = Effect.fn(function* (
   input: SaveMarketingPreferencesInput,
   marketingCookies: MarketingManagementCookieOperations
-) =>
-  Effect.gen(function* () {
-    const authority =
-      yield* loadMarketingPreferencesAuthority(marketingCookies);
-    if (
-      authority.kind === "pending" ||
-      !matchesMarketingManagementContext(authority, input.source, input.context)
-    ) {
-      return yield* mutationFailureError(
-        authority.kind === "pending"
-          ? "pending-confirmation-required"
-          : "stale-context"
-      );
-    }
-
-    const documents = yield* getLegalAcceptanceSnapshot(input.locale).pipe(
-      Effect.mapError(() => mutationError("unavailable"))
+) {
+  const authority = yield* loadMarketingPreferencesAuthority(marketingCookies);
+  if (
+    authority.kind === "pending" ||
+    !matchesMarketingManagementContext(authority, input.source, input.context)
+  ) {
+    return yield* mutationFailureError(
+      authority.kind === "pending"
+        ? "pending-confirmation-required"
+        : "stale-context"
     );
+  }
 
-    // The rendered context is only a concurrency fence. Re-read the current
-    // authority immediately before writing and use its customer identity, not
-    // anything supplied by the browser.
-    const currentAuthority =
-      yield* loadMarketingPreferencesAuthority(marketingCookies);
-    if (
-      !matchesMarketingManagementContext(
-        currentAuthority,
-        input.source,
-        input.context
-      )
-    ) {
-      return yield* mutationFailureError("stale-context");
-    }
+  const documents = yield* getLegalAcceptanceSnapshot(input.locale).pipe(
+    Effect.mapError(() => mutationError("unavailable"))
+  );
 
-    const consents = yield* CustomerMarketingConsentRepository;
-    const consentInput = {
-      dotyposCustomerId: currentAuthority.customerId,
-      documentHash: documents.marketingCommunications.hash,
-      locale: input.locale,
-      grantedAt: Temporal.Now.instant(),
-    };
+  // The rendered context is only a concurrency fence. Re-read the current
+  // authority immediately before writing and use its customer identity, not
+  // anything supplied by the browser.
+  const currentAuthority =
+    yield* loadMarketingPreferencesAuthority(marketingCookies);
+  if (
+    !matchesMarketingManagementContext(
+      currentAuthority,
+      input.source,
+      input.context
+    )
+  ) {
+    return yield* mutationFailureError("stale-context");
+  }
 
-    if (input.granted) {
-      yield* consents
-        .grant(consentInput)
-        .pipe(Effect.mapError(() => mutationError("unavailable")));
-    } else {
-      yield* consents
-        .withdraw(consentInput)
-        .pipe(Effect.mapError(() => mutationError("unavailable")));
-    }
+  const consents = yield* CustomerMarketingConsentRepository;
+  const consentInput = {
+    dotyposCustomerId: currentAuthority.customerId,
+    documentHash: documents.marketingCommunications.hash,
+    locale: input.locale,
+    grantedAt: Temporal.Now.instant(),
+  };
 
-    return { status: "saved" as const };
-  });
+  if (input.granted) {
+    yield* consents
+      .grant(consentInput)
+      .pipe(Effect.mapError(() => mutationError("unavailable")));
+  } else {
+    yield* consents
+      .withdraw(consentInput)
+      .pipe(Effect.mapError(() => mutationError("unavailable")));
+  }
+
+  return { status: "saved" as const };
+});
 
 type MarketingManagementContextInput = { readonly context: string };
 
-const confirmMarketingManagement = (
+const confirmMarketingManagement = Effect.fn(function* (
   input: MarketingManagementContextInput,
   marketingCookies: MarketingManagementCookieOperations
-) =>
-  Effect.gen(function* () {
-    const management = yield* MarketingManagementService;
-    const cookies =
-      yield* readMarketingManagementCookiesEffect(marketingCookies);
-    const pending = yield* resolvePendingAuthority(cookies, management);
-    if (pending.kind !== "pending" || pending.context !== input.context) {
-      return yield* mutationFailureError("stale-context");
-    }
+) {
+  const management = yield* MarketingManagementService;
+  const cookies = yield* readMarketingManagementCookiesEffect(marketingCookies);
+  const pending = yield* resolvePendingAuthority(cookies, management);
+  if (pending.kind !== "pending" || pending.context !== input.context) {
+    return yield* mutationFailureError("stale-context");
+  }
 
-    // Exchange only after checking the digest of the current pending cookie.
-    // This action is the explicit confirmation boundary; reads never call
-    // exchange.
-    const currentCookies =
-      yield* readMarketingManagementCookiesEffect(marketingCookies);
-    const currentPending = yield* resolvePendingAuthority(
-      currentCookies,
-      management
-    );
-    if (
-      currentPending.kind !== "pending" ||
-      currentPending.context !== input.context
-    ) {
-      return yield* mutationFailureError("stale-context");
-    }
+  // Exchange only after checking the digest of the current pending cookie.
+  // This action is the explicit confirmation boundary; reads never call
+  // exchange.
+  const currentCookies =
+    yield* readMarketingManagementCookiesEffect(marketingCookies);
+  const currentPending = yield* resolvePendingAuthority(
+    currentCookies,
+    management
+  );
+  if (
+    currentPending.kind !== "pending" ||
+    currentPending.context !== input.context
+  ) {
+    return yield* mutationFailureError("stale-context");
+  }
 
-    const exchanged = yield* management
-      .exchange(currentPending.rawPending)
-      .pipe(Effect.mapError(mapManagementMutationFailure));
+  const exchanged = yield* management
+    .exchange(currentPending.rawPending)
+    .pipe(Effect.mapError(mapManagementMutationFailure));
 
-    // Cookie state can change while the provider exchange is in flight. Do
-    // not install a session for a stale pending context.
-    const beforeCookieWrite =
-      yield* readMarketingManagementCookiesEffect(marketingCookies);
-    const pendingBeforeCookieWrite = yield* resolvePendingAuthority(
-      beforeCookieWrite,
-      management
-    );
-    if (
-      pendingBeforeCookieWrite.kind !== "pending" ||
-      pendingBeforeCookieWrite.context !== input.context
-    ) {
-      return yield* mutationFailureError("stale-context");
-    }
+  // Cookie state can change while the provider exchange is in flight. Do
+  // not install a session for a stale pending context.
+  const beforeCookieWrite =
+    yield* readMarketingManagementCookiesEffect(marketingCookies);
+  const pendingBeforeCookieWrite = yield* resolvePendingAuthority(
+    beforeCookieWrite,
+    management
+  );
+  if (
+    pendingBeforeCookieWrite.kind !== "pending" ||
+    pendingBeforeCookieWrite.context !== input.context
+  ) {
+    return yield* mutationFailureError("stale-context");
+  }
 
-    yield* invokeCookieMutation(() =>
-      marketingCookies.setMarketingManagementSessionCookie(exchanged)
-    );
-    return { status: "confirmed" as const };
-  });
+  yield* invokeCookieMutation(() =>
+    marketingCookies.setMarketingManagementSessionCookie(exchanged)
+  );
+  return { status: "confirmed" as const };
+});
 
 const saveMarketingPreferencesEffect = (
   input: SaveMarketingPreferencesInput,
@@ -251,19 +247,18 @@ const clearMarketingManagementEffect = (
     Effect.mapError(toPublicMutationError)
   );
 
-const loadMarketingPreferencesAuthority = (
+const loadMarketingPreferencesAuthority = Effect.fn(function* (
   marketingCookies: MarketingManagementCookieOperations
-) =>
-  Effect.gen(function* () {
-    const cookieValues =
-      yield* readMarketingManagementCookiesEffect(marketingCookies);
-    const management = yield* MarketingManagementService;
-    const accountResolver = yield* CustomerAccountResolver;
-    return yield* resolveMarketingPreferencesAuthority(cookieValues, {
-      resolveAccount: () => accountResolver.resolve,
-      resolveManagementSession: (rawSession) => management.resolve(rawSession),
-    }).pipe(Effect.mapError(mapAuthorityFailure));
-  });
+) {
+  const cookieValues =
+    yield* readMarketingManagementCookiesEffect(marketingCookies);
+  const management = yield* MarketingManagementService;
+  const accountResolver = yield* CustomerAccountResolver;
+  return yield* resolveMarketingPreferencesAuthority(cookieValues, {
+    resolveAccount: () => accountResolver.resolve,
+    resolveManagementSession: (rawSession) => management.resolve(rawSession),
+  }).pipe(Effect.mapError(mapAuthorityFailure));
+});
 
 const resolvePendingAuthority = (
   cookies: MarketingManagementCookieValues,
@@ -279,25 +274,22 @@ const resolvePendingAuthority = (
     resolveManagementSession: (rawSession) => management.resolve(rawSession),
   }).pipe(Effect.mapError(mapAuthorityFailure));
 
-const clearMarketingManagementSession = (
+const clearMarketingManagementSession = Effect.fn(function* (
   session: string,
   marketingCookies: MarketingManagementCookieOperations
-) =>
-  Effect.gen(function* () {
-    const management = yield* MarketingManagementService;
-    yield* management
-      .revoke(session)
-      .pipe(
-        Effect.catch((cause) =>
-          hasManagementFailureReason(cause, "invalid_credential")
-            ? Effect.void
-            : Effect.fail(mutationError("unavailable"))
-        )
-      );
-    yield* invokeCookieMutation(
-      marketingCookies.clearMarketingManagementCookies
+) {
+  const management = yield* MarketingManagementService;
+  yield* management
+    .revoke(session)
+    .pipe(
+      Effect.catch((cause) =>
+        hasManagementFailureReason(cause, "invalid_credential")
+          ? Effect.void
+          : Effect.fail(mutationError("unavailable"))
+      )
     );
-  });
+  yield* invokeCookieMutation(marketingCookies.clearMarketingManagementCookies);
+});
 
 const readMarketingManagementCookiesEffect = (
   marketingCookies: MarketingManagementCookieOperations

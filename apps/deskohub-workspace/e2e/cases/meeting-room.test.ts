@@ -1,6 +1,6 @@
 import "../../shared/polyfills/temporal";
 
-import { expect, mock, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import {
   DotyposCustomerIdSchema,
@@ -20,6 +20,7 @@ import { workspaceReservationIdSchema } from "@/features/reservation/persistence
 import { makeMeetingRoomCheckoutData } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
+import { workspaceE2ENonPaymentCaseIds } from "../playwright-checkout/case-catalog";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type {
@@ -33,7 +34,10 @@ import {
   isMeetingRoomUnavailableFromInventory,
   type MeetingRoomE2EPreparation,
   makeMeetingRoomE2ECases,
+  meetingRoomE2ECoreSlotCount,
+  meetingRoomE2EDurations,
 } from "./meeting-room";
+import { makeReservationLinkE2ECases } from "./reservation-links";
 
 test("keeps the deployed E2E runner independent of generated translations", async () => {
   const source = await Bun.file(
@@ -131,18 +135,18 @@ test("asserts the public interval availability expected from aggregate capacity"
     expectedHost: "deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
     timeouts: { ...workspaceE2ETimeouts, datasource: 1 },
   };
-  const fetchMock = mock(() =>
-    Promise.resolve(
+  let fetchCallCount = 0;
+  const fetchMock: typeof globalThis.fetch = (_input, _init) => {
+    fetchCallCount += 1;
+    return Promise.resolve(
       Response.json({
         meetingRoomUnavailable: false,
         unavailableDates: [],
       })
-    )
-  );
+    );
+  };
   const httpClientLayer = FetchHttpClient.layer.pipe(
-    Layer.provide(
-      Layer.succeed(FetchHttpClient.Fetch, fetchMock as typeof globalThis.fetch)
-    )
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
   );
 
   await expect(
@@ -152,7 +156,7 @@ test("asserts the public interval availability expected from aggregate capacity"
       )
     )
   ).resolves.toBeUndefined();
-  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchCallCount).toBe(1);
 });
 
 test("runs reservation cookie isolation after paid support failure", async () => {
@@ -304,4 +308,112 @@ const makeMeetingRoomTestPreparation = (): MeetingRoomE2EPreparation => ({
     if (!interval) throw new Error("meeting-room test interval is invalid");
     return { date, duration, startDateTime, ...interval };
   }),
+});
+
+const linkCaseConfig: WorkspaceE2EConfig = {
+  baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
+  bypassSecret: undefined,
+  expectedHost: "deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
+  timeouts: workspaceE2ETimeouts,
+};
+
+const linkCaseDatasourceConfig: DatasourceConfig = {
+  databaseUrl: "postgresql://preview.example.test/workspace",
+  databaseUrlUnpooled: "postgresql://preview-direct.example.test/workspace",
+  dotypos: {
+    apiTimeout: 5_000,
+    apiUrl: "https://dotypos.example.test",
+    branchId: "branch",
+    clientId: "client",
+    clientSecret: "client-secret",
+    cloudId: "cloud",
+    employeeId: "employee",
+    refreshToken: "refresh-token",
+  },
+  expectedCurrency: "EUR",
+  nexiApiOrigin: "https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp",
+  timeouts: workspaceE2ETimeouts,
+};
+
+const linkCaseRunner: Runner = async () => ({
+  exitCode: 0,
+  stderr: "",
+  stdout: "",
+});
+
+const makeReservationLinkPreparationSlot = (index: number) => {
+  const day = String(index + 1).padStart(2, "0");
+  const date = `2099-09-${day}`;
+  const startDateTime = `${date}T10:00`;
+  const interval = getMeetingRoomReservationInterval(startDateTime, {
+    unit: "hour",
+    amount: 1,
+  });
+  expect(interval).toBeDefined();
+  return {
+    date,
+    duration: { unit: "hour", amount: 1 } as const,
+    startDateTime,
+    ...interval!,
+  };
+};
+
+test("constructs reservation-link cases from the reserved preparation partition", async () => {
+  expect(meetingRoomE2EDurations).toHaveLength(meetingRoomE2ECoreSlotCount + 4);
+  const preparation = {
+    slots: Array.from({ length: meetingRoomE2ECoreSlotCount + 4 }, (_, index) =>
+      makeReservationLinkPreparationSlot(index)
+    ),
+  };
+  const flowStates: CheckoutFlowState[] = [];
+  const cases = await Effect.runPromise(
+    makeReservationLinkE2ECases({
+      config: linkCaseConfig,
+      datasourceConfig: linkCaseDatasourceConfig,
+      flowStates,
+      preparation,
+      run: linkCaseRunner,
+    }).pipe(Effect.provide(FetchHttpClient.layer))
+  );
+
+  const expectedLinkCaseIds = workspaceE2ENonPaymentCaseIds.filter((caseId) =>
+    caseId.startsWith("reservation-link-")
+  );
+  expect(cases.map(({ id }) => id)).toEqual([...expectedLinkCaseIds]);
+  for (const workspaceE2ECase of cases) {
+    expect(workspaceE2ENonPaymentCaseIds).toContain(workspaceE2ECase.id);
+  }
+
+  const [enCase] = cases;
+  expect(enCase.checkoutStates).toHaveLength(2);
+  const [originalState, replacementState] = enCase.checkoutStates;
+  expect(originalState.data).not.toBe(replacementState.data);
+  expect(originalState.data.checkoutUrl).not.toBe(
+    replacementState.data.checkoutUrl
+  );
+  expect(originalState.data.email).toBe(replacementState.data.email);
+  expect(flowStates).toHaveLength(4);
+  expect(flowStates[0]).toBe(originalState);
+  expect(flowStates[1]).toBe(replacementState);
+  expect(flowStates.filter(({ data }) => data.locale === "cs-CZ")).toHaveLength(
+    1
+  );
+});
+
+test("fails reservation-link construction when the preparation partition is short", async () => {
+  const preparation = {
+    slots: Array.from({ length: meetingRoomE2ECoreSlotCount + 3 }, (_, index) =>
+      makeReservationLinkPreparationSlot(index)
+    ),
+  };
+  const exit = await Effect.runPromiseExit(
+    makeReservationLinkE2ECases({
+      config: linkCaseConfig,
+      datasourceConfig: linkCaseDatasourceConfig,
+      flowStates: [],
+      preparation,
+      run: linkCaseRunner,
+    }).pipe(Effect.provide(FetchHttpClient.layer))
+  );
+  expect(Exit.isSuccess(exit)).toBe(false);
 });

@@ -23,7 +23,11 @@ import {
   type DiscountAdvertisementQuote,
   discountAdvertisementQuoteCodec,
 } from "@/features/discounts";
-import { discountIdSchema } from "@/features/discounts/contracts";
+import {
+  canonicalPromotionCodeSchema,
+  discountIdSchema,
+} from "@/features/discounts/contracts";
+import { PromotionCodeUnavailableError } from "@/features/discounts/errors";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { ICustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
@@ -116,7 +120,12 @@ const buildMeetingRoomAdvertisedPriceToken = async (
       | { readonly unit: "day"; readonly amount: 1 };
     readonly reservationDate: string;
   },
-  locale: "en-US" | "cs-CZ" = "en-US"
+  locale: "en-US" | "cs-CZ" = "en-US",
+  metadata: {
+    readonly requestedDiscountCode?: string;
+    readonly submittedCode?: string;
+    readonly submittedCodeDiscountId?: string;
+  } = {}
 ) => {
   const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
     "@/features/checkout/backend/checkout"
@@ -148,6 +157,20 @@ const buildMeetingRoomAdvertisedPriceToken = async (
       locale,
       reservation: advertisedReservation,
       quote,
+      ...(metadata.requestedDiscountCode !== undefined && {
+        requestedDiscountCode: Schema.decodeUnknownSync(
+          canonicalPromotionCodeSchema
+        )(metadata.requestedDiscountCode),
+      }),
+      ...(metadata.submittedCode !== undefined &&
+        metadata.submittedCodeDiscountId !== undefined && {
+          submittedCode: Schema.decodeUnknownSync(canonicalPromotionCodeSchema)(
+            metadata.submittedCode
+          ),
+          submittedCodeDiscountId: Schema.decodeUnknownSync(discountIdSchema)(
+            metadata.submittedCodeDiscountId
+          ),
+        }),
     });
     return yield* sealAdvertisedPriceState(state);
   }).pipe(Effect.runPromise);
@@ -467,7 +490,12 @@ const runMeetingRoomNewHoldScenario = async (
     name: "Ada Lovelace",
     email: "ada@example.com",
     phone: "+420 777 777 777",
-  }
+  },
+  advertisedMetadata: {
+    readonly requestedDiscountCode?: string;
+    readonly submittedCode?: string;
+    readonly submittedCodeDiscountId?: string;
+  } = {}
 ) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { CheckoutPricingService } = await import(
@@ -549,6 +577,14 @@ const runMeetingRoomNewHoldScenario = async (
           discoverAdvertisedDiscounts,
           affirmAdvertisement,
           applyCustomerDiscount,
+          previewDiscountCode: mock(() =>
+            Effect.fail(
+              new PromotionCodeUnavailableError({
+                reason: "not_found",
+                message: "Unknown code.",
+              })
+            )
+          ),
         })
       )
     ),
@@ -596,7 +632,9 @@ const runMeetingRoomNewHoldScenario = async (
     checkoutSessionId: "meeting-room-session-id",
     checkoutAttemptId: "meeting-room-attempt-id",
     advertisedPriceToken: await buildMeetingRoomAdvertisedPriceToken(
-      meetingRoomReservation
+      meetingRoomReservation,
+      "en-US",
+      advertisedMetadata
     ),
     reservation: meetingRoomReservation,
   }).pipe(Effect.provide(testLayer), Effect.runPromise);
@@ -616,6 +654,54 @@ const runMeetingRoomNewHoldScenario = async (
 };
 
 describe("prepareWorkspacePayState", () => {
+  test("carries the advertised requested discount code into the signed pay state", async () => {
+    const { openPayState, payStateTokenQueryParam } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const scenario = await runMeetingRoomNewHoldScenario(undefined, {
+      requestedDiscountCode: "CAMPAIGN10",
+    });
+
+    expect(scenario.result.status).toBe("ready");
+    if (scenario.result.status !== "ready") {
+      throw new Error("Expected a ready result");
+    }
+    const token = new URL(
+      scenario.result.redirectUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const state = Effect.runSync(openPayState(token ?? ""));
+
+    expect(state.requestedDiscountCode).toBe("CAMPAIGN10");
+    expect(state.submittedCode).toBeUndefined();
+    expect(state.submittedCodeDiscountId).toBeUndefined();
+    expect(scenario.result.redirectUrl).not.toContain("CAMPAIGN10");
+  });
+
+  test("falls back to an old advertisement's applied code for requested intent", async () => {
+    const { openPayState, payStateTokenQueryParam } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const scenario = await runMeetingRoomNewHoldScenario(undefined, {
+      submittedCode: "OLDCODE",
+      submittedCodeDiscountId: "code-discount",
+    });
+
+    expect(scenario.result.status).toBe("ready");
+    if (scenario.result.status !== "ready") {
+      throw new Error("Expected a ready result");
+    }
+    const token = new URL(
+      scenario.result.redirectUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const state = Effect.runSync(openPayState(token ?? ""));
+
+    expect(state.requestedDiscountCode).toBe("OLDCODE");
+    expect(state.submittedCode).toBeUndefined();
+    expect(state.submittedCodeDiscountId).toBeUndefined();
+  });
+
   test("rejects office reservation issuance while the office flag is disabled", async () => {
     const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(

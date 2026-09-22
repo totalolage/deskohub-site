@@ -82,8 +82,8 @@ export class MarketingManagementService extends Context.Service<
         const sessionHash = hashToken(sessionToken);
 
         const exchanged = yield* db
-          .transaction((tx) =>
-            Effect.gen(function* () {
+          .transaction(
+            Effect.fn(function* (tx) {
               const [link] = yield* tx
                 .update(customerMarketingManagementTokens)
                 .set({ revokedAt: now })

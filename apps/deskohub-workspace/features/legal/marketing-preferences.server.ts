@@ -72,69 +72,63 @@ export const getMarketingPreferencesEffect = (
     Effect.annotateLogs({ locale })
   );
 
-const readMarketingPreferencesEffect = (
+const readMarketingPreferencesEffect = Effect.fn(function* (
   marketingCookies: MarketingManagementCookieOperations
-) =>
-  Effect.gen(function* () {
-    const cookies = yield* Effect.tryPromise({
-      try: marketingCookies.readMarketingManagementCookies,
-      catch: () =>
-        new MarketingPreferencesAuthorityError({ reason: "unavailable" }),
-    });
-    const dismissalContext = getMarketingManagementDismissalContext(cookies);
-    const management = yield* MarketingManagementService;
-    const accountResolver = yield* CustomerAccountResolver;
-    const authorityResult = yield* resolveMarketingPreferencesAuthority(
-      cookies,
-      {
-        resolveAccount: () => accountResolver.resolve,
-        resolveManagementSession: (rawSession) =>
-          management.resolve(rawSession),
-      }
-    ).pipe(Effect.result);
+) {
+  const cookies = yield* Effect.tryPromise({
+    try: marketingCookies.readMarketingManagementCookies,
+    catch: () =>
+      new MarketingPreferencesAuthorityError({ reason: "unavailable" }),
+  });
+  const dismissalContext = getMarketingManagementDismissalContext(cookies);
+  const management = yield* MarketingManagementService;
+  const accountResolver = yield* CustomerAccountResolver;
+  const authorityResult = yield* resolveMarketingPreferencesAuthority(cookies, {
+    resolveAccount: () => accountResolver.resolve,
+    resolveManagementSession: (rawSession) => management.resolve(rawSession),
+  }).pipe(Effect.result);
 
-    if (Result.isFailure(authorityResult)) {
-      return authorityResult.failure.reason === "invalid-link"
-        ? ({
-            status: "invalid-link",
-            dismissalContext,
-          } satisfies MarketingPreferencesState)
-        : ({ status: "unavailable" } satisfies MarketingPreferencesState);
-    }
-
-    const authority = authorityResult.success;
-
-    if (authority.kind === "pending") {
-      return {
-        status: "pending-link",
-        context: authority.context,
-        dismissalContext,
-      } satisfies MarketingPreferencesState;
-    }
-
-    const consents = yield* CustomerMarketingConsentRepository;
-    const consent = yield* consents
-      .get(authority.customerId)
-      .pipe(
-        Effect.mapError(
-          () =>
-            new MarketingPreferencesAuthorityError({ reason: "unavailable" })
-        )
-      );
-
-    return authority.kind === "link"
+  if (Result.isFailure(authorityResult)) {
+    return authorityResult.failure.reason === "invalid-link"
       ? ({
-          status: getMarketingPreferenceStatus(consent),
-          source: authority.source,
-          context: authority.context,
+          status: "invalid-link",
           dismissalContext,
         } satisfies MarketingPreferencesState)
-      : ({
-          status: getMarketingPreferenceStatus(consent),
-          source: authority.source,
-          context: authority.context,
-        } satisfies MarketingPreferencesState);
-  });
+      : ({ status: "unavailable" } satisfies MarketingPreferencesState);
+  }
+
+  const authority = authorityResult.success;
+
+  if (authority.kind === "pending") {
+    return {
+      status: "pending-link",
+      context: authority.context,
+      dismissalContext,
+    } satisfies MarketingPreferencesState;
+  }
+
+  const consents = yield* CustomerMarketingConsentRepository;
+  const consent = yield* consents
+    .get(authority.customerId)
+    .pipe(
+      Effect.mapError(
+        () => new MarketingPreferencesAuthorityError({ reason: "unavailable" })
+      )
+    );
+
+  return authority.kind === "link"
+    ? ({
+        status: getMarketingPreferenceStatus(consent),
+        source: authority.source,
+        context: authority.context,
+        dismissalContext,
+      } satisfies MarketingPreferencesState)
+    : ({
+        status: getMarketingPreferenceStatus(consent),
+        source: authority.source,
+        context: authority.context,
+      } satisfies MarketingPreferencesState);
+});
 
 const getMarketingPreferenceStatus = (
   consent: { readonly withdrawnAt: Temporal.Instant | null } | null

@@ -38,23 +38,22 @@ const loadPostHogFeatureFlagGenerationEnv = () =>
     )
   );
 
-const syncPostHogFeatureFlags = () =>
-  Effect.gen(function* () {
-    const env = yield* loadPostHogFeatureFlagGenerationEnv();
-    const result = yield* generatePostHogFeatureFlagContract({
-      apiKey: env.POSTHOG_API_KEY,
-      host: env.POSTHOG_API_HOST,
-      outputFile,
-      projectId: env.POSTHOG_PROJECT_ID,
-    });
-
-    yield* Effect.logInfo("Workspace PostHog feature flags synchronized", {
-      flagCount: result.flagCount,
-      status: result.status,
-    });
-
-    return result;
+const syncPostHogFeatureFlags = Effect.fn(function* () {
+  const env = yield* loadPostHogFeatureFlagGenerationEnv();
+  const result = yield* generatePostHogFeatureFlagContract({
+    apiKey: env.POSTHOG_API_KEY,
+    host: env.POSTHOG_API_HOST,
+    outputFile,
+    projectId: env.POSTHOG_PROJECT_ID,
   });
+
+  yield* Effect.logInfo("Workspace PostHog feature flags synchronized", {
+    flagCount: result.flagCount,
+    status: result.status,
+  });
+
+  return result;
+});
 
 const PostHogCliProject = Schema.Struct({
   id: Schema.Int,
@@ -202,89 +201,85 @@ const loadPostHogCliFeatureFlagDefinition = (
     )
   );
 
-const loadPostHogFeatureFlagDefinitionsFromCli = ({
-  projectId,
-  readCliJson,
-}: {
+const loadPostHogFeatureFlagDefinitionsFromCli = Effect.fn(function* (options: {
   readonly projectId: PostHogProjectId;
   readonly readCliJson: ReadPostHogCliJson;
-}) =>
-  Effect.gen(function* () {
-    const project = yield* loadPostHogCliProject(projectId, readCliJson);
+}) {
+  const { projectId, readCliJson } = options;
+  const project = yield* loadPostHogCliProject(projectId, readCliJson);
 
-    if (
-      projectId !== workspacePostHogProjectId ||
-      String(project.id) !== workspacePostHogProjectId ||
-      project.name !== "Deskohub Workspace"
-    ) {
+  if (
+    projectId !== workspacePostHogProjectId ||
+    String(project.id) !== workspacePostHogProjectId ||
+    project.name !== "Deskohub Workspace"
+  ) {
+    return yield* new PostHogFeatureFlagError({
+      message:
+        "The PostHog CLI is not pointed at the Deskohub Workspace project 204184.",
+    });
+  }
+
+  const summaries: Array<typeof PostHogCliFeatureFlagSummary.Type> = [];
+  let totalCount: number | undefined;
+  for (let offset = 0; ; ) {
+    const page = yield* loadPostHogCliFeatureFlagPage(offset, readCliJson);
+    if (totalCount === undefined) totalCount = page.count;
+    if (page.count !== totalCount) {
       return yield* new PostHogFeatureFlagError({
-        message:
-          "The PostHog CLI is not pointed at the Deskohub Workspace project 204184.",
+        message: "PostHog CLI returned inconsistent feature flag counts.",
+      });
+    }
+    if (summaries.length + page.results.length > page.count) {
+      return yield* new PostHogFeatureFlagError({
+        message: "PostHog CLI returned too many feature flags.",
       });
     }
 
-    const summaries: Array<typeof PostHogCliFeatureFlagSummary.Type> = [];
-    let totalCount: number | undefined;
-    for (let offset = 0; ; ) {
-      const page = yield* loadPostHogCliFeatureFlagPage(offset, readCliJson);
-      if (totalCount === undefined) totalCount = page.count;
-      if (page.count !== totalCount) {
-        return yield* new PostHogFeatureFlagError({
-          message: "PostHog CLI returned inconsistent feature flag counts.",
-        });
-      }
-      if (summaries.length + page.results.length > page.count) {
-        return yield* new PostHogFeatureFlagError({
-          message: "PostHog CLI returned too many feature flags.",
-        });
-      }
-
-      summaries.push(...page.results);
-      if (summaries.length === page.count) break;
-      if (page.results.length === 0) {
-        return yield* new PostHogFeatureFlagError({
-          message: "PostHog CLI returned an incomplete feature flag list.",
-        });
-      }
-      offset += page.results.length;
-    }
-
-    const definitions: Array<typeof PostHogCliFeatureFlagDefinition.Type> = [];
-    for (const summary of summaries) {
-      const definition = yield* loadPostHogCliFeatureFlagDefinition(
-        summary.id,
-        readCliJson
-      );
-      if (definition.id !== summary.id || definition.key !== summary.key) {
-        return yield* new PostHogFeatureFlagError({
-          message: "PostHog CLI returned a mismatched feature flag definition.",
-        });
-      }
-      definitions.push(definition);
-    }
-
-    const accountsDefinition = definitions.find(
-      ({ id, key }) =>
-        id === workspaceAccountsFeatureFlagId && key === "accounts"
-    );
-    if (
-      accountsDefinition?.active !== false ||
-      accountsDefinition.archived === true ||
-      accountsDefinition.deleted === true
-    ) {
+    summaries.push(...page.results);
+    if (summaries.length === page.count) break;
+    if (page.results.length === 0) {
       return yield* new PostHogFeatureFlagError({
-        message:
-          "The existing Workspace accounts feature flag must remain present and inactive.",
+        message: "PostHog CLI returned an incomplete feature flag list.",
       });
     }
+    offset += page.results.length;
+  }
 
-    return yield* listPostHogFeatureFlagDefinitions(projectId, () =>
-      Effect.succeed({
-        count: definitions.length,
-        results: definitions,
-      })
+  const definitions: Array<typeof PostHogCliFeatureFlagDefinition.Type> = [];
+  for (const summary of summaries) {
+    const definition = yield* loadPostHogCliFeatureFlagDefinition(
+      summary.id,
+      readCliJson
     );
-  });
+    if (definition.id !== summary.id || definition.key !== summary.key) {
+      return yield* new PostHogFeatureFlagError({
+        message: "PostHog CLI returned a mismatched feature flag definition.",
+      });
+    }
+    definitions.push(definition);
+  }
+
+  const accountsDefinition = definitions.find(
+    ({ id, key }) => id === workspaceAccountsFeatureFlagId && key === "accounts"
+  );
+  if (
+    accountsDefinition?.active !== false ||
+    accountsDefinition.archived === true ||
+    accountsDefinition.deleted === true
+  ) {
+    return yield* new PostHogFeatureFlagError({
+      message:
+        "The existing Workspace accounts feature flag must remain present and inactive.",
+    });
+  }
+
+  return yield* listPostHogFeatureFlagDefinitions(projectId, () =>
+    Effect.succeed({
+      count: definitions.length,
+      results: definitions,
+    })
+  );
+});
 
 export interface SyncPostHogFeatureFlagsFromCliOptions {
   readonly projectId: PostHogProjectId;

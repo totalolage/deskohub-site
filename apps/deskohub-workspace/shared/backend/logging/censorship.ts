@@ -74,6 +74,7 @@ const sensitiveLogExactKeys = new Set([
   "db.namespace",
   "discountcode",
   "recipient",
+  "requesteddiscountcode",
   "server.address",
   "submittedcode",
   "subject",

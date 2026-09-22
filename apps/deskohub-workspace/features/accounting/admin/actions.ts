@@ -26,8 +26,8 @@ const createInvoiceAction = defineWorkspaceAction(
     }),
     logInput: false,
   },
-  (input) =>
-    Effect.gen(function* () {
+  Effect.fn(
+    function* (input) {
       const actor = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const result = yield* administration.create(input, {
@@ -39,13 +39,16 @@ const createInvoiceAction = defineWorkspaceAction(
         revalidatePath(`/admin/invoices/${result.invoiceId}`);
       });
       return result;
-    }).pipe(
-      Effect.provide(InvoiceAdministrationService.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({ message: getCreateError(cause), cause })
+    },
+    (effect) =>
+      effect.pipe(
+        Effect.provide(InvoiceAdministrationService.Live),
+        Effect.mapError(
+          (cause) =>
+            new PublicSafeActionError({ message: getCreateError(cause), cause })
+        )
       )
-    )
+  )
 );
 
 const previewInvoiceAction = defineWorkspaceAction(
@@ -56,8 +59,8 @@ const previewInvoiceAction = defineWorkspaceAction(
     }),
     logInput: false,
   },
-  (input) =>
-    Effect.gen(function* () {
+  Effect.fn(
+    function* (input) {
       const actor = yield* requireAdministratorAuthorization;
       const administration = yield* InvoiceAdministrationService;
       const pdf = yield* administration.preview(input, {
@@ -67,16 +70,19 @@ const previewInvoiceAction = defineWorkspaceAction(
       return {
         dataUrl: `data:application/pdf;base64,${Buffer.from(pdf).toString("base64")}`,
       };
-    }).pipe(
-      Effect.provide(InvoiceAdministrationService.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message: "The invoice preview could not be generated.",
-            cause,
-          })
+    },
+    (effect) =>
+      effect.pipe(
+        Effect.provide(InvoiceAdministrationService.Live),
+        Effect.mapError(
+          (cause) =>
+            new PublicSafeActionError({
+              message: "The invoice preview could not be generated.",
+              cause,
+            })
+        )
       )
-    )
+  )
 );
 
 const searchCustomersAction = defineWorkspaceAction(

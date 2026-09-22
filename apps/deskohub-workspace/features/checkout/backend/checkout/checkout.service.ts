@@ -495,8 +495,9 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
           readonly workspaceReservationId: WorkspaceReservationId;
         }) =>
           Match.value(input.cause).pipe(
-            Match.when(isDefinitiveHostedPaymentPageFailure, () =>
-              Effect.gen(function* () {
+            Match.when(
+              isDefinitiveHostedPaymentPageFailure,
+              Effect.fn(function* () {
                 const transition = yield* paymentLifecycle.markTerminal({
                   id: input.attempt.id,
                   workspaceReservationId: input.workspaceReservationId,
@@ -913,6 +914,8 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 ...state,
                 locale,
                 orderId: reservation.id,
+                requestedDiscountCode:
+                  state.requestedDiscountCode ?? state.submittedCode,
               });
               return {
                 status: "pricing_changed" as const,
@@ -977,6 +980,8 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                 locale,
                 orderId: reservation.id,
                 checkoutSessionId: state.checkoutSessionId,
+                requestedDiscountCode:
+                  state.requestedDiscountCode ?? state.submittedCode,
                 ...getSignedPayStateSubmittedCode(
                   state,
                   prepared.quote.payment.discounts
@@ -1119,8 +1124,9 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                         });
 
                   return yield* startPayment.pipe(
-                    Effect.catchTag("DiscountClaimError", (cause) =>
-                      Effect.gen(function* () {
+                    Effect.catchTag(
+                      "DiscountClaimError",
+                      Effect.fn(function* (cause) {
                         yield* Effect.logError(
                           "Accepted discount claim admission changed the payable price",
                           {
@@ -1166,6 +1172,8 @@ function makeCheckoutServiceLayer(service: typeof CheckoutService) {
                           locale,
                           orderId: reservation.id,
                           checkoutSessionId: state.checkoutSessionId,
+                          requestedDiscountCode:
+                            state.requestedDiscountCode ?? state.submittedCode,
                           ...getSignedPayStateSubmittedCode(
                             state,
                             refreshed.quote.payment.discounts

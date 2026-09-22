@@ -185,7 +185,11 @@ const quotePreparedReservation = Effect.fn(
       ? getCheckoutSummaryChangedKeys(advertisedSummary, preparedSummary)
       : undefined;
 
-  return { ...prepared, changedKeys };
+  return {
+    ...prepared,
+    requestedDiscountCode: input.advertisement.requestedDiscountCode,
+    changedKeys,
+  };
 });
 
 const DotyposEntityWithIdSchema = Schema.Struct({
@@ -972,8 +976,8 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
                 );
 
                 yield* dotypos.cancelReservation(dotyposReservationId).pipe(
-                  Effect.catch((cancelCause) =>
-                    Effect.gen(function* () {
+                  Effect.catch(
+                    Effect.fn(function* (cancelCause) {
                       yield* Effect.logFatal(
                         "Workspace reservation hold attach cleanup failed",
                         {

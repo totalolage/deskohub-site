@@ -327,7 +327,7 @@ export const meetingRoomReservationOrderSchema =
     })
   );
 
-const meetingRoomStartDateTimeSchema = Schema.String.check(
+export const meetingRoomStartDateTimeSchema = Schema.String.check(
   Schema.isNonEmpty({
     message: m.reservationValidationMeetingRoomStartRequired(),
   }),

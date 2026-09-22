@@ -10,6 +10,7 @@ import { DiscountRejectionAnalytics } from "./discount-rejection-analytics";
 
 type CheckoutDiscountCodeFormProps = {
   readonly appliedAdjustment?: DiscountAdjustment;
+  readonly defaultCode?: string;
   readonly enabled: boolean;
   readonly fieldError: boolean;
   readonly locale: Locale;
@@ -19,6 +20,7 @@ type CheckoutDiscountCodeFormProps = {
 
 export function CheckoutDiscountCodeForm({
   appliedAdjustment,
+  defaultCode,
   enabled,
   fieldError,
   locale,
@@ -48,6 +50,10 @@ export function CheckoutDiscountCodeForm({
       action={action}
       className="space-y-3"
       id="checkout-discount-code-form"
+      // The input is uncontrolled, so rekey by the requested code to let a
+      // fresh signed state after a rejected attempt refresh the prefill,
+      // while normal local edits before submission are never disturbed.
+      key={defaultCode}
     >
       <Label htmlFor="checkout-discount-code">
         {m.checkoutDiscountCodeLabel({}, { locale })}
@@ -61,6 +67,7 @@ export function CheckoutDiscountCodeForm({
           autoComplete="off"
           className="h-12 rounded-full px-5 uppercase"
           data-ph-mask
+          defaultValue={defaultCode}
           name="submittedCode"
           placeholder={m.checkoutDiscountCodePlaceholder({}, { locale })}
           spellCheck={false}

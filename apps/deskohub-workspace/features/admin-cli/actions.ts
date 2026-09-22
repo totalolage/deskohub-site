@@ -61,8 +61,8 @@ const renameCliSessionAction = defineWorkspaceAction(
     operation: "cli-authentication.rename-session",
     schema: renameCliSessionStandardSchema,
   },
-  (input) =>
-    Effect.gen(function* () {
+  Effect.fn(
+    function* (input) {
       const owner = yield* requireAdministratorAuthorization;
       const authentication = yield* CliAuthentication;
       const renamed = yield* authentication.renameSession({
@@ -77,17 +77,20 @@ const renameCliSessionAction = defineWorkspaceAction(
       }
       yield* Effect.sync(() => revalidatePath("/admin/cli/sessions"));
       return { notice: "CLI session label updated." };
-    }).pipe(
-      Effect.provide(CliAuthentication.Live),
-      Effect.mapError((cause) =>
-        cause instanceof PublicSafeActionError
-          ? cause
-          : new PublicSafeActionError({
-              message: "The CLI session label could not be updated.",
-              cause,
-            })
+    },
+    (effect) =>
+      effect.pipe(
+        Effect.provide(CliAuthentication.Live),
+        Effect.mapError((cause) =>
+          cause instanceof PublicSafeActionError
+            ? cause
+            : new PublicSafeActionError({
+                message: "The CLI session label could not be updated.",
+                cause,
+              })
+        )
       )
-    )
+  )
 );
 
 export const renameCliSession: typeof renameCliSessionAction = async (

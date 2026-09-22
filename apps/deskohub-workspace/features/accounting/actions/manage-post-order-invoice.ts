@@ -14,8 +14,8 @@ const managePostOrderInvoiceAction = defineWorkspaceAction(
     operation: "accounting.manage-post-order-invoice",
     schema: managePostOrderInvoiceSchema,
   },
-  (input) =>
-    Effect.gen(function* () {
+  Effect.fn(
+    function* (input) {
       const botProtection = yield* BotProtectionService;
       yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
       const service = yield* ReservationInvoiceService;
@@ -32,19 +32,22 @@ const managePostOrderInvoiceAction = defineWorkspaceAction(
         ...access,
         address: input.address,
       });
-    }).pipe(
-      Effect.provide(ReservationInvoiceService.Live),
-      Effect.mapError(
-        (cause) =>
-          new PublicSafeActionError({
-            message: m.postOrderInvoiceActionError(
-              {},
-              { locale: input.locale }
-            ),
-            cause,
-          })
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.provide(ReservationInvoiceService.Live),
+        Effect.mapError(
+          (cause) =>
+            new PublicSafeActionError({
+              message: m.postOrderInvoiceActionError(
+                {},
+                { locale: input.locale }
+              ),
+              cause,
+            })
+        )
       )
-    )
+  )
 );
 
 export const managePostOrderInvoice: typeof managePostOrderInvoiceAction =

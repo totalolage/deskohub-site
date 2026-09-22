@@ -195,6 +195,7 @@ const buildPayStateToken = (input: {
   readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalPromotionCode;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
   Effect.runSync(
@@ -210,6 +211,7 @@ const buildPayStateToken = (input: {
           submittedCode: input.submittedCode,
           submittedCodeDiscountId: application.discount.id,
         }),
+        requestedDiscountCode: input.requestedDiscountCode,
         changedKeys: input.changedKeys,
         ttlMilliseconds: 10 * 60 * 1000,
       });
@@ -242,6 +244,7 @@ const buildMeetingRoomPayStateToken = (input: {
   readonly quote?: ReturnType<typeof buildMeetingRoomQuote>;
   readonly reservation?: typeof meetingRoomReservationData;
   readonly submittedCode?: CanonicalPromotionCode;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 }) =>
   Effect.runSync(
     Effect.gen(function* () {
@@ -257,6 +260,7 @@ const buildMeetingRoomPayStateToken = (input: {
           submittedCode: input.submittedCode,
           submittedCodeDiscountId: application.discount.id,
         }),
+        requestedDiscountCode: input.requestedDiscountCode,
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(state);
@@ -428,6 +432,7 @@ type CheckoutHarnessOptions<ReservationOverrides extends object> = {
   readonly acceptedQuote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalPromotionCode;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly reservationOverrides?: ReservationOverrides;
   readonly requireCurrent?: ReturnType<typeof mock>;
@@ -599,6 +604,7 @@ const createCheckoutHarness = async <ReservationOverrides extends object>(
             quote: options.acceptedQuote,
             checkoutSessionId: options.checkoutSessionId,
             submittedCode: options.submittedCode,
+            requestedDiscountCode: options.requestedDiscountCode,
             changedKeys: options.changedKeys,
           }),
         legalConsent: options.legalConsent ?? true,
@@ -1206,6 +1212,7 @@ describe("CheckoutService", () => {
 
   test("affirms meeting-room discounts and returns a fresh state when pricing changes", async () => {
     const submittedCode = canonicalCode("ROOM50");
+    const requestedCode = canonicalCode("CAMPAIGN10");
     const meetingRoomApplication = {
       ...application,
       subtotalBefore: money(155_000),
@@ -1250,6 +1257,7 @@ describe("CheckoutService", () => {
         checkoutSessionId,
         quote: acceptedQuote,
         submittedCode,
+        requestedDiscountCode: requestedCode,
       }),
       affirm,
       reservationOverrides: {
@@ -1288,6 +1296,7 @@ describe("CheckoutService", () => {
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe(submittedCode);
     expect(freshState.submittedCodeDiscountId).toBe(application.discount.id);
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
   });
 
   test("allows payment for a started whole day before its end", async () => {
@@ -1586,6 +1595,70 @@ describe("CheckoutService", () => {
     );
   });
 
+  test("keeps requested intent when final validation drops the applied pair", async () => {
+    const requestedCode = canonicalCode("CAMPAIGN10");
+    const submittedCode = canonicalCode("SUMMER50");
+    const affirm = mock(() =>
+      Effect.succeed({
+        quote: buildCoworkReservationQuote(reservationData, {
+          discountQuote: undiscountedQuote,
+        }),
+        commitment: emptyCommitment,
+      })
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-requested-intent-drop",
+      acceptedQuote: buildCoworkReservationQuote(reservationData, {
+        discountQuote: discountedQuote,
+      }),
+      submittedCode,
+      requestedDiscountCode: requestedCode,
+      affirm,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result.status).toBe("pricing_changed");
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
+    expect(freshState.submittedCode).toBeUndefined();
+    expect(freshState.submittedCodeDiscountId).toBeUndefined();
+  });
+
+  test("keeps requested intent on a changedKeys review rebuild without an applied pair", async () => {
+    const requestedCode = canonicalCode("CAMPAIGN10");
+    const changedKeys = {
+      sectionKeys: ["order", "total"] as const,
+      itemKeys: ["product:cowork:profi", "total:final"] as const,
+    };
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-requested-intent-review",
+      requestedDiscountCode: requestedCode,
+      changedKeys,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result.status).toBe("pricing_changed");
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
+    expect(freshState.submittedCode).toBeUndefined();
+  });
+
   test("returns pricing_changed when an accepted discount disappears before payment", async () => {
     const submittedCode = canonicalCode("SUMMER50");
     const affirm = mock(() =>
@@ -1753,6 +1826,7 @@ describe("CheckoutService", () => {
   });
 
   test("returns refreshed pricing when code claim admission loses a race", async () => {
+    const requestedCode = canonicalCode("CAMPAIGN10");
     const acceptedQuote = buildCoworkReservationQuote(reservationData, {
       discountQuote: discountedQuote,
     });
@@ -1781,6 +1855,8 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-code-claim-race",
       acceptedQuote,
+      requestedDiscountCode: requestedCode,
+      accountAuthority: { session: {}, activityState: "active" },
       affirm,
       createPendingNexiAttempt,
     });
@@ -1796,9 +1872,22 @@ describe("CheckoutService", () => {
     expect(affirm).toHaveBeenCalledTimes(2);
     expect(createPendingNexiAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.guardEvents).toEqual([
+      "account-session",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
   });
 
   test("returns refreshed pricing when a zero-total code loses claim admission", async () => {
+    const requestedCode = canonicalCode("CAMPAIGN10");
     const acceptedQuote = buildCoworkReservationQuote(reservationData, {
       discountQuote: fullyDiscountedQuote,
     });
@@ -1827,6 +1916,7 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-zero-total-claim-race",
       acceptedQuote,
+      requestedDiscountCode: requestedCode,
       affirm,
       completeInternalPayment,
     });
@@ -1843,6 +1933,12 @@ describe("CheckoutService", () => {
     expect(completeInternalPayment).toHaveBeenCalledTimes(1);
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.requestedDiscountCode).toBe(requestedCode);
   });
 
   test("keeps anonymous checkout flowing without consulting account activity", async () => {

@@ -476,8 +476,9 @@ export class LatePaymentRecoveryService extends Context.Service<
               completedAt: Temporal.Now.instant(),
             })
             .pipe(
-              Effect.catchTag("LatePaymentRecoveryStateError", (cause) =>
-                Effect.gen(function* () {
+              Effect.catchTag(
+                "LatePaymentRecoveryStateError",
+                Effect.fn(function* (cause) {
                   const superseded =
                     yield* recoveries.hasNewerActiveReservation(reservation.id);
                   if (!superseded) return yield* cause;
@@ -489,8 +490,9 @@ export class LatePaymentRecoveryService extends Context.Service<
                   });
                 })
               ),
-              Effect.catchTag("DiscountClaimError", () =>
-                Effect.gen(function* () {
+              Effect.catchTag(
+                "DiscountClaimError",
+                Effect.fn(function* () {
                   yield* dotypos.cancelReservation(replacementId);
                   yield* settleRefund({
                     paymentAttemptId: claimed.paymentAttemptId,

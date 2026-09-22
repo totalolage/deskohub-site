@@ -203,10 +203,16 @@ export const loadDiscountAdminCustomerCodeCreationPageData = async (
 
 const loadOptionalDiscountAdminCustomerProfile = cache(
   async (customerId: DotyposCustomerId) =>
-    Effect.gen(function* () {
-      const administration = yield* DiscountAdministration;
-      return yield* administration.loadCustomerProfile({ customerId });
-    }).pipe(
+    loadDiscountAdminCustomerProfile(customerId)
+);
+
+const loadDiscountAdminCustomerProfile = Effect.fn(
+  function* (customerId: DotyposCustomerId) {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadCustomerProfile({ customerId });
+  },
+  (effect, customerId) =>
+    effect.pipe(
       Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
       Effect.catch((cause) =>
         Effect.logWarning("Customer administration details unavailable", {

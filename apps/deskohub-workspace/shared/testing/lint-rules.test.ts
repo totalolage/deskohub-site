@@ -58,6 +58,23 @@ const applyDiscountCodeOriginal = `export const applyDiscountCodeToPayState = Ef
 );
 `;
 
+const nestedCatchTag = `export const recoverReservation = Effect.fn("ReservationService.recover")(function* (input: string) {
+  return yield* Effect.succeed(input).pipe(
+    Effect.catchTag("ReservationNotFoundError", (error) => Effect.gen(function* () { return yield* Effect.succeed("fallback"); }))
+  );
+});
+`;
+const nestedAnonymousCallback = `export const enrichReservation = Effect.fn("ReservationService.enrich")(function* (input: string) {
+  return yield* Effect.succeed(input).pipe(
+    Effect.andThen((value) => Effect.gen(function* () { return yield* Effect.succeed(value); }))
+  );
+});
+`;
+const tracedAnonymous =
+  'export const loadReservation = Effect.fn("ReservationService.loadReservation")(function* () { return yield* Effect.succeed("seat-1"); });\n';
+const directGenValue =
+  'export const loadReservation = Effect.gen(function* () { return yield* Effect.succeed("seat-1"); });\n';
+
 const tracedLazyValue = (effectConstructor: string, suffix = "") =>
   `export const loadValue = Effect.fn("Workspace.loadValue")(() => Effect.${effectConstructor}${suffix});\n`;
 
@@ -85,7 +102,7 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
     ],
   },
   {
-    name: "prefer-effect-fn", diagnostic: "declare the generator function directly",
+    name: "prefer-effect-fn", diagnostic: "Define Effect generator functions with Effect.fn",
     module: "apps/deskohub-workspace/features/reservation/load-reservation.ts",
     cases: [
       ["rejects a traced direct generator", traced(gen), true],
@@ -98,8 +115,24 @@ const rules: { name: string; diagnostic: string; module: string; cases: Row[] }[
       ["permits the canonical generator callback", traced("function* (input: string) { return yield* Effect.succeed(input); }"), false],
       ["permits the canonical callback with many transforms", traced("function* (input: string) { return yield* Effect.succeed(input); }", threeTransforms), false],
       ["permits a non-generator Effect callback", arrowGen('Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key: string) => Effect.succeed(key).pipe(Effect.andThen((value) => value)));'), false],
-      ["permits an untraced generator arrow", untracedGen, false],
       ["permits an async server bridge", 'export const bridgeReservation = async (input: string) => { "use server"; return Effect.runPromise(Effect.succeed(input)); };\n', false],
+    ],
+  },
+  {
+    name: "prefer-effect-fn-generator-arrows",
+    diagnostic: "Define Effect generator functions with Effect.fn",
+    module: "apps/deskohub-workspace/features/reservation/load-reservation.ts",
+    cases: [
+      ["rejects a nested catchTag recovery handler", nestedCatchTag, true],
+      ["rejects an anonymous nested generator callback", nestedAnonymousCallback, true],
+      ["rejects a top-level arrow generator", untracedGen, true],
+      ["permits an anonymous Effect.fn generator handler", tracedAnonymous, false],
+      ["permits a direct Effect.gen value", directGenValue, false],
+      ["permits a non-generator arrow", arrowGen('Effect.fn("WorkspaceFeatureFlagService.isEnabled")((key: string) => Effect.succeed(key));'), false],
+      ["permits test modules", untracedGen, false, `${reservations}/load-reservation.test.ts`],
+      ["permits test-utils modules", untracedGen, false, `${reservations}/load-reservation.test-utils.ts`],
+      ["permits generated modules", untracedGen, false, generated],
+      ["permits modules outside Workspace", untracedGen, false, "apps/dhw/src/load-reservation.ts"],
     ],
   },
   {
@@ -139,5 +172,20 @@ for (const { name, diagnostic, module, cases } of rules) {
     });
   }
 }
+
+test("prefer-effect-fn emits exactly one diagnostic for a named Effect.fn arrow with three trailing transforms", () => {
+  const result = lintModule(
+    "apps/deskohub-workspace/features/reservation/load-reservation.ts",
+    traced(gen, threeTransforms)
+  );
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+  expect(
+    output.split("Define Effect generator functions with Effect.fn").length - 1
+  ).toBe(1);
+  expect(
+    output.split("declare the generator function directly").length - 1
+  ).toBe(0);
+  expect(result.exitCode).toBe(1);
+});
 
 afterAll(() => rmSync(fixtureRoot, { recursive: true, force: true }));

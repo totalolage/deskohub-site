@@ -39,18 +39,19 @@ const acquireTransactionLock = (
     catch: toSqlError,
   });
 
-const releaseTransactionLock = (client: PostgresAdvisoryLockClient) =>
-  Effect.gen(function* () {
-    const rollback = yield* Effect.result(
-      Effect.tryPromise({
-        try: () => client.query(rollbackSql),
-        catch: toSqlError,
-      })
-    );
-    yield* Effect.sync(() =>
-      client.release(Result.isFailure(rollback) ? rollback.failure : undefined)
-    );
-  });
+const releaseTransactionLock = Effect.fn(function* (
+  client: PostgresAdvisoryLockClient
+) {
+  const rollback = yield* Effect.result(
+    Effect.tryPromise({
+      try: () => client.query(rollbackSql),
+      catch: toSqlError,
+    })
+  );
+  yield* Effect.sync(() =>
+    client.release(Result.isFailure(rollback) ? rollback.failure : undefined)
+  );
+});
 
 const advisoryLockSemaphores = new WeakMap<Pool, Semaphore.Semaphore>();
 const advisoryLockPoolCapacityError = new SqlError.SqlError({

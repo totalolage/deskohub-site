@@ -43,6 +43,7 @@ import {
   assertPaymentTerminalPath,
   getPaymentTerminalScenarios,
 } from "./payment-terminal";
+import { makeReservationLinkE2ECases } from "./reservation-links";
 import { assertReservationReplacement } from "./reservation-reuse";
 
 export type WorkspaceE2EPreparation = {
@@ -309,6 +310,16 @@ export const makeWorkspaceE2ECases = ({
 
       cases.push(
         ...(yield* makeMeetingRoomE2ECases({
+          config,
+          datasourceConfig,
+          flowStates,
+          preparation: preparation.meetingRoom,
+          run,
+        }))
+      );
+
+      cases.push(
+        ...(yield* makeReservationLinkE2ECases({
           config,
           datasourceConfig,
           flowStates,

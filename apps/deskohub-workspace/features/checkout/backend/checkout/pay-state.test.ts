@@ -250,6 +250,41 @@ describe("Pay URL state", () => {
     );
   });
 
+  test("round-trips a requested discount code without an applied pair", () => {
+    const requestedCode = Schema.decodeUnknownSync(
+      canonicalPromotionCodeSchema
+    )("CAMPAIGN10");
+    const state = buildState({ requestedDiscountCode: requestedCode });
+    const token = seal(state);
+    const opened = runSync(
+      openPayState(token, { keys: [fixedKey], now: () => fixedNow })
+    );
+
+    expect(opened).toEqual(state);
+    expect(opened.requestedDiscountCode).toBe(requestedCode);
+    expect(opened.submittedCode).toBeUndefined();
+    expect(opened.submittedCodeDiscountId).toBeUndefined();
+    expect(token).not.toContain("CAMPAIGN10");
+  });
+
+  test("keeps requested discount code independent of the applied-code pair invariant", () => {
+    const requestedCode = Schema.decodeUnknownSync(
+      canonicalPromotionCodeSchema
+    )("CAMPAIGN10");
+    const stateWithRequestOnly = {
+      ...buildState(),
+      requestedDiscountCode: requestedCode,
+    };
+
+    expect(() => decodeSignedPayState(stateWithRequestOnly)).not.toThrow();
+    expect(() =>
+      decodeSignedPayState({
+        ...buildState(),
+        submittedCode: canonicalCode,
+      })
+    ).toThrow('at ["submittedCodeDiscountId"]');
+  });
+
   test("rejects tampered ciphertext", () => {
     const token = tamperCiphertext(seal());
 

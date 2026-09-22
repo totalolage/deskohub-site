@@ -355,6 +355,23 @@ export const scrollBrowserElementIntoView = (
   ).pipe(Effect.asVoid);
 };
 
+export const captureBrowserScreenshot = (
+  run: Runner,
+  session: string,
+  path: string,
+  options: { readonly timeoutMs: number }
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "capture browser screenshot",
+    run,
+    session,
+    ["screenshot", path],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs,
+    }
+  ).pipe(Effect.asVoid);
+
 export const pressBrowserKey = (
   run: Runner,
   session: string,

@@ -15,6 +15,7 @@ import type { MeetingRoomReservationQuote } from "@/features/checkout/reservatio
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
+import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
@@ -31,12 +32,14 @@ export type PreparedMeetingRoomAdvertisement = PayStateSubmittedCodeMetadata & {
   readonly advertisedQuote: MeetingRoomReservationQuote;
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 };
 
 export type PreparedMeetingRoomPayState = PayStateSubmittedCodeMetadata & {
   readonly kind: "meeting-room";
   readonly reservation: NormalizedMeetingRoomReservationOrder;
   readonly quote: MeetingRoomReservationQuote;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 };
 
 export const prepareMeetingRoomAdvertisement = Effect.fn(
@@ -87,6 +90,7 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
     ...getSubmittedCodeMetadata(affirmed),
+    requestedDiscountCode: state.requestedDiscountCode ?? state.submittedCode,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getMeetingRoomCheckoutSummary(state.quote),

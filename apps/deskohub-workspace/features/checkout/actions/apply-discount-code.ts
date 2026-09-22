@@ -52,6 +52,10 @@ export async function applyDiscountCodeForm(
     redirect(result.data.freshPayUrl, RedirectType.replace);
   }
 
+  if (result.data?.status === "unavailable" && result.data.freshPayUrl) {
+    redirect(result.data.freshPayUrl, RedirectType.replace);
+  }
+
   redirect(
     buildCheckoutPayPathFromToken(locale, payStateToken, {
       discountCodeError: "unavailable",

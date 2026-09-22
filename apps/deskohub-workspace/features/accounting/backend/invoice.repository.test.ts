@@ -8,7 +8,9 @@ const readRepository = () =>
 describe("invoice repository persistence contract", () => {
   test("locks the reservation and rechecks idempotency before numbering", async () => {
     const source = await readRepository();
-    const transaction = source.slice(source.indexOf("db.transaction((tx)"));
+    const transactionStart = source.indexOf("db.transaction(");
+    expect(transactionStart).toBeGreaterThan(-1);
+    const transaction = source.slice(transactionStart);
     const rowLock = transaction.indexOf('.for("update")');
     const existingLookup = transaction.indexOf("const [existing]");
     const counterAllocation = transaction.indexOf(

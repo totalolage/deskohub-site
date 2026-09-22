@@ -28,6 +28,7 @@ export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
     const state = yield* buildAdvertisedPriceState({
       ...advertised,
       locale: input.locale,
+      requestedDiscountCode: input.submittedCode,
     });
     const advertisedPriceToken = yield* sealAdvertisedPriceState(state);
     const summary = Match.value(advertised).pipe(

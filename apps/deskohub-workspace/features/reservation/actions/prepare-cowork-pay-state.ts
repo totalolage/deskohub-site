@@ -13,6 +13,7 @@ import type { CoworkReservationQuote } from "@/features/checkout/reservation-quo
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
+import type { CanonicalPromotionCode } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
@@ -29,12 +30,14 @@ export type PreparedCoworkAdvertisement = PayStateSubmittedCodeMetadata & {
   readonly advertisedQuote: CoworkReservationQuote;
   readonly discountQuote: AffirmedDiscountAdvertisementQuote;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 };
 
 export type PreparedCoworkPayState = PayStateSubmittedCodeMetadata & {
   readonly kind: "cowork";
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: CoworkReservationQuote;
+  readonly requestedDiscountCode?: CanonicalPromotionCode;
 };
 
 export const prepareCoworkAdvertisement = Effect.fn(
@@ -84,6 +87,7 @@ export const prepareCoworkAdvertisement = Effect.fn(
     advertisedQuote: state.quote,
     discountQuote: affirmed.discountQuote,
     ...getSubmittedCodeMetadata(affirmed),
+    requestedDiscountCode: state.requestedDiscountCode ?? state.submittedCode,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
         getCoworkCheckoutSummary(state.reservation.details, state.quote),

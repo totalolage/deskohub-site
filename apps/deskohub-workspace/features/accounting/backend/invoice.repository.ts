@@ -328,8 +328,8 @@ export class InvoiceRepository extends Context.Service<
           )
         );
 
-        const outcome = yield* db.transaction((tx) =>
-          Effect.gen(function* () {
+        const outcome = yield* db.transaction(
+          Effect.fn(function* (tx) {
             const [locked] = yield* tx
               .select({
                 reservationId: workspaceReservations.id,
@@ -568,8 +568,8 @@ export class InvoiceRepository extends Context.Service<
           });
         }
 
-        const outcome = yield* db.transaction((tx) =>
-          Effect.gen(function* () {
+        const outcome = yield* db.transaction(
+          Effect.fn(function* (tx) {
             yield* tx.execute(
               sql`select pg_advisory_xact_lock(hashtext(${normalized.invoiceId}))`
             );

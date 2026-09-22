@@ -4,6 +4,7 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import {
+  canonicalPromotionCodeSchema,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
 } from "@/features/discounts/contracts";
@@ -150,5 +151,60 @@ describe("buildAdvertisedPrice", () => {
     expect(JSON.stringify(result)).not.toMatch(
       /providerNamespace|providerReference|calendarId|eventReference|storedDiscountId|operatorTitle|dotyposCustomerId|submittedCode/
     );
+  });
+
+  test("seals a requested discount code even when the preview cannot apply it", async () => {
+    const submittedCode = Schema.decodeUnknownSync(
+      canonicalPromotionCodeSchema
+    )("CAMPAIGN10");
+    const quoteAdvertisement = mock((request) =>
+      buildCoworkReservationQuote(request.reservation.details).pipe(
+        Effect.map((quote) => ({
+          kind: "cowork" as const,
+          reservation: request.reservation,
+          quote,
+        }))
+      )
+    );
+    const input = {
+      locale: "en-US" as const,
+      submittedCode,
+      reservation: {
+        kind: "cowork" as const,
+        details: {
+          kind: "cowork" as const,
+          entryTier: "basic" as const,
+          coffee: true,
+          date: "2026-07-30",
+        },
+      },
+    };
+
+    const result = await buildAdvertisedPrice(input).pipe(
+      Effect.provide(
+        Layer.merge(
+          CheckoutPricingServiceMock({ quoteAdvertisement }),
+          OfficeReservationFeatureFlagService.Default.pipe(
+            Layer.provide(
+              WorkspaceFeatureFlagServiceMock({
+                isEnabled: () => Effect.succeed(false),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+    const state = await openAdvertisedPriceState(
+      result.advertisedPriceToken
+    ).pipe(Effect.runPromise);
+
+    expect(quoteAdvertisement).toHaveBeenCalledWith(
+      expect.objectContaining({ submittedCode })
+    );
+    expect(state.requestedDiscountCode).toBe(submittedCode);
+    expect(state.submittedCode).toBeUndefined();
+    expect(state.submittedCodeDiscountId).toBeUndefined();
+    expect(JSON.stringify(result)).not.toContain("CAMPAIGN10");
   });
 });
