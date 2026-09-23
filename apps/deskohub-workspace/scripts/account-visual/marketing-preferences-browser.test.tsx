@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import {
   access,
   constants,
@@ -806,6 +806,140 @@ test.serial(
       if (child !== undefined && exitPromise !== undefined) {
         await terminateProbeChild(child, exitPromise);
       }
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+type StalledFixtureChildOptions = {
+  readonly exitSettles: boolean;
+};
+
+type StalledFixtureChild = {
+  readonly exited: Promise<number>;
+  readonly kill: (_signal?: string) => undefined;
+  readonly killed: boolean;
+  readonly pid: number;
+  readonly stdout: ReadableStream<Uint8Array>;
+};
+
+const withStalledFixtureChild = async <T,>(
+  options: StalledFixtureChildOptions,
+  check: (context: { readonly killCalls: () => number }) => Promise<T>
+): Promise<T> => {
+  const kill = mock((_signal?: string) => undefined);
+  const exitPromise: Promise<number> = options.exitSettles
+    ? Promise.resolve(137)
+    : new Promise(() => {});
+  const stdout = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (!options.exitSettles) controller.close();
+    },
+  });
+  const stalledChild: StalledFixtureChild = {
+    exited: exitPromise,
+    kill,
+    killed: false,
+    pid: 424242,
+    stdout,
+  };
+  const fakeChild: Bun.Subprocess = stalledChild as Bun.Subprocess;
+  const spawn = spyOn(Bun, "spawn").mockImplementation(() => fakeChild);
+  try {
+    return await check({ killCalls: () => kill.mock.calls.length });
+  } finally {
+    spawn.mockRestore();
+  }
+};
+
+const settleWithin = async <T,>(
+  promise: Promise<T>,
+  budgetMs: number
+): Promise<T | "budget-exceeded"> => {
+  let budgetTimer: ReturnType<typeof setNativeTimeout> | undefined;
+  const budget = new Promise<"budget-exceeded">((resolve) => {
+    budgetTimer = setNativeTimeout(() => resolve("budget-exceeded"), budgetMs);
+  });
+  try {
+    return await Promise.race([promise, budget]);
+  } finally {
+    if (budgetTimer !== undefined) clearNativeTimeout(budgetTimer);
+  }
+};
+
+test.serial(
+  "rejects a deadline kill even when the child exit never settles",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-exit-stall-")
+    );
+    try {
+      await withStalledFixtureChild(
+        { exitSettles: false },
+        async ({ killCalls }) => {
+          const outcome = await settleWithin(
+            compileMarketingPreferencesFixture({
+              appRoot,
+              outputDirectory: join(directory, "output"),
+              terminationGraceMs: 20,
+              timeoutMs: 1,
+            }).then(
+              () => ({ kind: "fulfilled" }) as const,
+              (cause) => ({
+                kind: "rejected" as const,
+                message: errorMessage(cause),
+              })
+            ),
+            5_000
+          );
+          expect(outcome).toEqual({
+            kind: "rejected",
+            message: "Marketing preferences fixture child timed out after 1ms",
+          });
+          expect(killCalls()).toBe(1);
+        }
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  }
+);
+
+test.serial(
+  "rejects a deadline kill when the child exits but stdout stays open",
+  async () => {
+    await mkdir(artifactRoot, { recursive: true });
+    const directory = await mkdtemp(
+      join(artifactRoot, "marketing-preferences-stdout-stall-")
+    );
+    try {
+      await withStalledFixtureChild(
+        { exitSettles: true },
+        async ({ killCalls }) => {
+          const outcome = await settleWithin(
+            compileMarketingPreferencesFixture({
+              appRoot,
+              outputDirectory: join(directory, "output"),
+              terminationGraceMs: 20,
+              timeoutMs: 1,
+            }).then(
+              () => ({ kind: "fulfilled" }) as const,
+              (cause) => ({
+                kind: "rejected" as const,
+                message: errorMessage(cause),
+              })
+            ),
+            5_000
+          );
+          expect(outcome).toEqual({
+            kind: "rejected",
+            message: "Marketing preferences fixture child timed out after 1ms",
+          });
+          expect(killCalls()).toBe(1);
+        }
+      );
+    } finally {
       await rm(directory, { force: true, recursive: true });
     }
   }

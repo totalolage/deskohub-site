@@ -48,6 +48,7 @@ type BuildResult = {
 type MarketingPreferencesFixtureOptions = {
   readonly appRoot: string;
   readonly outputDirectory: string;
+  readonly terminationGraceMs?: number;
 };
 
 type SchedulerEvidence = {
@@ -2072,6 +2073,10 @@ const runMarketingPreferencesBrowserFixture = async ({
 
 const maxFixtureStdoutBytes = 64 * 1024;
 const defaultFixtureTimeoutMs = 60_000;
+// Bounded wait for a SIGKILLed fixture child to settle after the deadline
+// kill. Prompt deaths resolve in milliseconds; this only caps a wedged
+// child under extreme runner load.
+const defaultTerminationGraceMs = 30_000;
 
 const isWithin = (parent: string, child: string): boolean => {
   const childRelative = relative(parent, child);
@@ -2427,11 +2432,13 @@ const runBoundedFixtureChild = async ({
   args,
   cwd,
   messages,
+  terminationGraceMs,
   timeoutMs,
 }: {
   readonly args: readonly string[];
   readonly cwd: string;
   readonly messages: FixtureChildMessages;
+  readonly terminationGraceMs?: number;
   readonly timeoutMs: number;
 }): Promise<FixtureChildResult> => {
   if (!Number.isFinite(timeoutMs) || timeoutMs < 0) {
@@ -2461,9 +2468,34 @@ const runBoundedFixtureChild = async ({
     await terminateFixtureChild(child, exitPromise);
   };
   let timedOut = false;
+  type DeadlineOutcome = { readonly kind: "grace-expired" | "terminated" };
+  // One stable deferred created before the race; the deadline callbacks
+  // resolve THIS promise. The promise object registered with the race must
+  // never be replaced, or the grace path never participates.
+  let resolveDeadlineOutcome!: (outcome: DeadlineOutcome) => void;
+  const deadlineOutcome = new Promise<DeadlineOutcome>((resolve) => {
+    resolveDeadlineOutcome = resolve;
+  });
+  const graceTimers: ReturnType<typeof setNativeTimeout>[] = [];
+  const graceBudgetMs = terminationGraceMs ?? defaultTerminationGraceMs;
   const timer = setNativeTimeout(() => {
     timedOut = true;
-    void terminate();
+    // Termination is awaited with a bounded grace: a SIGKILLed child dies
+    // immediately in practice, but a wedged child under extreme runner
+    // load must not hold the parent past the caller's own test budget.
+    const exitOutcome = terminate().then<DeadlineOutcome>(() => ({
+      kind: "terminated",
+    }));
+    const graceTimer = setNativeTimeout(() => {
+      resolveDeadlineOutcome({ kind: "grace-expired" });
+    }, graceBudgetMs);
+    graceTimers.push(graceTimer);
+    // terminate() never rejects (kill failures are swallowed); attaching
+    // this handler keeps the abandoned exit outcome rejection-free.
+    void exitOutcome.then((value) => {
+      clearNativeTimeout(graceTimer);
+      resolveDeadlineOutcome(value);
+    });
   }, timeoutMs);
   if (!(child.stdout instanceof ReadableStream)) {
     clearNativeTimeout(timer);
@@ -2474,13 +2506,20 @@ const runBoundedFixtureChild = async ({
     await terminate();
     throw error;
   });
-  const [stdoutResult, exitResult] = await Promise.allSettled([
-    stdoutPromise,
-    exitPromise,
+  const childSettled = await Promise.race([
+    Promise.allSettled([stdoutPromise, exitPromise]).then((results) => ({
+      kind: "child-settled" as const,
+      results,
+    })),
+    deadlineOutcome,
   ]);
+  for (const graceTimer of graceTimers) clearNativeTimeout(graceTimer);
   clearNativeTimeout(timer);
 
-  if (timedOut) throw new Error(messages.timeout(timeoutMs));
+  if (timedOut || childSettled.kind !== "child-settled") {
+    throw new Error(messages.timeout(timeoutMs));
+  }
+  const [stdoutResult, exitResult] = childSettled.results;
   if (stdoutResult.status === "rejected") {
     throw new Error(messages.stdoutFailed);
   }
@@ -2494,6 +2533,7 @@ const runBoundedFixtureChild = async ({
 export async function compileMarketingPreferencesFixture({
   appRoot,
   outputDirectory,
+  terminationGraceMs,
   timeoutMs,
 }: MarketingPreferencesFixtureOptions & {
   readonly timeoutMs?: number;
@@ -2513,6 +2553,7 @@ export async function compileMarketingPreferencesFixture({
         `Marketing preferences fixture child timed out after ${duration}ms`,
     },
     timeoutMs: deadline,
+    terminationGraceMs,
   });
 
   let message: FixtureMessage;
@@ -2548,6 +2589,7 @@ const defaultBrowserFixtureTimeoutMs = 480_000;
 export async function verifyMarketingPreferencesBrowserFixture({
   appRoot,
   outputDirectory,
+  terminationGraceMs,
   timeoutMs,
 }: MarketingPreferencesBrowserFixtureOptions): Promise<MarketingPreferencesBrowserFixture> {
   const deadline = timeoutMs ?? defaultBrowserFixtureTimeoutMs;
@@ -2571,6 +2613,7 @@ export async function verifyMarketingPreferencesBrowserFixture({
         `Marketing preferences browser child timed out after ${duration}ms`,
     },
     timeoutMs: deadline,
+    terminationGraceMs,
   });
 
   let message: BrowserMessage;
