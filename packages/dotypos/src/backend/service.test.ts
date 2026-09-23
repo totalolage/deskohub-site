@@ -602,6 +602,128 @@ describe("DotyposService customer lookup", () => {
     });
   });
 
+  test("finds an active exact-email match on a later page behind a full first page of deleted customers", async () => {
+    const active = customer({ id: "active-match", email: "ada@example.com" });
+    const firstPageDeleted = Array.from({ length: 100 }, (_, index) =>
+      customer({
+        id: `deleted-${index}`,
+        email: "ada@example.com",
+        deleted: true,
+      })
+    );
+    const requestedPages: (string | null)[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        const page = url.searchParams.get("page");
+        requestedPages.push(page);
+        return page === "2"
+          ? Response.json({ data: [active], nextPage: null })
+          : Response.json({ data: firstPageDeleted, nextPage: "2" });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findCustomer(
+          { firstName: "Ada", email: "ada@example.com" },
+          { lookupFields: ["email"] }
+        );
+      }),
+      fetchMock
+    );
+
+    expect(requestedPages).toEqual(["1", "2"]);
+    expect(result).toEqual({
+      _tag: "Matched",
+      customer: active,
+      matches: [active],
+    });
+  });
+
+  test("reports ambiguity when exact-email matches span two pages", async () => {
+    const first = customer({
+      id: "first-page-match",
+      email: "ada@example.com",
+    });
+    const second = customer({
+      id: "second-page-match",
+      email: "ada@example.com",
+    });
+    const requestedPages: (string | null)[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        const page = url.searchParams.get("page");
+        requestedPages.push(page);
+        return page === "2"
+          ? Response.json({ data: [second], nextPage: null })
+          : Response.json({ data: [first], nextPage: "2" });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findCustomer(
+          { firstName: "Ada", email: "ada@example.com" },
+          { lookupFields: ["email"] }
+        );
+      }),
+      fetchMock
+    );
+
+    expect(requestedPages).toEqual(["1", "2"]);
+    expect(result).toEqual({
+      _tag: "Ambiguous",
+      matches: [first, second],
+    });
+  });
+
+  test("fails closed when a later customer lookup page errors", async () => {
+    const first = customer({
+      id: "first-page-match",
+      email: "ada@example.com",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return url.searchParams.get("page") === "2"
+          ? Response.json(
+              { error: "server", error_description: "Server error", code: 500 },
+              { status: 500 }
+            )
+          : Response.json({ data: [first], nextPage: "2" });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .findCustomer(
+            { firstName: "Ada", email: "ada@example.com" },
+            { lookupFields: ["email"] }
+          )
+          .pipe(Effect.flip);
+      }),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "ExternalAPIError",
+      service: "Dotypos",
+      statusCode: 500,
+    });
+  });
+
   test("keeps findOrCreateCustomer creating a fresh customer when only deleted exact-email matches exist", async () => {
     const deleted = customer({
       id: "deleted-match",

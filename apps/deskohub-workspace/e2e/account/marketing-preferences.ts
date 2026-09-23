@@ -840,6 +840,29 @@ const requireUnavailablePreference = async (page: Page): Promise<Locator> => {
   return section;
 };
 
+/**
+ * Decides whether the rendered role=alert texts satisfy the replayed-link
+ * rejection state. The Next.js route announcer is itself a role=alert
+ * element (empty between navigations), so the only page-wide alerts allowed
+ * beside the one rejection alert inside the pending section are empty
+ * announcer alerts; any other alert text fails the check.
+ */
+export const matchesRejectedReplayAlerts = (
+  rejectionAlertTexts: readonly string[],
+  pageAlertTexts: readonly string[]
+): boolean =>
+  rejectionAlertTexts.length === 1 &&
+  (rejectionAlertTexts[0]?.includes(invalidMarketingManagementActionMessage) ??
+    false) &&
+  pageAlertTexts.filter((text) =>
+    text.includes(invalidMarketingManagementActionMessage)
+  ).length === 1 &&
+  pageAlertTexts.every(
+    (text) =>
+      text.length === 0 ||
+      text.includes(invalidMarketingManagementActionMessage)
+  );
+
 const requireRejectedReplayPreference = async (page: Page): Promise<void> => {
   const section = await requirePendingPreference(page);
   await expect(
@@ -847,14 +870,28 @@ const requireRejectedReplayPreference = async (page: Page): Promise<void> => {
       '[data-marketing-preferences-source="account"], [data-marketing-preferences-source="link"]'
     )
   ).toHaveCount(0);
-  await expect(page.getByRole("alert")).toHaveCount(1, {
+
+  // The rejection feedback renders inside the pending section; the Next.js
+  // route announcer is a separate role=alert outside it. Await the scoped
+  // alert with bounded locator assertions before reading the page-wide
+  // alert invariant below.
+  const rejectionAlerts = section.getByRole("alert");
+  await expect(rejectionAlerts).toHaveCount(1, {
     timeout: workspaceE2ETimeouts.uiTransition,
   });
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(rejectionAlerts).toContainText(
     invalidMarketingManagementActionMessage,
     {
       timeout: workspaceE2ETimeouts.uiTransition,
     }
+  );
+  const [rejectionAlertTexts, pageAlertTexts] = await Promise.all([
+    rejectionAlerts.allTextContents(),
+    page.getByRole("alert").allTextContents(),
+  ]);
+  assert(
+    matchesRejectedReplayAlerts(rejectionAlertTexts, pageAlertTexts),
+    "The replayed marketing management link rejection alert did not render"
   );
   await expect(section.locator("form")).toHaveCount(0);
   await expect(section.getByRole("switch", { exact: true })).toHaveCount(0);

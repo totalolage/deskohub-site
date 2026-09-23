@@ -886,24 +886,29 @@ const makeDotyposService = Effect.gen(function* () {
             "deleted|in|0,1",
           ].join(";");
 
-          const customers = yield* runDotyposRequest(
-            client
-              .getCustomers(config.cloudId, {
-                params: { limit: 100, filter },
-              })
-              .pipe(Effect.map((page) => [...(page.data ?? [])])),
-            "searchCustomers"
-          ).pipe(
-            Effect.catchTag("ExternalAPIError", (error) =>
-              error.statusCode === 404 ? Effect.succeed([]) : Effect.fail(error)
-            ),
-            Effect.retry(retryPolicy)
-          );
-          return yield* decodeProviderEntities(
-            DotyposCustomerSchema,
-            customers,
-            "searchCustomers"
-          );
+          return yield* loadAllDotyposPages({
+            loadPage: (page) =>
+              runDotyposRequest(
+                client.getCustomers(config.cloudId, {
+                  params: { limit: 100, page, filter },
+                }),
+                "searchCustomers"
+              ).pipe(
+                Effect.catchTag("ExternalAPIError", (error) =>
+                  page === 1 && error.statusCode === 404
+                    ? Effect.succeed({ data: [] as const })
+                    : Effect.fail(error)
+                ),
+                Effect.flatMap((result) =>
+                  decodeProviderPage(
+                    DotyposCustomerSchema,
+                    result,
+                    "searchCustomers"
+                  )
+                )
+              ),
+            operation: "searchCustomers",
+          }).pipe(Effect.retry(retryPolicy));
         });
 
       const lookupFields = options?.lookupFields ?? defaultCustomerLookupFields;

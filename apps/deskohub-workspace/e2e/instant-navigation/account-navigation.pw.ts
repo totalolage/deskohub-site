@@ -16,6 +16,12 @@ const accountStatusName = "My account | Deskohub Workspace";
 const signInHeading = "Sign in or create an account";
 const signInLoadingName = "Loading sign-in…";
 
+if (process.env.WORKSPACE_E2E_BASE_URL === undefined) {
+  throw new Error(
+    "WORKSPACE_E2E_BASE_URL must be configured for account navigation tests"
+  );
+}
+
 type AccountNavigationOptions = {
   readonly verifySignInHandoff?: boolean;
 };
@@ -25,11 +31,6 @@ test.beforeEach(async ({ baseURL, context }) => {
 });
 
 test.describe("client navigation", () => {
-  test.skip(
-    process.env.WORKSPACE_E2E_BASE_URL === undefined,
-    "Next.js link prefetching is disabled in development"
-  );
-
   test("streams the account loading shell before redirecting an anonymous client", async ({
     baseURL,
     page,

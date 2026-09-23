@@ -10,6 +10,7 @@ import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
   classifyWorkspaceE2EMarketingConsentPersistence,
   makeWorkspaceE2EMarketingPreferencesSeedRow,
+  matchesRejectedReplayAlerts,
   navigateAuthenticatedWorkspaceE2EMarketingPreferences,
   navigateWorkspaceE2EMarketingPreferences,
   runWorkspaceE2EMarketingBrowserOperation,
@@ -32,6 +33,8 @@ const linkTokenHash = createHash("sha256")
 const now = Temporal.Instant.from("2030-01-01T03:04:05Z");
 const browserFailureMessage =
   "Marketing preferences browser verification failed";
+const invalidMarketingManagementActionMessage =
+  "This marketing management link is invalid or has expired.";
 
 type GotoOptions = Parameters<Page["goto"]>[1];
 
@@ -1223,6 +1226,85 @@ describe("workspace marketing preferences helper", () => {
     expect(screenshotCallIds).toHaveLength(expectedScreenshotCallIds.length);
     expect([...screenshotCallIds].sort()).toEqual(
       [...expectedScreenshotCallIds].sort()
+    );
+  });
+
+  test("accepts the real rejection DOM: scoped alert plus the empty route announcer", () => {
+    // The Next.js route announcer is itself a role=alert element and stays
+    // empty between navigations, so a correct rejection renders TWO alerts:
+    // the form's scoped alert carrying the invalid-link message, plus the
+    // empty announcer. Observed directly in the hosted failure snapshot
+    // (single empty `alert` row on a page with no error state).
+    expect(
+      matchesRejectedReplayAlerts(
+        [invalidMarketingManagementActionMessage],
+        [invalidMarketingManagementActionMessage, ""]
+      )
+    ).toBe(true);
+    expect(
+      matchesRejectedReplayAlerts(
+        [invalidMarketingManagementActionMessage],
+        [invalidMarketingManagementActionMessage]
+      )
+    ).toBe(true);
+  });
+
+  test("rejects a page with no invalid-link alert", () => {
+    expect(matchesRejectedReplayAlerts([], [""])).toBe(false);
+    expect(matchesRejectedReplayAlerts([], [])).toBe(false);
+  });
+
+  test("rejects a rejection message rendered outside the pending section", () => {
+    expect(
+      matchesRejectedReplayAlerts([], [invalidMarketingManagementActionMessage])
+    ).toBe(false);
+  });
+
+  test("rejects a page where the invalid-link alert renders more than once", () => {
+    expect(
+      matchesRejectedReplayAlerts(
+        [invalidMarketingManagementActionMessage],
+        [
+          invalidMarketingManagementActionMessage,
+          invalidMarketingManagementActionMessage,
+        ]
+      )
+    ).toBe(false);
+  });
+
+  test("rejects an additional nonempty application alert beside the rejection message", () => {
+    expect(
+      matchesRejectedReplayAlerts(
+        [invalidMarketingManagementActionMessage],
+        [
+          invalidMarketingManagementActionMessage,
+          "An unexpected application error occurred",
+        ]
+      )
+    ).toBe(false);
+  });
+
+  test("waits for the rejection alert inside the pending section with bounded locator assertions", async () => {
+    const source = await Bun.file(
+      new URL("./marketing-preferences.ts", import.meta.url)
+    ).text();
+    const rejectionAt = source.indexOf("const requireRejectedReplayPreference");
+    const rejection = source.slice(
+      rejectionAt,
+      source.indexOf("const sessionTokenHashes", rejectionAt)
+    );
+
+    expect(rejectionAt).toBeGreaterThan(-1);
+    // The rejection feedback must be awaited inside the pending section with
+    // the timeout-backed locator assertions; the page-wide text read is only
+    // the supplementary announcer invariant after that wait settles.
+    expect(rejection).toContain('section.getByRole("alert")');
+    expect(rejection).toContain("toHaveCount(1");
+    expect(rejection).toContain("toContainText(");
+    expect(rejection).toContain("invalidMarketingManagementActionMessage,");
+    expect(rejection).toContain("workspaceE2ETimeouts.uiTransition");
+    expect(rejection).toContain(
+      "matchesRejectedReplayAlerts(rejectionAlertTexts, pageAlertTexts)"
     );
   });
 
