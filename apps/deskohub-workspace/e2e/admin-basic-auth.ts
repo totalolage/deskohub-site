@@ -41,3 +41,36 @@ export const makeWorkspaceE2EAdminCredential = (
   addRedaction(authorization, true);
   return { authorization, password, username };
 };
+
+export interface InstantNavigationAdminCredential {
+  readonly password: string;
+  readonly username: string;
+}
+
+/**
+ * Resolves the admin Basic auth credentials for the admin instant-navigation
+ * case. A remote preview target must use the runner-owned
+ * `WORKSPACE_E2E_ADMIN_BASIC_AUTH` pair and fails closed when it is absent or
+ * unparseable; only local execution may fall back to the synthetic
+ * development credentials.
+ */
+export const resolveInstantNavigationAdminCredentials = (input: {
+  readonly adminBasicAuthPair: string | undefined;
+  readonly localCredentials: InstantNavigationAdminCredential;
+  readonly remoteBaseUrl: boolean;
+}): InstantNavigationAdminCredential => {
+  if (input.adminBasicAuthPair === undefined) {
+    if (input.remoteBaseUrl) {
+      throw workspaceE2EError(
+        "WORKSPACE_E2E_ADMIN_BASIC_AUTH must be provisioned as a username:password pair before running the admin instant-navigation case against a remote preview.",
+        {
+          operation:
+            "resolve the admin instant-navigation Basic auth credential",
+        }
+      );
+    }
+    return input.localCredentials;
+  }
+  const credential = makeWorkspaceE2EAdminCredential(input.adminBasicAuthPair);
+  return { password: credential.password, username: credential.username };
+};

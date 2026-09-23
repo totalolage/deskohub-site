@@ -90,6 +90,15 @@ const validTargets = [
     fullPage: true,
   },
   {
+    filename: "linked-reservations-mobile.png",
+    path: "/en-US/account",
+    query: "",
+    queries: privateLinkedAccountQueries,
+    target: "linked-reservations-mobile",
+    viewport: { height: 900, width: 375 },
+    fullPage: true,
+  },
+  {
     filename: "linked-profile-desktop.png",
     path: "/en-US/account",
     query: "",
@@ -105,6 +114,15 @@ const validTargets = [
     queries: privateLinkedAccountQueries,
     target: "linked-billing-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-billing-mobile.png",
+    path: "/en-US/account",
+    query: "",
+    queries: privateLinkedAccountQueries,
+    target: "linked-billing-mobile",
+    viewport: { height: 900, width: 375 },
     fullPage: true,
   },
   {
@@ -218,6 +236,15 @@ const validTargets = [
     queries: privateLinkedAccountQueries,
     target: "linked-danger-desktop",
     viewport: { height: 1000, width: 1440 },
+    fullPage: true,
+  },
+  {
+    filename: "linked-danger-mobile.png",
+    path: "/en-US/account",
+    query: "",
+    queries: privateLinkedAccountQueries,
+    target: "linked-danger-mobile",
+    viewport: { height: 900, width: 375 },
     fullPage: true,
   },
   {
@@ -704,6 +731,21 @@ describe("account review screenshot capture", () => {
       name: "linked account with an unknown section query",
       target: "linked-profile-desktop",
       url: `${baseUrl}/en-US/account?section=unknown`,
+    },
+    {
+      name: "a mobile linked account with a credential query",
+      target: "linked-reservations-mobile",
+      url: `${baseUrl}/en-US/account?token=synthetic-secret-token`,
+    },
+    {
+      name: "a mobile linked account with an extra query parameter",
+      target: "linked-billing-mobile",
+      url: `${baseUrl}/en-US/account?section=billing&view=private`,
+    },
+    {
+      name: "a mobile linked account with a hash",
+      target: "linked-danger-mobile",
+      url: `${baseUrl}/en-US/account#review-state`,
     },
     {
       name: "a callback failure query with a malformed attempt parameter",

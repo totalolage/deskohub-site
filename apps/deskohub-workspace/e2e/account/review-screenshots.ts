@@ -16,8 +16,10 @@ export type AccountReviewTarget =
   | "callback-loading-desktop"
   | "sign-in-handoff-desktop"
   | "linked-reservations-desktop"
+  | "linked-reservations-mobile"
   | "linked-profile-desktop"
   | "linked-billing-desktop"
+  | "linked-billing-mobile"
   | "linked-legal-desktop"
   | "account-marketing-withdrawn-desktop"
   | "account-marketing-active-mobile"
@@ -32,6 +34,7 @@ export type AccountReviewTarget =
   | "public-legal-desktop"
   | "public-legal-mobile"
   | "linked-danger-desktop"
+  | "linked-danger-mobile"
   | "support-desktop"
   | "sign-in-accepted-desktop"
   | "sign-in-pending-desktop"
@@ -83,6 +86,11 @@ const accountReviewTargetMetadata = {
     path: "/en-US/account",
     viewport: { height: 1000, width: 1440 },
   },
+  "linked-reservations-mobile": {
+    filename: "linked-reservations-mobile.png",
+    path: "/en-US/account",
+    viewport: { height: 900, width: 375 },
+  },
   "linked-profile-desktop": {
     filename: "linked-profile-desktop.png",
     path: "/en-US/account",
@@ -92,6 +100,11 @@ const accountReviewTargetMetadata = {
     filename: "linked-billing-desktop.png",
     path: "/en-US/account",
     viewport: { height: 1000, width: 1440 },
+  },
+  "linked-billing-mobile": {
+    filename: "linked-billing-mobile.png",
+    path: "/en-US/account",
+    viewport: { height: 900, width: 375 },
   },
   "linked-legal-desktop": {
     filename: "linked-legal-desktop.png",
@@ -163,6 +176,11 @@ const accountReviewTargetMetadata = {
     path: "/en-US/account",
     viewport: { height: 1000, width: 1440 },
   },
+  "linked-danger-mobile": {
+    filename: "linked-danger-mobile.png",
+    path: "/en-US/account",
+    viewport: { height: 900, width: 375 },
+  },
   "support-desktop": {
     filename: "support-desktop.png",
     path: "/en-US/account",
@@ -233,9 +251,12 @@ const privateLinkedAccountSections = [
 
 const isPrivateLinkedAccountTarget = (target: ReviewTarget): boolean =>
   target === "linked-reservations-desktop" ||
+  target === "linked-reservations-mobile" ||
   target === "linked-profile-desktop" ||
   target === "linked-billing-desktop" ||
-  target === "linked-danger-desktop";
+  target === "linked-billing-mobile" ||
+  target === "linked-danger-desktop" ||
+  target === "linked-danger-mobile";
 
 const isAllowedPrivateLinkedAccountQuery = (search: string): boolean =>
   search === "" ||

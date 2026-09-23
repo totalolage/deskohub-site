@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   isAdminBasicAuthCredentialPair,
   makeWorkspaceE2EAdminCredential,
+  resolveInstantNavigationAdminCredentials,
 } from "./admin-basic-auth";
 import { makeE2EEnvironment } from "./e2e-env";
 import {
@@ -79,5 +80,54 @@ describe("Workspace E2E admin Basic auth credential", () => {
     expect(
       redact(`leaked ${credential.password} and ${syntheticPair}`)
     ).not.toContain(credential.password);
+  });
+});
+
+describe("admin instant-navigation Basic auth credential resolution", () => {
+  const localCredentials = {
+    password: "local-test-password",
+    username: "admin",
+  } as const;
+
+  test("uses the runner-owned pair when it is provisioned", () => {
+    expect(
+      resolveInstantNavigationAdminCredentials({
+        adminBasicAuthPair: syntheticPair,
+        localCredentials,
+        remoteBaseUrl: true,
+      })
+    ).toEqual({ password: "s3cret-value-with:colons", username: "e2e-admin" });
+  });
+
+  test("fails closed when the runner-owned pair is absent for a remote preview", () => {
+    expect(() =>
+      resolveInstantNavigationAdminCredentials({
+        adminBasicAuthPair: undefined,
+        localCredentials,
+        remoteBaseUrl: true,
+      })
+    ).toThrow("WORKSPACE_E2E_ADMIN_BASIC_AUTH");
+  });
+
+  test("fails closed when the runner-owned pair is unparseable", () => {
+    expect(() =>
+      resolveInstantNavigationAdminCredentials({
+        adminBasicAuthPair: "just-a-password",
+        localCredentials,
+        remoteBaseUrl: true,
+      })
+    ).toThrow(
+      "WORKSPACE_E2E_ADMIN_BASIC_AUTH must be a username:password pair"
+    );
+  });
+
+  test("falls back to the local synthetic credentials only for local execution", () => {
+    expect(
+      resolveInstantNavigationAdminCredentials({
+        adminBasicAuthPair: undefined,
+        localCredentials,
+        remoteBaseUrl: false,
+      })
+    ).toEqual(localCredentials);
   });
 });

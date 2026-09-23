@@ -1,14 +1,31 @@
 import { instant } from "@next/playwright";
 import { expect, test } from "@playwright/test";
 import { workspaceTestAdminCredentials } from "@/shared/testing/workspace-test-environment";
-import { requireBaseUrl } from "./navigation-test-helpers";
+import { resolveInstantNavigationAdminCredentials } from "../admin-basic-auth";
+import { enablePreviewAccess, requireBaseUrl } from "./navigation-test-helpers";
 
-test.use({ httpCredentials: workspaceTestAdminCredentials });
+const remoteBaseUrl = process.env.WORKSPACE_E2E_BASE_URL;
+// Fail closed at collection time when a remote preview is targeted without the
+// runner-owned admin Basic auth pair; local runs keep the synthetic pair.
+const adminCredentials = resolveInstantNavigationAdminCredentials({
+  adminBasicAuthPair: process.env.WORKSPACE_E2E_ADMIN_BASIC_AUTH,
+  localCredentials: workspaceTestAdminCredentials,
+  remoteBaseUrl: remoteBaseUrl !== undefined,
+});
 
-test.skip(
-  process.env.WORKSPACE_E2E_BASE_URL !== undefined,
-  "Local Instant tests use synthetic administration credentials"
-);
+test.use({
+  httpCredentials: {
+    ...adminCredentials,
+    ...(remoteBaseUrl === undefined
+      ? {}
+      : { origin: new URL(remoteBaseUrl).origin }),
+    send: "always",
+  },
+});
+
+test.beforeEach(async ({ baseURL, context }) => {
+  await enablePreviewAccess(context, baseURL);
+});
 
 test("serves the administration shell and granular loading regions", async ({
   baseURL,

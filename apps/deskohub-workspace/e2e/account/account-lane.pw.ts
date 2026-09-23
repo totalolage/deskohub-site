@@ -65,6 +65,15 @@ const accountReviewTargetBySection = {
   legal: "linked-legal-desktop",
   danger: "linked-danger-desktop",
 } as const satisfies Readonly<Record<AccountSection, AccountReviewTarget>>;
+const mobileAccountReviewTargetBySection: Readonly<
+  Record<AccountSection, AccountReviewTarget | undefined>
+> = {
+  reservations: "linked-reservations-mobile",
+  billing: "linked-billing-mobile",
+  danger: "linked-danger-mobile",
+  profile: undefined,
+  legal: undefined,
+};
 const accountReviewCaptureFailureMessage =
   "Account review screenshot capture failed";
 
@@ -261,6 +270,15 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                       accountLane.config.baseUrl,
                       accountReviewTargetBySection[section]
                     );
+                    const mobileTarget =
+                      mobileAccountReviewTargetBySection[section];
+                    if (mobileTarget) {
+                      await captureAccountReview(
+                        page,
+                        accountLane.config.baseUrl,
+                        mobileTarget
+                      );
+                    }
                   }),
               });
             }),
