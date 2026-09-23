@@ -2,6 +2,8 @@ import type * as Playwright from "@playwright/test";
 
 const callbackPath = "/en-US/auth/callback";
 const attemptParamName = "attempt";
+const failureParamName = "error";
+const invalidTokenFailureValue = "INVALID_TOKEN";
 // Canonical lowercase UUIDv4 shape only; production mints the handoff attempt
 // parameter in this exact grammar.
 const canonicalUuidV4Pattern =
@@ -40,4 +42,30 @@ export const isExactCallbackUrl = (
   } catch {
     return false;
   }
+};
+
+/**
+ * The consumed-link failure grammar: the query of the URL Better Auth lands on
+ * when a magic link cannot be verified. The callback URL is the redirect
+ * target verbatim, so the failure parameter rides alongside whatever the
+ * return-window coordination appended — either nothing (plain sign-in links)
+ * or exactly one canonical `attempt` parameter. Any other parameter name,
+ * count, or shape fails closed.
+ */
+export const isCallbackFailureQuery = (search: string): boolean => {
+  let entries: [string, string][];
+  try {
+    entries = [...new URLSearchParams(search).entries()];
+  } catch {
+    return false;
+  }
+  const parameters = new Map(entries);
+  if (parameters.size !== entries.length) return false;
+  if (parameters.get(failureParamName) !== invalidTokenFailureValue)
+    return false;
+  parameters.delete(failureParamName);
+  if (parameters.size === 0) return true;
+  if (parameters.size !== 1) return false;
+  const [name, value] = [...parameters][0] as [string, string];
+  return name === attemptParamName && canonicalUuidV4Pattern.test(value);
 };

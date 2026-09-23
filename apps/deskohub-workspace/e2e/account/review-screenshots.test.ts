@@ -256,6 +256,11 @@ const validTargets = [
     filename: "callback-failed-desktop.png",
     path: "/en-US/auth/callback",
     query: "",
+    queries: [
+      "?error=INVALID_TOKEN",
+      `?attempt=${attemptUuid}&error=INVALID_TOKEN`,
+      `?error=INVALID_TOKEN&attempt=${attemptUuid}`,
+    ],
     target: "callback-failed-desktop",
     viewport: { height: 1000, width: 1440 },
     fullPage: true,
@@ -699,6 +704,26 @@ describe("account review screenshot capture", () => {
       name: "linked account with an unknown section query",
       target: "linked-profile-desktop",
       url: `${baseUrl}/en-US/account?section=unknown`,
+    },
+    {
+      name: "a callback failure query with a malformed attempt parameter",
+      target: "callback-failed-desktop",
+      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=not-a-uuid`,
+    },
+    {
+      name: "a callback failure query with a non-canonical attempt parameter",
+      target: "callback-failed-desktop",
+      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid.toUpperCase()}`,
+    },
+    {
+      name: "a callback failure query with an extra parameter",
+      target: "callback-failed-desktop",
+      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&extra=1`,
+    },
+    {
+      name: "a callback failure query with a duplicated attempt parameter",
+      target: "callback-failed-desktop",
+      url: `${baseUrl}/en-US/auth/callback?error=INVALID_TOKEN&attempt=${attemptUuid}&attempt=${attemptUuid}`,
     },
     {
       name: "a callback query with another parameter",

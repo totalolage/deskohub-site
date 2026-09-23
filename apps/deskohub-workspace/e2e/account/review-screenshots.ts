@@ -5,7 +5,10 @@ import type { WorkspaceReservationId } from "@/features/reservation/persistence-
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { workspaceDir } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { isExactCallbackUrlString } from "./callback-url";
+import {
+  isCallbackFailureQuery,
+  isExactCallbackUrlString,
+} from "./callback-url";
 
 export type AccountReviewTarget =
   | "completion-mobile375x900"
@@ -321,7 +324,7 @@ const validateAccountReviewPage = (
     (target === "callback-loading-desktop" &&
       isExactCallbackUrlString(page.url(), base.origin)) ||
     (target === "callback-failed-desktop" &&
-      pageUrl.search === "?error=INVALID_TOKEN");
+      isCallbackFailureQuery(pageUrl.search));
   const allowedPaths =
     typeof metadata.path === "string" ? [metadata.path] : metadata.path;
   if (
