@@ -317,6 +317,37 @@ describe("marketing preference actions", () => {
     expect(setMarketingManagementSessionCookie).not.toHaveBeenCalled();
   });
 
+  test("reads the pending cookie exactly once for the whole confirm flow", async () => {
+    currentScenario.cookies = { pending: pendingToken, session: undefined };
+
+    await expect(
+      confirmMarketingManagementAction({
+        context: getPendingMarketingManagementContext(pendingToken),
+      })
+    ).resolves.toEqual({ data: { status: "confirmed" } });
+
+    expect(readMarketingManagementCookies).toHaveBeenCalledTimes(1);
+    expect(currentScenario.exchange).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails closed on an already-exchanged pending token without installing a session", async () => {
+    currentScenario.cookies = { pending: pendingToken, session: undefined };
+    currentScenario.exchange.mockImplementation(() =>
+      Effect.fail(
+        new MarketingManagementError({ reason: "invalid_credential" })
+      )
+    );
+
+    await expect(
+      confirmMarketingManagementAction({
+        context: getPendingMarketingManagementContext(pendingToken),
+      })
+    ).resolves.toEqual({
+      serverError: "This marketing management link is invalid or has expired.",
+    });
+    expect(setMarketingManagementSessionCookie).not.toHaveBeenCalled();
+  });
+
   test("grants consent through the authoritative signed-in account", async () => {
     await expect(
       saveMarketingPreferencesAction({

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Deferred, Effect, Fiber, Semaphore } from "effect";
+import { SqlError } from "effect/unstable/sql";
 import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import {
   CustomerAccountAccessError,
@@ -341,5 +342,56 @@ describe("optional account activity guard", () => {
       "authentication.session"
     );
     expect(events).toEqual([]);
+  });
+
+  test("maps an advisory lock failure to the fixed account-link.lock cause without leaking a raw SqlError", async () => {
+    const lockFailure = new SqlError.SqlError({
+      reason: new SqlError.UnknownError({
+        cause: new Error("advisory lock connection lost"),
+        message: "advisory lock connection lost",
+        operation: "withLock",
+      }),
+    });
+    const backend: GuardBackend = {
+      currentUser: Effect.succeed({
+        accountId,
+        email: reservationCustomerEmailSchema.make("ada@example.test"),
+        deletionRequested: false,
+      }),
+      findActivityState: () => Effect.succeed(activeState()),
+      withAccountLock: () => Effect.fail(lockFailure),
+    };
+
+    const error = await Effect.runPromise(
+      Effect.flip(
+        guardOptionalAccountStateCreation(backend, Effect.succeed("created"))
+      )
+    );
+
+    expect(error).toMatchObject({
+      _tag: "CustomerAccountAccessError",
+      reason: "unavailable",
+      cause: { code: "account-link.lock" },
+    });
+  });
+
+  test("preserves a typed state-creation failure unchanged inside the lock", async () => {
+    const events: string[] = [];
+    const backend = makeBackend({ events, activityState: activeState });
+    const stateCreationFailure = { _tag: "PricingChanged" as const };
+    const stateCreation: Effect.Effect<never, typeof stateCreationFailure> =
+      Effect.fail(stateCreationFailure);
+
+    const error = await Effect.runPromise(
+      Effect.flip(guardOptionalAccountStateCreation(backend, stateCreation))
+    );
+
+    expect(error).toBe(stateCreationFailure);
+    expect(events).toEqual([
+      "account-session",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
   });
 });

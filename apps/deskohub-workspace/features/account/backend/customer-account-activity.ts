@@ -1,8 +1,9 @@
-import { Context, Effect, Layer } from "effect";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import { Context, Data, Effect, Layer, Match } from "effect";
+import type { SqlError } from "effect/unstable/sql";
 import {
   CustomerAccountAccessError,
   type CustomerAccountId,
+  customerAccountUnavailable,
   mapCustomerAccountFailure,
 } from "../customer-account";
 import { CustomerAccountLinkRepository } from "./customer-account-link.repository";
@@ -67,20 +68,49 @@ export type AccountActivityGuardDependencies = {
 const isAuthenticationNotConfigured = (error: CustomerAccountAccessError) =>
   error.reason === "not-configured";
 
+/**
+ * Isolates the advisory-lock boundary. The lock's own database failure is
+ * the only error the lock wrapper adds, so the section's typed error is
+ * wrapped in this tagged error before entering the lock and unwrapped
+ * verbatim afterwards while a lock failure maps to the fixed
+ * `account-link.lock` cause. A SqlError carried by the section's own error
+ * type therefore never passes through the lock boundary unchanged.
+ */
+class GuardedSectionError<E> extends Data.TaggedError("GuardedSectionError")<{
+  readonly error: E;
+}> {}
+
+const restoreSectionError = <E>(
+  failure: GuardedSectionError<E> | SqlError.SqlError
+): E | CustomerAccountAccessError =>
+  // The exhaustive match already guarantees this union; the assertion only
+  // collapses Match's deferred Unify wrapper, which TypeScript cannot reduce
+  // for a generic E.
+  Match.value(failure).pipe(
+    Match.tag("GuardedSectionError", (section) => section.error),
+    Match.tag("SqlError", () =>
+      customerAccountUnavailable("account-link.lock")
+    ),
+    Match.exhaustive
+  ) as E | CustomerAccountAccessError;
+
 export const guardOptionalAccountStateCreation = <A, E, R>(
   dependencies: AccountActivityGuardDependencies,
   stateCreation: Effect.Effect<A, E, R>
-): Effect.Effect<A, E | CustomerAccountAccessError | SqlError, R> =>
+): Effect.Effect<A, E | CustomerAccountAccessError, R> =>
   dependencies.currentUser.pipe(
     Effect.catchIf(isAuthenticationNotConfigured, () => Effect.succeed(null)),
     Effect.flatMap((session) =>
       session
-        ? dependencies.withAccountLock(
-            session.accountId,
-            requireAccountActivity(dependencies, session.accountId).pipe(
-              Effect.andThen(stateCreation)
+        ? dependencies
+            .withAccountLock(
+              session.accountId,
+              requireAccountActivity(dependencies, session.accountId).pipe(
+                Effect.andThen(stateCreation),
+                Effect.mapError((error) => new GuardedSectionError({ error }))
+              )
             )
-          )
+            .pipe(Effect.mapError(restoreSectionError))
         : stateCreation
     )
   );
@@ -94,7 +124,7 @@ export class OptionalAccountActivityGuard extends Context.Service<
   {
     readonly guardStateCreation: <A, E, R>(
       stateCreation: Effect.Effect<A, E, R>
-    ) => Effect.Effect<A, E | CustomerAccountAccessError | SqlError, R>;
+    ) => Effect.Effect<A, E | CustomerAccountAccessError, R>;
   }
 >()("@deskohub-workspace/account/OptionalAccountActivityGuard") {
   static Default = Layer.effect(

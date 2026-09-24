@@ -1,11 +1,14 @@
 "use server";
 
-import { Data, Effect, Layer, Option, Schema } from "effect";
+import { Data, Effect, Option, Schema } from "effect";
 import { cookies } from "next/headers";
-import { WorkspaceDatabase } from "@/db/database.service";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import { CustomerAccountResolver } from "@/features/account";
 import { type Locale, locales } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import {
+  marketingManagementLive,
+  marketingPreferencesLive,
+} from "@/features/legal/marketing-preferences-composition.server";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { CustomerMarketingConsentRepository } from "./backend/customer-marketing-consent.repository";
@@ -51,21 +54,6 @@ class MarketingPreferencesMutationError extends Data.TaggedError(
 )<{
   readonly reason: MarketingPreferencesMutationFailureReason;
 }> {}
-
-const marketingManagementServiceLive = MarketingManagementService.Default.pipe(
-  Layer.provide(WorkspaceDatabase.Default)
-);
-
-const marketingConsentRepositoryLive =
-  CustomerMarketingConsentRepository.Default.pipe(
-    Layer.provide(WorkspaceDatabase.Default)
-  );
-
-const marketingPreferencesLive = Layer.mergeAll(
-  CustomerAccountResolver.Live,
-  marketingManagementServiceLive,
-  marketingConsentRepositoryLive
-);
 
 type SaveMarketingPreferencesInput = {
   readonly source: "link" | "account";
@@ -138,46 +126,19 @@ const confirmMarketingManagement = Effect.fn(function* (
   marketingCookies: MarketingManagementCookieOperations
 ) {
   const management = yield* MarketingManagementService;
+  // The pending cookie is read once and its authority resolved once.
+  // Replay protection comes from the atomic single-use conditional update
+  // inside the exchange, not from re-reading the cookie around it, so an
+  // already-exchanged token fails closed instead of installing a session.
   const cookies = yield* readMarketingManagementCookiesEffect(marketingCookies);
   const pending = yield* resolvePendingAuthority(cookies, management);
   if (pending.kind !== "pending" || pending.context !== input.context) {
     return yield* mutationFailureError("stale-context");
   }
 
-  // Exchange only after checking the digest of the current pending cookie.
-  // This action is the explicit confirmation boundary; reads never call
-  // exchange.
-  const currentCookies =
-    yield* readMarketingManagementCookiesEffect(marketingCookies);
-  const currentPending = yield* resolvePendingAuthority(
-    currentCookies,
-    management
-  );
-  if (
-    currentPending.kind !== "pending" ||
-    currentPending.context !== input.context
-  ) {
-    return yield* mutationFailureError("stale-context");
-  }
-
   const exchanged = yield* management
-    .exchange(currentPending.rawPending)
+    .exchange(pending.rawPending)
     .pipe(Effect.mapError(mapManagementMutationFailure));
-
-  // Cookie state can change while the provider exchange is in flight. Do
-  // not install a session for a stale pending context.
-  const beforeCookieWrite =
-    yield* readMarketingManagementCookiesEffect(marketingCookies);
-  const pendingBeforeCookieWrite = yield* resolvePendingAuthority(
-    beforeCookieWrite,
-    management
-  );
-  if (
-    pendingBeforeCookieWrite.kind !== "pending" ||
-    pendingBeforeCookieWrite.context !== input.context
-  ) {
-    return yield* mutationFailureError("stale-context");
-  }
 
   yield* invokeCookieMutation(() =>
     marketingCookies.setMarketingManagementSessionCookie(exchanged)
@@ -203,7 +164,7 @@ const saveMarketingPreferencesEffect = (
 const confirmMarketingManagementEffect = (
   input: MarketingManagementContextInput,
   marketingCookies: MarketingManagementCookieOperations,
-  layers = marketingManagementServiceLive
+  layers = marketingManagementLive
 ) =>
   confirmMarketingManagement(input, marketingCookies).pipe(
     Effect.provide(layers),
@@ -218,7 +179,7 @@ const confirmMarketingManagementEffect = (
 const clearMarketingManagementEffect = (
   input: MarketingManagementContextInput,
   marketingCookies: MarketingManagementCookieOperations,
-  layers = marketingManagementServiceLive
+  layers = marketingManagementLive
 ) =>
   readMarketingManagementCookiesEffect(marketingCookies).pipe(
     Effect.flatMap((currentCookies) => {

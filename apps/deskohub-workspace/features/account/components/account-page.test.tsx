@@ -14,7 +14,6 @@ import {
   render,
   within,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
 import { type Locale, m } from "@/features/i18n";
 import {
   workspaceRouterPush,
@@ -191,11 +190,6 @@ mock.module("@/features/account/auth.client", () => ({
     signIn: { magicLink: signInMagicLink },
     signOut: () => Promise.resolve({ error: null }),
   },
-}));
-mock.module("@/shared/components/sticky-section", () => ({
-  StickySection: ({ children }: { readonly children: ReactNode }) => (
-    <div data-testid="sticky-section">{children}</div>
-  ),
 }));
 
 class TestResizeObserver implements ResizeObserver {

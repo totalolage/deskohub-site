@@ -28,6 +28,10 @@ import {
 } from "@playwright/test";
 import { Predicate, Schema } from "effect";
 import { marketingPreferencesFormCopy } from "../../features/legal/components/marketing-preferences-form.copy";
+import {
+  resolveModulePath,
+  transformGlobalsCss,
+} from "../shared/app-module-build";
 
 type BuildOutput = { readonly path: string };
 type BuildMessagePosition = {
@@ -422,24 +426,6 @@ export function useWorkspaceAction(action: Action, options: ActionOptions) {
 }
 `;
 
-const fileExists = async (path: string) =>
-  Bun.file(path)
-    .exists()
-    .catch(() => false);
-
-const resolveModulePath = async (basePath: string) => {
-  const extensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
-  const candidates = [
-    basePath,
-    ...extensions.map((extension) => `${basePath}${extension}`),
-    ...extensions.map((extension) => join(basePath, `index${extension}`)),
-  ];
-  for (const candidate of candidates) {
-    if (await fileExists(candidate)) return candidate;
-  }
-  throw new Error(`Could not resolve app module ${basePath}`);
-};
-
 const makeEntry = ({
   adapterPath,
   globalsCssPath,
@@ -531,20 +517,7 @@ const makeBuildPlugin = ({
       );
       build.onLoad({ filter: /\/app\/globals\.css$/ }, async (args) => {
         if (resolve(args.path) !== globalsCssPath) return undefined;
-        const postcss = await import("postcss");
-        const loadPostCssConfig = await import("postcss-load-config");
-        const config = await loadPostCssConfig.default({}, appRoot);
-        const source = await readFile(globalsCssPath, "utf8");
-        const transformed = await postcss
-          .default(config.plugins)
-          .process(source, {
-            from: globalsCssPath,
-          });
-        return {
-          contents: transformed.css,
-          loader: "css",
-          resolveDir: appRoot,
-        };
+        return await transformGlobalsCss(globalsCssPath, appRoot);
       });
     },
   };

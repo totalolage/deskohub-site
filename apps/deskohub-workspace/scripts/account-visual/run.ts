@@ -25,10 +25,12 @@ import {
   type Page,
 } from "@playwright/test";
 import { Schema } from "effect";
-import postcss from "postcss";
-import loadPostCssConfig from "postcss-load-config";
 import { getAccountScreenCopy } from "../../features/account/components/account-screen-copy";
 import { m } from "../../features/i18n";
+import {
+  resolveModulePath,
+  transformGlobalsCss,
+} from "../shared/app-module-build";
 import {
   accountMetricRegionGeometry,
   accountMetricRegionsByScreen,
@@ -1123,31 +1125,6 @@ const collectOwnedSourceFiles = async (): Promise<readonly SourceFile[]> => {
   );
 };
 
-const appModuleExtensions = [
-  ".ts",
-  ".tsx",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-] as const;
-
-const resolveModulePath = async (basePath: string, specifier: string) => {
-  const candidates = [
-    basePath,
-    ...appModuleExtensions.map((extension) => `${basePath}${extension}`),
-    ...appModuleExtensions.map((extension) =>
-      join(basePath, `index${extension}`)
-    ),
-  ];
-  for (const candidate of candidates) {
-    try {
-      if ((await stat(candidate)).isFile()) return candidate;
-    } catch {}
-  }
-  throw new Error(`Could not resolve module: ${specifier}`);
-};
-
 const resolveAppModule = async (specifier: string) =>
   resolveModulePath(join(appRoot, specifier), `@/${specifier}`);
 
@@ -1308,16 +1285,7 @@ const createBuildPlugin = (): Bun.BunPlugin => ({
     );
     build.onLoad({ filter: /\/app\/globals\.css$/ }, async (args) => {
       if (resolve(args.path) !== actualGlobalsPath) return undefined;
-      const config = await loadPostCssConfig({}, appRoot);
-      const source = await readFile(actualGlobalsPath, "utf8");
-      const transformed = await postcss(config.plugins).process(source, {
-        from: actualGlobalsPath,
-      });
-      return {
-        contents: transformed.css,
-        loader: "css",
-        resolveDir: appRoot,
-      };
+      return await transformGlobalsCss(actualGlobalsPath, appRoot);
     });
   },
 });

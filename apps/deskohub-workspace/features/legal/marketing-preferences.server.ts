@@ -1,10 +1,10 @@
 import "server-only";
 
-import { Effect, Layer, Result } from "effect";
+import { Effect, Result } from "effect";
 import { cookies } from "next/headers";
-import { WorkspaceDatabase } from "@/db/database.service";
-import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
+import { CustomerAccountResolver } from "@/features/account";
 import type { Locale } from "@/features/i18n";
+import { marketingPreferencesLive } from "@/features/legal/marketing-preferences-composition.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { CustomerMarketingConsentRepository } from "./backend/customer-marketing-consent.repository";
 import { MarketingManagementService } from "./backend/marketing-management.service";
@@ -18,21 +18,6 @@ import {
   resolveMarketingPreferencesAuthority,
 } from "./backend/marketing-preferences-authority";
 import type { MarketingPreferencesState } from "./marketing-preferences";
-
-const marketingManagementServiceLive = MarketingManagementService.Default.pipe(
-  Layer.provide(WorkspaceDatabase.Default)
-);
-
-const marketingConsentRepositoryLive =
-  CustomerMarketingConsentRepository.Default.pipe(
-    Layer.provide(WorkspaceDatabase.Default)
-  );
-
-const marketingPreferencesLive = Layer.mergeAll(
-  CustomerAccountResolver.Live,
-  marketingManagementServiceLive,
-  marketingConsentRepositoryLive
-);
 
 /**
  * Loads the public marketing-preference projection. A management cookie always

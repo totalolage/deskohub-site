@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import {
   basename,
@@ -16,8 +16,10 @@ import {
   chromium,
   type Page,
 } from "@playwright/test";
-import postcss from "postcss";
-import loadPostCssConfig from "postcss-load-config";
+import {
+  resolveModulePath,
+  transformGlobalsCss,
+} from "../shared/app-module-build";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
 const appRoot = resolve(import.meta.dir, "../..");
@@ -315,14 +317,6 @@ const displayPath = (filePath: string) => {
   return path === "" || path.startsWith("..") ? filePath : path;
 };
 
-const fileExists = async (filePath: string) => {
-  try {
-    return (await stat(filePath)).isFile();
-  } catch {
-    return false;
-  }
-};
-
 const describeFile = async (filePath: string): Promise<BuildFile> => {
   const bytes = await readFile(filePath);
   return {
@@ -330,19 +324,6 @@ const describeFile = async (filePath: string): Promise<BuildFile> => {
     path: displayPath(filePath),
     sha256: sha256(bytes),
   };
-};
-
-const resolveModulePath = async (basePath: string): Promise<string> => {
-  const extensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
-  const candidates = [
-    basePath,
-    ...extensions.map((extension) => `${basePath}${extension}`),
-    ...extensions.map((extension) => join(basePath, `index${extension}`)),
-  ];
-  for (const candidate of candidates) {
-    if (await fileExists(candidate)) return candidate;
-  }
-  throw new Error(`Could not resolve module: ${basePath}`);
 };
 
 const makeBuildPlugin = (
@@ -381,16 +362,7 @@ const makeBuildPlugin = (
     });
     build.onLoad({ filter: /\/app\/globals\.css$/ }, async (args) => {
       if (resolve(args.path) !== globalsCssPath) return undefined;
-      const config = await loadPostCssConfig({}, appRoot);
-      const source = await readFile(globalsCssPath, "utf8");
-      const transformed = await postcss(config.plugins).process(source, {
-        from: globalsCssPath,
-      });
-      return {
-        contents: transformed.css,
-        loader: "css",
-        resolveDir: appRoot,
-      };
+      return await transformGlobalsCss(globalsCssPath, appRoot);
     });
   },
 });
