@@ -251,12 +251,12 @@ function MarketingPreferencesFormContent({
         >
           {isLinkManagement && (
             <>
-              <p className="break-words text-sm leading-6 text-navy-blue/70">
+              <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
                 {copy.linkContext}
               </p>
               <Button
                 aria-busy={isClearing}
-                className="h-auto min-h-11 min-w-0 max-w-full !whitespace-normal self-start px-4 py-2 leading-5"
+                className="h-auto min-h-11 min-w-0 max-w-full whitespace-normal! self-start px-4 py-2 leading-5"
                 disabled={busy}
                 onClick={clearManagement}
                 type="button"
@@ -370,7 +370,7 @@ function PendingLinkState({
 }) {
   return (
     <div className="min-w-0 space-y-3">
-      <p className="break-words text-sm leading-6 text-navy-blue/70">
+      <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
         {copy.pendingDescription}
       </p>
       <div className="flex min-w-0 flex-wrap items-center gap-3">
@@ -385,7 +385,7 @@ function PendingLinkState({
         </Button>
         <Button
           aria-busy={isClearing}
-          className="h-auto min-h-11 min-w-0 max-w-full !whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
+          className="h-auto min-h-11 min-w-0 max-w-full whitespace-normal! px-4 py-2 text-left leading-5 sm:text-center"
           disabled={busy}
           onClick={onClear}
           type="button"
@@ -409,19 +409,19 @@ function UnavailableState({
 }) {
   return (
     <div className="min-w-0 space-y-2">
-      <p className="break-words text-sm leading-6 text-navy-blue/70">
+      <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
         {copy.unavailableDescription}
       </p>
-      <p className="break-words text-sm leading-6 text-navy-blue/70">
+      <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
         {copy.unavailableNextStep}
       </p>
       {accountsEnabled && (
         <>
-          <p className="break-words text-sm leading-6 text-navy-blue/70">
+          <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
             {copy.unavailableSignInNextStep}
           </p>
           <a
-            className="inline-flex max-w-full break-words pt-1 text-sm font-semibold text-burned-orange underline decoration-burned-orange/40 underline-offset-4 hover:text-burned-orange-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
+            className="inline-flex max-w-full wrap-break-word pt-1 text-sm font-semibold text-burned-orange underline decoration-burned-orange/40 underline-offset-4 hover:text-burned-orange-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
             href={`/${locale}/auth/sign-in`}
           >
             {copy.signInAction}
@@ -443,15 +443,15 @@ function InvalidLinkState({
 }) {
   return (
     <div className="min-w-0 space-y-3">
-      <p className="break-words text-sm leading-6 text-navy-blue/70">
+      <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
         {copy.invalidLinkDescription}
       </p>
-      <p className="break-words text-sm leading-6 text-navy-blue/70">
+      <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
         {copy.invalidLinkNextStep}
       </p>
       <Button
         aria-busy={isClearing}
-        className="h-auto min-h-11 min-w-0 max-w-full !whitespace-normal px-4 py-2 text-left leading-5 sm:text-center"
+        className="h-auto min-h-11 min-w-0 max-w-full whitespace-normal! px-4 py-2 text-left leading-5 sm:text-center"
         disabled={isClearing}
         onClick={onClear}
         type="button"
