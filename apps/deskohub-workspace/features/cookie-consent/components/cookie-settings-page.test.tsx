@@ -133,12 +133,24 @@ describe("CookieSettings", () => {
     expect(getSwitch(view, "analytics").hasAttribute("disabled")).toBe(false);
   });
 
-  test("renders every category through the shared preference row primitive", () => {
+  test("renders exactly the four category row articles without a group wrapper", () => {
     const view = render(<CookieSettings locale="en-US" />);
+
+    // CookieSettings owns only its four row articles; composing them into a
+    // preference-row group is the caller's presentation decision.
+    const group = view.container.querySelector(
+      '[data-slot="preference-row-group"]'
+    );
+    expect(group).toBeNull();
 
     const rows = view.container.querySelectorAll(
       '[data-slot="preference-row"]'
     );
-    expect(rows.length).toBe(4);
+    expect(rows).toHaveLength(4);
+    // Peer headings: the rows carry h3 titles, not h2.
+    for (const row of rows) {
+      expect(row.querySelector("h2")).toBeNull();
+      expect(row.querySelector("h3")).toBeTruthy();
+    }
   });
 });

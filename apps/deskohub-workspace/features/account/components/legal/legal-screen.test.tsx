@@ -275,7 +275,16 @@ test("keeps consent controls wrapped and free of page-only shells", () => {
 
   expect(view.container.querySelector("main")).toBeNull();
   expect(view.container.querySelector("h1")).toBeNull();
-  expect(view.container.querySelectorAll("article")).toHaveLength(4);
+  // Unavailable marketing state is not a row: the group holds only the four
+  // cookie category articles.
+  const group = view.container.querySelector(
+    '[data-slot="preference-row-group"]'
+  );
+  expect(group).toBeTruthy();
+  expect(group.children).toHaveLength(4);
+  for (const child of Array.from(group.children)) {
+    expect(child.getAttribute("data-slot")).toBe("preference-row");
+  }
 
   for (const category of view.container.querySelectorAll("article")) {
     expect(category.className).toContain("min-w-0");
@@ -291,7 +300,7 @@ const linkMarketingState = {
 } as const;
 
 test.each(["en-US", "cs-CZ"] as const)(
-  "renders the marketing messages row inside the cookie settings preference group in %s",
+  "renders five peer preference rows with the marketing feedback inside the fifth card in %s",
   (locale) => {
     const view = render(
       <>
@@ -308,39 +317,29 @@ test.each(["en-US", "cs-CZ"] as const)(
     );
     expect(group).toBeTruthy();
 
-    // One coherent group: the four cookie category rows followed by the
-    // marketing messages row as the fifth item. Direct children only — no
-    // wrapper may sit between the marketing row and the group. Compare nodes
-    // with `===` (booleans) so a regression fails fast; bun's toBe failure
-    // diff serializes the entire happy-dom subtree and stalls the suite.
-    const rows = Array.from(group.children).filter(
-      (el) => el.getAttribute("data-slot") === "preference-row"
-    );
+    // The group's DOM children are EXACTLY the five row cards: the four
+    // cookie categories followed by the managed marketing messages row.
+    // Fragments flatten, so no sixth sibling (feedback or wrapper) may appear,
+    // even while a save is in flight or after success/error.
+    const rows = Array.from(group.children);
     expect(rows).toHaveLength(5);
-    const groupChildren = Array.from(group.children);
     for (const row of rows) {
+      expect(row.tagName.toLowerCase()).toBe("article");
+      expect(row.getAttribute("data-slot")).toBe("preference-row");
       expect(row.parentElement === group).toBe(true);
     }
-    // Every element child of the group is one of the five rows or the
-    // marketing feedback element — nothing else.
-    const feedback = group.querySelector("#marketing-preferences-feedback");
-    expect(feedback).toBeTruthy();
-    for (const child of groupChildren) {
-      expect(rows.includes(child) || child === feedback).toBe(true);
-    }
 
-    const rowTitles = rows.map(
-      (row) => row.querySelector("h2, h3")?.textContent
-    );
-    expect(rowTitles.slice(0, 4)).toEqual([
+    const rowTitles = rows.map((row) => row.querySelector("h3")?.textContent);
+    expect(rowTitles).toEqual([
       m.cookieSettingsNecessaryTitle({}, { locale }),
       m.cookieSettingsAnalyticsTitle({}, { locale }),
       m.cookieSettingsMarketingTitle({}, { locale }),
       m.cookieSettingsPreferencesTitle({}, { locale }),
+      m.marketingPreferencesFormRowTitle({}, { locale }),
     ]);
-    expect(rowTitles[4]).toBe(
-      m.marketingPreferencesFormRowTitle({}, { locale })
-    );
+
+    // Peer rows: every heading inside the group is an h3 — no h2 row headings.
+    expect(group.querySelector("h2")).toBeNull();
 
     // The marketing row itself carries the state markers: semantically they
     // describe that row, not an outer shell.
@@ -351,7 +350,22 @@ test.each(["en-US", "cs-CZ"] as const)(
     expect(marketingRow.getAttribute("data-marketing-preferences-source")).toBe(
       "link"
     );
+
+    // Marketing feedback lives inside the fifth card's support column, never
+    // as a loose group item or reserved blank space outside the cards.
+    const feedback = group.querySelector("#marketing-preferences-feedback");
+    expect(feedback).toBeTruthy();
+    expect(marketingRow.contains(feedback)).toBe(true);
+    expect(Array.from(group.children).includes(feedback)).toBe(false);
     expect(group.querySelector(":scope > section")).toBeNull();
+
+    // Panel title and row headings keep their peer semantics.
+    expect(
+      view.getByRole("heading", {
+        level: 2,
+        name: m.legalScreenTitle({}, { locale }),
+      })
+    ).toBeTruthy();
 
     // The marketing switch is present and interactive inside the group.
     const marketingSwitch = view.getByRole("switch", {
@@ -360,7 +374,7 @@ test.each(["en-US", "cs-CZ"] as const)(
     expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
     expect((marketingSwitch as HTMLButtonElement).disabled).toBe(false);
 
-    // The archive block stays outside the preference group.
+    // The archive block stays outside the preference group at its own level.
     const archiveHeading = view.getByRole("heading", {
       level: 3,
       name: m.legalScreenArchiveTitle({}, { locale }),
@@ -373,10 +387,20 @@ test("defaults the optional marketing preference state to unavailable", () => {
   const locale = "en-US" as const;
   const view = renderLegalScreen(locale);
 
-  const section = view.container.querySelector(
+  const group = view.container.querySelector(
+    '[data-slot="preference-row-group"]'
+  );
+  expect(group).toBeTruthy();
+  expect(group.children).toHaveLength(4);
+
+  // The unavailable state renders as separately spaced content outside the
+  // row group, with its markers on the fallback root itself.
+  const fallback = view.container.querySelector(
     '[data-marketing-preferences="unavailable"]'
   );
-  expect(section).toBeTruthy();
+  expect(fallback).toBeTruthy();
+  expect(group.contains(fallback)).toBe(false);
+  expect(fallback.getAttribute("data-marketing-preferences-source")).toBe(null);
   expect(
     view
       .getByRole("link", {

@@ -9,7 +9,10 @@ import {
   confirmMarketingManagementAction,
   saveMarketingPreferencesAction,
 } from "@/features/legal/actions";
-import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
+import {
+  isManagedMarketingState,
+  type MarketingPreferencesState,
+} from "@/features/legal/marketing-preferences";
 import { Button } from "@/shared/components/ui/button";
 import { PreferenceRow } from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
@@ -54,12 +57,7 @@ function MarketingPreferencesFormContent({
   readonly state: MarketingPreferencesState;
 }) {
   const router = useRouter();
-  const managedState =
-    state.status === "absent" ||
-    state.status === "active" ||
-    state.status === "withdrawn"
-      ? state
-      : undefined;
+  const managedState = isManagedMarketingState(state) ? state : undefined;
   const pendingState = state.status === "pending-link" ? state : undefined;
   const context = "context" in state ? state.context : undefined;
   const dismissalContext =
@@ -157,111 +155,122 @@ function MarketingPreferencesFormContent({
       : m.marketingPreferencesFormClearError({}, { locale });
   }
 
-  return (
-    <>
-      {state.status === "unavailable" && (
-        <div
-          className="min-w-0"
-          data-marketing-preferences={state.status}
-          data-marketing-preferences-source={source}
-        >
-          <UnavailableState accountsEnabled={accountsEnabled} locale={locale} />
-        </div>
+  // Live-region feedback rendered inside the active surface: the managed
+  // row's support column, or the fallback state's root — never as a loose
+  // sibling that would break the row-group card rhythm.
+  const feedbackBlock = hasContextState ? (
+    <div
+      aria-live={feedback ? "polite" : undefined}
+      className="text-sm"
+      id={feedbackId}
+      role={hasError ? "alert" : undefined}
+    >
+      {isSaving && (
+        <p role="status">
+          {m.marketingPreferencesFormSavingStatus({}, { locale })}
+        </p>
       )}
-      {state.status === "invalid-link" && (
-        <div
-          className="min-w-0"
-          data-marketing-preferences={state.status}
-          data-marketing-preferences-source={source}
-        >
-          <InvalidLinkState
-            isClearing={isClearing}
-            locale={locale}
-            onClear={clearManagement}
-          />
-        </div>
+      {feedback && (
+        <p className={hasError ? "text-red-700" : "text-emerald-800"}>
+          {feedback.serverMessage ??
+            feedbackMessage(feedback.kind, feedback.outcome)}
+        </p>
       )}
-      {pendingState && (
-        <div
-          className="min-w-0"
-          data-marketing-preferences={state.status}
-          data-marketing-preferences-source={source}
-        >
-          <PendingLinkState
-            busy={busy}
-            isClearing={isClearing}
-            isConfirming={isConfirming}
-            locale={locale}
-            onClear={clearManagement}
-            onContinue={continueManagement}
-          />
-        </div>
-      )}
-      {managedState && (
-        <PreferenceRow
-          busy={isSaving}
-          control={
-            <Switch
-              aria-describedby={descriptionId}
-              aria-labelledby={titleId}
-              checked={checked}
-              className="shrink-0"
-              disabled={busy}
-              id={switchId}
-              onCheckedChange={handleToggle}
-            />
-          }
-          data-marketing-preferences={state.status}
-          data-marketing-preferences-source={source}
-          description={m.marketingPreferencesFormRowDescription({}, { locale })}
-          descriptionId={descriptionId}
-          headingAs="h3"
-          title={m.marketingPreferencesFormRowTitle({}, { locale })}
-          titleId={titleId}
-        >
-          {isLinkManagement && (
-            <>
-              <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-                {m.marketingPreferencesFormLinkContext({}, { locale })}
-              </p>
-              <Button
-                aria-busy={isClearing}
-                className="h-auto min-h-11 min-w-0 max-w-full whitespace-normal! self-start px-4 py-2 leading-5"
-                disabled={busy}
-                onClick={clearManagement}
-                type="button"
-                variant="secondary"
-              >
-                {isClearing
-                  ? m.marketingPreferencesFormClearing({}, { locale })
-                  : m.marketingPreferencesFormClearAction({}, { locale })}
-              </Button>
-            </>
-          )}
-        </PreferenceRow>
-      )}
+    </div>
+  ) : null;
 
-      {hasContextState && (
-        <div
-          aria-live={feedback ? "polite" : undefined}
-          className="mt-3 min-h-5 text-sm"
-          id={feedbackId}
-          role={hasError ? "alert" : undefined}
-        >
-          {isSaving && (
-            <p role="status">
-              {m.marketingPreferencesFormSavingStatus({}, { locale })}
-            </p>
-          )}
-          {feedback && (
-            <p className={hasError ? "text-red-700" : "text-emerald-800"}>
-              {feedback.serverMessage ??
-                feedbackMessage(feedback.kind, feedback.outcome)}
-            </p>
-          )}
-        </div>
+  if (state.status === "unavailable") {
+    return (
+      <div
+        className="min-w-0"
+        data-marketing-preferences={state.status}
+        data-marketing-preferences-source={source}
+      >
+        <UnavailableState accountsEnabled={accountsEnabled} locale={locale} />
+      </div>
+    );
+  }
+
+  if (state.status === "invalid-link") {
+    return (
+      <div
+        className="min-w-0 space-y-3"
+        data-marketing-preferences={state.status}
+        data-marketing-preferences-source={source}
+      >
+        <InvalidLinkState
+          isClearing={isClearing}
+          locale={locale}
+          onClear={clearManagement}
+        />
+        {feedbackBlock}
+      </div>
+    );
+  }
+
+  if (pendingState) {
+    return (
+      <div
+        className="min-w-0 space-y-3"
+        data-marketing-preferences={state.status}
+        data-marketing-preferences-source={source}
+      >
+        <PendingLinkState
+          busy={busy}
+          isClearing={isClearing}
+          isConfirming={isConfirming}
+          locale={locale}
+          onClear={clearManagement}
+          onContinue={continueManagement}
+        />
+        {feedbackBlock}
+      </div>
+    );
+  }
+
+  return (
+    <PreferenceRow
+      busy={isSaving}
+      control={
+        <Switch
+          aria-describedby={descriptionId}
+          aria-labelledby={titleId}
+          checked={checked}
+          className="shrink-0"
+          disabled={busy}
+          id={switchId}
+          onCheckedChange={handleToggle}
+        />
+      }
+      data-marketing-preferences={state.status}
+      data-marketing-preferences-source={source}
+      description={m.marketingPreferencesFormRowDescription({}, { locale })}
+      descriptionId={descriptionId}
+      headingAs="h3"
+      title={m.marketingPreferencesFormRowTitle({}, { locale })}
+      titleId={titleId}
+    >
+      {isLinkManagement && (
+        <>
+          <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
+            {m.marketingPreferencesFormLinkContext({}, { locale })}
+          </p>
+          <Button
+            aria-busy={isClearing}
+            className="h-auto min-h-11 min-w-0 max-w-full whitespace-normal! self-start px-4 py-2 leading-5"
+            disabled={busy}
+            onClick={clearManagement}
+            type="button"
+            variant="secondary"
+          >
+            {isClearing
+              ? m.marketingPreferencesFormClearing({}, { locale })
+              : m.marketingPreferencesFormClearAction({}, { locale })}
+          </Button>
+        </>
       )}
-    </>
+      {feedbackBlock}
+    </PreferenceRow>
   );
 
   function handleToggle(nextChecked: boolean) {

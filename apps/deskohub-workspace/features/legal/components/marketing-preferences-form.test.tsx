@@ -461,6 +461,9 @@ test("announces a rejected save request with localized copy and allows a success
       m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
     );
   });
+  // The feedback block renders inside the managed row's support column, not
+  // as a loose sibling of the row article.
+  expect(getArticle(view).contains(view.getByRole("alert"))).toBe(true);
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
   expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
   expect(routerRefresh).not.toHaveBeenCalled();

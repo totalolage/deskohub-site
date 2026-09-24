@@ -25,3 +25,17 @@ export type MarketingPreferencesState =
   | {
       readonly status: "unavailable";
     };
+
+/**
+ * Managed states render the marketing preference as a controllable row with a
+ * live switch; fallback states render separately spaced guidance instead.
+ */
+export function isManagedMarketingState(
+  state: MarketingPreferencesState
+): state is MarketingPreferencesManagedState {
+  return (
+    state.status === "absent" ||
+    state.status === "active" ||
+    state.status === "withdrawn"
+  );
+}

@@ -1,15 +1,12 @@
 "use client";
 
-import { type ReactNode, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   type ConsentCategory,
   useCookieConsent,
 } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
-import {
-  PreferenceRow,
-  PreferenceRowGroup,
-} from "@/shared/components/ui/preference-row";
+import { PreferenceRow } from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
 
 const consentCategories: ConsentCategory[] = [
@@ -39,12 +36,10 @@ const categoryMessageGetters = {
 } as const;
 
 export interface CookieSettingsProps {
-  /** Extra preference rows rendered inside the group after the cookie categories. */
-  readonly children?: ReactNode;
   readonly locale: Locale;
 }
 
-export function CookieSettings({ children, locale }: CookieSettingsProps) {
+export function CookieSettings({ locale }: CookieSettingsProps) {
   const { acceptCategory, rejectCategory, isAccepted } = useCookieConsent();
   const preferences = {
     necessary: true,
@@ -80,23 +75,22 @@ export function CookieSettings({ children, locale }: CookieSettingsProps) {
     });
   };
 
+  // The four category rows only: composing them into a preference-row group
+  // is the owning screen's presentation decision, not this feature's.
   return (
-    <div className="mt-6 min-w-0">
-      <PreferenceRowGroup>
-        {consentCategories.map((category) => (
-          <CookieCategoryRow
-            key={category}
-            category={category}
-            locale={locale}
-            checked={preferences[category]}
-            pending={pendingCategories.has(category)}
-            errored={erroredCategory === category}
-            onToggle={(nextChecked) => handleToggle(category, nextChecked)}
-          />
-        ))}
-        {children}
-      </PreferenceRowGroup>
-    </div>
+    <>
+      {consentCategories.map((category) => (
+        <CookieCategoryRow
+          key={category}
+          category={category}
+          locale={locale}
+          checked={preferences[category]}
+          pending={pendingCategories.has(category)}
+          errored={erroredCategory === category}
+          onToggle={(nextChecked) => handleToggle(category, nextChecked)}
+        />
+      ))}
+    </>
   );
 }
 
@@ -136,7 +130,6 @@ function CookieCategoryRow({
       }
       description={messages.description({}, { locale })}
       descriptionId={descriptionId}
-      headingAs="h2"
       title={messages.title({}, { locale })}
       titleId={titleId}
     >
