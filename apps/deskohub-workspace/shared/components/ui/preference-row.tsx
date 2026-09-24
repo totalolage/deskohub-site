@@ -56,13 +56,13 @@ export function PreferenceRow({
   }
   return (
     <article
+      {...articleProps}
       aria-busy={busy || undefined}
       className={cn(
-        "flex min-w-0 items-start justify-between gap-5 rounded-2xl border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:p-6",
-        className
+        className,
+        "flex min-w-0 items-start justify-between gap-5 rounded-2xl border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:p-6"
       )}
       data-slot="preference-row"
-      {...articleProps}
     >
       <div className="min-w-0 flex-1 space-y-2">
         <Heading
