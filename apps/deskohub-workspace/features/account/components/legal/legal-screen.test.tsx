@@ -9,6 +9,7 @@ import {
 } from "bun:test";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import type { ComponentPropsWithoutRef, Ref } from "react";
+import { useState } from "react";
 import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -39,21 +40,40 @@ function MockNextLink({
 
 mock.module("next/link", () => ({ default: MockNextLink }));
 
-mock.module("@/features/legal/components/marketing-preferences-form", () => ({
-  MarketingPreferencesForm: ({
-    accountsEnabled,
-    state,
-  }: {
-    readonly accountsEnabled?: boolean;
-    readonly state: { readonly status: string };
-  }) => (
-    <section
-      data-marketing-preferences-accounts-enabled={String(accountsEnabled)}
-      data-testid="legal-marketing-preferences"
-    >
-      {state.status}
-    </section>
-  ),
+// The real MarketingPreferencesForm renders inside the screen so the suite
+// can observe the actual composed preference group; stub its server seam the
+// same way marketing-preferences-form.test.tsx does.
+const routerRefresh = mock(() => undefined);
+
+type MarketingActionInput = { readonly context: string };
+type MarketingActionResult = { readonly data?: unknown };
+
+mock.module("next/navigation", () => ({
+  useRouter: () => ({ refresh: routerRefresh }),
+}));
+
+mock.module("@/features/legal/actions", () => ({
+  clearMarketingManagementAction: (_input: MarketingActionInput) =>
+    Promise.resolve<MarketingActionResult>({ data: { status: "cleared" } }),
+  confirmMarketingManagementAction: (_input: MarketingActionInput) =>
+    Promise.resolve<MarketingActionResult>({ data: { status: "confirmed" } }),
+  saveMarketingPreferencesAction: (_input: MarketingActionInput) =>
+    Promise.resolve<MarketingActionResult>({ data: { status: "saved" } }),
+}));
+
+mock.module("@/shared/utils/use-workspace-action", () => ({
+  useWorkspaceAction: (
+    _action: (input: MarketingActionInput) => Promise<MarketingActionResult>,
+    _options: Record<string, never>
+  ) => {
+    const [isExecuting, setIsExecuting] = useState(false);
+    const execute = (input: MarketingActionInput) => {
+      setIsExecuting(true);
+      void Promise.resolve().then(() => setIsExecuting(false));
+      return input;
+    };
+    return { execute, isExecuting, reset: () => undefined, result: {} };
+  },
 }));
 
 let acceptedCategories = ["necessary"];
@@ -118,7 +138,10 @@ beforeEach(() => {
   acceptedCategories = ["necessary"];
   onConsentChange = undefined;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  routerRefresh.mockClear();
+});
 afterAll(unregisterWorkspaceComponentTestEnv);
 
 function renderLegalScreen(locale: Locale) {
@@ -260,92 +283,141 @@ test("keeps consent controls wrapped and free of page-only shells", () => {
   }
 });
 
-test.each(["en-US", "cs-CZ"] as const)(
-  "renders the marketing preferences block as a sibling after the cookie settings card in %s",
-  (locale) => {
-    const view = renderLegalScreen(locale);
+const linkMarketingState = {
+  context: "synthetic-link-context",
+  dismissalContext: "synthetic-link-dismissal-context",
+  source: "link",
+  status: "active",
+} as const;
 
-    const marketing = view.getByTestId("legal-marketing-preferences");
-    // Compare nodes with `===`/DOM positions so a regression fails fast;
-    // bun's toBe failure diff serializes the entire happy-dom subtree and
-    // stalls the suite.
+test.each(["en-US", "cs-CZ"] as const)(
+  "renders the marketing messages row inside the cookie settings preference group in %s",
+  (locale) => {
+    const view = render(
+      <>
+        <CookieConsentProvider locale={locale} />
+        <LegalScreen
+          locale={locale}
+          marketingPreferences={{ ...linkMarketingState }}
+        />
+      </>
+    );
+
     const group = view.container.querySelector(
       '[data-slot="preference-row-group"]'
     );
     expect(group).toBeTruthy();
-    const cookieContainer = group?.parentElement ?? null;
-    expect(cookieContainer).toBeTruthy();
 
-    // (a) Siblings: the marketing block and the cookie settings container
-    // share the same parent element directly — no intermediate wrapper div
-    // sits between the form and the panel, and the block is not nested
-    // inside the cookie container. Compare nodes with `===` (booleans) so a
-    // regression fails fast; bun's toBe failure diff serializes the entire
-    // happy-dom subtree and stalls the suite.
-    expect(marketing.parentElement === cookieContainer).toBe(false);
-    expect(cookieContainer?.contains(marketing)).toBe(false);
-    expect(marketing.parentElement === cookieContainer?.parentElement).toBe(
-      true
+    // One coherent group: the four cookie category rows followed by the
+    // marketing messages row as the fifth item. Compare nodes with `===`
+    // (booleans) so a regression fails fast; bun's toBe failure diff
+    // serializes the entire happy-dom subtree and stalls the suite.
+    const rows = Array.from(
+      group.querySelectorAll('[data-slot="preference-row"]')
+    );
+    expect(rows).toHaveLength(5);
+    expect(group.children).toHaveLength(5);
+    const rowTitles = rows.map(
+      (row) => row.querySelector("h2, h3")?.textContent
+    );
+    expect(rowTitles.slice(0, 4)).toEqual([
+      m.cookieSettingsNecessaryTitle({}, { locale }),
+      m.cookieSettingsAnalyticsTitle({}, { locale }),
+      m.cookieSettingsMarketingTitle({}, { locale }),
+      m.cookieSettingsPreferencesTitle({}, { locale }),
+    ]);
+    expect(rowTitles[4]).toBe(
+      m.marketingPreferencesFormRowTitle({}, { locale })
     );
 
-    // (b) The marketing block comes after the cookie settings container.
+    // The marketing section is a direct child of the group and no longer
+    // carries its own sibling separation margin.
+    const marketingSection = group.querySelector(
+      ":scope > section[data-marketing-preferences]"
+    );
+    expect(marketingSection).toBeTruthy();
+    expect(marketingSection.getAttribute("data-marketing-preferences")).toBe(
+      "active"
+    );
     expect(
-      cookieContainer?.compareDocumentPosition(marketing) &
-        Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+      marketingSection.getAttribute("data-marketing-preferences-source")
+    ).toBe("link");
+    expect(marketingSection.className).not.toContain("mt-8");
+    expect(
+      marketingSection.querySelector('[data-slot="preference-row"]') === rows[4]
+    ).toBe(true);
 
-    // (c) Spacing and heading hierarchy stay intact: the `mt-8` gap belongs
-    // to the marketing form's own root section (it renders no wrapper), and
-    // the cookie rows remain the only children of the cookie settings
-    // container.
-    expect(marketing.parentElement?.className).not.toContain("mt-8");
-    expect(cookieContainer?.children).toHaveLength(1);
-    expect(cookieContainer?.firstElementChild === group).toBe(true);
-    expect(group?.querySelectorAll('[data-slot="preference-row"]').length).toBe(
-      4
-    );
+    // The marketing switch is present and interactive inside the group.
+    const marketingSwitch = view.getByRole("switch", {
+      name: m.marketingPreferencesFormRowTitle({}, { locale }),
+    });
+    expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
+    expect((marketingSwitch as HTMLButtonElement).disabled).toBe(false);
+
+    // The archive block stays outside the preference group.
+    const archiveHeading = view.getByRole("heading", {
+      level: 3,
+      name: m.legalScreenArchiveTitle({}, { locale }),
+    });
+    expect(group.contains(archiveHeading)).toBe(false);
   }
 );
 
 test("defaults the optional marketing preference state to unavailable", () => {
-  const view = renderLegalScreen("en-US");
+  const locale = "en-US" as const;
+  const view = renderLegalScreen(locale);
 
-  expect(view.getByTestId("legal-marketing-preferences").textContent).toBe(
-    "unavailable"
+  const section = view.container.querySelector(
+    '[data-marketing-preferences="unavailable"]'
   );
+  expect(section).toBeTruthy();
+  expect(
+    view
+      .getByRole("link", {
+        name: m.marketingPreferencesFormSignInAction({}, { locale }),
+      })
+      .getAttribute("href")
+  ).toBe("/en-US/auth/sign-in");
 });
 
-test("passes account availability to the marketing preference form", () => {
+test("hides the marketing sign-in affordance when accounts are disabled", () => {
+  const locale = "en-US" as const;
   const view = render(
     <>
-      <CookieConsentProvider locale="en-US" />
-      <LegalScreen accountsEnabled={false} locale="en-US" />
+      <CookieConsentProvider locale={locale} />
+      <LegalScreen accountsEnabled={false} locale={locale} />
     </>
   );
 
   expect(
-    view
-      .getByTestId("legal-marketing-preferences")
-      .getAttribute("data-marketing-preferences-accounts-enabled")
-  ).toBe("false");
+    view.queryByRole("link", {
+      name: m.marketingPreferencesFormSignInAction({}, { locale }),
+    })
+  ).toBeNull();
 });
 
-test("passes the rendered marketing preference state through", async () => {
+test("passes the rendered marketing preference state through", () => {
+  const locale = "cs-CZ" as const;
   const view = render(
     <>
-      <CookieConsentProvider locale="cs-CZ" />
+      <CookieConsentProvider locale={locale} />
       <LegalScreen
-        locale="cs-CZ"
-        marketingPreferences={{
-          context: "synthetic-link-context",
-          source: "link",
-          status: "active",
-        }}
+        locale={locale}
+        marketingPreferences={{ ...linkMarketingState }}
       />
     </>
   );
 
-  expect(view.getByTestId("legal-marketing-preferences").textContent).toBe(
-    "active"
-  );
+  expect(
+    view.container
+      .querySelector('[data-marketing-preferences="active"]')
+      ?.getAttribute("data-marketing-preferences-source")
+  ).toBe("link");
+  expect(
+    view
+      .getByRole("switch", {
+        name: m.marketingPreferencesFormRowTitle({}, { locale }),
+      })
+      .getAttribute("aria-checked")
+  ).toBe("true");
 });

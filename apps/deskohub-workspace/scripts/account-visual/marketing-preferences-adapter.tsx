@@ -98,7 +98,7 @@ const isContextReplaceable = (
 export const accountVisualAdapterMetadata = {
   owner: "marketing preferences controlled browser adapter",
   fixture:
-    "synthetic marketing-preferences states rendered as a sibling after the real CookieSettings card with local controlled actions; component-only evidence",
+    "synthetic marketing-preferences states rendered inside the real CookieSettings preference group with local controlled actions; component-only evidence",
 } as const;
 
 export function MarketingPreferencesAdapter({
@@ -132,12 +132,13 @@ export function MarketingPreferencesAdapter({
         </h1>
       </header>
       <div className="mx-auto min-w-0 max-w-3xl">
-        <CookieSettings locale={locale} />
-        <MarketingPreferencesForm
-          accountsEnabled={accountsEnabled}
-          locale={locale}
-          state={state}
-        />
+        <CookieSettings locale={locale}>
+          <MarketingPreferencesForm
+            accountsEnabled={accountsEnabled}
+            locale={locale}
+            state={state}
+          />
+        </CookieSettings>
         {isContextReplaceable(state) && (
           <button
             className="mt-6 h-auto max-w-full whitespace-normal rounded-full border border-navy-blue/20 bg-white px-4 py-2 text-left text-sm font-semibold leading-5 text-navy-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"

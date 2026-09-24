@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import {
   type ConsentCategory,
   useCookieConsent,
@@ -39,10 +39,12 @@ const categoryMessageGetters = {
 } as const;
 
 export interface CookieSettingsProps {
+  /** Extra preference rows rendered inside the group after the cookie categories. */
+  readonly children?: ReactNode;
   readonly locale: Locale;
 }
 
-export function CookieSettings({ locale }: CookieSettingsProps) {
+export function CookieSettings({ children, locale }: CookieSettingsProps) {
   const { acceptCategory, rejectCategory, isAccepted } = useCookieConsent();
   const preferences = {
     necessary: true,
@@ -92,6 +94,7 @@ export function CookieSettings({ locale }: CookieSettingsProps) {
             onToggle={(nextChecked) => handleToggle(category, nextChecked)}
           />
         ))}
+        {children}
       </PreferenceRowGroup>
     </div>
   );

@@ -1176,9 +1176,10 @@ test("wraps long localized copy without fixed-width controls", () => {
     view.getByText(m.marketingPreferencesFormRowDescription({}, { locale }))
   ).toBeTruthy();
   const section = view.container.querySelector("section");
-  // The form carries its own `mt-8` gap so parents must not add another.
-  expect(section?.className).toContain("mt-8");
+  // The section keeps its own width containment; it renders as a group child
+  // without carrying sibling separation margins.
   expect(section?.className).toContain("min-w-0");
+  expect(section?.className).not.toContain("mt-8");
   expect(section?.querySelector("article")?.className).toContain("min-w-0");
   expect(section?.querySelector("h3")?.className).toContain("break-words");
   expect(getSwitch(view, rowTitle).className).toContain("shrink-0");

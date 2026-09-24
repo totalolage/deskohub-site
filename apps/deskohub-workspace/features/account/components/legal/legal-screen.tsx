@@ -48,13 +48,13 @@ export function LegalScreen({
         />
       </nav>
 
-      <CookieSettings locale={locale} />
-
-      <MarketingPreferencesForm
-        accountsEnabled={accountsEnabled}
-        locale={locale}
-        state={marketingPreferences ?? { status: "unavailable" }}
-      />
+      <CookieSettings locale={locale}>
+        <MarketingPreferencesForm
+          accountsEnabled={accountsEnabled}
+          locale={locale}
+          state={marketingPreferences ?? { status: "unavailable" }}
+        />
+      </CookieSettings>
 
       <div className="mt-8 border-t border-[#e5e9ef] pt-6">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

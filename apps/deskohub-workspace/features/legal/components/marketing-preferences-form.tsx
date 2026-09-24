@@ -160,7 +160,7 @@ function MarketingPreferencesFormContent({
   return (
     <section
       aria-labelledby={managedState ? titleId : undefined}
-      className="mt-8 min-w-0"
+      className="min-w-0"
       data-marketing-preferences={state.status}
       data-marketing-preferences-source={source}
     >
