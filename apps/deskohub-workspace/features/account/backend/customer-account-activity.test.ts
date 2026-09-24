@@ -394,4 +394,30 @@ describe("optional account activity guard", () => {
       "account-lock-released",
     ]);
   });
+
+  test("returns a SqlError raised by state creation itself as the same instance", async () => {
+    const events: string[] = [];
+    const backend = makeBackend({ events, activityState: activeState });
+    const stateCreationFailure = new SqlError.SqlError({
+      reason: new SqlError.UnknownError({
+        cause: new Error("reservation write violated a constraint"),
+        message: "reservation write violated a constraint",
+        operation: "insert",
+      }),
+    });
+    const stateCreation: Effect.Effect<never, SqlError.SqlError> =
+      Effect.fail(stateCreationFailure);
+
+    const error = await Effect.runPromise(
+      Effect.flip(guardOptionalAccountStateCreation(backend, stateCreation))
+    );
+
+    expect(error).toBe(stateCreationFailure);
+    expect(events).toEqual([
+      "account-session",
+      "account-lock-acquired",
+      "account-activity",
+      "account-lock-released",
+    ]);
+  });
 });
