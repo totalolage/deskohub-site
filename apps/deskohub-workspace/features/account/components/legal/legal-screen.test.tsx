@@ -254,12 +254,16 @@ test("renders the marketing preferences block inside the shared cookie settings 
   const view = renderLegalScreen("en-US");
 
   const marketing = view.getByTestId("legal-marketing-preferences");
-  const cookieRows = view.container.querySelectorAll("article");
-  expect(cookieRows).toHaveLength(4);
-  for (const row of cookieRows) {
-    expect(row.parentElement).toBe(marketing.parentElement);
-  }
-  expect(marketing.parentElement?.lastElementChild).toBe(marketing);
+  // The rows live in the shared preference-row group and the marketing block
+  // follows it as the last child of the same cookie settings container.
+  // Compare nodes with `===` so a regression fails fast; bun's toBe failure
+  // diff serializes the entire happy-dom subtree and stalls the suite.
+  const group = marketing.previousElementSibling;
+  expect(group?.getAttribute("data-slot")).toBe("preference-row-group");
+  expect(group?.querySelectorAll('[data-slot="preference-row"]').length).toBe(
+    4
+  );
+  expect(marketing.parentElement?.lastElementChild === marketing).toBe(true);
 });
 
 test("defaults the optional marketing preference state to unavailable", () => {
