@@ -667,7 +667,7 @@ test.serial.skipIf(!chromiumAvailable)(
 
 const productionProfileEmail = "ada@example.test";
 const productionProfileEmailFieldSelector =
-  "[data-slot='profile-screen'] fieldset[aria-labelledby$='-email-label'] > div";
+  "[data-screen='profile-screen'] fieldset[aria-labelledby$='-email-label'] > div";
 const productionProfileEmailStatusSelector = `${productionProfileEmailFieldSelector} > button`;
 const productionProfileEmailProbeCss = `
   html, body {
@@ -676,13 +676,13 @@ const productionProfileEmailProbeCss = `
     padding: 0;
   }
 
-  [data-slot="profile-screen"] {
+  [data-screen="profile-screen"] {
     box-sizing: border-box;
     width: 100%;
     padding: 16px;
   }
 
-  [data-slot="profile-screen"] fieldset[aria-labelledby$="-email-label"] {
+  [data-screen="profile-screen"] fieldset[aria-labelledby$="-email-label"] {
     box-sizing: border-box;
     width: 100%;
     margin: 0;
@@ -690,7 +690,7 @@ const productionProfileEmailProbeCss = `
     border: 0;
   }
 
-  [data-slot="profile-screen"] fieldset[aria-labelledby$="-email-label"] > div {
+  [data-screen="profile-screen"] fieldset[aria-labelledby$="-email-label"] > div {
     position: relative;
     box-sizing: border-box;
     display: flex;
@@ -886,7 +886,7 @@ const controlledEmailFixture = ({
         ? '<section data-fixture-screen="reservations" style="padding:16px;">Current reservations</section>'
         : ""
     }
-    <section data-slot="profile-screen" style="padding:16px;${
+    <section data-screen="profile-screen" style="padding:16px;${
       includeSectionNavigation ? "display:none;" : ""
     }">
       <div data-fixture-field="login-email">
@@ -911,7 +911,7 @@ const controlledEmailFixture = ({
       ? `<script>
     const sectionButtons = Array.from(document.querySelectorAll("[data-account-mobile-navigation] button[data-account-section]"));
     const reservations = document.querySelector("[data-fixture-screen='reservations']");
-    const profile = document.querySelector("[data-slot='profile-screen']");
+    const profile = document.querySelector("[data-screen='profile-screen']");
     sectionButtons.forEach((button) => button.addEventListener("click", () => {
       sectionButtons.forEach((candidate) => {
         if (candidate === button) candidate.setAttribute("aria-current", "page");
@@ -982,13 +982,13 @@ export default function MissingLegalAdapter() {
   const [active, setActive] = useState("profile");
   const target =
     active === "profile"
-      ? createElement("div", { "data-slot": "profile-screen" }, "Profile")
+      ? createElement("div", { "data-screen": "profile-screen" }, "Profile")
       : active === "billing"
         ? createElement("div", { id: "account-profile-billing-kind" }, "Billing")
         : active === "danger"
           ? createElement("button", { id: "delete-account-trigger", type: "button" }, "Delete")
           : active === "reservations"
-            ? createElement("h2", { id: "account-reservations-current-title" }, "Reservations")
+            ? createElement("h2", { id: "account-reservations-past-title" }, "Reservations")
             : createElement("div", null, "Legal target missing");
   return createElement(
     "main",
@@ -1071,7 +1071,7 @@ export default function RoundtripOverflowAdapter() {
     active === "profile"
        ? createElement(
            "div",
-           { "data-slot": "profile-screen" },
+           { "data-screen": "profile-screen" },
            createElement(
              "form",
              { id: "account-profile-form" },
@@ -1107,7 +1107,7 @@ export default function RoundtripOverflowAdapter() {
           ? createElement("a", { href: "/en-US/privacy-policy" }, "Privacy")
           : active === "danger"
             ? createElement("button", { id: "delete-account-trigger", type: "button" }, "Delete")
-            : createElement("h2", { id: "account-reservations-current-title" }, "Reservations");
+            : createElement("h2", { id: "account-reservations-past-title" }, "Reservations");
   return createElement(
     "main",
     { style: { overflowX: "hidden", width: "100%" } },
@@ -1199,7 +1199,7 @@ export default function NavigationOverflowAdapter() {
     active === "profile"
       ? createElement(
           "div",
-          { "data-slot": "profile-screen" },
+          { "data-screen": "profile-screen" },
           createElement(
             "form",
             { id: "account-profile-form" },
@@ -1245,7 +1245,7 @@ export default function NavigationOverflowAdapter() {
               )
             : createElement(
                 "h2",
-                { id: "account-reservations-current-title" },
+                { id: "account-reservations-past-title" },
                 "Reservations"
               );
 
@@ -1379,7 +1379,7 @@ export default function ComputedStyleAdapter() {
     active === "profile"
       ? createElement(
           "div",
-          { "data-slot": "profile-screen" },
+          { "data-screen": "profile-screen" },
           createElement(
             "form",
             { id: "account-profile-form" },
@@ -1417,7 +1417,7 @@ export default function ComputedStyleAdapter() {
             : createElement(
                 "div",
                 { "data-slot": "reservations-screen" },
-                createElement("h2", { id: "account-reservations-current-title", style: headingStyle }, "Current reservations"),
+                createElement("h2", { id: "account-reservations-past-title", style: headingStyle }, "Current reservations"),
                 createElement(
                   "section",
                   null,
@@ -2519,7 +2519,7 @@ test.serial.skipIf(!chromiumAvailable)(
           )
           .click();
         const selectedTargetVisible = await page
-          .locator("[data-slot='profile-screen']")
+          .locator("[data-screen='profile-screen']")
           .isVisible();
         const selected = await readSelectedEmailProbe(page, {
           deviceScaleFactor: 1,
@@ -2869,14 +2869,14 @@ test.serial.skipIf(!chromiumAvailable)(
       async (page) => {
         await page.evaluate(() => {
           const profile = document.querySelector<HTMLElement>(
-            "[data-slot='profile-screen']"
+            "[data-screen='profile-screen']"
           );
           const field = profile?.querySelector<HTMLElement>(
             "fieldset[aria-labelledby$='-email-label'] > div"
           );
           const button = field?.querySelector<HTMLButtonElement>("button");
           const laterProfileSection = profile?.querySelector<HTMLElement>(
-            ":scope > div:nth-of-type(3)"
+            ":scope > div:nth-of-type(1) > div:nth-of-type(3)"
           );
           if (!field || !button || !laterProfileSection) {
             throw new Error("production profile sections are incomplete");

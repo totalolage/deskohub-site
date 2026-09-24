@@ -326,7 +326,7 @@ type NativeValidationPanels = {
   readonly profile: boolean;
   readonly billing: boolean;
   readonly selectors: {
-    readonly profile: "[data-slot='profile-screen']";
+    readonly profile: "[data-screen='profile-screen']";
     readonly billing: "#account-profile-billing-kind -> ancestor section";
   };
 };
@@ -430,8 +430,8 @@ type PublicLegalNavigationReport = {
 };
 
 const productionSectionTargets = {
-  reservations: "#account-reservations-current-title",
-  profile: "[data-slot='profile-screen']",
+  reservations: "#account-reservations-past-title",
+  profile: "[data-screen='profile-screen']",
   billing: "#account-profile-billing-kind",
   legal: "a[href$='/privacy-policy']",
   danger: "#delete-account-trigger",
@@ -667,7 +667,7 @@ type EmailTextEvidence = {
 
 type EmailContainmentEvidence = {
   readonly status: "passed" | "failed" | "not-applicable";
-  readonly profileSelector: "[data-slot='profile-screen']";
+  readonly profileSelector: "[data-screen='profile-screen']";
   readonly fieldSelector: string | null;
   readonly fieldRect: CssRect | null;
   readonly viewport: {
@@ -3108,7 +3108,7 @@ export const readInitialDomProbe = async (
         };
       }
 
-      const profileSelector = "[data-slot='profile-screen']" as const;
+      const profileSelector = "[data-screen='profile-screen']" as const;
       const shouldProbeSelectedProfile =
         emailProbe?.expectedSelectedProfile === true &&
         emailProbe.selectionStatus === "selected" &&
@@ -4655,7 +4655,9 @@ const readNativeValidationPageState = async (page: Page) =>
               validityValid: control.validity.valid,
             }))
         : [];
-    const profilePanel = document.querySelector("[data-slot='profile-screen']");
+    const profilePanel = document.querySelector(
+      "[data-screen='profile-screen']"
+    );
     const billingKind = document.querySelector("#account-profile-billing-kind");
     const billingPanel = billingKind?.closest("section") ?? null;
     const billing = {
@@ -4984,7 +4986,7 @@ const runNativeValidationProbe = async ({
         profile: firstState.panels.profile,
         billing: firstState.panels.billing,
         selectors: {
-          profile: "[data-slot='profile-screen']",
+          profile: "[data-screen='profile-screen']",
           billing: "#account-profile-billing-kind -> ancestor section",
         },
       },
@@ -5059,7 +5061,7 @@ const runNativeValidationProbe = async ({
         profile: secondState.panels.profile,
         billing: secondState.panels.billing,
         selectors: {
-          profile: "[data-slot='profile-screen']",
+          profile: "[data-screen='profile-screen']",
           billing: "#account-profile-billing-kind -> ancestor section",
         },
       },

@@ -153,6 +153,24 @@ describe("DeleteAccountCard", () => {
     return event;
   }
 
+  test("renders inside the shared destructive account section panel", async () => {
+    const { DeleteAccountCard } = await import("./delete-account-card");
+
+    const view = render(
+      <DeleteAccountCard
+        deletionPending={false}
+        email="ada@example.test"
+        locale="en-US"
+      />
+    );
+
+    const panel = view.container.querySelector(
+      '[data-slot="account-section-panel"]'
+    );
+    expect(panel).not.toBeNull();
+    expect(panel?.getAttribute("data-variant")).toBe("destructive");
+  });
+
   test("renders an optional h2 heading and keeps the default heading compatible", async () => {
     const { DeleteAccountCard } = await import("./delete-account-card");
 

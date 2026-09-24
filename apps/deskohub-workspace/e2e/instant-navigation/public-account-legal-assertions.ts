@@ -135,7 +135,7 @@ export async function expectPublicAccountLegal(page: Page): Promise<void> {
       name: m.accountSignOut({}, { locale }),
     })
   ).toHaveCount(0);
-  await expect(page.locator("[data-slot='profile-screen']")).toHaveCount(0);
+  await expect(page.locator("[data-screen='profile-screen']")).toHaveCount(0);
   await expect(page.locator("#account-profile-form")).toHaveCount(0);
   await expect(page.locator("#account-reservations-current-title")).toHaveCount(
     0

@@ -922,7 +922,7 @@ class FakeBrowser {
       }
       return;
     }
-    if (condition.includes("account-reservations-current-title")) {
+    if (condition.includes("account-reservations-past-title")) {
       const userId = this.external.currentAuthUserId;
       const customerId = userId
         ? this.external.linksByUserId.get(userId)

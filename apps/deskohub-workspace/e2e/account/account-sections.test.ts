@@ -48,13 +48,13 @@ const sectionPanel = (section: AccountSection, includeLegalLink: boolean) => {
     case "reservations":
       return createElement(
         "h2",
-        { id: "account-reservations-current-title" },
-        "Current and upcoming"
+        { id: "account-reservations-past-title" },
+        "Past reservations"
       );
     case "profile":
       return createElement(
         "section",
-        { "data-slot": "profile-screen" },
+        { "data-screen": "profile-screen" },
         createElement("input", { id: "account-profile-first-name" })
       );
     case "billing":

@@ -1,6 +1,7 @@
 import { Camera, Check, UserRound } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
+import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
@@ -64,19 +65,14 @@ export function ProfileScreen({
     .join("");
 
   return (
-    <section
-      aria-labelledby={titleId}
-      className="-mx-4 min-w-0 rounded-none border-y border-[#dfe4ec] bg-white p-5 sm:-mx-6 sm:p-8 md:mx-0 md:rounded-2xl md:border [&_input]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))] [&_select]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]"
-      data-slot="profile-screen"
+    <AccountSectionPanel
+      className="min-w-0"
+      data-screen="profile-screen"
+      footer={footer}
+      title={copy.title}
+      titleId={titleId}
     >
-      <h2
-        className="border-b border-[#e8edf3] pb-6 text-[26px] font-bold leading-tight tracking-[-0.025em] text-[#00024f]"
-        id={titleId}
-      >
-        {copy.title}
-      </h2>
-
-      <div className="mt-8 flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
+      <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-center">
         <div className="relative size-20 shrink-0">
           <div
             aria-hidden="true"
@@ -163,12 +159,6 @@ export function ProfileScreen({
           </FutureFeatureTooltip>
         </Select>
       </div>
-
-      {footer !== undefined && (
-        <div className="sticky bottom-0 z-10 mt-8 min-w-0 border-t border-[#e6ebf1] bg-white pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          {footer}
-        </div>
-      )}
-    </section>
+    </AccountSectionPanel>
   );
 }

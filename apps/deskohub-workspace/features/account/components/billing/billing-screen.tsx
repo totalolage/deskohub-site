@@ -2,6 +2,7 @@ import { Download, FileDown, Plus, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { useId } from "react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
+import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import type { Locale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
@@ -55,21 +56,12 @@ export function BillingScreen({
   const invoiceHistoryUnavailableId = `${instanceId}-invoice-history-unavailable`;
 
   return (
-    <section
-      aria-labelledby={titleId}
-      className="min-w-0 rounded-2xl border border-[#dfe4ec] bg-white p-4 text-navy-blue shadow-[0_18px_40px_-28px_rgba(0,2,79,0.45)] sm:p-8 [&_input]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))] [&_select]:scroll-mb-[calc(12rem+env(safe-area-inset-bottom))]"
+    <AccountSectionPanel
+      className="min-w-0"
+      footer={footer}
+      title={copy.title}
+      titleId={titleId}
     >
-      <header className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:justify-between">
-        <h2
-          id={titleId}
-          className="min-w-0 flex-1 break-words text-[26px] font-semibold leading-tight tracking-[-0.025em] text-navy-blue"
-        >
-          {copy.title}
-        </h2>
-      </header>
-
-      <hr className="my-7 h-px border-0 bg-[#e6ebf1]" />
-
       <section aria-labelledby={paymentMethodsTitleId} className="min-w-0">
         <h3
           id={paymentMethodsTitleId}
@@ -184,12 +176,6 @@ export function BillingScreen({
           </p>
         </div>
       </section>
-
-      {footer !== undefined && (
-        <div className="sticky bottom-0 z-10 mt-8 min-w-0 border-t border-[#e6ebf1] bg-white pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          {footer}
-        </div>
-      )}
-    </section>
+    </AccountSectionPanel>
   );
 }

@@ -489,7 +489,7 @@ describe("ProfileForm", () => {
     expect(firstName.validity.valid).toBe(false);
     expect(view.getByText("Enter your first name.")).toBeTruthy();
     expect(
-      view.container.querySelector("[data-slot='profile-screen']")
+      view.container.querySelector("[data-screen='profile-screen']")
         ?.parentElement?.hidden
     ).toBe(false);
 

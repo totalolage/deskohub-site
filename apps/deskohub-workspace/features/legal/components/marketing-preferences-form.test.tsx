@@ -870,3 +870,15 @@ test("wraps long localized copy without fixed-width controls", () => {
   expect(section?.querySelector("h3")?.className).toContain("break-words");
   expect(getSwitch(view, longCopy.rowTitle).className).toContain("shrink-0");
 });
+
+test("renders the managed preference through the shared preference row primitive", () => {
+  const view = renderForm({
+    context: "synthetic-account-context",
+    status: "active",
+    source: "account",
+  });
+
+  expect(
+    view.container.querySelector('[data-slot="preference-row"]')
+  ).toBeTruthy();
+});

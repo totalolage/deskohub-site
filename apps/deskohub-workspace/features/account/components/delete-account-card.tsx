@@ -10,14 +10,9 @@ import {
   refreshAnalyticsAccountIdentity,
 } from "@/features/account/analytics-identity";
 import { createAuthReturnLifecycle } from "@/features/account/auth-return";
+import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Dialog,
@@ -134,143 +129,139 @@ export function DeleteAccountCard({
   const cardHeading = heading ?? m.accountDeletionTitle({}, { locale });
 
   return (
-    <Card className="rounded-2xl border-rose-200 bg-white p-5 shadow-none sm:p-8">
-      <CardHeader className="space-y-0 border-b border-rose-200 p-0 pb-5">
-        <CardTitle
-          as="h2"
-          className="flex items-center gap-2 font-semibold text-rose-900"
-        >
+    <AccountSectionPanel
+      className="min-w-0"
+      title={
+        <>
           <span
             aria-hidden
-            className="size-2 shrink-0 rounded-full bg-rose-500"
+            className="mr-2 inline-block size-2 shrink-0 rounded-full bg-rose-500"
           />
           {cardHeading}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0 pt-4">
-        <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
-          <h3 className="text-sm font-semibold leading-5 text-rose-800">
-            {noticeTitle}
-          </h3>
-          <div className="mt-2 space-y-2 text-sm leading-5 text-rose-800">
-            {deletionPending && (
-              <p>{m.accountDeletionPendingDescription({}, { locale })}</p>
-            )}
-            <p>{m.accountDeletionDescription({}, { locale })}</p>
-          </div>
+        </>
+      }
+      variant="destructive"
+    >
+      <div className="rounded-xl border border-rose-100 bg-rose-50 p-4">
+        <h3 className="text-sm font-semibold leading-5 text-rose-800">
+          {noticeTitle}
+        </h3>
+        <div className="mt-2 space-y-2 text-sm leading-5 text-rose-800">
+          {deletionPending && (
+            <p>{m.accountDeletionPendingDescription({}, { locale })}</p>
+          )}
+          <p>{m.accountDeletionDescription({}, { locale })}</p>
         </div>
+      </div>
 
-        <Dialog open={open} onOpenChange={closeDialog}>
-          <DialogTrigger asChild>
-            <Button
-              id="delete-account-trigger"
-              type="button"
-              variant="primary"
-              className="mt-6 flex h-auto min-h-11 w-full whitespace-normal rounded-xl bg-rose-600 px-5 py-3 text-center leading-5 text-white hover:bg-rose-700 sm:ml-auto sm:w-auto sm:whitespace-nowrap"
-            >
-              <Trash2 aria-hidden className="size-4" />
-              {deletionPending
-                ? m.accountDeletionConfirm({}, { locale })
-                : m.accountDeletionButton({}, { locale })}
-            </Button>
-          </DialogTrigger>
-          <DialogContent aria-describedby="delete-account-dialog-description">
-            {reauthRequired ? (
-              <>
-                <DialogHeader>
-                  <DialogTitle>
-                    {m.accountDeletionReauthTitle({}, { locale })}
-                  </DialogTitle>
-                  <DialogDescription id="delete-account-dialog-description">
-                    {m.accountDeletionReauthBody({}, { locale })}
-                  </DialogDescription>
-                </DialogHeader>
-                <div
-                  aria-live={reauthFailed ? "assertive" : "polite"}
-                  className="mt-4 min-h-5 text-sm text-navy-blue/78"
-                  role={reauthFailed ? "alert" : undefined}
+      <Dialog open={open} onOpenChange={closeDialog}>
+        <DialogTrigger asChild>
+          <Button
+            id="delete-account-trigger"
+            type="button"
+            variant="primary"
+            className="mt-6 flex h-auto min-h-11 w-full whitespace-normal rounded-xl bg-rose-600 px-5 py-3 text-center leading-5 text-white hover:bg-rose-700 sm:ml-auto sm:w-auto sm:whitespace-nowrap"
+          >
+            <Trash2 aria-hidden className="size-4" />
+            {deletionPending
+              ? m.accountDeletionConfirm({}, { locale })
+              : m.accountDeletionButton({}, { locale })}
+          </Button>
+        </DialogTrigger>
+        <DialogContent aria-describedby="delete-account-dialog-description">
+          {reauthRequired ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {m.accountDeletionReauthTitle({}, { locale })}
+                </DialogTitle>
+                <DialogDescription id="delete-account-dialog-description">
+                  {m.accountDeletionReauthBody({}, { locale })}
+                </DialogDescription>
+              </DialogHeader>
+              <div
+                aria-live={reauthFailed ? "assertive" : "polite"}
+                className="mt-4 min-h-5 text-sm text-navy-blue/78"
+                role={reauthFailed ? "alert" : undefined}
+              >
+                {reauthFailed && m.accountSignInRequestFailed({}, { locale })}
+                {!reauthFailed &&
+                  reauthLinkSent &&
+                  m.accountDeletionReauthLinkSent({}, { locale })}
+              </div>
+              <DialogFooter>
+                <Button
+                  id="delete-account-reauth-send"
+                  type="button"
+                  disabled={reauthSending || reauthLinkSent}
+                  onClick={requestReauthLink}
                 >
-                  {reauthFailed && m.accountSignInRequestFailed({}, { locale })}
-                  {!reauthFailed &&
-                    reauthLinkSent &&
-                    m.accountDeletionReauthLinkSent({}, { locale })}
-                </div>
-                <DialogFooter>
-                  <Button
-                    id="delete-account-reauth-send"
-                    type="button"
-                    disabled={reauthSending || reauthLinkSent}
-                    onClick={requestReauthLink}
-                  >
-                    {m.accountDeletionReauthSendLink({}, { locale })}
-                  </Button>
-                </DialogFooter>
-              </>
-            ) : (
-              <>
-                <DialogHeader>
-                  <DialogTitle>
-                    {m.accountDeletionConfirmTitle({}, { locale })}
-                  </DialogTitle>
-                  <DialogDescription id="delete-account-dialog-description">
-                    {m.accountDeletionConfirmDescription({}, { locale })}
-                  </DialogDescription>
-                </DialogHeader>
+                  {m.accountDeletionReauthSendLink({}, { locale })}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {m.accountDeletionConfirmTitle({}, { locale })}
+                </DialogTitle>
+                <DialogDescription id="delete-account-dialog-description">
+                  {m.accountDeletionConfirmDescription({}, { locale })}
+                </DialogDescription>
+              </DialogHeader>
 
-                <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-900/12 bg-red-50/70 p-4">
-                  <Checkbox
-                    id="confirm-account-deletion"
-                    checked={confirmed}
-                    onCheckedChange={(checked) =>
-                      setConfirmed(checked === true)
-                    }
-                  />
-                  <Label
-                    htmlFor="confirm-account-deletion"
-                    className="cursor-pointer text-sm leading-6 text-navy-blue/78"
-                  >
-                    {m.accountDeletionConfirmLabel({}, { locale })}
-                  </Label>
-                </div>
-
-                <div
-                  aria-live="assertive"
-                  className="mt-4 min-h-5 text-sm text-red-700"
+              <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-900/12 bg-red-50/70 p-4">
+                <Checkbox
+                  id="confirm-account-deletion"
+                  checked={confirmed}
+                  onCheckedChange={(checked) => setConfirmed(checked === true)}
+                />
+                <Label
+                  htmlFor="confirm-account-deletion"
+                  className="cursor-pointer text-sm leading-6 text-navy-blue/78"
                 >
-                  {result.data?.status === "failed"
-                    ? m.accountDeletionRetryableError({}, { locale })
-                    : null}
-                  {result.serverError ?? null}
-                </div>
+                  {m.accountDeletionConfirmLabel({}, { locale })}
+                </Label>
+              </div>
 
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => closeDialog(false)}
-                  >
-                    {m.accountDeletionCancel({}, { locale })}
-                  </Button>
-                  <Button
-                    id="delete-account-confirm"
-                    type="button"
-                    disabled={!confirmed || isExecuting}
-                    className="bg-red-800 hover:bg-red-900"
-                    onClick={() => {
-                      beginAnalyticsAccountTransition();
-                      execute({ confirmed: true });
-                    }}
-                  >
-                    {isExecuting
-                      ? m.accountDeletionConfirming({}, { locale })
-                      : m.accountDeletionConfirm({}, { locale })}
-                  </Button>
-                </DialogFooter>
-              </>
-            )}
-          </DialogContent>
-        </Dialog>
-      </CardContent>
-    </Card>
+              <div
+                aria-live="assertive"
+                className="mt-4 min-h-5 text-sm text-red-700"
+              >
+                {result.data?.status === "failed"
+                  ? m.accountDeletionRetryableError({}, { locale })
+                  : null}
+                {result.serverError ?? null}
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => closeDialog(false)}
+                >
+                  {m.accountDeletionCancel({}, { locale })}
+                </Button>
+                <Button
+                  id="delete-account-confirm"
+                  type="button"
+                  disabled={!confirmed || isExecuting}
+                  className="bg-red-800 hover:bg-red-900"
+                  onClick={() => {
+                    beginAnalyticsAccountTransition();
+                    execute({ confirmed: true });
+                  }}
+                >
+                  {isExecuting
+                    ? m.accountDeletionConfirming({}, { locale })
+                    : m.accountDeletionConfirm({}, { locale })}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </AccountSectionPanel>
   );
 }

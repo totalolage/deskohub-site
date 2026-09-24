@@ -1,12 +1,12 @@
 import { Download } from "lucide-react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
+import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import { CookieSettings } from "@/features/cookie-consent/components/cookie-settings-page";
 import { type Locale, m } from "@/features/i18n";
 import { MarketingPreferencesForm } from "@/features/legal/components/marketing-preferences-form";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
-import { Card } from "@/shared/components/ui/card";
 
 export interface LegalScreenStrings {
   readonly title: string;
@@ -38,34 +38,28 @@ export function LegalScreen({
   const localePath = `/${locale}`;
 
   return (
-    <Card className="min-w-0 rounded-3xl border-[#dfe4ec] bg-white p-5 sm:p-8">
-      <h2 className="min-w-0 break-words text-[26px] font-bold leading-[1.15] tracking-[-0.025em] text-[#00024f]">
-        {strings.title}
-      </h2>
-
-      <div className="mt-5 border-t border-[#e5e9ef] pt-4">
-        <nav
-          aria-label={m.footerLegalLabel({}, { locale })}
-          className="flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-sm leading-5"
-        >
-          <PolicyLink
-            href={`${localePath}/privacy-policy`}
-            label={m.footerPrivacyLink({}, { locale })}
-          />
-          <PolicyLink
-            href={`${localePath}/marketing-communications`}
-            label={m.footerMarketingCommunicationsLink({}, { locale })}
-          />
-          <PolicyLink
-            href={`${localePath}/terms-and-conditions`}
-            label={m.footerTermsLink({}, { locale })}
-          />
-          <PolicyLink
-            href={`${localePath}/cookie-policy`}
-            label={m.footerCookiePolicyLink({}, { locale })}
-          />
-        </nav>
-      </div>
+    <AccountSectionPanel className="min-w-0" title={strings.title}>
+      <nav
+        aria-label={m.footerLegalLabel({}, { locale })}
+        className="flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-sm leading-5"
+      >
+        <PolicyLink
+          href={`${localePath}/privacy-policy`}
+          label={m.footerPrivacyLink({}, { locale })}
+        />
+        <PolicyLink
+          href={`${localePath}/marketing-communications`}
+          label={m.footerMarketingCommunicationsLink({}, { locale })}
+        />
+        <PolicyLink
+          href={`${localePath}/terms-and-conditions`}
+          label={m.footerTermsLink({}, { locale })}
+        />
+        <PolicyLink
+          href={`${localePath}/cookie-policy`}
+          label={m.footerCookiePolicyLink({}, { locale })}
+        />
+      </nav>
 
       <CookieSettings
         additionalPreferences={
@@ -101,7 +95,7 @@ export function LegalScreen({
           </FutureFeatureTooltip>
         </div>
       </div>
-    </Card>
+    </AccountSectionPanel>
   );
 }
 

@@ -70,6 +70,12 @@ const getSavedPaymentMethodsMarkup = (markup: string) =>
   )?.[0] ?? "";
 
 describe("BillingScreen", () => {
+  test("renders inside the shared account section panel", () => {
+    const markup = renderScreen(englishCopy, "en-US");
+
+    expect(markup).toContain('data-slot="account-section-panel"');
+  });
+
   test("renders children and the optional footer exactly once without owning a form or input", () => {
     const markup = renderToStaticMarkup(
       <BillingScreen

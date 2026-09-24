@@ -383,7 +383,7 @@ describe("LinkedAccount", () => {
     const billingSubmit = view.getByRole("button", { name: "Save profile" });
     expect(billingSubmit.className).toContain("bg-navy-blue");
     expect(
-      view.container.querySelector("[data-slot='profile-screen']")
+      view.container.querySelector("[data-screen='profile-screen']")
         ?.parentElement?.hidden
     ).toBe(true);
     expect(
@@ -766,7 +766,7 @@ describe("LinkedAccount", () => {
 
     expect(updateCustomerProfile).not.toHaveBeenCalled();
     expect(
-      view.container.querySelector("[data-slot='profile-screen']")
+      view.container.querySelector("[data-screen='profile-screen']")
         ?.parentElement?.hidden
     ).toBe(false);
     expect(view.getByText("Enter your first name.")).toBeTruthy();

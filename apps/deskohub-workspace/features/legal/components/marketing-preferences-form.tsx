@@ -10,6 +10,7 @@ import {
 } from "@/features/legal/actions";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { Button } from "@/shared/components/ui/button";
+import { PreferenceRow } from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
@@ -229,50 +230,43 @@ function MarketingPreferencesFormContent({
         />
       )}
       {managedState && (
-        <article
-          aria-busy={isSaving}
-          className="flex min-w-0 items-start justify-between gap-5 rounded-2xl border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:p-6"
+        <PreferenceRow
+          busy={isSaving}
+          control={
+            <Switch
+              aria-describedby={descriptionId}
+              aria-labelledby={titleId}
+              checked={checked}
+              className="shrink-0"
+              disabled={busy}
+              id={switchId}
+              onCheckedChange={handleToggle}
+            />
+          }
+          description={copy.rowDescription}
+          descriptionId={descriptionId}
+          headingAs="h3"
+          title={copy.rowTitle}
+          titleId={titleId}
         >
-          <div className="min-w-0 flex-1 space-y-2">
-            <h3
-              className="break-words text-lg font-semibold leading-6 text-[#1f2d43]"
-              id={titleId}
-            >
-              {copy.rowTitle}
-            </h3>
-            <p
-              className="break-words text-base leading-6 text-navy-blue/70"
-              id={descriptionId}
-            >
-              {copy.rowDescription}
-            </p>
-            {isLinkManagement && (
-              <>
-                <p className="break-words text-sm leading-6 text-navy-blue/70">
-                  {copy.linkContext}
-                </p>
-                <Button
-                  aria-busy={isClearing}
-                  className="h-auto min-h-11 min-w-0 max-w-full !whitespace-normal self-start px-4 py-2 leading-5"
-                  disabled={busy}
-                  onClick={clearManagement}
-                  type="button"
-                  variant="secondary"
-                >
-                  {isClearing ? copy.clearing : copy.clearAction}
-                </Button>
-              </>
-            )}
-          </div>
-          <Switch
-            aria-describedby={descriptionId}
-            aria-labelledby={titleId}
-            checked={checked}
-            disabled={busy}
-            id={switchId}
-            onCheckedChange={handleToggle}
-          />
-        </article>
+          {isLinkManagement && (
+            <>
+              <p className="break-words text-sm leading-6 text-navy-blue/70">
+                {copy.linkContext}
+              </p>
+              <Button
+                aria-busy={isClearing}
+                className="h-auto min-h-11 min-w-0 max-w-full !whitespace-normal self-start px-4 py-2 leading-5"
+                disabled={busy}
+                onClick={clearManagement}
+                type="button"
+                variant="secondary"
+              >
+                {isClearing ? copy.clearing : copy.clearAction}
+              </Button>
+            </>
+          )}
+        </PreferenceRow>
       )}
 
       {hasContextState && (

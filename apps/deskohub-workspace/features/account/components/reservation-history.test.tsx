@@ -978,16 +978,66 @@ describe("ReservationHistory", () => {
     }
   });
 
-  test("shows the empty-state notices for a fresh account", () => {
+  test("renders current and past groups inside the shared account section panel", () => {
+    const view = renderHistory("en-US", availableHistory);
+
+    const panels = view.container.querySelectorAll(
+      '[data-slot="account-section-panel"]'
+    );
+    expect(panels.length).toBe(2);
+
+    const current = view.container.querySelector(
+      '[data-account-reservation-group="current"]'
+    );
+    expect(current).not.toBeNull();
+    expect(
+      current?.querySelector("#account-reservations-current-title")
+    ).toBeTruthy();
+
+    const past = view.container.querySelector(
+      '[data-account-reservation-group="past"]'
+    );
+    expect(
+      past?.querySelector("#account-reservations-past-title")
+    ).toBeTruthy();
+  });
+
+  test("omits the current panel entirely when the history has no current reservations", () => {
     const view = renderHistory("en-US", {
       kind: "available",
       groups: { current: [], past: [], unavailable: [] },
     });
 
     expect(
-      view.getByText("You have no current or upcoming reservations.")
-    ).toBeTruthy();
+      view.container.querySelector('[data-account-reservation-group="current"]')
+    ).toBeNull();
+    expect(
+      view.container.querySelector("#account-reservations-current-title")
+    ).toBeNull();
     expect(view.getByText("You have no past reservations yet.")).toBeTruthy();
+  });
+
+  test("keeps the reservations navigation landmark present when the current group is empty", () => {
+    const view = renderHistory("en-US", {
+      kind: "available",
+      groups: { current: [], past: [], unavailable: [] },
+    });
+
+    // The e2e readiness check anchors on the past panel's title, which renders
+    // unconditionally, so reservations navigation settles even with no
+    // current reservations.
+    expect(
+      view.container.querySelector('[data-account-reservation-group="past"]')
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector("#account-reservations-past-title")
+    ).toBeTruthy();
+    expect(
+      view.container.querySelector('[data-account-reservation-group="current"]')
+    ).toBeNull();
+    expect(
+      view.container.querySelector("#account-reservations-current-title")
+    ).toBeNull();
   });
 
   test.each([

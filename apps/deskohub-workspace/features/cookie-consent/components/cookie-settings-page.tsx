@@ -6,6 +6,10 @@ import {
   useCookieConsent,
 } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
+import {
+  PreferenceRow,
+  PreferenceRowGroup,
+} from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
 
 const consentCategories: ConsentCategory[] = [
@@ -79,25 +83,27 @@ export function CookieSettings({
   };
 
   return (
-    <div className="mt-6 min-w-0 space-y-4">
-      {consentCategories.map((category) => (
-        <CookieCategoryCard
-          key={category}
-          category={category}
-          locale={locale}
-          checked={preferences[category]}
-          pending={pendingCategories.has(category)}
-          errored={erroredCategory === category}
-          onToggle={(nextChecked) => handleToggle(category, nextChecked)}
-        />
-      ))}
+    <div className="mt-6 min-w-0">
+      <PreferenceRowGroup>
+        {consentCategories.map((category) => (
+          <CookieCategoryRow
+            key={category}
+            category={category}
+            locale={locale}
+            checked={preferences[category]}
+            pending={pendingCategories.has(category)}
+            errored={erroredCategory === category}
+            onToggle={(nextChecked) => handleToggle(category, nextChecked)}
+          />
+        ))}
+      </PreferenceRowGroup>
 
       {additionalPreferences}
     </div>
   );
 }
 
-type CookieCategoryCardProps = {
+type CookieCategoryRowProps = {
   category: ConsentCategory;
   locale: Locale;
   checked: boolean;
@@ -106,49 +112,45 @@ type CookieCategoryCardProps = {
   onToggle: (checked: boolean) => void;
 };
 
-function CookieCategoryCard({
+function CookieCategoryRow({
   category,
   locale,
   checked,
   pending,
   errored,
   onToggle,
-}: CookieCategoryCardProps) {
+}: CookieCategoryRowProps) {
   const messages = categoryMessageGetters[category];
   const switchId = `cookie-category-${category}`;
   const descriptionId = `${switchId}-description`;
   const titleId = `${switchId}-title`;
 
   return (
-    <article className="flex min-w-0 items-start justify-between gap-5 rounded-2xl border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:p-6">
-      <div className="min-w-0 flex-1 space-y-2">
-        <h2 id={titleId} className="break-words text-2xl leading-tight">
-          {messages.title({}, { locale })}
-        </h2>
+    <PreferenceRow
+      control={
+        <Switch
+          id={switchId}
+          checked={checked}
+          onCheckedChange={onToggle}
+          disabled={category === "necessary" || pending}
+          aria-labelledby={titleId}
+          aria-describedby={descriptionId}
+        />
+      }
+      description={messages.description({}, { locale })}
+      descriptionId={descriptionId}
+      headingAs="h2"
+      title={messages.title({}, { locale })}
+      titleId={titleId}
+    >
+      {errored && (
         <p
-          id={descriptionId}
-          className="break-words text-base leading-7 text-navy-blue/70"
+          role="alert"
+          className="text-sm font-semibold leading-6 text-red-700"
         >
-          {messages.description({}, { locale })}
+          {m.errorPageTitle({}, { locale })}
         </p>
-        {errored && (
-          <p
-            role="alert"
-            className="text-sm font-semibold leading-6 text-red-700"
-          >
-            {m.errorPageTitle({}, { locale })}
-          </p>
-        )}
-      </div>
-
-      <Switch
-        id={switchId}
-        checked={checked}
-        onCheckedChange={onToggle}
-        disabled={category === "necessary" || pending}
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-      />
-    </article>
+      )}
+    </PreferenceRow>
   );
 }

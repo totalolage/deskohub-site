@@ -45,8 +45,8 @@ const sectionPanel = (section: AccountSection) => {
     case "reservations":
       return createElement(
         "h2",
-        { id: "account-reservations-current-title" },
-        "Current and upcoming"
+        { id: "account-reservations-past-title" },
+        "Past reservations"
       );
     case "profile":
       return createElement(ProfileScreen, {

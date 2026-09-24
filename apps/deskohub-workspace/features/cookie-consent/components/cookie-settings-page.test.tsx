@@ -133,6 +133,15 @@ describe("CookieSettings", () => {
     expect(getSwitch(view, "analytics").hasAttribute("disabled")).toBe(false);
   });
 
+  test("renders every category through the shared preference row primitive", () => {
+    const view = render(<CookieSettings locale="en-US" />);
+
+    const rows = view.container.querySelectorAll(
+      '[data-slot="preference-row"]'
+    );
+    expect(rows.length).toBe(4);
+  });
+
   test("renders the additional preferences slot after the cookie rows", () => {
     const view = render(
       <CookieSettings
@@ -141,11 +150,17 @@ describe("CookieSettings", () => {
       />
     );
 
+    const group = view.container.querySelector(
+      '[data-slot="preference-row-group"]'
+    );
+    expect(group?.querySelectorAll('[data-slot="preference-row"]').length).toBe(
+      4
+    );
     const children = Array.from(
       view.container.firstElementChild?.children ?? []
     );
-    expect(children).toHaveLength(5);
-    expect(children[4]?.textContent).toContain(
+    expect(children).toHaveLength(2);
+    expect(children[1]?.textContent).toContain(
       "synthetic additional preferences"
     );
   });

@@ -229,7 +229,7 @@ describe("ProfileForm action lifecycle", () => {
     const view = render(<ProfileFixture />);
     const profileScreen = () =>
       view.container.querySelector(
-        "[data-slot='profile-screen']"
+        "[data-screen='profile-screen']"
       ) as HTMLElement;
     const firstName = view.getByLabelText("First name") as HTMLInputElement;
     const lastName = view.getByLabelText("Last name") as HTMLInputElement;
@@ -281,7 +281,7 @@ describe("ProfileForm action lifecycle", () => {
     const view = render(<ProfileFixture />);
     const profileScreen = () =>
       view.container.querySelector(
-        "[data-slot='profile-screen']"
+        "[data-screen='profile-screen']"
       ) as HTMLElement;
     const firstName = view.getByLabelText("First name") as HTMLInputElement;
     const lastName = view.getByLabelText("Last name") as HTMLInputElement;

@@ -1,5 +1,6 @@
 import { CalendarDays, Users } from "lucide-react";
 import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
+import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import type {
   CustomerReservationHistory,
   CustomerReservationStatus,
@@ -18,12 +19,7 @@ import {
 } from "@/features/reservation/routes";
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button, buttonVariants } from "@/shared/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/shared/components/ui/card";
+import { Card, CardContent } from "@/shared/components/ui/card";
 import {
   StatusBadge,
   type StatusTone,
@@ -173,36 +169,27 @@ export function ReservationHistory({
   const hasUndatedReservations = groups.unavailable.length > 0;
 
   return (
-    <section className="min-w-0">
-      <header className="mb-6 flex min-w-0 flex-wrap items-center justify-between gap-4 border-b border-[#dfe4ec] pb-4">
-        <h2
-          className="min-w-0 break-words text-2xl font-semibold leading-tight tracking-[-0.02em] text-[#00024f]"
-          id="account-reservations-current-title"
-        >
-          {m.accountReservationsCurrentTitle({}, { locale })}
-        </h2>
-      </header>
-
-      <div className="min-w-0 space-y-8">
+    <div className="min-w-0 space-y-8">
+      {groups.current.length > 0 && (
         <CurrentReservationGroup
           copy={copy}
           locale={locale}
           reservations={groups.current}
         />
-        <PastReservationGroup
+      )}
+      <PastReservationGroup
+        copy={copy}
+        locale={locale}
+        reservations={groups.past}
+      />
+      {hasUndatedReservations && (
+        <UndatedReservationGroup
           copy={copy}
           locale={locale}
-          reservations={groups.past}
+          reservations={groups.unavailable}
         />
-        {hasUndatedReservations && (
-          <UndatedReservationGroup
-            copy={copy}
-            locale={locale}
-            reservations={groups.unavailable}
-          />
-        )}
-      </div>
-    </section>
+      )}
+    </div>
   );
 }
 
@@ -216,27 +203,24 @@ function CurrentReservationGroup({
   readonly reservations: readonly CustomerReservationSummary[];
 }) {
   const [featuredReservation, ...additionalReservations] = reservations;
+  if (!featuredReservation) return null;
 
   return (
-    <section
+    <AccountSectionPanel
       aria-labelledby="account-reservations-current-title"
       className="min-w-0 scroll-mt-8"
       data-account-reservation-group="current"
       id="account-reservations-current"
+      title={m.accountReservationsCurrentTitle({}, { locale })}
+      titleId="account-reservations-current-title"
     >
-      {featuredReservation ? (
-        <ul className="m-0 min-w-0 list-none space-y-3 p-0">
-          <FeaturedReservationItem
-            copy={copy}
-            locale={locale}
-            reservation={featuredReservation}
-          />
-        </ul>
-      ) : (
-        <GroupEmptyNotice
-          empty={m.accountReservationsCurrentEmpty({}, { locale })}
+      <ul className="m-0 min-w-0 list-none space-y-3 p-0">
+        <FeaturedReservationItem
+          copy={copy}
+          locale={locale}
+          reservation={featuredReservation}
         />
-      )}
+      </ul>
 
       {additionalReservations.length > 0 && (
         <div className="mt-7 min-w-0">
@@ -255,7 +239,7 @@ function CurrentReservationGroup({
           </ul>
         </div>
       )}
-    </section>
+    </AccountSectionPanel>
   );
 }
 
@@ -529,40 +513,31 @@ function PastReservationGroup({
   readonly reservations: readonly CustomerReservationSummary[];
 }) {
   return (
-    <section
+    <AccountSectionPanel
+      actions={
+        <span className="rounded-full bg-[#f3f5f8] px-2.5 py-1 text-xs font-semibold text-[#64748b]">
+          {reservations.length}
+        </span>
+      }
       aria-labelledby="account-reservations-past-title"
       className="min-w-0 scroll-mt-8"
       data-account-reservation-group="past"
       id="account-reservations-past"
+      title={m.accountReservationsPastTitle({}, { locale })}
+      titleId="account-reservations-past-title"
     >
-      <Card className="min-w-0 overflow-hidden rounded-2xl border-[#dfe4ec] bg-white shadow-none">
-        <CardHeader className="flex flex-row items-center justify-between gap-4 border-b border-[#dfe4ec] p-5 sm:p-6">
-          <CardTitle
-            as="h3"
-            className="min-w-0 break-words text-xl font-semibold text-[#00024f]"
-            id="account-reservations-past-title"
-          >
-            {m.accountReservationsPastTitle({}, { locale })}
-          </CardTitle>
-          <span className="shrink-0 rounded-full bg-[#f3f5f8] px-2.5 py-1 text-xs font-semibold text-[#64748b]">
-            {reservations.length}
-          </span>
-        </CardHeader>
-        {reservations.length === 0 ? (
-          <CardContent className="p-5 sm:p-6">
-            <GroupEmptyNotice
-              empty={m.accountReservationsPastEmpty({}, { locale })}
-            />
-          </CardContent>
-        ) : (
-          <PastReservationTable
-            copy={copy}
-            locale={locale}
-            reservations={reservations}
-          />
-        )}
-      </Card>
-    </section>
+      {reservations.length === 0 ? (
+        <GroupEmptyNotice
+          empty={m.accountReservationsPastEmpty({}, { locale })}
+        />
+      ) : (
+        <PastReservationTable
+          copy={copy}
+          locale={locale}
+          reservations={reservations}
+        />
+      )}
+    </AccountSectionPanel>
   );
 }
 

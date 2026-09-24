@@ -21,10 +21,14 @@ export const accountSectionLabels = {
   danger: "Danger zone",
 } as const satisfies Readonly<Record<AccountSection, string>>;
 
-/** Stable controls that are only visible when their owning account panel is active. */
+/**
+ * Stable controls that are only visible when their owning account panel is
+ * active. The reservations landmark anchors on the past panel because it
+ * renders unconditionally, even when the current group is empty.
+ */
 export const accountSectionLandmarks = {
-  reservations: "#account-reservations-current-title",
-  profile: "[data-slot='profile-screen']",
+  reservations: "#account-reservations-past-title",
+  profile: "[data-screen='profile-screen']",
   billing: "#account-profile-billing-kind",
   legal: "main a[href$='/privacy-policy']",
   danger: "#delete-account-trigger",

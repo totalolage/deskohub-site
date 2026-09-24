@@ -149,7 +149,7 @@ describe("ProfileScreen", () => {
   test("renders the caller fields and footer without owning a form", () => {
     const markup = renderProfile();
 
-    expect(markup).toContain('data-slot="profile-screen"');
+    expect(markup).toContain('data-slot="account-section-panel"');
     expect(markup).toContain("Member profile and settings");
     expect(markup).toContain("Ada Lovelace");
     expect(markup).toContain("Save profile");
@@ -162,25 +162,19 @@ describe("ProfileScreen", () => {
     expect(markup).not.toMatch(/name="(?:email|language)"/);
   });
 
-  test("runs the outer boundary edge-to-edge below md and keeps desktop card radii", () => {
+  test("renders inside the shared account section panel without full-bleed margins", () => {
     const markup = renderProfile();
     const sectionClass = markup
       .match(/<section[^>]*class="([^"]*)"/)?.[1]
       ?.replaceAll("&amp;", "&");
 
+    expect(markup).toContain('data-slot="account-section-panel"');
     expect(sectionClass).toBeDefined();
-    expect(sectionClass).toContain("-mx-4");
-    expect(sectionClass).toContain("sm:-mx-6");
-    expect(sectionClass).toContain("md:mx-0");
-    expect(sectionClass).toContain("rounded-none");
-    expect(sectionClass).toContain("md:rounded-2xl");
-    expect(sectionClass).toContain("border-y");
-    expect(sectionClass).toContain("md:border");
-    expect(sectionClass).not.toMatch(/(^| )border( |$)/);
-    expect(sectionClass).not.toContain("rounded-2xl border");
-    expect(sectionClass).toContain("p-5");
-    expect(sectionClass).toContain("sm:p-8");
+    expect(sectionClass).not.toContain("-mx-4");
+    expect(sectionClass).not.toContain("sm:-mx-6");
+    expect(sectionClass).not.toContain("rounded-none");
     expect(sectionClass).toContain("bg-white");
+
     const selectTriggerRadius =
       /<button[^>]*data-slot="select-trigger"[^>]*class="([^"]*)"/.exec(
         markup
