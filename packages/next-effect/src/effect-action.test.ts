@@ -232,8 +232,13 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
     }
   });
 
-  // @ts-expect-error client input must be the schema input type.
-  action(1);
+  // The action's client input must remain the schema input type: a number
+  // argument tuple must not be accepted.
+  type ActionInput = Parameters<typeof action>;
+  type ExpectStringInput = Expect<
+    Equal<[number] extends ActionInput ? true : false, false>
+  >;
+  const _assertStringInput: ExpectStringInput = true;
 
   // @ts-expect-error useAction preserves the action input type.
   hook.execute(1);
@@ -251,10 +256,37 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
   // @ts-expect-error useStateAction preserves the action input type.
   statefulHook.formAction(1);
 
-  EffectAction.fromClient(makeActionClient())
-    .inputSchema(Schema.toStandardSchemaV1(Schema.String))
-    // @ts-expect-error an action must provide every required service.
-    .action(() => TestService);
+  // The no-layer `.action` overload cannot accept a handler whose Effect
+  // requires TestService. The missingEffectContext diagnostic is not
+  // suppressible, so the negative coverage is asserted at the type level: the
+  // handler parameter of the no-layer overload must reject the
+  // service-requiring handler.
+  const noLayerBuilder = EffectAction.fromClient(
+    makeActionClient()
+  ).inputSchema(Schema.toStandardSchemaV1(Schema.String));
+  type NoLayerActionHandler = Parameters<typeof noLayerBuilder.action>[0];
+  const serviceRequiredHandler = () => TestService;
+  type NoLayerActionHandlerAccepts<H> = H extends NoLayerActionHandler
+    ? true
+    : false;
+  type ServiceRequiredHandlerAccepted = NoLayerActionHandlerAccepts<
+    typeof serviceRequiredHandler
+  >;
+  type Expect<T extends true> = T;
+  type Equal<X, Y> =
+    (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2
+      ? true
+      : false;
+  // If the overload ever widens to accept service-requiring handlers, this
+  // assertion fails to compile.
+  type ExpectRejected = Expect<Equal<ServiceRequiredHandlerAccepted, false>>;
+  const _assertRejected: ExpectRejected = true;
+  // Positive control: a context-free handler must be accepted.
+  const validHandler = () => Effect.succeed("ok");
+  type ExpectAccepted = Expect<
+    Equal<NoLayerActionHandlerAccepts<typeof validHandler>, true>
+  >;
+  const _assertAccepted: ExpectAccepted = true;
 
   void hook.executeAsync("1").then((result) => {
     if (result.data !== undefined) {
