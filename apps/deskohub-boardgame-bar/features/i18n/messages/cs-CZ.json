@@ -633,6 +633,41 @@
       "title": "Nepodařilo se odeslat rezervaci",
       "description": "Zkuste to prosím později nebo nás kontaktujte přímo."
     },
+    "successMessage": "Rezervace byla úspěšně odeslána",
+    "submitFailed": "Nepodařilo se odeslat rezervaci. Zkuste to prosím později.",
+    "email": {
+      "fromName": "Web Rezervace",
+      "businessSubject": "Nová rezervace školící místnosti - {name}",
+      "businessHeading": "Nová rezervace školící místnosti",
+      "contactDetailsHeading": "Kontaktní údaje:",
+      "nameLabel": "Jméno:",
+      "companyLabel": "Společnost:",
+      "roleLabel": "Pozice:",
+      "emailLabel": "Email:",
+      "phoneLabel": "Telefon:",
+      "businessNameLine": "- Jméno: {fullName}\n",
+      "businessCompanyLine": "- Společnost: {company}\n",
+      "businessRoleLine": "- Pozice: {role}\n",
+      "businessText": "Nová rezervace školící místnosti\n\nKontaktní údaje:\n{nameLine}{companyLine}{roleLine}- Email: {email}\n- Telefon: {phone}\n\nDetaily rezervace:\n- Datum: {date}\n- Čas: {time}\n- Doba trvání: {duration}\n\n{specialRequirementsSection}\n\n⚠️ POŽADOVANÁ AKCE:\nZavolejte zákazníkovi pro potvrzení rezervace!\nTelefon: {phone}",
+      "businessSpecialRequirementsSection": "Speciální požadavky:\n{specialRequirements}",
+      "reservationDetailsHeading": "Detaily rezervace:",
+      "dateLabel": "Datum:",
+      "timeLabel": "Čas:",
+      "durationLabel": "Doba trvání:",
+      "specialRequirementsHeading": "Speciální požadavky:",
+      "actionHeading": "⚠️ Požadovaná akce:",
+      "actionCall": "Zavolejte zákazníkovi pro potvrzení rezervace!",
+      "footer": "Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.",
+      "confirmationSubject": "Potvrzení rezervace školící místnosti - DeskoHub",
+      "confirmationHeading": "Potvrzení přijetí rezervace",
+      "confirmationThankYou": "Děkujeme za Vaši rezervaci školící místnosti. Vaši žádost jsme úspěšně přijali a brzy Vás budeme telefonicky kontaktovat pro potvrzení všech detailů.",
+      "whatsNextHeading": "Co bude následovat:",
+      "whatsNextCall": "📞 Zavoláme Vám v nejbližší pracovní době pro potvrzení rezervace a zodpovězení případných dotazů.",
+      "confirmationDetailsHeading": "Detaily rezervace:",
+      "confirmationContactLine": "Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu {contactEmail}.",
+      "confirmationText": "Potvrzení přijetí rezervace\n\nDěkujeme za Vaši rezervaci školící místnosti. Vaši žádost jsme úspěšně přijali a brzy Vás budeme telefonicky kontaktovat pro potvrzení všech detailů.\n\nCo bude následovat:\n📞 Zavoláme Vám v nejbližší pracovní době pro potvrzení rezervace a zodpovězení případných dotazů.\n\nDetaily rezervace:\n- Datum: {date}\n- Čas: {time}\n- Doba trvání: {duration}\n\n{contactLine}\n\n---\nDeskoHub\nVáš prostor pro práci a kreativitu",
+      "footerTagline": "Váš prostor pro práci a kreativitu"
+    },
     "validation": {
       "firstNameMin": [
         {
@@ -812,6 +847,28 @@
       }
     },
     "successMessage": "Vaše zpráva byla úspěšně odeslána! Brzy se vám ozveme.",
+    "submitFailed": "Nepodařilo se odeslat zprávu. Zkuste to prosím později.",
+    "email": {
+      "fromName": "Web Kontaktní Formulář",
+      "businessSubject": "Nová zpráva z kontaktního formuláře - {name}",
+      "businessHeading": "Nová zpráva z kontaktního formuláře",
+      "contactDetailsHeading": "Kontaktní údaje:",
+      "nameLabel": "Jméno:",
+      "emailLabel": "Email:",
+      "phoneLabel": "Telefon:",
+      "dateTimeLabel": "Datum a čas:",
+      "messageHeading": "Zpráva:",
+      "businessText": "Nová zpráva z kontaktního formuláře\n\nKontaktní údaje:\n- Jméno: {name}\n- Email: {email}{phoneLine}\n- Datum a čas: {dateTime}\n\nZpráva:\n{message}",
+      "businessPhoneLine": "\n- Telefon: {phone}",
+      "footer": "Tato zpráva byla automaticky vygenerována z kontaktního formuláře na webu DeskoHub.",
+      "confirmationSubject": "Potvrzení přijetí vaší zprávy - DeskoHub",
+      "confirmationHeading": "Potvrzení přijetí zprávy",
+      "confirmationThankYou": "Děkujeme za vaši zprávu. Přijali jsme ji a brzy vás budeme kontaktovat.",
+      "confirmationSummaryHeading": "Shrnutí vaší zprávy:",
+      "confirmationContactLine": "Pokud máte jakékoliv další dotazy, neváhejte nás kontaktovat na emailu {contactEmail}.",
+      "confirmationText": "Potvrzení přijetí zprávy\n\nDěkujeme za vaši zprávu. Přijali jsme ji a brzy vás budeme kontaktovat.\n\nShrnutí vaší zprávy:\n{message}\n\n{contactLine}\n\n---\nDeskoHub\nVáš prostor pro práci a kreativitu",
+      "footerTagline": "Váš prostor pro práci a kreativitu"
+    },
     "validation": {
       "message": {
         "minimum": [

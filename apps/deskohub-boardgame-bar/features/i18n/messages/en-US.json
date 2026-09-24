@@ -623,6 +623,41 @@
       "title": "Failed to Submit Reservation",
       "description": "Please try again later or contact us directly."
     },
+    "successMessage": "Reservation submitted successfully",
+    "submitFailed": "Failed to send reservation. Please try again later.",
+    "email": {
+      "fromName": "Web Reservations",
+      "businessSubject": "New training room reservation - {name}",
+      "businessHeading": "New training room reservation",
+      "contactDetailsHeading": "Contact details:",
+      "nameLabel": "Name:",
+      "companyLabel": "Company:",
+      "roleLabel": "Role:",
+      "emailLabel": "Email:",
+      "phoneLabel": "Phone:",
+      "businessNameLine": "- Name: {fullName}\n",
+      "businessCompanyLine": "- Company: {company}\n",
+      "businessRoleLine": "- Role: {role}\n",
+      "businessText": "New training room reservation\n\nContact details:\n{nameLine}{companyLine}{roleLine}- Email: {email}\n- Phone: {phone}\n\nReservation details:\n- Date: {date}\n- Time: {time}\n- Duration: {duration}\n\n{specialRequirementsSection}\n\n⚠️ ACTION REQUIRED:\nCall the customer to confirm the reservation!\nPhone: {phone}",
+      "businessSpecialRequirementsSection": "Special requirements:\n{specialRequirements}",
+      "reservationDetailsHeading": "Reservation details:",
+      "dateLabel": "Date:",
+      "timeLabel": "Time:",
+      "durationLabel": "Duration:",
+      "specialRequirementsHeading": "Special requirements:",
+      "actionHeading": "⚠️ Action required:",
+      "actionCall": "Call the customer to confirm the reservation!",
+      "footer": "This message was automatically generated from the form on the DeskoHub website.",
+      "confirmationSubject": "Training Room Reservation Confirmation - DeskoHub",
+      "confirmationHeading": "Reservation Received",
+      "confirmationThankYou": "Thank you for your training room reservation. We have successfully received your request and will contact you by phone soon to confirm all details.",
+      "whatsNextHeading": "What's next:",
+      "whatsNextCall": "📞 We will call you during the next business hours to confirm your reservation and answer any questions.",
+      "confirmationDetailsHeading": "Reservation Details:",
+      "confirmationContactLine": "If you have any questions, please don't hesitate to contact us at {contactEmail}.",
+      "confirmationText": "Reservation Received\n\nThank you for your training room reservation. We have successfully received your request and will contact you by phone soon to confirm all details.\n\nWhat's next:\n📞 We will call you during the next business hours to confirm your reservation and answer any questions.\n\nReservation Details:\n- Date: {date}\n- Time: {time}\n- Duration: {duration}\n\n{contactLine}\n\n---\nDeskoHub\nYour space for work and creativity",
+      "footerTagline": "Your space for work and creativity"
+    },
     "validation": {
       "firstNameMin": [
         {
@@ -794,6 +829,28 @@
       }
     },
     "successMessage": "Your message has been sent successfully! We'll get back to you soon.",
+    "submitFailed": "Failed to send message. Please try again later.",
+    "email": {
+      "fromName": "Web Contact Form",
+      "businessSubject": "New message from the contact form - {name}",
+      "businessHeading": "New message from the contact form",
+      "contactDetailsHeading": "Contact details:",
+      "nameLabel": "Name:",
+      "emailLabel": "Email:",
+      "phoneLabel": "Phone:",
+      "dateTimeLabel": "Date and time:",
+      "messageHeading": "Message:",
+      "businessText": "New message from the contact form\n\nContact details:\n- Name: {name}\n- Email: {email}{phoneLine}\n- Date and time: {dateTime}\n\nMessage:\n{message}",
+      "businessPhoneLine": "\n- Phone: {phone}",
+      "footer": "This message was automatically generated from the contact form on the DeskoHub website.",
+      "confirmationSubject": "Message Received Confirmation - DeskoHub",
+      "confirmationHeading": "Message Received",
+      "confirmationThankYou": "Thank you for your message. We have received it and will contact you soon.",
+      "confirmationSummaryHeading": "Your Message Summary:",
+      "confirmationContactLine": "If you have any other questions, please don't hesitate to contact us at {contactEmail}.",
+      "confirmationText": "Message Received\n\nThank you for your message. We have received it and will contact you soon.\n\nYour Message Summary:\n{message}\n\n{contactLine}\n\n---\nDeskoHub\nYour space for work and creativity",
+      "footerTagline": "Your space for work and creativity"
+    },
     "validation": {
       "message": {
         "minimum": [

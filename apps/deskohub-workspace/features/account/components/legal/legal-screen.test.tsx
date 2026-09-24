@@ -14,7 +14,6 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { legalScreenCopy } from "./legal-screen.copy";
 
 type MockNextLinkProps = ComponentPropsWithoutRef<"a"> & {
   readonly href: string;
@@ -113,6 +112,7 @@ const { CookieConsentProvider } = await import(
   "@/features/cookie-consent/components/cookie-consent-provider"
 );
 const { LegalScreen } = await import("./legal-screen");
+const { getLegalScreenStrings } = await import("../account-screen-copy");
 
 beforeAll(registerWorkspaceComponentTestEnv);
 beforeEach(() => {
@@ -126,14 +126,14 @@ function renderLegalScreen(locale: Locale) {
   return render(
     <>
       <CookieConsentProvider locale={locale} />
-      <LegalScreen locale={locale} strings={legalScreenCopy[locale]} />
+      <LegalScreen locale={locale} strings={getLegalScreenStrings(locale)} />
     </>
   );
 }
 
 for (const locale of ["en-US", "cs-CZ"] as const) {
   test(`${locale} renders the supplied copy and localized policy destinations`, () => {
-    const strings = legalScreenCopy[locale];
+    const strings = getLegalScreenStrings(locale);
     const view = renderLegalScreen(locale);
 
     expect(
@@ -176,7 +176,7 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
 
 test("renders immutable necessary consent and functional optional controls", async () => {
   const locale = "en-US" as const;
-  const strings = legalScreenCopy[locale];
+  const strings = getLegalScreenStrings(locale);
   const view = renderLegalScreen(locale);
   const switchFor = (title: string) =>
     view.getByRole("switch", { name: new RegExp(`^${title}`) });
@@ -281,7 +281,7 @@ test("passes account availability to the marketing preference form", () => {
       <LegalScreen
         accountsEnabled={false}
         locale="en-US"
-        strings={legalScreenCopy["en-US"]}
+        strings={getLegalScreenStrings("en-US")}
       />
     </>
   );
@@ -304,7 +304,7 @@ test("passes the rendered marketing preference state through", async () => {
           source: "link",
           status: "active",
         }}
-        strings={legalScreenCopy["cs-CZ"]}
+        strings={getLegalScreenStrings("cs-CZ")}
       />
     </>
   );

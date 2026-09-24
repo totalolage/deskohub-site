@@ -14,8 +14,8 @@ import { PreferenceRow } from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import {
+  getMarketingPreferencesFormCopy,
   type MarketingPreferencesFormCopy,
-  marketingPreferencesFormCopy,
 } from "./marketing-preferences-form.copy";
 
 export interface MarketingPreferencesFormProps {
@@ -29,7 +29,7 @@ export function MarketingPreferencesForm({
   accountsEnabled = true,
   locale,
   state,
-  copy = marketingPreferencesFormCopy[locale],
+  copy = getMarketingPreferencesFormCopy(locale),
 }: MarketingPreferencesFormProps) {
   return (
     <MarketingPreferencesFormContent

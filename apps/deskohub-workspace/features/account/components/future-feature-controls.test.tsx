@@ -16,8 +16,8 @@ import type {
   CustomerReservationHistory,
   CustomerReservationSummary,
 } from "../contracts";
+import { getLegalScreenStrings } from "./account-screen-copy";
 import type { BillingScreenCopy } from "./billing/billing-screen";
-import { legalScreenCopy } from "./legal/legal-screen.copy";
 import type { ProfileScreenCopy } from "./profile/profile-screen";
 import type { ReservationHistoryCopy } from "./reservation-history";
 
@@ -265,7 +265,7 @@ const reservationCopy = {
 const accountScreenCopy = {
   billing: billingCopy["en-US"],
   dangerTitle: "Danger zone",
-  legal: legalScreenCopy["en-US"],
+  legal: getLegalScreenStrings("en-US"),
   profile: profileCopy["en-US"],
   reservations: reservationCopy["en-US"],
   shell: {
@@ -370,7 +370,7 @@ function renderBillingScreen(locale: Locale): ScreenView {
 
 function renderLegalScreen(locale: Locale): ScreenView {
   return render(
-    <LegalScreen locale={locale} strings={legalScreenCopy[locale]} />
+    <LegalScreen locale={locale} strings={getLegalScreenStrings(locale)} />
   );
 }
 
@@ -490,7 +490,7 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     render: renderReservationHistory,
   },
   {
-    label: (locale) => legalScreenCopy[locale].archiveAction,
+    label: (locale) => getLegalScreenStrings(locale).archiveAction,
     name: "GDPR archive control",
     render: renderLegalScreen,
   },

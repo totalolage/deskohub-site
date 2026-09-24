@@ -1,6 +1,7 @@
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
 import { Context, Effect, Layer } from "effect";
 import type { Locale } from "@/features/i18n";
+import { m } from "@/features/i18n/paraglide/messages";
 import { BoardgameEmailLayer } from "@/shared/backend/config/email.config";
 import { StorageError } from "@/shared/backend/errors";
 import { siteConstants } from "@/shared/utils/constants";
@@ -102,7 +103,10 @@ const trainingReservationServiceImplementation = Effect.gen(function* () {
         const fullName = `${data.firstName} ${data.lastName}`.trim();
 
         const businessEmailContent = {
-          subject: `Nová rezervace školící místnosti - ${displayName}`,
+          subject: m["trainingReservation.email.businessSubject"](
+            { name: displayName },
+            { locale: businessEmailLocale }
+          ),
           html: renderBusinessTrainingReservationEmailHtml({
             fullName,
             company: data.company,
@@ -114,34 +118,53 @@ const trainingReservationServiceImplementation = Effect.gen(function* () {
             formattedDuration: businessFormattedDuration,
             specialRequirements: data.specialRequirements,
           }),
-          text: `
-Nová rezervace školící místnosti
-
-Kontaktní údaje:
-${fullName ? `- Jméno: ${fullName}\n` : ""}${data.company ? `- Společnost: ${data.company}\n` : ""}${data.role ? `- Pozice: ${data.role}\n` : ""}- Email: ${data.email}
-- Telefon: ${data.phone}
-
-Detaily rezervace:
-- Datum: ${formattedDate}
-- Čas: ${formattedTime}
-- Doba trvání: ${businessFormattedDuration}
-
-${data.specialRequirements ? `Speciální požadavky:\n${data.specialRequirements}` : ""}
-
-⚠️ POŽADOVANÁ AKCE:
-Zavolejte zákazníkovi pro potvrzení rezervace!
-Telefon: ${data.phone}
-
----
-Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
-            `.trim(),
+          text: `${m["trainingReservation.email.businessText"](
+            {
+              nameLine: fullName
+                ? m["trainingReservation.email.businessNameLine"](
+                    { fullName },
+                    { locale: businessEmailLocale }
+                  )
+                : "",
+              companyLine: data.company
+                ? m["trainingReservation.email.businessCompanyLine"](
+                    { company: data.company },
+                    { locale: businessEmailLocale }
+                  )
+                : "",
+              roleLine: data.role
+                ? m["trainingReservation.email.businessRoleLine"](
+                    { role: data.role },
+                    { locale: businessEmailLocale }
+                  )
+                : "",
+              email: data.email,
+              phone: data.phone,
+              date: formattedDate,
+              time: formattedTime,
+              duration: businessFormattedDuration,
+              specialRequirementsSection: data.specialRequirements
+                ? m[
+                    "trainingReservation.email.businessSpecialRequirementsSection"
+                  ](
+                    { specialRequirements: data.specialRequirements },
+                    { locale: businessEmailLocale }
+                  )
+                : "",
+            },
+            { locale: businessEmailLocale }
+          )}\n\n---\n${m["trainingReservation.email.footer"](undefined, {
+            locale: businessEmailLocale,
+          })}`,
         };
 
         // Create the email message for business
         const businessEmailMessage: EmailMessage = {
           from: {
             email: siteConstants.contact.fromEmail,
-            name: "Web Rezervace",
+            name: m["trainingReservation.email.fromName"](undefined, {
+              locale: businessEmailLocale,
+            }),
           },
           to: {
             email: siteConstants.contact.reservationEmail,
@@ -188,10 +211,9 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
           Effect.mapError(
             (error) =>
               new StorageError({
-                message:
-                  locale === "cs-CZ"
-                    ? "Nepodařilo se odeslat rezervaci. Zkuste to prosím později."
-                    : "Failed to send reservation. Please try again later.",
+                message: m["trainingReservation.submitFailed"](undefined, {
+                  locale,
+                }),
                 operation: "trainingReservation.submit",
                 cause: error,
               })
@@ -208,56 +230,30 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
             email: data.email,
             name: displayName,
           },
-          subject:
-            locale === "cs-CZ"
-              ? "Potvrzení rezervace školící místnosti - DeskoHub"
-              : "Training Room Reservation Confirmation - DeskoHub",
+          subject: m["trainingReservation.email.confirmationSubject"](
+            undefined,
+            { locale }
+          ),
           html: renderTrainingReservationConfirmationEmailHtml({
             locale,
             formattedDate,
             formattedTime,
             formattedDuration: customerFormattedDuration,
           }),
-          text:
-            locale === "cs-CZ"
-              ? `
-Potvrzení přijetí rezervace
-
-Děkujeme za Vaši rezervaci školící místnosti. Vaši žádost jsme úspěšně přijali a brzy Vás budeme telefonicky kontaktovat pro potvrzení všech detailů.
-
-Co bude následovat:
-📞 Zavoláme Vám v nejbližší pracovní době pro potvrzení rezervace a zodpovězení případných dotazů.
-
-Detaily rezervace:
-- Datum: ${formattedDate}
-- Čas: ${formattedTime}
-- Doba trvání: ${customerFormattedDuration}
-
-Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.reservationEmail}.
-
----
-DeskoHub
-Váš prostor pro práci a kreativitu
-                `.trim()
-              : `
-Reservation Received
-
-Thank you for your training room reservation. We have successfully received your request and will contact you by phone soon to confirm all details.
-
-What's next:
-📞 We will call you during the next business hours to confirm your reservation and answer any questions.
-
-Reservation Details:
-- Date: ${formattedDate}
-- Time: ${formattedTime}
-- Duration: ${customerFormattedDuration}
-
-If you have any questions, please don't hesitate to contact us at ${siteConstants.contact.reservationEmail}.
-
----
-DeskoHub
-Your space for work and creativity
-                `.trim(),
+          text: m["trainingReservation.email.confirmationText"](
+            {
+              date: formattedDate,
+              time: formattedTime,
+              duration: customerFormattedDuration,
+              contactLine: m[
+                "trainingReservation.email.confirmationContactLine"
+              ](
+                { contactEmail: siteConstants.contact.reservationEmail },
+                { locale }
+              ),
+            },
+            { locale }
+          ),
           tags: ["training-room-confirmation"],
           metadata: {
             source: "training-room-form",

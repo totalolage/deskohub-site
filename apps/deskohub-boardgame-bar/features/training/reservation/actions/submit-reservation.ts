@@ -1,6 +1,7 @@
 "use server";
 
 import { Effect, Layer } from "effect";
+import { m } from "@/features/i18n/paraglide/messages";
 import { TrainingReservationService } from "@/features/training/reservation/backend/training-reservation.service";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { reservationSchema } from "../schemas/reservation";
@@ -66,10 +67,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
 
       const result = {
         success: true,
-        message:
-          locale === "cs-CZ"
-            ? "Rezervace byla úspěšně odeslána"
-            : "Reservation submitted successfully",
+        message: m["trainingReservation.successMessage"](undefined, { locale }),
         submissionId: submission.submittedAt,
         redirectUrl,
       };

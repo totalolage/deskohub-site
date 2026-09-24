@@ -5,6 +5,22 @@ import type { ReservationHistoryCopy } from "@/features/account/components/reser
 import type { AccountShellProps } from "@/features/account/components/shell/account-shell";
 import { type Locale, m } from "@/features/i18n";
 
+// Legal screen copy from the Inlang catalogs; tests may inject equivalent
+// literal strings through the LegalScreen strings prop.
+export const getLegalScreenStrings = (locale: Locale): LegalScreenStrings => ({
+  title: m.legalScreenTitle({}, { locale }),
+  analyticsTitle: m.legalScreenAnalyticsTitle({}, { locale }),
+  analyticsDescription: m.legalScreenAnalyticsDescription({}, { locale }),
+  marketingTitle: m.legalScreenMarketingTitle({}, { locale }),
+  marketingDescription: m.legalScreenMarketingDescription({}, { locale }),
+  preferencesUnavailable: m.legalScreenPreferencesUnavailable({}, { locale }),
+  unavailable: m.legalScreenUnavailable({}, { locale }),
+  archiveTitle: m.legalScreenArchiveTitle({}, { locale }),
+  archiveDescription: m.legalScreenArchiveDescription({}, { locale }),
+  archiveAction: m.legalScreenArchiveAction({}, { locale }),
+  savePreferences: m.legalScreenSavePreferences({}, { locale }),
+});
+
 export function getAccountScreenCopy(locale: Locale) {
   return {
     shell: {
