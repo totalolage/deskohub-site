@@ -1175,13 +1175,15 @@ test("wraps long localized copy without fixed-width controls", () => {
   expect(
     view.getByText(m.marketingPreferencesFormRowDescription({}, { locale }))
   ).toBeTruthy();
-  const section = view.container.querySelector("section");
-  // The section keeps its own width containment; it renders as a group child
-  // without carrying sibling separation margins.
-  expect(section?.className).toContain("min-w-0");
-  expect(section?.className).not.toContain("mt-8");
-  expect(section?.querySelector("article")?.className).toContain("min-w-0");
-  expect(section?.querySelector("h3")?.className).toContain("break-words");
+  // The managed state renders the markers on the shared preference row
+  // article itself; it is a group child without sibling separation margins.
+  const row = view.container.querySelector(
+    '[data-slot="preference-row"][data-marketing-preferences="absent"]'
+  );
+  expect(row).toBeTruthy();
+  expect(row?.className).toContain("min-w-0");
+  expect(row?.className).not.toContain("mt-8");
+  expect(row?.querySelector("h3")?.className).toContain("break-words");
   expect(getSwitch(view, rowTitle).className).toContain("shrink-0");
 });
 

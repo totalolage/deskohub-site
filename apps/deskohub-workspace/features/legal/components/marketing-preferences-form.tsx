@@ -158,31 +158,44 @@ function MarketingPreferencesFormContent({
   }
 
   return (
-    <section
-      aria-labelledby={managedState ? titleId : undefined}
-      className="min-w-0"
-      data-marketing-preferences={state.status}
-      data-marketing-preferences-source={source}
-    >
+    <>
       {state.status === "unavailable" && (
-        <UnavailableState accountsEnabled={accountsEnabled} locale={locale} />
+        <div
+          className="min-w-0"
+          data-marketing-preferences={state.status}
+          data-marketing-preferences-source={source}
+        >
+          <UnavailableState accountsEnabled={accountsEnabled} locale={locale} />
+        </div>
       )}
       {state.status === "invalid-link" && (
-        <InvalidLinkState
-          isClearing={isClearing}
-          locale={locale}
-          onClear={clearManagement}
-        />
+        <div
+          className="min-w-0"
+          data-marketing-preferences={state.status}
+          data-marketing-preferences-source={source}
+        >
+          <InvalidLinkState
+            isClearing={isClearing}
+            locale={locale}
+            onClear={clearManagement}
+          />
+        </div>
       )}
       {pendingState && (
-        <PendingLinkState
-          busy={busy}
-          isClearing={isClearing}
-          isConfirming={isConfirming}
-          locale={locale}
-          onClear={clearManagement}
-          onContinue={continueManagement}
-        />
+        <div
+          className="min-w-0"
+          data-marketing-preferences={state.status}
+          data-marketing-preferences-source={source}
+        >
+          <PendingLinkState
+            busy={busy}
+            isClearing={isClearing}
+            isConfirming={isConfirming}
+            locale={locale}
+            onClear={clearManagement}
+            onContinue={continueManagement}
+          />
+        </div>
       )}
       {managedState && (
         <PreferenceRow
@@ -198,6 +211,8 @@ function MarketingPreferencesFormContent({
               onCheckedChange={handleToggle}
             />
           }
+          data-marketing-preferences={state.status}
+          data-marketing-preferences-source={source}
           description={m.marketingPreferencesFormRowDescription({}, { locale })}
           descriptionId={descriptionId}
           headingAs="h3"
@@ -246,7 +261,7 @@ function MarketingPreferencesFormContent({
           )}
         </div>
       )}
-    </section>
+    </>
   );
 
   function handleToggle(nextChecked: boolean) {

@@ -309,14 +309,26 @@ test.each(["en-US", "cs-CZ"] as const)(
     expect(group).toBeTruthy();
 
     // One coherent group: the four cookie category rows followed by the
-    // marketing messages row as the fifth item. Compare nodes with `===`
-    // (booleans) so a regression fails fast; bun's toBe failure diff
-    // serializes the entire happy-dom subtree and stalls the suite.
-    const rows = Array.from(
-      group.querySelectorAll('[data-slot="preference-row"]')
+    // marketing messages row as the fifth item. Direct children only — no
+    // wrapper may sit between the marketing row and the group. Compare nodes
+    // with `===` (booleans) so a regression fails fast; bun's toBe failure
+    // diff serializes the entire happy-dom subtree and stalls the suite.
+    const rows = Array.from(group.children).filter(
+      (el) => el.getAttribute("data-slot") === "preference-row"
     );
     expect(rows).toHaveLength(5);
-    expect(group.children).toHaveLength(5);
+    const groupChildren = Array.from(group.children);
+    for (const row of rows) {
+      expect(row.parentElement === group).toBe(true);
+    }
+    // Every element child of the group is one of the five rows or the
+    // marketing feedback element — nothing else.
+    const feedback = group.querySelector("#marketing-preferences-feedback");
+    expect(feedback).toBeTruthy();
+    for (const child of groupChildren) {
+      expect(rows.includes(child) || child === feedback).toBe(true);
+    }
+
     const rowTitles = rows.map(
       (row) => row.querySelector("h2, h3")?.textContent
     );
@@ -330,22 +342,16 @@ test.each(["en-US", "cs-CZ"] as const)(
       m.marketingPreferencesFormRowTitle({}, { locale })
     );
 
-    // The marketing section is a direct child of the group and no longer
-    // carries its own sibling separation margin.
-    const marketingSection = group.querySelector(
-      ":scope > section[data-marketing-preferences]"
-    );
-    expect(marketingSection).toBeTruthy();
-    expect(marketingSection.getAttribute("data-marketing-preferences")).toBe(
+    // The marketing row itself carries the state markers: semantically they
+    // describe that row, not an outer shell.
+    const marketingRow = rows[4];
+    expect(marketingRow.getAttribute("data-marketing-preferences")).toBe(
       "active"
     );
-    expect(
-      marketingSection.getAttribute("data-marketing-preferences-source")
-    ).toBe("link");
-    expect(marketingSection.className).not.toContain("mt-8");
-    expect(
-      marketingSection.querySelector('[data-slot="preference-row"]') === rows[4]
-    ).toBe(true);
+    expect(marketingRow.getAttribute("data-marketing-preferences-source")).toBe(
+      "link"
+    );
+    expect(group.querySelector(":scope > section")).toBeNull();
 
     // The marketing switch is present and interactive inside the group.
     const marketingSwitch = view.getByRole("switch", {
