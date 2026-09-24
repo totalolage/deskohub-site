@@ -1,25 +1,8 @@
 import type { BillingScreenCopy } from "@/features/account/components/billing/billing-screen";
-import type { LegalScreenStrings } from "@/features/account/components/legal/legal-screen";
 import type { ProfileScreenCopy } from "@/features/account/components/profile/profile-screen";
 import type { ReservationHistoryCopy } from "@/features/account/components/reservation-history";
 import type { AccountShellProps } from "@/features/account/components/shell/account-shell";
 import { type Locale, m } from "@/features/i18n";
-
-// Legal screen copy from the Inlang catalogs; tests may inject equivalent
-// literal strings through the LegalScreen strings prop.
-export const getLegalScreenStrings = (locale: Locale): LegalScreenStrings => ({
-  title: m.legalScreenTitle({}, { locale }),
-  analyticsTitle: m.legalScreenAnalyticsTitle({}, { locale }),
-  analyticsDescription: m.legalScreenAnalyticsDescription({}, { locale }),
-  marketingTitle: m.legalScreenMarketingTitle({}, { locale }),
-  marketingDescription: m.legalScreenMarketingDescription({}, { locale }),
-  preferencesUnavailable: m.legalScreenPreferencesUnavailable({}, { locale }),
-  unavailable: m.legalScreenUnavailable({}, { locale }),
-  archiveTitle: m.legalScreenArchiveTitle({}, { locale }),
-  archiveDescription: m.legalScreenArchiveDescription({}, { locale }),
-  archiveAction: m.legalScreenArchiveAction({}, { locale }),
-  savePreferences: m.legalScreenSavePreferences({}, { locale }),
-});
 
 export function getAccountScreenCopy(locale: Locale) {
   return {
@@ -67,7 +50,6 @@ export function getAccountScreenCopy(locale: Locale) {
       removePaymentCard: m.accountBillingRemovePaymentCard({}, { locale }),
       billingDetailsTitle: m.accountBillingDetailsTitle({}, { locale }),
       syncAres: m.accountBillingSyncAres({}, { locale }),
-      aresUnavailable: m.accountBillingAresUnavailable({}, { locale }),
       invoiceHistoryTitle: m.accountBillingInvoiceHistoryTitle({}, { locale }),
       invoiceHistoryUnavailable: m.accountBillingInvoiceHistoryUnavailable(
         {},
@@ -76,22 +58,6 @@ export function getAccountScreenCopy(locale: Locale) {
       downloadInvoice: m.accountBillingDownloadInvoice({}, { locale }),
       exportInvoices: m.accountBillingExportInvoices({}, { locale }),
     } satisfies BillingScreenCopy,
-    legal: {
-      title: m.accountLegalTitle({}, { locale }),
-      analyticsTitle: m.accountLegalAnalyticsTitle({}, { locale }),
-      analyticsDescription: m.accountLegalAnalyticsDescription({}, { locale }),
-      marketingTitle: m.accountLegalMarketingTitle({}, { locale }),
-      marketingDescription: m.accountLegalMarketingDescription({}, { locale }),
-      preferencesUnavailable: m.accountLegalPreferencesUnavailable(
-        {},
-        { locale }
-      ),
-      unavailable: m.accountFeatureUnavailable({}, { locale }),
-      archiveTitle: m.accountLegalArchiveTitle({}, { locale }),
-      archiveDescription: m.accountLegalArchiveDescription({}, { locale }),
-      archiveAction: m.accountLegalArchiveAction({}, { locale }),
-      savePreferences: m.accountLegalSavePreferences({}, { locale }),
-    } satisfies LegalScreenStrings,
     reservations: {
       assignedDesk: m.accountReservationAssignedDesk({}, { locale }),
       checkIn: m.accountReservationCheckIn({}, { locale }),

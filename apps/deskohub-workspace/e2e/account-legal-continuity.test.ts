@@ -28,7 +28,6 @@ import {
 import postcss from "postcss";
 import loadPostCssConfig from "postcss-load-config";
 import { type Locale, m } from "@/features/i18n";
-import { marketingPreferencesFormCopy } from "@/features/legal/components/marketing-preferences-form.copy";
 import {
   type CookieCategory,
   expectNoAuthSessionCookie,
@@ -1419,7 +1418,7 @@ const assertSignedInRolloutOffLegalRoute = async (
     expect(await dedicatedLinkContent.count()).toBe(1);
     expect(
       await page
-        .getByText(marketingPreferencesFormCopy[locale].pendingDescription, {
+        .getByText(m.marketingPreferencesFormPendingDescription({}, { locale }), {
           exact: true,
         })
         .count()

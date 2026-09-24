@@ -7,8 +7,8 @@ import { expect } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { Effect } from "effect";
 import { customerMarketingConsents } from "@/db/schema/customer-marketing-consents";
+import { m } from "@/features/i18n";
 import { customerMarketingManagementTokens } from "@/db/schema/customer-marketing-management-tokens";
-import { marketingPreferencesFormCopy } from "@/features/legal/components/marketing-preferences-form.copy";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
 import { runDatabaseOperation } from "../integrations/database-operation";
@@ -665,7 +665,6 @@ const pendingPreferenceSelector = '[data-marketing-preferences="pending-link"]';
 const invalidPreferenceSelector = '[data-marketing-preferences="invalid-link"]';
 const unavailablePreferenceSelector =
   '[data-marketing-preferences="unavailable"]';
-const marketingPreferencesCopy = marketingPreferencesFormCopy["en-US"];
 const marketingManagementCookieNames = [
   "__Host-workspace-marketing-pending",
   "__Host-workspace-marketing",
@@ -687,12 +686,12 @@ const requireManagedPreference = async (
   });
   const marketingSwitch = section.getByRole("switch", {
     exact: true,
-    name: marketingPreferencesCopy.rowTitle,
+    name: m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }),
   });
   // The form renders the link-context sentence only for link management; the
   // status is expressed by the server-authoritative checked state, not copy.
   await expect(
-    section.getByText(marketingPreferencesCopy.linkContext, { exact: true })
+    section.getByText(m.marketingPreferencesFormLinkContext({}, { locale: "en-US" }), { exact: true })
   ).toHaveCount(source === "link" ? 1 : 0, {
     timeout: workspaceE2ETimeouts.uiTransition,
   });
@@ -709,7 +708,7 @@ const requireManagedPreference = async (
   await expect(
     section.getByRole("button", {
       exact: true,
-      name: marketingPreferencesCopy.clearAction,
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
     })
   ).toHaveCount(source === "link" ? 1 : 0, {
     timeout: workspaceE2ETimeouts.uiTransition,
@@ -726,20 +725,20 @@ const requirePendingPreference = async (page: Page): Promise<Locator> => {
     timeout: workspaceE2ETimeouts.uiTransition,
   });
   await expect(
-    section.getByText(marketingPreferencesCopy.pendingDescription, {
+    section.getByText(m.marketingPreferencesFormPendingDescription({}, { locale: "en-US" }), {
       exact: true,
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
   await expect(
     section.getByRole("button", {
       exact: true,
-      name: marketingPreferencesCopy.continueAction,
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
   await expect(
     section.getByRole("button", {
       exact: true,
-      name: marketingPreferencesCopy.clearAction,
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
   await expect(
@@ -758,12 +757,12 @@ const requireInvalidLinkPreference = async (page: Page): Promise<Locator> => {
     timeout: workspaceE2ETimeouts.uiTransition,
   });
   await expect(
-    section.getByText(marketingPreferencesCopy.invalidLinkDescription, {
+    section.getByText(m.marketingPreferencesFormInvalidLinkDescription({}, { locale: "en-US" }), {
       exact: true,
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
   await expect(
-    section.getByText(marketingPreferencesCopy.invalidLinkNextStep, {
+    section.getByText(m.marketingPreferencesFormInvalidLinkNextStep({}, { locale: "en-US" }), {
       exact: true,
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
@@ -775,12 +774,12 @@ const requireInvalidLinkPreference = async (page: Page): Promise<Locator> => {
   await expect(
     section.getByRole("button", {
       exact: true,
-      name: marketingPreferencesCopy.continueAction,
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
     })
   ).toHaveCount(0);
   const clearButton = section.getByRole("button", {
     exact: true,
-    name: marketingPreferencesCopy.clearAction,
+    name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
   });
   await expect(clearButton).toHaveCount(1, {
     timeout: workspaceE2ETimeouts.uiTransition,
@@ -800,17 +799,17 @@ const requireUnavailablePreference = async (page: Page): Promise<Locator> => {
     timeout: workspaceE2ETimeouts.uiTransition,
   });
   await expect(
-    section.getByText(marketingPreferencesCopy.unavailableDescription, {
+    section.getByText(m.marketingPreferencesFormUnavailableDescription({}, { locale: "en-US" }), {
       exact: true,
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
   await expect(
-    section.getByText(marketingPreferencesCopy.unavailableNextStep, {
+    section.getByText(m.marketingPreferencesFormUnavailableNextStep({}, { locale: "en-US" }), {
       exact: true,
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
   await expect(
-    section.getByText(marketingPreferencesCopy.unavailableSignInNextStep, {
+    section.getByText(m.marketingPreferencesFormUnavailableSignInNextStep({}, { locale: "en-US" }), {
       exact: true,
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
@@ -822,19 +821,19 @@ const requireUnavailablePreference = async (page: Page): Promise<Locator> => {
   await expect(
     section.getByRole("button", {
       exact: true,
-      name: marketingPreferencesCopy.continueAction,
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
     })
   ).toHaveCount(0);
   await expect(
     section.getByRole("link", {
       exact: true,
-      name: marketingPreferencesCopy.signInAction,
+      name: m.marketingPreferencesFormSignInAction({}, { locale: "en-US" }),
     })
   ).toHaveCount(1, { timeout: workspaceE2ETimeouts.uiTransition });
   await expect(
     section.getByRole("button", {
       exact: true,
-      name: marketingPreferencesCopy.clearAction,
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
     })
   ).toHaveCount(0);
   return section;
@@ -934,7 +933,7 @@ const submitManagedPreference = async ({
   const sourceSection = page.locator(sourceSelector);
   const marketingSwitch = sourceSection.getByRole("switch", {
     exact: true,
-    name: marketingPreferencesCopy.rowTitle,
+    name: m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }),
   });
 
   await expect(sourceSection).toHaveCount(1);
@@ -1389,7 +1388,7 @@ const runAnonymousMarketingPreferencesFlow = (
           const pending = await requirePendingPreference(page);
           const continueButton = pending.getByRole("button", {
             exact: true,
-            name: marketingPreferencesCopy.continueAction,
+            name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
           });
           await expect(continueButton).toHaveCount(1);
           await waitForReactHandler(
@@ -1530,7 +1529,7 @@ const runReplayedMarketingPreferencesFlow = (
             const pending = await requirePendingPreference(page);
             const continueButton = pending.getByRole("button", {
               exact: true,
-              name: marketingPreferencesCopy.continueAction,
+              name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
             });
             await expect(continueButton).toHaveCount(1);
             await waitForReactHandler(
@@ -1586,7 +1585,7 @@ const runReplayedMarketingPreferencesFlow = (
             const invalid = await requireInvalidLinkPreference(page);
             const clearButton = invalid.getByRole("button", {
               exact: true,
-              name: marketingPreferencesCopy.clearAction,
+              name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
             });
             await waitForReactHandler(
               page,

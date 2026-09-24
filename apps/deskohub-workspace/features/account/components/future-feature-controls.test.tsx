@@ -16,7 +16,6 @@ import type {
   CustomerReservationHistory,
   CustomerReservationSummary,
 } from "../contracts";
-import { getLegalScreenStrings } from "./account-screen-copy";
 import type { BillingScreenCopy } from "./billing/billing-screen";
 import type { ProfileScreenCopy } from "./profile/profile-screen";
 import type { ReservationHistoryCopy } from "./reservation-history";
@@ -192,7 +191,6 @@ const profileCopy = {
 const billingCopy = {
   "en-US": {
     addPaymentCard: "Add payment card",
-    aresUnavailable: "ARES Registry sync is not available in this account.",
     billingDetailsTitle: "Billing details",
     currency: "Currency: CZK (Kč)",
     downloadInvoice: "Download PDF",
@@ -209,8 +207,6 @@ const billingCopy = {
   },
   "cs-CZ": {
     addPaymentCard: "Přidat platební kartu",
-    aresUnavailable:
-      "Synchronizace s registrem ARES není pro tento účet dostupná.",
     billingDetailsTitle: "Fakturační údaje",
     currency: "Měna: CZK (Kč)",
     downloadInvoice: "Stáhnout PDF",
@@ -265,7 +261,6 @@ const reservationCopy = {
 const accountScreenCopy = {
   billing: billingCopy["en-US"],
   dangerTitle: "Danger zone",
-  legal: getLegalScreenStrings("en-US"),
   profile: profileCopy["en-US"],
   reservations: reservationCopy["en-US"],
   shell: {
@@ -369,9 +364,7 @@ function renderBillingScreen(locale: Locale): ScreenView {
 }
 
 function renderLegalScreen(locale: Locale): ScreenView {
-  return render(
-    <LegalScreen locale={locale} strings={getLegalScreenStrings(locale)} />
-  );
+  return render(<LegalScreen locale={locale} />);
 }
 
 function renderReservationHistory(locale: Locale): ScreenView {
@@ -490,7 +483,7 @@ const futureFeatureTargets: readonly FutureFeatureTarget[] = [
     render: renderReservationHistory,
   },
   {
-    label: (locale) => getLegalScreenStrings(locale).archiveAction,
+    label: (locale) => m.legalScreenArchiveAction({}, { locale }),
     name: "GDPR archive control",
     render: renderLegalScreen,
   },

@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   type ConsentCategory,
   useCookieConsent,
@@ -40,13 +40,9 @@ const categoryMessageGetters = {
 
 export interface CookieSettingsProps {
   readonly locale: Locale;
-  readonly additionalPreferences?: ReactNode;
 }
 
-export function CookieSettings({
-  locale,
-  additionalPreferences,
-}: CookieSettingsProps) {
+export function CookieSettings({ locale }: CookieSettingsProps) {
   const { acceptCategory, rejectCategory, isAccepted } = useCookieConsent();
   const preferences = {
     necessary: true,
@@ -97,8 +93,6 @@ export function CookieSettings({
           />
         ))}
       </PreferenceRowGroup>
-
-      {additionalPreferences}
     </div>
   );
 }

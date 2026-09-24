@@ -1,15 +1,11 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import type { Locale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import {
-  type MarketingPreferencesFormCopy,
-  marketingPreferencesFormCopy,
-} from "./marketing-preferences-form.copy";
 
 type MarketingPreferenceSaveInput = {
   readonly confirmed: true;
@@ -41,7 +37,10 @@ type Action = (input: ActionInput) => Promise<ActionResult>;
 
 type ActionOptions = {
   readonly onError?: (args: { readonly error: unknown }) => void;
-  readonly onSuccess?: (args: { readonly data?: unknown }) => void;
+  readonly onSuccess?: (args: {
+    readonly data?: unknown;
+    readonly input: unknown;
+  }) => void;
   readonly onTransportError?: (args: {
     readonly error: unknown;
     readonly input: unknown;
@@ -88,7 +87,7 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
             options.onError?.({ error: nextResult });
             return;
           }
-          options.onSuccess?.({ data: nextResult.data });
+          options.onSuccess?.({ data: nextResult.data, input });
         })
         .catch((error: Error) => {
           setIsExecuting(false);
@@ -139,7 +138,6 @@ afterAll(unregisterWorkspaceComponentTestEnv);
 function renderForm(
   state: MarketingPreferencesState,
   locale: Locale = "en-US",
-  copy?: MarketingPreferencesFormCopy,
   accountsEnabled = true
 ) {
   return render(
@@ -147,14 +145,13 @@ function renderForm(
       accountsEnabled={accountsEnabled}
       locale={locale}
       state={state}
-      copy={copy}
     />
   );
 }
 
 function getSwitch(
   view: ReturnType<typeof render>,
-  name: string = marketingPreferencesFormCopy["en-US"].rowTitle
+  name: string = m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
 ) {
   return view.getByRole("switch", { name });
 }
@@ -167,7 +164,6 @@ function getArticle(view: ReturnType<typeof render>) {
 
 test("renders every localized preference state", () => {
   for (const locale of ["en-US", "cs-CZ"] as const) {
-    const copy = marketingPreferencesFormCopy[locale];
     const states = [
       {
         context: "synthetic-account-context",
@@ -204,14 +200,36 @@ test("renders every localized preference state", () => {
         )
       ).toBeTruthy();
 
-      const stateCopy = {
-        absent: copy.rowTitle,
-        active: copy.rowTitle,
-        withdrawn: copy.rowTitle,
-        "pending-link": copy.pendingDescription,
-        unavailable: copy.unavailableDescription,
-        "invalid-link": copy.invalidLinkDescription,
-      }[state.status];
+      let stateCopy: string;
+      switch (state.status) {
+        case "absent":
+        case "active":
+        case "withdrawn": {
+          stateCopy = m.marketingPreferencesFormRowTitle({}, { locale });
+          break;
+        }
+        case "pending-link": {
+          stateCopy = m.marketingPreferencesFormPendingDescription(
+            {},
+            { locale }
+          );
+          break;
+        }
+        case "unavailable": {
+          stateCopy = m.marketingPreferencesFormUnavailableDescription(
+            {},
+            { locale }
+          );
+          break;
+        }
+        case "invalid-link": {
+          stateCopy = m.marketingPreferencesFormInvalidLinkDescription(
+            {},
+            { locale }
+          );
+          break;
+        }
+      }
       expect(view.getByText(stateCopy)).toBeTruthy();
       cleanup();
     }
@@ -219,7 +237,6 @@ test("renders every localized preference state", () => {
 });
 
 test("saves a grant immediately without a confirmation gate", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const context = "synthetic-link-save-context";
   const view = renderForm({
     context,
@@ -227,7 +244,10 @@ test("saves a grant immediately without a confirmation gate", async () => {
     status: "absent",
     source: "link",
   });
-  const marketingSwitch = getSwitch(view, copy.rowTitle);
+  const marketingSwitch = getSwitch(
+    view,
+    m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+  );
 
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
   fireEvent.click(marketingSwitch);
@@ -243,10 +263,15 @@ test("saves a grant immediately without a confirmation gate", async () => {
   });
   expect(routerRefresh).toHaveBeenCalledTimes(1);
   await waitFor(() => {
-    expect(view.getByText(copy.saved)).toBeTruthy();
-    expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
-      "true"
-    );
+    expect(
+      view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+    ).toBeTruthy();
+    expect(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      ).getAttribute("aria-checked")
+    ).toBe("true");
   });
 });
 
@@ -254,19 +279,37 @@ test.each([
   ["active", false],
   ["withdrawn", true],
 ] as const)("saves the rendered %s choice", async (status, granted) => {
-  const copy = marketingPreferencesFormCopy["en-US"];
+  let resolveSave!: (result: ActionResult) => void;
+  saveMarketingPreferencesAction.mockImplementationOnce(
+    () =>
+      new Promise<ActionResult>((resolve) => {
+        resolveSave = resolve;
+      })
+  );
   const view = renderForm({
     context: `synthetic-${status}-context`,
     dismissalContext: `synthetic-${status}-dismissal-context`,
     source: "link",
     status,
   });
-  const marketingSwitch = getSwitch(view, copy.rowTitle);
+  const marketingSwitch = getSwitch(
+    view,
+    m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+  );
 
   expect(marketingSwitch.getAttribute("aria-checked")).toBe(
     status === "active" ? "true" : "false"
   );
   fireEvent.click(marketingSwitch);
+
+  // While the save is pending the switch reads the target state, not the
+  // rendered one (feedback lZJlJt7s-q7L).
+  expect(
+    getSwitch(
+      view,
+      m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+    ).getAttribute("aria-checked")
+  ).toBe(granted ? "true" : "false");
 
   await waitFor(() => {
     expect(saveMarketingPreferencesAction).toHaveBeenCalledWith({
@@ -277,10 +320,19 @@ test.each([
       source: "link",
     });
   });
+
+  resolveSave({ data: { status: "saved" } });
+  await waitFor(() => {
+    expect(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      ).getAttribute("aria-checked")
+    ).toBe(granted ? "true" : "false");
+  });
 });
 
 test("keeps a deferred save single-flight and announces the pending state", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   let resolveSave!: (result: ActionResult) => void;
   saveMarketingPreferencesAction.mockImplementationOnce(
     () =>
@@ -293,7 +345,10 @@ test("keeps a deferred save single-flight and announces the pending state", asyn
     source: "account",
     status: "absent",
   });
-  const marketingSwitch = getSwitch(view, copy.rowTitle);
+  const marketingSwitch = getSwitch(
+    view,
+    m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+  );
 
   fireEvent.click(marketingSwitch);
   fireEvent.click(marketingSwitch);
@@ -302,20 +357,35 @@ test("keeps a deferred save single-flight and announces the pending state", asyn
     expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
     expect(getArticle(view).getAttribute("aria-busy")).toBe("true");
   });
+  // While the save is pending the switch already reads the target state
+  // (feedback lZJlJt7s-q7L), stays disabled, and ignores further toggles.
   expect(marketingSwitch.hasAttribute("disabled")).toBe(true);
-  expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
-  expect(view.getByRole("status").textContent).toBe(copy.savingStatus);
+  expect(
+    getSwitch(
+      view,
+      m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+    ).getAttribute("aria-checked")
+  ).toBe("true");
+  fireEvent.click(
+    getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }))
+  );
+  expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
+  expect(view.getByRole("status").textContent).toBe(
+    m.marketingPreferencesFormSavingStatus({}, { locale: "en-US" })
+  );
 
   resolveSave({ data: { status: "saved" } });
   await waitFor(() => {
-    expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
-      "true"
-    );
+    expect(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      ).getAttribute("aria-checked")
+    ).toBe("true");
   });
 });
 
 test("preserves the server-authoritative switch on a save failure and allows retry", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   let rejectFirst!: (result: ActionResult) => void;
   saveMarketingPreferencesAction.mockImplementationOnce(
     () =>
@@ -329,7 +399,10 @@ test("preserves the server-authoritative switch on a save failure and allows ret
     source: "account",
     status: "absent",
   });
-  const marketingSwitch = getSwitch(view, copy.rowTitle);
+  const marketingSwitch = getSwitch(
+    view,
+    m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+  );
 
   fireEvent.click(marketingSwitch);
   rejectFirst({ serverError: "Synthetic preference save failure" });
@@ -339,12 +412,22 @@ test("preserves the server-authoritative switch on a save failure and allows ret
       "Synthetic preference save failure"
     );
   });
-  expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
-    "false"
-  );
-  expect(getSwitch(view, copy.rowTitle).hasAttribute("disabled")).toBe(false);
+  expect(
+    getSwitch(
+      view,
+      m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+    ).getAttribute("aria-checked")
+  ).toBe("false");
+  expect(
+    getSwitch(
+      view,
+      m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+    ).hasAttribute("disabled")
+  ).toBe(false);
 
-  fireEvent.click(getSwitch(view, copy.rowTitle));
+  fireEvent.click(
+    getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }))
+  );
   await waitFor(() => {
     expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
       confirmed: true,
@@ -357,7 +440,6 @@ test("preserves the server-authoritative switch on a save failure and allows ret
 });
 
 test("announces a rejected save request with localized copy and allows a successful retry", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const context = "synthetic-account-context";
   saveMarketingPreferencesAction.mockImplementationOnce(() =>
     Promise.reject(new Error("Synthetic transport failure"))
@@ -367,18 +449,25 @@ test("announces a rejected save request with localized copy and allows a success
     source: "account",
     status: "absent",
   });
-  const marketingSwitch = getSwitch(view, copy.rowTitle);
+  const marketingSwitch = getSwitch(
+    view,
+    m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+  );
 
   fireEvent.click(marketingSwitch);
 
   await waitFor(() => {
-    expect(view.getByRole("alert").textContent).toBe(copy.saveError);
+    expect(view.getByRole("alert").textContent).toBe(
+      m.marketingPreferencesFormSaveError({}, { locale: "en-US" })
+    );
   });
   expect(marketingSwitch.getAttribute("aria-checked")).toBe("false");
   expect(marketingSwitch.hasAttribute("disabled")).toBe(false);
   expect(routerRefresh).not.toHaveBeenCalled();
 
-  fireEvent.click(getSwitch(view, copy.rowTitle));
+  fireEvent.click(
+    getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }))
+  );
   await waitFor(() => {
     expect(saveMarketingPreferencesAction).toHaveBeenNthCalledWith(2, {
       confirmed: true,
@@ -387,16 +476,95 @@ test("announces a rejected save request with localized copy and allows a success
       locale: "en-US",
       source: "account",
     });
-    expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
-      "true"
-    );
+    expect(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      ).getAttribute("aria-checked")
+    ).toBe("true");
     expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
-  expect(view.getByText(copy.saved)).toBeTruthy();
+  expect(
+    view.getByText(m.marketingPreferencesFormSaved({}, { locale: "en-US" }))
+  ).toBeTruthy();
 });
 
+test.each([
+  {
+    name: "rolls back to the last confirmed grant when a later withdraw fails",
+    initialStatus: "absent",
+    failureServerError: true,
+    expectedAfterFailure: "true",
+  },
+  {
+    name: "rolls back to the last confirmed withdraw when a later grant fails",
+    initialStatus: "active",
+    failureServerError: true,
+    expectedAfterFailure: "false",
+  },
+  {
+    name: "rolls back to the last confirmed grant when a later withdraw transport-fails",
+    initialStatus: "absent",
+    failureServerError: false,
+    expectedAfterFailure: "true",
+  },
+] as const)(
+  "$name",
+  async ({ initialStatus, failureServerError, expectedAfterFailure }) => {
+    const context = `synthetic-stale-rollback-${initialStatus}-context`;
+    const view = renderForm({
+      context,
+      dismissalContext: `synthetic-stale-rollback-${initialStatus}-dismissal-context`,
+      source: "link",
+      status: initialStatus,
+    });
+    const getSwitchChecked = () =>
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      ).getAttribute("aria-checked");
+
+    // First toggle succeeds and becomes the confirmed server state; refreshed
+    // server props have not arrived (router.refresh is a no-op in tests).
+    fireEvent.click(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      )
+    );
+    await waitFor(() => {
+      expect(saveMarketingPreferencesAction).toHaveBeenCalledTimes(1);
+      expect(routerRefresh).toHaveBeenCalledTimes(1);
+    });
+    expect(getSwitchChecked()).toBe(
+      initialStatus === "absent" ? "true" : "false"
+    );
+
+    // Opposite toggle fails; the switch must restore the last confirmed value,
+    // not the stale initial prop state.
+    if (!failureServerError) {
+      saveMarketingPreferencesAction.mockImplementationOnce(() =>
+        Promise.reject(new Error("Synthetic transport failure"))
+      );
+    } else {
+      saveMarketingPreferencesAction.mockImplementationOnce(() =>
+        Promise.resolve({ serverError: "Synthetic preference save failure" })
+      );
+    }
+    fireEvent.click(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+      )
+    );
+    await waitFor(() => {
+      expect(view.getByRole("alert")).toBeTruthy();
+    });
+    expect(getSwitchChecked()).toBe(expectedAfterFailure);
+  }
+);
+
 test("keeps a pending dedicated-link context inaccessible until Continue and prevents duplicate requests", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const context = "synthetic-pending-confirm-context";
   const view = renderForm({
     context,
@@ -404,12 +572,12 @@ test("keeps a pending dedicated-link context inaccessible until Continue and pre
     status: "pending-link",
   });
   const continueButton = view.getByRole("button", {
-    name: copy.continueAction,
+    name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
   });
 
   expect(
     view.queryByRole("switch", {
-      name: copy.rowTitle,
+      name: m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }),
     })
   ).toBeNull();
   fireEvent.click(continueButton);
@@ -418,12 +586,13 @@ test("keeps a pending dedicated-link context inaccessible until Continue and pre
     expect(confirmMarketingManagementAction).toHaveBeenCalledWith({ context });
   });
   expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(view.getByText(copy.confirmed)).toBeTruthy();
+  expect(
+    view.getByText(m.marketingPreferencesFormConfirmed({}, { locale: "en-US" }))
+  ).toBeTruthy();
   expect(view.container.textContent).not.toContain(context);
 });
 
 test("keeps a pending context after a continuation failure", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   confirmMarketingManagementAction.mockImplementationOnce(() =>
     Promise.resolve({ serverError: "Synthetic continuation failure" })
   );
@@ -433,7 +602,11 @@ test("keeps a pending context after a continuation failure", async () => {
     status: "pending-link",
   });
 
-  fireEvent.click(view.getByRole("button", { name: copy.continueAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
+    })
+  );
 
   await waitFor(() => {
     expect(view.getByRole("alert").textContent).toContain(
@@ -441,29 +614,43 @@ test("keeps a pending context after a continuation failure", async () => {
     );
   });
   expect(routerRefresh).not.toHaveBeenCalled();
-  expect(view.getByText(copy.pendingDescription)).toBeTruthy();
+  expect(
+    view.getByText(
+      m.marketingPreferencesFormPendingDescription({}, { locale: "en-US" })
+    )
+  ).toBeTruthy();
   expect(
     view.queryByRole("switch", {
-      name: copy.rowTitle,
+      name: m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }),
     })
   ).toBeNull();
 });
 
 test("uses signed-in account copy and no link-clear control for account source", () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const view = renderForm({
     context: "synthetic-account-context",
     source: "account",
     status: "absent",
   });
 
-  expect(view.queryByText(copy.accountContext)).toBeNull();
-  expect(view.queryByText(copy.linkContext)).toBeNull();
-  expect(view.queryByRole("button", { name: copy.clearAction })).toBeNull();
+  expect(
+    view.queryByText(
+      m.marketingPreferencesFormAccountContext({}, { locale: "en-US" })
+    )
+  ).toBeNull();
+  expect(
+    view.queryByText(
+      m.marketingPreferencesFormLinkContext({}, { locale: "en-US" })
+    )
+  ).toBeNull();
+  expect(
+    view.queryByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  ).toBeNull();
 });
 
 test("resets a stale save error when the dismissal context changes", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   saveMarketingPreferencesAction.mockImplementationOnce(() =>
     Promise.resolve({ serverError: "Synthetic stale save failure" })
   );
@@ -475,7 +662,9 @@ test("resets a stale save error when the dismissal context changes", async () =>
     status: "absent",
   });
 
-  fireEvent.click(getSwitch(view, copy.rowTitle));
+  fireEvent.click(
+    getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }))
+  );
   await waitFor(() => {
     expect(view.getByRole("alert").textContent).toContain(
       "Synthetic stale save failure"
@@ -495,9 +684,12 @@ test("resets a stale save error when the dismissal context changes", async () =>
   );
 
   expect(view.queryByRole("alert")).toBeNull();
-  expect(getSwitch(view, copy.rowTitle).getAttribute("aria-checked")).toBe(
-    "false"
-  );
+  expect(
+    getSwitch(
+      view,
+      m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
+    ).getAttribute("aria-checked")
+  ).toBe("false");
   expect(view.container.textContent).not.toContain(
     "synthetic-first-dismissal-context"
   );
@@ -507,43 +699,66 @@ test("resets a stale save error when the dismissal context changes", async () =>
 });
 
 test("renders unavailable guidance without presenting account availability as a flag", () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const view = renderForm({ status: "unavailable" });
 
-  expect(view.getByText(copy.unavailableNextStep)).toBeTruthy();
-  expect(view.getByText(copy.unavailableSignInNextStep)).toBeTruthy();
   expect(
-    view.getByRole("link", { name: copy.signInAction }).getAttribute("href")
+    view.getByText(
+      m.marketingPreferencesFormUnavailableNextStep({}, { locale: "en-US" })
+    )
+  ).toBeTruthy();
+  expect(
+    view.getByText(
+      m.marketingPreferencesFormUnavailableSignInNextStep(
+        {},
+        { locale: "en-US" }
+      )
+    )
+  ).toBeTruthy();
+  expect(
+    view
+      .getByRole("link", {
+        name: m.marketingPreferencesFormSignInAction({}, { locale: "en-US" }),
+      })
+      .getAttribute("href")
   ).toBe("/en-US/auth/sign-in");
   expect(
     view.queryByRole("switch", {
-      name: copy.rowTitle,
+      name: m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }),
     })
   ).toBeNull();
-  expect(view.queryByText(copy.accountContext)).toBeNull();
+  expect(
+    view.queryByText(
+      m.marketingPreferencesFormAccountContext({}, { locale: "en-US" })
+    )
+  ).toBeNull();
 });
 
 test.each(["en-US", "cs-CZ"] as const)(
   "hides sign-in affordances when accounts are disabled in %s",
   (locale) => {
-    const copy = marketingPreferencesFormCopy[locale];
-    const view = renderForm(
-      { status: "unavailable" },
-      locale,
-      undefined,
-      false
-    );
+    const view = renderForm({ status: "unavailable" }, locale, false);
 
-    expect(view.getByText(copy.unavailableNextStep)).toBeTruthy();
-    expect(view.queryByText(copy.unavailableSignInNextStep)).toBeNull();
-    expect(view.queryByRole("link", { name: copy.signInAction })).toBeNull();
+    expect(
+      view.getByText(
+        m.marketingPreferencesFormUnavailableNextStep({}, { locale })
+      )
+    ).toBeTruthy();
+    expect(
+      view.queryByText(
+        m.marketingPreferencesFormUnavailableSignInNextStep({}, { locale })
+      )
+    ).toBeNull();
+    expect(
+      view.queryByRole("link", {
+        name: m.marketingPreferencesFormSignInAction({}, { locale }),
+      })
+    ).toBeNull();
   }
 );
 
 test.each(["en-US", "cs-CZ"] as const)(
   "keeps a link-authorized preference actionable when accounts are disabled in %s",
   async (locale) => {
-    const copy = marketingPreferencesFormCopy[locale];
     const context = `synthetic-${locale}-link-save-context`;
     const view = renderForm(
       {
@@ -553,16 +768,22 @@ test.each(["en-US", "cs-CZ"] as const)(
         status: "absent",
       },
       locale,
-      undefined,
       false
     );
 
     expect(
       view.container.querySelector('[data-marketing-preferences-source="link"]')
     ).toBeTruthy();
-    expect(getSwitch(view, copy.rowTitle).hasAttribute("disabled")).toBe(false);
+    expect(
+      getSwitch(
+        view,
+        m.marketingPreferencesFormRowTitle({}, { locale })
+      ).hasAttribute("disabled")
+    ).toBe(false);
 
-    fireEvent.click(getSwitch(view, copy.rowTitle));
+    fireEvent.click(
+      getSwitch(view, m.marketingPreferencesFormRowTitle({}, { locale }))
+    );
 
     await waitFor(() => {
       expect(saveMarketingPreferencesAction).toHaveBeenCalledWith({
@@ -574,12 +795,13 @@ test.each(["en-US", "cs-CZ"] as const)(
       });
       expect(routerRefresh).toHaveBeenCalledTimes(1);
     });
-    expect(view.getByText(copy.saved)).toBeTruthy();
+    expect(
+      view.getByText(m.marketingPreferencesFormSaved({}, { locale }))
+    ).toBeTruthy();
   }
 );
 
 test("keeps a pending dedicated link usable when accounts are disabled", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const context = "synthetic-pending-confirm-context";
   const view = renderForm(
     {
@@ -588,45 +810,68 @@ test("keeps a pending dedicated link usable when accounts are disabled", async (
       status: "pending-link",
     },
     "en-US",
-    undefined,
     false
   );
 
-  fireEvent.click(view.getByRole("button", { name: copy.continueAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
+    })
+  );
 
   await waitFor(() => {
     expect(confirmMarketingManagementAction).toHaveBeenCalledWith({ context });
   });
-  expect(view.getByText(copy.confirmed)).toBeTruthy();
+  expect(
+    view.getByText(m.marketingPreferencesFormConfirmed({}, { locale: "en-US" }))
+  ).toBeTruthy();
 });
 
 test("keeps an invalid dedicated link out of the account flow without a fallback", () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const view = renderForm({
     dismissalContext: "synthetic-invalid-dismissal-context",
     status: "invalid-link",
   });
 
-  expect(view.getByText(copy.invalidLinkDescription)).toBeTruthy();
-  expect(view.getByText(copy.invalidLinkNextStep)).toBeTruthy();
+  expect(
+    view.getByText(
+      m.marketingPreferencesFormInvalidLinkDescription({}, { locale: "en-US" })
+    )
+  ).toBeTruthy();
+  expect(
+    view.getByText(
+      m.marketingPreferencesFormInvalidLinkNextStep({}, { locale: "en-US" })
+    )
+  ).toBeTruthy();
   const invalidClearButton = view.getByRole("button", {
-    name: copy.clearAction,
+    name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
   });
-  expect(invalidClearButton.className).toContain("!whitespace-normal");
+  expect(invalidClearButton.className).toContain("whitespace-normal!");
   expect(invalidClearButton.className).toContain("max-w-full");
   expect(invalidClearButton.className).toContain("min-w-0");
-  expect(view.queryByRole("link", { name: copy.signInAction })).toBeNull();
   expect(
-    view.queryByRole("switch", {
-      name: copy.rowTitle,
+    view.queryByRole("link", {
+      name: m.marketingPreferencesFormSignInAction({}, { locale: "en-US" }),
     })
   ).toBeNull();
-  expect(view.queryByRole("button", { name: copy.continueAction })).toBeNull();
-  expect(view.getByRole("button", { name: copy.clearAction })).toBeTruthy();
+  expect(
+    view.queryByRole("switch", {
+      name: m.marketingPreferencesFormRowTitle({}, { locale: "en-US" }),
+    })
+  ).toBeNull();
+  expect(
+    view.queryByRole("button", {
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
+    })
+  ).toBeNull();
+  expect(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  ).toBeTruthy();
 });
 
 test("offers an explicit clear action for a valid dedicated-link context", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const dismissalContext = "synthetic-link-dismissal-context";
   const view = renderForm({
     context: "synthetic-link-save-context",
@@ -634,8 +879,10 @@ test("offers an explicit clear action for a valid dedicated-link context", async
     status: "active",
     source: "link",
   });
-  const clearButton = view.getByRole("button", { name: copy.clearAction });
-  expect(clearButton.className).toContain("!whitespace-normal");
+  const clearButton = view.getByRole("button", {
+    name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+  });
+  expect(clearButton.className).toContain("whitespace-normal!");
   expect(clearButton.className).toContain("max-w-full");
   expect(clearButton.className).toContain("min-w-0");
   expect(clearButton.parentElement?.className).toContain("flex-1");
@@ -643,7 +890,11 @@ test("offers an explicit clear action for a valid dedicated-link context", async
     getArticle(view).querySelector(":scope > button[role='switch']")
   ).toBeTruthy();
 
-  fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  );
   await waitFor(() => {
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
       context: dismissalContext,
@@ -655,7 +906,6 @@ test("offers an explicit clear action for a valid dedicated-link context", async
 test.each(["absent", "active", "withdrawn"] as const)(
   "uses the dismissal context when clearing a managed %s link state",
   async (status) => {
-    const copy = marketingPreferencesFormCopy["en-US"];
     const dismissalContext = `synthetic-${status}-dismissal-context`;
     const view = renderForm({
       context: `synthetic-${status}-save-context`,
@@ -664,7 +914,11 @@ test.each(["absent", "active", "withdrawn"] as const)(
       status,
     });
 
-    fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+      })
+    );
 
     await waitFor(() => {
       expect(clearMarketingManagementAction).toHaveBeenCalledWith({
@@ -675,7 +929,6 @@ test.each(["absent", "active", "withdrawn"] as const)(
 );
 
 test("clears a pending dedicated-link context with its dismissal context", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const context = "synthetic-pending-confirm-context";
   const dismissalContext = "synthetic-pending-dismissal-context";
   const view = renderForm({
@@ -684,13 +937,17 @@ test("clears a pending dedicated-link context with its dismissal context", async
     status: "pending-link",
   });
   const pendingClearButton = view.getByRole("button", {
-    name: copy.clearAction,
+    name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
   });
-  expect(pendingClearButton.className).toContain("!whitespace-normal");
+  expect(pendingClearButton.className).toContain("whitespace-normal!");
   expect(pendingClearButton.className).toContain("max-w-full");
   expect(pendingClearButton.className).toContain("min-w-0");
 
-  fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  );
 
   await waitFor(() => {
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
@@ -698,11 +955,12 @@ test("clears a pending dedicated-link context with its dismissal context", async
     });
   });
   expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(view.getByText(copy.cleared)).toBeTruthy();
+  expect(
+    view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+  ).toBeTruthy();
 });
 
 test("keeps a pending dedicated link after clear failure and allows retry", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const dismissalContext = "synthetic-pending-dismissal-context";
   clearMarketingManagementAction.mockImplementationOnce(() =>
     Promise.resolve({ serverError: "Synthetic pending clear failure" })
@@ -713,19 +971,37 @@ test("keeps a pending dedicated link after clear failure and allows retry", asyn
     status: "pending-link",
   });
 
-  fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  );
   await waitFor(() => {
     expect(view.getByRole("alert").textContent).toContain(
       "Synthetic pending clear failure"
     );
   });
-  expect(view.getByText(copy.pendingDescription)).toBeTruthy();
-  expect(view.getByRole("button", { name: copy.continueAction })).toBeTruthy();
+  expect(
+    view.getByText(
+      m.marketingPreferencesFormPendingDescription({}, { locale: "en-US" })
+    )
+  ).toBeTruthy();
+  expect(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormContinueAction({}, { locale: "en-US" }),
+    })
+  ).toBeTruthy();
 
-  fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  );
   await waitFor(() => {
     expect(clearMarketingManagementAction).toHaveBeenCalledTimes(2);
-    expect(view.getByText(copy.cleared)).toBeTruthy();
+    expect(
+      view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
   expect(clearMarketingManagementAction).toHaveBeenNthCalledWith(1, {
     context: dismissalContext,
@@ -736,14 +1012,17 @@ test("keeps a pending dedicated link after clear failure and allows retry", asyn
 });
 
 test("clears an invalid dedicated-link context without writing consent", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const dismissalContext = "synthetic-invalid-dismissal-context";
   const view = renderForm({
     dismissalContext,
     status: "invalid-link",
   });
 
-  fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  );
 
   await waitFor(() => {
     expect(clearMarketingManagementAction).toHaveBeenCalledWith({
@@ -753,11 +1032,12 @@ test("clears an invalid dedicated-link context without writing consent", async (
   expect(saveMarketingPreferencesAction).not.toHaveBeenCalled();
   expect(confirmMarketingManagementAction).not.toHaveBeenCalled();
   expect(routerRefresh).toHaveBeenCalledTimes(1);
-  expect(view.getByText(copy.cleared)).toBeTruthy();
+  expect(
+    view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+  ).toBeTruthy();
 });
 
 test("disables the explicit invalid-link clear action while it is busy", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const dismissalContext = "synthetic-invalid-dismissal-context";
   let resolveClear!: (result: ActionResult) => void;
   clearMarketingManagementAction.mockImplementationOnce(
@@ -771,25 +1051,37 @@ test("disables the explicit invalid-link clear action while it is busy", async (
     status: "invalid-link",
   });
 
-  fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  );
   await waitFor(() => {
     expect(
       view
-        .getByRole("button", { name: copy.clearing })
+        .getByRole("button", {
+          name: m.marketingPreferencesFormClearing({}, { locale: "en-US" }),
+        })
         .getAttribute("aria-busy")
     ).toBe("true");
   });
   expect(
-    (view.getByRole("button", { name: copy.clearing }) as HTMLButtonElement)
-      .disabled
+    (
+      view.getByRole("button", {
+        name: m.marketingPreferencesFormClearing({}, { locale: "en-US" }),
+      }) as HTMLButtonElement
+    ).disabled
   ).toBe(true);
 
   resolveClear({ data: { status: "cleared" } });
-  await waitFor(() => expect(view.getByText(copy.cleared)).toBeTruthy());
+  await waitFor(() =>
+    expect(
+      view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+    ).toBeTruthy()
+  );
 });
 
 test("announces clear loading, allows retry after an error, and keeps the dismissal payload", async () => {
-  const copy = marketingPreferencesFormCopy["en-US"];
   const dismissalContext = "synthetic-link-dismissal-context";
   let resolveClear!: (result: ActionResult) => void;
   clearMarketingManagementAction.mockImplementationOnce(
@@ -804,7 +1096,9 @@ test("announces clear loading, allows retry after an error, and keeps the dismis
     source: "link",
     status: "active",
   });
-  const clearButton = view.getByRole("button", { name: copy.clearAction });
+  const clearButton = view.getByRole("button", {
+    name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+  });
 
   fireEvent.click(clearButton);
   fireEvent.click(clearButton);
@@ -813,7 +1107,9 @@ test("announces clear loading, allows retry after an error, and keeps the dismis
     expect(clearMarketingManagementAction).toHaveBeenCalledTimes(1);
     expect(
       view
-        .getByRole("button", { name: copy.clearing })
+        .getByRole("button", {
+          name: m.marketingPreferencesFormClearing({}, { locale: "en-US" }),
+        })
         .getAttribute("aria-busy")
     ).toBe("true");
   });
@@ -826,10 +1122,16 @@ test("announces clear loading, allows retry after an error, and keeps the dismis
     );
   });
 
-  fireEvent.click(view.getByRole("button", { name: copy.clearAction }));
+  fireEvent.click(
+    view.getByRole("button", {
+      name: m.marketingPreferencesFormClearAction({}, { locale: "en-US" }),
+    })
+  );
   await waitFor(() => {
     expect(clearMarketingManagementAction).toHaveBeenCalledTimes(2);
-    expect(view.getByText(copy.cleared)).toBeTruthy();
+    expect(
+      view.getByText(m.marketingPreferencesFormCleared({}, { locale: "en-US" }))
+    ).toBeTruthy();
   });
   expect(clearMarketingManagementAction).toHaveBeenNthCalledWith(1, {
     context: dismissalContext,
@@ -843,32 +1145,43 @@ test.each([
   ["en-US", "reservation email"],
   ["cs-CZ", "e-mailu k rezervaci"],
 ] as const)("uses dedicated marketing-link copy in %s", (locale, forbidden) => {
-  const copy = marketingPreferencesFormCopy[locale];
-  expect(Object.values(copy).join(" ")).not.toContain(forbidden);
+  const catalogCopy = [
+    m.marketingPreferencesFormRowTitle({}, { locale }),
+    m.marketingPreferencesFormRowDescription({}, { locale }),
+    m.marketingPreferencesFormLinkContext({}, { locale }),
+    m.marketingPreferencesFormAccountContext({}, { locale }),
+    m.marketingPreferencesFormPendingDescription({}, { locale }),
+    m.marketingPreferencesFormUnavailableNextStep({}, { locale }),
+    m.marketingPreferencesFormInvalidLinkDescription({}, { locale }),
+  ].join(" ");
+  expect(catalogCopy).not.toContain(forbidden);
 });
 
 test("wraps long localized copy without fixed-width controls", () => {
-  const copy = marketingPreferencesFormCopy["cs-CZ"];
-  const longCopy: MarketingPreferencesFormCopy = {
-    ...copy,
-    rowDescription: `${copy.rowDescription} ${"Dlouhý popis. ".repeat(12)}`,
-    rowTitle: `${copy.rowTitle} ${"a další podrobnosti".repeat(4)}`,
-  };
+  const locale = "cs-CZ" as const;
   const view = renderForm(
     {
       context: "synthetic-account-context",
       status: "absent",
       source: "account",
     },
-    "cs-CZ",
-    longCopy
+    locale
   );
 
+  // The real cs-CZ catalog copy is long; it must wrap rather than force a
+  // fixed-width row.
+  const rowTitle = m.marketingPreferencesFormRowTitle({}, { locale });
+  expect(view.getByRole("heading", { level: 3, name: rowTitle })).toBeTruthy();
+  expect(
+    view.getByText(m.marketingPreferencesFormRowDescription({}, { locale }))
+  ).toBeTruthy();
   const section = view.container.querySelector("section");
+  // The form carries its own `mt-8` gap so parents must not add another.
+  expect(section?.className).toContain("mt-8");
   expect(section?.className).toContain("min-w-0");
   expect(section?.querySelector("article")?.className).toContain("min-w-0");
   expect(section?.querySelector("h3")?.className).toContain("break-words");
-  expect(getSwitch(view, longCopy.rowTitle).className).toContain("shrink-0");
+  expect(getSwitch(view, rowTitle).className).toContain("shrink-0");
 });
 
 test("renders the managed preference through the shared preference row primitive", () => {

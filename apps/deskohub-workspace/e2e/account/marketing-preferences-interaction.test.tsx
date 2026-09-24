@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
-import { marketingPreferencesFormCopy } from "@/features/legal/components/marketing-preferences-form.copy";
+import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -46,7 +46,10 @@ mock.module("next/navigation", () => ({
 mock.module("@/shared/utils/use-workspace-action", () => ({
   useWorkspaceAction: (
     action: (input: unknown) => Promise<{ serverError?: string }>,
-    options: { onSuccess?: () => void; onError?: () => void }
+    options: {
+      onSuccess?: (args: { readonly data?: unknown; readonly input: unknown }) => void;
+      onError?: (args: { readonly error: unknown }) => void;
+    }
   ) => {
     const [isExecuting, setIsExecuting] = useState(false);
     const execute = (input: unknown) => {
@@ -55,14 +58,14 @@ mock.module("@/shared/utils/use-workspace-action", () => ({
         .then((result) => {
           setIsExecuting(false);
           if (result.serverError) {
-            options.onError?.();
+            options.onError?.({ error: result });
             return;
           }
-          options.onSuccess?.();
+          options.onSuccess?.({ input });
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           setIsExecuting(false);
-          options.onError?.();
+          options.onError?.({ error });
         });
     };
     return { execute, isExecuting, reset: () => undefined, result: {} };
@@ -73,7 +76,6 @@ const { MarketingPreferencesForm } = await import(
   "@/features/legal/components/marketing-preferences-form"
 );
 
-const copy = marketingPreferencesFormCopy["en-US"];
 
 let releaseSave: (() => void) | undefined;
 const deferSave = () => {
@@ -143,7 +145,7 @@ test("helper managed selectors match the production section and switch", () => {
   const switchTitleId = switchEl?.getAttribute("aria-labelledby");
   expect(switchTitleId).not.toBeNull();
   expect(document.getElementById(switchTitleId ?? "")?.textContent).toBe(
-    copy.rowTitle
+    m.marketingPreferencesFormRowTitle({}, { locale: "en-US" })
   );
 });
 
@@ -152,20 +154,20 @@ test("helper selectors keep the link context exclusive to link management", () =
   const linkSection = document.querySelector(
     managedPreferenceSelector("withdrawn", "link")
   );
-  expect(linkSection?.textContent).toContain(copy.linkContext);
-  expect(linkSection?.textContent).not.toContain(copy.accountContext);
+  expect(linkSection?.textContent).toContain(m.marketingPreferencesFormLinkContext({}, { locale: "en-US" }));
+  expect(linkSection?.textContent).not.toContain(m.marketingPreferencesFormAccountContext({}, { locale: "en-US" }));
   linkView.unmount();
 
   renderManaged("active", "account");
   const accountSection = document.querySelector(
     managedPreferenceSelector("active", "account")
   );
-  expect(accountSection?.textContent).not.toContain(copy.linkContext);
-  expect(accountSection?.textContent).not.toContain(copy.statusActive);
-  expect(accountSection?.textContent).not.toContain(copy.statusWithdrawn);
+  expect(accountSection?.textContent).not.toContain(m.marketingPreferencesFormLinkContext({}, { locale: "en-US" }));
+  expect(accountSection?.textContent).not.toContain(m.marketingPreferencesFormStatusActive({}, { locale: "en-US" }));
+  expect(accountSection?.textContent).not.toContain(m.marketingPreferencesFormStatusWithdrawn({}, { locale: "en-US" }));
 });
 
-test("the transition switch stays server-authoritative until the save settles", async () => {
+test("the transition switch shows the target state while the save is pending", async () => {
   deferSave();
   renderManaged("active", "account");
 
@@ -183,7 +185,7 @@ test("the transition switch stays server-authoritative until the save settles", 
     locale: "en-US",
     source: "account",
   });
-  // Pending save: the switch is disabled and has not moved yet.
+  // Pending save: the switch is disabled and already reads the target state.
   expect(
     document
       .querySelector<HTMLButtonElement>(helperSwitchSelector("account"))
@@ -193,15 +195,15 @@ test("the transition switch stays server-authoritative until the save settles", 
     document
       .querySelector<HTMLButtonElement>(helperSwitchSelector("account"))
       ?.getAttribute("aria-checked")
-  ).toBe("true");
+  ).toBe("false");
 
-  releaseSave?.();
-  await waitFor(() => {
-    expect(
-      document
-        .querySelector<HTMLButtonElement>(helperSwitchSelector("account"))
-        ?.getAttribute("aria-checked")
-    ).toBe("false");
+  await act(async () => {
+    releaseSave?.();
   });
   expect(releaseSave).toBeDefined();
+  expect(
+    document
+      .querySelector<HTMLButtonElement>(helperSwitchSelector("account"))
+      ?.getAttribute("aria-checked")
+  ).toBe("false");
 });

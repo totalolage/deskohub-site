@@ -27,7 +27,6 @@ export interface BillingScreenCopy {
   readonly removePaymentCard: string;
   readonly billingDetailsTitle: string;
   readonly syncAres: string;
-  readonly aresUnavailable: string;
   readonly invoiceHistoryTitle: string;
   readonly invoiceHistoryUnavailable: string;
   readonly downloadInvoice: string;
@@ -51,7 +50,6 @@ export function BillingScreen({
   const titleId = `${instanceId}-billing-title`;
   const paymentMethodsTitleId = `${instanceId}-payment-methods-title`;
   const billingDetailsTitleId = `${instanceId}-billing-details-title`;
-  const aresUnavailableId = `${instanceId}-ares-unavailable`;
   const invoiceHistoryTitleId = `${instanceId}-invoice-history-title`;
   const invoiceHistoryUnavailableId = `${instanceId}-invoice-history-unavailable`;
 
@@ -100,16 +98,9 @@ export function BillingScreen({
             >
               {copy.billingDetailsTitle}
             </h3>
-            <p
-              id={aresUnavailableId}
-              className="mt-2 max-w-[65ch] min-w-0 break-words text-sm leading-6 text-[#51627c]"
-            >
-              {copy.aresUnavailable}
-            </p>
           </div>
           <FutureFeatureTooltip locale={locale}>
             <Button
-              aria-describedby={aresUnavailableId}
               className="h-auto max-w-full shrink-0 whitespace-normal text-left text-[#53657f] disabled:pointer-events-none disabled:opacity-100 disabled:text-[#53657f]"
               disabled
               size="sm"

@@ -130,7 +130,6 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
   },
   billing: {
     addPaymentCard: "Add payment card",
-    aresUnavailable: "ARES Registry sync is not available in this account.",
     billingDetailsTitle:
       locale === "cs-CZ" ? "Fakturační údaje" : "Billing details",
     currency: "Currency: CZK (Kč)",
@@ -145,23 +144,6 @@ const accountScreenCopy = (locale: "en-US" | "cs-CZ") => ({
     removePaymentCard: "Remove payment card",
     syncAres: "Sync with ARES Registry",
     title: "Billing & invoices",
-  },
-  legal: {
-    analyticsDescription:
-      "Analytics preferences cannot be viewed or changed from your account.",
-    analyticsTitle: "Web & usage analytics",
-    archiveAction: "Request GDPR data archive",
-    archiveDescription:
-      "Requesting or downloading a personal data archive is not available in your account.",
-    archiveTitle: "Your personal data archive",
-    marketingDescription:
-      "Communications consent cannot be viewed or changed from your account.",
-    marketingTitle: "Marketing & community communications",
-    preferencesUnavailable:
-      "Account consent settings are not available here. Use cookie settings to manage this browser's cookies.",
-    savePreferences: "Save consent preferences",
-    title: "Legal, privacy & GDPR consents",
-    unavailable: "Unavailable",
   },
   reservations: {
     assignedDesk: "Assigned desk",

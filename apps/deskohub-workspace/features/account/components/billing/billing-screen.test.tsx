@@ -14,7 +14,6 @@ const englishCopy = {
   removePaymentCard: "Remove payment card",
   billingDetailsTitle: "Billing details",
   syncAres: "Sync with ARES Registry",
-  aresUnavailable: "ARES Registry sync is not available in this account.",
   invoiceHistoryTitle: "Invoice history",
   invoiceHistoryUnavailable:
     "Invoice history and downloads are not available in this account.",
@@ -32,8 +31,6 @@ const czechCopy = {
   removePaymentCard: "Odebrat platební kartu",
   billingDetailsTitle: "Fakturační údaje",
   syncAres: "Synchronizovat s registrem ARES",
-  aresUnavailable:
-    "Synchronizace s registrem ARES není pro tento účet dostupná.",
   invoiceHistoryTitle: "Historie faktur",
   invoiceHistoryUnavailable:
     "Historie faktur a jejich stahování nejsou pro tento účet dostupné.",

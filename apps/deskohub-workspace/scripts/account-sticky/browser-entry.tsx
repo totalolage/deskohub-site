@@ -57,19 +57,37 @@ type AccountScreenCopy = ReturnType<typeof getAccountScreenCopy>;
 function SyntheticContent({
   activeSection,
   copy,
+  locale,
   variant,
 }: {
   readonly activeSection: AccountSection;
   readonly copy: AccountScreenCopy;
+  readonly locale: Locale;
   readonly variant: ContentVariant;
 }) {
-  const description = {
-    billing: copy.billing.paymentMethodsUnavailable,
-    danger: copy.legal.archiveDescription,
-    legal: copy.legal.analyticsDescription,
-    profile: copy.profile.avatarUnavailableDescription,
-    reservations: copy.reservations.unsupportedDescription,
-  }[activeSection];
+  let description: string;
+  switch (activeSection) {
+    case "billing": {
+      description = copy.billing.paymentMethodsUnavailable;
+      break;
+    }
+    case "danger": {
+      description = m.legalScreenArchiveDescription({}, { locale });
+      break;
+    }
+    case "legal": {
+      description = m.legalScreenAnalyticsDescription({}, { locale });
+      break;
+    }
+    case "profile": {
+      description = copy.profile.avatarUnavailableDescription;
+      break;
+    }
+    case "reservations": {
+      description = copy.reservations.unsupportedDescription;
+      break;
+    }
+  }
 
   return (
     <section
@@ -191,6 +209,7 @@ function Fixture() {
     <SyntheticContent
       activeSection={activeSection}
       copy={copy}
+      locale={locale}
       variant={content}
     />
   );

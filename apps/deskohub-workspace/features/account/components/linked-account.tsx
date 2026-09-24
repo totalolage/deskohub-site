@@ -63,7 +63,7 @@ export function LinkedAccount({
       </div>
 
       {activeSection === "legal" && isPrivateAccountPathname && (
-        <LegalScreen locale={locale} strings={copy.legal} />
+        <LegalScreen locale={locale} />
       )}
 
       <div hidden={activeSection !== "danger"}>

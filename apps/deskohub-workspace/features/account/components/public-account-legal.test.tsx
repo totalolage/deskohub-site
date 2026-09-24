@@ -8,7 +8,6 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
-import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -19,15 +18,13 @@ mock.module("@/features/account/components/legal/legal-screen", () => ({
     accountsEnabled,
     locale,
     marketingPreferences,
-    strings,
   }: {
     readonly accountsEnabled?: boolean;
     readonly locale: string;
     readonly marketingPreferences?: { readonly status: string };
-    readonly strings: { readonly title: string };
   }) => (
     <>
-      <h2>{strings.title}</h2>
+      <h2>Legal screen</h2>
       <output data-testid="public-account-legal-accounts-enabled">
         {String(accountsEnabled)}
       </output>
@@ -85,12 +82,7 @@ describe("PublicAccountLegal", () => {
         <PublicAccountLegal accountsEnabled={true} locale={locale} />
       );
 
-      expect(
-        view.getByRole("heading", {
-          level: 2,
-          name: m.accountLegalTitle({}, { locale }),
-        })
-      ).toBeTruthy();
+      expect(view.getByRole("heading", { level: 2 })).toBeTruthy();
       expect(view.getByTestId("public-account-legal-locale").textContent).toBe(
         locale
       );

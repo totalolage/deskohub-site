@@ -25,7 +25,6 @@ import {
   type Page,
 } from "@playwright/test";
 import { Schema } from "effect";
-import { getAccountScreenCopy } from "../../features/account/components/account-screen-copy";
 import { m } from "../../features/i18n";
 import {
   resolveModulePath,
@@ -2229,7 +2228,7 @@ const runPublicLegalNavigationCheck = async ({
     }
     cookiePreferencesVisible = allCookiePreferencesVisible;
 
-    const archiveAction = getAccountScreenCopy(locale).legal.archiveAction;
+    const archiveAction = m.legalScreenArchiveAction({}, { locale });
     const archiveButton = page
       .getByRole("button", { name: archiveAction, exact: true })
       .first();

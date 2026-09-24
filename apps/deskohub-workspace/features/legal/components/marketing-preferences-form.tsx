@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Locale } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import {
   clearMarketingManagementAction,
   confirmMarketingManagementAction,
@@ -13,28 +14,21 @@ import { Button } from "@/shared/components/ui/button";
 import { PreferenceRow } from "@/shared/components/ui/preference-row";
 import { Switch } from "@/shared/components/ui/switch";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import {
-  getMarketingPreferencesFormCopy,
-  type MarketingPreferencesFormCopy,
-} from "./marketing-preferences-form.copy";
 
 export interface MarketingPreferencesFormProps {
   readonly accountsEnabled?: boolean;
   readonly locale: Locale;
   readonly state: MarketingPreferencesState;
-  readonly copy?: MarketingPreferencesFormCopy;
 }
 
 export function MarketingPreferencesForm({
   accountsEnabled = true,
   locale,
   state,
-  copy = getMarketingPreferencesFormCopy(locale),
 }: MarketingPreferencesFormProps) {
   return (
     <MarketingPreferencesFormContent
       accountsEnabled={accountsEnabled}
-      copy={copy}
       key={`${state.status}:${"source" in state ? state.source : "none"}:${"context" in state ? state.context : "none"}:${"dismissalContext" in state ? state.dismissalContext : "none"}`}
       locale={locale}
       state={state}
@@ -42,14 +36,20 @@ export function MarketingPreferencesForm({
   );
 }
 
+type MarketingFeedbackKind = "save" | "confirm" | "clear";
+
+type MarketingFeedback = {
+  readonly kind: MarketingFeedbackKind;
+  readonly outcome: "success" | "error";
+  readonly serverMessage?: string;
+};
+
 function MarketingPreferencesFormContent({
   accountsEnabled,
-  copy,
   locale,
   state,
 }: {
   readonly accountsEnabled: boolean;
-  readonly copy: MarketingPreferencesFormCopy;
   readonly locale: Locale;
   readonly state: MarketingPreferencesState;
 }) {
@@ -67,81 +67,61 @@ function MarketingPreferencesFormContent({
   const source = managedState?.source;
   const isLinkManagement = source === "link";
 
-  // The switch is server-authoritative: it reflects the saved consent and
-  // only moves after a successful save, so a failure leaves it untouched.
+  // The switch is optimistic: it moves to the target state immediately on
+  // toggle and reverts to the server-authoritative state only when the save
+  // fails.
   const [checked, setChecked] = useState(managedState?.status === "active");
-  const requestedCheckedRef = useRef(managedState?.status === "active");
-  const [saveErrored, setSaveErrored] = useState(false);
-  const [saveSucceeded, setSaveSucceeded] = useState(false);
-  const [confirmSucceeded, setConfirmSucceeded] = useState(false);
-  const [confirmFailed, setConfirmFailed] = useState(false);
-  const [clearSucceeded, setClearSucceeded] = useState(false);
-  const [clearFailed, setClearFailed] = useState(false);
+  const [feedback, setFeedback] = useState<MarketingFeedback | null>(null);
+  // The last value the server confirmed. Refreshed server props may lag behind
+  // a successful save, so failures must revert to this, not to the initial
+  // (possibly stale) props.
+  const [confirmedActive, setConfirmedActive] = useState(
+    managedState?.status === "active"
+  );
 
-  const {
-    execute: executeSave,
-    isExecuting: isSaving,
-    reset: resetSave,
-    result: saveResult,
-  } = useWorkspaceAction(saveMarketingPreferencesAction, {
-    actionName: "legal.marketing-preferences.save",
-    onSuccess: () => {
-      setSaveErrored(false);
-      setSaveSucceeded(true);
-      setChecked(requestedCheckedRef.current);
-      router.refresh();
-    },
-    onError: () => {
-      setSaveSucceeded(false);
-      setSaveErrored(true);
-    },
-    onTransportError: () => {
-      setSaveSucceeded(false);
-      setSaveErrored(true);
-    },
-  });
-  const {
-    execute: executeConfirm,
-    isExecuting: isConfirming,
-    reset: resetConfirm,
-    result: confirmResult,
-  } = useWorkspaceAction(confirmMarketingManagementAction, {
-    actionName: "legal.marketing-preferences.confirm",
-    onSuccess: () => {
-      setConfirmFailed(false);
-      setConfirmSucceeded(true);
-      router.refresh();
-    },
-    onError: () => {
-      setConfirmSucceeded(false);
-      setConfirmFailed(true);
-    },
-    onTransportError: () => {
-      setConfirmSucceeded(false);
-      setConfirmFailed(true);
-    },
-  });
-  const {
-    execute: executeClear,
-    isExecuting: isClearing,
-    reset: resetClear,
-    result: clearResult,
-  } = useWorkspaceAction(clearMarketingManagementAction, {
-    actionName: "legal.marketing-preferences.clear",
-    onSuccess: () => {
-      setClearFailed(false);
-      setClearSucceeded(true);
-      router.refresh();
-    },
-    onError: () => {
-      setClearSucceeded(false);
-      setClearFailed(true);
-    },
-    onTransportError: () => {
-      setClearSucceeded(false);
-      setClearFailed(true);
-    },
-  });
+  const markSuccess = (kind: MarketingFeedbackKind) => {
+    setFeedback({ kind, outcome: "success" });
+    router.refresh();
+  };
+  const markError = (kind: MarketingFeedbackKind, serverMessage?: string) =>
+    setFeedback({ kind, outcome: "error", serverMessage });
+
+  const revertToConfirmed = () => setChecked(confirmedActive);
+
+  const { execute: executeSave, isExecuting: isSaving } = useWorkspaceAction(
+    saveMarketingPreferencesAction,
+    {
+      actionName: "legal.marketing-preferences.save",
+      onSuccess: ({ input }) => {
+        setConfirmedActive(input.granted);
+        markSuccess("save");
+      },
+      onError: ({ error }) => {
+        revertToConfirmed();
+        markError("save", error.serverError);
+      },
+      onTransportError: () => {
+        revertToConfirmed();
+        markError("save");
+      },
+    }
+  );
+  const { execute: executeConfirm, isExecuting: isConfirming } =
+    useWorkspaceAction(confirmMarketingManagementAction, {
+      actionName: "legal.marketing-preferences.confirm",
+      onSuccess: () => markSuccess("confirm"),
+      onError: ({ error }) => markError("confirm", error.serverError),
+      onTransportError: () => markError("confirm"),
+    });
+  const { execute: executeClear, isExecuting: isClearing } = useWorkspaceAction(
+    clearMarketingManagementAction,
+    {
+      actionName: "legal.marketing-preferences.clear",
+      onSuccess: () => markSuccess("clear"),
+      onError: ({ error }) => markError("clear", error.serverError),
+      onTransportError: () => markError("clear"),
+    }
+  );
 
   const busy = isSaving || isConfirming || isClearing;
   const actionInFlight = useRef(false);
@@ -150,53 +130,32 @@ function MarketingPreferencesFormContent({
     if (!busy) actionInFlight.current = false;
   }, [busy]);
 
-  const resetFeedback = () => {
-    resetSave();
-    resetConfirm();
-    resetClear();
-    setSaveSucceeded(false);
-    setSaveErrored(false);
-    setConfirmSucceeded(false);
-    setConfirmFailed(false);
-    setClearSucceeded(false);
-    setClearFailed(false);
-  };
-
-  const saveError =
-    saveResult.serverError || saveResult.validationErrors || saveErrored;
-  const confirmError =
-    confirmResult.serverError ||
-    confirmResult.validationErrors ||
-    confirmFailed;
-  const clearError =
-    clearResult.serverError || clearResult.validationErrors || clearFailed;
-  let saveFeedback: string | null = null;
-  if (saveSucceeded) {
-    saveFeedback = copy.saved;
-  } else if (saveError) {
-    saveFeedback = saveResult.serverError || copy.saveError;
-  }
-  let confirmFeedback: string | null = null;
-  if (confirmSucceeded) {
-    confirmFeedback = copy.confirmed;
-  } else if (confirmError) {
-    confirmFeedback = confirmResult.serverError || copy.confirmError;
-  }
-  let clearFeedback: string | null = null;
-  if (clearSucceeded) {
-    clearFeedback = copy.cleared;
-  } else if (clearError) {
-    clearFeedback = clearResult.serverError || copy.clearError;
-  }
   const titleId = "marketing-preferences-title";
   const descriptionId = "marketing-preferences-description";
   const switchId = "marketing-preferences-switch";
   const feedbackId = "marketing-preferences-feedback";
   const hasContextState =
     context !== undefined || dismissalContext !== undefined;
-  const hasFeedback =
-    saveFeedback !== null || confirmFeedback !== null || clearFeedback !== null;
-  const hasError = Boolean(saveError || confirmError || clearError);
+  const hasError = feedback?.outcome === "error";
+
+  function feedbackMessage(
+    kind: MarketingFeedbackKind,
+    outcome: "success" | "error"
+  ) {
+    if (kind === "save") {
+      return outcome === "success"
+        ? m.marketingPreferencesFormSaved({}, { locale })
+        : m.marketingPreferencesFormSaveError({}, { locale });
+    }
+    if (kind === "confirm") {
+      return outcome === "success"
+        ? m.marketingPreferencesFormConfirmed({}, { locale })
+        : m.marketingPreferencesFormConfirmError({}, { locale });
+    }
+    return outcome === "success"
+      ? m.marketingPreferencesFormCleared({}, { locale })
+      : m.marketingPreferencesFormClearError({}, { locale });
+  }
 
   return (
     <section
@@ -206,25 +165,21 @@ function MarketingPreferencesFormContent({
       data-marketing-preferences-source={source}
     >
       {state.status === "unavailable" && (
-        <UnavailableState
-          accountsEnabled={accountsEnabled}
-          copy={copy}
-          locale={locale}
-        />
+        <UnavailableState accountsEnabled={accountsEnabled} locale={locale} />
       )}
       {state.status === "invalid-link" && (
         <InvalidLinkState
-          copy={copy}
           isClearing={isClearing}
+          locale={locale}
           onClear={clearManagement}
         />
       )}
       {pendingState && (
         <PendingLinkState
           busy={busy}
-          copy={copy}
           isClearing={isClearing}
           isConfirming={isConfirming}
+          locale={locale}
           onClear={clearManagement}
           onContinue={continueManagement}
         />
@@ -243,16 +198,16 @@ function MarketingPreferencesFormContent({
               onCheckedChange={handleToggle}
             />
           }
-          description={copy.rowDescription}
+          description={m.marketingPreferencesFormRowDescription({}, { locale })}
           descriptionId={descriptionId}
           headingAs="h3"
-          title={copy.rowTitle}
+          title={m.marketingPreferencesFormRowTitle({}, { locale })}
           titleId={titleId}
         >
           {isLinkManagement && (
             <>
               <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-                {copy.linkContext}
+                {m.marketingPreferencesFormLinkContext({}, { locale })}
               </p>
               <Button
                 aria-busy={isClearing}
@@ -262,7 +217,9 @@ function MarketingPreferencesFormContent({
                 type="button"
                 variant="secondary"
               >
-                {isClearing ? copy.clearing : copy.clearAction}
+                {isClearing
+                  ? m.marketingPreferencesFormClearing({}, { locale })
+                  : m.marketingPreferencesFormClearAction({}, { locale })}
               </Button>
             </>
           )}
@@ -271,25 +228,20 @@ function MarketingPreferencesFormContent({
 
       {hasContextState && (
         <div
-          aria-live={hasFeedback ? "polite" : undefined}
+          aria-live={feedback ? "polite" : undefined}
           className="mt-3 min-h-5 text-sm"
           id={feedbackId}
           role={hasError ? "alert" : undefined}
         >
-          {isSaving && <p role="status">{copy.savingStatus}</p>}
-          {confirmFeedback && (
-            <p className={confirmError ? "text-red-700" : "text-emerald-800"}>
-              {confirmFeedback}
+          {isSaving && (
+            <p role="status">
+              {m.marketingPreferencesFormSavingStatus({}, { locale })}
             </p>
           )}
-          {saveFeedback && (
-            <p className={saveErrored ? "text-red-700" : "text-emerald-800"}>
-              {saveFeedback}
-            </p>
-          )}
-          {clearFeedback && (
-            <p className={clearError ? "text-red-700" : "text-emerald-800"}>
-              {clearFeedback}
+          {feedback && (
+            <p className={hasError ? "text-red-700" : "text-emerald-800"}>
+              {feedback.serverMessage ??
+                feedbackMessage(feedback.kind, feedback.outcome)}
             </p>
           )}
         </div>
@@ -309,8 +261,8 @@ function MarketingPreferencesFormContent({
     }
 
     actionInFlight.current = true;
-    resetFeedback();
-    requestedCheckedRef.current = nextChecked;
+    setFeedback(null);
+    setChecked(nextChecked);
     executeSave({
       confirmed: true,
       context,
@@ -331,7 +283,7 @@ function MarketingPreferencesFormContent({
     }
 
     actionInFlight.current = true;
-    resetFeedback();
+    setFeedback(null);
     executeConfirm({ context });
   }
 
@@ -348,30 +300,30 @@ function MarketingPreferencesFormContent({
     }
 
     actionInFlight.current = true;
-    resetFeedback();
+    setFeedback(null);
     executeClear({ context: dismissalContext });
   }
 }
 
 function PendingLinkState({
   busy,
-  copy,
   isClearing,
   isConfirming,
+  locale,
   onClear,
   onContinue,
 }: {
   readonly busy: boolean;
-  readonly copy: MarketingPreferencesFormCopy;
   readonly isClearing: boolean;
   readonly isConfirming: boolean;
+  readonly locale: Locale;
   readonly onClear: () => void;
   readonly onContinue: () => void;
 }) {
   return (
     <div className="min-w-0 space-y-3">
       <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-        {copy.pendingDescription}
+        {m.marketingPreferencesFormPendingDescription({}, { locale })}
       </p>
       <div className="flex min-w-0 flex-wrap items-center gap-3">
         <Button
@@ -381,7 +333,9 @@ function PendingLinkState({
           onClick={onContinue}
           type="button"
         >
-          {isConfirming ? copy.confirming : copy.continueAction}
+          {isConfirming
+            ? m.marketingPreferencesFormConfirming({}, { locale })
+            : m.marketingPreferencesFormContinueAction({}, { locale })}
         </Button>
         <Button
           aria-busy={isClearing}
@@ -391,7 +345,9 @@ function PendingLinkState({
           type="button"
           variant="secondary"
         >
-          {isClearing ? copy.clearing : copy.clearAction}
+          {isClearing
+            ? m.marketingPreferencesFormClearing({}, { locale })
+            : m.marketingPreferencesFormClearAction({}, { locale })}
         </Button>
       </div>
     </div>
@@ -400,31 +356,32 @@ function PendingLinkState({
 
 function UnavailableState({
   accountsEnabled,
-  copy,
   locale,
 }: {
   readonly accountsEnabled: boolean;
-  readonly copy: MarketingPreferencesFormCopy;
   readonly locale: Locale;
 }) {
   return (
     <div className="min-w-0 space-y-2">
       <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-        {copy.unavailableDescription}
+        {m.marketingPreferencesFormUnavailableDescription({}, { locale })}
       </p>
       <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-        {copy.unavailableNextStep}
+        {m.marketingPreferencesFormUnavailableNextStep({}, { locale })}
       </p>
       {accountsEnabled && (
         <>
           <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-            {copy.unavailableSignInNextStep}
+            {m.marketingPreferencesFormUnavailableSignInNextStep(
+              {},
+              { locale }
+            )}
           </p>
           <a
             className="inline-flex max-w-full wrap-break-word pt-1 text-sm font-semibold text-burned-orange underline decoration-burned-orange/40 underline-offset-4 hover:text-burned-orange-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2"
             href={`/${locale}/auth/sign-in`}
           >
-            {copy.signInAction}
+            {m.marketingPreferencesFormSignInAction({}, { locale })}
           </a>
         </>
       )}
@@ -433,21 +390,21 @@ function UnavailableState({
 }
 
 function InvalidLinkState({
-  copy,
   isClearing,
+  locale,
   onClear,
 }: {
-  readonly copy: MarketingPreferencesFormCopy;
   readonly isClearing: boolean;
+  readonly locale: Locale;
   readonly onClear: () => void;
 }) {
   return (
     <div className="min-w-0 space-y-3">
       <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-        {copy.invalidLinkDescription}
+        {m.marketingPreferencesFormInvalidLinkDescription({}, { locale })}
       </p>
       <p className="wrap-break-word text-sm leading-6 text-navy-blue/70">
-        {copy.invalidLinkNextStep}
+        {m.marketingPreferencesFormInvalidLinkNextStep({}, { locale })}
       </p>
       <Button
         aria-busy={isClearing}
@@ -457,7 +414,9 @@ function InvalidLinkState({
         type="button"
         variant="secondary"
       >
-        {isClearing ? copy.clearing : copy.clearAction}
+        {isClearing
+          ? m.marketingPreferencesFormClearing({}, { locale })
+          : m.marketingPreferencesFormClearAction({}, { locale })}
       </Button>
     </div>
   );

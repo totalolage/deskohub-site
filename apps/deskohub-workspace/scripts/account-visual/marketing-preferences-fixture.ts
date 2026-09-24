@@ -27,7 +27,7 @@ import {
   type Page,
 } from "@playwright/test";
 import { Predicate, Schema } from "effect";
-import { marketingPreferencesFormCopy } from "../../features/legal/components/marketing-preferences-form.copy";
+import { m } from "../../features/i18n";
 import {
   resolveModulePath,
   transformGlobalsCss,
@@ -379,7 +379,10 @@ type ActionResult = {
 type Action = (input: Record<string, unknown>) => Promise<ActionResult>;
 type ActionOptions = {
   readonly onError?: (args: { readonly error: unknown }) => void;
-  readonly onSuccess?: (args: { readonly data?: unknown }) => void;
+  readonly onSuccess?: (args: {
+    readonly data?: unknown;
+    readonly input: unknown;
+  }) => void;
   readonly onTransportError?: (args: {
     readonly error: unknown;
     readonly input: unknown;
@@ -400,7 +403,7 @@ export function useWorkspaceAction(action: Action, options: ActionOptions) {
       if (nextResult.serverError || nextResult.validationErrors) {
         options.onError?.({ error: nextResult });
       } else {
-        options.onSuccess?.({ data: nextResult.data });
+        options.onSuccess?.({ data: nextResult.data, input });
       }
       return nextResult;
     } catch (error) {
@@ -721,7 +724,6 @@ type BrowserFixturePaths = {
   readonly adapterPath: string;
   readonly artifactRoot: string;
   readonly italicFontPath: string;
-  readonly productionCopyPath: string;
   readonly productionCookieSettingsPath: string;
   readonly productionFormPath: string;
   readonly regularFontPath: string;
@@ -1153,7 +1155,6 @@ const assertBrowserInitialState = async (
   locale: BrowserLocale,
   scenario: BrowserScenario
 ) => {
-  const copy = marketingPreferencesFormCopy[locale];
   const section = page.locator(
     `[data-marketing-preferences="${browserScenarioStatus(scenario)}"]`
   );
@@ -1163,44 +1164,90 @@ const assertBrowserInitialState = async (
 
   if (scenario === "pending-link") {
     expect(
-      await page.getByRole("button", { name: copy.continueAction }).count()
+      await page
+        .getByRole("button", {
+          name: m.marketingPreferencesFormContinueAction({}, { locale }),
+        })
+        .count()
     ).toBe(1);
     expect(
-      await page.getByRole("button", { name: copy.clearAction }).count()
+      await page
+        .getByRole("button", {
+          name: m.marketingPreferencesFormClearAction({}, { locale }),
+        })
+        .count()
     ).toBe(1);
     expect(marketingSwitchCount).toBe(0);
-    expect(await page.getByText(copy.pendingDescription).count()).toBe(1);
+    expect(
+      await page
+        .getByText(m.marketingPreferencesFormPendingDescription({}, { locale }))
+        .count()
+    ).toBe(1);
     return;
   }
 
   if (scenario === "unavailable") {
-    expect(await page.getByText(copy.unavailableNextStep).count()).toBe(1);
-    expect(await page.getByText(copy.unavailableSignInNextStep).count()).toBe(
-      1
-    );
     expect(
       await page
-        .getByRole("link", { name: copy.signInAction })
+        .getByText(
+          m.marketingPreferencesFormUnavailableNextStep({}, { locale })
+        )
+        .count()
+    ).toBe(1);
+    expect(
+      await page
+        .getByText(
+          m.marketingPreferencesFormUnavailableSignInNextStep({}, { locale })
+        )
+        .count()
+    ).toBe(1);
+    expect(
+      await page
+        .getByRole("link", {
+          name: m.marketingPreferencesFormSignInAction({}, { locale }),
+        })
         .getAttribute("href")
     ).toBe(`/${locale}/auth/sign-in`);
     expect(marketingSwitchCount).toBe(0);
     expect(
-      await page.getByRole("button", { name: copy.continueAction }).count()
+      await page
+        .getByRole("button", {
+          name: m.marketingPreferencesFormContinueAction({}, { locale }),
+        })
+        .count()
     ).toBe(0);
     return;
   }
 
   if (scenario === "invalid-link") {
-    expect(await page.getByText(copy.invalidLinkDescription).count()).toBe(1);
     expect(
-      await page.getByRole("link", { name: copy.signInAction }).count()
+      await page
+        .getByText(
+          m.marketingPreferencesFormInvalidLinkDescription({}, { locale })
+        )
+        .count()
+    ).toBe(1);
+    expect(
+      await page
+        .getByRole("link", {
+          name: m.marketingPreferencesFormSignInAction({}, { locale }),
+        })
+        .count()
     ).toBe(0);
     expect(marketingSwitchCount).toBe(0);
     expect(
-      await page.getByRole("button", { name: copy.continueAction }).count()
+      await page
+        .getByRole("button", {
+          name: m.marketingPreferencesFormContinueAction({}, { locale }),
+        })
+        .count()
     ).toBe(0);
     expect(
-      await page.getByRole("button", { name: copy.clearAction }).count()
+      await page
+        .getByRole("button", {
+          name: m.marketingPreferencesFormClearAction({}, { locale }),
+        })
+        .count()
     ).toBe(1);
     return;
   }
@@ -1212,25 +1259,43 @@ const assertBrowserInitialState = async (
     status === "active" ? "true" : "false"
   );
   expect(await marketingSwitchFor(page).isDisabled()).toBe(false);
-  expect(
-    await page.getByRole("button", { name: copy.grantAction }).count()
-  ).toBe(0);
-  expect(
-    await page.getByRole("button", { name: copy.withdrawAction }).count()
-  ).toBe(0);
+  // No confirmation-gate buttons render inside the managed row; the only
+  // row control besides the switch is the link clear action.
+  const managedRow = page.locator(
+    '[data-marketing-preferences-source]:not([data-marketing-preferences-source=""])'
+  );
+  expect(await managedRow.getByRole("button").count()).toBe(
+    source === "link" ? 1 : 0
+  );
   expect(
     await page
-      .getByText(source === "link" ? copy.accountContext : copy.linkContext)
+      .getByText(
+        source === "link"
+          ? m.marketingPreferencesFormAccountContext({}, { locale })
+          : m.marketingPreferencesFormLinkContext({}, { locale })
+      )
       .count()
   ).toBe(0);
   if (source === "link") {
-    expect(await page.getByText(copy.linkContext).count()).toBe(1);
     expect(
-      await page.getByRole("button", { name: copy.clearAction }).count()
+      await page
+        .getByText(m.marketingPreferencesFormLinkContext({}, { locale }))
+        .count()
+    ).toBe(1);
+    expect(
+      await page
+        .getByRole("button", {
+          name: m.marketingPreferencesFormClearAction({}, { locale }),
+        })
+        .count()
     ).toBe(1);
   } else {
     expect(
-      await page.getByRole("button", { name: copy.clearAction }).count()
+      await page
+        .getByRole("button", {
+          name: m.marketingPreferencesFormClearAction({}, { locale }),
+        })
+        .count()
     ).toBe(0);
   }
 };
@@ -1345,12 +1410,12 @@ const runBrowserPendingTransitions = async ({
     try {
       await successPage
         .getByRole("button", {
-          name: marketingPreferencesFormCopy[locale].continueAction,
+          name: m.marketingPreferencesFormContinueAction({}, { locale }),
         })
         .click();
       await waitForBrowserBodyText(
         successPage,
-        marketingPreferencesFormCopy[locale].confirmed
+        m.marketingPreferencesFormConfirmed({}, { locale })
       );
       assertBrowserActionEvent((await readBrowserActionLog(successPage))[0], {
         action: "confirm",
@@ -1379,16 +1444,21 @@ const runBrowserPendingTransitions = async ({
       { confirmOutcome: "error" }
     );
     try {
-      const copy = marketingPreferencesFormCopy[locale];
       await errorPage
-        .getByRole("button", { name: copy.continueAction })
+        .getByRole("button", {
+          name: m.marketingPreferencesFormContinueAction({}, { locale }),
+        })
         .click();
       await errorPage
         .getByRole("alert")
         .waitFor({ state: "visible", timeout: 5_000 });
-      expect(await errorPage.getByText(copy.pendingDescription).count()).toBe(
-        1
-      );
+      expect(
+        await errorPage
+          .getByText(
+            m.marketingPreferencesFormPendingDescription({}, { locale })
+          )
+          .count()
+      ).toBe(1);
       expect(await marketingSwitchFor(errorPage).count()).toBe(0);
       assertBrowserActionEvent((await readBrowserActionLog(errorPage))[0], {
         action: "confirm",
@@ -1447,7 +1517,6 @@ const runBrowserSaveTransitions = async ({
         { delay: "200", saveOutcome: outcome }
       );
       try {
-        const copy = marketingPreferencesFormCopy[locale];
         const marketingSwitch = marketingSwitchFor(page);
         const initialChecked =
           await marketingSwitch.getAttribute("aria-checked");
@@ -1455,7 +1524,10 @@ const runBrowserSaveTransitions = async ({
         await marketingSwitch.click();
         expect(await marketingSwitch.isDisabled()).toBe(true);
         if (outcome === "success") {
-          await waitForBrowserBodyText(page, copy.saved);
+          await waitForBrowserBodyText(
+            page,
+            m.marketingPreferencesFormSaved({}, { locale })
+          );
           expect(await marketingSwitch.getAttribute("aria-checked")).toBe(
             granted ? "true" : "false"
           );
@@ -1463,7 +1535,10 @@ const runBrowserSaveTransitions = async ({
           await page
             .getByRole("alert")
             .waitFor({ state: "visible", timeout: 5_000 });
-          await waitForBrowserBodyText(page, copy.saveError);
+          await waitForBrowserBodyText(
+            page,
+            m.marketingPreferencesFormSaveError({}, { locale })
+          );
           expect(await marketingSwitch.getAttribute("aria-checked")).toBe(
             initialChecked
           );
@@ -1537,15 +1612,24 @@ const runBrowserLinkClearTransitions = async ({
         { clearOutcome: outcome }
       );
       try {
-        const copy = marketingPreferencesFormCopy[locale];
-        await page.getByRole("button", { name: copy.clearAction }).click();
+        await page
+          .getByRole("button", {
+            name: m.marketingPreferencesFormClearAction({}, { locale }),
+          })
+          .click();
         if (outcome === "success") {
-          await waitForBrowserBodyText(page, copy.cleared);
+          await waitForBrowserBodyText(
+            page,
+            m.marketingPreferencesFormCleared({}, { locale })
+          );
         } else {
           await page
             .getByRole("alert")
             .waitFor({ state: "visible", timeout: 5_000 });
-          await waitForBrowserBodyText(page, copy.clearError);
+          await waitForBrowserBodyText(
+            page,
+            m.marketingPreferencesFormClearError({}, { locale })
+          );
         }
         assertBrowserActionEvent((await readBrowserActionLog(page))[0], {
           action: "clear",
@@ -1600,10 +1684,12 @@ const runBrowserContextReplacement = async ({
     { context: "a" }
   );
   try {
-    const copy = marketingPreferencesFormCopy[locale];
     const marketingSwitch = marketingSwitchFor(page);
     await marketingSwitch.click();
-    await waitForBrowserBodyText(page, copy.saved);
+    await waitForBrowserBodyText(
+      page,
+      m.marketingPreferencesFormSaved({}, { locale })
+    );
     expect(await marketingSwitch.getAttribute("aria-checked")).toBe("true");
     const before = await browserScreenshot({
       context,
@@ -1767,16 +1853,25 @@ const runBrowserAccountsDisabledChecks = async ({
       { accountsEnabled: "false" }
     );
     try {
-      const copy = marketingPreferencesFormCopy[locale];
       expect(
-        await unavailablePage.getByText(copy.unavailableNextStep).count()
+        await unavailablePage
+          .getByText(
+            m.marketingPreferencesFormUnavailableNextStep({}, { locale })
+          )
+          .count()
       ).toBe(1);
       expect(
-        await unavailablePage.getByText(copy.unavailableSignInNextStep).count()
+        await unavailablePage
+          .getByText(
+            m.marketingPreferencesFormUnavailableSignInNextStep({}, { locale })
+          )
+          .count()
       ).toBe(0);
       expect(
         await unavailablePage
-          .getByRole("link", { name: copy.signInAction })
+          .getByRole("link", {
+            name: m.marketingPreferencesFormSignInAction({}, { locale }),
+          })
           .count()
       ).toBe(0);
     } finally {
@@ -1792,13 +1887,15 @@ const runBrowserAccountsDisabledChecks = async ({
       { accountsEnabled: "false", confirmOutcome: "success" }
     );
     try {
-      const copy = marketingPreferencesFormCopy[locale];
       const continueButton = pendingPage.getByRole("button", {
-        name: copy.continueAction,
+        name: m.marketingPreferencesFormContinueAction({}, { locale }),
       });
       expect(await continueButton.count()).toBe(1);
       await continueButton.click();
-      await waitForBrowserBodyText(pendingPage, copy.confirmed);
+      await waitForBrowserBodyText(
+        pendingPage,
+        m.marketingPreferencesFormConfirmed({}, { locale })
+      );
       assertBrowserActionEvent((await readBrowserActionLog(pendingPage))[0], {
         action: "confirm",
         input: { context: browserContextFor("pending-link") },
@@ -1819,10 +1916,6 @@ const runMarketingPreferencesBrowserFixture = async ({
     adapterPath: join(import.meta.dir, "marketing-preferences-adapter.tsx"),
     artifactRoot: outputDirectory,
     italicFontPath: join(appRoot, "assets/fonts/Sculpin/italic.woff2"),
-    productionCopyPath: join(
-      appRoot,
-      "features/legal/components/marketing-preferences-form.copy.ts"
-    ),
     productionFormPath: join(
       appRoot,
       "features/legal/components/marketing-preferences-form.tsx"
@@ -1984,7 +2077,6 @@ const runMarketingPreferencesBrowserFixture = async ({
           paths.repoRoot,
           paths.productionCookieSettingsPath
         ),
-        productionCopy: relative(paths.repoRoot, paths.productionCopyPath),
         controlledModules: [
           "@/features/legal/actions",
           "@/shared/utils/use-workspace-action",

@@ -112,7 +112,6 @@ const { CookieConsentProvider } = await import(
   "@/features/cookie-consent/components/cookie-consent-provider"
 );
 const { LegalScreen } = await import("./legal-screen");
-const { getLegalScreenStrings } = await import("../account-screen-copy");
 
 beforeAll(registerWorkspaceComponentTestEnv);
 beforeEach(() => {
@@ -126,19 +125,17 @@ function renderLegalScreen(locale: Locale) {
   return render(
     <>
       <CookieConsentProvider locale={locale} />
-      <LegalScreen locale={locale} strings={getLegalScreenStrings(locale)} />
+      <LegalScreen locale={locale} />
     </>
   );
 }
 
 for (const locale of ["en-US", "cs-CZ"] as const) {
-  test(`${locale} renders the supplied copy and localized policy destinations`, () => {
-    const strings = getLegalScreenStrings(locale);
+  test(`${locale} renders the catalog copy and localized policy destinations`, () => {
     const view = renderLegalScreen(locale);
+    const title = m.legalScreenTitle({}, { locale });
 
-    expect(
-      view.getByRole("heading", { level: 2, name: strings.title })
-    ).toBeTruthy();
+    expect(view.getByRole("heading", { level: 2, name: title })).toBeTruthy();
     expect(
       view.getByRole("navigation", {
         name: m.footerLegalLabel({}, { locale }),
@@ -162,12 +159,14 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
     expect(
       view.getByRole("heading", {
         level: 3,
-        name: strings.archiveTitle,
+        name: m.legalScreenArchiveTitle({}, { locale }),
       })
     ).toBeTruthy();
-    expect(view.getByText(strings.archiveDescription)).toBeTruthy();
+    expect(
+      view.getByText(m.legalScreenArchiveDescription({}, { locale }))
+    ).toBeTruthy();
     const archiveAction = view.getByRole("button", {
-      name: strings.archiveAction,
+      name: m.legalScreenArchiveAction({}, { locale }),
     });
     expect((archiveAction as HTMLButtonElement).disabled).toBe(true);
     expect(archiveAction.getAttribute("type")).toBe("button");
@@ -176,7 +175,6 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
 
 test("renders immutable necessary consent and functional optional controls", async () => {
   const locale = "en-US" as const;
-  const strings = getLegalScreenStrings(locale);
   const view = renderLegalScreen(locale);
   const switchFor = (title: string) =>
     view.getByRole("switch", { name: new RegExp(`^${title}`) });
@@ -191,7 +189,9 @@ test("renders immutable necessary consent and functional optional controls", asy
   expect(necessary.getAttribute("aria-checked")).toBe("true");
   expect((necessary as HTMLButtonElement).disabled).toBe(true);
   expect(
-    view.queryByRole("button", { name: strings.savePreferences })
+    view.queryByRole("button", {
+      name: m.legalScreenSavePreferences({}, { locale }),
+    })
   ).toBeNull();
   expect(
     view.queryByRole("button", {
@@ -203,13 +203,23 @@ test("renders immutable necessary consent and functional optional controls", asy
       name: m.cookieSettingsRejectAll({}, { locale }),
     })
   ).toBeNull();
-  expect(view.queryByRole("button", { name: strings.unavailable })).toBeNull();
-  expect(view.queryByText(strings.analyticsDescription)).toBeNull();
-  expect(view.queryByText(strings.marketingDescription)).toBeNull();
-  expect(view.queryByText(strings.preferencesUnavailable)).toBeNull();
+  expect(
+    view.queryByRole("button", {
+      name: m.legalScreenUnavailable({}, { locale }),
+    })
+  ).toBeNull();
+  expect(
+    view.queryByText(m.legalScreenAnalyticsDescription({}, { locale }))
+  ).toBeNull();
+  expect(
+    view.queryByText(m.legalScreenMarketingDescription({}, { locale }))
+  ).toBeNull();
+  expect(
+    view.queryByText(m.legalScreenPreferencesUnavailable({}, { locale }))
+  ).toBeNull();
 
   const archiveAction = view.getByRole("button", {
-    name: strings.archiveAction,
+    name: m.legalScreenArchiveAction({}, { locale }),
   });
   expect(archiveAction.closest("[role='group'][tabindex='0']")).not.toBeNull();
   expect(
@@ -250,21 +260,52 @@ test("keeps consent controls wrapped and free of page-only shells", () => {
   }
 });
 
-test("renders the marketing preferences block inside the shared cookie settings rows", () => {
-  const view = renderLegalScreen("en-US");
+test.each(["en-US", "cs-CZ"] as const)(
+  "renders the marketing preferences block as a sibling after the cookie settings card in %s",
+  (locale) => {
+    const view = renderLegalScreen(locale);
 
-  const marketing = view.getByTestId("legal-marketing-preferences");
-  // The rows live in the shared preference-row group and the marketing block
-  // follows it as the last child of the same cookie settings container.
-  // Compare nodes with `===` so a regression fails fast; bun's toBe failure
-  // diff serializes the entire happy-dom subtree and stalls the suite.
-  const group = marketing.previousElementSibling;
-  expect(group?.getAttribute("data-slot")).toBe("preference-row-group");
-  expect(group?.querySelectorAll('[data-slot="preference-row"]').length).toBe(
-    4
-  );
-  expect(marketing.parentElement?.lastElementChild === marketing).toBe(true);
-});
+    const marketing = view.getByTestId("legal-marketing-preferences");
+    // Compare nodes with `===`/DOM positions so a regression fails fast;
+    // bun's toBe failure diff serializes the entire happy-dom subtree and
+    // stalls the suite.
+    const group = view.container.querySelector(
+      '[data-slot="preference-row-group"]'
+    );
+    expect(group).toBeTruthy();
+    const cookieContainer = group?.parentElement ?? null;
+    expect(cookieContainer).toBeTruthy();
+
+    // (a) Siblings: the marketing block and the cookie settings container
+    // share the same parent element directly — no intermediate wrapper div
+    // sits between the form and the panel, and the block is not nested
+    // inside the cookie container. Compare nodes with `===` (booleans) so a
+    // regression fails fast; bun's toBe failure diff serializes the entire
+    // happy-dom subtree and stalls the suite.
+    expect(marketing.parentElement === cookieContainer).toBe(false);
+    expect(cookieContainer?.contains(marketing)).toBe(false);
+    expect(marketing.parentElement === cookieContainer?.parentElement).toBe(
+      true
+    );
+
+    // (b) The marketing block comes after the cookie settings container.
+    expect(
+      cookieContainer?.compareDocumentPosition(marketing) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    // (c) Spacing and heading hierarchy stay intact: the `mt-8` gap belongs
+    // to the marketing form's own root section (it renders no wrapper), and
+    // the cookie rows remain the only children of the cookie settings
+    // container.
+    expect(marketing.parentElement?.className).not.toContain("mt-8");
+    expect(cookieContainer?.children).toHaveLength(1);
+    expect(cookieContainer?.firstElementChild === group).toBe(true);
+    expect(group?.querySelectorAll('[data-slot="preference-row"]').length).toBe(
+      4
+    );
+  }
+);
 
 test("defaults the optional marketing preference state to unavailable", () => {
   const view = renderLegalScreen("en-US");
@@ -278,11 +319,7 @@ test("passes account availability to the marketing preference form", () => {
   const view = render(
     <>
       <CookieConsentProvider locale="en-US" />
-      <LegalScreen
-        accountsEnabled={false}
-        locale="en-US"
-        strings={getLegalScreenStrings("en-US")}
-      />
+      <LegalScreen accountsEnabled={false} locale="en-US" />
     </>
   );
 
@@ -304,7 +341,6 @@ test("passes the rendered marketing preference state through", async () => {
           source: "link",
           status: "active",
         }}
-        strings={getLegalScreenStrings("cs-CZ")}
       />
     </>
   );

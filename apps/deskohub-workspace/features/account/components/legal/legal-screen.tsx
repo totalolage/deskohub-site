@@ -8,37 +8,24 @@ import type { MarketingPreferencesState } from "@/features/legal/marketing-prefe
 import { GuardedLink } from "@/shared/components/guarded-link";
 import { Button } from "@/shared/components/ui/button";
 
-export interface LegalScreenStrings {
-  readonly title: string;
-  readonly analyticsTitle: string;
-  readonly analyticsDescription: string;
-  readonly marketingTitle: string;
-  readonly marketingDescription: string;
-  readonly preferencesUnavailable: string;
-  readonly unavailable: string;
-  readonly archiveTitle: string;
-  readonly archiveDescription: string;
-  readonly archiveAction: string;
-  readonly savePreferences: string;
-}
-
 export interface LegalScreenProps {
   readonly accountsEnabled?: boolean;
   readonly locale: Locale;
   readonly marketingPreferences?: MarketingPreferencesState;
-  readonly strings: LegalScreenStrings;
 }
 
 export function LegalScreen({
   accountsEnabled = true,
   locale,
   marketingPreferences,
-  strings,
 }: LegalScreenProps) {
   const localePath = `/${locale}`;
 
   return (
-    <AccountSectionPanel className="min-w-0" title={strings.title}>
+    <AccountSectionPanel
+      className="min-w-0"
+      title={m.legalScreenTitle({}, { locale })}
+    >
       <nav
         aria-label={m.footerLegalLabel({}, { locale })}
         className="flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-sm leading-5"
@@ -61,25 +48,22 @@ export function LegalScreen({
         />
       </nav>
 
-      <CookieSettings
-        additionalPreferences={
-          <MarketingPreferencesForm
-            accountsEnabled={accountsEnabled}
-            locale={locale}
-            state={marketingPreferences ?? { status: "unavailable" }}
-          />
-        }
+      <CookieSettings locale={locale} />
+
+      <MarketingPreferencesForm
+        accountsEnabled={accountsEnabled}
         locale={locale}
+        state={marketingPreferences ?? { status: "unavailable" }}
       />
 
       <div className="mt-8 border-t border-[#e5e9ef] pt-6">
         <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <h3 className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]">
-              {strings.archiveTitle}
+              {m.legalScreenArchiveTitle({}, { locale })}
             </h3>
             <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
-              {strings.archiveDescription}
+              {m.legalScreenArchiveDescription({}, { locale })}
             </p>
           </div>
           <FutureFeatureTooltip locale={locale}>
@@ -90,7 +74,7 @@ export function LegalScreen({
               variant="secondary"
             >
               <Download aria-hidden="true" className="size-4 shrink-0" />
-              {strings.archiveAction}
+              {m.legalScreenArchiveAction({}, { locale })}
             </Button>
           </FutureFeatureTooltip>
         </div>

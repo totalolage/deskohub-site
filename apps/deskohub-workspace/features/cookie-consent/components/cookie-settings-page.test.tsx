@@ -141,27 +141,4 @@ describe("CookieSettings", () => {
     );
     expect(rows.length).toBe(4);
   });
-
-  test("renders the additional preferences slot after the cookie rows", () => {
-    const view = render(
-      <CookieSettings
-        locale="en-US"
-        additionalPreferences={<div>synthetic additional preferences</div>}
-      />
-    );
-
-    const group = view.container.querySelector(
-      '[data-slot="preference-row-group"]'
-    );
-    expect(group?.querySelectorAll('[data-slot="preference-row"]').length).toBe(
-      4
-    );
-    const children = Array.from(
-      view.container.firstElementChild?.children ?? []
-    );
-    expect(children).toHaveLength(2);
-    expect(children[1]?.textContent).toContain(
-      "synthetic additional preferences"
-    );
-  });
 });
