@@ -24,7 +24,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
 
       - name: Validate Workspace migration count
         working-directory: apps/deskohub-workspace
@@ -60,9 +60,12 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.0
 
       - run: bun install --frozen-lockfile
+
+      - name: Report TypeScript compiler versions
+        run: bunx tsc --version && bunx tsc6 --version
 
       - name: Lint Workspace
         run: bun turbo lint --filter=deskohub-workspace

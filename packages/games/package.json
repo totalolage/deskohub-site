@@ -18,6 +18,6 @@
     "entities": "^4.5.0"
   },
   "devDependencies": {
-    "typescript": "^5"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

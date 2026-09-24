@@ -2,11 +2,18 @@
 
 ## Toolchain
 
-- Use Bun from the repository's pinned version.
+- Use Bun from the repository's pinned version. Bun is pinned to 1.4.0: empirically verified that 1.3.14 misresolves the official `@typescript/typescript6` wrapper's internal `@typescript/old` alias into the root alias (self-referential lock record), while the released 1.4.0 binary resolves it correctly (reproducible two-binary install matrix); do not downgrade the pin and only regenerate bun.lock with ≥1.4.0 (an existing lock keeps a bad record even across `bun install --force`).
 - Run workspace orchestration through Turborepo from the repository root when task dependencies or generated outputs matter.
 - Declare task dependencies with Turbo `dependsOn`. Keep package scripts as leaf commands; compose lint checks and generation prerequisites in the Turbo graph rather than shell chains or script-to-script calls.
 - Every package containing checked-in source must expose a lint task so the root lint graph covers it.
 - Inspect the target package's `package.json` before assuming it exposes a command.
+
+### TypeScript toolchain
+
+- `@typescript/native` (`npm:typescript@7.0.2`) provides the `tsc` CLI; the root `prepare` script patches it to `7.0.2+effect-tsgo.0.36.4` via effect-tsgo.
+- `typescript` (`npm:@typescript/typescript6@6.0.2`) provides the TS6 API (`createProgram`) consumed by typescript-eslint and Next.js, exposed as the `tsc6` CLI.
+- Never add plain `typescript@5`/`6`/`7` dependencies or new `tsc`-bin-providing packages.
+- Next apps set `experimental.useTypeScriptCli: false` because Next's CLI integration resolves `bin.tsc`, which the official TS6 wrapper (tsc6-only) must not provide; with the flag off, Next type-checks builds through its TS6 API worker (no CLI), while `bun turbo typecheck` separately runs the patched native compiler.
 
 ## Bootstrap and development
 

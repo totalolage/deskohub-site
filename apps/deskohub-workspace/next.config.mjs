@@ -38,6 +38,8 @@ const nextConfig = {
   },
   cacheComponents: true,
   experimental: {
+    // Next's TS CLI integration needs bin tsc, which the official TS6 wrapper (tsc6-only) must not provide; API-worker type checking still runs.
+    useTypeScriptCli: false,
     exposeTestingApiInProductionBuild:
       workspaceBotIdVercelEnvironment === "preview",
     instantInsights: {
