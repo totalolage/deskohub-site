@@ -1,18 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import { BunServices } from "@effect/platform-bun";
-import { ConfigProvider, Effect } from "effect";
+import { ConfigProvider, Effect, Layer } from "effect";
 import { DhwConfig } from "./dhw-config.service";
 
-const readConfig = (env: Record<string, string>) =>
-  DhwConfig.pipe(
-    Effect.provide(DhwConfig.Default),
-    Effect.provide(BunServices.layer),
-    Effect.provideService(
-      ConfigProvider.ConfigProvider,
-      ConfigProvider.fromUnknown(env)
-    ),
-    Effect.runPromise
+const readConfig = (env: Record<string, string>) => {
+  const dhwConfigLayer = DhwConfig.Default.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        BunServices.layer,
+        Layer.succeed(
+          ConfigProvider.ConfigProvider,
+          ConfigProvider.fromUnknown(env)
+        )
+      )
+    )
   );
+
+  return DhwConfig.pipe(Effect.provide(dhwConfigLayer), Effect.runPromise);
+};
 
 describe("DhwConfig", () => {
   test("uses DHW_STATE_DIR without requiring HOME", async () => {

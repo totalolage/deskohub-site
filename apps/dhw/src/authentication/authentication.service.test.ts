@@ -64,11 +64,13 @@ describe("AuthenticationService", () => {
       }),
     } satisfies CliSessionCredential["Service"]);
 
+    const authenticationLayer = AuthenticationService.Default.pipe(
+      Layer.provide(Layer.mergeAll(apiLayer, credentialLayer))
+    );
+
     const current = await AuthenticationService.pipe(
       Effect.flatMap((authentication) => authentication.current),
-      Effect.provide(AuthenticationService.Default),
-      Effect.provide(apiLayer),
-      Effect.provide(credentialLayer),
+      Effect.provide(authenticationLayer),
       Effect.runPromise
     );
 
