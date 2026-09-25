@@ -300,7 +300,9 @@ describe("deploy-workspace-production workflow", () => {
   test("confirms rollbacks against the paginated required-alias authority, not a single canonical alias", () => {
     // Comment-aware: commented-out identifiers must not count as present.
     const activeScript = stripLineComments(script);
-    expect(countOccurrences(activeScript, "listProjectAliases")).toBeGreaterThan(0);
+    expect(
+      countOccurrences(activeScript, "listProjectAliases")
+    ).toBeGreaterThan(0);
     expect(
       countOccurrences(activeScript, "requiredProductionAliases")
     ).toBeGreaterThan(0);

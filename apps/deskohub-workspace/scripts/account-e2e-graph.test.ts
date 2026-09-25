@@ -442,9 +442,6 @@ describe("workspace account e2e graph", () => {
     );
   });
 
-
-
-
   test("journals only exact identifiers", async () => {
     const { emptyWorkspaceE2EAccountJournal } = await import(
       "../e2e/account/journal"

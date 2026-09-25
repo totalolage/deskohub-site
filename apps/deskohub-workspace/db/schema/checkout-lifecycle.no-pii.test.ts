@@ -380,5 +380,4 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   // - webhook duplicate retry-safety: nexi-webhook.service.test.ts;
   // - local hold claim before the remote Dotypos hold: exercised by the
   //   checkout payment lanes of the protected-preview E2E.
-
 });

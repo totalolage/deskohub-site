@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { Page } from "@playwright/test";
 import { Cause, Effect, Exit, Fiber } from "effect";
-import { countOccurrences } from "../../scripts/shared/source-contract";
 import { formatWorkspaceE2EFailure, type WorkspaceE2EError } from "../errors";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
