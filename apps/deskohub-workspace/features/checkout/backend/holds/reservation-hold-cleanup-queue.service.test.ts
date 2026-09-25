@@ -136,13 +136,24 @@ describe("ReservationHoldCleanupScheduleService", () => {
   });
 
   test("treats duplicate queue messages as already enqueued", async () => {
-    const source = await Bun.file(
-      new URL("./reservation-hold-cleanup-queue.service.ts", import.meta.url)
-    ).text();
+    const { makeReservationHoldCleanupScheduleService } = await import(
+      "./reservation-hold-cleanup-queue.service"
+    );
+    const { DuplicateMessageError } = await import("@vercel/queue");
+    const service = makeReservationHoldCleanupScheduleService(
+      mock(() =>
+        Promise.reject(new DuplicateMessageError("duplicate"))
+      ) as never
+    );
 
-    expect(source).toContain("DuplicateMessageError");
-    expect(source).toContain("cause instanceof DuplicateMessageError");
-    expect(source).toContain('Effect.succeed("duplicate" as const)');
+    // A duplicate rejection is swallowed: enqueue resolves instead of
+    // failing with a schedule error.
+    await Effect.runPromise(
+      service.enqueueCleanup({
+        orderId: "order-id",
+        reservationHoldExpiresAt: expiresAt,
+      })
+    );
   });
 
   test("keeps enqueue failure causes visible in structured logs", async () => {

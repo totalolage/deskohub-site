@@ -58,21 +58,18 @@ describe("Customer-account boundary", () => {
   });
 
   test("keeps CustomerAccountResolver.Live and the page convenience wired", async () => {
-    const source = await readFile(
-      "backend/customer-account-resolver.service.ts"
-    );
+    const { CustomerAccountResolver, resolveCurrentCustomerAccount } =
+      await import("./customer-account-resolver.service");
 
-    expect(source).toContain("static Live");
-    expect(source).toContain("export const resolveCurrentCustomerAccount");
-    expect(source).toContain(
-      "@deskohub-workspace/account/CustomerAccountResolver"
-    );
+    expect(CustomerAccountResolver.Live).toBeDefined();
+    expect(resolveCurrentCustomerAccount).toBeDefined();
+    expect((CustomerAccountResolver as { Live?: unknown }).Live).toBeDefined();
   });
 
   test("keeps every authoritative server session read refresh-free so the browser route owns the rolling cookie", async () => {
     const source = await readFile("backend/customer-authentication.service.ts");
 
-    expect(source).toContain("query: { disableRefresh: true }");
+    expect(/disableRefresh:\s*true/.test(source)).toBe(true);
   });
 
   test("confines Better Auth imports to the auth boundary, the session adapter, and the browser client", async () => {
@@ -120,10 +117,10 @@ describe("Customer-account boundary", () => {
     const routeSource = await Bun.file(
       path.resolve(accountDirectory, "../../app/api/auth/[...all]/route.ts")
     ).text();
-    expect(routeSource).toContain("export const GET");
-    expect(routeSource).toContain("export const POST");
-    expect(routeSource).not.toMatch(/export const (PUT|PATCH|DELETE)\b/);
-    expect(routeSource).toContain("private, no-store");
+    expect(/export const GET/.test(routeSource)).toBe(true);
+    expect(/export const POST/.test(routeSource)).toBe(true);
+    expect(/export const (PUT|PATCH|DELETE)\b/.test(routeSource)).toBe(false);
+    expect(/private,\s*no-store/.test(routeSource)).toBe(true);
 
     await expect(
       fs.access(path.resolve(accountDirectory, "components/auth-provider.tsx"))

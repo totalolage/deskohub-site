@@ -1,12 +1,14 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { formatReservationDisplayDateRange } from "@/features/reservation/reservation-date";
+import { extractImportSpecifiers } from "../../scripts/shared/source-contract";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
@@ -50,13 +52,15 @@ const wholeDayData = {
 } as const;
 
 describe("whole-day meeting-room checkout proof", () => {
-  test("keeps the deployed runner independent of app-bound persistence decoders", async () => {
-    const source = await Bun.file(
-      fileURLToPath(new URL("./checkout.ts", import.meta.url))
-    ).text();
+  test("keeps the deployed runner independent of app-bound persistence decoders", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("./checkout.ts", import.meta.url)),
+      "utf8"
+    );
+    const imports = extractImportSpecifiers(source).join("\n");
 
-    expect(source).not.toContain("persistence-contracts");
-    expect(source).not.toContain("@/features/i18n");
+    expect(imports.includes("persistence-contracts")).toBe(false);
+    expect(imports.includes("@/features/i18n")).toBe(false);
   });
 
   test("renders both shared email detail projections from the confirmed DST calendar day", async () => {

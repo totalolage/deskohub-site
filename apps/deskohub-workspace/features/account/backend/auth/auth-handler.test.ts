@@ -12,8 +12,8 @@ import type {
 } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
 import { Deferred, Effect, Fiber, Layer } from "effect";
+import { makeAuthDatabase } from "@/db/auth-database-client";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { makeNodePostgresDatabase } from "@/db/database-client";
 import {
   WorkspaceDatabaseAdvisoryLock,
   withPostgresAdvisoryLock,
@@ -58,7 +58,7 @@ interface CapturedMagicLink {
 type TestAuth = ReturnType<typeof makeTestAuth>;
 
 const buildDatabaseAdapter = () =>
-  drizzleAdapter(makeNodePostgresDatabase(testDatabase!.pool), {
+  drizzleAdapter(makeAuthDatabase(testDatabase!.pool), {
     provider: "pg",
     schema: {
       user: authUser,

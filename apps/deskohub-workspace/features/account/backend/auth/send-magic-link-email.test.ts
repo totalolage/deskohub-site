@@ -57,12 +57,7 @@ describe("Magic-link email delivery", () => {
     const transport = new MagicLinkDeliveryTransportError();
 
     expect(transport._tag).toBe("MagicLinkDeliveryTransportError");
-
-    const source = await Bun.file(
-      new URL("./send-magic-link-email.ts", import.meta.url).pathname
-    ).text();
-    expect(source).toContain("MagicLinkDeliveryTransportError");
-    expect(source).not.toContain("new Error(");
+    expect(transport).toBeInstanceOf(Error);
   });
 
   test("reports renderer failures without leaking the message", async () => {
@@ -89,19 +84,29 @@ describe("Magic-link email delivery", () => {
     expect(rendered).toBe(false);
   });
 
-  test("source never places the recipient, bearer URL, or token in a log call", async () => {
-    const code = await runDelivery(
-      () => Promise.resolve({ id: "email-1", error: null }),
-      () =>
-        Effect.succeed({ subject: "Sign in", html: "<p/>", text: "Sign in" })
-    );
-    expect(code).toBe("account.magic-link.delivery-accepted");
+  test("never logs the recipient, bearer URL, or token", async () => {
+    const captured: unknown[][] = [];
+    const originalConsole = { ...console };
+    for (const method of ["log", "info", "warn", "error", "debug"] as const) {
+      console[method] = (...args: unknown[]) => {
+        captured.push(args);
+      };
+    }
 
-    const source = await Bun.file(
-      new URL("./send-magic-link-email.ts", import.meta.url).pathname
-    ).text();
-    expect(source).not.toMatch(
-      /log(Info|Warning|Error)\([^)]*(request\.(email|url)|token)/i
-    );
+    try {
+      const code = await runDelivery(
+        () => Promise.resolve({ id: "email-1", error: null }),
+        () =>
+          Effect.succeed({ subject: "Sign in", html: "<p/>", text: "Sign in" })
+      );
+      expect(code).toBe("account.magic-link.delivery-accepted");
+    } finally {
+      Object.assign(console, originalConsole);
+    }
+
+    const logged = JSON.stringify(captured);
+    expect(logged).not.toContain("ada@example.test");
+    expect(logged).not.toContain("secret-token");
+    expect(logged).not.toContain("verify?token");
   });
 });

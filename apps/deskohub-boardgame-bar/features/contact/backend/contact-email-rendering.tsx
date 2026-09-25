@@ -121,30 +121,29 @@ export const renderContactConfirmationEmailHtml = ({
   locale,
   message,
 }: {
-  readonly locale?: string;
+  readonly locale: Locale;
   readonly message: string;
 }) => {
-  const messageLocale: Locale = locale === "cs-CZ" ? "cs-CZ" : "en-US";
   const contactLine = m["contact.email.confirmationContactLine"](
     { contactEmail: siteConstants.contact.contactEmail },
-    { locale: messageLocale }
+    { locale: locale }
   );
   return renderBoardgameEmailHtml(
     <ContactEmailContainer>
       <h2 style={headingStyle}>
         {m["contact.email.confirmationHeading"](undefined, {
-          locale: messageLocale,
+          locale: locale,
         })}
       </h2>
       <p>
         {m["contact.email.confirmationThankYou"](undefined, {
-          locale: messageLocale,
+          locale: locale,
         })}
       </p>
 
       <h3 style={subheadingStyle}>
         {m["contact.email.confirmationSummaryHeading"](undefined, {
-          locale: messageLocale,
+          locale: locale,
         })}
       </h3>
       <div style={messageStyle}>
@@ -158,7 +157,7 @@ export const renderContactConfirmationEmailHtml = ({
         DeskoHub
         <br />
         {m["contact.email.footerTagline"](undefined, {
-          locale: messageLocale,
+          locale: locale,
         })}
       </p>
     </ContactEmailContainer>

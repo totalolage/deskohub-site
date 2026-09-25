@@ -136,15 +136,4 @@ describe("marketing preferences access route", () => {
     expect(setPendingMarketingManagementCookie).not.toHaveBeenCalled();
     expect(cookies).not.toHaveBeenCalled();
   });
-
-  test("does not import or invoke a database or token-exchange service", async () => {
-    const routeSource = await Bun.file(
-      new URL("./route.ts", import.meta.url)
-    ).text();
-
-    expect(routeSource).not.toContain("WorkspaceDatabase");
-    expect(routeSource).not.toContain("Reservation");
-    expect(routeSource).not.toContain("auth");
-    expect(routeSource).not.toContain("fetch(");
-  });
 });

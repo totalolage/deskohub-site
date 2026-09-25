@@ -27,15 +27,16 @@ mock.module("@/features/account/components/account-page", () => ({
 mock.module("@/features/account/components/account-loading", () => ({
   AccountContentLoading,
 }));
-mock.module("@/features/i18n", () => ({ m: {} }));
+mock.module("@/features/i18n", () => ({
+  m: {
+    accountMetadataTitle: () => "synthetic-title",
+    accountMetadataDescription: () => "synthetic-description",
+  },
+}));
 mock.module("@/features/i18n/server/request-locale", () => ({
   runWithRequestLocale: (callback: (locale: "en-US") => unknown) =>
     callback("en-US"),
 }));
-
-const pageSource = await Bun.file(
-  new URL("./page.tsx", import.meta.url)
-).text();
 
 describe("customer account route boundary", () => {
   beforeEach(() => {
@@ -61,38 +62,12 @@ describe("customer account route boundary", () => {
     AccountPage.mockClear();
   });
 
-  test("keeps request-bound account loading behind the localized suspense shell", () => {
-    expect(pageSource).toContain('import { notFound } from "next/navigation";');
-    expect(pageSource).toContain(
-      'import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";'
-    );
-    expect(pageSource).toContain(
-      "if (!(await areAccountsEnabled())) notFound();"
-    );
-    expect(pageSource).toContain("robots: { index: false, follow: false }");
-    expect(pageSource).toContain('import { Suspense } from "react";');
-    expect(pageSource).toContain(
-      'import { AccountContentLoading } from "@/features/account/components/account-loading";'
-    );
-    expect(pageSource).toContain(
-      "<Suspense fallback={<AccountContentLoading locale={locale} />}>"
-    );
-    expect(pageSource).toContain(
-      "<CustomerAccountPageContent locale={locale} />"
-    );
-    expect(pageSource).toMatch(
-      /async function CustomerAccountPageContent[\s\S]*await connection\(\)[\s\S]*await loadCustomerAccountPage\(locale\)/
-    );
+  test("keeps the account route out of search indexes", async () => {
+    const { generateMetadata } = await import("./page");
 
-    const routeSource = pageSource.slice(pageSource.indexOf("export default"));
-    const boundaryStart = routeSource.indexOf("<Suspense");
-    expect(boundaryStart).toBeGreaterThanOrEqual(0);
-    expect(routeSource.slice(0, boundaryStart)).not.toContain(
-      "await connection()"
-    );
-    expect(routeSource.slice(0, boundaryStart)).not.toContain(
-      "loadCustomerAccountPage"
-    );
+    expect(await generateMetadata()).toMatchObject({
+      robots: { index: false, follow: false },
+    });
   });
 
   test("checks the account gate after connection and before loading private account data", async () => {

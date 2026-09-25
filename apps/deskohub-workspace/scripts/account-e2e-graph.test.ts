@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { workspaceE2EAccountCaseIds } from "../e2e/account/catalog";
+import { countOccurrences } from "./shared/source-contract";
 
 const repoFile = (relative: string) => resolve(import.meta.dir, "..", relative);
 
@@ -13,9 +15,6 @@ const isolatedStepBlock = (cases: string, stepId: string) => {
   expect(start).toBeGreaterThan(-1);
   return cases.slice(start, cases.indexOf("yield* runStep(", start));
 };
-
-const countOccurrences = (text: string, needle: string) =>
-  text.split(needle).length - 1;
 
 /**
  * Pins the page contract inside one isolated step: exactly one aria-snapshot
@@ -46,43 +45,55 @@ const expectSingleConjunctiveSnapshotMatcher = (
 
 describe("workspace account e2e graph", () => {
   test("runs account cases as one project in the existing Playwright graph", async () => {
-    const config = await Bun.file(repoFile("playwright.e2e.config.ts")).text();
+    const config = readFileSync(repoFile("playwright.e2e.config.ts"), "utf8");
     const accountNameAt = config.indexOf('name: "account-auth"');
     const accountProject = config.slice(
       config.lastIndexOf("    {", accountNameAt),
       config.indexOf('name: "checkout-availability"')
     );
 
-    expect(accountProject).toContain('name: "account-auth"');
-    expect(accountProject).toContain('testDir: "./e2e/account"');
-    expect(accountProject).toContain('dependencies: ["checkout-plan"]');
-    expect(config).not.toContain('name: "account-auth-setup"');
-    const checkoutEntry = await Bun.file(
-      repoFile("scripts/workspace-e2e.ts")
-    ).text();
-    expect(checkoutEntry).toContain("playwright.e2e.config.ts");
+    expect(
+      countOccurrences(accountProject, 'name: "account-auth"')
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(accountProject, 'testDir: "./e2e/account"')
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(accountProject, 'dependencies: ["checkout-plan"]')
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(config, 'name: "account-auth-setup"')).toBe(0);
+    const checkoutEntry = readFileSync(
+      repoFile("scripts/workspace-e2e.ts"),
+      "utf8"
+    );
+    expect(
+      countOccurrences(checkoutEntry, "playwright.e2e.config.ts")
+    ).toBeGreaterThan(0);
   });
 
   test("keeps account cases free of screenshots, traces, videos, and HARs", async () => {
-    const config = await Bun.file(repoFile("playwright.e2e.config.ts")).text();
+    const config = readFileSync(repoFile("playwright.e2e.config.ts"), "utf8");
     const projectBlock = config.slice(
       config.indexOf('name: "account-auth"'),
       config.indexOf("checkout-availability")
     );
 
-    expect(projectBlock).toContain('screenshot: "off"');
-    expect(projectBlock).toContain('trace: "off"');
-    expect(projectBlock).toContain('video: "off"');
+    expect(countOccurrences(projectBlock, 'screenshot: "off"')).toBeGreaterThan(
+      0
+    );
+    expect(countOccurrences(projectBlock, 'trace: "off"')).toBeGreaterThan(0);
+    expect(countOccurrences(projectBlock, 'video: "off"')).toBeGreaterThan(0);
 
-    const lane = await Bun.file(
-      repoFile("e2e/account/account-lane.pw.ts")
-    ).text();
-    expect(lane).toContain("recordHar: false");
+    const lane = readFileSync(
+      repoFile("e2e/account/account-lane.pw.ts"),
+      "utf8"
+    );
+    expect(countOccurrences(lane, "recordHar: false")).toBeGreaterThan(0);
 
-    const runner = await Bun.file(repoFile("e2e/account/runner.ts")).text();
-    expect(runner).not.toContain("captureBrowserFailureArtifacts");
-    expect(runner).not.toContain("startBrowserDiagnostics");
-    expect(runner).not.toContain("stopBrowserHar");
+    const runner = readFileSync(repoFile("e2e/account/runner.ts"), "utf8");
+    expect(countOccurrences(runner, "captureBrowserFailureArtifacts")).toBe(0);
+    expect(countOccurrences(runner, "startBrowserDiagnostics")).toBe(0);
+    expect(countOccurrences(runner, "stopBrowserHar")).toBe(0);
   });
 
   test("registers the complete serial lifecycle in a stable order", async () => {
@@ -98,52 +109,73 @@ describe("workspace account e2e graph", () => {
       "account-linking-variants",
     ]);
 
-    const lane = await Bun.file(
-      repoFile("e2e/account/account-lane.pw.ts")
-    ).text();
-    expect(lane).toContain('mode: "serial"');
-    expect(lane).toContain(
-      '"account-session-lifecycle": "callback-failed-desktop"'
+    const lane = readFileSync(
+      repoFile("e2e/account/account-lane.pw.ts"),
+      "utf8"
     );
-    expect(lane).not.toContain(
-      '"account-deletion-marker-reauth": "callback-failed-desktop"'
-    );
+    expect(countOccurrences(lane, 'mode: "serial"')).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        lane,
+        '"account-session-lifecycle": "callback-failed-desktop"'
+      )
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        lane,
+        '"account-deletion-marker-reauth": "callback-failed-desktop"'
+      )
+    ).toBe(0);
   });
 
   test("reconciles the account lane during suite cleanup", async () => {
-    const cleanup = await Bun.file(
-      repoFile("e2e/playwright-checkout/cleanup.pw.ts")
-    ).text();
-    expect(cleanup).toContain("reconcileWorkspaceE2EAccountLane");
+    const cleanup = readFileSync(
+      repoFile("e2e/playwright-checkout/cleanup.pw.ts"),
+      "utf8"
+    );
+    expect(
+      countOccurrences(cleanup, "reconcileWorkspaceE2EAccountLane")
+    ).toBeGreaterThan(0);
   });
 
   test("keeps the magic-link operation budget below the deployed limiter", async () => {
-    const budget = await Bun.file(
-      repoFile("e2e/account/rate-budget.ts")
-    ).text();
+    const budget = readFileSync(repoFile("e2e/account/rate-budget.ts"), "utf8");
     const budgetSource = budget.replace(/\s+/g, " ");
 
     // The budget must derive both constants from the deployed production
     // options so the E2E window and one-request headroom cannot drift from
     // the real limiter; numeric literals would pin a stale contract.
-    expect(budgetSource).toContain(
-      'import { betterAuthMagicLinkOptions } from "@/features/account/backend/auth/auth-options";'
+    expect(
+      countOccurrences(
+        budgetSource,
+        'import { betterAuthMagicLinkOptions } from "@/features/account/backend/auth/auth-options";'
+      )
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        budgetSource,
+        "export const magicLinkOperationWindowMs = betterAuthMagicLinkOptions.rateLimit.window * 1000;"
+      )
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        budgetSource,
+        "export const magicLinkOperationsPerWindow = betterAuthMagicLinkOptions.rateLimit.max - 1;"
+      )
+    ).toBeGreaterThan(0);
+    expect(/magicLinkOperationsPerWindow\s*=\s*\d/.test(budgetSource)).toBe(
+      false
     );
-    expect(budgetSource).toContain(
-      "export const magicLinkOperationWindowMs = betterAuthMagicLinkOptions.rateLimit.window * 1000;"
+    expect(/magicLinkOperationWindowMs\s*=\s*\d/.test(budgetSource)).toBe(
+      false
     );
-    expect(budgetSource).toContain(
-      "export const magicLinkOperationsPerWindow = betterAuthMagicLinkOptions.rateLimit.max - 1;"
-    );
-    expect(budgetSource).not.toMatch(/magicLinkOperationsPerWindow\s*=\s*\d/);
-    expect(budgetSource).not.toMatch(/magicLinkOperationWindowMs\s*=\s*\d/);
 
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
     expect(countOccurrences(cases, "rateBudget.run(")).toBe(8);
     expect((cases.match(/rateBudget\.run\(\s*"send"/g) ?? []).length).toBe(4);
     expect((cases.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length).toBe(4);
-    expect(cases).not.toContain(".reserve(");
-    expect(cases).not.toContain("tryReserve");
+    expect(countOccurrences(cases, ".reserve(")).toBe(0);
+    expect(countOccurrences(cases, "tryReserve")).toBe(0);
 
     // Each wrapper must hug its exact semantic endpoint: the nearest
     // preceding rateBudget.run carries the expected operation and directly
@@ -159,10 +191,10 @@ describe("workspace account e2e graph", () => {
       const wrapperAt = budgetedCases.lastIndexOf("rateBudget.run(", idAt);
       expect(wrapperAt).toBeGreaterThan(-1);
       const between = budgetedCases.slice(wrapperAt, idAt);
-      expect(between).toContain(`"${operation}"`);
-      expect(between).not.toContain(
-        operation === "send" ? '"verify"' : '"send"'
-      );
+      expect(countOccurrences(between, `"${operation}"`)).toBeGreaterThan(0);
+      expect(
+        countOccurrences(between, operation === "send" ? '"verify"' : '"send"')
+      ).toBe(0);
       expect(countOccurrences(between, "rateBudget.run(")).toBe(1);
       expect(countOccurrences(between, "runStep(")).toBe(1);
       expect(countOccurrences(between, "step(")).toBe(1);
@@ -218,11 +250,15 @@ describe("workspace account e2e graph", () => {
     expect(
       (deliveryCase.match(/rateBudget\.run\(\s*"verify"/g) ?? []).length
     ).toBe(1);
-    expect(deliveryCase).not.toContain("callbackFailedTitle");
-    expect(deliveryCase).not.toContain("rejects the replayed link");
-    expect(deliveryCase).not.toContain("requests the synthetic magic link");
+    expect(countOccurrences(deliveryCase, "callbackFailedTitle")).toBe(0);
+    expect(countOccurrences(deliveryCase, "rejects the replayed link")).toBe(0);
+    expect(
+      countOccurrences(deliveryCase, "requests the synthetic magic link")
+    ).toBe(0);
     expect(deliveryCase.match(/openPage\(link\)/g)).toHaveLength(1);
-    expect(deliveryCase).toContain("firstAcceptedRequestedAt");
+    expect(
+      countOccurrences(deliveryCase, "firstAcceptedRequestedAt")
+    ).toBeGreaterThan(0);
 
     const signInCase = cases.slice(
       cases.indexOf('makeCase("account-sign-in-form"'),
@@ -234,13 +270,13 @@ describe("workspace account e2e graph", () => {
     const submitAt = signInCase.indexOf("fillAndSubmitEmail(recipient)");
     expect(handoffAt).toBeGreaterThan(-1);
     expect(submitAt).toBeGreaterThan(handoffAt);
-    expect(signInCase).not.toContain("accepted-a");
+    expect(countOccurrences(signInCase, "accepted-a")).toBe(0);
 
     const profileCompletionCase = cases.slice(
       cases.indexOf('makeCase("account-profile-completion"'),
       cases.indexOf('makeCase("account-reservation-transitions"')
     );
-    expect(profileCompletionCase).not.toContain("rateBudget.");
+    expect(countOccurrences(profileCompletionCase, "rateBudget.")).toBe(0);
 
     const markerCase = cases.slice(
       cases.indexOf('makeCase("account-deletion-marker-reauth"'),
@@ -256,69 +292,94 @@ describe("workspace account e2e graph", () => {
     const linkingCase = cases.slice(
       cases.indexOf('makeCase("account-linking-variants"')
     );
-    expect(linkingCase).not.toContain("rateBudget.");
-    expect(linkingCase).not.toContain("signOutAndRequireAnonymous");
-    expect(linkingCase).not.toContain("requestSignInLink");
-    expect(linkingCase).not.toContain("retrieveSignInLink");
+    expect(countOccurrences(linkingCase, "rateBudget.")).toBe(0);
+    expect(countOccurrences(linkingCase, "signOutAndRequireAnonymous")).toBe(0);
+    expect(countOccurrences(linkingCase, "requestSignInLink")).toBe(0);
+    expect(countOccurrences(linkingCase, "retrieveSignInLink")).toBe(0);
     expect(linkingCase.match(/localized\("\/contact"\)/g)).toHaveLength(3);
     expect(linkingCase.match(/removeSyntheticAccountLink\(/g)).toHaveLength(3);
-    expect(linkingCase).toContain("email: recipient");
-    expect(linkingCase).toContain("dotyposCustomerIds: [duplicateCustomerId]");
+    expect(countOccurrences(linkingCase, "email: recipient")).toBeGreaterThan(
+      0
+    );
+    expect(
+      countOccurrences(linkingCase, "dotyposCustomerIds: [duplicateCustomerId]")
+    ).toBeGreaterThan(0);
   });
 
   test("waits for the durable linked edit state instead of the transient completion feedback", async () => {
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
     const completionCase = cases.slice(
       cases.indexOf('makeCase("account-profile-completion"'),
       cases.indexOf('makeCase("account-reservation-transitions"')
     );
 
-    expect(cases).not.toContain("created and linked");
-    expect(cases).toContain('const linkedEditSubmitLabel = "Save profile";');
-    expect(completionCase).toContain("waitForBrowserCondition");
-    expect(completionCase).toContain("JSON.stringify(linkedEditSubmitLabel)");
-    expect(completionCase).toContain(
-      'waitText("profile update saved", profileSaved)'
-    );
+    expect(countOccurrences(cases, "created and linked")).toBe(0);
+    expect(
+      countOccurrences(cases, 'const linkedEditSubmitLabel = "Save profile";')
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(completionCase, "waitForBrowserCondition")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(completionCase, "JSON.stringify(linkedEditSubmitLabel)")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        completionCase,
+        'waitText("profile update saved", profileSaved)'
+      )
+    ).toBeGreaterThan(0);
   });
 
   test("compares the provider profile phone by canonical normalized value", async () => {
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
     const completionCase = cases.slice(
       cases.indexOf('makeCase("account-profile-completion"'),
       cases.indexOf('makeCase("account-reservation-transitions"')
     );
 
-    expect(cases).toContain('const profilePhoneFixture = "+420 555 000 111";');
-    expect(completionCase).toContain("normalizePhoneNumber(customer.phone)");
-    expect(completionCase).toContain(
-      "normalizePhoneNumber(profilePhoneFixture)"
-    );
-    expect(completionCase).not.toContain('includes("555 000 111")');
+    expect(
+      countOccurrences(cases, 'const profilePhoneFixture = "+420 555 000 111";')
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(completionCase, "normalizePhoneNumber(customer.phone)")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        completionCase,
+        "normalizePhoneNumber(profilePhoneFixture)"
+      )
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(completionCase, 'includes("555 000 111")')).toBe(0);
   });
 
   test("bounds the confirmed-reservations step as one combined condition", async () => {
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
-    expect(cases).toContain(
-      "const accountPageLoadTimeout = browserTimeout + datasourceTimeout;"
-    );
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
+    expect(
+      countOccurrences(
+        cases,
+        "const accountPageLoadTimeout = browserTimeout + datasourceTimeout;"
+      )
+    ).toBeGreaterThan(0);
     const stepBlock = isolatedStepBlock(
       cases,
       '"shows the confirmed reservations in the current group"'
     );
 
-    expect(stepBlock).not.toContain("cancelSyntheticReservation");
+    expect(countOccurrences(stepBlock, "cancelSyntheticReservation")).toBe(0);
     expectSingleConjunctiveSnapshotMatcher(
       stepBlock,
       "currentReservationsTitle",
       "confirmedStatus"
     );
-    expect(stepBlock).toContain("timeoutMs: datasourceTimeout");
+    expect(
+      countOccurrences(stepBlock, "timeoutMs: datasourceTimeout")
+    ).toBeGreaterThan(0);
     expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
   });
 
   test("keeps cancellation a standalone datasource step before the past page", async () => {
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
     const cancellationId = '"cancels the second synthetic reservation"';
     const pastPageId = '"moves the cancelled reservation to the past group"';
     const cancellationBlock = isolatedStepBlock(cases, cancellationId);
@@ -326,48 +387,56 @@ describe("workspace account e2e graph", () => {
     expect(cases.indexOf(cancellationId)).toBeLessThan(
       cases.indexOf(pastPageId)
     );
-    expect(cancellationBlock).toContain("cancelSyntheticReservation");
-    expect(cancellationBlock).not.toContain("waitForBrowserCondition");
-    expect(cancellationBlock).not.toContain("openPage(");
+    expect(
+      countOccurrences(cancellationBlock, "cancelSyntheticReservation")
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(cancellationBlock, "waitForBrowserCondition")).toBe(
+      0
+    );
+    expect(countOccurrences(cancellationBlock, "openPage(")).toBe(0);
     expect(cancellationBlock.split("datasourceTimeout").length - 1).toBe(1);
   });
 
   test("bounds the past-reservations page step as one combined condition", async () => {
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
     const stepBlock = isolatedStepBlock(
       cases,
       '"moves the cancelled reservation to the past group"'
     );
 
-    expect(stepBlock).not.toContain("cancelSyntheticReservation");
+    expect(countOccurrences(stepBlock, "cancelSyntheticReservation")).toBe(0);
     expectSingleConjunctiveSnapshotMatcher(
       stepBlock,
       "pastReservationsTitle",
       "cancelledStatus"
     );
-    expect(stepBlock).toContain("timeoutMs: datasourceTimeout");
+    expect(
+      countOccurrences(stepBlock, "timeoutMs: datasourceTimeout")
+    ).toBeGreaterThan(0);
     expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
   });
 
   test("bounds the retained-history page step as one combined condition", async () => {
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
     const stepBlock = isolatedStepBlock(
       cases,
       '"keeps the retained reservation history across reactivation"'
     );
 
-    expect(stepBlock).not.toContain("cancelSyntheticReservation");
+    expect(countOccurrences(stepBlock, "cancelSyntheticReservation")).toBe(0);
     expectSingleConjunctiveSnapshotMatcher(
       stepBlock,
       "pastReservationsTitle",
       "cancelledStatus"
     );
-    expect(stepBlock).toContain("timeoutMs: datasourceTimeout");
+    expect(
+      countOccurrences(stepBlock, "timeoutMs: datasourceTimeout")
+    ).toBeGreaterThan(0);
     expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
   });
 
   test("hands the reauthentication link to the session lifecycle case", async () => {
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
     const markerCase = cases.slice(
       cases.indexOf('makeCase("account-deletion-marker-reauth"'),
       cases.indexOf('makeCase("account-session-lifecycle"')
@@ -377,25 +446,35 @@ describe("workspace account e2e graph", () => {
       cases.indexOf('makeCase("account-deletion-and-reactivation"')
     );
 
-    expect(markerCase).toContain("retrieveSignInLink");
-    expect(markerCase).toContain("lifecycleHandoff.reauthentication");
-    expect(markerCase).not.toContain("openPage(reauthentication.link)");
-    expect(markerCase).not.toContain("deleted page");
-    expect(markerCase).not.toContain("setDeletionRequestedAt(userId, null)");
-    expect(markerCase).not.toContain("linked account restored");
+    expect(countOccurrences(markerCase, "retrieveSignInLink")).toBeGreaterThan(
+      0
+    );
+    expect(
+      countOccurrences(markerCase, "lifecycleHandoff.reauthentication")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(markerCase, "openPage(reauthentication.link)")
+    ).toBe(0);
+    expect(countOccurrences(markerCase, "deleted page")).toBe(0);
+    expect(
+      countOccurrences(markerCase, "setDeletionRequestedAt(userId, null)")
+    ).toBe(0);
+    expect(countOccurrences(markerCase, "linked account restored")).toBe(0);
     expect(markerCase.match(/setDeletionRequestedAt\(/g) ?? []).toHaveLength(1);
-    expect(sessionCase).toContain("openPage(reauthentication.link)");
-    expect(sessionCase).toContain("deleted page");
+    expect(
+      countOccurrences(sessionCase, "openPage(reauthentication.link)")
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(sessionCase, "deleted page")).toBeGreaterThan(0);
   });
 
   test("replays the consumed deletion link after proving anonymous access", async () => {
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
 
     const deliveryCase = cases.slice(
       cases.indexOf('makeCase("account-magic-link-delivery"'),
       cases.indexOf('makeCase("account-profile-completion"')
     );
-    expect(deliveryCase).not.toContain("callbackFailedTitle");
+    expect(countOccurrences(deliveryCase, "callbackFailedTitle")).toBe(0);
     expect(deliveryCase.match(/openPage\(link\)/g)).toHaveLength(1);
 
     const markerCase = cases.slice(
@@ -406,7 +485,9 @@ describe("workspace account e2e graph", () => {
       cases.indexOf('makeCase("account-session-lifecycle"'),
       cases.indexOf('makeCase("account-deletion-and-reactivation"')
     );
-    expect(markerCase).not.toContain("openPage(reauthentication.link)");
+    expect(
+      countOccurrences(markerCase, "openPage(reauthentication.link)")
+    ).toBe(0);
     const consumptions = sessionCase.match(
       /openPage\(reauthentication\.link\)/g
     );
@@ -425,68 +506,101 @@ describe("workspace account e2e graph", () => {
     expect(anonymousAt).toBeGreaterThan(deletedAt);
     expect(replayAt).toBeGreaterThan(anonymousAt);
     const replayStep = sessionCase.slice(replayAt);
-    expect(replayStep).toContain("findAuthUserIdByEmail(recipient)");
-    expect(replayStep).toContain("authUserIds: [replayedUserId]");
+    expect(
+      countOccurrences(replayStep, "findAuthUserIdByEmail(recipient)")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(replayStep, "authUserIds: [replayedUserId]")
+    ).toBeGreaterThan(0);
     const cleanupAt = replayStep.indexOf("findAuthUserIdByEmail");
     const assertionAt = replayStep.indexOf(
       "replayed reauthentication failure state"
     );
     expect(cleanupAt).toBeGreaterThan(-1);
     expect(assertionAt).toBeGreaterThan(cleanupAt);
-    expect(replayStep).toContain("callbackFailedTitle");
+    expect(countOccurrences(replayStep, "callbackFailedTitle")).toBeGreaterThan(
+      0
+    );
   });
 
   test("hands the account lifecycle through the worker-scoped lane fixture", async () => {
-    const lane = await Bun.file(
-      repoFile("e2e/account/account-lane.pw.ts")
-    ).text();
-    const cases = await Bun.file(repoFile("e2e/account/cases.ts")).text();
+    const lane = readFileSync(
+      repoFile("e2e/account/account-lane.pw.ts"),
+      "utf8"
+    );
+    const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
 
     const perTestLoopAt = lane.indexOf("for (const caseId");
     const fixtureScope = lane.slice(0, perTestLoopAt);
-    expect(fixtureScope).toContain(
-      "lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff"
+    expect(
+      countOccurrences(
+        fixtureScope,
+        "lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff"
+      )
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(fixtureScope, "const lifecycleHandoff")
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(fixtureScope, "lifecycleHandoff,")).toBeGreaterThan(
+      0
     );
-    expect(fixtureScope).toContain("const lifecycleHandoff");
-    expect(fixtureScope).toContain("lifecycleHandoff,");
 
     const factoryCall = lane.slice(
       lane.indexOf("makeWorkspaceE2EAccountCases({")
     );
-    expect(factoryCall).toContain(
-      "lifecycleHandoff: accountLane.lifecycleHandoff"
-    );
+    expect(
+      countOccurrences(
+        factoryCall,
+        "lifecycleHandoff: accountLane.lifecycleHandoff"
+      )
+    ).toBeGreaterThan(0);
 
-    expect(cases).toContain(
-      "readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff"
-    );
-    expect(cases).not.toContain("completedDeletion");
+    expect(
+      countOccurrences(
+        cases,
+        "readonly lifecycleHandoff: WorkspaceE2EAccountLifecycleHandoff"
+      )
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(cases, "completedDeletion")).toBe(0);
 
-    const types = await Bun.file(repoFile("e2e/account/types.ts")).text();
-    expect(types).toContain("WorkspaceE2EAccountLifecycleHandoff");
-    expect(types).toContain("firstAcceptedRequestedAt?: Date");
-    expect(types).toContain("reauthentication?:");
-    expect(types).toContain("link: string");
-    expect(types).toContain("linkedCustomerId: string");
+    const types = readFileSync(repoFile("e2e/account/types.ts"), "utf8");
+    expect(
+      countOccurrences(types, "WorkspaceE2EAccountLifecycleHandoff")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(types, "firstAcceptedRequestedAt?: Date")
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(types, "reauthentication?:")).toBeGreaterThan(0);
+    expect(countOccurrences(types, "link: string")).toBeGreaterThan(0);
+    expect(countOccurrences(types, "linkedCustomerId: string")).toBeGreaterThan(
+      0
+    );
   });
 
   test("disambiguates repeated sign-ins by excluding observed messages", async () => {
-    const retrieval = await Bun.file(
-      repoFile("e2e/account/resend-retrieval.ts")
-    ).text();
+    const retrieval = readFileSync(
+      repoFile("e2e/account/resend-retrieval.ts"),
+      "utf8"
+    );
 
-    expect(retrieval).toContain("listSyntheticMessageIds");
-    expect(retrieval).toContain("excludeMessageIds");
-    expect(retrieval).toContain("multiple synthetic messages");
+    expect(
+      countOccurrences(retrieval, "listSyntheticMessageIds")
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(retrieval, "excludeMessageIds")).toBeGreaterThan(0);
+    expect(
+      countOccurrences(retrieval, "multiple synthetic messages")
+    ).toBeGreaterThan(0);
   });
 
   test("shares the fixed correlation tags with the deployed magic-link sender", async () => {
-    const sender = await Bun.file(
-      repoFile("features/account/backend/auth/send-magic-link-email.ts")
-    ).text();
-    const accountConfig = await Bun.file(
-      repoFile("e2e/account/config.ts")
-    ).text();
+    const sender = readFileSync(
+      repoFile("features/account/backend/auth/send-magic-link-email.ts"),
+      "utf8"
+    );
+    const accountConfig = readFileSync(
+      repoFile("e2e/account/config.ts"),
+      "utf8"
+    );
 
     for (const marker of [
       '"category"',
@@ -500,15 +614,22 @@ describe("workspace account e2e graph", () => {
   });
 
   test("expires synthetic Dotypos profiles instead of deleting them", async () => {
-    const reconcile = await Bun.file(
-      repoFile("e2e/account/reconcile.ts")
-    ).text();
-    const fixtures = await Bun.file(repoFile("e2e/account/fixtures.ts")).text();
+    const reconcile = readFileSync(
+      repoFile("e2e/account/reconcile.ts"),
+      "utf8"
+    );
+    const fixtures = readFileSync(repoFile("e2e/account/fixtures.ts"), "utf8");
 
-    expect(reconcile).toContain("expireSyntheticCustomerProfile");
-    expect(reconcile).toContain("removeSyntheticAuthUser");
-    expect(fixtures).toContain("expireDate: new Date(Date.now() - 60_000)");
-    expect(fixtures).not.toContain("deleteCustomer");
+    expect(
+      countOccurrences(reconcile, "expireSyntheticCustomerProfile")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(reconcile, "removeSyntheticAuthUser")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(fixtures, "expireDate: new Date(Date.now() - 60_000)")
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(fixtures, "deleteCustomer")).toBe(0);
   });
 
   test("journals only exact identifiers", async () => {

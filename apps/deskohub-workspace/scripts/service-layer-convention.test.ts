@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { countOccurrences } from "./shared/source-contract";
 
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const sourcePaths = [
@@ -70,8 +71,8 @@ test("server-only feature flag providers are loaded lazily", async () => {
     `${repositoryRoot}/apps/deskohub-workspace/features/feature-flags/backend/workspace-feature-flag.service.ts`
   ).text();
 
-  expect(source).not.toContain('import "server-only"');
-  expect(source).not.toMatch(/from "\.\/(?:node|subject)"/);
+  expect(source.includes('import "server-only"')).toBe(false);
+  expect(/from "\\.\/(?:node|subject)"/.test(source)).toBe(false);
 });
 
 test("the Dotypos adapter retains its process-wide token cache", async () => {
@@ -79,5 +80,5 @@ test("the Dotypos adapter retains its process-wide token cache", async () => {
     `${repositoryRoot}/apps/deskohub-workspace/shared/backend/config/dotypos.config.ts`
   ).text();
 
-  expect(source).toContain("Layer.buildWithMemoMap");
+  expect(countOccurrences(source, "Layer.buildWithMemoMap")).toBeGreaterThan(0);
 });

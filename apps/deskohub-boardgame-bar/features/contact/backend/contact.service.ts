@@ -13,22 +13,19 @@ import {
 // Business email copy is Czech regardless of the customer locale.
 const businessEmailLocale: Locale = "cs-CZ";
 
-const toMessageLocale = (locale?: string): Locale =>
-  locale === "cs-CZ" ? "cs-CZ" : "en-US";
-
 export interface ContactSubmission {
   name: string;
   email: string;
   phone?: string;
   message: string;
   submittedAt: string;
-  locale?: string;
+  locale: Locale;
 }
 
 interface IContactService {
   readonly submit: (
-    data: Omit<ContactSubmission, "submittedAt">,
-    locale?: string
+    data: Omit<ContactSubmission, "submittedAt" | "locale">,
+    locale: Locale
   ) => Effect.Effect<ContactSubmission, StorageError>;
 }
 
@@ -50,7 +47,6 @@ const contactServiceImplementation = Effect.gen(function* () {
   return ContactService.of({
     submit: Effect.fn("contact.submit")(
       function* (data, locale) {
-        const messageLocale = toMessageLocale(locale);
         yield* Effect.annotateLogsScoped({ data, locale });
         yield* Effect.logInfo("Contact form submission service started");
 
@@ -158,7 +154,7 @@ const contactServiceImplementation = Effect.gen(function* () {
             (error) =>
               new StorageError({
                 message: m["contact.submitFailed"](undefined, {
-                  locale: messageLocale,
+                  locale,
                 }),
                 operation: "contact.submit",
                 cause: error,
@@ -177,7 +173,7 @@ const contactServiceImplementation = Effect.gen(function* () {
             name: data.name,
           },
           subject: m["contact.email.confirmationSubject"](undefined, {
-            locale: messageLocale,
+            locale: locale,
           }),
           html: renderContactConfirmationEmailHtml({
             locale,
@@ -188,10 +184,10 @@ const contactServiceImplementation = Effect.gen(function* () {
               message: data.message,
               contactLine: m["contact.email.confirmationContactLine"](
                 { contactEmail: siteConstants.contact.contactEmail },
-                { locale: messageLocale }
+                { locale }
               ),
             },
-            { locale: messageLocale }
+            { locale }
           ),
           tags: ["contact-confirmation"],
         };

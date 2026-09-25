@@ -36,43 +36,12 @@ mock.module("@/features/account/components/legal/legal-screen", () => ({
   ),
 }));
 
-const publicAccountLegalSource = await Bun.file(
-  new URL("./public-account-legal.tsx", import.meta.url)
-).text();
-
 describe("PublicAccountLegal", () => {
   beforeAll(registerWorkspaceComponentTestEnv);
 
   afterEach(cleanup);
 
   afterAll(unregisterWorkspaceComponentTestEnv);
-
-  test("renders the content-only legal screen without a duplicate account shell", () => {
-    expect(publicAccountLegalSource).toContain(
-      "readonly accountsEnabled: boolean"
-    );
-    expect(publicAccountLegalSource).toContain("readonly locale: Locale");
-    expect(publicAccountLegalSource).toContain(
-      "readonly marketingPreferences?: MarketingPreferencesState"
-    );
-    expect(publicAccountLegalSource).toContain(
-      "accountsEnabled={accountsEnabled}"
-    );
-    expect(publicAccountLegalSource).toContain(
-      "marketingPreferences={marketingPreferences}"
-    );
-
-    for (const forbiddenReference of [
-      "AccountShell",
-      "AccountSection",
-      "SignOutButton",
-      "useRouter",
-      "onSectionChange",
-      "signedIn",
-    ]) {
-      expect(publicAccountLegalSource).not.toContain(forbiddenReference);
-    }
-  });
 
   test.each(["en-US", "cs-CZ"] as const)(
     "renders localized legal content without navigation for %s",

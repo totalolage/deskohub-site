@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter/relations-v2";
-import { makeNodePostgresDatabase } from "@/db/database-client";
+import { makeAuthDatabase } from "@/db/auth-database-client";
 import {
   authAccount,
   authRateLimit,
@@ -50,7 +50,7 @@ const makeTestAuth = (sentMagicLinks: { url: string }[] = []) => {
     sentMagicLinks.push({ url: data.url });
   };
   return makeWorkspaceAuth({
-    database: drizzleAdapter(makeNodePostgresDatabase(testDatabase!.pool), {
+    database: drizzleAdapter(makeAuthDatabase(testDatabase!.pool), {
       provider: "pg",
       schema: {
         user: authUser,

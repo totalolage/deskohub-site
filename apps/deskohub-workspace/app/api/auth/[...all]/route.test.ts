@@ -10,7 +10,7 @@ import type {
   Verification,
 } from "better-auth";
 import { memoryAdapter } from "better-auth/adapters/memory";
-import { makeNodePostgresDatabase } from "@/db/database-client";
+import { makeAuthDatabase } from "@/db/auth-database-client";
 import {
   authAccount,
   authRateLimit,
@@ -162,7 +162,7 @@ const makeDisposableAuth = (
   sentLinks: { email: string; url: string; token: string }[]
 ) =>
   makeWorkspaceAuth({
-    database: drizzleAdapter(makeNodePostgresDatabase(testDatabase!.pool), {
+    database: drizzleAdapter(makeAuthDatabase(testDatabase!.pool), {
       provider: "pg",
       schema: {
         user: authUser,

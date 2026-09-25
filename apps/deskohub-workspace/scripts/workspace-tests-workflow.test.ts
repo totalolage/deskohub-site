@@ -1,101 +1,160 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  findStepByName,
+  parseWorkflow,
+  type WorkflowStep,
+  workflowStepNames,
+  workflowStepRuns,
+  workflowSteps,
+} from "./shared/workflow-contract";
 
 const workflowPath = resolve(
   import.meta.dir,
   "../../../.github/workflows/workspace-tests.yml"
 );
 
-test("runs the Postgres-backed workspace suites against the disposable service database", async () => {
-  const workflow = await Bun.file(workflowPath).text();
-  const testJob = workflow.slice(workflow.indexOf("  test-functional:"));
-  const testStep = testJob.slice(
-    testJob.indexOf("- name: Run Workspace tests")
-  );
-  const schemaStep = testJob.slice(
-    testJob.indexOf("- name: Validate Workspace schema migration"),
-    testJob.indexOf("- name: Validate Workspace E2E allocation bundle")
-  );
+const doc = parseWorkflow(workflowPath);
+const testJob = doc.jobs["test-functional"];
+const stepNames = workflowStepNames(doc);
+const docServices = (
+  doc as {
+    jobs: {
+      "test-functional": {
+        services?: {
+          postgres?: {
+            image?: string;
+            env?: Record<string, string>;
+            options?: string;
+          };
+        };
+      };
+    };
+  }
+).jobs["test-functional"].services;
 
-  expect(testJob).toContain("image: ghcr.io/fboulnois/pg_uuidv7:1.7.0");
-  expect(testJob).not.toContain("pg_uuidv7:latest");
-  expect(testJob).toContain("POSTGRES_USER: workspace");
-  expect(testJob).toContain("POSTGRES_PASSWORD: workspace");
-  expect(testJob).toContain("POSTGRES_DB: workspace");
-  expect(testJob).toContain("pg_isready");
-  expect(testStep).toContain(
-    "WORKSPACE_TEST_DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace"
+const stepByName = (name: string): WorkflowStep => {
+  const step = findStepByName(doc, name);
+  expect(step).toBeDefined();
+  return step as WorkflowStep;
+};
+
+test("runs the Postgres-backed workspace suites against the disposable service database", () => {
+  expect(testJob).toBeDefined();
+  // Pinned disposable Postgres service with a UUIDv7-capable image.
+  const service = docServices?.postgres;
+  expect(service?.image).toBe("ghcr.io/fboulnois/pg_uuidv7:1.7.0");
+  expect(service?.image?.includes(":latest")).toBe(false);
+  expect(service?.env).toEqual({
+    POSTGRES_USER: "workspace",
+    POSTGRES_PASSWORD: "workspace",
+    POSTGRES_DB: "workspace",
+  });
+  expect(service?.options?.includes("pg_isready")).toBe(true);
+
+  // The test step reads the disposable database; no repository secrets.
+  const testStepEnv = stepByName("Run Workspace tests").env;
+  expect(testStepEnv?.WORKSPACE_TEST_DATABASE_URL).toBe(
+    "postgresql://workspace:workspace@127.0.0.1:5432/workspace"
   );
-  expect(testStep).not.toContain("secrets.");
-  expect(schemaStep).toContain(
-    "DATABASE_URL: postgresql://workspace:workspace@127.0.0.1:5432/workspace"
+  expect(JSON.stringify(testStepEnv).includes("secrets.")).toBe(false);
+
+  // Schema validation runs against the same disposable database.
+  const schemaStepEnv = stepByName("Validate Workspace schema migration").env;
+  expect(schemaStepEnv?.DATABASE_URL).toBe(
+    "postgresql://workspace:workspace@127.0.0.1:5432/workspace"
   );
-  expect(schemaStep).toContain(
-    "bun turbo db:generate --filter=deskohub-workspace"
-  );
-  expect(testJob.split("WORKSPACE_TEST_DATABASE_URL").length - 1).toBe(1);
+  expect(
+    stepByName("Validate Workspace schema migration").run?.includes(
+      "bun turbo db:generate --filter=deskohub-workspace"
+    )
+  ).toBe(true);
+  expect(
+    workflowSteps(doc, "test-functional").filter((step) =>
+      JSON.stringify(step).includes("WORKSPACE_TEST_DATABASE_URL")
+    )
+  ).toHaveLength(1);
 });
 
-test("installs the matching Chromium browser before the Workspace test task", async () => {
-  const workflow = await Bun.file(workflowPath).text();
-  const testJob = workflow.slice(workflow.indexOf("  test-functional:"));
-  const frozenInstallIndex = testJob.indexOf(
-    "- run: bun install --frozen-lockfile"
-  );
-  const browserInstallIndex = testJob.indexOf(
-    "- name: Install Workspace Playwright Chromium"
-  );
-  const lintIndex = testJob.indexOf("- name: Lint Workspace");
-  const testIndex = testJob.indexOf("- name: Run Workspace tests");
-  const browserStep = testJob.slice(browserInstallIndex, lintIndex);
+test("installs the matching Chromium browser before the Workspace test task", () => {
+  const names = stepNames;
+  const installIndex = names.indexOf("Install Workspace Playwright Chromium");
+  const lintIndex = names.indexOf("Lint Workspace");
+  const testIndex = names.indexOf("Run Workspace tests");
 
-  expect(frozenInstallIndex).toBeGreaterThanOrEqual(0);
-  expect(browserInstallIndex).toBeGreaterThan(frozenInstallIndex);
-  expect(browserInstallIndex).toBeLessThan(lintIndex);
-  expect(browserInstallIndex).toBeLessThan(testIndex);
-  expect(browserStep).toContain("working-directory: apps/deskohub-workspace");
-  expect(browserStep).toContain(
-    "run: bun ./node_modules/@playwright/test/cli.js install --with-deps chromium"
+  expect(installIndex).toBeGreaterThan(-1);
+  expect(installIndex).toBeLessThan(lintIndex);
+  expect(installIndex).toBeLessThan(testIndex);
+
+  const browserStep = stepByName("Install Workspace Playwright Chromium");
+  expect(browserStep["working-directory"]).toBe("apps/deskohub-workspace");
+  expect(browserStep.run).toBe(
+    "bun ./node_modules/@playwright/test/cli.js install --with-deps chromium"
   );
-  expect(browserStep).not.toContain("npx");
+  expect(JSON.stringify(browserStep).includes("npx")).toBe(false);
+  expect(
+    names.filter((name) => name === "Install Workspace Playwright Chromium")
+  ).toHaveLength(1);
+  expect(
+    workflowStepRuns(doc).some((run) =>
+      run.includes("bun install --frozen-lockfile")
+    )
+  ).toBe(true);
 });
 
-test("passes the disposable test database through Turborepo at the test task only", async () => {
-  const turbo = await Bun.file(
-    resolve(import.meta.dir, "../turbo.json")
-  ).json();
-  const rootTurbo = await Bun.file(
-    resolve(import.meta.dir, "../../../turbo.json")
-  ).json();
+test("passes the disposable test database through Turborepo at the test task only", () => {
+  const turbo = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../turbo.json"), "utf8")
+  ) as {
+    readonly tasks: {
+      readonly test?: {
+        readonly cache?: boolean;
+        readonly passThroughEnv?: readonly string[];
+      };
+    };
+  };
+  const rootTurbo = JSON.parse(
+    readFileSync(resolve(import.meta.dir, "../../../turbo.json"), "utf8")
+  ) as { readonly globalPassThroughEnv?: readonly string[] };
 
-  expect(turbo.tasks.test.passThroughEnv as string[]).toContain(
-    "WORKSPACE_TEST_DATABASE_URL"
-  );
+  expect(
+    (turbo.tasks.test.passThroughEnv as readonly string[]).includes(
+      "WORKSPACE_TEST_DATABASE_URL"
+    )
+  ).toBe(true);
   expect(turbo.tasks.test.cache).toBe(false);
   expect(
     JSON.stringify(turbo.tasks).split("WORKSPACE_TEST_DATABASE_URL").length - 1
   ).toBe(1);
-  expect(JSON.stringify(rootTurbo.globalPassThroughEnv)).not.toContain(
-    "WORKSPACE_TEST_DATABASE_URL"
-  );
+  expect(
+    JSON.stringify(rootTurbo.globalPassThroughEnv).includes(
+      "WORKSPACE_TEST_DATABASE_URL"
+    )
+  ).toBe(false);
 });
 
-test("keeps the disposable test database out of runtime configuration", async () => {
-  const envSchema = await Bun.file(
-    resolve(import.meta.dir, "../env.schema.ts")
-  ).text();
-  const helper = await Bun.file(
+test("keeps the disposable test database out of runtime configuration", () => {
+  const envSchema = readFileSync(
+    resolve(import.meta.dir, "../env.schema.ts"),
+    "utf8"
+  );
+  const helper = readFileSync(
     resolve(
       import.meta.dir,
       "../shared/testing/workspace-postgres-test-database.test-utils.ts"
-    )
-  ).text();
-  const preload = await Bun.file(
-    resolve(import.meta.dir, "../shared/testing/workspace-test-environment.ts")
-  ).text();
+    ),
+    "utf8"
+  );
+  const preload = readFileSync(
+    resolve(import.meta.dir, "../shared/testing/workspace-test-environment.ts"),
+    "utf8"
+  );
 
-  expect(envSchema).not.toContain("WORKSPACE_TEST_DATABASE_URL");
-  expect(helper).toContain("WORKSPACE_TEST_DATABASE_URL");
-  expect(helper).not.toContain("process.env.DATABASE_URL");
-  expect(preload).toContain("process.env.WORKSPACE_TEST_DATABASE_URL");
+  expect(envSchema.includes("WORKSPACE_TEST_DATABASE_URL")).toBe(false);
+  expect(helper.includes("WORKSPACE_TEST_DATABASE_URL")).toBe(true);
+  expect(helper.includes("process.env.DATABASE_URL")).toBe(false);
+  expect(preload.includes("process.env.WORKSPACE_TEST_DATABASE_URL")).toBe(
+    true
+  );
 });

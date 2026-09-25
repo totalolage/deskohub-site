@@ -752,31 +752,35 @@ describe("CheckoutService", () => {
     ]);
   });
 
-  test("prepares fallible local provider inputs before committing an attempt", async () => {
-    const source = await Bun.file(
-      new URL("./checkout.service.ts", import.meta.url)
-    ).text();
-    const start = source.indexOf(
-      'const startProviderSession = Effect.fn("checkout.startProviderSession")'
-    );
-    const end = source.indexOf("    return CheckoutService.of({", start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
-    const startProviderSession = source.slice(start, end);
-    const createAttemptAt = startProviderSession.indexOf(
-      "paymentLifecycle.createPendingNexiAttempt"
-    );
+  test("creates the attempt before attaching the hosted payment page", async () => {
+    const events: string[] = [];
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-provider-inputs",
+      createHostedPaymentPage: mock(() => {
+        events.push("provider-created");
+        return Effect.succeed({
+          securityToken: "provider-security-token",
+          hostedPage: "https://payments.example/hosted",
+        });
+      }),
+    });
+    harness.createPendingNexiAttempt.mockImplementation((input) => {
+      events.push("attempt-created");
+      return Effect.succeed(
+        makeAttempt({
+          id: "attempt-reservation-provider-inputs",
+          orderId: input.workspaceReservationId,
+        })
+      );
+    });
 
-    expect(createAttemptAt).toBeGreaterThanOrEqual(0);
-    expect(startProviderSession.indexOf("toNexiAmount(")).toBeLessThan(
-      createAttemptAt
-    );
-    expect(
-      startProviderSession.indexOf("yield* getNotificationUrl")
-    ).toBeLessThan(createAttemptAt);
-    expect(
-      startProviderSession.indexOf("yield* getCheckoutPayReturnUrl(")
-    ).toBeLessThan(createAttemptAt);
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
+    });
+    expect(events).toEqual(["attempt-created", "provider-created"]);
   });
 
   test("redirects a reusable active attempt before discount affirmation and note refresh", async () => {

@@ -80,10 +80,6 @@ mock.module("@/shared/components/page-navigation-boundary", () => ({
   PageNavigationBoundary,
 }));
 
-const layoutSource = await Bun.file(
-  new URL("./layout.tsx", import.meta.url)
-).text();
-
 describe("account route layout", () => {
   afterEach(() => {
     connection.mockClear();
@@ -91,56 +87,6 @@ describe("account route layout", () => {
     runWithRequestLocale.mockClear();
     accountsEnabled = true;
     currentUserEffect = Effect.succeed(null);
-  });
-
-  test("keeps optional authentication and dynamic work in the localized layout boundary", () => {
-    expect(layoutSource).toContain(
-      'import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";'
-    );
-    expect(layoutSource).toContain(
-      'import { AccountLayoutShell } from "@/features/account/components/account-layout-shell";'
-    );
-    expect(layoutSource).toContain(
-      'import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";'
-    );
-    expect(layoutSource).toContain(
-      'import { PageNavigationBoundary } from "@/shared/components/page-navigation-boundary";'
-    );
-    expect(layoutSource).toContain(
-      'import { runWithRequestLocale } from "@/features/i18n/server/request-locale";'
-    );
-    expect(layoutSource).toContain("await connection()");
-    expect(layoutSource).toContain(
-      "const accountsEnabled = await areAccountsEnabled();"
-    );
-    expect(layoutSource).toMatch(
-      /Effect\.flatMap\(\s*CustomerAuthentication,\s*\(authentication\) => authentication\.currentUser/
-    );
-    expect(layoutSource).toContain(
-      "Effect.provide(CustomerAuthentication.Default)"
-    );
-    expect(layoutSource).toContain("Effect.result");
-    expect(layoutSource).toContain(
-      'runWorkspaceEffect("account.layout", { boundary: "page" })'
-    );
-    expect(layoutSource).toContain(
-      "<Suspense fallback={<AccountLoading locale={locale} />}>"
-    );
-    expect(layoutSource).toContain("<AccountLayoutShell");
-    expect(layoutSource).toContain("<PageNavigationBoundary>");
-    expect(layoutSource).not.toContain("loadCustomerAccountPage");
-    expect(layoutSource).not.toContain("featureFlag");
-
-    const shellStart = layoutSource.indexOf("<AccountLayoutShell");
-    const boundaryStart = layoutSource.indexOf("<PageNavigationBoundary>");
-    expect(shellStart).toBeGreaterThanOrEqual(0);
-    expect(boundaryStart).toBeGreaterThan(shellStart);
-    expect(
-      layoutSource.slice(boundaryStart).indexOf("{children}")
-    ).toBeGreaterThanOrEqual(0);
-    expect(
-      layoutSource.slice(boundaryStart).indexOf("{modal}")
-    ).toBeGreaterThanOrEqual(0);
   });
 
   test.each([

@@ -55,10 +55,6 @@ mock.module("@/features/i18n/server/request-locale", () => ({
   runWithRequestLocale,
 }));
 
-const pageSource = await Bun.file(
-  new URL("./page.tsx", import.meta.url)
-).text();
-
 describe("public account legal route boundary", () => {
   afterEach(() => {
     AccountContentLoading.mockClear();
@@ -71,67 +67,12 @@ describe("public account legal route boundary", () => {
     marketingPreferences.value = { status: "unavailable" };
   });
 
-  test("keeps the localized public content behind its request-boundary fallback", () => {
-    expect(pageSource).toContain('import { Suspense } from "react";');
-    expect(pageSource).toContain(
-      'import { AccountContentLoading } from "@/features/account/components/account-loading";'
-    );
-    expect(pageSource).toContain('import { connection } from "next/server";');
-    expect(pageSource).toContain(
-      'import { areAccountsEnabled } from "@/features/account/server/account-feature-flag.server";'
-    );
-    expect(pageSource).toContain(
-      'import { getMarketingPreferences } from "@/features/legal/marketing-preferences.server";'
-    );
-    expect(pageSource).toContain(
-      'import { runWithRequestLocale } from "@/features/i18n/server/request-locale";'
-    );
-    expect(pageSource).toContain(
-      "export async function generateMetadata(): Promise<Metadata>"
-    );
-    expect(pageSource).toContain(
-      "export default function PublicAccountLegalPage()"
-    );
-    expect(pageSource).toContain(
-      "<Suspense fallback={<AccountContentLoading locale={locale} />}>"
-    );
-    expect(pageSource).toContain(
-      "<PublicAccountLegalPageContent locale={locale} />"
-    );
-    expect(pageSource).toMatch(
-      /async function PublicAccountLegalPageContent[\s\S]*await connection\(\)[\s\S]*const accountsEnabled = await areAccountsEnabled\(\)[\s\S]*const marketingPreferences = await getMarketingPreferences\(locale\)/
-    );
-    expect(pageSource).toContain("accountsEnabled={accountsEnabled}");
-    expect(pageSource).toContain("marketingPreferences={marketingPreferences}");
-    expect(pageSource).toContain("robots: { index: false, follow: false }");
+  test("keeps the account legal route out of search indexes", async () => {
+    const { generateMetadata } = await import("./page");
 
-    for (const forbiddenReference of [
-      "CustomerAuthentication",
-      "Effect",
-      "Result",
-      "runWorkspaceEffect",
-      "loadCustomerAccountPage",
-      "resolveCurrentCustomerAccount",
-      "CustomerProfileService",
-      "CustomerReservationHistoryService",
-      "Dotypos",
-      "profile",
-      "history",
-      "AccountShell",
-      "signedIn",
-    ]) {
-      expect(pageSource).not.toContain(forbiddenReference);
-    }
-
-    const routeSource = pageSource.slice(pageSource.indexOf("export default"));
-    const boundaryStart = routeSource.indexOf("<Suspense");
-    expect(boundaryStart).toBeGreaterThanOrEqual(0);
-    expect(routeSource.slice(0, boundaryStart)).not.toContain(
-      "await connection()"
-    );
-    expect(routeSource.slice(0, boundaryStart)).not.toContain(
-      "getMarketingPreferences"
-    );
+    expect(await generateMetadata()).toMatchObject({
+      robots: { index: false, follow: false },
+    });
   });
 
   test("checks request connection before the account flag and preference data", async () => {

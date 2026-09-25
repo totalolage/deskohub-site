@@ -127,6 +127,19 @@ export const authRateLimit = authSchema.table(
   ]
 );
 
+/**
+ * Auth-only Drizzle table map: the single source of truth for the tables the
+ * Better Auth Drizzle adapter and the auth Drizzle facade operate on. Not
+ * re-exported from db/schema/index.ts — auth tables never join the app graph.
+ */
+export const drizzleAuthTables = {
+  user: authUser,
+  session: authSession,
+  account: authAccount,
+  verification: authVerification,
+  rateLimit: authRateLimit,
+};
+
 export const authRelations = defineRelationsPart(
   { user: authUser, session: authSession, account: authAccount },
   (r) => ({

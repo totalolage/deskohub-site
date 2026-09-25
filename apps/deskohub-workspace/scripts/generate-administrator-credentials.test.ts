@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Schema } from "effect";
 import { administratorCredentialRegistrySchema } from "../shared/administrator/administrator-credentials";
+import { countOccurrences } from "./shared/source-contract";
 
 const generatorScriptPath = fileURLToPath(
   new URL("./generate-administrator-credentials.sh", import.meta.url)
@@ -30,9 +32,6 @@ const runGenerator = (input: string) => {
     stderr: result.stderr.toString(),
   };
 };
-
-const countOccurrences = (haystack: string, needle: string) =>
-  haystack.split(needle).length - 1;
 
 describe("administrator credential generator", () => {
   test("collects multiple administrators into one schema-valid assignment", () => {
@@ -150,11 +149,11 @@ describe("administrator credential generator", () => {
     );
   });
 
-  test("pins the C locale and case-sensitive matching for username validation", async () => {
-    const script = await Bun.file(generatorScriptPath).text();
+  test("pins the C locale and case-sensitive matching for username validation", () => {
+    const script = readFileSync(generatorScriptPath, "utf8");
 
-    expect(script).toContain("export LC_ALL=C");
-    expect(script).toContain("shopt -u nocasematch");
+    expect(countOccurrences(script, "export LC_ALL=C")).toBe(1);
+    expect(countOccurrences(script, "shopt -u nocasematch")).toBe(1);
   });
 
   test("digests the complete username and password bytes", () => {
@@ -185,15 +184,17 @@ describe("administrator credential tooling documentation", () => {
       new URL("../.env.example", import.meta.url)
     ).text();
 
-    expect(envExample).toContain("ADMIN_BASIC_AUTH_CREDENTIALS=");
-    expect(envExample).toContain("username:<sha256(username:password)>");
-    expect(envExample).toContain("bun run administrator-credentials:generate");
-    expect(envExample).toContain("Required in every environment");
-    expect(envExample).toContain(
-      "reuse the previously configured single-credential digest"
-    );
-    expect(envExample).toContain("as the admin entry");
-    expect(envExample).not.toContain("ADMIN_BASIC_AUTH_SHA256");
+    for (const required of [
+      "ADMIN_BASIC_AUTH_CREDENTIALS=",
+      "username:<sha256(username:password)>",
+      "bun run administrator-credentials:generate",
+      "Required in every environment",
+      "reuse the previously configured single-credential digest",
+      "as the admin entry",
+    ]) {
+      expect(countOccurrences(envExample, required)).toBeGreaterThan(0);
+    }
+    expect(countOccurrences(envExample, "ADMIN_BASIC_AUTH_SHA256")).toBe(0);
   });
 
   test("keeps real credentials out of .env.example", async () => {
@@ -205,7 +206,9 @@ describe("administrator credential tooling documentation", () => {
       .split("\n")
       .find((line) => line.startsWith("ADMIN_BASIC_AUTH_CREDENTIALS="));
     expect(assignment).toBeDefined();
-    expect(assignment).toContain("replace_with_64_lowercase_hex_characters");
-    expect(assignment).not.toMatch(/:[0-9a-f]{64}/);
+    expect(
+      assignment?.includes("replace_with_64_lowercase_hex_characters")
+    ).toBe(true);
+    expect(/:[0-9a-f]{64}/.test(assignment ?? "")).toBe(false);
   });
 });

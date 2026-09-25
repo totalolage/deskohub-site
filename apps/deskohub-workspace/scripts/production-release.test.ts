@@ -1,8 +1,15 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   assertAuthSessionReady,
   assertCanonicalSignInReady,
@@ -516,15 +523,51 @@ describe("workspace production release checks", () => {
     expect(await Bun.file(outputFile).text()).toBe("");
   });
 
-  test("rolls back with the Vercel rollback operation instead of promoting", async () => {
-    const source = await Bun.file(
-      new URL("./production-release.ts", import.meta.url).pathname
-    ).text();
+  test("rolls back with the Vercel rollback operation instead of promoting", () => {
+    const scriptPath = fileURLToPath(
+      new URL("./production-release.ts", import.meta.url)
+    );
+    const workspaceRoot = resolve(import.meta.dir, "../..");
+    const fakeBin = mkdtempSync(join(tmpdir(), "release-cli-"));
+    const recordFile = join(fakeBin, "invocations.log");
+    writeFileSync(
+      join(fakeBin, "bunx"),
+      `#!/bin/sh\nprintf '%s\\n' "$@" >> "$RECORD_FILE"\nexit 0\n`,
+      { mode: 0o755 }
+    );
 
-    expect(source).toMatch(/rollback \${url}/);
-    expect(source).not.toContain("vercel@54.9.1 promote");
-    expect(source).toContain("::add-mask::");
-  });
+    Bun.spawnSync({
+      cmd: [
+        "timeout",
+        "30",
+        process.execPath,
+        scriptPath,
+        "rollback",
+        "--url",
+        "https://staged.vercel.app",
+      ],
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        RECORD_FILE: recordFile,
+        VERCEL_TOKEN: "synthetic-token",
+        VERCEL_PROJECT_ID: "synthetic-project",
+        HTTPS_PROXY: "http://127.0.0.1:9",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    // The rollback command shells out through bunx; the invocation record is
+    // the observable command construction.
+    const recorded = readFileSync(recordFile, "utf8");
+    expect(recorded).toContain("vercel@54.9.1");
+    expect(recorded).toContain("rollback");
+    expect(recorded).toContain("https://staged.vercel.app");
+    expect(recorded).not.toContain("promote");
+    rmSync(fakeBin, { recursive: true, force: true });
+  }, 60000);
 
   type DeploymentState = "baseline" | "staged";
 
@@ -732,14 +775,51 @@ describe("workspace production release checks", () => {
     ).toBe(true);
   });
 
-  test("requests the promotion through the primary Vercel API, not a CLI wait", async () => {
-    const source = await Bun.file(
-      new URL("./production-release.ts", import.meta.url).pathname
-    ).text();
+  test("requests the promotion through the primary Vercel API, not a CLI wait", () => {
+    const scriptPath = fileURLToPath(
+      new URL("./production-release.ts", import.meta.url)
+    );
+    const workspaceRoot = resolve(import.meta.dir, "../..");
+    const fakeBin = mkdtempSync(join(tmpdir(), "release-cli-"));
+    const recordFile = join(fakeBin, "invocations.log");
+    writeFileSync(
+      join(fakeBin, "bunx"),
+      `#!/bin/sh\nprintf '%s\\n' "$@" >> "$RECORD_FILE"\nexit 0\n`,
+      { mode: 0o755 }
+    );
 
-    expect(source).toContain("/v10/projects/");
-    expect(source).not.toMatch(/vercel@\d[\d.]* promote/);
-  });
+    Bun.spawnSync({
+      cmd: [
+        "timeout",
+        "30",
+        process.execPath,
+        scriptPath,
+        "promote",
+        "--url",
+        "https://staged.vercel.app",
+      ],
+      cwd: workspaceRoot,
+      env: {
+        ...process.env,
+        PATH: `${fakeBin}:${process.env.PATH}`,
+        RECORD_FILE: recordFile,
+        VERCEL_TOKEN: "synthetic-token",
+        VERCEL_PROJECT_ID: "synthetic-project",
+        HTTPS_PROXY: "http://127.0.0.1:9",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    // Promotion must go through the REST API (verified in-process above);
+    // the CLI subprocess is never spawned for promotion.
+    const recorded = existsSync(recordFile)
+      ? readFileSync(recordFile, "utf8")
+      : "";
+    expect(recorded.includes("promote")).toBe(false);
+    expect(recorded.includes("vercel@")).toBe(false);
+    rmSync(fakeBin, { recursive: true, force: true });
+  }, 60000);
 
   test("refuses to promote before the staged deployment reports ready", async () => {
     const environment = promotionEnvironment();

@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   DotyposDiscountGroupIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect } from "effect";
+import { countOccurrences } from "../../scripts/shared/source-contract";
 import {
   dotyposTimestampMatches,
   selectE2EDotyposDiscountGroup,
@@ -89,15 +92,16 @@ test("waits for cancelled reservations to leave active inventory", async () => {
   expect(reads).toBe(3);
 });
 
-test("uses the active-overlap read model for cleanup convergence", async () => {
-  const source = await Bun.file(
-    new URL("./dotypos.ts", import.meta.url)
-  ).text();
+test("uses the active-overlap read model for cleanup convergence", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("./dotypos.ts", import.meta.url)),
+    "utf8"
+  );
 
   expect(
     source.match(/dotypos\.listActiveReservationsOverlapping\(interval\)/g)
   ).toHaveLength(3);
-  expect(source).not.toContain("dotypos.listReservations(),");
+  expect(countOccurrences(source, "dotypos.listReservations(),")).toBe(0);
 });
 
 test("waits for a customer discount-group change to become readable", async () => {

@@ -2,9 +2,12 @@ import "../../shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { DotyposCustomerIdSchema } from "@deskohub/dotypos";
 import type { Page } from "@playwright/test";
 import { Cause, Effect, Exit, Fiber } from "effect";
+import { countOccurrences } from "../../scripts/shared/source-contract";
 import { formatWorkspaceE2EFailure, type WorkspaceE2EError } from "../errors";
 import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -1187,9 +1190,10 @@ describe("workspace marketing preferences helper", () => {
   test("keeps the helper out of auth sends, rate budgets, provider concurrency, and unapproved screenshot IDs", async () => {
     expect(typeof verifyWorkspaceE2EMarketingPreferences).toBe("function");
 
-    const source = await Bun.file(
-      new URL("./marketing-preferences.ts", import.meta.url)
-    ).text();
+    const source = readFileSync(
+      fileURLToPath(new URL("./marketing-preferences.ts", import.meta.url)),
+      "utf8"
+    );
 
     for (const forbidden of [
       /\/api\/auth/i,
@@ -1285,9 +1289,10 @@ describe("workspace marketing preferences helper", () => {
   });
 
   test("waits for the rejection alert inside the pending section with bounded locator assertions", async () => {
-    const source = await Bun.file(
-      new URL("./marketing-preferences.ts", import.meta.url)
-    ).text();
+    const source = readFileSync(
+      fileURLToPath(new URL("./marketing-preferences.ts", import.meta.url)),
+      "utf8"
+    );
     const rejectionAt = source.indexOf("const requireRejectedReplayPreference");
     const rejection = source.slice(
       rejectionAt,
@@ -1298,32 +1303,48 @@ describe("workspace marketing preferences helper", () => {
     // The rejection feedback must be awaited inside the pending section with
     // the timeout-backed locator assertions; the page-wide text read is only
     // the supplementary announcer invariant after that wait settles.
-    expect(rejection).toContain('section.getByRole("alert")');
-    expect(rejection).toContain("toHaveCount(1");
-    expect(rejection).toContain("toContainText(");
-    expect(rejection).toContain("invalidMarketingManagementActionMessage,");
-    expect(rejection).toContain("workspaceE2ETimeouts.uiTransition");
-    expect(rejection).toContain(
-      "matchesRejectedReplayAlerts(rejectionAlertTexts, pageAlertTexts)"
-    );
+    expect(
+      countOccurrences(rejection, 'section.getByRole("alert")')
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(rejection, "toHaveCount(1")).toBeGreaterThan(0);
+    expect(countOccurrences(rejection, "toContainText(")).toBeGreaterThan(0);
+    expect(
+      countOccurrences(rejection, "invalidMarketingManagementActionMessage,")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(rejection, "workspaceE2ETimeouts.uiTransition")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        rejection,
+        "matchesRejectedReplayAlerts(rejectionAlertTexts, pageAlertTexts)"
+      )
+    ).toBeGreaterThan(0);
   });
 
   test("covers terminal malformed-link clear before the replay fixture cleanup proof", async () => {
-    const source = await Bun.file(
-      new URL("./marketing-preferences.ts", import.meta.url)
-    ).text();
+    const source = readFileSync(
+      fileURLToPath(new URL("./marketing-preferences.ts", import.meta.url)),
+      "utf8"
+    );
     const replayStart = source.indexOf(
       "const runReplayedMarketingPreferencesFlow"
     );
     expect(replayStart).toBeGreaterThan(-1);
     const replay = source.slice(replayStart);
 
-    expect(source).toContain(
-      'invalidAccessUrl.searchParams.set("token", "invalid")'
-    );
-    expect(replay).toContain(
-      "navigateWorkspaceE2EMarketingPreferences(page, invalidAccessUrl)"
-    );
+    expect(
+      countOccurrences(
+        source,
+        'invalidAccessUrl.searchParams.set("token", "invalid")'
+      )
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        replay,
+        "navigateWorkspaceE2EMarketingPreferences(page, invalidAccessUrl)"
+      )
+    ).toBeGreaterThan(0);
     const rejectionAt = replay.indexOf(
       '"assert replay marketing preferences context after rejection"'
     );
@@ -1351,26 +1372,48 @@ describe("workspace marketing preferences helper", () => {
     expect(clearAt).toBeGreaterThan(invalidMobileAt);
     expect(clearedContextAt).toBeGreaterThan(clearAt);
     expect(sessionProofAt).toBeGreaterThan(clearedContextAt);
-    expect(replay).toContain("requireUnavailablePreference(page)");
-    expect(replay).toContain("assertNoMarketingManagementCookies(context)");
-    expect(replay).toContain("invalidPreferenceSelector} button");
-    expect(replay).toContain('"onClick"');
-    expect(replay).toContain("await clearButton.click");
-    expect(replay).toContain("assertExactPageUrl(page, accountLegalUrl)");
-    expect(source).toContain('"__Host-workspace-marketing-pending"');
-    expect(source).toContain('"__Host-workspace-marketing"');
-    expect(source).toContain("cleanupWorkspaceE2EMarketingPreferences");
-    expect(source).toContain("originalTokenHashes");
-    expect(source).toContain('"restore marketing preferences fixture"');
+    expect(
+      countOccurrences(replay, "requireUnavailablePreference(page)")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(replay, "assertNoMarketingManagementCookies(context)")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(replay, "invalidPreferenceSelector} button")
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(replay, '"onClick"')).toBeGreaterThan(0);
+    expect(countOccurrences(replay, "await clearButton.click")).toBeGreaterThan(
+      0
+    );
+    expect(
+      countOccurrences(replay, "assertExactPageUrl(page, accountLegalUrl)")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(source, '"__Host-workspace-marketing-pending"')
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(source, '"__Host-workspace-marketing"')
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(source, "cleanupWorkspaceE2EMarketingPreferences")
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(source, "originalTokenHashes")).toBeGreaterThan(0);
+    expect(
+      countOccurrences(source, '"restore marketing preferences fixture"')
+    ).toBeGreaterThan(0);
   });
 
   test("wires customer-scoped marketing preferences into reservation transitions", async () => {
-    const lane = await Bun.file(
-      new URL("./account-lane.pw.ts", import.meta.url)
-    ).text();
-    expect(lane).toContain(
-      'import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";'
+    const lane = readFileSync(
+      fileURLToPath(new URL("./account-lane.pw.ts", import.meta.url)),
+      "utf8"
     );
+    expect(
+      countOccurrences(
+        lane,
+        'import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";'
+      )
+    ).toBeGreaterThan(0);
     const transitionAt = lane.indexOf(
       'caseId === "account-reservation-transitions"'
     );
@@ -1438,12 +1481,18 @@ describe("workspace marketing preferences helper", () => {
     expect(
       lane.match(/yield\* readAccountReservationCustomerId\(\);/g)
     ).toHaveLength(2);
-    expect(lane).toContain(
-      "verifyAccountLayoutNavigation(page, async (section)"
-    );
-    expect(lane).toContain(
-      "customerId: DotyposCustomerIdSchema.make(customerId)"
-    );
-    expect(lane).toContain("page: getOwnedPage(),");
+    expect(
+      countOccurrences(
+        lane,
+        "verifyAccountLayoutNavigation(page, async (section)"
+      )
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        lane,
+        "customerId: DotyposCustomerIdSchema.make(customerId)"
+      )
+    ).toBeGreaterThan(0);
+    expect(countOccurrences(lane, "page: getOwnedPage(),")).toBeGreaterThan(0);
   });
 });

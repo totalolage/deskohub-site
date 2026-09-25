@@ -2,20 +2,16 @@ import "@/shared/testing/workspace-test-env";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { sql } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Effect } from "effect";
 import { Pool } from "pg";
 import {
   connectWorkspacePostgresTestDatabase,
   type WorkspacePostgresTestDatabase,
 } from "@/shared/testing/workspace-postgres-test-database.test-utils";
-import {
-  makeDatabaseClient,
-  makeDatabasePool,
-  makeNodePostgresDatabase,
-} from "./database-client";
+import { type AuthDatabase, makeAuthDatabase } from "./auth-database-client";
+import { makeDatabaseClient, makeDatabasePool } from "./database-client";
 import { workspaceDatabasePool } from "./database-provider.server";
-import { authUser } from "./schema/auth";
+import { authAccount, authSession, authUser } from "./schema/auth";
 import { customerAccountLinks } from "./schema/customer-account-links";
 
 const postgresDatabase: WorkspacePostgresTestDatabase | null =
@@ -38,7 +34,7 @@ const pgErrorCode = async (promise: Promise<unknown>) => {
   return undefined;
 };
 
-const insertAuthUser = (database: NodePgDatabase, id: string, email: string) =>
+const insertAuthUser = (database: AuthDatabase, id: string, email: string) =>
   database
     .insert(authUser)
     .values({ id, name: "", email })
@@ -48,13 +44,13 @@ describe.skipIf(!postgresDatabase)(
   "Better Auth persistence over the shared pool",
   () => {
     let pool: Pool;
-    let db: NodePgDatabase;
+    let db: AuthDatabase;
 
     beforeAll(() => {
       pool = makeDatabasePool({
         connectionString: process.env.WORKSPACE_TEST_DATABASE_URL!,
       });
-      db = makeNodePostgresDatabase(pool);
+      db = makeAuthDatabase(pool);
     });
 
     afterAll(async () => {
@@ -175,9 +171,56 @@ describe.skipIf(!postgresDatabase)(
       expect(after.some((row) => row.id === userId)).toBe(false);
     });
 
+    test("carries an auth-only relational map on the auth facade", () => {
+      const relationKeys = Object.keys(db._.relations);
+
+      for (const key of ["user", "session", "account"]) {
+        expect(relationKeys).toContain(key);
+      }
+
+      for (const appTable of [
+        "invoices",
+        "workspaceReservations",
+        "paymentAttempts",
+      ]) {
+        expect(relationKeys).not.toContain(appTable);
+      }
+    });
+
+    test("resolves user→sessions/accounts joins through the auth-only graph", async () => {
+      const userId = uniqueId();
+      await insertAuthUser(db, userId, `graph-${uniqueId()}@deskohub.test`);
+      await db.insert(authSession).values({
+        id: uniqueId(),
+        expiresAt: new Date(Date.now() + 3_600_000),
+        token: `token-${uniqueId()}`,
+        userId,
+      });
+      await db.insert(authAccount).values({
+        id: uniqueId(),
+        issuer: "deskohub.test",
+        accountId: `provider-${uniqueId()}`,
+        providerId: "credential",
+        userId,
+      });
+
+      const [row] = await db.query.user.findMany({
+        // Relations-v2 filters are objects; a v1-style callback is silently
+        // dropped by relationsFilterToSQL (Object.entries on a function).
+        where: { id: userId },
+        with: { sessions: true, accounts: true },
+      });
+
+      expect(row).toBeDefined();
+      expect(Array.isArray(row!.sessions)).toBe(true);
+      expect(row!.sessions).toHaveLength(1);
+      expect(Array.isArray(row!.accounts)).toBe(true);
+      expect(row!.accounts).toHaveLength(1);
+    });
+
     test("feeds both Drizzle facades from one underlying pool", async () => {
       expect(workspaceDatabasePool).toBeInstanceOf(Pool);
-      expect(makeNodePostgresDatabase(workspaceDatabasePool).$client).toBe(
+      expect(makeAuthDatabase(workspaceDatabasePool).$client).toBe(
         workspaceDatabasePool
       );
 
@@ -199,10 +242,10 @@ describe.skipIf(!postgresDatabase)(
         );
         expect(effectDb.rows).toEqual([{ acquired: 1 }]);
 
-        const nodeDb = await makeNodePostgresDatabase(
-          workspaceDatabasePool
-        ).execute(sql`select 1 as acquired`);
-        expect(nodeDb.rows).toEqual([{ acquired: 1 }]);
+        const authDb = await makeAuthDatabase(workspaceDatabasePool).execute(
+          sql`select 1 as acquired`
+        );
+        expect(authDb.rows).toEqual([{ acquired: 1 }]);
       } finally {
         workspaceDatabasePool.connect = originalConnect;
       }

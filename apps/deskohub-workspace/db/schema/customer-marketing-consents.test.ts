@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { getTableConfig } from "drizzle-orm/pg-core";
+import { Effect, Layer } from "effect";
+import { makeRecordingWorkspaceDatabase } from "@/shared/testing/workspace-recording-database.test-utils";
+import { CustomerMarketingConsentRepository } from "../../features/legal/backend/customer-marketing-consent.repository";
 import { customerMarketingConsents } from "./customer-marketing-consents";
 
 describe("customer marketing consent persistence", () => {
@@ -32,35 +35,43 @@ describe("customer marketing consent persistence", () => {
   });
 
   test("distinguishes initial and explicit consent grants", async () => {
-    const source = await Bun.file(
-      new URL(
-        "../../features/legal/backend/customer-marketing-consent.repository.ts",
-        import.meta.url
+    const recording = await makeRecordingWorkspaceDatabase();
+    const repository = await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* CustomerMarketingConsentRepository;
+      }).pipe(
+        Effect.provide(
+          CustomerMarketingConsentRepository.Default.pipe(
+            Layer.provide(recording.layer)
+          )
+        )
       )
-    ).text();
+    );
+    const grantInput = {
+      dotyposCustomerId: "dotypos-customer-1" as never,
+      documentHash: "hash-1",
+      locale: "en-US" as never,
+      grantedAt: "2026-01-01T00:00:00.000Z" as never,
+    };
 
-    const initialGrantStart = source.indexOf(
-      "CustomerMarketingConsentRepository.grantInitial"
-    );
-    const explicitGrantStart = source.indexOf(
-      'CustomerMarketingConsentRepository.grant"'
+    await Effect.runPromise(repository.grantInitial(grantInput));
+    await Effect.runPromise(repository.grant(grantInput));
+
+    expect(recording.statements).toHaveLength(2);
+    const [initialSql, explicitSql] = recording.statements.map(
+      ({ sql }) => sql
     );
 
-    expect(initialGrantStart).toBeGreaterThanOrEqual(0);
-    expect(explicitGrantStart).toBeGreaterThan(initialGrantStart);
-    expect(source.slice(initialGrantStart, explicitGrantStart)).toContain(
-      ".onConflictDoNothing()"
-    );
+    // An initial grant never overwrites an existing consent row.
+    expect(initialSql).toContain("on conflict do nothing");
 
-    const explicitGrant = source.slice(explicitGrantStart);
-    expect(explicitGrant).toContain(
-      "target: customerMarketingConsents.dotyposCustomerId"
-    );
-    expect(explicitGrant).toContain("withdrawnAt: null");
-    expect(explicitGrant).toContain(".onConflictDoUpdate({");
-    expect(source).not.toContain(
-      "setWhere: isNotNull(customerMarketingConsents.withdrawnAt)"
-    );
+    // An explicit grant re-activates a withdrawn consent in place.
+    expect(explicitSql).toContain("on conflict");
+    expect(explicitSql).toContain('"dotypos_customer_id"');
+    expect(explicitSql).toContain('"withdrawn_at" = $');
+    const explicitParams = recording.statements[1].params;
+    expect(explicitParams).toContain(null);
+    expect(explicitParams).toContain("hash-1");
   });
 
   test("creates the customer table without a historical backfill", async () => {

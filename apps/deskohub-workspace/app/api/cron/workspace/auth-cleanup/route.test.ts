@@ -12,9 +12,13 @@ interface IFakeCleanup {
     readonly now: Date;
   }) => Effect.Effect<
     { sessions: number; verifications: number; rateLimitRows: number },
-    never
+    Error
   >;
 }
+
+const cleanupFailure = new Error("cleanup backend unavailable");
+
+let failCleanup = false;
 
 const FakeCleanupService = Context.Service<FakeCleanupService, IFakeCleanup>()(
   "@test/FakeAuthCleanupService"
@@ -23,11 +27,13 @@ const FakeCleanupService = Context.Service<FakeCleanupService, IFakeCleanup>()(
 const fakeCleanupLayer = Layer.succeed(FakeCleanupService, {
   deleteExpiredRows: (input) => {
     cleanupCalls.push(input);
-    return Effect.succeed({
-      sessions: 3,
-      verifications: 2,
-      rateLimitRows: 1,
-    });
+    return failCleanup
+      ? Effect.fail(cleanupFailure)
+      : Effect.succeed({
+          sessions: 3,
+          verifications: 2,
+          rateLimitRows: 1,
+        });
   },
 }) as Layer.Layer<FakeCleanupService>;
 
@@ -47,6 +53,7 @@ mock.module("@/features/account/backend/auth/auth-cleanup.service", () => ({
 describe("auth cleanup cron route", () => {
   beforeEach(() => {
     cleanupCalls.length = 0;
+    failCleanup = false;
   });
 
   test("rejects requests without the cron secret", async () => {
@@ -93,5 +100,22 @@ describe("auth cleanup cron route", () => {
     });
     expect(cleanupCalls).toHaveLength(1);
     expect(cleanupCalls[0]!.now).toBeInstanceOf(Date);
+  });
+
+  test("returns a 500 cleanup-unavailable response when the sweep fails", async () => {
+    failCleanup = true;
+    const { GET } = (await import("./route")) as {
+      GET: (request: Request) => Promise<Response>;
+    };
+    const response = await GET(
+      new Request("https://workspace.test/api/cron/workspace/auth-cleanup", {
+        headers: { authorization: "Bearer cron-secret-for-auth-cleanup-test" },
+      })
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Customer account cleanup failed",
+    });
   });
 });

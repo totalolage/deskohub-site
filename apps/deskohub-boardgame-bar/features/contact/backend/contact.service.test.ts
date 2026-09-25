@@ -1,11 +1,13 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
   EmailDeliveryIdSchema,
+  type EmailMessage,
   type EmailSendResult,
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email";
 import { Effect, Layer } from "effect";
+import { m } from "@/features/i18n/paraglide/messages";
 import { ContactService } from "./contact.service";
 
 const input = {
@@ -22,11 +24,14 @@ const sent = (id: string): EmailSendResult => ({
   timestamp: new Date("2026-06-20T12:00:00.000Z"),
 });
 
-const runSubmit = (send: ReturnType<typeof mock>) =>
+const runSubmit = (
+  send: ReturnType<typeof mock>,
+  locale: "en-US" | "cs-CZ" = "en-US"
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const service = yield* ContactService;
-      return yield* service.submit(input, "en-US");
+      return yield* service.submit(input, locale);
     }).pipe(
       Effect.provide(
         ContactService.Default.pipe(
@@ -64,5 +69,28 @@ describe("ContactService", () => {
 
     expect(result).toMatchObject({ ...input, locale: "en-US" });
     expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  test("customer confirmation follows the typed locale; business email stays cs-CZ", async () => {
+    const messages: EmailMessage[] = [];
+    const send = mock((message: EmailMessage) => {
+      messages.push(message);
+      return Effect.succeed(sent(`msg-${messages.length}`));
+    });
+
+    const result = await runSubmit(send, "cs-CZ");
+
+    expect(result.locale).toBe("cs-CZ");
+    const business = messages[0];
+    const confirmation = messages[1];
+    expect(business?.subject).toBe(
+      m["contact.email.businessSubject"](
+        { name: input.name },
+        { locale: "cs-CZ" }
+      )
+    );
+    expect(confirmation?.subject).toBe(
+      m["contact.email.confirmationSubject"](undefined, { locale: "cs-CZ" })
+    );
   });
 });

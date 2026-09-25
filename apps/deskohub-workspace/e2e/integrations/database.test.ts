@@ -1,5 +1,11 @@
 import { expect, mock, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { countOccurrences } from "../../scripts/shared/source-contract";
+
+const readTrackedSource = (url: URL) =>
+  readFileSync(fileURLToPath(url), "utf8");
+
 import { Cause, Effect, Exit, Fiber, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -93,53 +99,75 @@ test("accepts reservation terms evidence from payment submission", () => {
   ).not.toThrow();
 });
 
-test("reads persisted reservation details without legacy product columns", async () => {
-  const source = await Bun.file(
-    fileURLToPath(new URL("./database.ts", import.meta.url))
-  ).text();
+test("reads persisted reservation details without legacy product columns", () => {
+  const source = readTrackedSource(new URL("./database.ts", import.meta.url));
 
-  expect(source).toContain(
-    "reservation_details: workspaceReservations.reservationDetails"
+  expect(
+    countOccurrences(
+      source,
+      "reservation_details: workspaceReservations.reservationDetails"
+    )
+  ).toBe(1);
+  expect(countOccurrences(source, "workspaceReservations.productTier")).toBe(0);
+  expect(countOccurrences(source, "workspaceReservations.productCoffee")).toBe(
+    0
   );
-  expect(source).not.toContain("workspaceReservations.productTier");
-  expect(source).not.toContain("workspaceReservations.productCoffee");
-  expect(source).not.toContain("workspaceReservations.productMonitorOption");
+  expect(
+    countOccurrences(source, "workspaceReservations.productMonitorOption")
+  ).toBe(0);
 });
 
-test("uses one worker-scoped Drizzle client for the exact preview datasource", async () => {
-  const databaseServiceSource = await Bun.file(
-    fileURLToPath(new URL("./database.service.ts", import.meta.url))
-  ).text();
-  const runnerSource = await Bun.file(
-    fileURLToPath(new URL("../services/runner.ts", import.meta.url))
-  ).text();
+test("uses one worker-scoped Drizzle client for the exact preview datasource", () => {
+  const databaseServiceSource = readTrackedSource(
+    new URL("./database.service.ts", import.meta.url)
+  );
+  const runnerSource = readTrackedSource(
+    new URL("../services/runner.ts", import.meta.url)
+  );
 
-  expect(databaseServiceSource).toContain(
-    "connectionString: config.databaseUrlUnpooled"
-  );
-  expect(databaseServiceSource).not.toContain(
-    "connectionString: config.databaseUrl,"
-  );
-  expect(runnerSource).toContain("E2EDatabase.layer(datasourceConfig)");
-  expect(runnerSource).toContain(
-    "WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support))"
-  );
+  expect(
+    countOccurrences(
+      databaseServiceSource,
+      "connectionString: config.databaseUrlUnpooled"
+    )
+  ).toBe(1);
+  expect(
+    countOccurrences(
+      databaseServiceSource,
+      "connectionString: config.databaseUrl,"
+    )
+  ).toBe(0);
+  expect(
+    countOccurrences(runnerSource, "E2EDatabase.layer(datasourceConfig)")
+  ).toBeGreaterThan(0);
+  expect(
+    countOccurrences(
+      runnerSource,
+      "WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support))"
+    )
+  ).toBe(1);
 });
 
-test("polls for checkout rows before asserting reservation replacement state", async () => {
-  const databaseSource = await Bun.file(
-    fileURLToPath(new URL("./database.ts", import.meta.url))
-  ).text();
-  const reservationReplacementSource = await Bun.file(
-    fileURLToPath(new URL("../cases/reservation-reuse.ts", import.meta.url))
-  ).text();
+test("polls for checkout rows before asserting reservation replacement state", () => {
+  const databaseSource = readTrackedSource(
+    new URL("./database.ts", import.meta.url)
+  );
+  const reservationReplacementSource = readTrackedSource(
+    new URL("../cases/reservation-reuse.ts", import.meta.url)
+  );
 
-  expect(databaseSource).toContain(
-    "pollUntil(readCheckoutRowFromDatabase(db, orderId)"
-  );
-  expect(reservationReplacementSource).toContain(
-    "waitForCheckoutRow(datasourceConfig, orderId)"
-  );
+  expect(
+    countOccurrences(
+      databaseSource,
+      "pollUntil(readCheckoutRowFromDatabase(db, orderId)"
+    )
+  ).toBe(1);
+  expect(
+    countOccurrences(
+      reservationReplacementSource,
+      "waitForCheckoutRow(datasourceConfig, orderId)"
+    )
+  ).toBe(1);
 });
 
 test("classifies provider session rows after the hosted redirect barrier", () => {
@@ -250,9 +278,7 @@ test("retains the last provider session diagnostic after convergence times out",
 });
 
 test("assigns fixed diagnostics to the Postgres validation boundaries", async () => {
-  const source = await Bun.file(
-    fileURLToPath(new URL("./database.ts", import.meta.url))
-  ).text();
+  const source = readTrackedSource(new URL("./database.ts", import.meta.url));
 
   for (const diagnosticCode of [
     "postgres_checkout_row_convergence_failed",
@@ -260,11 +286,11 @@ test("assigns fixed diagnostics to the Postgres validation boundaries", async ()
     "postgres_legal_evidence_validation_failed",
     "postgres_local_pii_validation_failed",
   ]) {
-    expect(source).toMatch(
+    expect(
       new RegExp(
         `withWorkspaceE2EDiagnosticCode\\(\\s*"${diagnosticCode}"\\s*\\)`
-      )
-    );
+      ).test(source)
+    ).toBe(true);
   }
 });
 

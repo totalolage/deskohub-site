@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { Page } from "@playwright/test";
 import { m } from "@/features/i18n";
 import {
@@ -146,13 +148,16 @@ test("does not race a visible but unhydrated inline analytics control", async ()
   ]);
 });
 
-test("does not forge consent cookies or use timer delays", async () => {
-  const source = await Bun.file(
-    new URL("./legal-cookie-consent.ts", import.meta.url)
-  ).text();
-
-  expect(source).not.toMatch(
-    /addCookies|document\.cookie|CookieConsent\.|acceptCategory|setTimeout|waitForTimeout/
+test("does not forge consent cookies or use timer delays", () => {
+  const source = readFileSync(
+    fileURLToPath(new URL("./legal-cookie-consent.ts", import.meta.url)),
+    "utf8"
   );
+
+  expect(
+    /addCookies|document\.cookie|CookieConsent\.|acceptCategory|setTimeout|waitForTimeout/.test(
+      source
+    )
+  ).toBe(false);
   expect(typeof hasReactClickHandler).toBe("function");
 });

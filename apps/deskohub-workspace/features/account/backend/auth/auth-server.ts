@@ -8,15 +8,9 @@ import { magicLink } from "better-auth/plugins";
 import { Effect, Option, Schema } from "effect";
 import { after } from "next/server";
 import { Resend } from "resend";
-import { makeNodePostgresDatabase } from "@/db/database-client";
+import { makeAuthDatabase } from "@/db/auth-database-client";
 import { workspaceDatabasePool } from "@/db/database-provider.server";
-import {
-  authAccount,
-  authRateLimit,
-  authSession,
-  authUser,
-  authVerification,
-} from "@/db/schema/auth";
+import { drizzleAuthTables } from "@/db/schema/auth";
 import { env } from "@/env";
 import { CustomerAccountDeletionService } from "@/features/account/backend/customer-account-deletion";
 import {
@@ -220,15 +214,9 @@ export const makeWorkspaceMagicLinkDelivery = (apiKey: string | undefined) =>
   );
 
 export const makeWorkspaceAuthDatabase = () =>
-  drizzleAdapter(makeNodePostgresDatabase(workspaceDatabasePool), {
+  drizzleAdapter(makeAuthDatabase(workspaceDatabasePool), {
     provider: "pg",
-    schema: {
-      user: authUser,
-      session: authSession,
-      account: authAccount,
-      verification: authVerification,
-      rateLimit: authRateLimit,
-    },
+    schema: drizzleAuthTables,
     schemaName: "auth",
   });
 

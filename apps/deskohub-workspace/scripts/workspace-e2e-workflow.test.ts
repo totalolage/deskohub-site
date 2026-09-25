@@ -1,495 +1,617 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { countOccurrences, readTrackedSource } from "./shared/source-contract";
+import {
+  findStepByName,
+  parseWorkflow,
+  type WorkflowStep,
+  workflowStepNames,
+} from "./shared/workflow-contract";
 
-const decoder = new TextDecoder();
+const workflowPath = resolve(
+  import.meta.dir,
+  "../../../.github/workflows/workspace-e2e.yml"
+);
 
-test("keeps the atomic allocator isolated from exact-SHA test code", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
+const doc = parseWorkflow(workflowPath);
+const rawWorkflow = readFileSync(workflowPath, "utf8");
+const stepNames = workflowStepNames(doc);
+const allSteps = Object.values(doc.jobs).flatMap((job) => job.steps ?? []);
+const testJob = doc.jobs["test-e2e"];
+const rawTestJob = JSON.stringify(testJob);
 
-  expect(workflow).not.toContain("  allocate-shard:");
-  expect(workflow).toContain(
-    "uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation"
-  );
-  expect(workflow).not.toContain("group: workspace-e2e-shard-allocation");
-  expect(workflow).not.toContain("allow_concurrent");
-  expect(workflow).toContain("inputs.cleanup_stale_e2e_reservations");
-  expect(workflow).toContain("persist-credentials: false");
-  expect(workflow).not.toContain("contents: write");
-  expect(workflow).toContain(
-    `database-url: \${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}`
-  );
-  const runE2EIndex = workflow.indexOf("- name: Run checkout E2E");
-  const runE2EStep = workflow.slice(
-    runE2EIndex,
-    workflow.indexOf("- uses: actions/upload-artifact@v4", runE2EIndex)
-  );
-  expect(runE2EStep).toContain(
-    `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: \${{ secrets.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL }}`
-  );
-  expect(runE2EStep).toContain(
-    `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "true"`
-  );
-  expect(workflow).not.toContain("workspace-e2e-dotypos-sandbox");
-  const testJob = workflow.slice(
-    workflow.indexOf("  test-e2e:"),
-    workflow.indexOf("  publish-final-status:")
-  );
-  expect(testJob).toContain("contents: read");
-  expect(testJob).not.toContain("contents: write");
-  expect(testJob).toContain(`release_outcome: \${{ steps.release.outcome }}`);
-  expect(testJob).toContain("id: release");
-  expect(workflow).toContain(
-    `needs.test-e2e.outputs.release_outcome == 'success'`
-  );
-  expect(workflow).toContain("Workspace E2E shard release failed");
-  expect(workflow).toContain("Validate aggregate Dotypos capacity");
-  expect(workflow).toContain("Reconcile stale Workspace E2E reservations");
-  expect(workflow).toContain("e2e:cleanup-stale --apply");
-  const staleCleanupStep = workflow.slice(
-    workflow.indexOf("Reconcile stale Workspace E2E reservations"),
-    workflow.indexOf("Validate aggregate Dotypos capacity")
-  );
-  expect(staleCleanupStep).toContain(
-    "secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET"
-  );
-  expect(staleCleanupStep).not.toContain("secrets.DOTYPOS_CLIENT_SECRET");
-  expect(staleCleanupStep).not.toContain(
-    "WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL"
-  );
-  expect(staleCleanupStep).not.toContain(
-    "WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED"
-  );
-  const capacityStep = workflow.slice(
-    workflow.indexOf("Validate aggregate Dotypos capacity"),
-    workflow.indexOf("Verify hosted browser runtime")
-  );
-  expect(capacityStep).not.toContain(
-    "WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL"
-  );
-  expect(capacityStep).not.toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
-  expect(workflow).not.toContain("pulls?state=open");
-});
+const stepByName = (name: string): WorkflowStep => {
+  const step = findStepByName(doc, name);
+  expect(step).toBeDefined();
+  return step as WorkflowStep;
+};
 
-test("binds the manual target origin to a successful exact-SHA Workspace deployment", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
-  const resolveTargetStep = workflow.slice(
-    workflow.indexOf("- name: Resolve eligible PR and immutable preview"),
-    workflow.indexOf("  test-e2e:")
-  );
+const stepsBetweenNames = (
+  fromName: string,
+  toName?: string
+): readonly WorkflowStep[] => {
+  const from = allSteps.findIndex((step) => step.name === fromName);
+  const to =
+    toName === undefined
+      ? allSteps.length
+      : allSteps.findIndex((step) => step.name === toName);
+  expect(from).toBeGreaterThanOrEqual(0);
+  return allSteps.slice(from, to);
+};
 
-  expect(workflow).toContain("deployments: read");
-  expect(resolveTargetStep).toContain('"repos/$GITHUB_REPOSITORY/deployments"');
-  expect(resolveTargetStep).toContain('-f sha="$TARGET_SHA"');
-  expect(resolveTargetStep).toContain(
-    "-f environment='Preview – deskohub-workspace-site'"
-  );
-  expect(resolveTargetStep).toContain(
-    '"repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses"'
-  );
-  expect(resolveTargetStep).toContain('--arg target "$normalized_url"');
-  expect(resolveTargetStep).toContain('.state == "success"');
-  expect(resolveTargetStep).toContain(
-    "No successful exact-SHA Workspace deployment matches the target URL"
-  );
-});
+const readTrackedJson = <T>(path: string): T =>
+  JSON.parse(readFileSync(resolve(import.meta.dir, path), "utf8")) as T;
 
-test("waives exact-SHA E2E only when Vercel marks Workspace unaffected", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
-  const skippedStatusJob = workflow.slice(
-    workflow.indexOf("  publish-skipped-status:")
-  );
+describe("workspace E2E workflow", () => {
+  test("keeps the atomic allocator isolated from exact-SHA test code", () => {
+    // The legacy in-workflow shard job is gone; allocation is the composite
+    // coordinator action with persisted-credentials disabled.
+    expect(Object.keys(doc.jobs).includes("allocate-shard")).toBe(false);
+    const allocationAction = allSteps.find(
+      (step) =>
+        step.uses ===
+        "./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation"
+    );
+    expect(allocationAction).toBeDefined();
+    const tokenCheckouts = allSteps.filter((step) =>
+      (step.uses ?? "").startsWith("actions/checkout")
+    );
+    expect(tokenCheckouts.length).toBeGreaterThan(0);
+    for (const checkout of tokenCheckouts) {
+      expect(checkout.with?.["persist-credentials"]).toBe(false);
+    }
+    expect(rawWorkflow.includes("group: workspace-e2e-shard-allocation")).toBe(
+      false
+    );
+    expect(rawWorkflow.includes("allow_concurrent")).toBe(false);
+    expect(rawWorkflow.includes("inputs.cleanup_stale_e2e_reservations")).toBe(
+      true
+    );
+    expect(rawWorkflow.includes("contents: write")).toBe(false);
+    expect(
+      JSON.stringify(allocationAction?.with ?? {}).includes(
+        "secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL"
+      )
+    ).toBe(true);
 
-  expect(workflow).toContain("vercel.deployment.skipped");
-  expect(workflow).toContain("TARGET_SKIPPED:");
-  expect(workflow).toContain('.creator.login == "vercel[bot]"');
-  expect(workflow).toContain('.state == "inactive"');
-  expect(workflow).toContain('.description == "Skipped - Not affected"');
-  expect(workflow).toContain('context == "Workspace E2E"');
-  expect(workflow).toContain("gh api --paginate --slurp");
-  expect(workflow).toContain("target_seen=true");
-  expect(workflow).toContain('if [[ "$target_seen" != "true" ]]');
-  expect(workflow).toContain("Workspace unchanged; prior E2E did not pass");
-  expect(workflow).toContain("needs.resolve-target.outputs.skipped != 'true'");
-  expect(skippedStatusJob).toContain("statuses: write");
-  expect(skippedStatusJob).toContain(
-    '"repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA"'
-  );
-  expect(skippedStatusJob).toContain("-f context='Workspace E2E'");
-  expect(workflow).toContain("Workspace unchanged; E2E skipped");
-  expect(skippedStatusJob).not.toContain("vercel deploy");
-});
+    const runE2EEnv = stepByName("Run checkout E2E").env;
+    expect(runE2EEnv?.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL).toBe(
+      `\${{ secrets.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL }}`
+    );
+    expect(runE2EEnv?.WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED).toBe("true");
+    expect(rawWorkflow.includes("workspace-e2e-dotypos-sandbox")).toBe(false);
 
-test("classifies the synthetic main account only after a failed E2E run", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
-  const packageJson = await Bun.file(
-    resolve(import.meta.dir, "../package.json")
-  ).json();
+    expect(JSON.stringify(testJob.permissions)).toBe(
+      JSON.stringify({ actions: "read", contents: "read", statuses: "write" })
+    );
+    expect(allSteps.some((step) => step.id === "release")).toBe(true);
+    expect(
+      (testJob.steps ?? []).some((step) =>
+        JSON.stringify(step.outputs ?? step.env ?? {}).includes(
+          "steps.release.outcome"
+        )
+      ) ||
+        rawWorkflow.includes(`release_outcome: \${{ steps.release.outcome }}`)
+    ).toBe(true);
+    expect(
+      JSON.stringify(doc.jobs["publish-final-status"]).includes(
+        "needs.test-e2e.outputs.release_outcome == 'success'"
+      )
+    ).toBe(true);
+    expect(rawWorkflow.includes("Workspace E2E shard release failed")).toBe(
+      true
+    );
+    expect(stepNames).toContain("Validate aggregate Dotypos capacity");
+    expect(stepNames).toContain("Reconcile stale Workspace E2E reservations");
+    expect(
+      stepByName("Reconcile stale Workspace E2E reservations").run?.includes(
+        "e2e:cleanup-stale --apply"
+      )
+    ).toBe(true);
 
-  expect(packageJson.scripts["e2e:account-state"]).toBe(
-    "bun scripts/workspace-e2e-account-state.ts"
-  );
+    const staleCleanup = JSON.stringify(
+      stepsBetweenNames(
+        "Reconcile stale Workspace E2E reservations",
+        "Validate aggregate Dotypos capacity"
+      )
+    );
+    expect(
+      staleCleanup.includes("secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET")
+    ).toBe(true);
+    expect(staleCleanup.includes("secrets.DOTYPOS_CLIENT_SECRET")).toBe(false);
+    expect(
+      staleCleanup.includes("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL")
+    ).toBe(false);
+    expect(
+      staleCleanup.includes("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED")
+    ).toBe(false);
 
-  const uploadIndex = workflow.indexOf("- uses: actions/upload-artifact@v4");
-  const diagnosticIndex = workflow.indexOf(
-    "- name: Classify synthetic main account state"
-  );
-  const releaseIndex = workflow.indexOf("- name: Release date shard");
-  expect(diagnosticIndex).toBeGreaterThan(uploadIndex);
-  expect(diagnosticIndex).toBeLessThan(releaseIndex);
-
-  const diagnosticStep = workflow.slice(diagnosticIndex, releaseIndex);
-  expect(diagnosticStep).toContain("if: failure()");
-  expect(diagnosticStep).toContain("continue-on-error: true");
-  expect(diagnosticStep).toContain(
-    "run: bun --cwd apps/deskohub-workspace e2e:account-state"
-  );
-  expect(diagnosticStep).toContain(
-    `DATABASE_URL: \${{ steps.preview-database.outputs.direct_url }}`
-  );
-  expect(diagnosticStep).toContain(
-    `WORKSPACE_E2E_DATABASE_URL_UNPOOLED: \${{ steps.preview-database.outputs.direct_url }}`
-  );
-  expect(diagnosticStep).toContain(
-    `WORKSPACE_E2E_DATABASE_ALLOWLIST: \${{ steps.preview-database.outputs.direct_url }}`
-  );
-  expect(diagnosticStep).toContain(
-    "secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET"
-  );
-  expect(diagnosticStep).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
-  expect(diagnosticStep).not.toContain("WORKSPACE_E2E_PROVIDER_PERMIT");
-  expect(diagnosticStep).not.toContain(
-    "WORKSPACE_E2E_COORDINATOR_DATABASE_URL"
-  );
-});
-
-test("uses the allocator without a global provider lock", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
-  const testJob = workflow.slice(
-    workflow.indexOf("  test-e2e:"),
-    workflow.indexOf("  publish-final-status:")
-  );
-
-  expect(testJob).not.toContain("concurrency:");
-  const targetCheckoutIndex = testJob.indexOf("Checkout exact target");
-  const coordinatorCheckoutIndex = testJob.indexOf(
-    "Checkout allocation action"
-  );
-  const leaseIndex = testJob.indexOf("Lease an available date shard");
-  const runIndex = testJob.indexOf("Run checkout E2E");
-  const releaseIndex = testJob.indexOf("Release date shard");
-
-  expect(targetCheckoutIndex).toBeLessThan(coordinatorCheckoutIndex);
-  expect(coordinatorCheckoutIndex).toBeLessThan(leaseIndex);
-  expect(leaseIndex).toBeLessThan(runIndex);
-  expect(runIndex).toBeLessThan(releaseIndex);
-});
-
-test("passes allocated shard and provider coordination through Turborepo", async () => {
-  const turbo = await Bun.file(
-    resolve(import.meta.dir, "../../../turbo.json")
-  ).json();
-  const environment = turbo.tasks["test:e2e"].passThroughEnv as string[];
-
-  expect(environment).toContain("WORKSPACE_E2E_ALLOCATION_SHARD");
-  expect(environment).toContain("GITHUB_STEP_SUMMARY");
-  expect(environment).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
-  expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
-  expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
-  expect(environment).toContain("WORKSPACE_E2E_RESEND_API_KEY");
-});
-
-test("generates the Igloohome client before Workspace E2E startup", async () => {
-  const result = Bun.spawnSync({
-    cmd: [
-      process.execPath,
-      "turbo",
-      "run",
-      "test:e2e",
-      "--filter=deskohub-workspace",
-      "--dry=json",
-    ],
-    cwd: resolve(import.meta.dir, "../../../"),
-    env: { ...process.env, TURBO_UI: "false" },
-    stderr: "pipe",
-    stdout: "pipe",
+    const capacity = JSON.stringify(
+      stepsBetweenNames(
+        "Validate aggregate Dotypos capacity",
+        "Verify hosted browser runtime"
+      )
+    );
+    expect(
+      capacity.includes("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL")
+    ).toBe(false);
+    expect(capacity.includes("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED")).toBe(
+      false
+    );
+    expect(rawWorkflow.match(/pulls\?state=open/)).toBeNull();
   });
 
-  expect(result.exitCode).toBe(0);
-  const output = decoder.decode(result.stdout);
-  const jsonStart = output.indexOf("{");
-  expect(jsonStart).toBeGreaterThanOrEqual(0);
-  const graph = JSON.parse(output.slice(jsonStart)) as {
-    readonly tasks: readonly {
-      readonly command: string;
-      readonly dependencies: readonly string[];
-      readonly directory: string;
-      readonly outputs: readonly string[] | null;
-      readonly resolvedTaskDefinition: {
-        readonly dependsOn: readonly string[];
-        readonly passThroughEnv: readonly string[];
-      };
-      readonly taskId: string;
-    }[];
-  };
-  const rootTurbo = (await Bun.file(
-    resolve(import.meta.dir, "../../../turbo.json")
-  ).json()) as {
-    readonly tasks: {
-      readonly "test:e2e": {
-        readonly passThroughEnv: readonly string[];
+  test("binds the manual target origin to a successful exact-SHA Workspace deployment", () => {
+    const resolveStep = stepsBetweenNames(
+      "Resolve eligible PR and immutable preview",
+      "Migrate preview database"
+    )
+      .map((step) => step.run ?? "")
+      .join("\n");
+
+    expect(
+      Object.values(doc.jobs).some((job) =>
+        JSON.stringify(job.permissions ?? {}).includes("deployments")
+      ) || rawWorkflow.includes("deployments: read")
+    ).toBe(true);
+    expect(resolveStep.includes('"repos/$GITHUB_REPOSITORY/deployments"')).toBe(
+      true
+    );
+    expect(resolveStep.includes('-f sha="$TARGET_SHA"')).toBe(true);
+    expect(
+      resolveStep.includes("-f environment='Preview – deskohub-workspace-site'")
+    ).toBe(true);
+    expect(
+      resolveStep.includes(
+        '"repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses"'
+      )
+    ).toBe(true);
+    expect(resolveStep.includes('--arg target "$normalized_url"')).toBe(true);
+    expect(resolveStep.includes('.state == "success"')).toBe(true);
+    expect(
+      resolveStep.includes(
+        "No successful exact-SHA Workspace deployment matches the target URL"
+      )
+    ).toBe(true);
+  });
+
+  test("waives exact-SHA E2E only when Vercel marks Workspace unaffected", () => {
+    const skippedJob = doc.jobs["publish-skipped-status"];
+    const rawSkipped = JSON.stringify(skippedJob);
+
+    expect(rawWorkflow.includes("vercel.deployment.skipped")).toBe(true);
+    expect(rawWorkflow.includes("TARGET_SKIPPED:")).toBe(true);
+    expect(rawWorkflow.includes('.creator.login == "vercel[bot]"')).toBe(true);
+    expect(rawWorkflow.includes('.state == "inactive"')).toBe(true);
+    expect(
+      rawWorkflow.includes('.description == "Skipped - Not affected"')
+    ).toBe(true);
+    expect(rawWorkflow.includes('context == "Workspace E2E"')).toBe(true);
+    expect(rawWorkflow.includes("gh api --paginate --slurp")).toBe(true);
+    expect(rawWorkflow.includes("target_seen=true")).toBe(true);
+    expect(rawWorkflow.includes('if [[ "$target_seen" != "true" ]]')).toBe(
+      true
+    );
+    expect(
+      rawWorkflow.includes("Workspace unchanged; prior E2E did not pass")
+    ).toBe(true);
+    expect(
+      (doc.jobs["publish-final-status"].if ?? "").includes(
+        "needs.resolve-target.outputs.skipped != 'true'"
+      )
+    ).toBe(true);
+    expect(
+      JSON.stringify(skippedJob.permissions ?? {}).includes("statuses")
+    ).toBe(true);
+    expect(
+      Object.values(doc.jobs["publish-skipped-status"].steps ?? [])
+        .map((step) => step.run ?? "")
+        .join("\n")
+        .includes('"repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA"')
+    ).toBe(true);
+    expect(rawSkipped.includes("-f context='Workspace E2E'")).toBe(true);
+    expect(rawWorkflow.includes("Workspace unchanged; E2E skipped")).toBe(true);
+    expect(rawSkipped.includes("vercel deploy")).toBe(false);
+  });
+
+  test("classifies the synthetic main account only after a failed E2E run", () => {
+    const packageJson = readTrackedJson("../package.json") as {
+      readonly scripts: Record<string, string | undefined>;
+    };
+    expect(packageJson.scripts["e2e:account-state"]).toBe(
+      "bun scripts/workspace-e2e-account-state.ts"
+    );
+
+    const uploadIndex = allSteps.findIndex(
+      (step) => step.uses === "actions/upload-artifact@v4"
+    );
+    const diagnosticIndex = allSteps.findIndex(
+      (step) => step.name === "Classify synthetic main account state"
+    );
+    const releaseIndex = allSteps.findIndex(
+      (step) => step.name === "Release date shard"
+    );
+    expect(diagnosticIndex).toBeGreaterThan(uploadIndex);
+    expect(diagnosticIndex).toBeLessThan(releaseIndex);
+
+    const diagnostic = stepByName("Classify synthetic main account state");
+    const diagnosticEnv = diagnostic.env;
+    expect(diagnostic.if).toBe("failure()");
+    expect(diagnostic["continue-on-error"]).toBe(true);
+    expect(diagnostic.run).toBe(
+      "bun --cwd apps/deskohub-workspace e2e:account-state"
+    );
+    expect(diagnosticEnv?.DATABASE_URL).toBe(
+      `\${{ steps.preview-database.outputs.direct_url }}`
+    );
+    expect(diagnosticEnv?.WORKSPACE_E2E_DATABASE_URL_UNPOOLED).toBe(
+      `\${{ steps.preview-database.outputs.direct_url }}`
+    );
+    expect(diagnosticEnv?.WORKSPACE_E2E_DATABASE_ALLOWLIST).toBe(
+      `\${{ steps.preview-database.outputs.direct_url }}`
+    );
+    expect(
+      JSON.stringify(diagnosticEnv).includes(
+        "secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET"
+      )
+    ).toBe(true);
+    expect(
+      JSON.stringify(diagnosticEnv).includes("WORKSPACE_E2E_RESEND_API_KEY")
+    ).toBe(false);
+    expect(
+      JSON.stringify(diagnosticEnv).includes("WORKSPACE_E2E_PROVIDER_PERMIT")
+    ).toBe(false);
+    expect(
+      JSON.stringify(diagnosticEnv).includes(
+        "WORKSPACE_E2E_COORDINATOR_DATABASE_URL"
+      )
+    ).toBe(false);
+  });
+
+  test("uses the allocator without a global provider lock", () => {
+    expect(rawTestJob.includes("concurrency:")).toBe(false);
+
+    const names = stepNames;
+    const targetCheckoutIndex = names.indexOf("Checkout exact target");
+    const coordinatorCheckoutIndex = names.indexOf(
+      "Checkout allocation action"
+    );
+    const leaseIndex = names.indexOf("Lease an available date shard");
+    const runIndex = names.indexOf("Run checkout E2E");
+    const releaseIndex = names.indexOf("Release date shard");
+
+    expect(targetCheckoutIndex).toBeLessThan(coordinatorCheckoutIndex);
+    expect(coordinatorCheckoutIndex).toBeLessThan(leaseIndex);
+    expect(leaseIndex).toBeLessThan(runIndex);
+    expect(runIndex).toBeLessThan(releaseIndex);
+  });
+
+  test("passes allocated shard and provider coordination through Turborepo", () => {
+    const turbo = readTrackedJson("../../../turbo.json") as {
+      readonly tasks: {
+        readonly "test:e2e": { readonly passThroughEnv: string[] };
       };
     };
-  };
-  const e2eTask = graph.tasks.find(
-    (task) => task.taskId === "deskohub-workspace#test:e2e"
-  );
-  const generatorTask = graph.tasks.find(
-    (task) => task.taskId === "@deskohub/igloohome#generate"
-  );
-  const i18nTask = graph.tasks.find(
-    (task) => task.taskId === "deskohub-workspace#i18n:compile"
-  );
+    const environment = turbo.tasks["test:e2e"].passThroughEnv;
 
-  expect(e2eTask).toBeDefined();
-  expect(generatorTask).toBeDefined();
-  expect(i18nTask).toBeDefined();
-  expect(e2eTask?.dependencies).toEqual(
-    expect.arrayContaining([
-      "@deskohub/igloohome#generate",
-      "deskohub-workspace#i18n:compile",
-    ])
-  );
-  expect(e2eTask?.resolvedTaskDefinition.dependsOn).toEqual(
-    expect.arrayContaining(["@deskohub/igloohome#generate", "i18n:compile"])
-  );
-  expect(
-    [...(e2eTask?.resolvedTaskDefinition.passThroughEnv ?? [])].sort()
-  ).toEqual([...rootTurbo.tasks["test:e2e"].passThroughEnv].sort());
-  expect(generatorTask?.command).toContain("generate-effect-openapi-client.ts");
-  expect(generatorTask?.directory).toBe("packages/igloohome");
-  expect(generatorTask?.outputs).toEqual(["src/generated/**"]);
-  expect(i18nTask?.directory).toBe("apps/deskohub-workspace");
-});
+    expect(environment).toContain("WORKSPACE_E2E_ALLOCATION_SHARD");
+    expect(environment).toContain("GITHUB_STEP_SUMMARY");
+    expect(environment).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
+    expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
+    expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
+    expect(environment).toContain("WORKSPACE_E2E_RESEND_API_KEY");
+  });
 
-test("keeps the Resend retrieval key inside the account Playwright execution only", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
-  const turbo = await Bun.file(
-    resolve(import.meta.dir, "../../../turbo.json")
-  ).json();
-  const productionWorkflow = await Bun.file(
-    resolve(
-      import.meta.dir,
-      "../../../.github/workflows/deploy-workspace-production.yml"
-    )
-  ).text();
+  test("generates the Igloohome client before Workspace E2E startup", () => {
+    const result = Bun.spawnSync({
+      cmd: [
+        process.execPath,
+        "turbo",
+        "run",
+        "test:e2e",
+        "--filter=deskohub-workspace",
+        "--dry=json",
+      ],
+      cwd: resolve(import.meta.dir, "../../../"),
+      env: { ...process.env, TURBO_UI: "false" },
+      stderr: "pipe",
+      stdout: "pipe",
+    });
 
-  const runE2EIndex = workflow.indexOf("- name: Run checkout E2E");
-  const runE2EStep = workflow.slice(
-    runE2EIndex,
-    workflow.indexOf("- uses: actions/upload-artifact@v4", runE2EIndex)
-  );
-  expect(runE2EStep).toContain(
-    `WORKSPACE_E2E_RESEND_API_KEY: \${{ secrets.WORKSPACE_E2E_RESEND_API_KEY }}`
-  );
+    expect(result.exitCode).toBe(0);
+    const output = new TextDecoder().decode(result.stdout);
+    const jsonStart = output.indexOf("{");
+    expect(jsonStart).toBeGreaterThanOrEqual(0);
+    const graph = JSON.parse(output.slice(jsonStart)) as {
+      readonly tasks: readonly {
+        readonly command: string;
+        readonly dependencies: readonly string[];
+        readonly directory: string;
+        readonly outputs: readonly string[] | null;
+        readonly resolvedTaskDefinition: {
+          readonly dependsOn: readonly string[];
+          readonly passThroughEnv: readonly string[];
+        };
+        readonly taskId: string;
+      }[];
+    };
+    const rootTurbo = readTrackedJson("../../../turbo.json") as {
+      readonly tasks: {
+        readonly "test:e2e": { readonly passThroughEnv: readonly string[] };
+      };
+    };
+    const e2eTask = graph.tasks.find(
+      (task) => task.taskId === "deskohub-workspace#test:e2e"
+    );
+    const generatorTask = graph.tasks.find(
+      (task) => task.taskId === "@deskohub/igloohome#generate"
+    );
+    const i18nTask = graph.tasks.find(
+      (task) => task.taskId === "deskohub-workspace#i18n:compile"
+    );
 
-  const occurrences = workflow.split("WORKSPACE_E2E_RESEND_API_KEY").length - 1;
-  expect(occurrences).toBe(2);
+    expect(e2eTask).toBeDefined();
+    expect(generatorTask).toBeDefined();
+    expect(i18nTask).toBeDefined();
+    expect(e2eTask?.dependencies).toEqual(
+      expect.arrayContaining([
+        "@deskohub/igloohome#generate",
+        "deskohub-workspace#i18n:compile",
+      ])
+    );
+    expect(e2eTask?.resolvedTaskDefinition.dependsOn).toEqual(
+      expect.arrayContaining(["@deskohub/igloohome#generate", "i18n:compile"])
+    );
+    expect(
+      [...(e2eTask?.resolvedTaskDefinition.passThroughEnv ?? [])].sort()
+    ).toEqual([...rootTurbo.tasks["test:e2e"].passThroughEnv].sort());
+    expect(generatorTask?.command).toContain(
+      "generate-effect-openapi-client.ts"
+    );
+    expect(generatorTask?.directory).toBe("packages/igloohome");
+    expect(generatorTask?.outputs).toEqual(["src/generated/**"]);
+    expect(i18nTask?.directory).toBe("apps/deskohub-workspace");
+  });
 
-  expect(workflow).not.toContain(
-    `RESEND_API_KEY: \${{ secrets.RESEND_API_KEY }}`
-  );
-  expect(productionWorkflow).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
-  expect(productionWorkflow).not.toContain("EMAIL_API_KEY");
-  expect(productionWorkflow).not.toContain("BETTER_AUTH");
+  test("keeps the Resend retrieval key inside the account Playwright execution only", () => {
+    const productionWorkflow = readFileSync(
+      resolve(
+        import.meta.dir,
+        "../../../.github/workflows/deploy-workspace-production.yml"
+      ),
+      "utf8"
+    );
+    const turbo = readTrackedJson("../../../turbo.json") as {
+      readonly global?: { readonly passThroughEnv?: string[] };
+    };
 
-  const turboGlobal = turbo.global?.passThroughEnv ?? [];
-  expect(turboGlobal).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
-});
+    const runE2EEnv = stepByName("Run checkout E2E").env;
+    expect(runE2EEnv?.WORKSPACE_E2E_RESEND_API_KEY).toBe(
+      `\${{ secrets.WORKSPACE_E2E_RESEND_API_KEY }}`
+    );
 
-test("runs invoice persistence inside the normal exact-SHA Playwright graph", async () => {
-  const packageJson = await Bun.file(
-    resolve(import.meta.dir, "../package.json")
-  ).json();
-  const testUnit = packageJson.scripts.test as string;
-  const testE2E = packageJson.scripts["test:e2e"] as string;
-  const turbo = await Bun.file(
-    resolve(import.meta.dir, "../turbo.json")
-  ).json();
-  const playwrightConfig = await Bun.file(
-    resolve(import.meta.dir, "../playwright.e2e.config.ts")
-  ).text();
-  const invoicePersistenceProject = await Bun.file(
-    resolve(
-      import.meta.dir,
-      "../e2e/playwright-checkout/invoice-persistence.pw.ts"
-    )
-  ).text();
-  const invoicePersistence = await Bun.file(
-    resolve(import.meta.dir, "../e2e/integrations/invoice-persistence.ts")
-  ).text();
-  const databaseContract = await Bun.file(
-    resolve(import.meta.dir, "../db/database.service.ts")
-  ).text();
-  const accountingKeyContract = await Bun.file(
-    resolve(
-      import.meta.dir,
-      "../features/accounting/backend/accounting-snapshot-key.service.ts"
-    )
-  ).text();
+    const occurrences = countOccurrences(
+      rawWorkflow,
+      "WORKSPACE_E2E_RESEND_API_KEY"
+    );
+    expect(occurrences).toBe(2);
 
-  expect(testE2E).toBe("bun scripts/workspace-e2e.ts");
-  expect(packageJson.dependencies["server-only"]).toBe("^0.0.1");
-  expect(packageJson.scripts["test:accounting-persistence"]).toBeUndefined();
-  expect(testUnit).not.toContain("e2e.test.ts");
-  expect(turbo.tasks["test:accounting-persistence"]).toBeUndefined();
-  expect(playwrightConfig).toContain('name: "checkout-invoice-persistence"');
-  expect(playwrightConfig).toContain('"checkout-invoice-persistence"');
-  expect(invoicePersistenceProject).toContain("assertInvoicePersistence");
-  expect(invoicePersistenceProject).toContain('phaseId: "invoice-persistence"');
-  expect(invoicePersistence).toContain("yield* E2EDatabase");
-  expect(invoicePersistence).toContain(
-    "temporalInstantToIsoString(Temporal.Now.instant())"
-  );
-  expect(invoicePersistence).toContain(
-    'like(invoices.dotyposCustomerId, "synthetic-customer-%")'
-  );
-  const deliveryCleanup = invoicePersistence.indexOf(
-    ".delete(invoiceEmailDeliveries)"
-  );
-  expect(deliveryCleanup).toBeGreaterThan(-1);
-  expect(deliveryCleanup).toBeLessThan(
-    invoicePersistence.indexOf(".delete(invoices)")
-  );
-  expect(invoicePersistence).not.toContain("WORKSPACE_E2E_DATABASE_ALLOWLIST");
-  expect(databaseContract).not.toContain('from "@/env"');
-  expect(accountingKeyContract).not.toContain('from "@/env"');
-  expect(accountingKeyContract).not.toContain('import "server-only"');
-});
+    expect(
+      rawWorkflow.includes(`RESEND_API_KEY: \${{ secrets.RESEND_API_KEY }}`)
+    ).toBe(false);
+    expect(productionWorkflow.includes("WORKSPACE_E2E_RESEND_API_KEY")).toBe(
+      false
+    );
+    expect(productionWorkflow.includes("EMAIL_API_KEY")).toBe(false);
+    expect(productionWorkflow.includes("BETTER_AUTH")).toBe(false);
 
-test("uses Playwright with the hosted runner browser without downloading another browser", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
+    const turboGlobal = turbo.global?.passThroughEnv ?? [];
+    expect(turboGlobal).not.toContain("WORKSPACE_E2E_RESEND_API_KEY");
+  });
 
-  expect(workflow).not.toContain("playwright install --with-deps");
-  expect(workflow).toContain("command -v google-chrome");
-  expect(workflow).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
-  expect(workflow).toContain("Verify hosted browser runtime");
-});
+  test("runs invoice persistence inside the normal exact-SHA Playwright graph", () => {
+    const packageJson = readTrackedJson("../package.json") as {
+      readonly scripts: Record<string, string | undefined>;
+      readonly dependencies: Record<string, string>;
+    };
+    const testUnit = packageJson.scripts.test as string;
+    const testE2E = packageJson.scripts["test:e2e"] as string;
+    const turbo = readTrackedJson<{ readonly tasks: object }>("../turbo.json");
+    const playwrightConfig = readTrackedSource(
+      resolve(import.meta.dir, "../playwright.e2e.config.ts")
+    );
+    const invoicePersistenceProject = readTrackedSource(
+      resolve(
+        import.meta.dir,
+        "../e2e/playwright-checkout/invoice-persistence.pw.ts"
+      )
+    );
+    const invoicePersistence = readTrackedSource(
+      resolve(import.meta.dir, "../e2e/integrations/invoice-persistence.ts")
+    );
+    const databaseContract = readTrackedSource(
+      resolve(import.meta.dir, "../db/database.service.ts")
+    );
+    const accountingKeyContract = readTrackedSource(
+      resolve(
+        import.meta.dir,
+        "../features/accounting/backend/accounting-snapshot-key.service.ts"
+      )
+    );
 
-test("lets Playwright own checkout preparation, scheduling, and parallelism", async () => {
-  const config = await Bun.file(
-    resolve(import.meta.dir, "../playwright.e2e.config.ts")
-  ).text();
-  const entry = await Bun.file(
-    resolve(import.meta.dir, "workspace-e2e.ts")
-  ).text();
-  const suite = await Bun.file(
-    resolve(import.meta.dir, "../e2e/suite.ts")
-  ).text();
-  const cleanupProject = await Bun.file(
-    resolve(import.meta.dir, "../e2e/playwright-checkout/cleanup.pw.ts")
-  ).text();
-  const cleanupRuntime = await Bun.file(
-    resolve(
-      import.meta.dir,
-      "../e2e/playwright-checkout/cleanup-runtime-fixtures.ts"
-    )
-  ).text();
+    expect(testE2E).toBe("bun scripts/workspace-e2e.ts");
+    expect(packageJson.dependencies["server-only"]).toBe("^0.0.1");
+    expect(packageJson.scripts["test:accounting-persistence"]).toBeUndefined();
+    expect(testUnit.includes("e2e.test.ts")).toBe(false);
+    expect(turbo.tasks["test:accounting-persistence"]).toBeUndefined();
+    expect(
+      countOccurrences(playwrightConfig, 'name: "checkout-invoice-persistence"')
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(playwrightConfig, '"checkout-invoice-persistence"')
+    ).toBe(2);
+    expect(
+      countOccurrences(invoicePersistenceProject, "assertInvoicePersistence")
+    ).toBeGreaterThan(0);
+    expect(
+      countOccurrences(
+        invoicePersistenceProject,
+        'phaseId: "invoice-persistence"'
+      )
+    ).toBe(1);
+    expect(countOccurrences(invoicePersistence, "yield* E2EDatabase")).toBe(1);
+    expect(
+      countOccurrences(
+        invoicePersistence,
+        "temporalInstantToIsoString(Temporal.Now.instant())"
+      )
+    ).toBe(1);
+    expect(
+      countOccurrences(
+        invoicePersistence,
+        'like(invoices.dotyposCustomerId, "synthetic-customer-%")'
+      )
+    ).toBeGreaterThan(0);
+    const deliveryCleanup = invoicePersistence.indexOf(
+      ".delete(invoiceEmailDeliveries)"
+    );
+    expect(deliveryCleanup).toBeGreaterThan(-1);
+    expect(deliveryCleanup).toBeLessThan(
+      invoicePersistence.indexOf(".delete(invoices)")
+    );
+    expect(
+      countOccurrences(invoicePersistence, "WORKSPACE_E2E_DATABASE_ALLOWLIST")
+    ).toBe(0);
+    expect(countOccurrences(databaseContract, 'from "@/env"')).toBe(0);
+    expect(countOccurrences(accountingKeyContract, 'from "@/env"')).toBe(0);
+    expect(
+      countOccurrences(accountingKeyContract, 'import "server-only"')
+    ).toBe(0);
+  });
 
-  expect(entry).toContain("playwright.e2e.config.ts");
-  expect(config).toContain("fullyParallel: true");
-  expect(config).toContain("maxFailures: 1");
-  expect(config).toContain("workers: 6");
-  expect(config).toContain('teardown: "checkout-cleanup"');
-  expect(config).toContain('name: "checkout-availability"');
-  expect(config).toContain('name: "checkout-plan"');
-  expect(config).toContain("dependencies: [...checkoutCaseProjects]");
-  expect(config).toContain("workspaceE2EPlaywrightCheckoutTimeout");
-  expect(config).toContain("resolvePlaywrightChromiumExecutable");
-  expect(entry).toContain("playwrightEnvironment");
-  expect(entry).not.toContain("...process.env");
-  expect(suite).not.toContain("Effect.forEach");
-  expect(suite).not.toContain("Semaphore");
-  expect(suite).not.toContain("Deferred");
-  expect(cleanupProject).toContain('phaseId: "suite-cleanup"');
-  expect(cleanupRuntime).not.toContain(
-    "makeWorkspaceE2EProviderVerificationPermitLive"
-  );
-  expect(cleanupRuntime).not.toContain("makeWorkspaceE2ECaseRuntimeLive");
-});
+  test("uses Playwright with the hosted runner browser without downloading another browser", () => {
+    expect(rawWorkflow.includes("playwright install --with-deps")).toBe(false);
+    expect(rawWorkflow.includes("command -v google-chrome")).toBe(true);
+    expect(rawWorkflow.includes("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH")).toBe(
+      true
+    );
+    expect(stepNames).toContain("Verify hosted browser runtime");
+  });
 
-test("preserves discount seeding and account phase dependencies", async () => {
-  const config = await Bun.file(
-    resolve(import.meta.dir, "../playwright.e2e.config.ts")
-  ).text();
+  test("lets Playwright own checkout preparation, scheduling, and parallelism", () => {
+    const entry = readTrackedSource(
+      resolve(import.meta.dir, "workspace-e2e.ts")
+    );
+    const suite = readTrackedSource(
+      resolve(import.meta.dir, "../e2e/suite.ts")
+    );
+    const cleanupRuntime = readTrackedSource(
+      resolve(
+        import.meta.dir,
+        "../e2e/playwright-checkout/cleanup-runtime-fixtures.ts"
+      )
+    );
+    const config = readTrackedSource(
+      resolve(import.meta.dir, "../playwright.e2e.config.ts")
+    );
 
-  expect(config).toContain(
-    'dependencies: ["checkout-setup", "checkout-seed"],\n      name: "checkout-availability",'
-  );
-  expect(config).toContain(
-    'dependencies: ["checkout-plan"],\n      name: "account-auth",'
-  );
-  expect(config).toContain(
-    'dependencies: ["checkout-setup"],\n      name: "checkout-provider-preparation",'
-  );
-  expect(config).toContain(
-    'dependencies: ["checkout-setup"],\n      name: "checkout-invoice-persistence",'
-  );
-});
+    expect(entry.includes("playwright.e2e.config.ts")).toBe(true);
+    expect(config.includes("fullyParallel: true")).toBe(true);
+    expect(config.includes("maxFailures: 1")).toBe(true);
+    expect(config.includes("workers: 6")).toBe(true);
+    expect(config.includes('teardown: "checkout-cleanup"')).toBe(true);
+    expect(config.includes('name: "checkout-availability"')).toBe(true);
+    expect(config.includes('name: "checkout-plan"')).toBe(true);
+    expect(config.includes("dependencies: [...checkoutCaseProjects]")).toBe(
+      true
+    );
+    expect(config.includes("workspaceE2EPlaywrightCheckoutTimeout")).toBe(true);
+    expect(config.includes("resolvePlaywrightChromiumExecutable")).toBe(true);
+    expect(entry.includes("playwrightEnvironment")).toBe(true);
+    expect(entry.includes("...process.env")).toBe(false);
+    expect(suite.includes("Effect.forEach")).toBe(false);
+    expect(suite.includes("Semaphore")).toBe(false);
+    expect(suite.includes("Deferred")).toBe(false);
+    expect(
+      readTrackedSource(
+        resolve(import.meta.dir, "../e2e/playwright-checkout/cleanup.pw.ts")
+      ).includes('phaseId: "suite-cleanup"')
+    ).toBe(true);
+    expect(
+      cleanupRuntime.includes("makeWorkspaceE2EProviderVerificationPermitLive")
+    ).toBe(false);
+    expect(cleanupRuntime.includes("makeWorkspaceE2ECaseRuntimeLive")).toBe(
+      false
+    );
+  });
 
-test("lets Playwright schedule read-only navigation beside checkout cases", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
-  const checkoutJob = workflow.slice(
-    workflow.indexOf("  test-e2e:"),
-    workflow.indexOf("  publish-final-status:")
-  );
-  const finalStatusJob = workflow.slice(
-    workflow.indexOf("  publish-final-status:")
-  );
-  const packageJson = await Bun.file(
-    resolve(import.meta.dir, "../package.json")
-  ).json();
-  const config = await Bun.file(
-    resolve(import.meta.dir, "../playwright.e2e.config.ts")
-  ).text();
+  test("preserves discount seeding and account phase dependencies", () => {
+    const config = readTrackedSource(
+      resolve(import.meta.dir, "../playwright.e2e.config.ts")
+    );
 
-  expect(workflow).not.toContain("  test-instant-navigation:");
-  expect(workflow).not.toContain("Run instant navigation E2E");
-  expect(checkoutJob).toContain("needs: [resolve-target, migrate-preview]");
-  expect(checkoutJob).not.toContain("Migrate preview database");
-  expect(finalStatusJob).toContain("needs: [resolve-target, test-e2e]");
-  expect(config).toContain('name: "instant-navigation"');
-  expect(config).toContain('testDir: "./e2e/instant-navigation"');
-  expect(config).toContain("fullyParallel: true");
-  expect(config).toContain("workers: 6");
-  expect(packageJson.scripts["test:instant-navigation"]).toContain(
-    "--project=instant-navigation"
-  );
-});
+    expect(
+      config.includes(
+        'dependencies: ["checkout-setup", "checkout-seed"],\n      name: "checkout-availability",'
+      )
+    ).toBe(true);
+    expect(
+      config.includes(
+        'dependencies: ["checkout-plan"],\n      name: "account-auth",'
+      )
+    ).toBe(true);
+    expect(
+      config.includes(
+        'dependencies: ["checkout-setup"],\n      name: "checkout-provider-preparation",'
+      )
+    ).toBe(true);
+    expect(
+      config.includes(
+        'dependencies: ["checkout-setup"],\n      name: "checkout-invoice-persistence",'
+      )
+    ).toBe(true);
+  });
 
-test("lets Playwright write complete GitHub job summaries", async () => {
-  const workflow = await Bun.file(
-    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
-  ).text();
-  const config = await Bun.file(
-    resolve(import.meta.dir, "../playwright.e2e.config.ts")
-  ).text();
+  test("lets Playwright schedule read-only navigation beside checkout cases", () => {
+    const packageJson = readTrackedJson("../package.json") as {
+      readonly scripts: Record<string, string>;
+    };
+    const config = readTrackedSource(
+      resolve(import.meta.dir, "../playwright.e2e.config.ts")
+    );
+    expect(Object.keys(doc.jobs).includes("test-instant-navigation")).toBe(
+      false
+    );
+    expect(rawWorkflow.includes("Run instant navigation E2E")).toBe(false);
+    expect(JSON.stringify(testJob.needs)).toBe(
+      JSON.stringify(["resolve-target", "migrate-preview"])
+    );
+    // The checkout job reuses the migrated preview; it never migrates itself.
+    expect(
+      (testJob.steps ?? []).some(
+        (step) => step.name === "Migrate preview database"
+      )
+    ).toBe(false);
+    expect(doc.jobs["publish-final-status"].needs).toEqual([
+      "resolve-target",
+      "test-e2e",
+    ]);
+    expect(config.includes('name: "instant-navigation"')).toBe(true);
+    expect(config.includes('testDir: "./e2e/instant-navigation"')).toBe(true);
+    expect(config.includes("fullyParallel: true")).toBe(true);
+    expect(config.includes("workers: 6")).toBe(true);
+    expect(packageJson.scripts["test:instant-navigation"]).toContain(
+      "--project=instant-navigation"
+    );
+  });
 
-  expect(workflow).not.toContain("GITHUB_STEP_SUMMARY");
-  expect(config).toContain("playwright-github-summary.ts");
+  test("lets Playwright write complete GitHub job summaries", () => {
+    const config = readTrackedSource(
+      resolve(import.meta.dir, "../playwright.e2e.config.ts")
+    );
+
+    expect(rawWorkflow.includes("GITHUB_STEP_SUMMARY")).toBe(false);
+    expect(config.includes("playwright-github-summary.ts")).toBe(true);
+  });
 });
