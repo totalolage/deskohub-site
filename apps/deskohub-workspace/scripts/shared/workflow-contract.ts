@@ -29,6 +29,7 @@ export interface WorkflowJob {
 
 export interface WorkflowDoc {
   readonly jobs: Readonly<Record<string, WorkflowJob>>;
+  readonly permissions?: Record<string, string>;
 }
 
 export const parseWorkflow = (path: string): WorkflowDoc =>

@@ -29,7 +29,52 @@ export const extractImportSpecifiers = (source: string): readonly string[] =>
     ...source.matchAll(
       /(?:^|\n)\s*(?:import|export)[^'"]*from\s+['"]([^'"]+)['"]/g
     ),
+    ...source.matchAll(/(?:^|\n)\s*import\s+['"]([^'"]+)['"]/g),
   ].map((match) => match[1] ?? "");
+
+/**
+ * Ordered code tokens (identifiers, string literals, punctuation) with
+ * comments stripped, so verdicts can key on code structure instead of raw
+ * text formatting.
+ */
+export const sourceTokens = (source: string): readonly string[] =>
+  [
+    ...source
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\/\/[^\n]*/g, " ")
+      .matchAll(
+        /[A-Za-z_$][\w$]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\S/g
+      ),
+  ].map((match) => match[0] ?? "");
+
+/** Number of exact, adjacent occurrences of a token sequence. */
+export const countTokenSequence = (
+  tokens: readonly string[],
+  sequence: readonly string[]
+): number =>
+  sequence.length === 0
+    ? 0
+    : tokens.reduce(
+        (count, _, index) =>
+          sequence.every((token, offset) => tokens[index + offset] === token)
+            ? count + 1
+            : count,
+        0
+      );
+
+/** Index of the first exact occurrence of a token sequence, or -1. */
+export const tokenSequenceIndex = (
+  tokens: readonly string[],
+  sequence: readonly string[]
+): number => {
+  if (sequence.length === 0) return -1;
+  for (let index = 0; index <= tokens.length - sequence.length; index += 1) {
+    if (sequence.every((token, offset) => tokens[index + offset] === token)) {
+      return index;
+    }
+  }
+  return -1;
+};
 
 export const sliceBetween = (
   source: string,
