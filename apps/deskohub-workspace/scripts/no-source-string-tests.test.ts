@@ -6,6 +6,7 @@ import {
   listTrackedTestFiles,
   repositoryRoot,
 } from "./shared/no-source-string-audit";
+import { countTokenSequence, sourceTokens } from "./shared/source-contract";
 
 const repoRoot = repositoryRoot();
 const trackedFiles = listTrackedTestFiles().map((relativePath) => ({
@@ -48,6 +49,9 @@ describe("no source-as-string contract tests", () => {
     const regExp = ["Reg", "Exp"].join("");
     const countOccurrencesName = ["count", "Occurrences"].join("");
     const readTrackedSourceName = ["readTracked", "Source"].join("");
+    const toMatch = ["to", "Match"].join("");
+    const regexLiteral = ["/export default", "/"].join("");
+    const newRegExp = ["new ", regExp, "("].join("");
 
     const legacyRead = `const ${sourceVar} = await Bun.file(new URL("./layout.tsx", import.meta.url)).text();`;
     const wrapperRead = `const ${sourceVar} = ${readTrackedSourceName}(new URL("./layout.tsx", import.meta.url).pathname);`;
@@ -60,6 +64,17 @@ describe("no source-as-string contract tests", () => {
           legacyRead,
           'test("pins the layout", () => {',
           `  expect(${sourceVar}).${toContain}("export default function");`,
+          "});",
+        ].join("\n"),
+      },
+      {
+        path: "tmp/regex-argument.test.ts",
+        content: [
+          'import { expect, test } from "bun:test";',
+          legacyRead,
+          'test("pins via matcher regex", () => {',
+          `  expect(${sourceVar}).${toMatch}(${regexLiteral});`,
+          `  expect(${sourceVar}).not.${toMatch}(${newRegExp}"export default"));`,
           "});",
         ].join("\n"),
       },
@@ -111,6 +126,23 @@ describe("no source-as-string contract tests", () => {
     expect(
       findViolations(fixtures).map((violation) => violation.split(":")[0])
     ).toEqual(fixtures.map((fixture) => fixture.path).sort());
+  });
+
+  test("the tokenizer keeps spread ellipses as single tokens", () => {
+    // Fixture for the raw-env-spread policy: an ellipsis must tokenize as one
+    // token so `...process.env` spreads are detectable as a token sequence.
+    const ellipsis = ["..", "."].join("");
+    const snippet = [
+      "const env = {",
+      ellipsis,
+      "process",
+      ".",
+      "env",
+      "};",
+    ].join(" ");
+    const sequence = [ellipsis, "process", ".", "env"];
+
+    expect(countTokenSequence(sourceTokens(snippet), sequence)).toBe(1);
   });
 
   test("the audit ignores structural verdicts over read sources", () => {

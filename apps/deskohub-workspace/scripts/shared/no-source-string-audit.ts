@@ -79,9 +79,6 @@ const POLICY_SCANNERS = [
   // Counts datasource-wiring identifiers across the tracked E2E database
   // integration sources.
   "apps/deskohub-workspace/e2e/integrations/database.test.ts",
-  // Scans the tracked Dotypos integration for the overlapping-reservations
-  // call shape.
-  "apps/deskohub-workspace/e2e/integrations/dotypos.test.ts",
   // Scans the tracked consent module for forbidden cookie/timer APIs.
   "apps/deskohub-workspace/e2e/legal-cookie-consent.test.ts",
   // Scans the tracked route module for exported HTTP handlers and cache
@@ -120,7 +117,7 @@ const DERIVED_READ =
 
 const LITERAL_PIN_ON = (variable: string) =>
   new RegExp(
-    `expect\\(\\s*${variable}\\s*\\)\\s*\\.\\s*(?:not\\.)?\\s*(?:toContain|toMatch|toContainEqual)\\s*\\(\\s*(?:"[^"]*"|'[^']*')`
+    `expect\\(\\s*${variable}\\s*\\)\\s*\\.\\s*(?:not\\.)?\\s*(?:toContain|toMatch|toContainEqual)\\s*\\(\\s*(?:"[^"]*"|'[^']*'|/(?:[^/\\\\\\n]|\\\\.)+/[a-z]*|new\\s+RegExp\\s*\\()`
   );
 
 /**

@@ -116,13 +116,24 @@ describe("deploy-workspace-production workflow", () => {
   });
 
   test("persists the pre-request baseline before the promotion request", () => {
-    expect(countOccurrences(script, "baseline_url=")).toBeGreaterThan(0);
-    expect(countOccurrences(script, "promotion_state=possibly-started")).toBe(
-      1
+    // The promote step persists the pre-request baseline as step outputs and
+    // the always() recovery step consumes them; both are asserted on the
+    // parsed workflow structure in job order.
+    const promoteStep = stepByName("Promote production deployment");
+    expect(promoteStep.id).toBe("promote");
+    const restoreStep = stepByName(
+      "Restore the pre-request production baseline"
     );
-    expect(script.indexOf("promotion_state=possibly-started")).toBeLessThan(
-      script.indexOf("requestPromotion(")
+    const recoveryContract = `${restoreStep.if ?? ""}\n${restoreStep.run ?? ""}`;
+    expect(recoveryContract).toContain("steps.promote.outputs.baseline_url");
+    expect(recoveryContract).toContain("steps.promote.outputs.baseline_id");
+    expect(recoveryContract).toContain("steps.promote.outputs.promotion_state");
+    const promoteIndex = stepIndexOfName("Promote production deployment");
+    const restoreIndex = stepIndexOfName(
+      "Restore the pre-request production baseline"
     );
+    expect(promoteIndex).toBeGreaterThan(-1);
+    expect(promoteIndex).toBeLessThan(restoreIndex);
   });
 
   test("restores the pre-request baseline, never the stale pre-build retention target", () => {

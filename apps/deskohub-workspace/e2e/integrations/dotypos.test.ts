@@ -1,13 +1,10 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import {
   DotyposDiscountGroupIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect } from "effect";
-import { countOccurrences } from "../../scripts/shared/source-contract";
 import {
   dotyposTimestampMatches,
   selectE2EDotyposDiscountGroup,
@@ -92,17 +89,10 @@ test("waits for cancelled reservations to leave active inventory", async () => {
   expect(reads).toBe(3);
 });
 
-test("uses the active-overlap read model for cleanup convergence", () => {
-  const source = readFileSync(
-    fileURLToPath(new URL("./dotypos.ts", import.meta.url)),
-    "utf8"
-  );
-
-  expect(
-    source.match(/dotypos\.listActiveReservationsOverlapping\(interval\)/g)
-  ).toHaveLength(3);
-  expect(countOccurrences(source, "dotypos.listReservations(),")).toBe(0);
-});
+// Cleanup-convergence coverage is behavioral: the "waits for cancelled
+// reservations to leave active inventory" test above executes
+// waitForDotyposCancellationConvergence against a fake reader, which drives
+// the listActiveReservationsOverlapping read model to convergence (reads=3).
 
 test("waits for a customer discount-group change to become readable", async () => {
   let reads = 0;

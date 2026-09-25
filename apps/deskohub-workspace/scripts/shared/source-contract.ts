@@ -43,7 +43,7 @@ export const sourceTokens = (source: string): readonly string[] =>
       .replace(/\/\*[\s\S]*?\*\//g, " ")
       .replace(/\/\/[^\n]*/g, " ")
       .matchAll(
-        /[A-Za-z_$][\w$]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\S/g
+        /[A-Za-z_$][\w$]*|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\.\.\.|\S/g
       ),
   ].map((match) => match[0] ?? "");
 
