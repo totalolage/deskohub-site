@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { updateCustomerProfileStandardSchema } from "../contracts";
 
 const readFile = async (relativePath: string) =>
@@ -67,9 +67,34 @@ describe("Customer-account boundary", () => {
   });
 
   test("keeps every authoritative server session read refresh-free so the browser route owns the rolling cookie", async () => {
-    const source = await readFile("backend/customer-authentication.service.ts");
+    const { makeAuthoritySessionRead } = await import(
+      "./customer-authentication.service"
+    );
+    const recordedSessionInputs: Array<{
+      readonly query: { readonly disableRefresh: true };
+      readonly headers: Headers;
+    }> = [];
+    const readSession = makeAuthoritySessionRead({
+      readRequestHeaders: async () => new Headers({ "x-e2e-probe": "1" }),
+      loadAuthority: async () => ({
+        auth: {
+          api: {
+            getSession: async (input: {
+              readonly query: { readonly disableRefresh: true };
+              readonly headers: Headers;
+            }) => {
+              recordedSessionInputs.push(input);
+              return null;
+            },
+          },
+        },
+      }),
+    });
 
-    expect(/disableRefresh:\s*true/.test(source)).toBe(true);
+    expect(await readSession()).toBeNull();
+    expect(recordedSessionInputs.length).toBe(1);
+    expect(recordedSessionInputs[0]?.query).toEqual({ disableRefresh: true });
+    expect(recordedSessionInputs[0]?.headers.get("x-e2e-probe")).toBe("1");
   });
 
   test("confines Better Auth imports to the auth boundary, the session adapter, and the browser client", async () => {
@@ -120,11 +145,43 @@ describe("Customer-account boundary", () => {
     expect(/export const GET/.test(routeSource)).toBe(true);
     expect(/export const POST/.test(routeSource)).toBe(true);
     expect(/export const (PUT|PATCH|DELETE)\b/.test(routeSource)).toBe(false);
-    expect(/private,\s*no-store/.test(routeSource)).toBe(true);
 
     await expect(
       fs.access(path.resolve(accountDirectory, "components/auth-provider.tsx"))
     ).rejects.toThrow();
+  });
+
+  test("executes the auth route handler and forces private, no-store onto the response", async () => {
+    const handlerCalls: Request[] = [];
+    mock.module("@/features/account/server/auth.server", () => ({
+      auth: {
+        handler: async (request: Request) => {
+          handlerCalls.push(request);
+          const response = Response.json({ ok: true });
+          response.headers.append(
+            "Set-Cookie",
+            "workspace_session=fake; Path=/; HttpOnly"
+          );
+          return response;
+        },
+      },
+    }));
+
+    try {
+      const route = await import("../../../app/api/auth/[...all]/route");
+
+      expect(route.POST).toBe(route.GET);
+      const response = await route.GET(
+        new Request("https://deskohub.test/api/auth/get-session")
+      );
+      expect(handlerCalls.length).toBe(1);
+      expect(response.headers.get("cache-control")).toBe("private, no-store");
+      expect(response.headers.get("set-cookie")).toContain(
+        "workspace_session=fake"
+      );
+    } finally {
+      mock.restore();
+    }
   });
 
   test("keeps client and server directives out of the backend and confines the browser client", async () => {

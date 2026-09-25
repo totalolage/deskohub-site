@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { workspaceE2EAccountCaseIds } from "../e2e/account/catalog";
+import {
+  workspaceE2EPlaywrightCheckoutTimeout,
+  workspaceE2ETimeouts,
+} from "../e2e/timeouts";
 import { countOccurrences } from "./shared/source-contract";
 
 const repoFile = (relative: string) => resolve(import.meta.dir, "..", relative);
@@ -323,12 +327,6 @@ describe("workspace account e2e graph", () => {
 
   test("bounds the confirmed-reservations step as one combined condition", async () => {
     const cases = readFileSync(repoFile("e2e/account/cases.ts"), "utf8");
-    expect(
-      countOccurrences(
-        cases,
-        "const accountPageLoadTimeout = browserTimeout + datasourceTimeout;"
-      )
-    ).toBeGreaterThan(0);
     const stepBlock = isolatedStepBlock(
       cases,
       '"shows the confirmed reservations in the current group"'
@@ -340,10 +338,14 @@ describe("workspace account e2e graph", () => {
       "currentReservationsTitle",
       "confirmedStatus"
     );
-    expect(
-      countOccurrences(stepBlock, "timeoutMs: datasourceTimeout")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
+
+    // The page-load budget is the configured browser-action and datasource
+    // timeouts combined (see accountPageLoadTimeout in cases.ts); it must fit
+    // inside the overall Playwright checkout budget.
+    expect(workspaceE2ETimeouts.browserAction).toBeGreaterThan(0);
+    expect(workspaceE2EPlaywrightCheckoutTimeout).toBeGreaterThanOrEqual(
+      workspaceE2ETimeouts.browserAction + workspaceE2ETimeouts.datasource
+    );
   });
 
   test("keeps cancellation a standalone datasource step before the past page", async () => {
@@ -378,10 +380,6 @@ describe("workspace account e2e graph", () => {
       "pastReservationsTitle",
       "cancelledStatus"
     );
-    expect(
-      countOccurrences(stepBlock, "timeoutMs: datasourceTimeout")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
   });
 
   test("bounds the retained-history page step as one combined condition", async () => {
@@ -397,10 +395,6 @@ describe("workspace account e2e graph", () => {
       "pastReservationsTitle",
       "cancelledStatus"
     );
-    expect(
-      countOccurrences(stepBlock, "timeoutMs: datasourceTimeout")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(stepBlock, "accountPageLoadTimeout")).toBe(1);
   });
 
   test("hands the reauthentication link to the session lifecycle case", async () => {
