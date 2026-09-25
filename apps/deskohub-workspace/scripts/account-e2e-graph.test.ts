@@ -146,10 +146,8 @@ describe("workspace account e2e graph", () => {
     // The budget must derive both constants from the deployed production
     // options so the E2E window and one-request headroom cannot drift from
     // the real limiter; assert the real configured values, not declarations.
-    const {
-      magicLinkOperationWindowMs,
-      magicLinkOperationsPerWindow,
-    } = await import("../e2e/account/rate-budget");
+    const { magicLinkOperationWindowMs, magicLinkOperationsPerWindow } =
+      await import("../e2e/account/rate-budget");
     const { betterAuthMagicLinkOptions } = await import(
       "@/features/account/backend/auth/auth-options"
     );
