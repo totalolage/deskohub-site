@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.1](https://github.com/totalolage/deskohub-site/compare/dhw-v1.11.0...dhw-v1.11.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **dhw:** adopt official TypeScript 7/6 side-by-side toolchain ([dd75b30](https://github.com/totalolage/deskohub-site/commit/dd75b30ffca9128f9c7a91c692a95108d17cb36e))
+* **dhw:** resolve Effect plugin diagnostics surfaced by tsgo ([89fba82](https://github.com/totalolage/deskohub-site/commit/89fba8288cc63f4e5058783286068e1380264548))
+
 ## [1.11.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.10.0...dhw-v1.11.0) (2026-09-04)
 
 
