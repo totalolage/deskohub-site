@@ -15,6 +15,6 @@
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",
-    "typescript": "^5"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

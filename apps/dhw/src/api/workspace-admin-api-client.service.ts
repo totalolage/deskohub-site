@@ -412,9 +412,9 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
   const client = yield* makeClient();
 
   return {
-    getInfo: Effect.fn("WorkspaceAdminApiClient.getInfo")(() =>
-      client.cli.getInfo({})
-    )(),
+    getInfo: client.cli
+      .getInfo({})
+      .pipe(Effect.withSpan("WorkspaceAdminApiClient.getInfo")),
     startAuthentication: Effect.fn(
       "WorkspaceAdminApiClient.startAuthentication"
     )((input: StartCliAuthenticationType) =>
