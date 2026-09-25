@@ -66,8 +66,6 @@ const POLICY_SCANNERS = [
   "apps/deskohub-workspace/scripts/production-release-workflow.test.ts",
   // Counts database-variable wiring across test-harness sources.
   "apps/deskohub-workspace/scripts/workspace-tests-workflow.test.ts",
-  // Counts SQL grant statements inside the coordination provisioner source.
-  "apps/deskohub-workspace/scripts/workspace-e2e-coordination-provision.test.ts",
   // Counts shell/locale markers in the credential generator and pins the
   // documentation contract of .env.example.
   "apps/deskohub-workspace/scripts/generate-administrator-credentials.test.ts",
