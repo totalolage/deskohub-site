@@ -6,7 +6,11 @@ import {
   listTrackedTestFiles,
   repositoryRoot,
 } from "./shared/no-source-string-audit";
-import { countTokenSequence, sourceTokens } from "./shared/source-contract";
+import {
+  countTokenSequence,
+  sourceTokens,
+  stripLineComments,
+} from "./shared/source-contract";
 
 const repoRoot = repositoryRoot();
 const trackedFiles = listTrackedTestFiles().map((relativePath) => ({
@@ -126,6 +130,81 @@ describe("no source-as-string contract tests", () => {
     expect(
       findViolations(fixtures).map((violation) => violation.split(":")[0])
     ).toEqual(fixtures.map((fixture) => fixture.path).sort());
+  });
+
+  test("comment markers inside string literals do not hide active code", () => {
+    // Fixtures are assembled from fragments so this tracked test file never
+    // contains a full audited literal itself.
+    const identifier = ["Semap", "hore"].join("");
+    const urlLiteral = ["https", "://example", ".test"].join("");
+    const declaration = (name: string) =>
+      ["const", name, "=", "1", ";"].join(" ");
+
+    // A `//` inside a double-quoted URL must not delete the code after it,
+    // whether it follows on the next line or the same line.
+    const urlFixture = [
+      `const endpoint = "${urlLiteral}";`,
+      declaration(identifier),
+    ].join("\n");
+    expect(countTokenSequence(sourceTokens(urlFixture), [identifier])).toBe(1);
+    const urlSameLineFixture = [
+      `const endpoint = "${urlLiteral}"; ${declaration(identifier)}`,
+    ].join("\n");
+    expect(
+      countTokenSequence(sourceTokens(urlSameLineFixture), [identifier])
+    ).toBe(1);
+
+    // A `/*` inside one string and a `*\/` inside a later string must not
+    // erase the statement between them.
+    const blockStart = `const open = "/*";`;
+    const blockEnd = `const close = "*/";`;
+    const blockFixture = [blockStart, declaration(identifier), blockEnd].join(
+      "\n"
+    );
+    expect(countTokenSequence(sourceTokens(blockFixture), [identifier])).toBe(
+      1
+    );
+
+    // The same holds inside a template literal and one of its interpolations.
+    const templateFixture = [
+      "const banner = `" + urlLiteral + "`;",
+      declaration(identifier),
+    ].join("\n");
+    expect(
+      countTokenSequence(sourceTokens(templateFixture), [identifier])
+    ).toBe(1);
+  });
+
+  test("real comments still hide the code they contain", () => {
+    const identifier = ["Semap", "hore"].join("");
+    const urlLiteral = ["https", "://example", ".test"].join("");
+
+    // A `//` comment on the same line as an active URL string still hides the
+    // commented-out identifier after it.
+    const lineFixture = [
+      `const endpoint = "${urlLiteral}"; // const ${identifier} = 1;`,
+    ].join("\n");
+    expect(countTokenSequence(sourceTokens(lineFixture), [identifier])).toBe(0);
+
+    // A block comment still hides the commented-out identifier inside it.
+    const blockFixture = ["/* const", identifier, "= 1; */"].join(" ");
+    expect(countTokenSequence(sourceTokens(blockFixture), [identifier])).toBe(
+      0
+    );
+
+    // stripLineComments keeps the contract for real comments only: the URL
+    // line survives untouched while the commented-out line is stripped.
+    const strippedActive = stripLineComments(
+      [`const endpoint = "${urlLiteral}";`, `const ${identifier} = 1;`].join(
+        "\n"
+      )
+    );
+    expect(strippedActive.includes(identifier)).toBe(true);
+
+    const strippedCommented = stripLineComments(
+      `const endpoint = "${urlLiteral}"; // const ${identifier} = 1;`
+    );
+    expect(strippedCommented.includes(identifier)).toBe(false);
   });
 
   test("the tokenizer keeps spread ellipses as single tokens", () => {
