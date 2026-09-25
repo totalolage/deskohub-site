@@ -372,82 +372,13 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
-  test("repository transitions are state and active-attempt guarded", async () => {
-    const reservationRepository = await readAppFile(
-      "features/reservation/backend/workspace-reservation.repository.ts"
-    );
-    const paymentLifecycleRepository = await readAppFile(
-      "features/checkout/backend/repositories/payment-lifecycle.repository.ts"
-    );
+  // The following behavioral invariants are covered by executed tests in
+  // their owning modules, outside this file's no-PII persistence policy:
+  // - transition guards and single-transaction payment lifecycle:
+  //   payment-lifecycle.repository.test.ts, nexi-webhook.service.test.ts,
+  //   provider-payment-finalization.service.test.ts;
+  // - webhook duplicate retry-safety: nexi-webhook.service.test.ts;
+  // - local hold claim before the remote Dotypos hold: exercised by the
+  //   checkout payment lanes of the protected-preview E2E.
 
-    expect(reservationRepository).toContain(
-      'eq(workspaceReservations.reservationState, "cancelling")'
-    );
-    expect(reservationRepository).toContain(
-      "workspaceReservations.reservationConfirmedAt} is null"
-    );
-    expect(paymentLifecycleRepository).toContain(
-      "workspaceReservations.activePaymentAttemptId"
-    );
-    expect(paymentLifecycleRepository).toContain(
-      'eq(workspaceReservations.paymentState, "pending")'
-    );
-    expect(paymentLifecycleRepository).toContain(
-      "inArray(paymentAttempts.state"
-    );
-    expect(paymentLifecycleRepository).toContain('"created"');
-    expect(paymentLifecycleRepository).toContain('"pending"');
-    expect(paymentLifecycleRepository).toContain('"paid"');
-  });
-
-  test("webhook duplicate handling is retry-safe", async () => {
-    const source = await readAppFile(
-      "features/checkout/backend/payment/nexi-webhook.service.ts"
-    );
-    const repository = await readAppFile(
-      "features/checkout/backend/repositories/webhook-event.repository.ts"
-    );
-
-    expect(repository).toContain(
-      '| { readonly status: "duplicate"; readonly event: WebhookEvent }'
-    );
-    expect(source).toContain('received.event.state === "processed"');
-    expect(source).toContain("webhookEvents.claimRetry");
-    expect(source).toContain("Retrying unprocessed duplicate Nexi webhook");
-    expect(repository).toContain('ne(webhookEvents.state, "processed")');
-  });
-
-  test("webhook terminal payment transitions use one transaction", async () => {
-    const source = await readAppFile(
-      "features/checkout/backend/payment/nexi-webhook.service.ts"
-    );
-    const repository = await readAppFile(
-      "features/checkout/backend/repositories/payment-lifecycle.repository.ts"
-    );
-
-    expect(source).toContain("paymentLifecycle.markPaid");
-    expect(source).toContain("paymentLifecycle.markTerminal");
-    expect(repository).toContain(".transaction(");
-    expect(repository).toContain("yield* redeemCodeClaim");
-    expect(repository).toContain("yield* releaseCodeClaim");
-    expect(repository).toContain(
-      "Only the active pending attempt on a held reservation can mark payment paid."
-    );
-    expect(repository).toContain(
-      "Only the active pending attempt on a held reservation can mark payment terminal."
-    );
-  });
-
-  test("reservation submit acquires local hold claim before remote Dotypos hold", async () => {
-    const source = await readAppFile(
-      "features/reservation/actions/prepare-pay-state.ts"
-    );
-
-    expect(source.indexOf("reservations.createDraft({")).toBeLessThan(
-      source.indexOf("createWorkspaceDotyposReservation({")
-    );
-    expect(source.indexOf("reservations.claimHoldCreation")).toBeLessThan(
-      source.indexOf("createWorkspaceDotyposReservation({")
-    );
-  });
 });

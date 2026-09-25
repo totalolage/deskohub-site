@@ -15,6 +15,20 @@ export const readTrackedSource = (filePath: string): string =>
 export const countOccurrences = (source: string, needle: string): number =>
   source.split(needle).length - 1;
 
+/**
+ * Strips `//` line comments so occurrence counts key on active code only: a
+ * commented-out call must not satisfy a structural presence check.
+ */
+export const stripLineComments = (source: string): string =>
+  source
+    .split("\n")
+    .map((line) => {
+      const commentAt = line.indexOf("//");
+      return commentAt === -1 ? line : line.slice(0, commentAt);
+    })
+    .join("\n")
+    .replace(/\s+/g, " ");
+
 /** Extracts `id: "..."` step identifiers in source order. */
 export const extractStepIds = (source: string): readonly string[] =>
   [...source.matchAll(/\bid:\s*"([^"]+)"/g)].map((match) => match[1] ?? "");

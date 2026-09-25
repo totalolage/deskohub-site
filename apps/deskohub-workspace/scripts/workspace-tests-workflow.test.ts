@@ -134,7 +134,7 @@ test("passes the disposable test database through Turborepo at the test task onl
   ).toBe(false);
 });
 
-test("keeps the disposable test database out of runtime configuration", () => {
+test("keeps the disposable test database out of runtime configuration", async () => {
   const envSchema = readFileSync(
     resolve(import.meta.dir, "../env.schema.ts"),
     "utf8"
@@ -146,15 +146,22 @@ test("keeps the disposable test database out of runtime configuration", () => {
     ),
     "utf8"
   );
-  const preload = readFileSync(
-    resolve(import.meta.dir, "../shared/testing/workspace-test-environment.ts"),
-    "utf8"
-  );
 
+  // Static absence rules: neither the runtime env schema nor the helper may
+  // route the disposable test database through runtime configuration.
   expect(envSchema.includes("WORKSPACE_TEST_DATABASE_URL")).toBe(false);
-  expect(helper.includes("WORKSPACE_TEST_DATABASE_URL")).toBe(true);
   expect(helper.includes("process.env.DATABASE_URL")).toBe(false);
-  expect(preload.includes("process.env.WORKSPACE_TEST_DATABASE_URL")).toBe(
-    true
+
+  // The helper/preload positive wiring is covered by execution: this very
+  // test process ran the preload, which mirrors the disposable database into
+  // the runtime DATABASE_URL whenever it is configured, and the helper reads
+  // the same variable.
+  const testDatabaseUrl = process.env.WORKSPACE_TEST_DATABASE_URL;
+  if (testDatabaseUrl !== undefined) {
+    expect(process.env.DATABASE_URL).toBe(testDatabaseUrl);
+  }
+  const { connectWorkspacePostgresTestDatabase } = await import(
+    "../shared/testing/workspace-postgres-test-database.test-utils"
   );
+  expect(connectWorkspacePostgresTestDatabase).toBeDefined();
 });

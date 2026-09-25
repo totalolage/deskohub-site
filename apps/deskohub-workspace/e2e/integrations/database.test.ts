@@ -1,7 +1,10 @@
 import { expect, mock, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { countOccurrences } from "../../scripts/shared/source-contract";
+import {
+  countOccurrences,
+  stripLineComments,
+} from "../../scripts/shared/source-contract";
 
 const readTrackedSource = (url: URL) =>
   readFileSync(fileURLToPath(url), "utf8");
@@ -104,7 +107,7 @@ test("reads persisted reservation details without legacy product columns", () =>
 
   expect(
     countOccurrences(
-      source,
+      stripLineComments(source),
       "reservation_details: workspaceReservations.reservationDetails"
     )
   ).toBe(1);
@@ -127,7 +130,7 @@ test("uses one worker-scoped Drizzle client for the exact preview datasource", (
 
   expect(
     countOccurrences(
-      databaseServiceSource,
+      stripLineComments(databaseServiceSource),
       "connectionString: config.databaseUrlUnpooled"
     )
   ).toBe(1);
@@ -138,11 +141,14 @@ test("uses one worker-scoped Drizzle client for the exact preview datasource", (
     )
   ).toBe(0);
   expect(
-    countOccurrences(runnerSource, "E2EDatabase.layer(datasourceConfig)")
+    countOccurrences(
+      stripLineComments(runnerSource),
+      "E2EDatabase.layer(datasourceConfig)"
+    )
   ).toBeGreaterThan(0);
   expect(
     countOccurrences(
-      runnerSource,
+      stripLineComments(runnerSource),
       "WorkspaceE2ECaseService.Default.pipe(Layer.provideMerge(support))"
     )
   ).toBe(1);
@@ -158,13 +164,13 @@ test("polls for checkout rows before asserting reservation replacement state", (
 
   expect(
     countOccurrences(
-      databaseSource,
+      stripLineComments(databaseSource),
       "pollUntil(readCheckoutRowFromDatabase(db, orderId)"
     )
   ).toBe(1);
   expect(
     countOccurrences(
-      reservationReplacementSource,
+      stripLineComments(reservationReplacementSource),
       "waitForCheckoutRow(datasourceConfig, orderId)"
     )
   ).toBe(1);
@@ -504,3 +510,15 @@ const makeCheckoutRow = () =>
     reservation_id: "reservation-1",
     security_token: "test-security-token",
   }) as CheckoutRow;
+
+test("presence counts are comment-aware: a commented-out call satisfies nothing", () => {
+  const commentedOut = [
+    "// const row = await pollUntil(readCheckoutRowFromDatabase(db, orderId));",
+  ].join("\n");
+  expect(
+    countOccurrences(
+      stripLineComments(commentedOut),
+      "pollUntil(readCheckoutRowFromDatabase(db, orderId)"
+    )
+  ).toBe(0);
+});

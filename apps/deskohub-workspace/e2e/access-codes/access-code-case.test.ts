@@ -425,11 +425,36 @@ describe("access code cleanup and watchdog budget", () => {
       resolve(import.meta.dir, "create-access-code.pw.ts"),
       "utf8"
     );
-    const barrierWaits = caseSource.split("awaitActionQuiescence(").length - 1;
+    // Comment-aware: a commented-out barrier call must not count as a wait.
+    const activeCaseSource = caseSource
+      .split("\n")
+      .map((line) => {
+        const commentAt = line.indexOf("//");
+        return commentAt === -1 ? line : line.slice(0, commentAt);
+      })
+      .join("\n");
+    const barrierWaits =
+      activeCaseSource.split("awaitActionQuiescence(").length - 1;
 
     expect(barrierWaits).toBe(
       workspaceE2EAccessCodeMutationBarrierCount
     );
+
+    // Negative fixture: a commented-out barrier call satisfies nothing.
+    const commentedOut = [
+      "// await awaitActionQuiescence(page);",
+    ].join("\n");
+    expect(commentedOut.split("awaitActionQuiescence(").length - 1).toBe(1);
+    expect(
+      commentedOut
+        .split("\n")
+        .map((line) => {
+          const commentAt = line.indexOf("//");
+          return commentAt === -1 ? line : line.slice(0, commentAt);
+        })
+        .join("\n")
+        .split("awaitActionQuiescence(").length - 1
+    ).toBe(0);
     expect(workspaceE2EAccessCodeCleanupTimeout).toBe(
       workspaceE2ETimeouts.accessCodeActionBarrier * barrierWaits +
         workspaceE2ETimeouts.accessCodeStaleBarrier +

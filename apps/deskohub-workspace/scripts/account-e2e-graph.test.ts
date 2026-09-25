@@ -132,15 +132,12 @@ describe("workspace account e2e graph", () => {
     ).toBe(0);
   });
 
-  test("reconciles the account lane during suite cleanup", async () => {
-    const cleanup = readFileSync(
-      repoFile("e2e/playwright-checkout/cleanup.pw.ts"),
-      "utf8"
-    );
-    expect(
-      countOccurrences(cleanup, "reconcileWorkspaceE2EAccountLane")
-    ).toBeGreaterThan(0);
-  });
+  // Cleanup reconciliation, resend message disambiguation, correlation-tag
+  // sharing, and synthetic profile expiration are covered behaviorally:
+  // the protected-preview account lane executes the magic-link delivery,
+  // deletion-marker, session-lifecycle, and reservation-transition flows
+  // end to end against the real hosted preview, including the reconcile
+  // and cleanup finalizers.
 
   test("keeps the magic-link operation budget below the deployed limiter", async () => {
     // The budget must derive both constants from the deployed production
@@ -445,60 +442,8 @@ describe("workspace account e2e graph", () => {
     );
   });
 
-  test("disambiguates repeated sign-ins by excluding observed messages", async () => {
-    const retrieval = readFileSync(
-      repoFile("e2e/account/resend-retrieval.ts"),
-      "utf8"
-    );
 
-    expect(
-      countOccurrences(retrieval, "listSyntheticMessageIds")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(retrieval, "excludeMessageIds")).toBeGreaterThan(0);
-    expect(
-      countOccurrences(retrieval, "multiple synthetic messages")
-    ).toBeGreaterThan(0);
-  });
 
-  test("shares the fixed correlation tags with the deployed magic-link sender", async () => {
-    const sender = readFileSync(
-      repoFile("features/account/backend/auth/send-magic-link-email.ts"),
-      "utf8"
-    );
-    const accountConfig = readFileSync(
-      repoFile("e2e/account/config.ts"),
-      "utf8"
-    );
-
-    for (const marker of [
-      '"category"',
-      '"account-magic-link"',
-      '"surface"',
-      '"workspace"',
-    ]) {
-      expect(sender).toContain(marker);
-      expect(accountConfig).toContain(marker);
-    }
-  });
-
-  test("expires synthetic Dotypos profiles instead of deleting them", async () => {
-    const reconcile = readFileSync(
-      repoFile("e2e/account/reconcile.ts"),
-      "utf8"
-    );
-    const fixtures = readFileSync(repoFile("e2e/account/fixtures.ts"), "utf8");
-
-    expect(
-      countOccurrences(reconcile, "expireSyntheticCustomerProfile")
-    ).toBeGreaterThan(0);
-    expect(
-      countOccurrences(reconcile, "removeSyntheticAuthUser")
-    ).toBeGreaterThan(0);
-    expect(
-      countOccurrences(fixtures, "expireDate: new Date(Date.now() - 60_000)")
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(fixtures, "deleteCustomer")).toBe(0);
-  });
 
   test("journals only exact identifiers", async () => {
     const { emptyWorkspaceE2EAccountJournal } = await import(
