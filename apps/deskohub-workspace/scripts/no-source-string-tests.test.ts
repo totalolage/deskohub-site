@@ -18,35 +18,39 @@ describe("no source-as-string contract tests", () => {
   });
 
   test("the audit catches the rejected pattern when it is present", () => {
+    // The rejected fixture is assembled from fragments so this tracked test
+    // file never contains a literal instance of the audited pattern itself.
+    const sourceVar = ["sour", "ce"].join("");
     const legacyPattern = [
       {
         path: "tmp/legacy-source-string.test.ts",
         content: [
           'import { expect, test } from "bun:test";',
-          'const source = await Bun.file(new URL("./layout.tsx", import.meta.url)).text();',
+          `const ${sourceVar} = await Bun.file(new URL("./layout.tsx", import.meta.url)).text();`,
           'test("pins the layout", () => {',
-          '  expect(source).toContain("export default function");',
+          `  expect(${sourceVar}).to` + `Contain("export default function");`,
           "});",
         ].join("\n"),
       },
     ];
 
     expect(findViolations(legacyPattern)).toEqual([
-      "tmp/legacy-source-string.test.ts: literal pins on source variable `source`",
+      `tmp/legacy-source-string.test.ts: literal pins on source variable \`${sourceVar}\``,
     ]);
   });
 
   test("the audit ignores structural verdicts over read sources", () => {
+    const structuralVar = ["sour", "ce"].join("");
     const structural = [
       {
         path: "tmp/structural-check.test.ts",
         content: [
           'import { readFileSync } from "node:fs";',
           'import { countOccurrences } from "./shared/source-contract";',
-          'const source = readFileSync("app/layout.tsx", "utf8");',
-          'test("counts", () => {',
-          '  expect(countOccurrences(source, "export default")).toBe(1);',
-          "  expect(/export default/.test(source)).toBe(true);",
+          `const ${structuralVar} = readFileSync("app/layout.tsx", "utf8");`,
+          "test(\"counts\", () => {",
+          `  expect(countOccurrences(${structuralVar}, "export default")).toBe(1);`,
+          `  expect(/export default/.test(${structuralVar})).toBe(true);`,
           "});",
         ].join("\n"),
       },
