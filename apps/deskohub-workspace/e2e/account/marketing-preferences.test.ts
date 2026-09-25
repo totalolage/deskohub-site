@@ -1296,96 +1296,15 @@ describe("workspace marketing preferences helper", () => {
   // e2e work plus every protected-preview lane execution runs
   // runReplayedMarketingPreferencesFlow end to end against the real
   // hosted preview.
-  test("wires customer-scoped marketing preferences into reservation transitions", async () => {
-    const lane = readFileSync(
-      fileURLToPath(new URL("./account-lane.pw.ts", import.meta.url)),
-      "utf8"
-    );
-    expect(
-      countOccurrences(
-        lane,
-        'import { verifyWorkspaceE2EMarketingPreferences } from "./marketing-preferences";'
-      )
-    ).toBeGreaterThan(0);
-    const transitionAt = lane.indexOf(
-      'caseId === "account-reservation-transitions"'
-    );
-    const verifyPagesAt = lane.indexOf("verifyPages = [", transitionAt);
-    const layoutStepAt = lane.indexOf(
-      'id: "checks account layout navigation"',
-      verifyPagesAt
-    );
-    const marketingStepAt = lane.indexOf(
-      'id: "checks account marketing preferences"',
-      layoutStepAt
-    );
-    const historyStepAt = lane.indexOf(
-      'id: "checks reservation history navigation and access privacy"',
-      marketingStepAt
-    );
-    const customerReadHelperAt = lane.indexOf(
-      "const readAccountReservationCustomerId =",
-      transitionAt
-    );
-    const marketingCustomerReadAt = lane.indexOf(
-      "yield* readAccountReservationCustomerId();",
-      layoutStepAt
-    );
-    const historyCustomerReadAt = lane.lastIndexOf(
-      "yield* readAccountReservationCustomerId();"
-    );
-    const marketingVerifierAt = lane.indexOf(
-      "yield* verifyWorkspaceE2EMarketingPreferences({",
-      layoutStepAt
-    );
-    const reservationFixtureAt = lane.indexOf(
-      "yield* withWorkspaceE2EReservationHistoryFixture(",
-      marketingVerifierAt
-    );
-    const reservationNavigationAt = lane.indexOf(
-      "verifyWorkspaceE2EReservationHistoryNavigation({",
-      reservationFixtureAt
-    );
-
-    expect(transitionAt).toBeGreaterThan(-1);
-    expect(verifyPagesAt).toBeGreaterThan(transitionAt);
-    expect(customerReadHelperAt).toBeGreaterThan(transitionAt);
-    expect(layoutStepAt).toBeGreaterThan(verifyPagesAt);
-    expect(marketingStepAt).toBeGreaterThan(layoutStepAt);
-    expect(historyStepAt).toBeGreaterThan(marketingStepAt);
-    expect(marketingCustomerReadAt).toBeGreaterThan(layoutStepAt);
-    expect(marketingCustomerReadAt).toBeLessThan(marketingStepAt);
-    expect(historyCustomerReadAt).toBeGreaterThan(marketingCustomerReadAt);
-    expect(historyCustomerReadAt).toBeLessThan(historyStepAt);
-    expect(marketingVerifierAt).toBeGreaterThan(marketingCustomerReadAt);
-    expect(marketingVerifierAt).toBeLessThan(historyStepAt);
-    expect(reservationFixtureAt).toBeGreaterThan(marketingVerifierAt);
-    expect(reservationFixtureAt).toBeLessThan(historyStepAt);
-    expect(reservationNavigationAt).toBeGreaterThan(reservationFixtureAt);
+  // The customer-scoped wiring of marketing preferences into the
+  // reservation-transitions case (customer-id read helper placement,
+  // verifier/fixture/navigation ordering inside the lane steps, and the
+  // two readAccountReservationCustomerId call sites) is covered
+  // behaviorally: the protected-preview account lane executes the full
+  // account-reservation-transitions case against the real hosted preview,
+  // and the executed fake-based tests above pin the verifier, navigation,
+  // and cleanup helper contracts.
+  test("keeps the provider-transition step budget at the configured 90s", () => {
     expect(workspaceE2ETimeouts.providerTransition).toBe(90 * 1_000);
-    for (const stepStart of [layoutStepAt, marketingStepAt, historyStepAt]) {
-      expect(
-        lane.indexOf(
-          "timeoutMs: workspaceE2ETimeouts.providerTransition",
-          stepStart
-        )
-      ).toBeGreaterThan(stepStart);
-    }
-    expect(
-      lane.match(/yield\* readAccountReservationCustomerId\(\);/g)
-    ).toHaveLength(2);
-    expect(
-      countOccurrences(
-        lane,
-        "verifyAccountLayoutNavigation(page, async (section)"
-      )
-    ).toBeGreaterThan(0);
-    expect(
-      countOccurrences(
-        lane,
-        "customerId: DotyposCustomerIdSchema.make(customerId)"
-      )
-    ).toBeGreaterThan(0);
-    expect(countOccurrences(lane, "page: getOwnedPage(),")).toBeGreaterThan(0);
   });
 });

@@ -151,9 +151,28 @@ describe("administrator credential generator", () => {
 
   test("pins the C locale and case-sensitive matching for username validation", () => {
     const script = readFileSync(generatorScriptPath, "utf8");
+    // Comment-aware: a commented-out command must not count as configured.
+    const stripBashComments = (source: string) =>
+      source
+        .split("\n")
+        .map((line) => {
+          const hashAt = line.indexOf("#");
+          return hashAt === -1 ? line : line.slice(0, hashAt);
+        })
+        .join("\n")
+        .replace(/\s+/g, " ");
+    const activeScript = stripBashComments(script);
 
-    expect(countOccurrences(script, "export LC_ALL=C")).toBe(1);
-    expect(countOccurrences(script, "shopt -u nocasematch")).toBe(1);
+    expect(countOccurrences(activeScript, "export LC_ALL=C")).toBe(1);
+    expect(countOccurrences(activeScript, "shopt -u nocasematch")).toBe(1);
+
+    // Negative fixture: the commented-out spelling satisfies nothing.
+    const commentedOut = ["# export LC_ALL=C", "# shopt -u nocasematch"].join(
+      "\n"
+    );
+    const strippedFixture = stripBashComments(commentedOut);
+    expect(countOccurrences(strippedFixture, "export LC_ALL=C")).toBe(0);
+    expect(countOccurrences(strippedFixture, "shopt -u nocasematch")).toBe(0);
   });
 
   test("digests the complete username and password bytes", () => {
