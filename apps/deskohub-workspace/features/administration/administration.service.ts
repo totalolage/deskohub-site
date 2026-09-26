@@ -2887,10 +2887,12 @@ export class AdministrationService extends Context.Service<
           const customerActivityEndsBefore = Temporal.Instant.from(
             customerActivityBounds.startsBefore
           );
+          const qualifyingReservationIds = getCompletedReservationIds(rows);
           const uniqueCustomerIds =
             reservations.kind === "available"
               ? getUniqueCustomerIds({
                   customerIdsByReservationId,
+                  qualifyingReservationIds,
                   range: ranges.lastSevenDays,
                   reservations: reservations.items,
                 })
@@ -2977,6 +2979,17 @@ export class AdministrationService extends Context.Service<
   );
 }
 
+const getCompletedReservationIds = (
+  rows: readonly AdministrationOverviewRow[]
+) =>
+  new Set(
+    rows.flatMap((row) =>
+      row.id && getAdministrationReservationStatus(row).group === "complete"
+        ? [row.id]
+        : []
+    )
+  );
+
 export function getAdministrationReservationOverview({
   ranges,
   reservations,
@@ -2999,13 +3012,7 @@ export function getAdministrationReservationOverview({
   const linkedReservationIds = new Set(
     rows.flatMap(({ id }) => (id ? [id] : []))
   );
-  const completedReservationIds = new Set(
-    rows.flatMap((row) =>
-      row.id && getAdministrationReservationStatus(row).group === "complete"
-        ? [row.id]
-        : []
-    )
-  );
+  const completedReservationIds = getCompletedReservationIds(rows);
   const getMetric = (range: AdministrationReservationDateRange) => ({
     completed: countLinkedReservations({
       linkedReservationIds: completedReservationIds,
@@ -3033,6 +3040,7 @@ function getUniqueCustomerIds(input: {
     DotyposReservationId,
     DotyposCustomerId
   >;
+  readonly qualifyingReservationIds: ReadonlySet<DotyposReservationId>;
   readonly range: AdministrationReservationDateRange;
   readonly reservations: readonly DotyposReservation[];
 }) {
@@ -3047,7 +3055,13 @@ function getUniqueCustomerIds(input: {
     const fallbackCustomerId = reservationId
       ? input.customerIdsByReservationId.get(reservationId)
       : undefined;
-    if (!fallbackCustomerId || !isReservationInRange(reservation, input.range))
+    if (
+      !reservationId ||
+      !fallbackCustomerId ||
+      reservation.status !== "CONFIRMED" ||
+      !input.qualifyingReservationIds.has(reservationId) ||
+      !isReservationInRange(reservation, input.range)
+    )
       continue;
 
     const customerId =
