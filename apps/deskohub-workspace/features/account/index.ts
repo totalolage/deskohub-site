@@ -1,3 +1,10 @@
+export type {
+  AresBusinessBillingDraft,
+  AresCompany,
+  AresLookupFailure,
+  AresSidlo,
+} from "./backend/ares-lookup.service";
+export { AresLookupService } from "./backend/ares-lookup.service";
 export {
   OptionalAccountActivityGuard,
   requireAccountActivity,

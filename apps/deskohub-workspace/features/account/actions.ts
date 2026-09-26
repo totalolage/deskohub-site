@@ -1,7 +1,13 @@
 "use server";
 
-import { Effect, Layer, Result, Schema } from "effect";
+import { Effect, Layer, Match, Result, Schema } from "effect";
 import { revalidatePath } from "next/cache";
+import {
+  type AresBusinessBillingDraft,
+  type AresLookupFailure,
+  AresLookupService,
+  toAresBusinessBillingDraft,
+} from "@/features/account/backend/ares-lookup.service";
 import { deleteCurrentAccountThroughAuthEndpoint } from "@/features/account/backend/auth/delete-account-endpoint";
 import { CustomerAccountResolver } from "@/features/account/backend/customer-account-resolver.service";
 import { CustomerAuthentication } from "@/features/account/backend/customer-authentication.service";
@@ -205,6 +211,104 @@ const deleteCustomerAccountAction = defineWorkspaceAction(
     return { status: "failed" } as const;
   })
 );
+
+const aresLookupStandardSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({ ico: Schema.String }),
+  { parseOptions: { errors: "all", onExcessProperty: "error" } }
+);
+
+export type AresBusinessLookupResult =
+  | {
+      readonly status: "found";
+      readonly company: AresBusinessBillingDraft;
+    }
+  | { readonly status: "invalid-ico"; readonly message: string }
+  | { readonly status: "not-found"; readonly message: string }
+  | { readonly status: "unavailable"; readonly message: string };
+
+const aresLookupFailureResult = (
+  failure: AresLookupFailure,
+  locale: Locale
+): AresBusinessLookupResult =>
+  Match.value(failure).pipe(
+    Match.tagsExhaustive({
+      InvalidIco: () => ({
+        status: "invalid-ico" as const,
+        message: m.accountAresLookupInvalidIco({}, { locale }),
+      }),
+      NotFound: () => ({
+        status: "not-found" as const,
+        message: m.accountAresLookupNotFound({}, { locale }),
+      }),
+      Unavailable: () => ({
+        status: "unavailable" as const,
+        message: m.accountAresLookupUnavailable({}, { locale }),
+      }),
+    })
+  );
+
+const lookupAresBusinessWorkflow = Effect.fn(function* (
+  input: { ico: string },
+  locale: Locale
+) {
+  yield* requireVerifiedSession;
+  const resolution = yield* CustomerAccountResolver.pipe(
+    Effect.flatMap((resolver) => resolver.resolve),
+    Effect.result
+  );
+  if (Result.isFailure(resolution)) {
+    return yield* resolution.failure;
+  }
+
+  return yield* Effect.flatMap(AresLookupService, (ares) =>
+    ares.lookup(input.ico.trim())
+  ).pipe(
+    Effect.map(
+      (company): AresBusinessLookupResult => ({
+        status: "found",
+        company: toAresBusinessBillingDraft(company),
+      })
+    ),
+    Effect.catch((failure) =>
+      Effect.succeed(aresLookupFailureResult(failure, locale))
+    )
+  );
+});
+
+/**
+ * Looks up one Czech company in the public ARES registry for the business
+ * billing form. Runs behind the account-wide gate, the verified session, and
+ * the deletion marker, and performs exactly one provider request per
+ * invocation without any retry loop.
+ */
+const lookupAresBusinessAction = defineWorkspaceAction(
+  {
+    operation: "account.ares-lookup",
+    schema: aresLookupStandardSchema,
+    logInput: false,
+  },
+  (input, { locale }) =>
+    Effect.andThen(
+      requireAccountsEnabled(locale),
+      lookupAresBusinessWorkflow(input, locale).pipe(
+        Effect.mapError(profileActionError(locale)),
+        Effect.provide(
+          Layer.mergeAll(
+            CustomerAuthentication.Default,
+            CustomerAccountResolver.Live,
+            AresLookupService.Live
+          )
+        )
+      )
+    )
+);
+
+export const lookupAresBusiness: typeof lookupAresBusinessAction = async (
+  ...args: Parameters<typeof lookupAresBusinessAction>
+) => {
+  "use server";
+  return await lookupAresBusinessAction(...args);
+};
 
 export const completeCustomerProfile: typeof completeCustomerProfileAction =
   async (...args: Parameters<typeof completeCustomerProfileAction>) => {
