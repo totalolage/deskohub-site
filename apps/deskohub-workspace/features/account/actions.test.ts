@@ -175,7 +175,7 @@ const syntheticAresCompany = {
     cisloOrientacni: "4",
     obec: "Praha",
     psc: "11000",
-    statKod: "203",
+    statKod: "CZ",
   },
 };
 
@@ -468,13 +468,48 @@ describe("account ARES business lookup action", () => {
     expect(lookupCalls).toHaveLength(0);
   });
 
+  test("succeeds for a verified unlinked account without resolving the customer", async () => {
+    let resolverRuns = 0;
+    resolve = Effect.suspend(() => {
+      resolverRuns += 1;
+      return Effect.fail(
+        new CustomerAccountAccessError({
+          reason: "link-required",
+          linkReason: "not-found",
+        })
+      );
+    });
+    const { lookupAresBusiness } = await importActions();
+
+    const result = await lookupAresBusiness({ ico: "27082440" });
+
+    expect(result).toEqual({
+      data: {
+        status: "found",
+        company: {
+          companyName: "Synthetická testovací s.r.o.",
+          companyId: "27082440",
+          vatId: "CZ27082440",
+          addressLine1: "Testovací ulice 123/4",
+          city: "Praha",
+          zip: "11000",
+          country: "CZ",
+        },
+      },
+    });
+    expect(lookupCalls).toEqual(["27082440"]);
+    // The read-only lookup must not run any resolver-owned write seam:
+    // no resolution (which can reactivate and claim), no profile
+    // classification, create, update, or patch.
+    expect(resolverRuns).toBe(0);
+    expect(profileCalls).toHaveLength(0);
+  });
+
   test("never looks up a company while deletion is pending", async () => {
-    resolve = Effect.fail(
-      new CustomerAccountAccessError({
-        reason: "link-required",
-        linkReason: "deletion-requested",
-      })
-    );
+    currentUser = Effect.succeed({
+      ...activeSession,
+      deletionRequested: true,
+    });
     const { lookupAresBusiness } = await importActions();
 
     const result = await lookupAresBusiness({ ico: "27082440" });

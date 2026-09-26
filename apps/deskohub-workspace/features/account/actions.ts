@@ -251,13 +251,19 @@ const lookupAresBusinessWorkflow = Effect.fn(function* (
   input: { ico: string },
   locale: Locale
 ) {
-  yield* requireVerifiedSession;
-  const resolution = yield* CustomerAccountResolver.pipe(
-    Effect.flatMap((resolver) => resolver.resolve),
-    Effect.result
-  );
-  if (Result.isFailure(resolution)) {
-    return yield* resolution.failure;
+  const user = yield* requireVerifiedSession;
+  if (user.deletionRequested) {
+    // The read-only lookup never resolves the customer account: resolution
+    // may reactivate and claim an expired provider profile, which is a
+    // provider write, and it rejects accounts whose profile link is not
+    // settled. The durable deletion marker on the verified session is the
+    // same authority the activity guard consults, checked here explicitly.
+    return yield* Effect.fail(
+      new CustomerAccountAccessError({
+        reason: "link-required",
+        linkReason: "deletion-requested",
+      })
+    );
   }
 
   return yield* Effect.flatMap(AresLookupService, (ares) =>
@@ -278,8 +284,9 @@ const lookupAresBusinessWorkflow = Effect.fn(function* (
 /**
  * Looks up one Czech company in the public ARES registry for the business
  * billing form. Runs behind the account-wide gate, the verified session, and
- * the deletion marker, and performs exactly one provider request per
- * invocation without any retry loop.
+ * the durable deletion marker, and performs exactly one provider request per
+ * invocation without any retry loop and without any customer classify,
+ * reactivate, claim, create, update, or other provider write.
  */
 const lookupAresBusinessAction = defineWorkspaceAction(
   {
@@ -293,11 +300,7 @@ const lookupAresBusinessAction = defineWorkspaceAction(
       lookupAresBusinessWorkflow(input, locale).pipe(
         Effect.mapError(profileActionError(locale)),
         Effect.provide(
-          Layer.mergeAll(
-            CustomerAuthentication.Default,
-            CustomerAccountResolver.Live,
-            AresLookupService.Live
-          )
+          Layer.mergeAll(CustomerAuthentication.Default, AresLookupService.Live)
         )
       )
     )

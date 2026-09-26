@@ -24,7 +24,7 @@ const syntheticCompany: AresCompany = {
     cisloOrientacni: "4",
     obec: "Praha",
     psc: "11000",
-    statKod: "203",
+    statKod: "CZ",
   },
 };
 
@@ -88,7 +88,6 @@ describe("ARES company mapping to billing draft fields", () => {
     expect(toAresBusinessBillingDraft(minimal)).toEqual({
       companyName: "Synthetická minimalní organizace",
       companyId: "00000019",
-      country: "CZ",
     });
   });
 
@@ -115,16 +114,37 @@ describe("ARES company mapping to billing draft fields", () => {
           psc: overlong(21),
         },
       })
-    ).toEqual({ companyId: "27082440", country: "CZ" });
+    ).toEqual({ companyId: "27082440" });
+  });
+
+  test("omits an undetermined seat country instead of defaulting to Czechia", () => {
+    const unknownSeat: AresCompany = {
+      ico: "27082440",
+      obchodniJmeno: "Synthetická neurčitá organizace",
+      sidlo: { obec: "Praha" },
+    };
+    const draft = toAresBusinessBillingDraft(unknownSeat);
+    expect(draft.country).toBeUndefined();
+    expect(draft.city).toBe("Praha");
+    expect(draft.companyName).toBe("Synthetická neurčitá organizace");
   });
 
   test("maps a non-Czech seat to no country code", () => {
     const foreign: AresCompany = {
       ico: "27082440",
       obchodniJmeno: "Synthetická zahraniční organizace",
-      sidlo: { obec: "Bratislava", statKod: "703" },
+      sidlo: { obec: "Bratislava", statKod: "SK" },
     };
     expect(toAresBusinessBillingDraft(foreign).country).toBeUndefined();
+  });
+
+  test("omits a blank seat-country code instead of defaulting to Czechia", () => {
+    const blankSeat: AresCompany = {
+      ico: "27082440",
+      obchodniJmeno: "Synthetická prázdná organizace",
+      sidlo: { obec: "Praha", statKod: "  " },
+    };
+    expect(toAresBusinessBillingDraft(blankSeat).country).toBeUndefined();
   });
 });
 
@@ -223,5 +243,72 @@ describe("ARES lookup service", () => {
     );
 
     expect(JSON.stringify(result)).not.toContain("must-not-leak");
+  });
+
+  test("omits whitespace-only optional values and trims the rest of the decoded company", async () => {
+    const result = await runLookup("27082440", () =>
+      Promise.resolve(
+        Response.json({
+          ico: " 27082440 ",
+          obchodniJmeno: "  Synthetická testovací s.r.o. ",
+          dic: "   ",
+          sidlo: {
+            nazevUlice: "  ",
+            cisloDomovni: " 123 ",
+            nazevObce: " Praha ",
+            kodStatu: " CZ ",
+          },
+        })
+      )
+    );
+
+    expect(result).toEqual({
+      kind: "found",
+      company: {
+        ico: "27082440",
+        obchodniJmeno: "Synthetická testovací s.r.o.",
+        sidlo: {
+          cisloDomovni: "123",
+          obec: "Praha",
+          statKod: "CZ",
+        },
+      },
+    });
+    expect(
+      result.kind === "found" && toAresBusinessBillingDraft(result.company)
+    ).toEqual({
+      companyName: "Synthetická testovací s.r.o.",
+      companyId: "27082440",
+      addressLine1: "123",
+      city: "Praha",
+      country: "CZ",
+    });
+  });
+
+  test("maps a response for a different company ID to the unavailable failure", async () => {
+    const result = await runLookup("27082440", () =>
+      Promise.resolve(
+        Response.json({
+          ico: "00000019",
+          obchodniJmeno: "Jiná synthetická organizace",
+        })
+      )
+    );
+
+    expect(result).toEqual({
+      kind: "failure",
+      failure: { _tag: "Unavailable" },
+    });
+  });
+
+  test("maps a blank company name response to the unavailable failure", async () => {
+    const result = await runLookup("27082440", () =>
+      Promise.resolve(Response.json({ ico: "27082440", obchodniJmeno: "   " }))
+    );
+
+    expect(result).toEqual({
+      kind: "failure",
+      failure: { _tag: "Unavailable" },
+    });
   });
 });

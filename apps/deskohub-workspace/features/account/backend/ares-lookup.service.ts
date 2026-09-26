@@ -37,7 +37,7 @@ export type AresSidlo = {
   readonly castObce?: string;
   readonly obec?: string;
   readonly psc?: string;
-  /** Registry state code; `"203"` means Czechia. */
+  /** Registry state code; the documented Czechia code is `"CZ"`. */
   readonly statKod?: string;
 };
 
@@ -87,14 +87,17 @@ const aresCompanySchema = Schema.Struct({
 });
 
 const asText = (value: string | number | undefined): string | undefined =>
-  value === undefined ? undefined : String(value);
+  value === undefined ? undefined : String(value).trim();
+
+const nonEmptyText = (value: string): string | undefined => {
+  const text = value.trim();
+  return text ? text : undefined;
+};
 
 const asNonEmptyText = (
   value: string | number | undefined
-): string | undefined => {
-  const text = asText(value);
-  return text ? text : undefined;
-};
+): string | undefined =>
+  value === undefined ? undefined : nonEmptyText(String(value));
 
 const decodeAresSidlo = (
   rawSidlo: Schema.Schema.Type<typeof aresSidloSchema>
@@ -120,8 +123,8 @@ const decodeAresCompany = (
   raw: Schema.Schema.Type<typeof aresCompanySchema>
 ): AresCompany => {
   const company: AresCompany = {
-    ico: raw.ico,
-    obchodniJmeno: raw.obchodniJmeno,
+    ico: raw.ico.trim(),
+    obchodniJmeno: raw.obchodniJmeno.trim(),
     dic: asNonEmptyText(raw.dic),
   };
   if (raw.sidlo !== undefined) {
@@ -154,7 +157,14 @@ export type AresBusinessBillingDraft = {
   readonly [Key in keyof typeof billingFieldMaximums]?: string;
 };
 
-const czechSeatStateCode = "203";
+/**
+ * The only seat-country code the draft fills in. The ARES OpenAPI contract
+ * types `Adresa.kodStatu` as a string over the `Stat` codelist
+ * (ciselnikKod: Stat), whose documented Czechia entry is the code `"CZ"`.
+ * Any other value — including an absent or unknown one — leaves the country
+ * to the customer instead of silently defaulting to Czechia.
+ */
+const czechSeatStateCode = "CZ";
 
 const joinAddressLine1 = (sidlo: AresSidlo): string | undefined => {
   if (sidlo.ulice === undefined) return formatHouseNumber(sidlo);
@@ -184,21 +194,23 @@ export const toAresBusinessBillingDraft = (
     sidlo === undefined ? undefined : joinAddressLine1(sidlo);
   return {
     companyName: fitWithin(
-      company.obchodniJmeno,
+      nonEmptyText(company.obchodniJmeno),
       billingFieldMaximums.companyName
     ),
-    companyId: fitWithin(company.ico, billingFieldMaximums.companyId),
-    vatId: fitWithin(company.dic, billingFieldMaximums.vatId),
+    companyId: fitWithin(
+      nonEmptyText(company.ico),
+      billingFieldMaximums.companyId
+    ),
+    vatId: fitWithin(
+      company.dic === undefined ? undefined : nonEmptyText(company.dic),
+      billingFieldMaximums.vatId
+    ),
     addressLine1: fitWithin(addressLine1, billingFieldMaximums.addressLine1),
     addressLine2: fitWithin(sidlo?.castObce, billingFieldMaximums.addressLine2),
     city: fitWithin(sidlo?.obec, billingFieldMaximums.city),
     zip: fitWithin(sidlo?.psc, billingFieldMaximums.zip),
     country:
-      sidlo === undefined ||
-      sidlo.statKod === undefined ||
-      sidlo.statKod === czechSeatStateCode
-        ? "CZ"
-        : undefined,
+      sidlo?.statKod === czechSeatStateCode ? czechSeatStateCode : undefined,
   };
 };
 
@@ -242,6 +254,15 @@ export class AresLookupService extends Context.Service<
                     HttpClientResponse.schemaBodyJson(aresCompanySchema)
                   ),
                   Effect.map(decodeAresCompany),
+                  // The registry must answer for the requested company: a
+                  // mismatched or blank identity is a provider anomaly, not
+                  // a match, so it degrades to the sanitized unavailable
+                  // outcome instead of filling the form with wrong data.
+                  Effect.filterOrFail(
+                    (company) =>
+                      company.ico === ico && company.obchodniJmeno.length > 0,
+                    () => AresLookupFailure.Unavailable()
+                  ),
                   Effect.timeout(aresLookupTimeout),
                   Effect.catch(
                     (failure): Effect.Effect<never, AresLookupFailure> =>
