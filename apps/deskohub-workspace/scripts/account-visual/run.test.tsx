@@ -1856,6 +1856,7 @@ const collectActiveCssRules = (source: string, rules: ParsedCssRule[]) => {
     }
     if (char === "{") {
       depth += 1;
+      if (depth > 1) body += char;
       continue;
     }
     if (char === "}") {
@@ -1953,6 +1954,52 @@ test("string-aware CSS scanning keeps comment markers inside strings as data", (
     rules.some(
       (rule) =>
         rule.selector === ".a" && rule.declarations.get("content") === '"/*"'
+    )
+  ).toBe(true);
+});
+
+test("CSS scanning preserves nested rule braces inside at-rule bodies", () => {
+  const fixture = [
+    ":root { --site-header-height: 0px; }",
+    "@media all {",
+    "  .banner::after { content: 'visible'; }",
+    "}",
+  ].join("\n");
+  const rules = parseActiveCssRules(fixture);
+  // The at-rule body must keep its nested opening brace so the recursive
+  // scan can still see .banner::after.
+  expect(
+    rules.some(
+      (rule) =>
+        rule.selector === ".banner::after" &&
+        rule.declarations.get("content") === "'visible'"
+    )
+  ).toBe(true);
+  expect(activeCustomPropertyValue(fixture, "--site-header-height")).toBe(
+    "0px"
+  );
+});
+
+test("CSS scanning detects rules in nested at-rules and after them", () => {
+  const fixture = [
+    "@media screen {",
+    "  @supports (display: grid) {",
+    "    .x { color: red; }",
+    "  }",
+    "  .y { color: blue; }",
+    "}",
+  ].join("\n");
+  const rules = parseActiveCssRules(fixture);
+  expect(
+    rules.some(
+      (rule) =>
+        rule.selector === ".x" && rule.declarations.get("color") === "red"
+    )
+  ).toBe(true);
+  expect(
+    rules.some(
+      (rule) =>
+        rule.selector === ".y" && rule.declarations.get("color") === "blue"
     )
   ).toBe(true);
 });
