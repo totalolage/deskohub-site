@@ -494,9 +494,9 @@ components:
           description: Masked payment instrument, e.g. ***6152.
     CustomerContractsResponse:
       type: object
+      description: Nexi omits the contracts array entirely when no contracts exist.
       required:
         - customerId
-        - contracts
       properties:
         customerId:
           type: string

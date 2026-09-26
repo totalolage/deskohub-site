@@ -873,6 +873,25 @@ describe("NexiService customer contracts", () => {
     expect(getHeader(call, "Correlation-Id")).toBe("correlation-id");
   });
 
+  test("treats a customer-only empty response as an empty contract list", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({ customerId: "customer-id" })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.listCustomerContracts({
+          customerId: nexiCustomerId("customer-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([]);
+  });
+
   test("skips entries with blank contract identifiers", async () => {
     const fetchMock = mockNexiFetch(
       Response.json({

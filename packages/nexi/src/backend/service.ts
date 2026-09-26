@@ -442,7 +442,7 @@ const makeNexiService = Effect.gen(function* () {
         .listCustomerContracts(input)
         .pipe(Effect.retry(retryPolicy));
       const contracts: NexiCardContract[] = [];
-      for (const contract of response.contracts) {
+      for (const contract of response.contracts ?? []) {
         if (contract.paymentMethod !== "CARD") continue;
         const cardContract = toNexiCardContract(contract);
         if (!cardContract) {
