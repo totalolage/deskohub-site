@@ -62,12 +62,28 @@ const accountDataExportFilenamePattern =
   /^deskohub-account-data-\d{4}-\d{2}-\d{2}\.json$/;
 
 /** The exact allowlisted top-level section set of the export document. */
-const accountDataExportExpectedKeys =
-  "dotyposProfile,identity,marketingConsent,meta,reservations";
+const accountDataExportExpectedKeys = [
+  "dotyposProfile",
+  "identity",
+  "marketingConsent",
+  "meta",
+  "reservations",
+] as const;
 
 /** The contractual section order declared by meta.scope. */
-const accountDataExportExpectedScope =
-  "identity,dotyposProfile,reservations,marketingConsent";
+const accountDataExportExpectedScope = [
+  "identity",
+  "dotyposProfile",
+  "reservations",
+  "marketingConsent",
+] as const;
+
+/**
+ * A deliberately raised lane assertion, distinguishable from an accidental
+ * TypeError so the download guard can re-raise these untouched while
+ * converting every other failure into the fixed malformed-download error.
+ */
+class AccountDataExportLaneAssertion extends Error {}
 
 type WorkspaceE2EAccountLane = {
   readonly config: ReturnType<typeof getAccountE2EConfig>;
@@ -441,7 +457,6 @@ for (const caseId of workspaceE2EAccountCaseIds) {
             // attachment name and an allowlisted document. Only structural
             // facts are asserted; the snapshot body never reaches this output.
             const download = await downloadPromise;
-            await download.path();
             if ((await download.failure()) !== null) {
               throw new Error("the account data download did not complete");
             }
@@ -450,9 +465,15 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                 "the account data download carried an unexpected filename"
               );
             }
-            const snapshot = JSON.parse(
-              await readFile(await download.path(), "utf8")
-            ) as {
+            const recipient = makeWorkspaceE2EAccountRecipient(
+              accountLane.config,
+              workspaceE2EAccountMainRecipientLabel
+            );
+            // Parsing and every derived value stay inside this guard so a
+            // malformed body can only raise the fixed malformed-download
+            // error; a native parse error or an accidental TypeError would
+            // otherwise leak a document excerpt to the reporter.
+            let snapshot: {
               readonly identity: {
                 readonly accountId: string;
                 readonly email: string;
@@ -462,40 +483,55 @@ for (const caseId of workspaceE2EAccountCaseIds) {
                 readonly scope: readonly string[];
               };
             };
-            if (snapshot.meta.schemaVersion !== 1) {
+            try {
+              snapshot = JSON.parse(
+                await readFile(await download.path(), "utf8")
+              ) as typeof snapshot;
+              if (snapshot.meta.schemaVersion !== 1) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export used an unexpected schema version"
+                );
+              }
+              if (
+                snapshot.meta.scope.length !==
+                  accountDataExportExpectedScope.length ||
+                !accountDataExportExpectedScope.every(
+                  (section, index) => snapshot.meta.scope[index] === section
+                )
+              ) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export scope drifted from the contractual sections"
+                );
+              }
+              if (snapshot.identity.email !== recipient) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export identity did not match the synthetic recipient"
+                );
+              }
+              if (
+                !accountLane.journalRef.journal.authUserIds.includes(
+                  snapshot.identity.accountId
+                )
+              ) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export identity was not the journaled synthetic account"
+                );
+              }
+              const snapshotKeys = Object.keys(snapshot).sort();
+              if (
+                snapshotKeys.length !== accountDataExportExpectedKeys.length ||
+                !accountDataExportExpectedKeys.every(
+                  (section, index) => snapshotKeys[index] === section
+                )
+              ) {
+                throw new AccountDataExportLaneAssertion(
+                  "the downloaded export exposed sections outside the allowlist"
+                );
+              }
+            } catch (error) {
+              if (error instanceof AccountDataExportLaneAssertion) throw error;
               throw new Error(
-                "the downloaded export used an unexpected schema version"
-              );
-            }
-            if (snapshot.meta.scope.join(",") !== accountDataExportExpectedScope) {
-              throw new Error(
-                "the downloaded export scope drifted from the contractual sections"
-              );
-            }
-            const recipient = makeWorkspaceE2EAccountRecipient(
-              accountLane.config,
-              workspaceE2EAccountMainRecipientLabel
-            );
-            if (snapshot.identity.email !== recipient) {
-              throw new Error(
-                "the downloaded export identity did not match the synthetic recipient"
-              );
-            }
-            if (
-              !accountLane.journalRef.journal.authUserIds.includes(
-                snapshot.identity.accountId
-              )
-            ) {
-              throw new Error(
-                "the downloaded export identity was not the journaled synthetic account"
-              );
-            }
-            if (
-              Object.keys(snapshot).sort().join(",") !==
-              accountDataExportExpectedKeys
-            ) {
-              throw new Error(
-                "the downloaded export exposed sections outside the allowlist"
+                "the account data download was not the expected JSON document"
               );
             }
 
