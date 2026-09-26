@@ -359,6 +359,89 @@ for (const caseId of workspaceE2EAccountCaseIds) {
       const target = accountReviewTargetByCaseId[caseId];
       if (!target) return;
 
+      if (caseId === "account-data-export") {
+        const baseUrl = accountLane.config.baseUrl;
+        const page = getOwnedPage();
+        await accountTest.step(
+          "capture account data export pending, delivered, and error states",
+          async () => {
+            await page.goto(new URL("/en-US/account/legal", baseUrl).toString(), {
+              timeout: workspaceE2ETimeouts.browserNavigation,
+            });
+            const exportButton = page.getByRole("button", {
+              exact: true,
+              name: "Download your account data",
+            });
+            await exportButton.waitFor({
+              state: "visible",
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
+
+            // Pending and delivered share one deliberately delayed response.
+            await page.route(
+              "**/account/data-export",
+              async (route) => {
+                await new Promise((resolve) => setTimeout(resolve, 10_000));
+                await route.continue();
+              },
+              { times: 1 }
+            );
+            await exportButton.click({
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
+            await page
+              .locator("#account-data-export[aria-busy='true']")
+              .waitFor({
+                state: "visible",
+                timeout: workspaceE2ETimeouts.browserAction,
+              });
+            await captureAccountReview(
+              page,
+              baseUrl,
+              "legal-export-pending-desktop"
+            );
+            await page
+              .getByText("Your account data download has started.", {
+                exact: true,
+              })
+              .waitFor({
+                state: "visible",
+                timeout: workspaceE2ETimeouts.browserAction,
+              });
+            await captureAccountReview(
+              page,
+              baseUrl,
+              "legal-export-delivered-desktop"
+            );
+
+            // The error state must recover into a retryable idle control.
+            await page.route(
+              "**/account/data-export",
+              (route) => route.abort(),
+              { times: 1 }
+            );
+            await exportButton.click({
+              timeout: workspaceE2ETimeouts.browserAction,
+            });
+            await page
+              .getByText(
+                "We could not prepare your account data download. Please try again.",
+                { exact: true }
+              )
+              .waitFor({
+                state: "visible",
+                timeout: workspaceE2ETimeouts.browserAction,
+              });
+            await captureAccountReview(
+              page,
+              baseUrl,
+              "legal-export-error-desktop"
+            );
+          }
+        );
+        return;
+      }
+
       const pages = browser.contexts().flatMap((context) => context.pages());
       if (pages.length !== 1)
         throw new Error(accountReviewCaptureFailureMessage);

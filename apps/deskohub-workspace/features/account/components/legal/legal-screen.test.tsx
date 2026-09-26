@@ -182,19 +182,113 @@ for (const locale of ["en-US", "cs-CZ"] as const) {
     expect(
       view.getByRole("heading", {
         level: 3,
-        name: m.legalScreenArchiveTitle({}, { locale }),
+        name: m.legalScreenExportTitle({}, { locale }),
       })
     ).toBeTruthy();
     expect(
-      view.getByText(m.legalScreenArchiveDescription({}, { locale }))
+      view.getByText(m.legalScreenExportDescription({}, { locale }))
     ).toBeTruthy();
-    const archiveAction = view.getByRole("button", {
-      name: m.legalScreenArchiveAction({}, { locale }),
+    expect(
+      view.getByText(m.legalScreenExportNotStatutory({}, { locale }))
+    ).toBeTruthy();
+    const exportAction = view.getByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
     });
-    expect((archiveAction as HTMLButtonElement).disabled).toBe(true);
-    expect(archiveAction.getAttribute("type")).toBe("button");
+    expect((exportAction as HTMLButtonElement).disabled).toBe(false);
+    expect(exportAction.getAttribute("type")).toBe("button");
+    expect(exportAction.getAttribute("aria-live")).toBeNull();
   });
 }
+
+for (const locale of ["en-US", "cs-CZ"] as const) {
+  test(`${locale} export control reports pending, delivered, and error states accessibly`, async () => {
+    let resolveFetch!: (response: Response) => void;
+    const pendingFetch = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = () => pendingFetch;
+    try {
+      const view = renderLegalScreen(locale);
+      const exportAction = view.getByRole("button", {
+        name: m.legalScreenExportAction({}, { locale }),
+      }) as HTMLButtonElement;
+
+      fireEvent.click(exportAction);
+      expect(exportAction.disabled).toBe(true);
+      expect(exportAction.getAttribute("aria-busy")).toBe("true");
+      const statusRegion = await view.findByRole("status");
+      expect(statusRegion.getAttribute("aria-live")).toBe("polite");
+      expect(statusRegion.textContent).toContain(
+        m.legalScreenExportPendingStatus({}, { locale })
+      );
+
+      resolveFetch(
+        new Response(JSON.stringify({ meta: { schemaVersion: 1 } }), {
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Content-Disposition":
+              'attachment; filename="deskohub-account-data-2026-09-26.json"',
+          },
+        })
+      );
+      await waitFor(() =>
+        expect(view.getByRole("status").textContent).toContain(
+          m.legalScreenExportDeliveredStatus({}, { locale })
+        )
+      );
+      expect(
+        view
+          .getByRole("button", {
+            name: m.legalScreenExportAction({}, { locale }),
+          })
+          .getAttribute("aria-busy")
+      ).toBe("false");
+      view.unmount();
+      cleanup();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const errorView = renderLegalScreen(locale);
+    const failingAction = errorView.getByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
+    });
+    const originalFetchForError = globalThis.fetch;
+    globalThis.fetch = () => Promise.reject(new Error("network-down"));
+    try {
+      fireEvent.click(failingAction);
+      await waitFor(() =>
+        expect(errorView.getByRole("status").textContent).toContain(
+          m.legalScreenExportErrorStatus({}, { locale })
+        )
+      );
+      expect((failingAction as HTMLButtonElement).disabled).toBe(false);
+      expect(failingAction.getAttribute("aria-busy")).toBe("false");
+    } finally {
+      globalThis.fetch = originalFetchForError;
+    }
+  });
+}
+
+test("hides the export control when accounts are disabled", () => {
+  const locale = "en-US" as const;
+  const view = render(
+    <>
+      <CookieConsentProvider locale={locale} />
+      <LegalScreen accountsEnabled={false} locale={locale} />
+    </>
+  );
+
+  expect(
+    view.queryByRole("button", {
+      name: m.legalScreenExportAction({}, { locale }),
+    })
+  ).toBeNull();
+  expect(
+    view.queryByText(m.legalScreenExportNotStatutory({}, { locale }))
+  ).toBeNull();
+});
 
 test("renders immutable necessary consent and functional optional controls", async () => {
   const locale = "en-US" as const;
@@ -241,13 +335,18 @@ test("renders immutable necessary consent and functional optional controls", asy
     view.queryByText(m.legalScreenPreferencesUnavailable({}, { locale }))
   ).toBeNull();
 
-  const archiveAction = view.getByRole("button", {
-    name: m.legalScreenArchiveAction({}, { locale }),
-  });
-  expect(archiveAction.closest("[role='group'][tabindex='0']")).not.toBeNull();
+  // The archive placeholder is gone: no focus-tooltip group remains.
+  const futureFeatureWrappers = view.container.querySelectorAll(
+    "[role='group'][tabindex='0']"
+  );
+  expect(futureFeatureWrappers).toHaveLength(0);
   expect(
-    view.container.querySelectorAll("[role='group'][tabindex='0']")
-  ).toHaveLength(1);
+    view
+      .getByRole("button", {
+        name: m.legalScreenExportAction({}, { locale }),
+      })
+      .closest("[role='group'][tabindex='0']")
+  ).toBeNull();
 
   for (const optionalSwitch of [analytics, marketing, preferences]) {
     expect(optionalSwitch.getAttribute("aria-checked")).toBe("false");
@@ -374,12 +473,12 @@ test.each(["en-US", "cs-CZ"] as const)(
     expect(marketingSwitch.getAttribute("aria-checked")).toBe("true");
     expect((marketingSwitch as HTMLButtonElement).disabled).toBe(false);
 
-    // The archive block stays outside the preference group at its own level.
-    const archiveHeading = view.getByRole("heading", {
+    // The export block stays outside the preference group at its own level.
+    const exportHeading = view.getByRole("heading", {
       level: 3,
-      name: m.legalScreenArchiveTitle({}, { locale }),
+      name: m.legalScreenExportTitle({}, { locale }),
     });
-    expect(group.contains(archiveHeading)).toBe(false);
+    expect(group.contains(exportHeading)).toBe(false);
   }
 );
 

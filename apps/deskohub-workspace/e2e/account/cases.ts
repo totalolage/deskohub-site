@@ -85,7 +85,10 @@ const confirmedStatus = "Confirmed";
 
 const signInSuffix = "/auth/sign-in";
 const accountSuffix = "/account";
+const legalSuffix = "/account/legal";
 const callbackSuffix = "/auth/callback";
+const exportActionLabel = "Download your account data";
+const exportProbeWindowKey = "__workspaceAccountExportProbe";
 
 const signInFormSelector = "#account-sign-in-form";
 const signInEmailSelector = "#account-sign-in-email";
@@ -1411,6 +1414,237 @@ export const makeWorkspaceE2EAccountCases = ({
               );
             }),
             providerTransition
+          )
+        );
+      })
+    ),
+    makeCase("account-data-export", ({ journalRef, runStep }) =>
+      Effect.gen(function* () {
+        const identity = yield* runStep(
+          step(
+            "reads the signed-in identity for the export assertions",
+            Effect.gen(function* () {
+              const userId = yield* requireAuthUserId(recipient);
+              const customerId = yield* requireLinkedCustomerId(userId);
+              assert(
+                journalRef.journal.authUserIds.includes(userId),
+                "the export case ran against an unjournaled Better Auth identity"
+              );
+              return { customerId, userId };
+            }),
+            datasourceTimeout
+          )
+        );
+
+        yield* runStep(
+          step(
+            "shows the account data download control on the legal page",
+            Effect.gen(function* () {
+              yield* openPage(localized(legalSuffix));
+              yield* waitText("export action label", exportActionLabel);
+            }),
+            accountPageLoadTimeout
+          )
+        );
+
+        // The probe fetch runs inside the authenticated page and returns only
+        // allowlisted structural facts; the snapshot body never reaches the
+        // runner output, logs, or artifacts.
+        yield* runStep(
+          step(
+            "requests the account data export document in the page",
+            evalBrowserScript(
+              "request account data export",
+              run,
+              session,
+              `(() => {
+                window[${JSON.stringify(exportProbeWindowKey)}] = null;
+                fetch(${JSON.stringify(`/${config.locale}${legalSuffix}/data-export`)}, {
+                  headers: { accept: "application/json" },
+                })
+                  .then((response) =>
+                    response.text().then((text) => ({
+                      cacheControl: response.headers.get("cache-control"),
+                      contentDisposition: response.headers.get("content-disposition"),
+                      contentType: response.headers.get("content-type"),
+                      ok: response.ok,
+                      text,
+                    }))
+                  )
+                  .then((probe) => {
+                    const document = probe.ok ? JSON.parse(probe.text) : null;
+                    window[${JSON.stringify(exportProbeWindowKey)}] = {
+                      cacheControl: probe.cacheControl,
+                      contentDisposition: probe.contentDisposition,
+                      contentType: probe.contentType,
+                      ok: probe.ok,
+                      document:
+                        document === null
+                          ? null
+                          : {
+                              consentKeys:
+                                document.marketingConsent === null
+                                  ? null
+                                  : Object.keys(document.marketingConsent).sort(),
+                              dotyposProfileKeys:
+                                document.dotyposProfile === null
+                                  ? null
+                                  : Object.keys(document.dotyposProfile).sort(),
+                              email: document.identity.email,
+                              generatedAt: document.meta.generatedAt,
+                              keys: Object.keys(document).sort(),
+                              reservationsCount: Array.isArray(
+                                document.reservations
+                              )
+                                ? document.reservations.length
+                                : -1,
+                              schemaVersion: document.meta.schemaVersion,
+                              scope: document.meta.scope,
+                            },
+                    };
+                  })
+                  .catch(() => {
+                    window[${JSON.stringify(exportProbeWindowKey)}] = {
+                      ok: false,
+                      document: null,
+                    };
+                  });
+                return true;
+              })()`,
+              { logOutput: false, timeoutMs: browserTimeout }
+            ),
+            browserTimeout
+          )
+        );
+
+        yield* runStep(
+          step(
+            "waits for the export probe result",
+            waitForBrowserCondition(
+              run,
+              session,
+              "account data export probe result",
+              `(() => window[${JSON.stringify(exportProbeWindowKey)}] !== null)()`,
+              { timeoutMs: providerTransition }
+            ),
+            providerTransition
+          )
+        );
+
+        const probeText = yield* runStep(
+          step(
+            "reads the export probe result",
+            evalBrowserScript(
+              "read account data export probe",
+              run,
+              session,
+              `(() => JSON.stringify(window[${JSON.stringify(exportProbeWindowKey)}]))()`,
+              { logOutput: false, timeoutMs: browserTimeout }
+            ).pipe(
+              Effect.flatMap((result) => {
+                if (result.exitCode !== 0) {
+                  return workspaceE2EError(
+                    "the account data export probe did not return a result",
+                    { operation: "read account data export probe" }
+                  );
+                }
+                return Effect.succeed(
+                  JSON.parse(result.stdout) as {
+                    readonly cacheControl: string | null;
+                    readonly contentDisposition: string | null;
+                    readonly contentType: string | null;
+                    readonly ok: boolean;
+                    readonly document: {
+                      readonly consentKeys: readonly string[] | null;
+                      readonly dotyposProfileKeys: readonly string[] | null;
+                      readonly email: string;
+                      readonly generatedAt: string;
+                      readonly keys: readonly string[];
+                      readonly reservationsCount: number;
+                      readonly schemaVersion: number;
+                      readonly scope: readonly string[];
+                    } | null;
+                  }
+                );
+              })
+            ),
+            browserTimeout
+          )
+        );
+
+        yield* runStep(
+          step(
+            "asserts the export document against the synthetic expectations",
+            Effect.gen(function* () {
+              assert(
+                probeText.ok && probeText.document !== null,
+                "the account data export request did not succeed"
+              );
+              if (!probeText.ok || probeText.document == null) {
+                return yield* workspaceE2EError(
+                  "the account data export probe carried no document",
+                  { operation: "assert account data export document" }
+                );
+              }
+              const snapshot = probeText.document;
+              assert(
+                snapshot.email === recipient,
+                "the export identity email did not match the synthetic recipient"
+              );
+              assert(
+                snapshot.keys.join(",") ===
+                  "dotyposProfile,identity,marketingConsent,meta,reservations",
+                "the export document exposed sections outside the allowlist"
+              );
+              assert(
+                snapshot.schemaVersion === 1,
+                "the export document used an unexpected schema version"
+              );
+              assert(
+                snapshot.scope.join(",") ===
+                  "dotyposProfile,identity,marketingConsent,reservations",
+                "the export meta scope drifted from the allowlist"
+              );
+              assert(
+                Number.isFinite(Date.parse(snapshot.generatedAt)),
+                "the export document did not carry a parseable generation time"
+              );
+              assert(
+                snapshot.dotyposProfileKeys !== null &&
+                  snapshot.dotyposProfileKeys.join(",") ===
+                    "billing,firstName,lastName,phone",
+                "the export profile section exposed fields outside the mapped profile"
+              );
+              assert(
+                snapshot.consentKeys === null ||
+                  snapshot.consentKeys.join(",") ===
+                    "grantedAt,locale,withdrawnAt",
+                "the export consent section exposed the document hash or other internals"
+              );
+              assert(
+                snapshot.reservationsCount >= 0,
+                "the export reservations section was not an array"
+              );
+              assert(
+                (probeText.contentType ?? "").startsWith("application/json") &&
+                  (probeText.contentType ?? "").includes("charset=utf-8"),
+                "the export response was not served as UTF-8 JSON"
+              );
+              assert(
+                (probeText.cacheControl ?? "").replace(/\s+/g, "") ===
+                  "private,no-store",
+                "the export response was not private and no-store"
+              );
+              assert(
+                (probeText.contentDisposition ?? "").startsWith("attachment"),
+                "the export response was not delivered as a JSON attachment"
+              );
+              assert(
+                snapshot.dotyposProfileKeys !== null,
+                "the export profile section was missing for a linked provider profile"
+              );
+            }),
+            datasourceTimeout
           )
         );
       })

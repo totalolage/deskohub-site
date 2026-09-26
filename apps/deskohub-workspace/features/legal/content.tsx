@@ -876,6 +876,23 @@ const legalDocuments = {
               </a>
               .
             </>,
+            <>
+              If you have an account, you can download a machine-readable
+              snapshot of your identity, profile, reservation summary, and
+              marketing consent from the legal page of the account. This
+              self-service download is generated fresh for every request and is
+              not a full statutory access or data-portability request: retained
+              commercial records such as invoice PDFs, provider email logs, and
+              analytics or technical logs are not included. For a full request
+              under data protection law, contact{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
+            </>,
           ],
         },
       ],
@@ -1301,6 +1318,25 @@ const legalDocuments = {
               žádost podle předpisů o ochraně osobních údajů týkající se
               rezervací nebo zákonně uchovávaných záznamů; takovou žádost
               pošlete na{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
+            </>,
+            <>
+              Pokud máte založený účet, můžete si ze stránky „Právní informace a
+              ochrana osobních údajů“ v účtu stáhnout strojově čitelný snímek
+              svých identifikačních údajů, profilu, přehledu rezervací a
+              marketingového souhlasu. Toto samoobslužné stažení se generuje
+              čerstvě při každém požadavku a není úplnou zákonnou žádostí o
+              přístup k údajům ani o jejich přenositelnost: obchodně uchovávané
+              záznamy, jako jsou faktury v PDF, protokoly e-mailů u
+              poskytovatele a analytické či technické protokoly, nejsou
+              zahrnuty. Pro úplnou žádost podle předpisů o ochraně osobních
+              údajů kontaktujte{" "}
               <a
                 className="text-burned-orange underline underline-offset-4"
                 href={`mailto:${contactEmail}`}

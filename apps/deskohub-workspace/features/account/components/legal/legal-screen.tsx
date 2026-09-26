@@ -1,11 +1,9 @@
-import { Download } from "lucide-react";
-import { FutureFeatureTooltip } from "@/features/account/components/future-feature-tooltip";
+import { AccountDataExport } from "@/features/account/components/legal/account-data-export";
 import { LegalPreferenceSettings } from "@/features/account/components/legal/legal-preference-settings";
 import { AccountSectionPanel } from "@/features/account/components/shell/account-section-panel";
 import { type Locale, m } from "@/features/i18n";
 import type { MarketingPreferencesState } from "@/features/legal/marketing-preferences";
 import { GuardedLink } from "@/shared/components/guarded-link";
-import { Button } from "@/shared/components/ui/button";
 
 export interface LegalScreenProps {
   readonly accountsEnabled?: boolean;
@@ -53,29 +51,28 @@ export function LegalScreen({
         marketingPreferences={marketingPreferences}
       />
 
-      <div className="mt-8 border-t border-[#e5e9ef] pt-6">
-        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <h3 className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]">
-              {m.legalScreenArchiveTitle({}, { locale })}
-            </h3>
-            <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
-              {m.legalScreenArchiveDescription({}, { locale })}
-            </p>
+      {accountsEnabled && (
+        <div className="mt-8 border-t border-[#e5e9ef] pt-6">
+          <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <h3 className="break-words text-[18px] font-semibold leading-6 text-[#1f2d43]">
+                {m.legalScreenExportTitle({}, { locale })}
+              </h3>
+              <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
+                {m.legalScreenExportDescription({}, { locale })}
+              </p>
+              <p className="mt-1 break-words text-base leading-6 text-[#586c88]">
+                {m.legalScreenExportNotStatutory({}, { locale })}{" "}
+                <PolicyLink
+                  href={`${localePath}/privacy-policy`}
+                  label={m.legalScreenExportStatutoryLink({}, { locale })}
+                />
+              </p>
+            </div>
+            <AccountDataExport locale={locale} />
           </div>
-          <FutureFeatureTooltip locale={locale}>
-            <Button
-              className="h-auto min-w-0 max-w-full whitespace-normal px-4 py-2 text-left leading-5 lg:text-center"
-              disabled
-              type="button"
-              variant="secondary"
-            >
-              <Download aria-hidden="true" className="size-4 shrink-0" />
-              {m.legalScreenArchiveAction({}, { locale })}
-            </Button>
-          </FutureFeatureTooltip>
         </div>
-      </div>
+      )}
     </AccountSectionPanel>
   );
 }
