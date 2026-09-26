@@ -1791,9 +1791,11 @@ test("help is available without a label", () => {
 });
 
 /**
- * CSS-aware verdict helpers: the only CSS comment syntax is the slash-star
- * pair, so strip comments first, then parse rule blocks so verdicts see
- * ACTIVE declarations and selectors only — never raw stylesheet text.
+ * CSS-aware verdict helpers: parse rule blocks with a single-pass character
+ * state machine so verdicts see ACTIVE declarations and selectors only —
+ * never raw stylesheet text. Quoted strings (with backslash escapes) and
+ * block comments are recognized only in normal state, so braces or comment
+ * markers inside string values are data, not structure.
  */
 type ParsedCssRule = {
   readonly selector: string;
@@ -1810,45 +1812,78 @@ const parseCssDeclarations = (block: string): ReadonlyMap<string, string> => {
   return declarations;
 };
 
+type CssScanState = "normal" | "single-quoted" | "double-quoted" | "comment";
+
 const collectActiveCssRules = (source: string, rules: ParsedCssRule[]) => {
-  let cursor = 0;
-  let preludeStart = 0;
-  while (cursor < source.length) {
-    const open = source.indexOf("{", cursor);
-    if (open === -1) return;
-    const prelude = source.slice(preludeStart, open);
-    let depth = 1;
-    let scan = open + 1;
-    while (scan < source.length && depth > 0) {
-      const nextOpen = source.indexOf("{", scan);
-      const nextClose = source.indexOf("}", scan);
-      if (nextClose === -1) return;
-      if (nextOpen !== -1 && nextOpen < nextClose) {
-        depth += 1;
-        scan = nextOpen + 1;
-      } else {
-        depth -= 1;
-        scan = nextClose + 1;
+  let state: CssScanState = "normal";
+  let depth = 0;
+  let prelude = "";
+  let body = "";
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index]!;
+    if (state === "comment") {
+      if (char === "*" && source[index + 1] === "/") {
+        state = "normal";
+        index += 1;
       }
+      continue;
     }
-    const body = source.slice(open + 1, scan - 1);
-    if (prelude.trimStart().startsWith("@")) {
-      collectActiveCssRules(body, rules);
-    } else {
-      rules.push({
-        selector: prelude.trim(),
-        declarations: parseCssDeclarations(body),
-      });
+    if (state === "single-quoted" || state === "double-quoted") {
+      if (char === "\\") {
+        // Escaped characters pass through verbatim.
+        if (depth > 0) body += source.slice(index, index + 2);
+        else prelude += source.slice(index, index + 2);
+        index += 1;
+        continue;
+      }
+      if (depth > 0) body += char;
+      else prelude += char;
+      if (char === (state === "single-quoted" ? "'" : '"')) {
+        state = "normal";
+      }
+      continue;
     }
-    cursor = scan;
-    preludeStart = scan;
+    if (char === "/" && source[index + 1] === "*") {
+      state = "comment";
+      index += 1;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      state = char === "'" ? "single-quoted" : "double-quoted";
+      if (depth > 0) body += char;
+      else prelude += char;
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+      continue;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth > 0) {
+        body += char;
+        continue;
+      }
+      if (prelude.trimStart().startsWith("@")) {
+        collectActiveCssRules(body, rules);
+      } else {
+        rules.push({
+          selector: prelude.trim(),
+          declarations: parseCssDeclarations(body),
+        });
+      }
+      prelude = "";
+      body = "";
+      continue;
+    }
+    if (depth > 0) body += char;
+    else prelude += char;
   }
 };
 
 const parseActiveCssRules = (css: string): readonly ParsedCssRule[] => {
-  // CSS only has /* */ comments; strip them so commented-out code is inert.
   const rules: ParsedCssRule[] = [];
-  collectActiveCssRules(css.replace(/\/\*[\s\S]*?\*\//g, " "), rules);
+  collectActiveCssRules(css, rules);
   return rules;
 };
 
@@ -1887,6 +1922,39 @@ test("parsed CSS verdicts ignore commented-out declarations and selectors", () =
       rule.selector.includes(".stale-banner")
     )
   ).toBe(false);
+});
+
+test("string-aware CSS scanning treats braces and comment markers inside strings as data", () => {
+  const fixture = [
+    ":root { --site-header-height: 0px; }",
+    '.marker { content: "{"; }',
+    '.banner::after { content: "visible"; }',
+  ].join("\n");
+  const rules = parseActiveCssRules(fixture);
+  // The quoted brace inside .marker must not swallow the next rule.
+  expect(
+    rules.some(
+      (rule) =>
+        rule.selector === ".banner::after" &&
+        rule.declarations.get("content") === '"visible"'
+    )
+  ).toBe(true);
+  expect(rules.some((rule) => rule.selector === ".marker")).toBe(true);
+  expect(activeCustomPropertyValue(fixture, "--site-header-height")).toBe(
+    "0px"
+  );
+});
+
+test("string-aware CSS scanning keeps comment markers inside strings as data", () => {
+  const fixture = '.a { content: "/*"; }\n.b { color: red; }';
+  const rules = parseActiveCssRules(fixture);
+  expect(rules.some((rule) => rule.selector === ".b")).toBe(true);
+  expect(
+    rules.some(
+      (rule) =>
+        rule.selector === ".a" && rule.declarations.get("content") === '"/*"'
+    )
+  ).toBe(true);
 });
 
 test("desktop contract documents the chosen physical-pixel interpretation", async () => {
