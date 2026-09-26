@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Logger, References } from "effect";
 import * as Schema from "effect/Schema";
 
 mock.module("server-only", () => ({}));
@@ -662,5 +662,101 @@ describe("CloudinaryService renames", () => {
 
     expect(result).toEqual(asset);
     expect(renameAttempts).toBe(2);
+  });
+});
+
+describe("CloudinaryService avatar-path logging", () => {
+  const stagedPublicId = cloudinaryPublicId("avatars/test-staging/acct-abc-1");
+  const livePublicId = cloudinaryPublicId("avatars/live/acct-abc-1");
+  const stagedAsset = Schema.decodeUnknownSync(CloudinaryAssetSchema)({
+    public_id: "avatars/test-staging/acct-abc-1",
+    secure_url:
+      "https://res.cloudinary.com/demo/image/upload/avatars/test-staging/acct-abc-1.webp",
+    url: "http://res.cloudinary.com/demo/image/upload/avatars/test-staging/acct-abc-1.webp",
+    width: 512,
+    height: 512,
+    format: "webp",
+    resource_type: "image",
+    version: 1710000000,
+    created_at: "2026-09-20T10:00:00Z",
+  });
+  const liveAsset = createAsset("avatars/live/acct-abc-1");
+
+  const captureLogs = async (
+    run: (
+      service: Awaited<ReturnType<typeof makeService>>
+    ) => Effect.Effect<unknown, unknown, never>
+  ) => {
+    const captured: {
+      message: unknown;
+      annotations: Record<string, unknown>;
+    }[] = [];
+    const captureLogger = Logger.make((options) => {
+      captured.push({
+        message: options.message,
+        annotations: {
+          ...options.fiber.getRef(References.CurrentLogAnnotations),
+        },
+      });
+    });
+    const withCapture = <A, E>(effect: Effect.Effect<A, E, never>) =>
+      Effect.provideService(
+        Effect.provide(effect, Logger.layer([captureLogger])),
+        References.MinimumLogLevel,
+        "All"
+      );
+
+    const service = await Effect.runPromise(
+      withCapture(
+        Effect.provide(
+          CloudinaryService,
+          CloudinaryService.Default.pipe(
+            Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
+          )
+        )
+      )
+    );
+
+    await Effect.runPromise(withCapture(run(service)));
+
+    return captured;
+  };
+
+  test("never logs asset identifiers, account-bearing folders, or raw responses on the avatar path", async () => {
+    queuedResourceResults = [liveAsset];
+    queuedUploadResults = [stagedAsset];
+    queuedRenameResults = [liveAsset];
+    queuedDestroyResults = [{ result: "ok" }];
+
+    const captured = await captureLogs((service) =>
+      Effect.gen(function* () {
+        yield* service.getByPublicId(livePublicId);
+        yield* service.uploadImage({
+          bytes: new Uint8Array([1, 2, 3]),
+          publicId: stagedPublicId,
+          folder: "avatars/test-staging/acct-abc-1",
+        });
+        yield* service.renameAsset(stagedPublicId, livePublicId, {
+          overwrite: true,
+        });
+        yield* service.destroyAsset(stagedPublicId);
+      })
+    );
+
+    const serialized = JSON.stringify(captured);
+    // Asset identifiers and their delivery URLs never appear…
+    expect(serialized).not.toContain("acct-abc-1");
+    expect(serialized).not.toContain("avatars/test-staging");
+    expect(serialized).not.toContain("avatars/live");
+    expect(serialized).not.toContain("res.cloudinary.com");
+    // …nor raw provider responses.
+    expect(serialized).not.toContain("public_id");
+    expect(serialized).not.toContain("secure_url");
+    // But the fixed operation codes do.
+    expect(serialized).toContain("Cloudinary public ID lookup started");
+    expect(serialized).toContain("Cloudinary image upload started");
+    expect(serialized).toContain("Cloudinary asset rename started");
+    expect(serialized).toContain("Cloudinary asset destroy started");
+    expect(serialized).toContain("Cloudinary asset destroy completed");
   });
 });

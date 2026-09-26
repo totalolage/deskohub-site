@@ -198,14 +198,22 @@ type CloudinaryRejectedValue =
   | null
   | undefined;
 
-function decodeAssetResponse(result: unknown, publicId: CloudinaryPublicId) {
+/**
+ * Fixed, identifier-free search expression used for errors on the
+ * by-public-ID lookup path. The looked-up public ID itself never enters
+ * errors or logs: the same executor serves avatar assets, where provider
+ * asset identifiers must not be logged.
+ */
+const publicIdLookupExpression = "public_id lookup";
+
+function decodeAssetResponse(result: unknown) {
   return pipe(
     decodeCloudinaryAsset(result),
     Effect.mapError(
       () =>
         new CloudinarySearchError({
           message: "Cloudinary response did not match the asset schema",
-          expression: `public_id=${publicId}`,
+          expression: publicIdLookupExpression,
         })
     )
   );
@@ -459,12 +467,13 @@ function createSearchExecutor(config: CloudinaryConfig) {
 }
 
 function createPublicIdLookupExecutor() {
+  // The looked-up public ID (and any asset-bearing response payload) is kept
+  // out of logs and annotations entirely: this executor serves the avatar
+  // path, where provider asset identifiers must never be logged. Only fixed
+  // operation/outcome codes and safe numeric metadata are emitted.
   return Effect.fn("cloudinary.api.resource")(
     function* (publicId: CloudinaryPublicId) {
-      yield* Effect.annotateLogsScoped({ publicId });
-      yield* Effect.logInfo("Cloudinary public ID lookup started", {
-        publicId,
-      });
+      yield* Effect.logInfo("Cloudinary public ID lookup started");
 
       return yield* pipe(
         Effect.tryPromise({
@@ -478,29 +487,15 @@ function createPublicIdLookupExecutor() {
           catch: (error) =>
             toCloudinarySearchError(
               error as CloudinaryRejectedValue,
-              `public_id=${publicId}`
+              publicIdLookupExpression
             ),
         }),
-        Effect.tap((rawResult) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ rawResult });
-            yield* Effect.logDebug("Cloudinary provider response received", {
-              rawResult,
-            });
-          })
-        ),
-        Effect.flatMap((result) => decodeAssetResponse(result, publicId)),
-        Effect.tap((asset) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ result: asset });
-            yield* Effect.logInfo("Cloudinary public ID lookup completed", {
-              publicId,
-            });
-          })
+        Effect.flatMap((result) => decodeAssetResponse(result)),
+        Effect.tap(() =>
+          Effect.logInfo("Cloudinary public ID lookup completed")
         ),
         Effect.tapError((error) =>
           Effect.logError("Cloudinary public ID lookup failed", {
-            publicId,
             errorMessage: error.message,
             httpCode: error.httpCode,
           })
@@ -508,8 +503,7 @@ function createPublicIdLookupExecutor() {
         Effect.retry(cloudinaryRetryPolicy)
       );
     },
-    (effect, publicId) =>
-      effect.pipe(Effect.scoped, Effect.annotateLogs({ publicId }))
+    (effect) => Effect.scoped(effect)
   );
 }
 
@@ -619,13 +613,12 @@ function createUploadExecutor() {
 
   return Effect.fn("cloudinary.upload")(
     function* (input: CloudinaryImageUploadInput) {
-      yield* Effect.annotateLogsScoped({
-        publicId: input.publicId,
-        folder: input.folder,
-      });
+      // The uploaded public ID and its folder (which may embed an account
+      // identifier) never enter logs or annotations: this executor serves
+      // the avatar path, where provider asset identifiers must never be
+      // logged. Only fixed operation/outcome codes and safe numeric
+      // metadata are emitted.
       yield* Effect.logInfo("Cloudinary image upload started", {
-        publicId: input.publicId,
-        folder: input.folder,
         byteLength: input.bytes.byteLength,
       });
 
@@ -645,17 +638,15 @@ function createUploadExecutor() {
           )
         ),
         Effect.tap((asset) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ result: asset });
-            yield* Effect.logInfo("Cloudinary image upload completed", {
-              publicId: input.publicId,
-              version: asset.version,
-            });
+          Effect.logInfo("Cloudinary image upload completed", {
+            width: asset.width,
+            height: asset.height,
+            format: asset.format,
+            version: asset.version,
           })
         ),
         Effect.tapError((error) =>
           Effect.logError("Cloudinary image upload failed", {
-            publicId: input.publicId,
             errorMessage: error.message,
             httpCode: error.httpCode,
           })
@@ -663,11 +654,7 @@ function createUploadExecutor() {
         Effect.retry(uploadRetryPolicy)
       );
     },
-    (effect, input) =>
-      effect.pipe(
-        Effect.scoped,
-        Effect.annotateLogs({ publicId: input.publicId, folder: input.folder })
-      )
+    (effect) => Effect.scoped(effect)
   );
 }
 
@@ -711,8 +698,10 @@ function createDestroyExecutor() {
 
   return Effect.fn("cloudinary.destroy")(
     function* (publicId: CloudinaryPublicId) {
-      yield* Effect.annotateLogsScoped({ publicId });
-      yield* Effect.logInfo("Cloudinary asset destroy started", { publicId });
+      // The destroyed public ID never enters logs or annotations: this
+      // executor serves the avatar path, where provider asset identifiers
+      // must never be logged. Only the fixed outcome code is emitted.
+      yield* Effect.logInfo("Cloudinary asset destroy started");
 
       return yield* pipe(
         performDestroy(publicId),
@@ -736,17 +725,10 @@ function createDestroyExecutor() {
           return Effect.succeed(outcome);
         }),
         Effect.tap((outcome) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ outcome });
-            yield* Effect.logInfo("Cloudinary asset destroy completed", {
-              publicId,
-              outcome,
-            });
-          })
+          Effect.logInfo("Cloudinary asset destroy completed", { outcome })
         ),
         Effect.tapError((error) =>
           Effect.logError("Cloudinary asset destroy failed", {
-            publicId,
             outcome: error.outcome,
             errorMessage: error.message,
             httpCode: error.httpCode,
@@ -755,8 +737,7 @@ function createDestroyExecutor() {
         Effect.retry(destroyRetryPolicy)
       );
     },
-    (effect, publicId) =>
-      effect.pipe(Effect.scoped, Effect.annotateLogs({ publicId }))
+    (effect) => Effect.scoped(effect)
   );
 }
 
@@ -841,12 +822,11 @@ function createRenameExecutor() {
     ) {
       const overwrite = options?.overwrite ?? false;
 
-      yield* Effect.annotateLogsScoped({ fromPublicId, toPublicId, overwrite });
-      yield* Effect.logInfo("Cloudinary asset rename started", {
-        fromPublicId,
-        toPublicId,
-        overwrite,
-      });
+      // The renamed public IDs never enter logs or annotations: this
+      // executor serves the avatar path, where provider asset identifiers
+      // must never be logged. Only fixed operation/outcome codes and safe
+      // numeric metadata are emitted.
+      yield* Effect.logInfo("Cloudinary asset rename started", { overwrite });
 
       return yield* pipe(
         performRename(fromPublicId, toPublicId, overwrite),
@@ -866,19 +846,12 @@ function createRenameExecutor() {
           )
         ),
         Effect.tap((asset) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ result: asset });
-            yield* Effect.logInfo("Cloudinary asset rename completed", {
-              fromPublicId,
-              toPublicId,
-              version: asset.version,
-            });
+          Effect.logInfo("Cloudinary asset rename completed", {
+            version: asset.version,
           })
         ),
         Effect.tapError((error) =>
           Effect.logError("Cloudinary asset rename failed", {
-            fromPublicId,
-            toPublicId,
             reason: error.reason,
             errorMessage: error.message,
             httpCode: error.httpCode,
@@ -887,14 +860,6 @@ function createRenameExecutor() {
         Effect.retry(renameRetryPolicy)
       );
     },
-    (effect, fromPublicId, toPublicId, options) =>
-      effect.pipe(
-        Effect.scoped,
-        Effect.annotateLogs({
-          fromPublicId,
-          toPublicId,
-          overwrite: options?.overwrite ?? false,
-        })
-      )
+    (effect) => Effect.scoped(effect)
   );
 }

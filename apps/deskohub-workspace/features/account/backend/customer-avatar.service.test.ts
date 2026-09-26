@@ -29,6 +29,9 @@ type CloudinaryCall =
 
 let calls: CloudinaryCall[] = [];
 let renameFailuresRemaining = 0;
+let renameFailureReason = "failed";
+let commitButLoseRenameResponse = false;
+let uploadStoreThenFail = false;
 let destroyOutcome: "destroyed" | "not-found" | "uncertain" = "destroyed";
 let storedAsset: string | null = null;
 let lookupAsset: string | null = null;
@@ -78,7 +81,7 @@ const CloudinaryLayer = Layer.succeed(Cloudinary, {
       return Effect.succeed(makeAsset(publicId, 42));
     }),
   uploadImage: (input) =>
-    Effect.sync(() => {
+    Effect.suspend(() => {
       const fullId = `${input.folder}/${input.publicId}`;
       calls.push({
         op: "upload",
@@ -87,7 +90,10 @@ const CloudinaryLayer = Layer.succeed(Cloudinary, {
       });
       storedAsset = fullId;
       lastUploadedBytes = input.bytes;
-      return makeAsset(fullId, 7);
+      if (uploadStoreThenFail) {
+        return Effect.fail({ _tag: "CloudinaryUploadError" });
+      }
+      return Effect.succeed(makeAsset(fullId, 7));
     }),
   destroyAsset: (publicId) =>
     Effect.suspend(() => {
@@ -109,9 +115,22 @@ const CloudinaryLayer = Layer.succeed(Cloudinary, {
         to,
         overwrite: options?.overwrite ?? false,
       });
+      if (commitButLoseRenameResponse) {
+        // The provider committed the rename but lost the response: the
+        // staged source is gone and the live asset exists.
+        storedAsset = null;
+        lookupAsset = to;
+        return Effect.fail({
+          _tag: "CloudinaryRenameError",
+          reason: "source-missing",
+        });
+      }
       if (renameFailuresRemaining > 0) {
         renameFailuresRemaining -= 1;
-        return Effect.fail({ _tag: "CloudinaryRenameError" });
+        return Effect.fail({
+          _tag: "CloudinaryRenameError",
+          reason: renameFailureReason,
+        });
       }
       storedAsset = null;
       lookupAsset = to;
@@ -213,6 +232,9 @@ const uploadInput = (
 const resetFakes = () => {
   calls = [];
   renameFailuresRemaining = 0;
+  renameFailureReason = "failed";
+  commitButLoseRenameResponse = false;
+  uploadStoreThenFail = false;
   destroyOutcome = "destroyed";
   storedAsset = null;
   lookupAsset = null;
@@ -390,9 +412,10 @@ describe("CustomerAvatarService", () => {
     expect(calls).toHaveLength(0);
   });
 
-  test("returns a retryable failure, keeps the staged cleanup best-effort, and never touches a promoted avatar when promotion fails", async () => {
+  test("reports a retryable failure and retains the staged asset when the promotion stays uncommitted without a previous avatar", async () => {
     resetFakes();
-    renameFailuresRemaining = 2;
+    // Two provider-level attempts plus the reconciliation attempt all fail.
+    renameFailuresRemaining = 3;
     const bytes = await pngBytes(100, 100);
 
     const outcome = await runWith(
@@ -405,8 +428,86 @@ describe("CustomerAvatarService", () => {
       failure: { _tag: "CustomerAvatarProviderError" },
     });
     const ops = calls.map(({ op }) => op);
-    expect(ops).toEqual(["upload", "rename", "rename", "destroy"]);
+    // The reconciliation lookup runs before anything is destroyed; with no
+    // live asset the staging is the only recoverable copy and is retained.
+    expect(ops).toEqual(["upload", "rename", "rename", "rename", "get"]);
     expect(lookupAsset).toBeNull();
+    expect(ops).not.toContain("destroy");
+    expect(storedAsset).not.toBeNull();
+  });
+
+  test("recovers a promotion that committed while its response was lost", async () => {
+    resetFakes();
+    commitButLoseRenameResponse = true;
+    const bytes = await pngBytes(100, 100);
+
+    const outcome = await runWith(
+      Effect.flatMap(CustomerAvatarService, (avatars) =>
+        avatars.upload(accountId, uploadInput(bytes))
+      )
+    );
+
+    // Success is reported only against the confirmed live asset.
+    expect(outcome).toMatchObject({
+      url: expect.stringContaining("/upload/"),
+      version: 42,
+    });
+    const ops = calls.map(({ op }) => op);
+    expect(ops).toEqual(["upload", "rename", "rename", "get", "destroy"]);
+    expect(lookupAsset).toBe("avatars/test/acct-avatar-1");
+    expect(storedAsset).toBeNull();
+  });
+
+  test("preserves the previous avatar and reports a retryable failure when an uncertain promotion never commits", async () => {
+    resetFakes();
+    renameFailuresRemaining = 3;
+    lookupAsset = "avatars/test/acct-avatar-1";
+    const bytes = await pngBytes(100, 100);
+
+    const outcome = await runWith(
+      Effect.flatMap(CustomerAvatarService, (avatars) =>
+        avatars.upload(accountId, uploadInput(bytes)).pipe(Effect.result)
+      )
+    );
+
+    expect(outcome).toMatchObject({
+      failure: { _tag: "CustomerAvatarProviderError" },
+    });
+    const ops = calls.map(({ op }) => op);
+    expect(ops).toEqual([
+      "upload",
+      "rename",
+      "rename",
+      "rename",
+      "get",
+      "destroy",
+    ]);
+    // The previous avatar stays live.
+    expect(lookupAsset).toBe("avatars/test/acct-avatar-1");
+  });
+
+  test("destroys the known staging ID when the provider stores the bytes but fails the upload", async () => {
+    resetFakes();
+    uploadStoreThenFail = true;
+    const bytes = await pngBytes(100, 100);
+
+    const outcome = await runWith(
+      Effect.flatMap(CustomerAvatarService, (avatars) =>
+        avatars.upload(accountId, uploadInput(bytes)).pipe(Effect.result)
+      )
+    );
+
+    expect(outcome).toMatchObject({
+      failure: { _tag: "CustomerAvatarProviderError" },
+    });
+    const destroy = calls.find((call) => call.op === "destroy");
+    expect(destroy).toBeDefined();
+    if (destroy?.op === "destroy") {
+      expect(
+        destroy.publicId.startsWith("avatars/test-staging/acct-avatar-1")
+      ).toBe(true);
+    }
+    expect(storedAsset).toBeNull();
   });
 
   test("replaces the previous avatar through promotion with overwrite", async () => {

@@ -21,6 +21,7 @@
   "accountProfileAvatarUpdated": "Profilová fotografie byla aktualizována.",
   "accountProfileAvatarRemoved": "Profilová fotografie byla odebrána.",
   "accountProfileAvatarErrorRetryable": "Profilovou fotografii se nám nepodařilo uložit. Zkuste to prosím znovu.",
+  "accountProfileAvatarErrorGeneric": "Profilovou fotografii se nám nepodařilo uložit. Zkontrolujte připojení a zkuste to prosím znovu.",
   "accountProfileAvatarErrorFileMissing": "Vyberte obrázek k nahrání.",
   "accountProfileAvatarErrorFileTooLarge": "Tento obrázek je větší než 2 MB. Vyberte menší soubor.",
   "accountProfileAvatarErrorUnsupportedFormat": "Tento typ souboru není podporován. Použijte JPG, PNG nebo WebP.",
