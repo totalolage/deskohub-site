@@ -13,6 +13,7 @@ import { workspaceDatabasePool } from "@/db/database-provider.server";
 import { drizzleAuthTables } from "@/db/schema/auth";
 import { env } from "@/env";
 import { CustomerAccountDeletionService } from "@/features/account/backend/customer-account-deletion";
+import { SavedCardService } from "@/features/account/backend/saved-card/saved-card.service";
 import {
   type CustomerAccountId,
   customerAccountIdSchema,
@@ -237,14 +238,31 @@ export const workspaceBeforeDeleteUser = (accountId: CustomerAccountId) =>
   runWorkspaceEffect("account.deletion.provider-expiration", {
     boundary: "task",
   })(
-    Effect.flatMap(CustomerAccountDeletionService, (service) =>
-      service.requestDeletion(accountId)
+    // Saved-card contracts must be deactivated before identity removal, and a
+    // retryable provider failure must keep the deletion retryable by
+    // rejecting it: already-deactivated contracts vanish from the provider
+    // list, so a retry naturally proceeds with the remainder.
+    Effect.flatMap(SavedCardService, (savedCards) =>
+      savedCards.deactivateAllForDeletion(accountId)
     ).pipe(
-      Effect.provide(CustomerAccountDeletionService.Live),
+      Effect.provide(SavedCardService.Live),
       Effect.tapError(() =>
         Effect.logWarning(
-          "Customer account deletion: Dotypos expiration failed; deletion stays retryable.",
-          { code: "account.deletion.retryable" }
+          "Customer account deletion: saved card deactivation failed; deletion stays retryable.",
+          { code: "account.deletion.saved-cards.retryable" }
+        )
+      ),
+      Effect.andThen(
+        Effect.flatMap(CustomerAccountDeletionService, (service) =>
+          service.requestDeletion(accountId)
+        ).pipe(
+          Effect.provide(CustomerAccountDeletionService.Live),
+          Effect.tapError(() =>
+            Effect.logWarning(
+              "Customer account deletion: Dotypos expiration failed; deletion stays retryable.",
+              { code: "account.deletion.retryable" }
+            )
+          )
         )
       )
     )

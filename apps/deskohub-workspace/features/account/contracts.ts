@@ -118,6 +118,25 @@ export type CustomerReservationHistory =
         | "provider-unavailable";
     };
 
+/**
+ * Saved payment card as shown in the account billing section. Only the
+ * provider contract reference and masked display facts are exposed; no
+ * provider implementation types cross this boundary.
+ */
+export type SavedCardView = {
+  readonly contractId: string;
+  readonly circuit?: string;
+  readonly suffix?: string;
+};
+
+/** Closed outcome of the server-authoritative enrollment verification. */
+export type SavedCardEnrollmentOutcome =
+  | "confirmed"
+  | "cancelled"
+  | "failed"
+  | "pending"
+  | "not_found";
+
 const toInstantOrNull = (value: string): Temporal.Instant | null => {
   try {
     return Temporal.Instant.from(value);
