@@ -124,10 +124,12 @@ describe("PaymentLifecycleRepository", () => {
       // BEGIN
       [heldReservationRow()], // locking the current held reservation
       [orderRow()], // order mirror upsert
+      [], // legacy attempt linkage repair
       [attemptRow()],
       [], // snapshot insert
       [heldReservationRow()], // linking the attempt to the held reservation
       [orderRow()], // order mirror upsert after linking
+      [], // legacy attempt linkage repair
     ]);
 
     await Effect.runPromise(

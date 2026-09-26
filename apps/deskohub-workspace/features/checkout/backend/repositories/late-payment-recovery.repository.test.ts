@@ -97,12 +97,14 @@ const settleSuccessRows = (
   [processingRecoveryRow()],
   [reservationRow(reservation)],
   [orderRow()], // order mirror upsert after the locked reservation
+  [], // legacy attempt linkage repair
   [], // supersession recheck
   [["attempt-1"]],
   [],
   [],
   [reservationRow({ ...reservation })],
   [orderRow()], // order mirror upsert after the settled reservation
+  [], // legacy attempt linkage repair
   [],
 ];
 
@@ -154,9 +156,20 @@ describe("LatePaymentRecoveryRepository", () => {
       sql.includes('"created_at" > ')
     );
     expect(supersessionStatement).toBeDefined();
-    expect(recording.statements.map(({ sql }) => sql)).not.toContainEqual(
-      expect.stringContaining('update "payment_attempts"')
-    );
+    // No settlement write reaches the attempt; the only payment_attempts
+    // statement is the mirror's legacy linkage repair.
+    expect(
+      recording.statements
+        .map(({ sql }) => sql)
+        .filter((sql) => sql.includes('update "payment_attempts"'))
+    ).toHaveLength(1);
+    expect(
+      recording.statements.find(
+        ({ sql }) =>
+          sql.includes('update "payment_attempts"') &&
+          !sql.includes('"order_id" = $')
+      )
+    ).toBeUndefined();
   });
 
   test("allows a replacement to settle after the original reservation was cancelled", async () => {
@@ -197,6 +210,7 @@ describe("LatePaymentRecoveryRepository", () => {
       [processingRecoveryRow()],
       [reservationRow({ activePaymentAttemptId: "attempt-2" })],
       [orderRow()], // order mirror upsert after the locked reservation
+      [], // legacy attempt linkage repair
       [["attempt-1"]],
       [],
     ]);
@@ -211,8 +225,10 @@ describe("LatePaymentRecoveryRepository", () => {
     );
 
     const sqlTexts = recording.statements.map(({ sql }) => sql);
-    const attemptUpdate = recording.statements.find(({ sql }) =>
-      sql.startsWith('update "payment_attempts"')
+    const attemptUpdate = recording.statements.find(
+      ({ sql }) =>
+        sql.startsWith('update "payment_attempts"') &&
+        sql.includes('"refund_state"')
     );
     expect(attemptUpdate?.params).toContain("required");
     expect(sqlTexts.join("\n")).not.toContain(

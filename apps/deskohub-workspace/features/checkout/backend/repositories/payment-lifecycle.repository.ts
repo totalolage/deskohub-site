@@ -725,8 +725,11 @@ export class PaymentLifecycleRepository extends Context.Service<
                 };
               }
 
+              // Idempotent replay: lock the authoritative row so a missing or
+              // stale order mirror left by an old writer is repaired here too,
+              // before reporting that nothing changed.
               const [consistent] = yield* tx
-                .select({ paidAt: workspaceReservations.paidAt })
+                .select()
                 .from(workspaceReservations)
                 .where(
                   and(
@@ -735,7 +738,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                     eq(workspaceReservations.activePaymentAttemptId, input.id)
                   )
                 )
-                .limit(1);
+                .limit(1)
+                .for("update");
 
               if (!consistent) {
                 return yield* lifecycleStateError(
@@ -744,6 +748,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "Only the active pending attempt on a held reservation can mark payment paid."
                 );
               }
+
+              yield* ensureReservationOrder({ tx, reservation: consistent });
 
               yield* redeemCodeClaim(tx, input.id, input.paidAt);
               return {
@@ -836,8 +842,11 @@ export class PaymentLifecycleRepository extends Context.Service<
                 };
               }
 
+              // Idempotent replay: lock the authoritative row so a missing or
+              // stale order mirror left by an old writer is repaired here too,
+              // before reporting that nothing changed.
               const [consistent] = yield* tx
-                .select({ updatedAt: workspaceReservations.updatedAt })
+                .select()
                 .from(workspaceReservations)
                 .where(
                   and(
@@ -846,7 +855,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                     eq(workspaceReservations.activePaymentAttemptId, input.id)
                   )
                 )
-                .limit(1);
+                .limit(1)
+                .for("update");
 
               if (!consistent) {
                 return yield* lifecycleStateError(
@@ -855,6 +865,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "Only the active pending attempt on a held reservation can mark payment terminal."
                 );
               }
+
+              yield* ensureReservationOrder({ tx, reservation: consistent });
 
               yield* releaseCodeClaim(
                 tx,

@@ -7,7 +7,7 @@ import {
 } from "@deskohub/dotypos";
 import { eq, inArray } from "drizzle-orm";
 import { Effect, Layer } from "effect";
-import { orders, workspaceReservations } from "@/db/schema";
+import { orders, paymentAttempts, workspaceReservations } from "@/db/schema";
 import { checkoutAttemptKeySchema } from "@/features/checkout/checkout-identifiers";
 import {
   type IWorkspaceReservationRepository,
@@ -93,6 +93,24 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     );
     if (!row) throw new Error(`fixture reservation ${id} disappeared`);
     return row;
+  };
+
+  const loadOrder = async (id: WorkspaceReservationId) => {
+    const [row] = await Effect.runPromise(
+      postgres.db.select().from(orders).where(eq(orders.id, id)).limit(1)
+    );
+    if (!row) throw new Error(`order ${id} is missing`);
+    return row;
+  };
+
+  /** Every mirrored column, including timestamps, must equal the row. */
+  const expectOrderMirrors = (
+    order: typeof orders.$inferSelect,
+    reservation: typeof workspaceReservations.$inferSelect
+  ) => {
+    for (const column of mirroredColumns) {
+      expect(order[column]).toEqual(reservation[column]);
+    }
   };
 
   afterEach(async () => {
@@ -349,6 +367,225 @@ describe.skipIf(!postgresDatabase)("ensureReservationOrder on Postgres", () => {
     );
     expect(mirroredProcessing).toHaveLength(1);
     expect(invoiceEligible(mirroredProcessing[0]!)).toBe(false);
+  });
+
+  test("supersession gives both reservations their own order atomically", async () => {
+    const reservations = (await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* WorkspaceReservationRepository;
+      }).pipe(
+        Effect.provide(
+          WorkspaceReservationRepository.Default.pipe(
+            Layer.provide(postgres.layer)
+          )
+        )
+      )
+    )) as IWorkspaceReservationRepository;
+
+    const originalId = await insertReservation({
+      reservationState: "held",
+      paymentState: "not_started",
+      dotyposReservationId: DotyposReservationIdSchema.make(
+        `dotypos-reservation-${crypto.randomUUID()}`
+      ),
+    });
+    const claimed = await Effect.runPromise(
+      reservations.claimSupersessionCancellation(originalId)
+    );
+    expect(claimed?.reservationState).toBe("cancelling");
+
+    const cancelledAt = Temporal.Now.instant();
+    const replacement = await Effect.runPromise(
+      reservations.completeSupersessionAndCreateDraft({
+        cancelledReservationId: originalId,
+        cancelledAt,
+        replacement: {
+          checkoutSessionKey: checkoutAttemptKeySchema.make(
+            `session-${crypto.randomUUID()}`
+          ),
+          checkoutAttemptKey: checkoutAttemptKeySchema.make(
+            `attempt-${crypto.randomUUID()}`
+          ),
+          dotyposCustomerId: DotyposCustomerIdSchema.make(
+            `customer-${crypto.randomUUID()}`
+          ),
+          reservationDetails: {
+            kind: "cowork",
+            entryTier: "basic",
+            coffee: false,
+          },
+          locale: "en-US",
+          reservationHoldExpiresAt: holdExpiresAt,
+        },
+      })
+    );
+    fixtureReservationIds.push(replacement.id);
+
+    // After the commit, before any payment starts, both reservation IDs own
+    // their own same-ID order.
+    const originalOrder = await loadOrder(originalId);
+    const replacementOrder = await loadOrder(replacement.id);
+    expect(originalOrder.kind).toBe("reservation");
+    expect(replacementOrder.kind).toBe("reservation");
+    expectOrderMirrors(originalOrder, await loadReservation(originalId));
+    expectOrderMirrors(replacementOrder, await loadReservation(replacement.id));
+    expect(replacementOrder.paymentState).toBe("not_started");
+    expect(replacement.id).not.toBe(originalId);
+  });
+
+  test("hold lifecycle transitions re-mirror every column including timestamps", async () => {
+    const reservations = (await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* WorkspaceReservationRepository;
+      }).pipe(
+        Effect.provide(
+          WorkspaceReservationRepository.Default.pipe(
+            Layer.provide(postgres.layer)
+          )
+        )
+      )
+    )) as IWorkspaceReservationRepository;
+
+    const id = await insertReservation({
+      reservationState: "draft",
+      fulfillmentState: "processing",
+      paymentState: "paid",
+      paidAt: Temporal.Now.instant(),
+    });
+
+    expect(await Effect.runPromise(reservations.claimHoldCreation(id))).toBe(
+      true
+    );
+    expectOrderMirrors(await loadOrder(id), await loadReservation(id));
+
+    const reservedAt = Temporal.Now.instant();
+    await Effect.runPromise(
+      reservations.attachHold({
+        id,
+        dotyposReservationId: DotyposReservationIdSchema.make(
+          `dotypos-reservation-${crypto.randomUUID()}`
+        ),
+        reservationCreatedAt: reservedAt,
+        reservationHoldExpiresAt: holdExpiresAt,
+      })
+    );
+    expectOrderMirrors(await loadOrder(id), await loadReservation(id));
+
+    await Effect.runPromise(
+      reservations.updateReservationDetails({
+        id,
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "basic",
+          coffee: true,
+        },
+        locale: "cs-CZ",
+      })
+    );
+    expectOrderMirrors(await loadOrder(id), await loadReservation(id));
+
+    const confirmedAt = Temporal.Now.instant();
+    await Effect.runPromise(
+      reservations.markReservationConfirmed({ id, confirmedAt })
+    );
+    const [reservation, order] = await Promise.all([
+      loadReservation(id),
+      loadOrder(id),
+    ]);
+    expectOrderMirrors(order, reservation);
+    // The mirrored updatedAt is not stale: it equals the authoritative row.
+    expect(order.updatedAt).toEqual(reservation.updatedAt);
+  });
+
+  test("markCancelled and claimPaidFulfillment re-mirror cancellation and fulfillment facts", async () => {
+    const reservations = (await Effect.runPromise(
+      Effect.gen(function* () {
+        return yield* WorkspaceReservationRepository;
+      }).pipe(
+        Effect.provide(
+          WorkspaceReservationRepository.Default.pipe(
+            Layer.provide(postgres.layer)
+          )
+        )
+      )
+    )) as IWorkspaceReservationRepository;
+
+    const cancellationId = await insertReservation({
+      reservationState: "held",
+      dotyposReservationId: DotyposReservationIdSchema.make(
+        `dotypos-reservation-${crypto.randomUUID()}`
+      ),
+    });
+    await Effect.runPromise(reservations.claimCancellation(cancellationId));
+    expectOrderMirrors(
+      await loadOrder(cancellationId),
+      await loadReservation(cancellationId)
+    );
+    const cancelledAt = Temporal.Now.instant();
+    await Effect.runPromise(
+      reservations.markCancelled({ id: cancellationId, cancelledAt })
+    );
+    const cancelledReservation = await loadReservation(cancellationId);
+    const cancelledOrder = await loadOrder(cancellationId);
+    expectOrderMirrors(cancelledOrder, cancelledReservation);
+    expect(cancelledOrder.paymentState).toEqual(
+      cancelledReservation.paymentState
+    );
+    expect(cancelledOrder.updatedAt).toEqual(cancelledReservation.updatedAt);
+
+    const fulfilledId = await insertReservation({
+      paymentState: "paid",
+      paidAt: Temporal.Now.instant(),
+      reservationState: "held",
+      dotyposReservationId: DotyposReservationIdSchema.make(
+        `dotypos-reservation-${crypto.randomUUID()}`
+      ),
+    });
+    await Effect.runPromise(
+      reservations.claimPaidFulfillment({
+        id: fulfilledId,
+        staleProcessingBefore: Temporal.Now.instant(),
+      })
+    );
+    const fulfilledAt = Temporal.Now.instant();
+    await Effect.runPromise(
+      reservations.markFulfilled({ id: fulfilledId, fulfilledAt })
+    );
+    expectOrderMirrors(
+      await loadOrder(fulfilledId),
+      await loadReservation(fulfilledId)
+    );
+  });
+
+  test("relinks legacy payment attempts left unlinked by old writers", async () => {
+    const id = await insertReservation();
+    const [attempt] = await Effect.runPromise(
+      postgres.db
+        .insert(paymentAttempts)
+        .values({
+          workspaceReservationId: id,
+          provider: "nexi",
+          providerOrderId: `order-${crypto.randomUUID()}` as never,
+          state: "created",
+          amountValue: 35_000,
+          amountExponent: 2,
+          currency: "CZK",
+        })
+        .returning()
+    );
+    expect(attempt!.orderId).toBeNull();
+
+    await Effect.runPromise(mirror(await loadReservation(id)));
+
+    const [relattempt] = await Effect.runPromise(
+      postgres.db
+        .select()
+        .from(paymentAttempts)
+        .where(eq(paymentAttempts.id, attempt!.id))
+        .limit(1)
+    );
+    // The persisted linkage equals the reservation id, not a synthesized one.
+    expect(relattempt!.orderId).toBe(id);
   });
 
   test("mirrors fulfilled + fulfilledAt so the invoice gate can open", async () => {

@@ -1,7 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { Effect } from "effect";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
-import { orders, type WorkspaceReservation } from "@/db/schema";
+import {
+  orders,
+  paymentAttempts,
+  type WorkspaceReservation,
+} from "@/db/schema";
 import { orderIdSchema } from "../order";
 
 type TransactionClient = Parameters<
@@ -48,7 +52,21 @@ export const ensureReservationOrder = Effect.fn(
     })
     .returning();
 
-  if (order) return order;
+  if (order) {
+    // Old writers left their payment attempts without order linkage; repair
+    // it here so every caller of the mirror also restores the linkage, after
+    // the orders upsert so the lock order stays orders → payment attempts.
+    yield* input.tx
+      .update(paymentAttempts)
+      .set({ orderId })
+      .where(
+        and(
+          eq(paymentAttempts.workspaceReservationId, input.reservation.id),
+          isNull(paymentAttempts.orderId)
+        )
+      );
+    return order;
+  }
 
   return yield* Effect.die(
     `Order ${orderId} already exists with a non-reservation kind.`

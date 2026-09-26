@@ -126,7 +126,9 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(error).toBeInstanceOf(WorkspaceReservationStateError);
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = recording.statements.find(({ sql }) =>
+      sql.startsWith('update "workspace_reservations"')
+    )!;
     const setClause = sql.slice(0, sql.toLowerCase().indexOf(" where "));
     expect(setClause).toContain('"reservation_hold_expired_at" = $');
     expect(setClause).toContain('"failure_code" = $');
@@ -166,7 +168,12 @@ describe("WorkspaceReservationRepository", () => {
   test("marks paid Nexi attempts as requiring a refund with admin cancellation fencing", async () => {
     const { recording, repository } = await makeRepository();
     const claimedAt = Temporal.Instant.from("2026-01-01T10:00:00.000Z");
-    recording.setRows([[["00000000-0000-4000-8000-000000000001"]], []]);
+    recording.setRows([
+      [reservationRow()], // fenced cancellation update
+      [orderRow()], // order mirror upsert
+      [], // legacy attempt linkage repair
+      [], // refund-required attempt update
+    ]);
 
     await Effect.runPromise(
       repository.markAdministrationCancelled({
@@ -180,8 +187,10 @@ describe("WorkspaceReservationRepository", () => {
     const reservationUpdate = recording.statements.find(({ sql }) =>
       sql.startsWith('update "workspace_reservations"')
     );
-    const attemptUpdate = recording.statements.find(({ sql }) =>
-      sql.startsWith('update "payment_attempts"')
+    const attemptUpdate = recording.statements.find(
+      ({ sql }) =>
+        sql.startsWith('update "payment_attempts"') &&
+        sql.includes('"refund_state"')
     );
     expect(reservationUpdate).toBeDefined();
     expect(attemptUpdate).toBeDefined();
@@ -192,6 +201,21 @@ describe("WorkspaceReservationRepository", () => {
     expect(
       (reservationUpdate?.params ?? []).some((param) =>
         String(param).startsWith("2026-01-01T10:00:00")
+      )
+    ).toBe(true);
+    // The order mirror and its legacy attempt-linkage repair ran first.
+    expect(
+      recording.statements.some(
+        ({ sql }) =>
+          sql.startsWith('insert into "orders"') &&
+          sql.includes('on conflict ("id")')
+      )
+    ).toBe(true);
+    expect(
+      recording.statements.some(
+        ({ sql }) =>
+          sql.startsWith('update "payment_attempts"') &&
+          sql.includes('"order_id" = $')
       )
     ).toBe(true);
     expect(attemptUpdate?.sql).toContain('"refund_state" = $');
@@ -216,7 +240,9 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(error).toBeInstanceOf(WorkspaceReservationStateError);
-    const { sql, params } = recording.statements[0];
+    const { sql, params } = recording.statements.find(({ sql }) =>
+      sql.startsWith('update "workspace_reservations"')
+    )!;
     expect(sql).toContain('"reservation_state" = $');
     expect(params).toContain("cancellation_failed");
     expect(params).toContain("provider_rejected_cancellation");
@@ -254,6 +280,7 @@ describe("WorkspaceReservationRepository", () => {
       [], // access grant lookup
       [reservationRow()], // claimed reservation row
       [orderRow()], // order mirror upsert
+      [], // legacy attempt linkage repair
       [["attempt-1"]], // cancelled payment attempt
       [], // discount claim lookup for release
       [], // voucher claim lookup for release
@@ -280,8 +307,10 @@ describe("WorkspaceReservationRepository", () => {
     expect(guardStatement?.params).toContain("pending");
     expect(guardStatement?.params).toContain("attempt-1");
     expect(guardStatement?.params).toContain("provider_abandoned");
-    const attemptUpdate = recording.statements.find(({ sql }) =>
-      sql.startsWith('update "payment_attempts"')
+    const attemptUpdate = recording.statements.find(
+      ({ sql }) =>
+        sql.startsWith('update "payment_attempts"') &&
+        sql.includes('"state" = $')
     );
     expect(attemptUpdate?.sql).toContain('update "payment_attempts"');
     expect(attemptUpdate?.params).toContain("cancelled");
@@ -303,6 +332,7 @@ describe("WorkspaceReservationRepository", () => {
       ],
       [reservationRow()],
       [orderRow()], // order mirror upsert
+      [], // legacy attempt linkage repair
       [["attempt-1"]],
       [],
       [],

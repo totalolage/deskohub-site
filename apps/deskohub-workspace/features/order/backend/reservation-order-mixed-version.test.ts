@@ -117,8 +117,8 @@ describe.skipIf(!pgBin)(
         `insert into workspace_reservations
            (id, checkout_attempt_key, dotypos_customer_id, dotypos_reservation_id,
             reservation_state, payment_state, fulfillment_state, reservation_details,
-            locale, reservation_hold_expires_at, paid_at)
-         values ($1, $2, $3, $4, 'held', $5, $6, $7, 'en-US', '2099-01-01', $8)`,
+            locale, reservation_hold_expires_at, paid_at, fulfilled_at)
+         values ($1, $2, $3, $4, 'held', $5, $6, $7, 'en-US', '2099-01-01', $8, $9)`,
         [
           id,
           `attempt-${crypto.randomUUID()}`,
@@ -128,6 +128,7 @@ describe.skipIf(!pgBin)(
           input.fulfilled ? "fulfilled" : "not_started",
           JSON.stringify({ kind: "cowork", entryTier: "basic", coffee: false }),
           input.paymentState === "paid" ? new Date().toISOString() : null,
+          input.fulfilled ? new Date().toISOString() : null,
         ]
       );
       const { rows: attemptRows } = await pool.query(
@@ -309,6 +310,14 @@ describe.skipIf(!pgBin)(
         kind: "reservation",
         payment_state: "pending",
       });
+      // The repair also restores persisted attempt linkage, not just the
+      // projected order id.
+      const { rows: attemptRows } = await pool.query(
+        "select order_id from payment_attempts where workspace_reservation_id = $1",
+        [id]
+      );
+      expect(attemptRows).toHaveLength(1);
+      expect(attemptRows[0]!.order_id).toBe(id);
     });
 
     test("the webhook-complete path runs on repaired data without rejected writes", async () => {
@@ -351,6 +360,168 @@ describe.skipIf(!pgBin)(
         [id]
       );
       expect(orderRows[0]!.payment_state).toBe("paid");
+      expect(orderRows[0]!.paid_at).not.toBeNull();
+
+      // The webhook run also persisted the attempt → order linkage.
+      const { rows: attemptRows } = await pool.query(
+        "select order_id from payment_attempts where workspace_reservation_id = $1",
+        [id]
+      );
+      expect(attemptRows[0]!.order_id).toBe(id);
+    });
+
+    test("a markPaid replay repairs missing and stale orders and keeps fulfillment facts", async () => {
+      // Old-writer paid reservation whose order was never written; the
+      // attempt stays unlinked too. Already fulfilled, so the replay must
+      // not clobber fulfillment facts.
+      const id = await oldWriterReservation({
+        paymentState: "paid",
+        fulfilled: true,
+      });
+      // Keep the delivery leg from picking this already-fulfilled row.
+      await pool.query(
+        "update workspace_reservations set reservation_state = 'confirmed' where id = $1",
+        [id]
+      );
+      const attemptId = (
+        await pool.query(
+          "select id from payment_attempts where workspace_reservation_id = $1 limit 1",
+          [id]
+        )
+      ).rows[0]!.id as string;
+
+      const layer = Layer.succeed(
+        WorkspaceDatabase,
+        WorkspaceDatabase.of({ db })
+      );
+      const { PaymentLifecycleRepository } = await import(
+        "@/features/checkout/backend/repositories/payment-lifecycle.repository"
+      );
+      const repository = await Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* PaymentLifecycleRepository;
+        }).pipe(
+          Effect.provide(
+            PaymentLifecycleRepository.Default.pipe(Layer.provide(layer))
+          )
+        )
+      );
+      const replay = () =>
+        Effect.runPromise(
+          repository.markPaid({
+            id: attemptId as never,
+            workspaceReservationId: id,
+            providerStatus: "APPROVED",
+            paidAt: Temporal.Now.instant(),
+          })
+        );
+
+      const first = await replay();
+      expect(first.changed).toBe(false);
+
+      // Missing order: drop it (unlinking attempts first) and replay again.
+      await pool.query(
+        "update payment_attempts set order_id = null where workspace_reservation_id = $1",
+        [id]
+      );
+      await pool.query("delete from orders where id = $1", [id]);
+      expect((await replay()).changed).toBe(false);
+
+      const { rows: repaired } = await pool.query(
+        `select payment_state, fulfilled_at from orders where id = $1`,
+        [id]
+      );
+      expect(repaired).toHaveLength(1);
+      expect(repaired[0]!.payment_state).toBe("paid");
+      // The already-fulfilled reservation's fulfillment facts survive.
+      expect(repaired[0]!.fulfilled_at).not.toBeNull();
+
+      // Stale order: rewind the mirrored payment facts and replay again.
+      await pool.query(
+        "update orders set payment_state = 'pending', paid_at = null where id = $1",
+        [id]
+      );
+      expect((await replay()).changed).toBe(false);
+      const { rows: refreshed } = await pool.query(
+        "select payment_state, paid_at from orders where id = $1",
+        [id]
+      );
+      expect(refreshed[0]!.payment_state).toBe("paid");
+      expect(refreshed[0]!.paid_at).not.toBeNull();
+
+      const { rows: attemptRows } = await pool.query(
+        "select order_id, state from payment_attempts where workspace_reservation_id = $1",
+        [id]
+      );
+      expect(attemptRows[0]!.order_id).toBe(id);
+      expect(attemptRows[0]!.state).toBe("paid");
+    });
+
+    test("a markTerminal replay repairs the mirror and attempt linkage", async () => {
+      const id = await oldWriterReservation({
+        paymentState: "pending",
+        fulfilled: false,
+      });
+      const attemptId = (
+        await pool.query(
+          "select id from payment_attempts where workspace_reservation_id = $1 limit 1",
+          [id]
+        )
+      ).rows[0]!.id as string;
+
+      const layer = Layer.succeed(
+        WorkspaceDatabase,
+        WorkspaceDatabase.of({ db })
+      );
+      const { PaymentLifecycleRepository } = await import(
+        "@/features/checkout/backend/repositories/payment-lifecycle.repository"
+      );
+      const repository = await Effect.runPromise(
+        Effect.gen(function* () {
+          return yield* PaymentLifecycleRepository;
+        }).pipe(
+          Effect.provide(
+            PaymentLifecycleRepository.Default.pipe(Layer.provide(layer))
+          )
+        )
+      );
+      const terminal = (expired: boolean) =>
+        Effect.runPromise(
+          repository.markTerminal({
+            id: attemptId as never,
+            workspaceReservationId: id,
+            state: "expired",
+            failureCode: "hold_expired",
+            providerStatus: expired ? "EXPIRED" : undefined,
+          })
+        );
+
+      const first = await terminal(true);
+      expect(first.changed).toBe(true);
+
+      // Old-writer shape again: no order, unlinked attempt.
+      await pool.query(
+        "update payment_attempts set order_id = null where workspace_reservation_id = $1",
+        [id]
+      );
+      await pool.query("delete from orders where id = $1", [id]);
+
+      const replay = await terminal(false);
+      expect(replay.changed).toBe(false);
+
+      const { rows: orderRows } = await pool.query(
+        "select payment_state from orders where id = $1",
+        [id]
+      );
+      expect(orderRows).toHaveLength(1);
+      expect(orderRows[0]!.payment_state).toBe("expired");
+
+      const { rows: attemptRows } = await pool.query(
+        "select order_id, state from payment_attempts where workspace_reservation_id = $1",
+        [id]
+      );
+      expect(attemptRows[0]!.order_id).toBe(id);
+      expect(attemptRows[0]!.state).toBe("expired");
     });
 
     test("the recovery settle path repairs and settles without state loss", async () => {
@@ -486,11 +657,8 @@ describe.skipIf(!pgBin)(
       expect(Number(before.rows[0]!.n)).toBeGreaterThan(0);
       expect(after.rows).toHaveLength(1);
 
-      // Unlinked old attempts stay readable: the read model synthesizes the
-      // order id from the reservation id, so no state is lost.
-      const { toPaymentAttempt } = await import(
-        "@/features/checkout/backend/repositories/payment-attempt.repository"
-      );
+      // The forward repair also relinks the old writer's unlinked attempt in
+      // the persisted row, so the read model no longer needs to synthesize.
       const { rows: attemptRows } = await pool.query(
         `select id,
                 order_id as "orderId",
@@ -509,6 +677,10 @@ describe.skipIf(!pgBin)(
                 created_at as "createdAt", updated_at as "updatedAt"
            from payment_attempts where workspace_reservation_id = $1`,
         [id]
+      );
+      expect(attemptRows[0]!.orderId).toBe(id);
+      const { toPaymentAttempt } = await import(
+        "@/features/checkout/backend/repositories/payment-attempt.repository"
       );
       const attempt = toPaymentAttempt(attemptRows[0] as never);
       expect(attempt.orderId).toBe(id);
