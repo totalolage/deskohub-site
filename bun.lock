@@ -252,6 +252,16 @@
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
     },
+    "packages/ares": {
+      "name": "@deskohub/ares",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "4.0.0-beta.85",
+      },
+      "devDependencies": {
+        "typescript": "npm:@typescript/typescript6@6.0.2",
+      },
+    },
     "packages/cloudinary": {
       "name": "@deskohub/cloudinary",
       "version": "0.1.0",
@@ -633,6 +643,8 @@
     "@cloudinary/url-gen": ["@cloudinary/url-gen@1.15.0", "", { "dependencies": { "@cloudinary/transformation-builder-sdk": "^1.10.0" } }, "sha512-bjU67eZxLUgoRy/Plli4TQio7q6P31OYqnEgXxeN9TKXrzr6h0DeEdIUhKI9gy3HkEBWXWWJIPh7j7gkOJPnyA=="],
 
     "@date-fns/tz": ["@date-fns/tz@1.5.0", "", {}, "sha512-lwYN/vDPeNRULcepoE/LO2Pgx+7/RV+S9ARfbc9lr2DtGkOD7pAiruHvbR1RX3Qyf6ja47EWJDMsNK5vK08DJg=="],
+
+    "@deskohub/ares": ["@deskohub/ares@workspace:packages/ares"],
 
     "@deskohub/cloudinary": ["@deskohub/cloudinary@workspace:packages/cloudinary"],
 
