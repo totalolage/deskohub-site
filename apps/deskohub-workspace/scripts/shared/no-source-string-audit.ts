@@ -23,45 +23,24 @@ import { resolve } from "node:path";
  * behavior, parsed YAML/JSON config, and generated-output comparisons — and
  * are never flagged.
  *
- * Contract boundary (by scope, not per-file allowlist): the rule covers
- * hand-written TS/TSX sources only. Reads whose target is a shell script,
- * environment documentation, YAML/JSON config, Markdown, or plain text are
- * outside the TS source contract and are not flagged. Generated migration
- * SQL and generated codegen output remain explicit allowlist exceptions
- * because their verdicts exercise generated artifacts, not hand-written
- * source.
+ * Contract boundary (per read target, never per test file): any read of a
+ * repository file that is later pinned is a source read — including raw-text
+ * pins on shell scripts and environment documentation — except when the
+ * read's argument targets a generated artifact (drizzle migration SQL and
+ * its metadata, committed codegen output) or vendored third-party source.
+ * Generated-artifact exceptions therefore apply to the individual read, so
+ * a test combining a legitimate migration-SQL assertion with a hand-written
+ * source pin is still reported.
  */
 
-/** Generated SQL migrations: applied against a live disposable database. */
-const GENERATED_MIGRATION_READS = [
-  "apps/deskohub-workspace/db/schema/cli-authentication.test.ts",
-  "apps/deskohub-workspace/db/schema/customer-account-links.test.ts",
-  "apps/deskohub-workspace/db/schema/customer-marketing-consents.test.ts",
-  "apps/deskohub-workspace/db/schema/discounts.test.ts",
-  "apps/deskohub-workspace/db/schema/payment-attempts.test.ts",
-  "apps/deskohub-workspace/db/schema/standalone-access-code-attempt-events.test.ts",
-  "apps/deskohub-workspace/db/schema/workspace-reservations.test.ts",
-];
-
-/** Generated codegen output or synthetic temp fixtures, never hand-written source. */
-const GENERATED_FIXTURE_READS = [
-  "packages/games/src/generate.test.ts",
-  "packages/posthog/src/feature-flags/codegen.test.ts",
-  "apps/deskohub-workspace/scripts/postcss-config.test.ts",
-  "apps/deskohub-workspace/scripts/sync-posthog-feature-flags.test.ts",
-  "apps/deskohub-workspace/scripts/account-visual/run.test.tsx",
-  "apps/deskohub-workspace/scripts/account-visual/marketing-preferences-browser.test.tsx",
-];
-
-const normalizePath = (path: string): string =>
-  path
-    .replace(/^\.\//, "")
-    .replace(/^apps\/deskohub-workspace\//, "")
-    .replace(/^deskohub-workspace\//, "");
-
-const ALLOWLIST = new Set(
-  [...GENERATED_MIGRATION_READS, ...GENERATED_FIXTURE_READS].map(normalizePath)
-);
+/**
+ * Read-target patterns for generated artifacts and vendored source. A read
+ * whose argument matches one of these never holds hand-written repository
+ * source: drizzle migration SQL plus its journal/snapshot metadata,
+ * committed codegen output, and node_modules vendor files.
+ */
+const GENERATED_READ_TARGET =
+  /migrations\/[^"')]*\/migration\.sql|db\/migrations\/meta\/|src\/generated\/|node_modules\//;
 
 const SOURCE_READ =
   /\b(?:Bun\.file|readFileSync|readFile|readFileString)\s*\(|\b\w*[Rr]ead(?:Tracked|Source)\w*(?<!Json)(?<!Tokens)\s*\(/;
@@ -70,13 +49,11 @@ const DIRECT_READ =
 const REPO_SOURCE_ARG =
   /new URL\(|import\.meta|repoFile\(|["']\.\/|["']\.\.|repoRoot/;
 /**
- * Out-of-scope read targets: shell scripts, environment docs, YAML/JSON
- * config, Markdown, and plain text live outside the TS/TSX source contract.
- * The pattern only applies when the argument names no `.ts`/`.tsx` target.
+ * Read targets never hold hand-written repository source: generated
+ * artifacts and vendored third-party files are excluded per read, so every
+ * other pinned repository read — including shell scripts and environment
+ * documentation — is a source read.
  */
-const NON_TS_TARGET =
-  /\.sh\b|\.env\.|\.env\b|\.ya?ml\b|\.json\b|\.md\b|\.txt\b|\.csv\b/;
-const TS_TARGET = /\.tsx?\b/;
 const DERIVED_READ =
   /\bconst\s+(\w+)\s*=\s*(\w+)\.(?:slice|split|substring|replace|trim)\s*\(/;
 
@@ -138,20 +115,19 @@ export const findViolations = (
   const violations: string[] = [];
 
   for (const { path, content } of files) {
-    if (ALLOWLIST.has(normalizePath(path))) continue;
     if (!SOURCE_READ.test(content)) continue;
 
-    // Track variables that hold repository TS/TSX file contents (the read
-    // call must address a repository source, not a runtime temp/output file,
-    // and not an out-of-scope non-TS target), plus one level of
-    // string-derived copies (slices/splits of a read).
+    // Track variables that hold repository file contents (the read call
+    // must address a repository source, not a runtime temp/output file,
+    // and not a generated artifact or vendored source target), plus one
+    // level of string-derived copies (slices/splits of a read).
     const sourceVars = new Set<string>();
     for (const match of content.matchAll(DIRECT_READ)) {
       const argument = match[2] ?? "";
       if (!REPO_SOURCE_ARG.test(argument)) continue;
-      // Shell scripts, env docs, and YAML/JSON config are outside the
-      // TS/TSX source contract by scope.
-      if (NON_TS_TARGET.test(argument) && !TS_TARGET.test(argument)) continue;
+      // Generated migration SQL, codegen output, and vendored source are
+      // excluded per read target, not per file.
+      if (GENERATED_READ_TARGET.test(argument)) continue;
       sourceVars.add(match[1] ?? "");
     }
     for (const match of content.matchAll(

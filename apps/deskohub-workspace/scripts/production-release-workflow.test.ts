@@ -1,12 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { isNumber, isString } from "effect/Predicate";
 import {
-  exportedNames,
+  emitRollbackTarget,
+  promoteStagedDeployment,
+  verifyCanonicalAliasServes,
+} from "./production-release";
+import {
   identifierNames,
   importSpecifiers,
   nodesOf,
+  type ParsedSource,
+  parseSource,
   parseTrackedSource,
   topLevelConstInitializer,
 } from "./shared/source-ast";
@@ -33,7 +40,6 @@ const releaseScript = parseTrackedSource(
 
 const scriptIdentifiers = identifierNames(releaseScript.ast);
 const scriptImportModules = importSpecifiers(releaseScript.ast);
-const exportedModuleNames = exportedNames(releaseScript.ast);
 
 /** Text of every template quasi and string literal in the release script. */
 const scriptTexts = (): readonly string[] =>
@@ -59,6 +65,109 @@ const stepByName = (name: string): WorkflowStep => {
 };
 
 const stepIndexOfName = (name: string): number => stepNames.indexOf(name);
+
+/**
+ * Text of the tagged shell template inside the rollback operation — the
+ * command the recovery path actually executes — or undefined when the
+ * operation exists without such an invocation.
+ */
+const rollbackCommandInRecoveryPath = (
+  ast: ParsedSource["ast"]
+): string | undefined => {
+  const operation = topLevelConstInitializer(ast, "rollbackToDeployment");
+  if (!operation) return undefined;
+  const templates = nodesOf(operation).flatMap((node) =>
+    node.type === "TaggedTemplateExpression"
+      ? [node.quasi.quasis.map((quasi) => quasi.value.cooked ?? "").join(" ")]
+      : []
+  );
+  return templates.find((text) => text.includes("rollback"));
+};
+
+/** The canonical production alias payload the script's resolver consumes. */
+const canonicalAliasPayload = () => ({
+  projectId: "project-1",
+  deployment: {
+    id: "baseline-deployment-id",
+    url: "baseline-deployment.vercel.app",
+  },
+});
+
+type FakeAliasRow = {
+  readonly alias: string;
+  readonly deploymentId: string;
+};
+
+/** One paginated project-alias listing page as the Vercel API returns it. */
+const aliasListingPage = (
+  aliases: readonly FakeAliasRow[],
+  next: number | null
+) => ({
+  aliases,
+  pagination: { next },
+});
+
+/** The paginated project listing payload serving the baseline deployment. */
+const baselineAliasListing = () =>
+  aliasListingPage(
+    [
+      {
+        alias: "deskohub-workspace-site.vercel.app",
+        deploymentId: "baseline-deployment-id",
+      },
+      {
+        alias: "workspace.deskohub.cz",
+        deploymentId: "baseline-deployment-id",
+      },
+    ],
+    null
+  );
+
+const stagedDeploymentPayload = () => ({
+  id: "staged-deployment-id",
+  readyState: "READY",
+});
+
+type FakeVercelPayload = ReturnType<
+  | typeof canonicalAliasPayload
+  | typeof aliasListingPage
+  | typeof stagedDeploymentPayload
+>;
+
+const jsonResponse = (payload: FakeVercelPayload): Response =>
+  new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+/**
+ * Runs `run` with `fetch` routed to fake Vercel API endpoints; returns the
+ * requested URLs so callers can assert the real request pattern (for
+ * example that alias pagination was actually followed).
+ */
+const withStubbedVercelApi = async (
+  routes: readonly {
+    readonly match: (url: string) => boolean;
+    readonly respond: () => FakeVercelPayload;
+  }[],
+  run: () => Promise<void>
+): Promise<readonly string[]> => {
+  const requestedUrls: string[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: URL | RequestInfo) => {
+    const url = input instanceof URL ? input.href : input;
+    requestedUrls.push(url);
+    const route = routes.find((candidate) => candidate.match(url));
+    if (!route) throw new Error(`Unexpected Vercel API request: ${url}`);
+    return jsonResponse(route.respond());
+  }) as typeof fetch;
+  try {
+    await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  return requestedUrls;
+};
 
 describe("deploy-workspace-production workflow", () => {
   test("gates the release on the production baseline before building and promoting", () => {
@@ -166,14 +275,9 @@ describe("deploy-workspace-production workflow", () => {
     expect(restoreStep.run).toBe(
       `bun scripts/production-release.ts rollback --url "\${{ steps.promote.outputs.baseline_url }}" --id "\${{ steps.promote.outputs.baseline_id }}"`
     );
-    // The script persists both baseline outputs; literal values come from
-    // the parsed module, so commented-out lines can never satisfy them.
-    expect(scriptTexts().some((text) => text.includes("baseline_url="))).toBe(
-      true
-    );
-    expect(scriptTexts().some((text) => text.includes("baseline_id="))).toBe(
-      true
-    );
+    // The baseline outputs the restore step consumes are proven by the
+    // executed promotion flow in "persists the baseline before an ambiguous
+    // promotion and recovers through the rollback path".
   });
 
   test("survives workflow cancellation at the job level so the always() finalizers are reached", () => {
@@ -329,21 +433,13 @@ describe("deploy-workspace-production workflow", () => {
   });
 
   test("rolls the release back through the script's Vercel rollback operation", () => {
-    // Comment-immune by construction: verdicts come from parsed template
-    // literals, so a commented-out operation satisfies nothing.
-    const vercelCommands = scriptTexts().filter((text) =>
-      text.includes("vercel@")
-    );
-    expect(
-      vercelCommands.some((command) =>
-        /\bvercel@\d[\d.]* rollback\b/.test(command)
-      )
-    ).toBe(true);
-    expect(
-      vercelCommands.some((command) =>
-        /\bvercel@\d[\d.]* promote\b/.test(command)
-      )
-    ).toBe(false);
+    // Scoped AST verdict: the versioned rollback command must be the actual
+    // shell invocation inside the rollback operation, not a string sitting
+    // anywhere in the module. Comment-immune by construction.
+    const rollbackCommand = rollbackCommandInRecoveryPath(releaseScript.ast);
+    expect(rollbackCommand).toBeDefined();
+    expect(rollbackCommand).toMatch(/\bvercel@\d[\d.]* rollback\b/);
+    expect(rollbackCommand).toContain("--timeout ");
     expect(/rollback[^\n]*vercel@\d[\d.]* promote/.test(rawWorkflow)).toBe(
       false
     );
@@ -356,21 +452,262 @@ describe("deploy-workspace-production workflow", () => {
     ).toBe(true);
   });
 
-  test("confirms rollbacks against the paginated required-alias authority, not a single canonical alias", () => {
-    // Comment-immune by construction: identifiers exist only when declared
-    // or referenced in the live syntax tree.
-    expect(scriptIdentifiers.has("listProjectAliases")).toBe(true);
-    expect(scriptIdentifiers.has("requiredProductionAliases")).toBe(true);
-    expect(scriptIdentifiers.has("waitForCanonicalAlias")).toBe(false);
+  test("the rollback verdict fails when the command literal survives without the recovery invocation", () => {
+    const urlName = ["u", "rl"].join("");
+    const fixtures = [
+      {
+        path: "tmp/unused-rollback-literal.ts",
+        content: [
+          `const unusedCommand = "bunx vercel@54.9.1 rollback \${${urlName}} --yes --timeout 10m";`,
+          `const rollbackToDeployment = async (${urlName}: string) => {`,
+          "  await Promise.resolve(url);",
+          "};",
+        ].join("\n"),
+      },
+      {
+        path: "tmp/promoting-recovery.ts",
+        content: [
+          `const rollbackToDeployment = async (${urlName}: string) => {`,
+          `  await $\`bunx vercel@54.9.1 promote \${${urlName}} --yes --timeout 10m\`;`,
+          "};",
+        ].join("\n"),
+      },
+    ];
+    for (const fixture of fixtures) {
+      expect(
+        rollbackCommandInRecoveryPath(parseSource(fixture.content))
+      ).toBeUndefined();
+    }
+  });
+
+  test("persists the baseline before an ambiguous promotion and recovers through the rollback path", async () => {
+    const persistedOutputs: string[] = [];
+    const rollbackUrls: string[] = [];
+    let pollTicks = 0;
+
+    const requestedUrls = await withStubbedVercelApi(
+      [
+        {
+          match: (url) => url.includes("/v13/deployments/"),
+          respond: stagedDeploymentPayload,
+        },
+        {
+          match: (url) => url.includes("/v4/aliases/"),
+          respond: canonicalAliasPayload,
+        },
+        // The listing keeps serving the baseline, so the staged promotion
+        // never confirms and the recovery path must run and re-verify.
+        {
+          match: (url) => url.includes("/v4/aliases?"),
+          respond: baselineAliasListing,
+        },
+      ],
+      async () => {
+        let rejection: unknown;
+        try {
+          await promoteStagedDeployment(
+            {
+              stagedUrl: "staged-deployment.vercel.app",
+              token: "token",
+              projectId: "project-1",
+              teamId: undefined,
+              pollDeadlineMilliseconds: 2,
+              pollIntervalMilliseconds: 0,
+            },
+            {
+              rollback: async (url) => {
+                rollbackUrls.push(url);
+              },
+              persist: async (output) => {
+                persistedOutputs.push(output);
+              },
+              sleep: async () => {},
+              now: () => (pollTicks += 1),
+            }
+          );
+        } catch (cause) {
+          rejection = cause;
+        }
+        // The ambiguous promotion surfaces as a failure after recovery.
+        expect(rejection).toBeInstanceOf(Error);
+        expect((rejection as Error).message).toContain("ambiguous");
+      }
+    );
+
+    // The baseline is persisted before any side effect...
+    expect(persistedOutputs).toContain(
+      "baseline_url=baseline-deployment.vercel.app\nbaseline_id=baseline-deployment-id\n"
+    );
+    expect(persistedOutputs).toContain("promotion_state=possibly-started\n");
+    // ...the recovery executed against the baseline deployment...
+    expect(rollbackUrls).toEqual(["baseline-deployment.vercel.app"]);
+    expect(persistedOutputs).toContain("promotion_state=restored\n");
+    // ...and both the staged-deployment lookup and alias polls were real.
+    expect(requestedUrls.some((url) => url.includes("/v13/deployments/"))).toBe(
+      true
+    );
+    expect(requestedUrls.some((url) => url.includes("/v4/aliases?"))).toBe(
+      true
+    );
+  });
+
+  test("emits the rollback target through GITHUB_OUTPUT and masks the deployment url", async () => {
+    const outputDirectory = mkdtempSync(join(tmpdir(), "release-output-"));
+    const githubOutput = join(outputDirectory, "github-output.txt");
+    const stdoutChunks: string[] = [];
+    const originalStdoutWrite = process.stdout.write;
+    const previousEnv = { ...process.env };
+    process.env.VERCEL_TOKEN = "synthetic-token";
+    process.env.VERCEL_PROJECT_ID = "project-1";
+    process.env.GITHUB_OUTPUT = githubOutput;
+    process.stdout.write = ((chunk: Uint8Array | string) => {
+      stdoutChunks.push(String(chunk));
+      return true;
+    }) as typeof process.stdout.write;
+    let emittedOutput = "";
+    try {
+      await withStubbedVercelApi(
+        [
+          {
+            match: (url) => url.includes("/v4/aliases/"),
+            respond: canonicalAliasPayload,
+          },
+        ],
+        async () => {
+          await emitRollbackTarget();
+        }
+      );
+      emittedOutput = readFileSync(githubOutput, "utf8");
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.env = previousEnv;
+      rmSync(outputDirectory, { recursive: true, force: true });
+    }
+
+    expect(emittedOutput).toBe("previous_url=baseline-deployment.vercel.app\n");
+    expect(stdoutChunks.join("")).toContain(
+      "::add-mask::baseline-deployment.vercel.app"
+    );
+  });
+
+  test("confirms rollbacks against the paginated required-alias authority, not a single canonical alias", async () => {
+    const expected = {
+      id: "baseline-deployment-id",
+      url: "baseline-deployment.vercel.app",
+    };
+    const input = {
+      token: "token",
+      projectId: "project-1",
+      teamId: undefined as string | undefined,
+    };
+
+    // Every required production alias confirms across two listing pages:
+    // the pagination cursor must actually be followed.
+    const pagedUrls = await withStubbedVercelApi(
+      [
+        {
+          match: (url) => url.includes("until="),
+          respond: () =>
+            aliasListingPage(
+              [
+                {
+                  alias: "workspace.deskohub.cz",
+                  deploymentId: "baseline-deployment-id",
+                },
+              ],
+              null
+            ),
+        },
+        {
+          match: (url) => url.includes("/v4/aliases?"),
+          respond: () =>
+            aliasListingPage(
+              [
+                {
+                  alias: "deskohub-workspace-site.vercel.app",
+                  deploymentId: "baseline-deployment-id",
+                },
+              ],
+              1_700_000_000_000
+            ),
+        },
+      ],
+      async () => {
+        await verifyCanonicalAliasServes(expected, { ...input });
+      }
+    );
+    expect(pagedUrls.filter((url) => url.includes("/v4/aliases"))).toHaveLength(
+      2
+    );
+
+    // A single canonical alias is not enough: the customer-facing domain
+    // missing from the project listing fails the verification outright.
+    await withStubbedVercelApi(
+      [
+        {
+          match: (url) => url.includes("/v4/aliases?"),
+          respond: () =>
+            aliasListingPage(
+              [
+                {
+                  alias: "deskohub-workspace-site.vercel.app",
+                  deploymentId: "baseline-deployment-id",
+                },
+              ],
+              null
+            ),
+        },
+      ],
+      async () => {
+        await expect(
+          verifyCanonicalAliasServes(expected, { ...input })
+        ).rejects.toThrow("workspace.deskohub.cz");
+      }
+    );
+
+    // Aliases that exist but still serve another deployment stay unconfirmed
+    // until the bounded window closes, and then fail the recovery.
+    let deadlineTicks = 0;
+    await withStubbedVercelApi(
+      [
+        {
+          match: (url) => url.includes("/v4/aliases?"),
+          respond: () =>
+            aliasListingPage(
+              [
+                {
+                  alias: "deskohub-workspace-site.vercel.app",
+                  deploymentId: "other-deployment-id",
+                },
+                {
+                  alias: "workspace.deskohub.cz",
+                  deploymentId: "other-deployment-id",
+                },
+              ],
+              null
+            ),
+        },
+      ],
+      async () => {
+        await expect(
+          verifyCanonicalAliasServes(
+            expected,
+            {
+              ...input,
+              pollDeadlineMilliseconds: 2,
+              pollIntervalMilliseconds: 0,
+            },
+            { sleep: async () => {}, now: () => (deadlineTicks += 1) }
+          )
+        ).rejects.toThrow("Rollback verification failed");
+      }
+    );
   });
 
   test("publishes recovery state through GITHUB_OUTPUT for the workflow conditions", () => {
-    expect(scriptTexts().some((text) => text.includes("GITHUB_OUTPUT"))).toBe(
-      true
-    );
-    expect(scriptTexts().some((text) => text.includes("::add-mask::"))).toBe(
-      true
-    );
+    // The step-output writes and the stdout masking are proven by the
+    // executed "emits the rollback target" flow; these parsed assertions
+    // pin the workflow's consumption of those outputs.
     expect(
       JSON.stringify(deployJob).includes("steps.promote.outputs.baseline_url")
     ).toBe(true);

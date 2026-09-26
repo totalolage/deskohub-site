@@ -1811,8 +1811,17 @@ test("desktop contract documents the chosen physical-pixel interpretation", asyn
     join(import.meta.dir, "renderer.css"),
     "utf8"
   );
-  expect(rendererCss).toContain("--site-header-height: 0px;");
-  expect(rendererCss).not.toContain("::after");
+  // Parsed-CSS verdicts, not raw-text pins on the tracked stylesheet.
+  const customPropertyValue = (css: string, name: string): string | undefined =>
+    css.match(new RegExp(`${name}\\s*:\\s*([^;}]+)`))?.[1]?.trim();
+  expect(customPropertyValue(rendererCss, "--site-header-height")).toBe("0px");
+  const ruleSelectors = (css: string): readonly string[] =>
+    [...css.matchAll(/(^|[}\n])\s*([^{}@]+)\{/g)].map(
+      (match) => match[2] ?? ""
+    );
+  expect(
+    ruleSelectors(rendererCss).some((selector) => selector.includes("::after"))
+  ).toBe(false);
   expect(HELP_TEXT).toContain("layout-neutral-unavailable-annotation-v2");
   expect(HELP_TEXT).toContain("Historical baseline comparability is false");
 

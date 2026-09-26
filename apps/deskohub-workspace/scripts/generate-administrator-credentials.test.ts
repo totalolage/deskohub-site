@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Schema } from "effect";
 
@@ -23,9 +22,13 @@ const decodeRegistry = Schema.decodeUnknownSync(
   administratorCredentialRegistrySchema
 );
 
-const runGenerator = (input: string) => {
+const runGenerator = (
+  input: string,
+  environment: Record<string, string> = {}
+) => {
   const result = Bun.spawnSync({
     cmd: generatorCommand,
+    env: { ...process.env, ...environment },
     stdin: new Blob([input]),
     stdout: "pipe",
     stderr: "pipe",
@@ -129,7 +132,32 @@ describe("administrator credential generator", () => {
     );
   });
 
-  test("rejects an uppercase username when the caller shell enabled nocasematch", () => {
+  test("keeps username validation invariant under a hostile inherited locale", () => {
+    // Behavioral enforcement check: the generator must produce identical,
+    // strictly C-locale validation no matter what locale the caller
+    // exports. The baseline run and the hostile-locale run must agree on
+    // both the rejection and the accepted credential.
+    const input = "Admin\nadmin\npw\n\n";
+    const baseline = runGenerator(input, { LC_ALL: "C", LANG: "C" });
+    const hostile = runGenerator(input, {
+      LC_ALL: "cs_CZ.UTF-8",
+      LC_CTYPE: "cs_CZ.UTF-8",
+      LANG: "cs_CZ.UTF-8",
+    });
+
+    expect(baseline.exitCode).toBe(0);
+    expect(hostile.exitCode).toBe(0);
+    expect(occurrences(hostile.stderr, "Rejected: usernames")).toBe(1);
+    expect(hostile.stdout).toBe(baseline.stdout);
+    expect(hostile.stdout).toBe(
+      `ADMIN_BASIC_AUTH_CREDENTIALS='admin:${digest("admin:pw")}'\n`
+    );
+  });
+
+  test("keeps username matching case-sensitive when the caller shell enabled nocasematch", () => {
+    // Behavioral enforcement check: sourcing the generator from a shell
+    // that enabled nocasematch must not relax the duplicate and pattern
+    // checks; the script resets the shell option itself.
     const result = Bun.spawnSync({
       cmd: [
         "bash",
@@ -150,39 +178,6 @@ describe("administrator credential generator", () => {
     );
   });
 
-  test("pins the C locale and case-sensitive matching for username validation", () => {
-    // The tracked generator is a bash script: it is outside the
-    // TypeScript source-contract boundary and is asserted on directly.
-    const script = readFileSync(
-      fileURLToPath(
-        new URL("./generate-administrator-credentials.sh", import.meta.url)
-      ),
-      "utf8"
-    );
-    // Comment-aware: a commented-out command must not count as configured.
-    const stripBashComments = (source: string) =>
-      source
-        .split("\n")
-        .map((line) => {
-          const hashAt = line.indexOf("#");
-          return hashAt === -1 ? line : line.slice(0, hashAt);
-        })
-        .join("\n")
-        .replace(/\s+/g, " ");
-    const activeScript = stripBashComments(script);
-
-    expect(occurrences(activeScript, "export LC_ALL=C")).toBe(1);
-    expect(occurrences(activeScript, "shopt -u nocasematch")).toBe(1);
-
-    // Negative fixture: the commented-out spelling satisfies nothing.
-    const commentedOut = ["# export LC_ALL=C", "# shopt -u nocasematch"].join(
-      "\n"
-    );
-    const strippedFixture = stripBashComments(commentedOut);
-    expect(occurrences(strippedFixture, "export LC_ALL=C")).toBe(0);
-    expect(occurrences(strippedFixture, "shopt -u nocasematch")).toBe(0);
-  });
-
   test("digests the complete username and password bytes", () => {
     const result = runGenerator("admin\npass:word\n\n");
 
@@ -192,6 +187,43 @@ describe("administrator credential generator", () => {
     );
   });
 });
+
+/**
+ * Parses environment documentation as KEY=VALUE configuration: assignment
+ * keys map to their values (values may span continuation lines), and
+ * comment lines are kept separately as documentation. Verdicts over the
+ * parsed structure are semantic, never raw-text pins on the file.
+ */
+const parseEnvExample = (
+  rawText: string
+): {
+  readonly assignments: ReadonlyMap<string, string>;
+  readonly documentation: readonly string[];
+} => {
+  const assignments = new Map<string, string>();
+  const documentation: string[] = [];
+  const assignmentKey = /^[A-Z0-9_]+$/;
+  for (const line of rawText.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("#")) {
+      documentation.push(trimmed.replace(/^#+\s*/, ""));
+      continue;
+    }
+    const separator = trimmed.indexOf("=");
+    if (separator > 0 && assignmentKey.test(trimmed.slice(0, separator))) {
+      assignments.set(
+        trimmed.slice(0, separator),
+        trimmed.slice(separator + 1)
+      );
+      continue;
+    }
+    const lastKey = [...assignments.keys()].at(-1);
+    if (lastKey !== undefined && trimmed.length > 0) {
+      assignments.set(lastKey, `${assignments.get(lastKey)}\n${trimmed}`);
+    }
+  }
+  return { assignments, documentation };
+};
 
 describe("administrator credential tooling documentation", () => {
   test("exposes the generator as a package script", async () => {
@@ -207,35 +239,56 @@ describe("administrator credential tooling documentation", () => {
   });
 
   test("documents the registry format, command, and migration in .env.example", async () => {
-    const envExample = await Bun.file(
+    const rawEnvExample = await Bun.file(
       new URL("../.env.example", import.meta.url)
     ).text();
+    const envConfig = parseEnvExample(rawEnvExample);
 
-    for (const required of [
-      "ADMIN_BASIC_AUTH_CREDENTIALS=",
-      "username:<sha256(username:password)>",
-      "bun run administrator-credentials:generate",
-      "Required in every environment",
-      "reuse the previously configured single-credential digest",
-      "as the admin entry",
-    ]) {
-      expect(occurrences(envExample, required)).toBeGreaterThan(0);
+    const credentialAssignment = envConfig.assignments.get(
+      "ADMIN_BASIC_AUTH_CREDENTIALS"
+    );
+    expect(credentialAssignment).toBeDefined();
+    // The documented assignment is single-quoted; the semantic content is
+    // the newline-separated entry list inside the quotes.
+    const credentialEntries = (credentialAssignment ?? "")
+      .replace(/^'/, "")
+      .replace(/'$/, "")
+      .split("\n")
+      .filter((entry) => entry.length > 0);
+    expect(credentialEntries.length).toBeGreaterThan(0);
+    for (const entry of credentialEntries) {
+      expect(entry).toMatch(/^[a-z0-9][a-z0-9._-]{0,79}:.+$/);
     }
-    expect(occurrences(envExample, "ADMIN_BASIC_AUTH_SHA256")).toBe(0);
+
+    const documentation = envConfig.documentation.join("\n");
+    expect(documentation).toContain("username:<sha256(username:password)>");
+    expect(documentation).toContain(
+      "bun run administrator-credentials:generate"
+    );
+    expect(documentation).toContain("Required in every environment");
+    expect(documentation).toContain(
+      "reuse the previously configured single-credential digest"
+    );
+    expect(documentation).toContain("as the admin entry");
+    expect(documentation).not.toContain("ADMIN_BASIC_AUTH_SHA256");
+    expect([...envConfig.assignments.keys()]).not.toContain(
+      "ADMIN_BASIC_AUTH_SHA256"
+    );
   });
 
   test("keeps real credentials out of .env.example", async () => {
-    const envExample = await Bun.file(
+    const rawEnvExample = await Bun.file(
       new URL("../.env.example", import.meta.url)
     ).text();
+    const envConfig = parseEnvExample(rawEnvExample);
 
-    const assignment = envExample
-      .split("\n")
-      .find((line) => line.startsWith("ADMIN_BASIC_AUTH_CREDENTIALS="));
-    expect(assignment).toBeDefined();
-    expect(
-      assignment?.includes("replace_with_64_lowercase_hex_characters")
-    ).toBe(true);
-    expect(/:[0-9a-f]{64}/.test(assignment ?? "")).toBe(false);
+    const credentialAssignment = envConfig.assignments.get(
+      "ADMIN_BASIC_AUTH_CREDENTIALS"
+    );
+    expect(credentialAssignment).toBeDefined();
+    expect(credentialAssignment).toContain(
+      "replace_with_64_lowercase_hex_characters"
+    );
+    expect(/[0-9a-f]{64}/.test(credentialAssignment ?? "")).toBe(false);
   });
 });

@@ -147,9 +147,10 @@ describe("no source-as-string contract tests", () => {
     ).toEqual(fixtures.map((fixture) => fixture.path).sort());
   });
 
-  test("reads of out-of-scope non-TS targets are outside the source contract", () => {
-    // Shell scripts, env docs, and YAML/JSON config are excluded by scope,
-    // not by per-file allowlist entries.
+  test("raw-text pins on shell scripts and env docs are violations", () => {
+    // There is no extension-based out-of-scope exemption: a literal pin on
+    // any read repository file — shell script or environment documentation
+    // included — is the rejected source-as-string pattern.
     const shellVar = ["scri", "pt"].join("");
     const envVar = ["envExam", "ple"].join("");
     const occurrencesName = ["count", "Occurrences"].join("");
@@ -180,7 +181,69 @@ describe("no source-as-string contract tests", () => {
       },
     ];
 
-    expect(findViolations(fixtures)).toEqual([]);
+    expect(
+      findViolations(fixtures).map((violation) => violation.split(":")[0])
+    ).toEqual(fixtures.map((fixture) => fixture.path).sort());
+  });
+
+  test("parsed KEY=VALUE semantics over env docs are not violations", () => {
+    // Structural replacements parse the file into configuration and assert
+    // on the parsed structure; the raw text variable is never pinned.
+    const envVar = ["envExam", "ple"].join("");
+    const configVar = ["env", "Config"].join("");
+
+    const fixture = {
+      path: "tmp/env-doc-parsed.test.ts",
+      content: [
+        'import { expect, test } from "bun:test";',
+        `const ${envVar} = await Bun.file(new URL("../.env.example", import.meta.url)).text();`,
+        `const ${configVar} = parseEnv(${envVar});`,
+        'test("checks the parsed configuration", () => {',
+        `  expect(${configVar}.assignments.get("ADMIN_BASIC_AUTH_CREDENTIALS")).toBeDefined();`,
+        `  expect(${configVar}.documentation.join("\\n")).toContain("sha256");`,
+        "});",
+      ].join("\n"),
+    };
+
+    expect(findViolations([fixture])).toEqual([]);
+  });
+
+  test("generated-artifact exceptions apply per read target, not per file", () => {
+    const migrationVar = ["mig", "ration"].join("");
+    const sourceVar = ["sour", "ce"].join("");
+    const toContain = ["to", "Contain"].join("");
+
+    // A migration-SQL verdict alone is legitimate: the read targets drizzle
+    // generated output, so it is never a source variable.
+    const migrationOnly = {
+      path: "apps/deskohub-workspace/db/schema/synthetic.test.ts",
+      content: [
+        'import { expect, test } from "bun:test";',
+        `const ${migrationVar} = await Bun.file(new URL("../migrations/20260926000000_synthetic/migration.sql", import.meta.url)).text();`,
+        'test("pins the generated migration", () => {',
+        `  expect(${migrationVar}).${toContain}("CREATE TABLE");`,
+        "});",
+      ].join("\n"),
+    };
+    expect(findViolations([migrationOnly])).toEqual([]);
+
+    // The same file combining the legitimate migration assertion with a
+    // hand-written TS source pin MUST still be reported.
+    const mixed = {
+      path: "apps/deskohub-workspace/db/schema/synthetic.test.ts",
+      content: [
+        'import { expect, test } from "bun:test";',
+        `const ${migrationVar} = await Bun.file(new URL("../migrations/20260926000000_synthetic/migration.sql", import.meta.url)).text();`,
+        `const ${sourceVar} = await Bun.file(new URL("./layout.tsx", import.meta.url)).text();`,
+        'test("pins both", () => {',
+        `  expect(${migrationVar}).${toContain}("CREATE TABLE");`,
+        `  expect(${sourceVar}).${toContain}("export default function");`,
+        "});",
+      ].join("\n"),
+    };
+    expect(
+      findViolations([mixed]).map((violation) => violation.split(":")[0])
+    ).toEqual([mixed.path]);
   });
 
   test("the audit ignores structural verdicts over read sources", () => {
