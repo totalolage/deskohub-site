@@ -986,6 +986,10 @@ describe("AdministrationService", () => {
       "cancelled-today",
       "new-today",
       "failed-today",
+      "held-today",
+      "cancelled-local-today",
+      "boundary-start-today",
+      "boundary-end-today",
     ];
     const listInputs: {
       readonly order?: string;
@@ -1024,22 +1028,53 @@ describe("AdministrationService", () => {
         "customer-new-c",
         atTime(currentDate.subtract({ days: 30 }), 10).toString(),
       ],
+      [
+        "customer-boundary-start",
+        atTime(currentDate.subtract({ days: 6 }), 0).toString(),
+      ],
+      [
+        "customer-boundary-end",
+        atTime(currentDate.add({ days: 1 }), 0).toString(),
+      ],
     ]);
     const rowCustomerIds = {
       "last-week": "customer-returning",
-      today: "customer-new-a",
+      today: "customer-stale",
       upcoming: "customer-upcoming",
       "cancelled-today": "customer-new-a",
       "new-today": "customer-new-b",
       "failed-today": "customer-new-c",
+      "held-today": "customer-held",
+      "cancelled-local-today": "customer-cancelled-local",
+      "boundary-start-today": "customer-boundary-start",
+      "boundary-end-today": "customer-boundary-end",
+    } as const;
+    const rowStates = {
+      "held-today": {
+        paymentState: "not_started",
+        fulfillmentState: "not_started",
+        reservationState: "held",
+      },
+      "cancelled-local-today": {
+        paymentState: "not_started",
+        fulfillmentState: "not_started",
+        reservationState: "cancelled",
+      },
     } as const;
     const rangeRows = linkedIds.map((id) => ({
       id,
       customerId: rowCustomerIds[id as keyof typeof rowCustomerIds],
       failureCode: id === "failed-today" ? "access_failed" : null,
-      fulfillmentState: id === "failed-today" ? "failed" : "fulfilled",
-      paymentState: "paid",
-      reservationState: "confirmed",
+      fulfillmentState:
+        id === "failed-today"
+          ? "failed"
+          : (rowStates[id as keyof typeof rowStates]?.fulfillmentState ??
+            "fulfilled"),
+      paymentState:
+        rowStates[id as keyof typeof rowStates]?.paymentState ?? "paid",
+      reservationState:
+        rowStates[id as keyof typeof rowStates]?.reservationState ??
+        "confirmed",
     }));
     const overviewReservations = [
       providerReservation(
@@ -1073,6 +1108,25 @@ describe("AdministrationService", () => {
         currentDate.add({ days: 1 })
       ),
       providerReservation("unlinked", "customer-unlinked", currentDate),
+      providerReservation("held-today", "customer-held", currentDate, 14),
+      providerReservation(
+        "cancelled-local-today",
+        "customer-cancelled-local",
+        currentDate,
+        15
+      ),
+      providerReservation(
+        "boundary-start-today",
+        "customer-boundary-start",
+        currentDate,
+        16
+      ),
+      providerReservation(
+        "boundary-end-today",
+        "customer-boundary-end",
+        currentDate,
+        17
+      ),
     ];
     const loadOverview = () =>
       Effect.gen(function* () {
@@ -1140,17 +1194,17 @@ describe("AdministrationService", () => {
     expect(customerListInputs).toEqual([
       {
         ids: [
-          "customer-reassigned",
-          "customer-new-b",
+          "customer-boundary-end",
+          "customer-boundary-start",
           "customer-new-a",
           "customer-returning",
         ],
       },
     ]);
     expect(result.today).toEqual({
-      completed: 1,
+      completed: 3,
       unavailable: false,
-      value: 4,
+      value: 8,
     });
     expect(result.upcoming).toEqual({
       completed: 1,
@@ -1158,29 +1212,29 @@ describe("AdministrationService", () => {
       value: 1,
     });
     expect(result.lastSevenDays).toEqual({
-      completed: 2,
+      completed: 4,
       unavailable: false,
-      value: 5,
+      value: 9,
     });
     expect(result.uniqueCustomers).toEqual({
       customers: [
         {
           customer: {
-            displayName: "reassigned",
+            displayName: "boundary-end",
             email: null,
-            id: "customer-reassigned",
+            id: "customer-boundary-end",
             phone: null,
           },
-          customerId: "customer-reassigned",
+          customerId: "customer-boundary-end",
         },
         {
           customer: {
-            displayName: "new-b",
+            displayName: "boundary-start",
             email: null,
-            id: "customer-new-b",
+            id: "customer-boundary-start",
             phone: null,
           },
-          customerId: "customer-new-b",
+          customerId: "customer-boundary-start",
         },
         {
           customer: {
@@ -1202,24 +1256,6 @@ describe("AdministrationService", () => {
       customers: [
         {
           customer: {
-            displayName: "reassigned",
-            email: null,
-            id: "customer-reassigned",
-            phone: null,
-          },
-          customerId: "customer-reassigned",
-        },
-        {
-          customer: {
-            displayName: "new-b",
-            email: null,
-            id: "customer-new-b",
-            phone: null,
-          },
-          customerId: "customer-new-b",
-        },
-        {
-          customer: {
             displayName: "new-a",
             email: null,
             id: "customer-new-a",
@@ -1227,21 +1263,42 @@ describe("AdministrationService", () => {
           },
           customerId: "customer-new-a",
         },
+        {
+          customer: {
+            displayName: "boundary-start",
+            email: null,
+            id: "customer-boundary-start",
+            phone: null,
+          },
+          customerId: "customer-boundary-start",
+        },
       ],
       unavailable: false,
-      value: 3,
+      value: 2,
     });
 
     missingCustomerCreationTime = true;
-    expect((await loadOverview()).newCustomers).toEqual({
+    const missingCreationResult = await loadOverview();
+    expect(missingCreationResult.newCustomers).toEqual({
       customers: [],
       unavailable: true,
       value: 0,
     });
+    expect(missingCreationResult.uniqueCustomers).toEqual({
+      customers: result.uniqueCustomers.customers,
+      unavailable: false,
+      value: 4,
+    });
 
     missingCustomerCreationTime = false;
     reservationsUnavailable = true;
-    expect((await loadOverview()).newCustomers).toEqual({
+    const unavailableResult = await loadOverview();
+    expect(unavailableResult.uniqueCustomers).toEqual({
+      customers: [],
+      unavailable: true,
+      value: 0,
+    });
+    expect(unavailableResult.newCustomers).toEqual({
       customers: [],
       unavailable: true,
       value: 0,
