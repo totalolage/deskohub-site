@@ -108,6 +108,18 @@ export const formatInvoiceAmount = (
   const wholeAmount = BigInt(wholePart);
   if (fractionDigits === 0) return integerFormat.format(wholeAmount);
 
+  // BigInt has no negative zero, so for a negative amount whose integer
+  // magnitude is zero (e.g. "-0.25"), format -1n and swap its integer
+  // digits for 0 to keep the locale's minus sign.
+  const wholeSource =
+    wholeAmount === 0n && total.startsWith("-")
+      ? integerFormat
+          .formatToParts(-1n)
+          .map((part) =>
+            part.type === "integer" ? { ...part, value: "0" } : part
+          )
+      : integerFormat.formatToParts(wholeAmount);
+  const parts = wholeSource;
   const decimalSeparator =
     new Intl.NumberFormat(locale, {
       minimumFractionDigits: 1,
@@ -115,7 +127,6 @@ export const formatInvoiceAmount = (
     })
       .formatToParts(1.5)
       .find((part) => part.type === "decimal")?.value ?? ".";
-  const parts = integerFormat.formatToParts(wholeAmount);
   let lastIntegerPart = -1;
   parts.forEach((part, index) => {
     if (part.type === "integer") lastIntegerPart = index;

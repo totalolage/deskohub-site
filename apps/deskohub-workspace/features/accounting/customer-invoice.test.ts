@@ -127,6 +127,18 @@ describe("formatInvoiceAmount", () => {
       "9\u00a0007\u00a0199\u00a0254\u00a0740\u00a0993,25\u00a0Kč"
     );
   });
+
+  test("preserves the sign for negative amounts between -1 and 0", () => {
+    expect(formatInvoiceAmount("-0.25", "USD", "en-US")).toBe("-$0.25");
+    expect(formatInvoiceAmount("-0.25", "CZK", "cs-CZ")).toBe("-0,25\u00a0Kč");
+  });
+
+  test("formats negative whole amounts with fractions", () => {
+    expect(formatInvoiceAmount("-1200.50", "USD", "en-US")).toBe("-$1,200.50");
+    expect(formatInvoiceAmount("-1200.50", "CZK", "cs-CZ")).toBe(
+      "-1\u00a0200,50\u00a0Kč"
+    );
+  });
 });
 
 describe("renderCustomerInvoiceCsv", () => {
