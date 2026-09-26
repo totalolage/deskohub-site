@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
-import { authUser } from "./auth";
 import {
   customerCardContracts,
   customerCardEnrollments,
@@ -107,7 +106,8 @@ describe("customer card enrollments", () => {
     const config = getTableConfig(customerCardEnrollments);
 
     const digestCheck = config.checks.find(
-      ({ name }) => name === "customer_card_enrollments_security_token_digest_check"
+      ({ name }) =>
+        name === "customer_card_enrollments_security_token_digest_check"
     );
     expect(new PgDialect().sqlToQuery(digestCheck!.value).sql).toBe(
       `"customer_card_enrollments"."security_token_digest" ~ '^[0-9a-f]{64}$'`
@@ -135,6 +135,6 @@ describe("customer card enrollments", () => {
     expect(migration).toContain('CREATE TABLE "customer_card_contracts" (');
     expect(migration).toContain('CREATE TABLE "customer_card_enrollments" (');
     expect(migration).not.toContain("DROP ");
-    expect(migration).not.toContain("ALTER TABLE \"auth\"");
+    expect(migration).not.toContain('ALTER TABLE "auth"');
   });
 });

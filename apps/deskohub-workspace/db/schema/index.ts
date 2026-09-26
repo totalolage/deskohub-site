@@ -16,8 +16,8 @@ export {
   type CustomerCardEnrollmentState,
   customerCardContractStates,
   customerCardContracts,
-  customerCardEnrollments,
   customerCardEnrollmentStates,
+  customerCardEnrollments,
   type NewCustomerCardContractRow,
   type NewCustomerCardEnrollmentRow,
 } from "./customer-card-contracts";

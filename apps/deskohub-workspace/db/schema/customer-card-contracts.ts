@@ -7,16 +7,10 @@ import type {
   NexiOrderId,
 } from "@deskohub/nexi";
 import { sql } from "drizzle-orm";
-import {
-  check,
-  index,
-  pgTable,
-  text,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
-import { authUser } from "./auth";
+import { check, index, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
+import { authUser } from "./auth";
 import { quotedSqlList } from "./sql-list";
 
 export const customerCardContractStates = ["active", "removed"] as const;
